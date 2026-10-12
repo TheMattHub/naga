@@ -1,0 +1,4 @@
+work_centre,weekday,start_time,end_time
+Cutting,-1,00:00,24:00
+Drilling,-1,00:00,24:00
+Assembly,-1,00:00,24:00

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+  <header>
+    <name>Conveyor C - exponential leak, f=0.2</name>
+    <vendor>Naga</vendor>
+    <product version="1.0">Naga test fixture</product>
+  </header>
+  <sim_specs method="euler" time_units="days">
+    <start>0</start>
+    <stop>1.5</stop>
+    <dt>0.5</dt>
+  </sim_specs>
+  <model>
+    <variables>
+      <flow name="hire">
+        <eqn>100</eqn>
+        <non_negative/>
+      </flow>
+      <flow name="graduate">
+        <eqn>0</eqn>
+      </flow>
+      <!-- Stella's real form: the fraction sits in the flow's own <eqn>, and
+           <leak/> is bare (no text), not the <leak>expr</leak> form. -->
+      <flow name="spoilage">
+        <eqn>0.2</eqn>
+        <leak/>
+      </flow>
+      <stock name="Training">
+        <eqn>0</eqn>
+        <inflow>hire</inflow>
+        <outflow>graduate</outflow>
+        <outflow>spoilage</outflow>
+        <conveyor exponential_leak="true">
+          <len>1</len>
+        </conveyor>
+      </stock>
+    </variables>
+  </model>
+</xmile>

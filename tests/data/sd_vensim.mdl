@@ -1,0 +1,55 @@
+Population= INTEG (
+	growth,
+	10)
+	~	people
+	~	Population stock |
+
+growth= r*Population*(1-Population/K)
+	~	people/Year
+	~	 |
+
+r= 0.2
+	~	1/Year
+	~	 |
+
+K= 1000
+	~	people
+	~	 |
+
+Effect= WITH LOOKUP(Population/K, ((0,1),(0.5,0.8),(1,0.5),(2,0.2)))
+	~	dmnl
+	~	 |
+
+Delayed_Population= DELAY1(Population, 5)
+	~	people
+	~	 |
+
+Region: East, West
+	~
+	~	 |
+
+Pop2[Region]= INTEG(
+	Grow2,
+	20)
+	~	people
+	~	 |
+
+Grow2[Region]= 0.1*Pop2
+	~	people/Year
+	~	 |
+
+FINAL TIME  = 50
+	~	Day
+	~	The final time for the simulation. |
+
+INITIAL TIME  = 0
+	~	Day
+	~	The initial time for the simulation. |
+
+TIME STEP  = 0.25
+	~	Day [0,?]
+	~	The time step for the simulation. |
+
+SAVEPER  = TIME STEP
+	~	Day [0,?]
+	~	The frequency with which output is stored. |

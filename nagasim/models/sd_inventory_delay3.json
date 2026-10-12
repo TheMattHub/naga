@@ -1,0 +1,230 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "inventory_delay3_1",
+      "description": "Inventory with lead time",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Inventory with lead time",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "SD Inventory",
+      "initial": 150.0,
+      "min": 0.0,
+      "rate_time_unit": "minutes"
+    },
+    {
+      "name": "SD On Order",
+      "initial": 0.0,
+      "min": 0.0,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "flows": [
+    {
+      "name": "SD place order",
+      "rate": "AUX(\"$SD demand rate\")",
+      "to": "SD On Order",
+      "rate_time_unit": "minutes"
+    },
+    {
+      "name": "SD arrivals",
+      "rate": "DELAY3(AUX(\"$SD demand rate\"), AUX(\"$SD lead time\"), 0)",
+      "from": "SD On Order",
+      "to": "SD Inventory",
+      "rate_time_unit": "minutes"
+    },
+    {
+      "name": "SD consumption",
+      "rate": "AUX(\"$SD demand rate\")",
+      "from": "SD Inventory",
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [
+    {
+      "name": "SD demand rate",
+      "expr": "10"
+    },
+    {
+      "name": "SD lead time",
+      "expr": "5"
+    }
+  ],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Inventory with lead time": {
+      "info": {
+        "description": "A stock replenished through a lead time: orders are placed at the (constant) demand rate, arrive DELAY3(demand_rate, lead_time) later (a third-order material delay -- an S-shaped, not instant, response), and are consumed at the demand rate. \"SD On Order\" is the pipeline itself (orders placed but not yet arrived); by Little's law it settles at demand_rate x lead_time. Needs simulation.sd.",
+        "library": {
+          "library": "sd",
+          "asset": "inventory_delay3",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "demand_rate",
+            "type": "number",
+            "default": 10.0,
+            "unit": "",
+            "label": "Demand Rate",
+            "help": "Constant consumption and ordering rate.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "lead_time",
+            "type": "number",
+            "default": 5.0,
+            "unit": "",
+            "label": "Lead Time",
+            "help": "Time from placing an order to receiving it.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "initial_stock",
+            "type": "number",
+            "default": 150.0,
+            "unit": "",
+            "label": "Initial Stock",
+            "help": "Starting inventory; comfortably above demand_rate x lead_time so the third-order delay's slower ramp-up does not empty it before arrivals catch up.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "levels": [
+            "SD Inventory",
+            "SD On Order"
+          ],
+          "auxiliaries": [
+            "SD demand rate",
+            "SD lead time"
+          ],
+          "flows": [
+            "SD place order",
+            "SD arrivals",
+            "SD consumption"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "demand_rate",
+          "default": 10.0,
+          "type": "number",
+          "description": "Constant consumption and ordering rate."
+        },
+        {
+          "name": "lead_time",
+          "default": 5.0,
+          "type": "number",
+          "description": "Time from placing an order to receiving it."
+        },
+        {
+          "name": "initial_stock",
+          "default": 150.0,
+          "type": "number",
+          "description": "Starting inventory; comfortably above demand_rate x lead_time so the third-order delay's slower ramp-up does not empty it before arrivals catch up."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "SD Inventory": {
+            "initial": {
+              "$arg": "initial_stock"
+            }
+          },
+          "SD On Order": {}
+        },
+        "auxiliaries": {
+          "SD demand rate": {
+            "expr": {
+              "$arg": "demand_rate"
+            }
+          },
+          "SD lead time": {
+            "expr": {
+              "$arg": "lead_time"
+            }
+          }
+        },
+        "flows": {
+          "SD place order": {},
+          "SD arrivals": {},
+          "SD consumption": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Inventory with lead time",
+    "category": "System dynamics",
+    "description": "A stock replenished through a lead time: orders are placed at the (constant) demand rate, arrive DELAY3(demand_rate, lead_time) later (a third-order material delay -- an S-shaped, not instant, response), and are consumed at the demand rate. \"SD On Order\" is the pipeline itself (orders placed but not yet arrived); by Little's law it settles at demand_rate x lead_time. Needs simulation.sd."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 200.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0,
+    "sd": {
+      "dt": 0.1,
+      "method": "rk4",
+      "time_unit": "minutes"
+    }
+  },
+  "outputs": {}
+}

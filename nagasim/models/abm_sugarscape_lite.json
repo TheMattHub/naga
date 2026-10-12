@@ -1,0 +1,205 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "sugarscape_lite_1",
+      "description": "Sugarscape with regrowth (grid, patches)",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Sugarscape with regrowth (grid, patches)",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [
+    {
+      "name": "Ant",
+      "parameters": {
+        "metabolism": 0.5
+      },
+      "attributes": [
+        {
+          "name": "wealth",
+          "init": "UNIF(5, 15)"
+        }
+      ],
+      "states": [
+        {
+          "name": "Alive"
+        }
+      ],
+      "transitions": [
+        {
+          "from": "Alive",
+          "to": "Alive",
+          "condition": "self.wealth <= 0",
+          "actions": [
+            {
+              "remove": "self"
+            }
+          ]
+        }
+      ],
+      "initial_state": "Alive",
+      "space": {
+        "kind": "grid",
+        "size": [
+          30,
+          30
+        ],
+        "torus": false,
+        "neighbourhood": "von_neumann",
+        "patches": [
+          {
+            "name": "sugar",
+            "init": "max(0, 10 - (abs(cx - 15) + abs(cy - 15)))",
+            "grow": {
+              "rate": 1
+            }
+          }
+        ],
+        "patch_tick": 1,
+        "time_unit": "minutes"
+      },
+      "tick": {
+        "dt": 1,
+        "activation": "sequential",
+        "time_unit": "minutes"
+      },
+      "on_tick": [
+        {
+          "step": [
+            "IF(PATCH(\"sugar\") >= PATCH(\"sugar\", 0, -1) and PATCH(\"sugar\") >= PATCH(\"sugar\", 0, 1) and PATCH(\"sugar\") >= PATCH(\"sugar\", -1, 0) and PATCH(\"sugar\") >= PATCH(\"sugar\", 1, 0), 0, IF(PATCH(\"sugar\", 0, -1) >= PATCH(\"sugar\", 0, 1) and PATCH(\"sugar\", 0, -1) >= PATCH(\"sugar\", -1, 0) and PATCH(\"sugar\", 0, -1) >= PATCH(\"sugar\", 1, 0), 0, IF(PATCH(\"sugar\", 0, 1) >= PATCH(\"sugar\", -1, 0) and PATCH(\"sugar\", 0, 1) >= PATCH(\"sugar\", 1, 0), 0, IF(PATCH(\"sugar\", -1, 0) >= PATCH(\"sugar\", 1, 0), -1, 1))))",
+            "IF(PATCH(\"sugar\") >= PATCH(\"sugar\", 0, -1) and PATCH(\"sugar\") >= PATCH(\"sugar\", 0, 1) and PATCH(\"sugar\") >= PATCH(\"sugar\", -1, 0) and PATCH(\"sugar\") >= PATCH(\"sugar\", 1, 0), 0, IF(PATCH(\"sugar\", 0, -1) >= PATCH(\"sugar\", 0, 1) and PATCH(\"sugar\", 0, -1) >= PATCH(\"sugar\", -1, 0) and PATCH(\"sugar\", 0, -1) >= PATCH(\"sugar\", 1, 0), -1, IF(PATCH(\"sugar\", 0, 1) >= PATCH(\"sugar\", -1, 0) and PATCH(\"sugar\", 0, 1) >= PATCH(\"sugar\", 1, 0), 1, IF(PATCH(\"sugar\", -1, 0) >= PATCH(\"sugar\", 1, 0), 0, 0))))"
+          ]
+        },
+        {
+          "target": "self.wealth",
+          "expr": "self.wealth + PATCH(\"sugar\") - metabolism"
+        },
+        {
+          "target": "patch.sugar",
+          "expr": "0"
+        }
+      ],
+      "speed_unit": "m/min"
+    }
+  ],
+  "populations": [
+    {
+      "name": "Ants",
+      "type": "Ant",
+      "count": 120,
+      "placement": {
+        "kind": "random"
+      }
+    }
+  ],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Sugarscape with regrowth (grid, patches)": {
+      "info": {
+        "description": "Epstein and Axtell's Sugarscape rule G1 on one sugar hill: 120 Ant agents on a 30x30 bounded grid; the `sugar` patch starts at each cell's capacity (10 at the centre, falling by 1 per step of Manhattan distance) and GROWS BACK 1 per tick up to that capacity (`grow: {rate: 1}`, max defaulting to the initial landscape). Each tick an ant steps to the best of its 4 von Neumann neighbours and its own cell (a 5-way PATCH comparison: vision 1), harvests the whole cell and pays Metabolism; it starves at zero wealth. The population falls from 120 to about 24 by t=40 as the ants that cannot see the hill starve, then HOLDS for good: the hill's 181 cells regrow 1 sugar each per tick, more than its survivors burn, so regrowth balances consumption (the oracle checks t=40 and t=120; the same ants with no regrowth all starve by about t=110). Metabolism and the wealth range are this instance's own; the grid and the hill are fixed.",
+        "library": {
+          "library": "abm_classics",
+          "asset": "sugarscape_lite",
+          "version": "1.2.0"
+        },
+        "parameters": [
+          {
+            "name": "metabolism",
+            "type": "number",
+            "default": 0.5,
+            "unit": "",
+            "label": "Metabolism",
+            "help": "Sugar an ant spends staying alive each tick.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "agent_types": [
+            "Ant"
+          ],
+          "populations": [
+            "Ants"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "metabolism",
+          "default": 0.5,
+          "type": "number",
+          "description": "Sugar an ant spends staying alive each tick."
+        }
+      ],
+      "scoped": {
+        "agent_types": {
+          "Ant": {
+            "parameters.metabolism": {
+              "$arg": "metabolism"
+            }
+          }
+        },
+        "populations": {
+          "Ants": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Sugarscape with regrowth (grid, patches)",
+    "category": "Agent-based",
+    "description": "Epstein and Axtell's Sugarscape rule G1 on one sugar hill: 120 Ant agents on a 30x30 bounded grid; the `sugar` patch starts at each cell's capacity (10 at the centre, falling by 1 per step of Manhattan distance) and GROWS BACK 1 per tick up to that capacity (`grow: {rate: 1}`, max defaulting to the initial landscape). Each tick an ant steps to the best of its 4 von Neumann neighbours and its own cell (a 5-way PATCH comparison: vision 1), harvests the whole cell and pays Metabolism; it starves at zero wealth. The population falls from 120 to about 24 by t=40 as the ants that cannot see the hill starve, then HOLDS for good: the hill's 181 cells regrow 1 sugar each per tick, more than its survivors burn, so regrowth balances consumption (the oracle checks t=40 and t=120; the same ants with no regrowth all starve by about t=110). Metabolism and the wealth range are this instance's own; the grid and the hill are fixed."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 40.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0
+  },
+  "outputs": {}
+}

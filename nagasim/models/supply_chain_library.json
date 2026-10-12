@@ -1,0 +1,1612 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "customer_demand_1",
+      "description": "Customer demand",
+      "type": "SUBMODEL",
+      "position": [
+        -360.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Customer demand",
+        "arguments": {
+          "interarrival_time": 0.5,
+          "time_distribution": "exponential",
+          "order_size": 4.0,
+          "size_distribution": "uniform",
+          "entity_type": "CUSTOMER"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "warehouse_s_s_r_q_1",
+      "description": "Warehouse (s,S / R,Q)",
+      "type": "SUBMODEL",
+      "position": [
+        -120.0,
+        0.0
+      ],
+      "layout_position": [
+        10.0,
+        5.0
+      ],
+      "params": {
+        "definition": "Warehouse (s,S / R,Q)",
+        "arguments": {
+          "initial_stock": 60.0,
+          "order_from_entity": true,
+          "policy": "sS",
+          "reorder_point": 15.0,
+          "order_up_to": 60.0,
+          "review": "continuous",
+          "allow_backorder": false,
+          "replenishment": "external",
+          "holding_cost": 0.02,
+          "order_cost": 0.0,
+          "lost_sale_penalty": 0.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "warehouse_s_s_r_q_2",
+      "description": "Warehouse (s,S / R,Q)",
+      "type": "SUBMODEL",
+      "position": [
+        160.0,
+        180.0
+      ],
+      "layout_position": [
+        33.0,
+        20.0
+      ],
+      "params": {
+        "definition": "Warehouse (s,S / R,Q)",
+        "arguments": {
+          "initial_stock": 300.0,
+          "order_from_entity": true,
+          "policy": "sS",
+          "reorder_point": 60.0,
+          "order_up_to": 300.0,
+          "review": "continuous",
+          "allow_backorder": true,
+          "replenishment": "external",
+          "holding_cost": 0.005,
+          "order_cost": 0.0,
+          "lost_sale_penalty": 0.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "supplier_1",
+      "description": "Supplier",
+      "type": "SUBMODEL",
+      "position": [
+        420.0,
+        320.0
+      ],
+      "layout_position": [
+        49.0,
+        29.0
+      ],
+      "params": {
+        "definition": "Supplier",
+        "arguments": {
+          "order_slots": 1,
+          "picking_time": 1.0,
+          "time_distribution": "exponential",
+          "transport_time": 2.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "Orders served",
+      "type": "DISPOSE",
+      "position": [
+        160.0,
+        -80.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "days"
+      }
+    },
+    {
+      "name": "dispose_2",
+      "description": "Lost sales",
+      "type": "DISPOSE",
+      "position": [
+        160.0,
+        40.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "days"
+      }
+    },
+    {
+      "name": "delay_1",
+      "description": "Trunk delivery to the store",
+      "type": "DELAY",
+      "position": [
+        -120.0,
+        260.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.0
+        },
+        "time_unit": "days"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "customer_demand_1",
+      "target": "warehouse_s_s_r_q_1",
+      "source_port": "orders",
+      "target_port": "demand"
+    },
+    {
+      "source": "warehouse_s_s_r_q_1",
+      "target": "dispose_1",
+      "source_port": "served"
+    },
+    {
+      "source": "warehouse_s_s_r_q_1",
+      "target": "dispose_2",
+      "source_port": "lost"
+    },
+    {
+      "source": "warehouse_s_s_r_q_1",
+      "target": "warehouse_s_s_r_q_2",
+      "source_port": "orders",
+      "target_port": "demand"
+    },
+    {
+      "source": "warehouse_s_s_r_q_2",
+      "target": "delay_1",
+      "source_port": "served"
+    },
+    {
+      "source": "delay_1",
+      "target": "warehouse_s_s_r_q_1",
+      "target_port": "deliveries"
+    },
+    {
+      "source": "warehouse_s_s_r_q_2",
+      "target": "dispose_2",
+      "source_port": "lost"
+    },
+    {
+      "source": "warehouse_s_s_r_q_2",
+      "target": "supplier_1",
+      "source_port": "orders",
+      "target_port": "orders"
+    },
+    {
+      "source": "supplier_1",
+      "target": "warehouse_s_s_r_q_2",
+      "source_port": "deliveries",
+      "target_port": "deliveries"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Leaner store",
+      "description": "Reorder later and hold less: s = 8, S = 40.",
+      "overrides": [
+        {
+          "path": "blocks.warehouse_s_s_r_q_1.params.arguments.reorder_point",
+          "value": 8.0
+        },
+        {
+          "path": "blocks.warehouse_s_s_r_q_1.params.arguments.order_up_to",
+          "value": 40.0
+        }
+      ]
+    },
+    {
+      "name": "Safer store",
+      "description": "Reorder earlier and hold more: s = 30, S = 90.",
+      "overrides": [
+        {
+          "path": "blocks.warehouse_s_s_r_q_1.params.arguments.reorder_point",
+          "value": 30.0
+        },
+        {
+          "path": "blocks.warehouse_s_s_r_q_1.params.arguments.order_up_to",
+          "value": 90.0
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Scm Supplier",
+      "capacity": 1,
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "CUSTOMER",
+      "shape": "circle",
+      "color": "BLUE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "days"
+    },
+    {
+      "name": "SCM_ORDER",
+      "shape": "square",
+      "color": "GREY",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "days"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "Scm Stock",
+      "description": "Units on the shelf. Unmet counts units an order could not get at once.",
+      "unit": "units",
+      "min": 0,
+      "initial": 100,
+      "thresholds": [
+        {
+          "value": 50,
+          "direction": "falling",
+          "signal": "$Scm reorder"
+        }
+      ],
+      "rate_time_unit": "days"
+    },
+    {
+      "name": "Scm On order",
+      "description": "Units ordered and not yet received: stock on hand plus this is the inventory position.",
+      "unit": "units",
+      "min": 0,
+      "initial": 0,
+      "rate_time_unit": "days"
+    }
+  ],
+  "flows": [
+    {
+      "name": "Scm holding cost",
+      "description": "Stock on hand, priced per unit per day: its Cost is the holding cost, integrated exactly over the piecewise-linear stock curve.",
+      "rate": "LEVEL(\"$Scm Stock\")",
+      "rate_time_unit": "days",
+      "price": 0.0
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Customer demand": {
+      "info": {
+        "description": "A source of customer orders: arrivals at an interarrival time, each stamped with an order size in entity.scm_order. Chain it to a warehouse whose \"order size from the entity\" is on and every customer draws its own quantity. No input port -- this asset starts the flow.",
+        "library": {
+          "library": "supplychain",
+          "asset": "customer_demand",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "interarrival_time",
+            "type": "time",
+            "default": 1.0,
+            "unit": "days",
+            "label": "Mean time between orders",
+            "help": "",
+            "group": "Demand",
+            "min": 0.001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Arrival distribution",
+            "help": "exponential is the memoryless (Poisson) arrival stream; fixed is a metronome.",
+            "group": "Demand",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "order_size",
+            "type": "number",
+            "default": 5.0,
+            "unit": "units",
+            "label": "Mean order size",
+            "help": "",
+            "group": "Demand",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "size_distribution",
+            "type": "choice",
+            "default": "fixed",
+            "unit": "",
+            "label": "Order size distribution",
+            "help": "fixed is always the mean; uniform is between half and one and a half of it, rounded to whole units; triangular is the same range with the mean most likely.",
+            "group": "Demand",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "uniform",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "entity_type",
+            "type": "name",
+            "default": "CUSTOMER",
+            "unit": "",
+            "label": "Entity type",
+            "help": "",
+            "group": "Demand",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "interarrival_time",
+          "default": 1.0,
+          "type": "time"
+        },
+        {
+          "name": "time_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "exponential is the memoryless (Poisson) arrival stream; fixed is a metronome."
+        },
+        {
+          "name": "order_size",
+          "default": 5.0,
+          "type": "number"
+        },
+        {
+          "name": "size_distribution",
+          "default": "fixed",
+          "type": "choice",
+          "description": "fixed is always the mean; uniform is between half and one and a half of it, rounded to whole units; triangular is the same range with the mean most likely."
+        },
+        {
+          "name": "entity_type",
+          "default": "CUSTOMER",
+          "type": "name",
+          "refers_to": "entity"
+        }
+      ],
+      "blocks": [
+        {
+          "name": "arrive",
+          "description": "Customer orders",
+          "type": "CREATE",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "e_type": {
+              "$arg": "entity_type"
+            },
+            "arrival_mode": "Interarrival",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "interarrival_time if time_distribution == 'fixed' else EXPO(interarrival_time)"
+            },
+            "time_unit": "days",
+            "entities_per_arrival": 1,
+            "max_arrivals": 0,
+            "start_time": 0,
+            "sequence": ""
+          }
+        },
+        {
+          "name": "size",
+          "description": "Order size",
+          "type": "ASSIGN",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.scm_order",
+                "expr": "order_size if size_distribution == 'fixed' else (round(UNIF(0.5 * order_size, 1.5 * order_size)) if size_distribution == 'uniform' else TRIA(0.5 * order_size, order_size, 1.5 * order_size))"
+              }
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "description": "Orders leave",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "port": "orders"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "arrive",
+          "target": "size"
+        },
+        {
+          "source": "size",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Warehouse (s,S / R,Q)": {
+      "info": {
+        "description": "Stock on a shelf, drawn by the order entities arriving at the demand port and replenished by a policy. (s, S) orders up to S when the inventory position falls to the reorder point; (R, Q) orders a fixed quantity. Review is continuous -- the stock level itself fires the reorder, exactly at the crossing -- or periodic on a review period. A shortage is a backorder (the entity waits at the shelf until the stock can pay in full) or a lost sale (it leaves by the \"lost\" port). Replenishment is either an internal lead time, or external: the order entity leaves by the \"orders\" port, and whatever answers it comes back through \"deliveries\" -- chain that to an upstream warehouse or to a supplier and the chain is two-echelon. Statistics: fill rate (orders servable on arrival), units served and lost, orders placed, and the stock level's own average, minimum and time empty.",
+        "library": {
+          "library": "supplychain",
+          "asset": "warehouse",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "initial_stock",
+            "type": "number",
+            "default": 100.0,
+            "unit": "units",
+            "label": "Initial stock",
+            "help": "",
+            "group": "Stock",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "units_per_order",
+            "type": "number",
+            "default": 1.0,
+            "unit": "units",
+            "label": "Units per order",
+            "help": "How much one arriving order draws, when it does not carry a size of its own.",
+            "group": "Stock",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "order_from_entity",
+            "type": "bool",
+            "default": false,
+            "unit": "",
+            "label": "Order size from the entity",
+            "help": "On: each arriving entity draws its own entity.scm_order units, which is what the Customer demand source stamps and what an upstream warehouse's replenishment order carries. Off: every order draws \"units per order\".",
+            "group": "Stock",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "policy",
+            "type": "choice",
+            "default": "sS",
+            "unit": "",
+            "label": "Replenishment policy",
+            "help": "sS: order back up to S. RQ: order a fixed quantity.",
+            "group": "Policy",
+            "min": null,
+            "max": null,
+            "choices": [
+              "sS",
+              "RQ"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "reorder_point",
+            "type": "number",
+            "default": 50.0,
+            "unit": "units",
+            "label": "Reorder point (s)",
+            "help": "Order when the inventory position -- stock on hand plus stock on order -- reaches this.",
+            "group": "Policy",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "order_up_to",
+            "type": "number",
+            "default": 120.0,
+            "unit": "units",
+            "label": "Order up to (S)",
+            "help": "Used by the (s, S) policy.",
+            "group": "Policy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "order_quantity",
+            "type": "number",
+            "default": 70.0,
+            "unit": "units",
+            "label": "Order quantity (Q)",
+            "help": "Used by the (R, Q) policy.",
+            "group": "Policy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "review",
+            "type": "choice",
+            "default": "continuous",
+            "unit": "",
+            "label": "Review",
+            "help": "continuous: the stock level fires the reorder the instant it crosses s, and one order is outstanding at a time. periodic: the position is checked every review period, and several orders may be in flight.",
+            "group": "Policy",
+            "min": null,
+            "max": null,
+            "choices": [
+              "continuous",
+              "periodic"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "review_period",
+            "type": "time",
+            "default": 7.0,
+            "unit": "days",
+            "label": "Review period",
+            "help": "Only used by periodic review.",
+            "group": "Policy",
+            "min": 0.01,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "allow_backorder",
+            "type": "bool",
+            "default": true,
+            "unit": "",
+            "label": "Backorders allowed",
+            "help": "On: an order the shelf cannot fill waits at it, and is served the exact instant the stock reaches the amount. Off: it is a lost sale and leaves by the \"lost\" port.",
+            "group": "Policy",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "replenishment",
+            "type": "choice",
+            "default": "internal",
+            "unit": "",
+            "label": "Replenishment",
+            "help": "internal: the order is delivered after the lead time below. external: the order entity leaves by the \"orders\" port and the goods arrive back through \"deliveries\" -- chain it to a supplier or to an upstream warehouse.",
+            "group": "Supply",
+            "min": null,
+            "max": null,
+            "choices": [
+              "internal",
+              "external"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "lead_time",
+            "type": "time",
+            "default": 2.0,
+            "unit": "days",
+            "label": "Lead time",
+            "help": "Only used by internal replenishment.",
+            "group": "Supply",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "lead_time_distribution",
+            "type": "choice",
+            "default": "fixed",
+            "unit": "",
+            "label": "Lead time distribution",
+            "help": "Shape around the mean: fixed, memoryless, or between 50% and 150% of it.",
+            "group": "Supply",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "holding_cost",
+            "type": "number",
+            "default": 0.0,
+            "unit": "EUR/unit/day",
+            "label": "Holding cost",
+            "help": "Charged on the stock on hand, integrated exactly over the stock curve and joined into Total Cost. A fixed cost PER ORDER is not a rate, so it is not a cost the engine can accrue: multiply the \"Scm orders placed\" statistic by it in the report or in an optimizer objective.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Scm service policies",
+          "label": "Service policy",
+          "group": "Policy",
+          "map": {
+            "reorder_point": "reorder_point",
+            "order_up_to": "order_up_to",
+            "lead_time": "lead_time",
+            "shortage": "allow_backorder"
+          },
+          "rows": [
+            "Fast mover, backorders",
+            "Fast mover, lost sales",
+            "Slow mover, long lead time"
+          ],
+          "units": {
+            "reorder_point": "units",
+            "order_up_to": "units",
+            "lead_time": "days"
+          },
+          "values": {
+            "Fast mover, backorders": {
+              "reorder_point": 50.0,
+              "order_up_to": 120.0,
+              "lead_time": 2.0,
+              "allow_backorder": true
+            },
+            "Fast mover, lost sales": {
+              "reorder_point": 80.0,
+              "order_up_to": 160.0,
+              "lead_time": 2.0,
+              "allow_backorder": false
+            },
+            "Slow mover, long lead time": {
+              "reorder_point": 20.0,
+              "order_up_to": 60.0,
+              "lead_time": 10.0,
+              "allow_backorder": true
+            }
+          },
+          "sources": {
+            "Fast mover, backorders": "Illustrative starting point (Naga); not measured data.",
+            "Fast mover, lost sales": "Illustrative starting point (Naga); not measured data.",
+            "Slow mover, long lead time": "Illustrative starting point (Naga); not measured data."
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "initial_stock",
+          "default": 100.0,
+          "type": "number"
+        },
+        {
+          "name": "units_per_order",
+          "default": 1.0,
+          "type": "number",
+          "description": "How much one arriving order draws, when it does not carry a size of its own."
+        },
+        {
+          "name": "order_from_entity",
+          "default": false,
+          "type": "bool",
+          "description": "On: each arriving entity draws its own entity.scm_order units, which is what the Customer demand source stamps and what an upstream warehouse's replenishment order carries. Off: every order draws \"units per order\"."
+        },
+        {
+          "name": "policy",
+          "default": "sS",
+          "type": "choice",
+          "description": "sS: order back up to S. RQ: order a fixed quantity."
+        },
+        {
+          "name": "reorder_point",
+          "default": 50.0,
+          "type": "number",
+          "description": "Order when the inventory position -- stock on hand plus stock on order -- reaches this."
+        },
+        {
+          "name": "order_up_to",
+          "default": 120.0,
+          "type": "number",
+          "description": "Used by the (s, S) policy."
+        },
+        {
+          "name": "order_quantity",
+          "default": 70.0,
+          "type": "number",
+          "description": "Used by the (R, Q) policy."
+        },
+        {
+          "name": "review",
+          "default": "continuous",
+          "type": "choice",
+          "description": "continuous: the stock level fires the reorder the instant it crosses s, and one order is outstanding at a time. periodic: the position is checked every review period, and several orders may be in flight."
+        },
+        {
+          "name": "review_period",
+          "default": 7.0,
+          "type": "time",
+          "description": "Only used by periodic review."
+        },
+        {
+          "name": "allow_backorder",
+          "default": true,
+          "type": "bool",
+          "description": "On: an order the shelf cannot fill waits at it, and is served the exact instant the stock reaches the amount. Off: it is a lost sale and leaves by the \"lost\" port."
+        },
+        {
+          "name": "replenishment",
+          "default": "internal",
+          "type": "choice",
+          "description": "internal: the order is delivered after the lead time below. external: the order entity leaves by the \"orders\" port and the goods arrive back through \"deliveries\" -- chain it to a supplier or to an upstream warehouse."
+        },
+        {
+          "name": "lead_time",
+          "default": 2.0,
+          "type": "time",
+          "description": "Only used by internal replenishment."
+        },
+        {
+          "name": "lead_time_distribution",
+          "default": "fixed",
+          "type": "choice",
+          "description": "Shape around the mean: fixed, memoryless, or between 50% and 150% of it."
+        },
+        {
+          "name": "holding_cost",
+          "default": 0.0,
+          "type": "number",
+          "description": "Charged on the stock on hand, integrated exactly over the stock curve and joined into Total Cost."
+        },
+        {
+          "name": "order_cost",
+          "default": 0.0,
+          "type": "number",
+          "description": "Charged once every time a replenishment order is placed, whatever its size -- paperwork, a truck, a setup at the supplier. It joins Total Cost and is itemised in the cost summary as \"Scm ordering cost\"."
+        },
+        {
+          "name": "lost_sale_penalty",
+          "default": 0.0,
+          "type": "number",
+          "description": "Charged per unit of demand the shelf could not fill (lost sales only: a backordered unit is served late, not lost). It joins Total Cost and is itemised as \"Scm lost sales\"."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "Scm Stock": {
+            "initial": {
+              "$arg": "initial_stock"
+            },
+            "thresholds.0.value": "reorder_point if review == \"continuous\" else -1e12"
+          },
+          "Scm On order": {}
+        },
+        "flows": {
+          "Scm holding cost": {
+            "price": {
+              "$arg": "holding_cost"
+            }
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Orders arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "demand"
+          }
+        },
+        {
+          "name": "size",
+          "description": "Order size and whether the shelf can fill it",
+          "type": "ASSIGN",
+          "position": [
+            150.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.scm_qty",
+                "expr": "entity.scm_order if order_from_entity else units_per_order"
+              },
+              {
+                "target": "entity.scm_filled",
+                "expr": "1 if LEVEL(\"$Scm Stock\") >= entity.scm_qty else 0"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fill",
+          "description": "Fill rate",
+          "type": "RECORD",
+          "position": [
+            300.0,
+            0.0
+          ],
+          "params": {
+            "stat_name": "$Scm fill rate",
+            "kind": "tally",
+            "expr": "entity.scm_filled"
+          }
+        },
+        {
+          "name": "check",
+          "description": "Serve or lose the sale",
+          "type": "DECIDE",
+          "position": [
+            450.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "1 if allow_backorder else entity.scm_filled"
+            ]
+          }
+        },
+        {
+          "name": "draw",
+          "description": "Take the units off the shelf",
+          "type": "TRANSFER",
+          "position": [
+            600.0,
+            -60.0
+          ],
+          "params": {
+            "level": "$Scm Stock",
+            "amount": "entity.scm_qty",
+            "mode": "remove",
+            "wait": {
+              "$arg": "allow_backorder"
+            }
+          }
+        },
+        {
+          "name": "served",
+          "description": "Units served",
+          "type": "RECORD",
+          "position": [
+            750.0,
+            -60.0
+          ],
+          "params": {
+            "stat_name": "$Scm units served",
+            "kind": "count",
+            "expr": "entity.scm_qty"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Served orders leave",
+          "type": "SUB_EXIT",
+          "position": [
+            900.0,
+            -60.0
+          ],
+          "params": {
+            "port": "served"
+          }
+        },
+        {
+          "name": "lost_units",
+          "description": "Units lost",
+          "type": "RECORD",
+          "position": [
+            750.0,
+            60.0
+          ],
+          "params": {
+            "stat_name": "$Scm units lost",
+            "kind": "count",
+            "expr": "entity.scm_qty"
+          }
+        },
+        {
+          "name": "lost_charge",
+          "description": "Lost-sale penalty",
+          "type": "RECORD",
+          "position": [
+            750.0,
+            120.0
+          ],
+          "params": {
+            "stat_name": "$Scm lost sales",
+            "kind": "cost",
+            "expr": "entity.scm_qty * lost_sale_penalty",
+            "category": "Penalty"
+          }
+        },
+        {
+          "name": "lost",
+          "description": "Lost sales leave",
+          "type": "SUB_EXIT",
+          "position": [
+            900.0,
+            60.0
+          ],
+          "params": {
+            "port": "lost"
+          }
+        },
+        {
+          "name": "agent",
+          "description": "One purchasing agent",
+          "type": "CREATE",
+          "position": [
+            0.0,
+            200.0
+          ],
+          "params": {
+            "e_type": "SCM_ORDER",
+            "arrival_mode": "Interarrival",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 1.0
+            },
+            "time_unit": "days",
+            "entities_per_arrival": 1,
+            "max_arrivals": 1,
+            "start_time": 0,
+            "sequence": ""
+          }
+        },
+        {
+          "name": "wait_signal",
+          "description": "Wait for the stock to reach s",
+          "type": "HOLD",
+          "position": [
+            150.0,
+            200.0
+          ],
+          "params": {
+            "mode": "Signal",
+            "signal_name": "$Scm reorder",
+            "conditions": [],
+            "scan_interval": 1.0
+          }
+        },
+        {
+          "name": "clock",
+          "description": "Periodic review",
+          "type": "CREATE",
+          "position": [
+            0.0,
+            320.0
+          ],
+          "params": {
+            "e_type": "SCM_ORDER",
+            "arrival_mode": "Interarrival",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "review_period"
+            },
+            "time_unit": "days",
+            "entities_per_arrival": 1,
+            "max_arrivals": 0,
+            "start_time": 0,
+            "sequence": ""
+          }
+        },
+        {
+          "name": "due",
+          "description": "Is the position at or below s?",
+          "type": "DECIDE",
+          "position": [
+            150.0,
+            320.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "(review == \"periodic\") * (LEVEL(\"$Scm Stock\") + LEVEL(\"$Scm On order\") <= reorder_point)"
+            ]
+          }
+        },
+        {
+          "name": "place",
+          "description": "Order quantity",
+          "type": "ASSIGN",
+          "position": [
+            300.0,
+            260.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.scm_order",
+                "expr": "max(order_up_to - LEVEL(\"$Scm Stock\") - LEVEL(\"$Scm On order\"), 0) if policy == \"sS\" else order_quantity"
+              }
+            ]
+          }
+        },
+        {
+          "name": "orders",
+          "description": "Orders placed",
+          "type": "RECORD",
+          "position": [
+            450.0,
+            260.0
+          ],
+          "params": {
+            "stat_name": "$Scm orders placed",
+            "kind": "count",
+            "expr": "1"
+          }
+        },
+        {
+          "name": "order_charge",
+          "description": "Ordering cost",
+          "type": "RECORD",
+          "position": [
+            525.0,
+            200.0
+          ],
+          "params": {
+            "stat_name": "$Scm ordering cost",
+            "kind": "cost",
+            "expr": "order_cost",
+            "category": "Ordering"
+          }
+        },
+        {
+          "name": "on_order",
+          "description": "Add it to the stock on order",
+          "type": "TRANSFER",
+          "position": [
+            600.0,
+            260.0
+          ],
+          "params": {
+            "level": "$Scm On order",
+            "amount": "entity.scm_order",
+            "mode": "add",
+            "wait": false
+          }
+        },
+        {
+          "name": "route",
+          "description": "Internal lead time or a real supplier",
+          "type": "DECIDE",
+          "position": [
+            750.0,
+            260.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "1 if replenishment == \"internal\" else 0"
+            ]
+          }
+        },
+        {
+          "name": "lead",
+          "description": "Supplier lead time",
+          "type": "DELAY",
+          "position": [
+            900.0,
+            200.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "lead_time if lead_time_distribution == 'fixed' else (EXPO(lead_time) if lead_time_distribution == 'exponential' else TRIA(0.5 * lead_time, lead_time, 1.5 * lead_time))"
+            },
+            "time_unit": "days"
+          }
+        },
+        {
+          "name": "orders_out",
+          "description": "Orders to the supplier",
+          "type": "SUB_EXIT",
+          "position": [
+            900.0,
+            320.0
+          ],
+          "params": {
+            "port": "orders"
+          }
+        },
+        {
+          "name": "deliveries",
+          "description": "Goods arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            900.0,
+            400.0
+          ],
+          "params": {
+            "port": "deliveries"
+          }
+        },
+        {
+          "name": "arrive",
+          "description": "It is no longer on order",
+          "type": "TRANSFER",
+          "position": [
+            1050.0,
+            260.0
+          ],
+          "params": {
+            "level": "$Scm On order",
+            "amount": "entity.scm_order",
+            "mode": "remove",
+            "wait": false
+          }
+        },
+        {
+          "name": "receive",
+          "description": "Put it on the shelf",
+          "type": "TRANSFER",
+          "position": [
+            1200.0,
+            260.0
+          ],
+          "params": {
+            "level": "$Scm Stock",
+            "amount": "entity.scm_order",
+            "mode": "add",
+            "wait": false
+          }
+        },
+        {
+          "name": "loop",
+          "description": "Back to waiting, or done",
+          "type": "DECIDE",
+          "position": [
+            1350.0,
+            260.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "1 if review == \"continuous\" else 0"
+            ]
+          }
+        },
+        {
+          "name": "skip",
+          "description": "No order this period",
+          "type": "DISPOSE",
+          "position": [
+            300.0,
+            400.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "base"
+          }
+        },
+        {
+          "name": "done",
+          "description": "Order closed",
+          "type": "DISPOSE",
+          "position": [
+            1500.0,
+            320.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "base"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "size"
+        },
+        {
+          "source": "size",
+          "target": "fill"
+        },
+        {
+          "source": "fill",
+          "target": "check"
+        },
+        {
+          "source": "check",
+          "target": "draw"
+        },
+        {
+          "source": "check",
+          "target": "lost_units"
+        },
+        {
+          "source": "draw",
+          "target": "served"
+        },
+        {
+          "source": "served",
+          "target": "out"
+        },
+        {
+          "source": "lost_units",
+          "target": "lost_charge"
+        },
+        {
+          "source": "agent",
+          "target": "wait_signal"
+        },
+        {
+          "source": "wait_signal",
+          "target": "place"
+        },
+        {
+          "source": "clock",
+          "target": "due"
+        },
+        {
+          "source": "due",
+          "target": "place"
+        },
+        {
+          "source": "due",
+          "target": "skip"
+        },
+        {
+          "source": "place",
+          "target": "orders"
+        },
+        {
+          "source": "orders",
+          "target": "order_charge"
+        },
+        {
+          "source": "on_order",
+          "target": "route"
+        },
+        {
+          "source": "route",
+          "target": "lead"
+        },
+        {
+          "source": "route",
+          "target": "orders_out"
+        },
+        {
+          "source": "lead",
+          "target": "arrive"
+        },
+        {
+          "source": "deliveries",
+          "target": "arrive"
+        },
+        {
+          "source": "arrive",
+          "target": "receive"
+        },
+        {
+          "source": "receive",
+          "target": "loop"
+        },
+        {
+          "source": "loop",
+          "target": "wait_signal"
+        },
+        {
+          "source": "loop",
+          "target": "done"
+        },
+        {
+          "source": "order_charge",
+          "target": "on_order"
+        },
+        {
+          "source": "lost_charge",
+          "target": "lost"
+        }
+      ],
+      "annotations": []
+    },
+    "Supplier": {
+      "info": {
+        "description": "An upstream supplier with finite capacity: an order entity arriving at the \"orders\" port queues for one of the supplier's order slots, is handled for a picking time, then travels for a transport time and leaves by \"deliveries\". Chain a warehouse's \"orders\" port here and its \"deliveries\" port back, and the lead time stops being a number and becomes a queueing outcome -- which is the whole point of simulating a supply chain rather than adding up averages.",
+        "library": {
+          "library": "supplychain",
+          "asset": "supplier",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "order_slots",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Orders handled at once",
+            "help": "Capacity of the supplier: orders beyond it queue.",
+            "group": "Supplier",
+            "min": 1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "picking_time",
+            "type": "time",
+            "default": 1.0,
+            "unit": "days",
+            "label": "Mean picking time",
+            "help": "",
+            "group": "Supplier",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": "fixed",
+            "unit": "",
+            "label": "Picking time distribution",
+            "help": "",
+            "group": "Supplier",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "transport_time",
+            "type": "time",
+            "default": 1.0,
+            "unit": "days",
+            "label": "Transport time",
+            "help": "Time in transit after picking; it does not use a slot.",
+            "group": "Supplier",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_per_order",
+            "type": "number",
+            "default": 0.0,
+            "unit": "EUR/day",
+            "label": "Cost while handling",
+            "help": "Cost rate of a busy order slot; it joins Total Cost as a resource cost.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "order_slots",
+          "default": 1,
+          "type": "int",
+          "description": "Capacity of the supplier: orders beyond it queue."
+        },
+        {
+          "name": "picking_time",
+          "default": 1.0,
+          "type": "time"
+        },
+        {
+          "name": "time_distribution",
+          "default": "fixed",
+          "type": "choice"
+        },
+        {
+          "name": "transport_time",
+          "default": 1.0,
+          "type": "time",
+          "description": "Time in transit after picking; it does not use a slot."
+        },
+        {
+          "name": "cost_per_order",
+          "default": 0.0,
+          "type": "number",
+          "description": "Cost rate of a busy order slot; it joins Total Cost as a resource cost."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Scm Supplier": {
+            "capacity": "order_slots",
+            "cost_busy": "cost_per_order"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Orders arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "orders"
+          }
+        },
+        {
+          "name": "pick",
+          "description": "Pick the order",
+          "type": "PROCESS",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "picking_time if time_distribution == 'fixed' else (EXPO(picking_time) if time_distribution == 'exponential' else TRIA(0.5 * picking_time, picking_time, 1.5 * picking_time))"
+            },
+            "time_unit": "days",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Scm Supplier"
+          }
+        },
+        {
+          "name": "transport",
+          "description": "In transit",
+          "type": "DELAY",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "transport_time"
+            },
+            "time_unit": "days"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Deliveries leave",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "deliveries"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "pick"
+        },
+        {
+          "source": "pick",
+          "target": "transport"
+        },
+        {
+          "source": "transport",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Two-echelon supply chain (library assets)",
+    "category": "Supply chain",
+    "description": "A two-echelon supply chain built entirely from the Supply chain and inventory library: customers draw from a store on an (s, S) policy with lost sales, the store's replenishment orders are demand at a central warehouse that backorders, and the central warehouse buys from a capacitated supplier. Each echelon's lead time is the next one's queueing outcome, not a number. Base unit days.",
+    "author": "Naga",
+    "notes": "Total Cost is the holding cost of both echelons. Compare policies with the scenarios: they move the store's reorder point and order-up-to level, paired over common random numbers, on fill rate and inventory cost."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 400,
+    "warmup": 100,
+    "replications": 10,
+    "time_unit": "days",
+    "currency": "EUR",
+    "timeseries_points": 200,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

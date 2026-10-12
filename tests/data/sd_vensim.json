@@ -1,0 +1,92 @@
+{
+  "levels": [
+    {
+      "name": "Population",
+      "initial": "10.0",
+      "min": null
+    },
+    {
+      "name": "Pop2",
+      "initial": "20.0",
+      "min": null,
+      "dims": [
+        "Region"
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "growth",
+      "rate": "((AUX(\"r\") * LEVEL(\"Population\")) * (1.0 - (LEVEL(\"Population\") / AUX(\"K\"))))",
+      "to": "Population",
+      "biflow": true
+    },
+    {
+      "name": "Grow2",
+      "rate": "(0.1 * LEVEL(\"Pop2[Region]\"))",
+      "to": "Pop2",
+      "biflow": true,
+      "dims": [
+        "Region"
+      ]
+    }
+  ],
+  "auxiliaries": [
+    {
+      "name": "r",
+      "expr": "0.2"
+    },
+    {
+      "name": "K",
+      "expr": "1000.0"
+    },
+    {
+      "name": "__lookup_Effect_0__",
+      "expr": "TABLE(\"__lookup_Effect_0__\", (LEVEL(\"Population\") / AUX(\"K\")))"
+    },
+    {
+      "name": "Effect",
+      "expr": "AUX(\"__lookup_Effect_0__\")"
+    },
+    {
+      "name": "Delayed_Population",
+      "expr": "DELAY1(LEVEL(\"Population\"), 5.0)"
+    }
+  ],
+  "tables": [
+    {
+      "name": "__lookup_Effect_0__",
+      "keys": [
+        0.0,
+        0.5,
+        1.0,
+        2.0
+      ],
+      "values": [
+        1.0,
+        0.8,
+        0.5,
+        0.2
+      ],
+      "key_mode": "linear"
+    }
+  ],
+  "subscripts": [
+    {
+      "name": "Region",
+      "elements": [
+        "East",
+        "West"
+      ]
+    }
+  ],
+  "simulation": {
+    "time_limit": 50.0,
+    "time_unit": "days",
+    "sd": {
+      "dt": 0.25,
+      "method": "euler",
+      "time_unit": "base"
+    }
+  }
+}

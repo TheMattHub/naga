@@ -1,0 +1,1031 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "walk_in_arrivals_by_time_of_day_1",
+      "description": "Walk-in arrivals by time of day",
+      "type": "SUBMODEL",
+      "position": [
+        -620.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Walk-in arrivals by time of day",
+        "arguments": {
+          "arrival_schedule": "Svc Walk-in Day",
+          "entity_type": "PATIENT"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "triage_1",
+      "description": "Triage",
+      "type": "SUBMODEL",
+      "position": [
+        -380.0,
+        0.0
+      ],
+      "layout_position": [
+        2.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Triage",
+        "arguments": {
+          "class1_probability": 0.15,
+          "class2_probability": 0.45
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "service_target_1",
+      "description": "Service target",
+      "type": "SUBMODEL",
+      "position": [
+        -140.0,
+        0.0
+      ],
+      "layout_position": [
+        13.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Service target",
+        "arguments": {
+          "target": 45.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "service_desk_with_impatient_customers_1",
+      "description": "Service desk with impatient customers",
+      "type": "SUBMODEL",
+      "position": [
+        100.0,
+        0.0
+      ],
+      "layout_position": [
+        26.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Service desk with impatient customers",
+        "arguments": {
+          "service_time": 3.5,
+          "time_distribution": "exponential",
+          "staff_pool": "Svc Impatient Staff",
+          "max_queue": 6,
+          "patience": 20.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "consultation_treatment_room_1",
+      "description": "Consultation / treatment room",
+      "type": "SUBMODEL",
+      "position": [
+        340.0,
+        0.0
+      ],
+      "layout_position": [
+        38.0,
+        2.0
+      ],
+      "params": {
+        "definition": "Consultation / treatment room",
+        "arguments": {
+          "consult_time": 8.0,
+          "time_distribution": "exponential",
+          "rooms": 2,
+          "clinician_pool": "Svc Clinicians"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "Seen",
+      "type": "DISPOSE",
+      "position": [
+        580.0,
+        -60.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "dispose_2",
+      "description": "Left without being seen",
+      "type": "DISPOSE",
+      "position": [
+        340.0,
+        200.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "walk_in_arrivals_by_time_of_day_1",
+      "target": "triage_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "triage_1",
+      "target": "service_target_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "service_target_1",
+      "target": "service_desk_with_impatient_customers_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "service_desk_with_impatient_customers_1",
+      "target": "consultation_treatment_room_1",
+      "source_port": "served",
+      "target_port": "in"
+    },
+    {
+      "source": "service_desk_with_impatient_customers_1",
+      "target": "dispose_2",
+      "source_port": "left"
+    },
+    {
+      "source": "consultation_treatment_room_1",
+      "target": "dispose_1",
+      "source_port": "out"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Svc Impatient Staff",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Svc Room",
+      "capacity": 1,
+      "discipline": "LowestValueFirst",
+      "ranking_expr": "entity.priority",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Svc Clinicians",
+      "capacity": 2,
+      "discipline": "LowestValueFirst",
+      "ranking_expr": "entity.priority",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [
+    {
+      "name": "Svc Walk-in Day",
+      "kind": "arrival",
+      "repeat": true,
+      "time_unit": "minutes",
+      "points": [
+        [
+          120,
+          0.3
+        ],
+        [
+          240,
+          0.18
+        ],
+        [
+          120,
+          0.3
+        ],
+        [
+          120,
+          0.08
+        ],
+        [
+          840,
+          0.0
+        ]
+      ]
+    }
+  ],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "PATIENT",
+      "shape": "circle",
+      "color": "BLUE",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Walk-in arrivals by time of day": {
+      "info": {
+        "description": "A source: patients (or customers) walk in at a rate that follows an arrival schedule, so a morning peak and a quiet afternoon are one record rather than a hand-built expression. The schedule's values are arrivals per minute and drive a non-homogeneous Poisson process; edit them in the model's Schedules tab. No input port -- this asset starts the flow. To stamp a service target on every arrival, chain the Service target asset after it.",
+        "library": {
+          "library": "services",
+          "asset": "walkin_arrivals",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "arrival_schedule",
+            "type": "name",
+            "default": "Svc Walk-in Day",
+            "unit": "",
+            "label": "Arrival schedule",
+            "help": "Arrival schedule this source follows; its values are arrivals per minute. Two sources naming the same schedule rise and fall together; give one its own profile by naming a different schedule.",
+            "group": "Demand",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "schedule"
+          },
+          {
+            "name": "entity_type",
+            "type": "name",
+            "default": "PATIENT",
+            "unit": "",
+            "label": "Entity type",
+            "help": "Entity type stamped on every arrival, so the reports separate walk-ins from any other stream.",
+            "group": "Demand",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "arrival_schedule",
+          "default": "Svc Walk-in Day",
+          "type": "name",
+          "refers_to": "schedule",
+          "description": "Arrival schedule this source follows; its values are arrivals per minute. Two sources naming the same schedule rise and fall together; give one its own profile by naming a different schedule."
+        },
+        {
+          "name": "entity_type",
+          "default": "PATIENT",
+          "type": "name",
+          "refers_to": "entity",
+          "description": "Entity type stamped on every arrival, so the reports separate walk-ins from any other stream."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "arrive",
+          "description": "Walk-ins arrive",
+          "type": "CREATE",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "e_type": {
+              "$arg": "entity_type"
+            },
+            "arrival_mode": "Schedule",
+            "schedule_name": {
+              "$arg": "arrival_schedule"
+            },
+            "distribution": "Exponential",
+            "dist_params": {
+              "rate": 1.0
+            },
+            "time_unit": "minutes",
+            "entities_per_arrival": 1,
+            "max_arrivals": 0,
+            "start_time": 0
+          }
+        },
+        {
+          "name": "out",
+          "description": "Arrivals leave",
+          "type": "SUB_EXIT",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "arrive",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Triage": {
+      "info": {
+        "description": "Classify an arriving patient into one of three acuity classes by probability and stamp entity.acuity (1 = most urgent) and entity.priority (= acuity, so a LowestValueFirst resource downstream serves the most urgent first). One exit: a single stream with priority set is more composable than three physically separate paths, since most triage feeds one shared queue rather than three.",
+        "library": {
+          "library": "services",
+          "asset": "triage",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "class1_probability",
+            "type": "number",
+            "default": 0.2,
+            "unit": "",
+            "label": "Probability: acuity 1 (most urgent)",
+            "help": "Share of arrivals classified acuity 1.",
+            "group": "Classification",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "class2_probability",
+            "type": "number",
+            "default": 0.5,
+            "unit": "",
+            "label": "Probability: acuity 2",
+            "help": "Share of arrivals classified acuity 2. Whatever probability is left over (1 - class 1 - class 2) is classified acuity 3, the least urgent.",
+            "group": "Classification",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "class1_probability",
+          "default": 0.2,
+          "type": "number",
+          "description": "Share of arrivals classified acuity 1."
+        },
+        {
+          "name": "class2_probability",
+          "default": 0.5,
+          "type": "number",
+          "description": "Share of arrivals classified acuity 2. Whatever probability is left over (1 - class 1 - class 2) is classified acuity 3, the least urgent."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Patients arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "classify",
+          "description": "Draw an acuity class and set priority",
+          "type": "ASSIGN",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.acuity",
+                "expr": "DISC(1, class1_probability, 2, class2_probability, 3, 1 - class1_probability - class2_probability)"
+              },
+              {
+                "target": "entity.priority",
+                "expr": "entity.acuity"
+              }
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "description": "Classified patients leave",
+          "type": "SUB_EXIT",
+          "position": [
+            500.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "classify"
+        },
+        {
+          "source": "classify",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Service target": {
+      "info": {
+        "description": "Stamp entity.due_date = now + target on entry; DISPOSE already accounts due dates for every entity that carries one (lateness, tardiness, service level -- see the Due Dates report), so nothing else is needed at the exit.",
+        "library": {
+          "library": "services",
+          "asset": "service_target",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "target",
+            "type": "time",
+            "default": 240.0,
+            "unit": "minutes",
+            "label": "Time to target",
+            "help": "How long from now the entity should be finished.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "target",
+          "default": 240.0,
+          "type": "time",
+          "description": "How long from now the entity should be finished."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Entities arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "stamp",
+          "description": "Set the due date",
+          "type": "ASSIGN",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.due_date",
+                "expr": "TNOW + target"
+              }
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "description": "Entities leave",
+          "type": "SUB_EXIT",
+          "position": [
+            500.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "stamp"
+        },
+        {
+          "source": "stamp",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Service desk with impatient customers": {
+      "info": {
+        "description": "A service desk where customers balk (leave immediately) if too many are already waiting, and renege (give up) if they wait past their patience. Exits: 'served' (got helped) and 'left' (balked or reneged, entity.left_reason says which).",
+        "library": {
+          "library": "services",
+          "asset": "service_desk_impatient",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "service_time",
+            "type": "time",
+            "default": 4.0,
+            "unit": "minutes",
+            "label": "Mean service time",
+            "help": "Mean time to serve one customer, in minutes.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Time distribution",
+            "help": "Shape of the time around its mean: fixed = exactly the mean, exponential = memoryless, triangular = between 70% and 130% of it.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "staff_pool",
+            "type": "name",
+            "default": "Svc Impatient Staff",
+            "unit": "",
+            "label": "Staff pool",
+            "help": "Resource the desk's staff are taken from.",
+            "group": "Resource",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "max_queue",
+            "type": "int",
+            "default": 3,
+            "unit": "",
+            "label": "Balk threshold (already waiting)",
+            "help": "A customer balks on arrival if this many are already waiting -- not counting anyone in service. 0 means a customer balks unless a server is free right now.",
+            "group": "Queueing",
+            "min": 0,
+            "max": 10000,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "patience",
+            "type": "time",
+            "default": 10.0,
+            "unit": "minutes",
+            "label": "Patience before reneging",
+            "help": "How long a waiting customer tolerates the queue before giving up and leaving; every customer has exactly this patience. For randomized patience, edit this instance's argument to an expression such as EXPO(10). 0 means a customer who must wait at all leaves immediately.",
+            "group": "Queueing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "service_time",
+          "default": 4.0,
+          "type": "time",
+          "description": "Mean time to serve one customer, in minutes."
+        },
+        {
+          "name": "time_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "Shape of the time around its mean: fixed = exactly the mean, exponential = memoryless, triangular = between 70% and 130% of it."
+        },
+        {
+          "name": "staff_pool",
+          "default": "Svc Impatient Staff",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "Resource the desk's staff are taken from."
+        },
+        {
+          "name": "max_queue",
+          "default": 3,
+          "type": "int",
+          "description": "A customer balks on arrival if this many are already waiting -- not counting anyone in service. 0 means a customer balks unless a server is free right now."
+        },
+        {
+          "name": "patience",
+          "default": 10.0,
+          "type": "time",
+          "description": "How long a waiting customer tolerates the queue before giving up and leaving; every customer has exactly this patience. For randomized patience, edit this instance's argument to an expression such as EXPO(10). 0 means a customer who must wait at all leaves immediately."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Customers arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "serve",
+          "description": "Serve at the desk",
+          "type": "PROCESS",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "service_time if time_distribution == 'fixed' else (EXPO(service_time) if time_distribution == 'exponential' else TRIA(0.7 * service_time, service_time, 1.3 * service_time))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": {
+              "$arg": "staff_pool"
+            },
+            "balk_if": "queue_length >= max_queue",
+            "renege_after": "patience",
+            "renege_time_unit": "minutes"
+          }
+        },
+        {
+          "name": "served",
+          "description": "Customers served",
+          "type": "SUB_EXIT",
+          "position": [
+            500.0,
+            -80.0
+          ],
+          "params": {
+            "port": "served"
+          }
+        },
+        {
+          "name": "left",
+          "description": "Left without service",
+          "type": "SUB_EXIT",
+          "position": [
+            500.0,
+            80.0
+          ],
+          "params": {
+            "port": "left"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "serve"
+        },
+        {
+          "source": "serve",
+          "target": "served"
+        },
+        {
+          "source": "serve",
+          "target": "left"
+        }
+      ],
+      "annotations": []
+    },
+    "Consultation / treatment room": {
+      "info": {
+        "description": "A visit that needs BOTH a room and a clinician: the patient holds one clinician from the named pool for the whole visit and one of this instance's own rooms. The room queues FIFO by default; to serve by entity.priority (e.g. set upstream by Triage), give this instance's own room resource a LowestValueFirst discipline with ranking_expr entity.priority in the model's Resources tab -- not the default, since an entity with no priority ever assigned would otherwise fail there. An emergency already in a room is not interrupted: preemption needs one block to own the whole hold, and here the clinician and the room are held across two (ARCHITECTURE 5.17 scope).",
+        "library": {
+          "library": "services",
+          "asset": "consultation_room",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "consult_time",
+            "type": "time",
+            "default": 15.0,
+            "unit": "minutes",
+            "label": "Mean consultation time",
+            "help": "Mean time one patient spends with the clinician, in minutes.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Time distribution",
+            "help": "Shape of the time around its mean: fixed = exactly the mean, exponential = memoryless, triangular = between 70% and 130% of it.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "clinician_pool",
+            "type": "name",
+            "default": "Svc Clinicians",
+            "unit": "",
+            "label": "Clinician pool",
+            "help": "Resource the clinician is taken from. Two rooms naming the same pool share its clinicians; give a room its own pool by naming a different resource.",
+            "group": "Resource",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "rooms",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Rooms",
+            "help": "Parallel treatment rooms in this instance.",
+            "group": "Resource",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate",
+            "help": "Cost charged per minute while the resource is busy; 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Service time benchmarks",
+          "label": "Benchmark",
+          "group": "Timing",
+          "map": {
+            "service_time": "consult_time"
+          },
+          "rows": [
+            "Quick query",
+            "Standard consultation",
+            "Complex case"
+          ],
+          "units": {
+            "service_time": "minutes"
+          },
+          "values": {
+            "Quick query": {
+              "consult_time": 3.0
+            },
+            "Standard consultation": {
+              "consult_time": 15.0
+            },
+            "Complex case": {
+              "consult_time": 45.0
+            }
+          },
+          "sources": {
+            "Quick query": "Illustrative starting point (Naga); not measured data.",
+            "Standard consultation": "Illustrative starting point (Naga); not measured data.",
+            "Complex case": "Illustrative starting point (Naga); not measured data."
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "consult_time",
+          "default": 15.0,
+          "type": "time",
+          "description": "Mean time one patient spends with the clinician, in minutes."
+        },
+        {
+          "name": "time_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "Shape of the time around its mean: fixed = exactly the mean, exponential = memoryless, triangular = between 70% and 130% of it."
+        },
+        {
+          "name": "clinician_pool",
+          "default": "Svc Clinicians",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "Resource the clinician is taken from. Two rooms naming the same pool share its clinicians; give a room its own pool by naming a different resource."
+        },
+        {
+          "name": "rooms",
+          "default": 1,
+          "type": "int",
+          "description": "Parallel treatment rooms in this instance."
+        },
+        {
+          "name": "cost_rate",
+          "default": 0.0,
+          "type": "number",
+          "description": "Cost charged per minute while the resource is busy; 0 leaves it out of the costing."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Svc Room": {
+            "capacity": "rooms",
+            "cost_busy": "cost_rate"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Patients arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "take_clinician",
+          "description": "Call a clinician",
+          "type": "SEIZE",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": {
+              "$arg": "clinician_pool"
+            }
+          }
+        },
+        {
+          "name": "room",
+          "description": "Room and consultation",
+          "type": "PROCESS",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "consult_time if time_distribution == 'fixed' else (EXPO(consult_time) if time_distribution == 'exponential' else TRIA(0.7 * consult_time, consult_time, 1.3 * consult_time))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Svc Room"
+          }
+        },
+        {
+          "name": "free_clinician",
+          "description": "Clinician leaves",
+          "type": "RELEASE",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "minutes",
+            "resource_name": {
+              "$arg": "clinician_pool"
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Patients leave",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "take_clinician"
+        },
+        {
+          "source": "take_clinician",
+          "target": "room"
+        },
+        {
+          "source": "room",
+          "target": "free_clinician"
+        },
+        {
+          "source": "free_clinician",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Walk-in clinic (library assets)",
+    "category": "Services",
+    "description": "One 10-hour day of a walk-in clinic, built entirely from the Services and healthcare library. Walk-ins arrive on a time-of-day schedule (two peaks, about 125 patients), Triage stamps an acuity class and priority, a service target stamps a 45-minute due date, a one-person registration desk models balking and reneging (its 'left' exit is left-without-being-seen) and a consultation room -- a room plus a clinician -- serves the registered patients most-urgent-first. A clinic day is a TERMINATING simulation, so it runs with no warm-up: the quiet start and the end-of-day tail are part of the answer, not transient error to discard."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 600,
+    "warmup": 0,
+    "replications": 10,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

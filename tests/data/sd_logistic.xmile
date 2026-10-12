@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+  <header>
+    <name>Logistic growth</name>
+    <vendor>Naga</vendor>
+    <product version="1.0">Naga test fixture</product>
+  </header>
+  <sim_specs method="RK4" time_units="days">
+    <start>0</start>
+    <stop>50</stop>
+    <dt>0.25</dt>
+  </sim_specs>
+  <model>
+    <variables>
+      <aux name="r">
+        <eqn>0.2</eqn>
+      </aux>
+      <aux name="K">
+        <eqn>1000</eqn>
+      </aux>
+      <flow name="growth">
+        <eqn>r*Population*(1-Population/K)</eqn>
+        <non_negative/>
+      </flow>
+      <stock name="Population">
+        <eqn>10</eqn>
+        <inflow>growth</inflow>
+        <non_negative/>
+      </stock>
+    </variables>
+  </model>
+</xmile>

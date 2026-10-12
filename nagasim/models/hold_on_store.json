@@ -1,0 +1,199 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "cases_in",
+      "description": "Four cases arrive together every 10 minutes",
+      "type": "CREATE",
+      "position": [
+        120.0,
+        120.0
+      ],
+      "params": {
+        "e_type": "CASE",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 10.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 4,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "minutes",
+        "sequence": "",
+        "population": ""
+      }
+    },
+    {
+      "name": "pack",
+      "description": "Packs of three; the rest stay staged",
+      "type": "BATCH",
+      "position": [
+        360.0,
+        120.0
+      ],
+      "params": {
+        "batch_size": 3,
+        "batched_entity_type": "PACK",
+        "max_wait": "",
+        "max_wait_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "packs_out",
+      "description": "Packs leave",
+      "type": "DISPOSE",
+      "position": [
+        600.0,
+        120.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes",
+        "remove_agent": false
+      }
+    },
+    {
+      "name": "trucks_in",
+      "description": "One truck every 7 minutes",
+      "type": "CREATE",
+      "position": [
+        120.0,
+        300.0
+      ],
+      "params": {
+        "e_type": "TRUCK",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 7.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "minutes",
+        "sequence": "",
+        "population": ""
+      }
+    },
+    {
+      "name": "wait_for_cases",
+      "description": "Held until two cases are staged at the packer",
+      "type": "HOLD",
+      "position": [
+        360.0,
+        300.0
+      ],
+      "params": {
+        "mode": "Condition",
+        "signal_name": "",
+        "conditions": [
+          "NS(\"pack\") >= 2"
+        ],
+        "scan_interval": 1.0,
+        "scan_interval_unit": "minutes"
+      }
+    },
+    {
+      "name": "trucks_out",
+      "description": "Trucks leave",
+      "type": "DISPOSE",
+      "position": [
+        600.0,
+        300.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes",
+        "remove_agent": false
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "cases_in",
+      "target": "pack"
+    },
+    {
+      "source": "pack",
+      "target": "packs_out"
+    },
+    {
+      "source": "trucks_in",
+      "target": "wait_for_cases"
+    },
+    {
+      "source": "wait_for_cases",
+      "target": "trucks_out"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "CASE",
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "PACK",
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "TRUCK",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "HOLD on a store's contents",
+    "category": "Teaching",
+    "description": "Trucks wait in a HOLD until two cases are staged at a packer. Cases arrive four at a time and are packed in threes, so the staged count rises and falls within one instant: the HOLD reads NS(\"pack\") and is re-evaluated when the store changes, not on a timer."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 100,
+    "warmup": 0,
+    "replications": 2,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0
+  },
+  "outputs": {}
+}

@@ -1,0 +1,631 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "arrivals",
+      "description": "Poisson walk-in and ambulance arrivals",
+      "type": "CREATE",
+      "position": [
+        0.0,
+        260.0
+      ],
+      "params": {
+        "e_type": "PATIENT",
+        "arrival_mode": "Interarrival",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 3.5
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "population": "Patients",
+        "time_unit": "hours",
+        "start_time_unit": "hours"
+      }
+    },
+    {
+      "name": "divert_check",
+      "description": "Diverting? Route a share of arrivals away, else straight to triage (ELSE link)",
+      "type": "DECIDE",
+      "position": [
+        220.0,
+        260.0
+      ],
+      "params": {
+        "mode": "Condition",
+        "probs": [],
+        "conditions": [
+          "diverting == 1"
+        ]
+      }
+    },
+    {
+      "name": "diversion_chance",
+      "description": "60% of arrivals turned away while diverting, 40% still admitted (ELSE link)",
+      "type": "DECIDE",
+      "position": [
+        440.0,
+        140.0
+      ],
+      "params": {
+        "mode": "Chance",
+        "probs": [
+          0.6
+        ],
+        "conditions": []
+      }
+    },
+    {
+      "name": "assign_diverted",
+      "description": "Count the diverted patient",
+      "type": "ASSIGN",
+      "position": [
+        660.0,
+        60.0
+      ],
+      "params": {
+        "assignments": [
+          {
+            "target": "diverted_count",
+            "expr": "diverted_count + 1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "leave_diverted",
+      "description": "Diverted patient leaves without being seen; its agent goes with it",
+      "type": "DISPOSE",
+      "position": [
+        880.0,
+        60.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "remove_agent": true,
+        "time_unit": "hours"
+      }
+    },
+    {
+      "name": "triage",
+      "description": "Nurse assesses the patient",
+      "type": "PROCESS",
+      "position": [
+        440.0,
+        260.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 5.0
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Nurse",
+        "time_unit": "hours",
+        "setup_unit": "hours",
+        "renege_time_unit": "hours"
+      }
+    },
+    {
+      "name": "seize_doctor",
+      "description": "Joins the doctor's queue, ranked by highest entity.agent.acuity first (Doctor's own HighestValueFirst discipline)",
+      "type": "SEIZE",
+      "position": [
+        660.0,
+        260.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Doctor",
+        "time_unit": "hours",
+        "renege_time_unit": "hours"
+      }
+    },
+    {
+      "name": "treatment",
+      "description": "Doctor's service time",
+      "type": "DELAY",
+      "position": [
+        880.0,
+        260.0
+      ],
+      "params": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 2.5
+        },
+        "time_unit": "hours"
+      }
+    },
+    {
+      "name": "release_doctor",
+      "description": "Frees the doctor",
+      "type": "RELEASE",
+      "position": [
+        1100.0,
+        260.0
+      ],
+      "params": {
+        "resource_name": "Doctor",
+        "time_unit": "hours"
+      }
+    },
+    {
+      "name": "notify_treated",
+      "description": "Messages entity.agent (the default target): its \"treated\" transition fires from whichever state it is currently in",
+      "type": "SEND",
+      "position": [
+        1320.0,
+        260.0
+      ],
+      "params": {
+        "message": "treated",
+        "to": "entity.agent"
+      }
+    },
+    {
+      "name": "time_in_system",
+      "description": "Time in system per patient",
+      "type": "RECORD",
+      "position": [
+        1540.0,
+        260.0
+      ],
+      "params": {
+        "stat_name": "time_in_system",
+        "kind": "tally",
+        "expr": "now - entity.creation_time"
+      }
+    },
+    {
+      "name": "leave",
+      "description": "Patient discharged; its agent is removed with it",
+      "type": "DISPOSE",
+      "position": [
+        1760.0,
+        260.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "remove_agent": true,
+        "time_unit": "hours"
+      }
+    },
+    {
+      "name": "review_clock",
+      "description": "A review token every 8 hours: drives the ambulance-diversion policy, not a patient",
+      "type": "CREATE",
+      "position": [
+        0.0,
+        520.0
+      ],
+      "params": {
+        "e_type": "REVIEW",
+        "arrival_mode": "Interarrival",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 8.0
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "time_unit": "hours",
+        "start_time_unit": "hours"
+      }
+    },
+    {
+      "name": "divert_decision",
+      "description": "Ambulance-diversion policy 'divert', reviewed every 8 hours; falls back to staying open with no controller attached",
+      "type": "DECIDE",
+      "position": [
+        220.0,
+        520.0
+      ],
+      "params": {
+        "mode": "Policy",
+        "probs": [],
+        "conditions": [],
+        "policy": "divert",
+        "observation": [
+          "NQ(\"Doctor\")",
+          "NR(\"Doctor\") / MR(\"Doctor\")"
+        ],
+        "fallback": "first",
+        "queue_exprs": []
+      }
+    },
+    {
+      "name": "assign_stay_open",
+      "description": "Option 0: stay open",
+      "type": "ASSIGN",
+      "position": [
+        440.0,
+        460.0
+      ],
+      "params": {
+        "assignments": [
+          {
+            "target": "diverting",
+            "expr": "0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "assign_divert",
+      "description": "Option 1: divert ambulances",
+      "type": "ASSIGN",
+      "position": [
+        440.0,
+        580.0
+      ],
+      "params": {
+        "assignments": [
+          {
+            "target": "diverting",
+            "expr": "1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "leave_review",
+      "description": "The review token has done its job",
+      "type": "DISPOSE",
+      "position": [
+        660.0,
+        520.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "hours"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "arrivals",
+      "target": "divert_check"
+    },
+    {
+      "source": "divert_check",
+      "target": "diversion_chance"
+    },
+    {
+      "source": "divert_check",
+      "target": "triage"
+    },
+    {
+      "source": "diversion_chance",
+      "target": "assign_diverted"
+    },
+    {
+      "source": "diversion_chance",
+      "target": "triage"
+    },
+    {
+      "source": "assign_diverted",
+      "target": "leave_diverted"
+    },
+    {
+      "source": "triage",
+      "target": "seize_doctor"
+    },
+    {
+      "source": "seize_doctor",
+      "target": "treatment"
+    },
+    {
+      "source": "treatment",
+      "target": "release_doctor"
+    },
+    {
+      "source": "release_doctor",
+      "target": "notify_treated"
+    },
+    {
+      "source": "notify_treated",
+      "target": "time_in_system"
+    },
+    {
+      "source": "time_in_system",
+      "target": "leave"
+    },
+    {
+      "source": "review_clock",
+      "target": "divert_decision"
+    },
+    {
+      "source": "divert_decision",
+      "target": "assign_stay_open"
+    },
+    {
+      "source": "divert_decision",
+      "target": "assign_divert"
+    },
+    {
+      "source": "assign_stay_open",
+      "target": "leave_review"
+    },
+    {
+      "source": "assign_divert",
+      "target": "leave_review"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Nurse",
+      "capacity": 3,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Doctor",
+      "capacity": 4,
+      "discipline": "HighestValueFirst",
+      "ranking_expr": "entity.agent.acuity",
+      "rerank": true,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [
+    {
+      "name": "diverting",
+      "initial": 0
+    },
+    {
+      "name": "diverted_count",
+      "initial": 0
+    }
+  ],
+  "entities": [
+    {
+      "name": "PATIENT",
+      "shape": "circle",
+      "color": "red",
+      "holding_cost_time_unit": "hours"
+    },
+    {
+      "name": "REVIEW",
+      "shape": "circle",
+      "color": "gray",
+      "holding_cost_time_unit": "hours"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [
+    {
+      "name": "Patient",
+      "description": "An ED patient's clinical trajectory while it waits: it may worsen before a doctor is free, which is what the doctor's queue ranking (highest entity.agent.acuity first) then reacts to.",
+      "attributes": [
+        {
+          "name": "acuity",
+          "init": "1"
+        }
+      ],
+      "states": [
+        {
+          "name": "Stable",
+          "color": "GREEN"
+        },
+        {
+          "name": "Deteriorating",
+          "color": "ORANGE"
+        },
+        {
+          "name": "Critical",
+          "color": "RED"
+        },
+        {
+          "name": "Discharged",
+          "color": "GRAY"
+        }
+      ],
+      "transitions": [
+        {
+          "from": "Stable",
+          "to": "Deteriorating",
+          "rate": "1.5",
+          "actions": [
+            {
+              "target": "self.acuity",
+              "expr": "2"
+            }
+          ],
+          "rate_unit": "hours"
+        },
+        {
+          "from": "Deteriorating",
+          "to": "Critical",
+          "rate": "1.5",
+          "actions": [
+            {
+              "target": "self.acuity",
+              "expr": "3"
+            }
+          ],
+          "rate_unit": "hours"
+        },
+        {
+          "from": "Stable",
+          "to": "Discharged",
+          "message": "treated"
+        },
+        {
+          "from": "Deteriorating",
+          "to": "Discharged",
+          "message": "treated"
+        },
+        {
+          "from": "Critical",
+          "to": "Discharged",
+          "message": "treated"
+        }
+      ],
+      "initial_state": "Stable",
+      "speed_unit": "m/h"
+    }
+  ],
+  "populations": [
+    {
+      "name": "Patients",
+      "type": "Patient",
+      "count": 0,
+      "max_count": 400
+    }
+  ],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Emergency department: staffing game",
+    "category": "Games",
+    "description": "A staffing game built on ed_patient_agents: patients run the same Stable -> Deteriorating -> Critical statechart through triage and a Doctor queue ranked by entity.agent.acuity. Two controls let a player staff Doctor (1-4) and Nurse (1-3) up or down mid-run; every 8 hours a Policy-mode DECIDE ('divert') asks whether to divert ambulances, which turns away 60% of new arrivals until reviewed again. In the results, read the doctor queue, doctor utilisation, waiting against critical patients, the acuity mix and the diverted count.",
+    "author": "Naga example"
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 96.0,
+    "warmup": 8.0,
+    "replications": 3,
+    "time_unit": "hours",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {},
+  "dashboard": {
+    "widgets": [
+      {
+        "name": "waiting",
+        "kind": "kpi",
+        "title": "Patients waiting",
+        "expr": "NQ(\"Doctor\")"
+      },
+      {
+        "name": "doctor_util",
+        "kind": "gauge",
+        "title": "Doctor utilisation",
+        "expr": "NR(\"Doctor\") / MR(\"Doctor\")",
+        "min": 0,
+        "max": 1,
+        "thresholds": [
+          0.7,
+          0.9
+        ]
+      },
+      {
+        "name": "waiting_and_critical",
+        "kind": "line",
+        "title": "Waiting vs critical patients",
+        "series": [
+          {
+            "label": "Waiting",
+            "expr": "NQ(\"Doctor\")"
+          },
+          {
+            "label": "Critical",
+            "expr": "COUNT(\"Patients\", \"Critical\")"
+          }
+        ]
+      },
+      {
+        "name": "acuity_mix",
+        "kind": "bar",
+        "title": "Patients by acuity",
+        "series": [
+          {
+            "label": "Stable",
+            "expr": "COUNT(\"Patients\", \"Stable\")"
+          },
+          {
+            "label": "Deteriorating",
+            "expr": "COUNT(\"Patients\", \"Deteriorating\")"
+          },
+          {
+            "label": "Critical",
+            "expr": "COUNT(\"Patients\", \"Critical\")"
+          }
+        ]
+      },
+      {
+        "name": "diverted",
+        "kind": "kpi",
+        "title": "Ambulances diverted",
+        "expr": "diverted_count"
+      }
+    ],
+    "controls": [
+      {
+        "name": "doctor_capacity",
+        "kind": "slider",
+        "title": "Doctors on duty",
+        "target": {
+          "capacity": "Doctor"
+        },
+        "min": 1,
+        "max": 4,
+        "step": 1
+      },
+      {
+        "name": "nurse_capacity",
+        "kind": "slider",
+        "title": "Triage nurses on duty",
+        "target": {
+          "capacity": "Nurse"
+        },
+        "min": 1,
+        "max": 3,
+        "step": 1
+      },
+      {
+        "name": "divert",
+        "kind": "decision",
+        "title": "Ambulance diversion (reviewed every 8h)",
+        "policy": "divert",
+        "options": [
+          "Stay open",
+          "Divert"
+        ]
+      }
+    ]
+  }
+}

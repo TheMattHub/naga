@@ -1,0 +1,2161 @@
+[
+  {
+    "description": "List every block type this build can place in a model, with a one-line\nsummary and its required parameters.\n\nUse this FIRST when you are about to build a model and do not yet know the\nvocabulary. The `type` strings it returns are exactly what `add_block`\nexpects. Plugin block types appear here automatically.\n\nReturns {\"block_types\": [{\"type\", \"summary\", \"required\", \"multi_output\"}]}.\n`multi_output` marks the only types allowed more than one outgoing link\n(DECIDE, LOGIC): every other block may have at most one.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "list_block_types",
+    "read_only": true
+  },
+  {
+    "description": "Describe one block type in full: what it does and every parameter with\nits type, default and meaning.\n\nUse this before `add_block`/`update_block` whenever you are unsure which\nparams a type takes -- passing an unknown key is an error, and the defaults\ntell you what you may safely leave out.\n\nReturns {\"type\", \"description\", \"multi_output\", \"params\": [{\"name\", \"type\",\n\"default\", \"required\", \"description\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "type_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type_name"
+      ],
+      "type": "object"
+    },
+    "name": "describe_block_type",
+    "read_only": true
+  },
+  {
+    "description": "List the distribution names available for a duration or a random draw.\n\nPass `block_type` (CREATE, DELAY, PROCESS, ...) to get only the ones that\nblock is usually given; omit it for everything, including plugin entries.\nThe names are what goes in a block's `distribution` param, a link delay, or\na failure's uptime/downtime.\n\nReturns {\"distributions\": [{\"name\", \"category\", \"arrival\", \"delay\",\n\"params\"}]}; call describe_distribution for parameter meanings.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "block_type": {
+          "description": "Optional block type (e.g. \"CREATE\", \"DELAY\") to list only the distributions offered for it; omit for the whole catalogue.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "list_distributions",
+    "read_only": true
+  },
+  {
+    "description": "Describe one distribution: when to use it and what each parameter means.\n\nUse it when choosing between, say, Exponential and Lognormal for a service\ntime, or when you need the exact parameter names for `dist_params`. Every\nnumeric parameter also accepts an expression string, so a rate may depend\non an entity attribute.\n\nReturns {\"name\", \"category\", \"use_case\", \"support_lower\", \"params\":\n[{\"name\", \"default\", \"hint\", \"kind\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "describe_distribution",
+    "read_only": true
+  },
+  {
+    "description": "Explain the expression language used by ASSIGN, DECIDE/HOLD conditions,\nRECORD, ranking expressions and expression-valued distribution parameters.\n\nRead this before writing any expression: it is a restricted-Python subset\n(an AST allow-list, never eval), so anything not listed here is refused at\nvalidation time rather than at run time.\n\nReturns {\"names\", \"operators\", \"functions\": [{\"name\", \"arity\"}],\n\"reserved\", \"examples\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_expression_help",
+    "read_only": true
+  },
+  {
+    "description": "Create an empty model in the workspace under *name*.\n\nThis is the starting point for building a model from a description: create\nit, add blocks, connect them, then validate. Nothing is written to disk\nuntil you call `save_model`. An empty model is invalid (no CREATE, no\nDISPOSE); that is expected and the returned problems say so.\n\nReturns the usual edit answer: {\"ok\", \"introduced\", \"fixed\", \"errors\",\n\"warnings\", \"model\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Workspace name for the new model (your handle for it later).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "new_model",
+    "read_only": false
+  },
+  {
+    "description": "Load a model file from the workspace root into the workspace.\n\nUse it to inspect, modify or run an existing model, including the bundled\nexamples once they have been copied into the root. Older schema versions\nmigrate on load, so what you get back is always the current format.\n\nReturns {\"ok\", \"model\", \"path\", \"blocks\", \"errors\", \"warnings\", \"problems\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Workspace name to load it under; defaults to the file stem.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Model .json path, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "open_model",
+    "read_only": false
+  },
+  {
+    "description": "Translate an XMILE (Stella/iThink) system-dynamics file into a new model.\n\nReads stocks, flows, auxiliaries, graphical functions (as lookup tables)\nand dimensions (as subscripts) with a small expression translator, into\nthe workspace under *name*, exactly like `open_model` does for a model\nJSON file. The file must be under the workspace root -- a path that\nescapes it is refused, and there is no argument that widens that.\n\nA construct this cannot translate (a module, a macro, a conveyor/queue\nstock, a dimension mapping, an unknown function or name) is reported in\n`import_problems` (code `E_SDIMPORT_UNSUPPORTED`) and left out of the model rather than guessed at; an approximation (a bare\nDELAY, a non-euler/rk4 method, ...) is `W_SDIMPORT_APPROX`. Vensim `.mdl`\nis not supported.\n\nReturns {\"ok\", \"model\", \"path\", \"import_problems\": [{\"code\", \"severity\",\n\"message\", \"path\", \"hint\"}], \"errors\", \"warnings\", \"problems\"} -- the last\nthree are the usual model-validation answer, over what DID translate.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Workspace name to load it under; defaults to the file stem.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "XMILE (.xmile/.stmx) file, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "import_xmile",
+    "read_only": false
+  },
+  {
+    "description": "Translate a Vensim system-dynamics file into a new model.\n\nReads equations, INTEG stocks, an inline `WITH LOOKUP` (as a lookup table) and\nsubscript ranges with a small stdlib reader (no `pysd`), into the workspace under\n*name*, exactly like `open_model` does for a model JSON file. The file must be\nunder the workspace root -- a path that escapes it is refused, and there is no\nargument that widens that.\n\nA construct this cannot translate (a `:MACRO:`, `GET XLS/DIRECT ...` external\ndata, a variable name with a space, an unknown function or name, an INTEG rate\nthat is not a plain flow name or sum/difference of flow names, a subscript\nequivalence `<->`) is reported in `import_problems` (code `E_SDIMPORT_UNSUPPORTED`) and\nleft out of the model rather than guessed at.\n\nReturns {\"ok\", \"model\", \"path\", \"import_problems\": [{\"code\", \"severity\",\n\"message\", \"path\", \"hint\"}], \"errors\", \"warnings\", \"problems\"} -- the last\nthree are the usual model-validation answer, over what DID translate.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Workspace name to load it under; defaults to the file stem.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Vensim (.mdl) file, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "import_mdl",
+    "read_only": false
+  },
+  {
+    "description": "Write a model in the workspace to disk as JSON.\n\nCall it once the model validates. A model created with `new_model` has no\npath of its own, so the first save needs one.\n\nReturns {\"ok\", \"path\", \"errors\", \"warnings\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to save.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Destination path under the workspace root; defaults to where it was opened.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "save_model",
+    "read_only": false
+  },
+  {
+    "description": "List the models currently open in the workspace, and the model files\navailable under the workspace root.\n\nUse it to find out what you can `open_model` and which handles `get_model_summary`\nand `run_model` accept.\n\nReturns {\"open\": [{\"name\", \"path\", \"blocks\", \"dirty\", \"has_results\"}],\n\"files\": [relative paths]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "list_models",
+    "read_only": true
+  },
+  {
+    "description": "A compact picture of a model: its blocks with their key parameters, its\nlinks in branch order, its resources, and how many problems it has.\n\nThis is the tool to call before editing an existing model, and after a\nbatch of edits to check the shape is what you intended. It is deliberately\nmuch smaller than `get_model_json`; reach for that only when you need every\nfield.\n\nReturns {\"model\", \"blocks\", \"links\", \"resources\", \"resource_sets\",\n\"variables\", \"tables\", \"timeseries_inputs\", \"levels\", \"flows\", \"auxiliaries\",\n\"delays\", \"schedules\",\n\"failures\", \"scenarios\", \"simulation\",\n\"errors\", \"warnings\"}. Each link is \"source -> target\"; the ORDER of a block's\noutgoing links is its branch order (branch 0 first).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "get_model_summary",
+    "read_only": true
+  },
+  {
+    "description": "The complete model layout as the JSON that would be saved to disk.\n\nUse it only when `get_model_summary` is not enough -- a full layout is\nlarge. It is also what you would hand to another tool that speaks the model\nfile format (see the `naga://reference/schema` resource).\n\nReturns {\"model\", \"layout\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "get_model_json",
+    "read_only": true
+  },
+  {
+    "description": "Add one block to a model and optionally set its parameters in the same\nstep (one undo entry).\n\nThe normal way to build a model: add CREATE, the processing blocks, and\nDISPOSE, then `connect` them. Position is cosmetic -- call `auto_layout`\nonce at the end instead of placing blocks by hand.\n\nReturns the usual edit answer plus {\"block\": <the name it got>}. A wrong\nparam name or type comes back in \"introduced\" with code E_PARAM_UNKNOWN /\nE_PARAM_TYPE and a hint listing the params this type takes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Block name; auto-generated (create_1, process_2, ...) when omitted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "description": "Parameter values to set on the block; the type's defaults fill the rest.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "position": {
+          "description": "[x, y] canvas centre in scene units; auto-placed in a row when omitted.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "type": {
+          "description": "Block type, e.g. \"CREATE\", \"PROCESS\", \"DISPOSE\" (see list_block_types).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "type"
+      ],
+      "type": "object"
+    },
+    "name": "add_block",
+    "read_only": false
+  },
+  {
+    "description": "Change an existing block: merge parameters, rename it, move it, or\nrelabel it -- all as one undo entry.\n\n`params` MERGES rather than replaces, so you can set one value without\nrestating the rest. Renaming rewires every link automatically.\n\nReturns the usual edit answer plus {\"block\": <name after the edit>}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "New canvas label.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Current name of the block to change.",
+          "type": "string"
+        },
+        "new_name": {
+          "description": "Rename the block to this; every link follows the rename.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "description": "Parameters to merge into the block's existing params.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "position": {
+          "description": "New [x, y] centre.",
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "update_block",
+    "read_only": false
+  },
+  {
+    "description": "Delete blocks and every link touching them, as one undo entry.\n\nUnknown names are ignored rather than refused, so removing an already-gone\nblock is not an error. Expect new problems if you cut the flow in half --\nthe answer says which.\n\nReturns the usual edit answer plus {\"removed\": [names actually deleted]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "names": {
+          "description": "Block names to delete; their links go with them.",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "names"
+      ],
+      "type": "object"
+    },
+    "name": "remove_blocks",
+    "read_only": false
+  },
+  {
+    "description": "Link two blocks so entities flow from *source* to *target*, optionally\nwith a transfer delay.\n\nLinks are ORDERED: the n-th link you add out of a DECIDE is its branch n,\nmatching `probs[n]` / `conditions[n]`. Add branches in the order you want\nthem, or fix the order afterwards with `reorder_branches`. Only DECIDE and\nLOGIC may have more than one outgoing link.\n\nA branching block may send TWO branches to the same target (a DECIDE where\ntwo cases end the same way): the second call returns `index` 1, which\n`disconnect` takes to tell them apart.\n\nReturns the usual edit answer plus {\"link\": \"source -> target\", \"index\": n}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "delay": {
+          "description": "Optional transfer delay, e.g. {\"distribution\": \"Constant\", \"dist_params\": {\"value\": 2}}.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Name of the block the entity leaves.",
+          "type": "string"
+        },
+        "source_port": {
+          "description": "Out port name, only when the source is a SUBMODEL instance.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Name of the block the entity arrives at.",
+          "type": "string"
+        },
+        "target_port": {
+          "description": "In port name, only when the target is a SUBMODEL instance.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "target"
+      ],
+      "type": "object"
+    },
+    "name": "connect",
+    "read_only": false
+  },
+  {
+    "description": "Remove one link. A link that does not exist is a no-op, not an error.\n\nUse it to rewire a flow -- for example to insert a new block between two\nexisting ones: disconnect a -> c, then connect a -> b and b -> c.\n\nWhen several parallel links join the pair, name which one with *index*\n(0 is the first); leaving it out is then an error listing the candidates.\n\nReturns the usual edit answer.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "description": "Which of several parallel links between the pair, 0 first; only needed when there is more than one.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Source block of the link to remove.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Target block of the link to remove.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "target"
+      ],
+      "type": "object"
+    },
+    "name": "disconnect",
+    "read_only": false
+  },
+  {
+    "description": "Set the branch order of a block's outgoing links.\n\nBranch order is what binds a DECIDE's `probs[n]` / `conditions[n]` to a\ntarget, so getting it wrong sends entities down the wrong path without any\nvalidation error. *order* must list exactly the current targets of *source*,\npermuted.\n\nReturns the usual edit answer plus {\"order\": [...]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "order": {
+          "description": "Its target block names in the branch order you want, branch 0 first.",
+          "type": "array"
+        },
+        "source": {
+          "description": "The branching block (a DECIDE or LOGIC).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "order"
+      ],
+      "type": "object"
+    },
+    "name": "reorder_branches",
+    "read_only": false
+  },
+  {
+    "description": "REPLACE the model's whole resource table.\n\nUse `upsert_record` (section \"resources\") for a single change; this one is\nfor setting several resources at once, or for deleting one by leaving it\nout. A block's `resource_name` may name a resource or a resource set --\nthey share one namespace.\n\nReturns the usual edit answer plus {\"resources\": [names]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "resources": {
+          "description": "The complete resource list, each {\"name\", \"capacity\", \"discipline\", cost fields...}.",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "resources"
+      ],
+      "type": "object"
+    },
+    "name": "set_resources",
+    "read_only": false
+  },
+  {
+    "description": "The JSON Schema of one record of *section*: what `upsert_record` expects.\n\nThe same `$defs/<item>` the model-file schema uses (MCP resource\nnaga://reference/schema), with the `$defs` it references. Read it once\nbefore writing the first record of a section.\n\nReturns {\"section\", \"key\", \"def\", \"schema\", \"$defs\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "description": "Record section, e.g. \"resources\", \"tables\", \"levels\", \"agent_types\", \"orders\" (get_record_schema lists them all).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "type": "object"
+    },
+    "name": "get_record_schema",
+    "read_only": true
+  },
+  {
+    "description": "List every record of one section of the model, as stored.\n\nRecord sections: resources, resource_sets, schedules, failures, tables,\nsequences, variables, entities, timeseries_inputs, levels, flows,\nconversions, fixed_costs, fleets, motion_profiles, chargers, auxiliaries,\ndelays, subscripts, agent_types, populations, reality_checks and orders\n(keyed by \"id\"; every other section by \"name\"). Record shape: schema\n$defs/<item>, see get_record_schema.\n\nReturns {\"model\", \"section\", \"key\", \"records\": [...]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "section": {
+          "description": "Record section, e.g. \"resources\", \"tables\", \"levels\", \"agent_types\", \"orders\" (get_record_schema lists them all).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "section"
+      ],
+      "type": "object"
+    },
+    "name": "list_records",
+    "read_only": true
+  },
+  {
+    "description": "Add a record to a section, or REPLACE the one with the same key.\n\nThe record is stored as given (record shape: schema $defs/<item>, see\nget_record_schema) and the answer reports the validation problems the edit\nintroduced or fixed -- a missing field, a wrong type, a reference to\nsomething undeclared. To change one field, list_records, edit, upsert.\n\nTypical first records: a \"resources\" entry {\"name\", \"capacity\"} for a\nPROCESS/SEIZE to seize; a \"variables\" entry {\"name\", \"initial\"} before an\nexpression reads it; a \"tables\" entry for TABLE(\"name\", k); a \"levels\" and\na \"flows\" entry for continuous quantities. An agent type's `python` cannot\nbe written here: code needs the human's consent.\n\nReturns the usual edit answer plus {\"section\", \"record\": <key value>}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "record": {
+          "description": "The whole record, shaped as get_record_schema(section) says; its key field (\"name\", or \"id\" for orders) picks the record to replace.",
+          "type": "object"
+        },
+        "section": {
+          "description": "Record section, e.g. \"resources\", \"tables\", \"levels\", \"agent_types\", \"orders\" (get_record_schema lists them all).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "section",
+        "record"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_record",
+    "read_only": false
+  },
+  {
+    "description": "Delete one record. References to it elsewhere (TABLE(\"name\"), a flow's\n\"from\", a block's resource_name, ...) come back as problems in the answer,\nso fix them in the same batch.\n\nReturns the usual edit answer plus {\"section\", \"removed\": key}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "The record's key: its \"name\" (its \"id\" for orders).",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "section": {
+          "description": "Record section, e.g. \"resources\", \"tables\", \"levels\", \"agent_types\", \"orders\" (get_record_schema lists them all).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "section",
+        "key"
+      ],
+      "type": "object"
+    },
+    "name": "remove_record",
+    "read_only": false
+  },
+  {
+    "description": "Give the model REAL DATES, or remove them.\n\nA calendar is optional: without one a model's clock is a plain number in the\nbase time unit, which is the right choice for an abstract study. Set one\nwhen the study is about real weeks -- weekday shifts, a holiday shutdown, a\ntariff or a campaign pinned to dates, or a client report that must say\n\"Wednesday 10:00\". Once set, schedules may be authored as weekday grids,\ntime series and orders may carry ISO timestamps, and results, charts,\nplayback and exports all show wall-clock time.\n\nReturns the usual edit answer plus {\"calendar\": {...} or null}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "description": "Optional ISO instant the run ends at, instead of a run-length number.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "start": {
+          "description": "ISO 8601 instant model time 0 stands for, e.g. \"2026-01-05T06:00:00\". With no offset it is read in `timezone`, never in local time. Pass null to remove the calendar.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timezone": {
+          "default": "UTC",
+          "description": "IANA name such as UTC or Europe/Rome (default UTC). The wall clock weekday schedules and every date label use.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "set_calendar",
+    "read_only": false
+  },
+  {
+    "description": "Read a CSV under the workspace root into a lookup table.\n\nTwo shapes: a 1-D table is `key,value` under a `key,value` header; a 2-D\ntable is a header row of column keys whose first cell is EMPTY, then one\nrow per key. The file must be under the workspace root -- a path that\nescapes it is refused, and there is no argument that widens that.\n\nReturns the usual edit answer plus {\"table\": name, \"rows\", \"columns\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "column_mode": {
+          "default": "exact",
+          "description": "Lookup mode for the column keys.",
+          "type": "string"
+        },
+        "default": {
+          "description": "Value for a missing exact key.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "key_mode": {
+          "default": "exact",
+          "description": "Lookup mode for the row keys: exact, step or linear.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Table name to create or replace.",
+          "type": "string"
+        },
+        "path": {
+          "description": "CSV file under the workspace root.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "name",
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_table_from_csv",
+    "read_only": false
+  },
+  {
+    "description": "List the model's time-series inputs, levels and flows in one answer.\n\nA time series is a profile read by TS(\"name\") -- a PV curve, a site load, a\ntariff by hour. A level is a continuous quantity with bounds (battery\nenergy, tank volume, stock on hand), read by LEVEL(\"name\"). A flow moves\nquantity between levels at a rate that is an expression, read by\nFLOW(\"name\"). Call this before writing any of those expressions.\n\nAuxiliaries (AUX(\"name\")) and delays (DELAY(\"name\")) are the system-dynamics\nrecords that go with them.\n\nSubscripts are the dimensions records run over. Edit any of these with\nupsert_record / remove_record.\n\nReturns {\"model\", \"timeseries_inputs\": [{\"name\", \"points\", \"interpolation\",\n\"beyond\"}], \"levels\": [...], \"flows\": [...], \"auxiliaries\": [...],\n\"delays\": [...], \"subscripts\": [...], \"sd\": {...} or null}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to inspect.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "list_continuous",
+    "read_only": true
+  },
+  {
+    "description": "Read a `time,value` CSV under the workspace root into a time-series input.\n\nThe header row is optional. The file must be under the workspace root -- a\npath that escapes it is refused, and there is no argument that widens that.\n\nReturns the usual edit answer plus {\"series\": name, \"points\": n}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "beyond": {
+          "default": "hold",
+          "description": "hold, repeat or error.",
+          "type": "string"
+        },
+        "interpolation": {
+          "default": "step",
+          "description": "step or linear.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Series name to create or replace.",
+          "type": "string"
+        },
+        "path": {
+          "description": "CSV file under the workspace root, two columns: time and value.",
+          "type": "string"
+        },
+        "time_unit": {
+          "default": "base",
+          "description": "Unit the time column is in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "name",
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_timeseries_input_from_csv",
+    "read_only": false
+  },
+  {
+    "description": "The model's path network: the nodes assets sit on and the segments\nvehicles and walkers drive along, with the shortest-path distance between\nevery pair of places.\n\nCoordinates are layout coordinates -- metres once the model's background\nimage declares a scale. Travel time anywhere in the model is\n`distance / speed` along this graph, so this is what to read before\nreasoning about how long anything takes to move.\n\nReturns {\"model\", \"length_factor\", \"nodes\": [...], \"segments\": [...],\n\"places\": {name: node}, \"unreachable\": [[a, b], ...]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to inspect.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "get_network",
+    "read_only": true
+  },
+  {
+    "description": "Add a network node, or move the one with this name.\n\nA node is a PLACE: a dock door, an aisle junction, a pick face. Attach a\nblock to it with the STATION `node` param and travel to and from that\nstation becomes the shortest path along the segments.\n\nReturns the usual edit answer plus {\"node\": name}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Node name; a STATION's `node` param, a fleet's `home` and DISTANCE(\"...\", ...) all address it by this.",
+          "type": "string"
+        },
+        "x": {
+          "description": "Layout x coordinate (metres once the background declares a scale).",
+          "type": "number"
+        },
+        "y": {
+          "description": "Layout y coordinate.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "name",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_node",
+    "read_only": false
+  },
+  {
+    "description": "Delete a network node AND the segments that used it (a segment with a\ndangling end is not a thing a model can mean). Blocks whose `node` still\nnames it come back as E_NETWORK_NODE_UNKNOWN problems.\n\nReturns the usual edit answer plus {\"removed\": name}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Node to delete; every segment touching it goes with it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "remove_node",
+    "read_only": false
+  },
+  {
+    "description": "Add a drivable segment between two nodes, or replace the one already\njoining that ordered pair.\n\nReturns the usual edit answer plus {\"segment\": \"source->target\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity": {
+          "description": "How many vehicles may be on it at once (zone control); omit for unlimited. Two-way with capacity 1 can deadlock head-on.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "length": {
+          "description": "Length in layout units. Omit for the straight-line distance times the network's length_factor -- set it for a ramp, a curve or a detour.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Node the segment starts at.",
+          "type": "string"
+        },
+        "speed": {
+          "description": "Optional speed LIMIT on this segment. It changes travel TIME; the route chosen is still the shortest by length.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Node it ends at.",
+          "type": "string"
+        },
+        "two_way": {
+          "default": true,
+          "description": "False makes it one-way from source to target.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "target"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_segment",
+    "read_only": false
+  },
+  {
+    "description": "Delete one segment. Check `get_network`'s \"unreachable\" afterwards: a\nremoval that strands a routing is an E_NETWORK_UNREACHABLE error.\n\nReturns the usual edit answer plus {\"removed\": \"source->target\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Node the segment starts at.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Node it ends at.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "target"
+      ],
+      "type": "object"
+    },
+    "name": "remove_segment",
+    "read_only": false
+  },
+  {
+    "description": "Shortest path between two places on the model's network.\n\nThe same number `DISTANCE(\"source\", \"target\")` returns in an expression, so\nuse it to sanity-check a travel time before writing one: a trip at speed v\ntakes `distance / v`.\n\nReturns {\"model\", \"from\", \"to\", \"distance\", \"path\": [node, ...],\n\"reachable\"}. `distance` is null when no path joins them.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to inspect.",
+          "type": "string"
+        },
+        "source": {
+          "description": "A node, a STATION block or a station alias.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Where the trip ends, named the same way.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "source",
+        "target"
+      ],
+      "type": "object"
+    },
+    "name": "get_distance",
+    "read_only": true
+  },
+  {
+    "description": "List the model's routing sequences and the stations they visit.\n\nA sequence is the operation order a product follows through shared\nstations: a ROUTE block sends an entity whose `sequence`\nattribute names one to each step's STATION block in turn. Call this\nbefore writing a CREATE `sequence` or an ASSIGN to entity.sequence, so\nthe name and the stations are ones the model actually has.\n\nReturns {\"model\", \"sequences\": [{\"name\", \"steps\": [{\"station\", \"values\"}]}],\n\"stations\": [names of the model's STATION blocks]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to inspect.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "list_sequences",
+    "read_only": true
+  },
+  {
+    "description": "List the model's orders: released jobs with a due date.\n\nAn order is \"make `quantity` of `entity_type` on routing `sequence`,\nreleased at `release`, due at `due`\", both times in the model's BASE time\nunit. A CREATE block in arrival mode \"Orders\" releases them; the run then\nreports per-order lateness and tardiness and a model-wide service level.\n\nReturns {\"model\", \"orders\": [...], \"releases\": [names of the CREATE blocks\nin Orders mode]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to inspect.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "list_orders",
+    "read_only": true
+  },
+  {
+    "description": "REPLACE (or extend) the model's orders from a CSV release list.\n\nColumns: `id` (required), then any of release, due, quantity, entity_type,\nsequence, priority, source; every other column becomes a free attribute\nassigned onto the order's entities. This is the shape an MES work-order\nexport already has.\n\nThe file is read through the same root confinement as every other file\ntool: a path that escapes it is refused, and there is no argument that\nwidens that.\n\nReturns the usual edit answer plus {\"orders\": <count>}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "path": {
+          "description": "CSV file to read, inside the workspace root.",
+          "type": "string"
+        },
+        "replace": {
+          "default": true,
+          "description": "True (default) replaces the whole order book; False merges by id.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model",
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_orders_from_csv",
+    "read_only": false
+  },
+  {
+    "description": "REPLACE the model's entity-type table.\n\nEntity types name the things flowing through the model (CREATE's `e_type`)\nand carry the per-type WIP `holding_cost` used by the cost KPIs. A model\nwith no declared types still runs: everything is \"DEFAULT\".\n\nReturns the usual edit answer plus {\"entities\": [names]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "entities": {
+          "description": "The complete entity-type list, each {\"name\", \"shape\"?, \"color\"?, \"holding_cost\"?}.",
+          "type": "array"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "entities"
+      ],
+      "type": "object"
+    },
+    "name": "set_entity_types",
+    "read_only": false
+  },
+  {
+    "description": "Set the model's default run settings; only the arguments you pass change.\n\nALWAYS set a run length for a model that cannot drain on its own -- one with\nan endless CREATE (max_arrivals 0), a failure, or a repeating capacity\nschedule. Without it a run raises rather than hanging.\n\nReturns the usual edit answer plus {\"simulation\": {...}}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "description": "Cost label only; never enters the arithmetic.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "replications": {
+          "description": "How many independent replications a run does by default.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "run_length": {
+          "description": "Run length in base time units; 0/null means \"until the model drains\". With a calendar you can set an end DATE instead, with set_calendar.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "time_unit": {
+          "description": "The model's BASE unit: seconds, minutes, hours or days.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "warmup": {
+          "description": "Time at which statistics are reset.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "set_simulation_settings",
+    "read_only": false
+  },
+  {
+    "description": "Turn on the system-dynamics step grid, change it, or remove it (dt null).\n\nWithout it a flow rate is re-evaluated only at events, which is exact for\nrates that change only then. A rate that reads LEVEL(), FRACTION() or TNOW\n-- dL/dt = -k*L, logistic growth, an SIR model -- needs the grid: it is\nre-integrated every dt with Euler or RK4, the way Stella and Vensim do.\nStatic rates are untouched, and events inside a step stay exact.\n\nReturns the usual edit answer plus {\"sd\": {...} or null}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "dt": {
+          "description": "Step of the system-dynamics grid, > 0; null removes the grid.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "method": {
+          "default": "euler",
+          "description": "euler (Stella/Vensim default) or rk4 (fourth order; no random draws in a dynamic rate).",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "time_unit": {
+          "default": "base",
+          "description": "Unit dt is in: base (the model's own) or seconds/minutes/hours/days.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "dt"
+      ],
+      "type": "object"
+    },
+    "name": "set_sd_settings",
+    "read_only": false
+  },
+  {
+    "description": "Lay the model's blocks out left to right in a deterministic layered\narrangement, one undo entry.\n\nPurely cosmetic -- it changes no behaviour and no KPI. Call it once after\nbuilding a model so a human opening it in the editor sees a readable\ndiagram instead of a pile of blocks.\n\nReturns the usual edit answer plus {\"moved\": <block count>}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "auto_layout",
+    "read_only": false
+  },
+  {
+    "description": "Validate a model and return every problem with a stable code, a\nJSON-pointer path, and a hint saying how to fix it.\n\nCall this after each batch of edits and ALWAYS before running. Errors stop a\nrun; warnings (code prefix W_) do not, but usually point at a modelling\nmistake. `requires_run_length` tells you whether the model can drain on its\nown -- if it is true and the run length is 0, a run will be refused.\n\nReturns {\"model\", \"ok\", \"errors\", \"warnings\", \"requires_run_length\",\n\"problems\": [{\"code\", \"severity\", \"message\", \"path\", \"block\", \"hint\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "validate_model",
+    "read_only": true
+  },
+  {
+    "description": "Run a model and return a COMPACT KPI digest -- never the raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications (see\n`run_to_precision`). One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it. Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\nReturns {\"model\", \"replications\", \"system\": {KPI: {mean, ci_half_width}},\n\"resources\": {name: {metric: {...}}}, \"user_stats\": {...},\n\"frames\": [names available to get_kpi_table]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "bind_data": {
+          "default": false,
+          "description": "Resolve series:/orders data bindings at run time first (default false), like the UI/CLI's `--bind`. This does NOT write bulk data into the model; it only affects this run.",
+          "type": "boolean"
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget; the run stops cleanly and returns what finished.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to run.",
+          "type": "string"
+        },
+        "replications": {
+          "description": "Independent replications; defaults to the model's own setting.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "run_length": {
+          "description": "Run length in base time units; defaults to the model's own setting.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "First replication's seed; replication r uses seed + r.",
+          "type": "integer"
+        },
+        "warmup": {
+          "description": "Warm-up time before statistics start; defaults to the model's own setting.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "run_model",
+    "read_only": false
+  },
+  {
+    "description": "Page through one results frame of the last `run_model` for this model.\n\nUse it when the digest is not enough -- to see per-resource detail, the\nper-entity log, or a time series. Ask for the smallest window you need:\n`entity_log` and `timeseries` have thousands of rows.\n\nReturns {\"model\", \"frame\", \"total\", \"offset\", \"count\", \"rows\", \"has_more\",\n\"next_offset\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "frame": {
+          "description": "Which frame: system, resource_summary, entity_summary, user_summary, store_summary, entity_log, resource_log, store_log or timeseries.",
+          "type": "string"
+        },
+        "limit": {
+          "default": 50,
+          "description": "Rows to return (at most 200).",
+          "type": "integer"
+        },
+        "model": {
+          "description": "Workspace name of a model that has been run.",
+          "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "frame"
+      ],
+      "type": "object"
+    },
+    "name": "get_kpi_table",
+    "read_only": true
+  },
+  {
+    "description": "Add or update a named scenario: a set of parameter overrides applied to\nthe base model before a run.\n\nAn override path addresses the layout by name, not by index -- for example\n\"resources.Server.capacity\", \"blocks.process_1.params.dist_params.rate\" or\n\"simulation.replications\". Scenarios are how you answer \"A vs B, how sure\nare we\"; run them with `run_scenarios`.\n\nReturns the usual edit answer plus {\"scenario\": name}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Free-text note about what this scenario represents.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Scenario name; \"Baseline\" is implicit and always present.",
+          "type": "string"
+        },
+        "overrides": {
+          "description": "[{\"path\": \"resources.Server.capacity\", \"value\": 2}, ...].",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "name",
+        "overrides"
+      ],
+      "type": "object"
+    },
+    "name": "upsert_scenario",
+    "read_only": false
+  },
+  {
+    "description": "Run the model's scenarios and compare them against the baseline with\nconfidence intervals and a significance verdict.\n\nThis is the consultancy answer: for each KPI and scenario you get the\nscenario's own mean with its CI, the DIFFERENCE against the baseline with\nits own CI, and whether that difference interval excludes zero\n(\"significant\"). A non-significant difference means \"not distinguishable at\nthis replication count\", not \"no difference\".\n\nReturns {\"model\", \"scenarios\", \"crn\", \"comparison\": [{\"kpi\", \"scenario\",\n\"mean\", \"lb\", \"ub\", \"diff\", \"diff_lb\", \"diff_ub\", \"significant\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "crn": {
+          "default": true,
+          "description": "Common random numbers (default true): pairs the scenarios so the comparison uses the low-variance paired-t interval.",
+          "type": "boolean"
+        },
+        "kpis": {
+          "description": "KPI keys to report, e.g. [\"system/Avg Throughput Time\"]; omit for the system KPIs.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget for the whole sweep.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to run.",
+          "type": "string"
+        },
+        "replications": {
+          "description": "Replications per scenario.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "scenarios": {
+          "description": "Scenario names to run; omit for all of them plus Baseline.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed; with CRN every scenario uses the same seeds.",
+          "type": "integer"
+        },
+        "warmup": {
+          "description": "Warm-up time.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "run_scenarios",
+    "read_only": false
+  },
+  {
+    "description": "Run the model's scenarios and price each against the baseline: extra\ncapex, saving per year, payback, NPV and ROI over the `investment`\nsection's horizon, with confidence intervals from several replications.\n\nReturns {\"model\", \"settings\", \"table\": [one record per scenario, baseline\nfirst, with the engine's column names; blanks are null]}. A model without\nan `investment` section answers E_NO_INVESTMENT.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to run; it needs an `investment` section.",
+          "type": "string"
+        },
+        "replications": {
+          "description": "Independent replications (capped at 200, like run_to_precision); defaults to the model's own setting.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "First replication's seed; replication r uses seed + r.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "investment_case",
+    "read_only": false
+  },
+  {
+    "description": "Keep adding replications until one KPI's confidence interval is narrow\nenough, then report how many it took.\n\nUse it instead of guessing a replication count: \"how many runs do I need to\ncall this number to within 5%\". If `met` comes back false, the cap or the\ntime budget was hit first and the reported half-width is what you actually\nhave.\n\nReturns {\"model\", \"kpi\", \"replications\", \"mean\", \"half_width\", \"target\",\n\"met\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "absolute": {
+          "description": "Target half-width in the KPI's own units; overrides `relative`.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kpi": {
+          "description": "The KPI key to target, e.g. \"system/Avg Throughput Time\".",
+          "type": "string"
+        },
+        "max_replications": {
+          "default": 200,
+          "description": "Hard cap on replications.",
+          "type": "integer"
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to run.",
+          "type": "string"
+        },
+        "relative": {
+          "default": 0.05,
+          "description": "Target half-width as a fraction of the mean (default 0.05 = 5%).",
+          "type": "number"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        },
+        "warmup": {
+          "description": "Warm-up time.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "kpi"
+      ],
+      "type": "object"
+    },
+    "name": "run_to_precision",
+    "read_only": false
+  },
+  {
+    "description": "Run the model's Vensim-style reality checks: an input imposed on the\nmodel (e.g. \"workforce = 0\") paired with a constraint expected to hold\ngiven it (e.g. \"then production = 0\"). Each check is one deterministic\nreplication; a check with no violation passes.\n\nReturns {\"model\", \"checks\": [{\"check\", \"passed\", \"violation_time\",\n\"snapshot\"}]} -- \"violation_time\" and \"snapshot\" (the LEVEL/AUX/FLOW values\nat that instant) are null for a check that passed.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "max_seconds": {
+          "description": "Wall-clock budget for the whole set of checks.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to run.",
+          "type": "string"
+        },
+        "run_length": {
+          "description": "Run length in base time units; defaults to the model's own setting.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Seed shared by every check's deterministic run (CRN across checks).",
+          "type": "integer"
+        },
+        "warmup": {
+          "description": "Warm-up time before statistics start; defaults to the model's own setting.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "run_reality_checks",
+    "read_only": false
+  },
+  {
+    "description": "Which feedback loop drives an SD model's behaviour, and when (Loops That\nMatter, as in Stella). Runs the model once on its SD grid and scores every\nloop at every step: a loop's relative score is its share of the change in\nits stocks, signed (+ reinforcing, - balancing); the dominant loops at a\nstep are the fewest that explain at least half of it.\n\nReturns {\"model\", \"step\", \"truncated\", \"loop_count\", \"loops\": [{\"loop\",\n\"kind\" (R/B from the run, U if its sign flips, D if never active),\n\"partition\", \"length\", \"nodes\", \"total\" (mean relative score), \"dominant\":\n[[start, end], ...] (at most 20 intervals)}], \"warnings\"} -- the *top*\nloops by |total|. Refused with E_LOOP_GRID without simulation.sd.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of an SD model (needs simulation.sd).",
+          "type": "string"
+        },
+        "run_length": {
+          "description": "Run length in base time units; defaults to the model's own setting.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Seed of the one replication the analysis runs.",
+          "type": "integer"
+        },
+        "top": {
+          "default": 10,
+          "description": "How many loops to return, strongest mean relative score first.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "run_loop_dominance",
+    "read_only": false
+  },
+  {
+    "description": "Estimate how much of the run to discard as warm-up, using MSER-5 on the\nthroughput-time series.\n\nA steady-state model starts empty, which biases early observations low; the\nwarm-up is the time to reset statistics at. If `reliable` is false the run\nwas too short to tell -- lengthen it rather than trusting the number.\n\nReturns {\"model\", \"warmup\", \"reliable\", \"observations\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "replications": {
+          "default": 5,
+          "description": "Replications to run for the estimate.",
+          "type": "integer"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "suggest_warmup",
+    "read_only": false
+  },
+  {
+    "description": "Search model parameters for the best value of one KPI within a\nreplication budget, then confirm the winner statistically.\n\nEvery factor is an override path plus a range, exactly like a scenario\noverride but varying. The budget is a HARD cap on replications, so start\nsmall (a few hundred) and raise it if `converged` is false. Constraints are\njudged on confidence intervals, so a point may come back \"unknown\" rather\nthan feasible or infeasible.\n\nReturns {\"model\", \"best\", \"best_mean\", \"converged\", \"budget_used\",\n\"feasible\", \"history\": [{\"point\", \"mean\", \"feasibility\"}] (last 20)}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "default": 120,
+          "description": "Total replications the search may spend.",
+          "type": "integer"
+        },
+        "constraints": {
+          "description": "[[\"<kpi key>\", \"<=\", value], ...] KPI constraints.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "factors": {
+          "description": "[{\"path\": \"resources.Server.capacity\", \"kind\": \"integer\", \"low\": 1, \"high\": 5}], kind is continuous/integer/categorical.",
+          "type": "array"
+        },
+        "goal": {
+          "default": "min",
+          "description": "\"min\" or \"max\".",
+          "type": "string"
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "replications_per_point": {
+          "default": 5,
+          "description": "Replications per candidate point.",
+          "type": "integer"
+        },
+        "response": {
+          "description": "KPI key to optimise, e.g. \"system/Avg Throughput Time\".",
+          "type": "string"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "factors",
+        "response"
+      ],
+      "type": "object"
+    },
+    "name": "optimize",
+    "read_only": false
+  },
+  {
+    "description": "Read the model's data bindings and report what each one produced.\n\nA binding is \"this parameter comes from that column of that file\", so this\nis how a model's numbers come from measurements instead of guesses. Nothing\nhere raises: a source that is missing, refused or unreadable comes back as\na `problem` on its own row and simply is not applied.\n\nFiles must be under the workspace root, and a `sql`/`json_url` source is\nread only if the person who started this server allowed network access.\nThere is no argument that changes either: a refusal is final for you, and\nits `problem` tells the HUMAN what to re-run if they want it.\n\nCall with `apply=true` to write the values into the model (undoable), or\nleave it false to preview. `run_model` does not resolve bindings by\ndefault, but its own `bind_data=true` argument resolves `series:` and\n`orders` bindings at RUN TIME -- those two never get written into\nthe model file even with `apply=true` here; see the E_DATA_BINDING_TARGET\nhint below.\n\nA `value` is what the binding read, and it is data from outside: it is cut\nto 200 rows and 200 characters a text, and `value_cut` then says how much\nwas left out ({\"rows\", \"characters\"}; null when nothing was). `apply=true`\nstill writes the whole value.\n\nReturns {\"model\", \"applied\", \"bindings\": [{\"name\", \"source\", \"kind\",\n\"location\", \"column\", \"transform\", \"target\", \"value\", \"value_cut\", \"rows\",\n\"source_time\", \"problem\"}], \"problems\": n}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "apply": {
+          "default": false,
+          "description": "Write the resolved values into the model (an undoable edit). False just reports what the bindings WOULD read.",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Workspace name of the model to resolve.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "resolve_data_bindings",
+    "read_only": false
+  },
+  {
+    "description": "Give the model a WARM START: work already in the system at t=0.\n\nThis is what makes a model a twin rather than a study. Entities are\ninjected into the named block in list order as if they had just arrived\nthere; `age` is how long an entity has already been in the system (its\nreported time in system includes that history); `in_service: k` means the\nfirst k are already being served, holding `remaining[i]` if you know the\nresidual service times -- give them when you do, since a fresh sample is\nonly exact for an exponential service.\n\nA warm-started model needs no warm-up, and `run_model` defaults it to 0.\nPass no arguments to clear the initial state.\n\nReturns the usual edit answer plus {\"entities\": total injected}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "entities": {
+          "description": "[{\"block\", \"count\", \"e_type\"?, \"age\"?, \"in_service\"?, \"remaining\"?, \"attributes\"?}] -- entities already in each block.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "resources": {
+          "description": "{name: {\"down_until\": t}} for a resource that starts failed.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "time": {
+          "default": 0.0,
+          "description": "Timestamp of the snapshot this state came from (recorded, never shifts the clock).",
+          "type": "number"
+        },
+        "variables": {
+          "description": "{name: value} the run starts from.",
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "set_initial_state",
+    "read_only": false
+  },
+  {
+    "description": "Tune model parameters until the model reproduces measured KPIs.\n\nGive what the real system did (`targets`) and which parameters may move\n(`factors`, the same shape `optimize` takes). The objective is the weighted\nsum of squared RELATIVE errors, so KPIs on different scales count equally.\nA target with a `tolerance` gets a pass/fail verdict; read the per-target\nconfidence interval too -- a pass whose interval is far wider than the\ntolerance has not really been demonstrated.\n\nReturns {\"model\", \"best\", \"objective\", \"passed\", \"budget_used\", \"converged\",\n\"overrides\", \"targets\": [{\"kpi\", \"observed\", \"simulated\", \"lb\", \"ub\",\n\"error\", \"tolerance\", \"pass\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "apply": {
+          "default": false,
+          "description": "Store the fitted values as a \"Calibrated\" scenario on the model.",
+          "type": "boolean"
+        },
+        "budget": {
+          "default": 120,
+          "description": "Total replications the search may spend.",
+          "type": "integer"
+        },
+        "factors": {
+          "description": "[{\"path\", \"kind\", \"low\", \"high\"}] -- the parameters to tune.",
+          "type": "array"
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to calibrate.",
+          "type": "string"
+        },
+        "replications_per_point": {
+          "default": 5,
+          "description": "Replications per candidate point.",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        },
+        "targets": {
+          "description": "[{\"kpi\", \"observed\", \"weight\"?, \"tolerance\"?}] -- the measured values the model must reproduce.",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "targets",
+        "factors"
+      ],
+      "type": "object"
+    },
+    "name": "calibrate",
+    "read_only": false
+  },
+  {
+    "description": "Forecast a short horizon from the model's CURRENT state, with\nuncertainty bands and event probabilities.\n\nStarts from the model's data bindings and initial state, runs a terminating\nhorizon with no warm-up, and answers \"where is this heading\". The band is\nthe empirical 5-95% range across replications -- where a single future run\nis likely to land -- NOT a confidence interval of the mean, which is the\nnarrower `lb`/`ub` pair beside it.\n\nAn event's `kpi` may be any run KPI or a time-series peak,\n`timeseries/<series>/max`, which is how you ask \"was the queue EVER above\n8\" rather than \"was it on average\".\n\nReturns {\"model\", \"horizon\", \"replications\", \"kpis\": [{\"kpi\", \"mean\", \"lb\",\n\"ub\", \"q05\", \"q95\", \"min\", \"max\"}], \"events\": [{\"event\", \"kpi\", \"condition\",\n\"probability\", \"wilson_lb\", \"wilson_ub\"}], \"series\": [names]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "bind_data": {
+          "default": true,
+          "description": "Resolve the model's data bindings first (default true).",
+          "type": "boolean"
+        },
+        "events": {
+          "description": "[{\"name\", \"kpi\", \"op\": \">\"|\"<\", \"value\"}] questions to answer as probabilities.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "horizon": {
+          "description": "Run length in base time units -- a shift, a day.",
+          "type": "number"
+        },
+        "kpis": {
+          "description": "KPI keys to report; omit for the curated system ones.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to forecast.",
+          "type": "string"
+        },
+        "replications": {
+          "default": 100,
+          "description": "Replications; a prediction band needs a few hundred to be stable.",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "horizon"
+      ],
+      "type": "object"
+    },
+    "name": "forecast",
+    "read_only": false
+  },
+  {
+    "description": "Fit candidate distributions to observed data and rank them, so a block's\nduration comes from measurements instead of a guess.\n\nGive either a file path under the workspace root or an inline list of\nnumbers. The ranking is by AIC (lower is better) with KS/AD statistics\nalongside. Apply the winner by setting the block's `distribution` and\n`dist_params` to the returned `spec`.\n\nReturns {\"n\", \"dropped\", \"summary\", \"fits\": [{\"name\", \"params\", \"aic\", \"ks\",\n\"ad\", \"warnings\", \"spec\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "description": "Distribution families to try; omit for all of them.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "column": {
+          "description": "Column name in the file; defaults to the first numeric column.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "CSV/TSV/XLSX file under the workspace root holding the sample.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "top": {
+          "default": 5,
+          "description": "How many ranked fits to return.",
+          "type": "integer"
+        },
+        "values": {
+          "description": "An inline list of numbers, instead of a file.",
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "fit_distribution",
+    "read_only": true
+  },
+  {
+    "description": "Write the last run's results to a file: an Excel workbook, CSV folder,\na self-contained HTML report, or JSON.\n\nUse `html` for the client-facing deliverable (it embeds the charts) and\n`json` when another program will read the numbers. Run the model first.\n\nReturns {\"ok\", \"format\", \"path\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "description": "Exporter name: xlsx, csv, html, json, or a plugin's own.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of a model that has been run.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Destination under the workspace root (a directory for csv).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "format",
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "export",
+    "read_only": false
+  },
+  {
+    "description": "Evaluate a built-in controller against a Policy-mode DECIDE.\n\nRuns `episodes` episodes of `nagasim.rl.SimEnv`, driving every pending\ndecision at the named `policy` with `controller`. Use this to compare\n\"shortest\" against \"random\" (or \"roundrobin\") before ever training\nanything, or to sanity-check a model's Policy-mode DECIDE wiring.\n\nReturns {\"model\", \"policy\", \"controller\", \"reward\", \"mean\", \"lb\", \"ub\",\n\"episodes\", \"returns\": [per-episode return] (capped)}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "controller": {
+          "description": "Built-in controller to evaluate: \"random\", \"shortest\" or \"roundrobin\".",
+          "type": "string"
+        },
+        "episodes": {
+          "default": 20,
+          "description": "Independent episodes to average over; episode i uses seed + i.",
+          "type": "integer"
+        },
+        "horizon": {
+          "default": 500.0,
+          "description": "Episode length in base time units; the episode truncates there if the model has not drained first.",
+          "type": "number"
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "policy": {
+          "description": "Decision-point name -- must match a Policy-mode DECIDE's `policy` param.",
+          "type": "string"
+        },
+        "reward": {
+          "default": "neg_wip",
+          "description": "\"neg_wip\", \"throughput\", \"neg_time_in_system\", or an expression string evaluated over model state at each decision (no `entity` in scope).",
+          "type": "string"
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "policy",
+        "controller"
+      ],
+      "type": "object"
+    },
+    "name": "evaluate_policy",
+    "read_only": false
+  },
+  {
+    "description": "Run a design of experiments and fit a response-surface surrogate over it\n-- a fast stand-in for the simulation, for optimisation or\nwhat-if exploration without spending more replications.\n\nEvery factor is swept per `design` and simulated `replications` times; the\nsurrogate is then fit on the point means, weighted by their precision.\nCheck `lack_of_fit` before trusting `suggest`-style extrapolation: it means\nthe model misses structure the replication noise does not explain, so\n\"quadratic\" or \"auto\" (or \"gp\"/\"forest\" with scikit-learn) may do better\nthan \"linear\".\n\nReturns {\"model\", \"response\", \"kind\", \"n_points\", \"r2\", \"r2_adj\",\n\"cv_rmse\", \"lack_of_fit\", \"coefficients\": [{\"term\", \"coefficient\",\n\"std_error\"}] (empty for gp/forest)}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "design": {
+          "default": "full:2",
+          "description": "full[:levels] (default full:2), lhs:<n>, or oat -- same grammar as `naga doe --design`.",
+          "type": "string"
+        },
+        "factors": {
+          "description": "[{\"path\": \"resources.Server.capacity\", \"kind\": \"integer\", \"low\": 1, \"high\": 5}], same shape as the `optimize` tool's factors.",
+          "type": "array"
+        },
+        "kind": {
+          "default": "quadratic",
+          "description": "\"linear\", \"quadratic\", \"auto\" (picks by CV RMSE), or -- only if scikit-learn is installed -- \"gp\"/\"forest\".",
+          "type": "string"
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget for the whole design.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "replications": {
+          "default": 5,
+          "description": "Replications per design point.",
+          "type": "integer"
+        },
+        "response": {
+          "description": "KPI key to fit a surface for, e.g. \"system/Avg Throughput Time\".",
+          "type": "string"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "factors",
+        "response"
+      ],
+      "type": "object"
+    },
+    "name": "fit_surrogate",
+    "read_only": false
+  },
+  {
+    "description": "Undo the last edit to a model.\n\nEvery tool that changes a model pushes exactly one undo entry, so one\n`undo` reverses one tool call. Use it to back out an edit whose returned\nproblems show it was wrong.\n\nReturns the usual edit answer plus {\"can_undo\", \"can_redo\", \"label\": the\nundone edit's short name (e.g. \"Add block\"), or \"Edit\" for one with none}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "undo",
+    "read_only": false
+  },
+  {
+    "description": "Redo the edit that `undo` reversed.\n\nOnly available while nothing new has been edited since the undo: any fresh\nmutation clears the redo stack, exactly like the editor.\n\nReturns the usual edit answer plus {\"can_undo\", \"can_redo\", \"label\": the\nredone edit's short name}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "redo",
+    "read_only": false
+  },
+  {
+    "description": "Run one replication of a model under a debugger: start it, or continue it,\nuntil a stop, one step, a model time, a pending decision or the end.\n\nThe run is kept between calls, one per model, so the usual loop is: set stops\nand watches, call again and again, and read `debug_inspect` whenever it\nreturns. A stop fires on a change -- an entity entering a block, an expression\ngoing from false to true -- so calling again always moves on. Nothing here\nchanges the results: a run that is stopped, stepped and inspected ends with the\nsame numbers as `run_model` with one replication and the same seed.\n\n`state` says why it returned: \"stop\" (see `hits`), \"step\", \"time\" (reached\n`to`), \"decision\" (a Policy DECIDE waits: answer with `decisions`; the clock\ncannot move until you do), \"budget\" (max_seconds ran out; call again),\n\"horizon\" or \"drained\" (the run is over; `restart` to debug again). `hits`\nlists every stop that fired during the call and is read at every return, so\nit can be non-empty beside any state, not only \"stop\".\n\nA call is refused (E_BAD_ARGUMENT) before anything changes when `stops` or\n`watches` is not a list, has more than 50 entries or holds a text of more than\n500 characters, or `to` is not a finite number; a bad stop likewise\n(E_BAD_STOP). Then a start or `restart` happens (with the new stops and watches,\nif given), then `decisions` are applied, then on a continuing run the new stops\nand watches take effect, then the run moves. A refused\ndecision answers with an error before the run moves: a continuing run keeps its\nstops and watches as they were, but the decisions listed before the refused one\nstay applied. A start or `restart` is not undone by a later error in the same\ncall.\n\nReturns {\"model\", \"t\", \"state\", \"hits\": [{\"stop\": index, \"block\", \"entity_id\",\n\"entity_type\"} or {\"stop\": index, \"expr\"}] (the first 50) and \"hits_total\": how\nmany fired, \"watches\": {text: value or \"error: ...\"} for the watches and the\nstop expressions, \"pending\": [{\"id\", \"policy\", \"block\", \"t\", \"entity_id\",\n\"options\"}] (the first 50) and \"pending_total\": how many wait, \"model_edited\":\ntrue when the model changed since this run began}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "decisions": {
+          "description": "Answers to pending decisions: [{\"policy\", \"option\", \"request_id\"}] (request_id optional: the policy's oldest). Applied after the checks of the other arguments and after a start or `restart`, before the run moves.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_seconds": {
+          "default": 10.0,
+          "description": "Wall-clock budget for this call; the run stays where it got to. 0 means no budget: the call runs until a stop, `to`, a decision or the end.",
+          "type": "number"
+        },
+        "model": {
+          "description": "Workspace name of the model to debug.",
+          "type": "string"
+        },
+        "restart": {
+          "default": false,
+          "description": "True: drop the run and start again from t = 0 on the model as it is now, keeping the stops and watches unless new ones are given.",
+          "type": "boolean"
+        },
+        "seed": {
+          "default": 0,
+          "description": "Seed of the run; read only when the run starts or restarts.",
+          "type": "integer"
+        },
+        "step": {
+          "default": false,
+          "description": "True: stop at the next event the trace shows (one entity move, one resource change).",
+          "type": "boolean"
+        },
+        "stops": {
+          "description": "Replaces the stops (a list of at most 50, each text at most 500 characters): [{\"block\": name}] stops when an entity enters that block (a submodel instance name: anything inside it), [{\"expr\": text}] when the expression becomes true. Omit to keep them, [] to clear.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "to": {
+          "description": "Model time to run to at most (a finite number); omit for no time limit.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "watches": {
+          "description": "Replaces the watch expressions, read at every return (a list of at most 50 texts of at most 500 characters). Omit to keep, [] to clear.",
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "debug_run",
+    "read_only": false
+  },
+  {
+    "description": "Read the state of a model's debug run where it stands, without moving it.\n\nCall it after `debug_run` returns. With no argument it is the overview: how\nmany entities sit in each block, every resource's state, every level's value\nand the decisions waiting. `block` adds that block's queue and entities;\n`entity` adds one live entity's attributes, the model's own included.\n\nCounts are per block of the top level: a block inside a submodel instance is\ncounted with its instance, and `block` then answers for the instance (see the\n\"name\" it returns).\n\nReturns {\"model\", \"t\", \"pending\" (the first 50), \"pending_total\", \"counts\":\n{block: entities}, \"resources\": {name: {\"state\", \"busy\", \"capacity\"}},\n\"levels\": {name: value}, \"model_edited\": true when the model changed since the\nrun began, in which case the run still answers for the model it was built\nfrom}; with `block`: \"block\": {\"name\", \"count\", \"in_service\", \"queue\": [entity\nids waiting, oldest first], \"entities\": [ids]} (50 ids at most each); with\n`entity`: \"entity\": {\"id\", \"type\", \"created\", \"attributes\"}, or null once it\nis disposed or inside a batch.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "block": {
+          "description": "A block or submodel instance to look into; omit for the overview only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity": {
+          "description": "Id of an entity to read (from a hit, a queue or `pending`).",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of a model with a debug run.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "debug_inspect",
+    "read_only": true
+  },
+  {
+    "description": "Check a plant mapping against a model and, given a recorded plant log,\nsay what the plant looked like at the log's last instant.\n\nA plant mapping says what each key a plant sends asserts about the model\n(which block an item is in, how many units of a resource are busy, what a\nlevel holds). The log's observations become the same trace events a run\nemits, so `blocks` and `resources` read exactly like a run's playback.\n\nBoth files are data under the workspace root. This tool opens no\nconnection and has no argument that could: watching a live plant is the\nperson's own `naga plant watch` with their connections file.\n\n`counts` says what was dropped, repaired or made up, by reason; `problems`\ncarries the mapping's errors (then nothing is replayed) and the replay's\nwarnings.\n\nReturns {\"model\", \"signals\", \"problems\"} and, with a log, {\"observations\",\n\"events\", \"truncated\", \"now\", \"stamp\", \"entities\", \"counts\", \"blocks\":\n{block: items}, \"resources\": [{\"name\", \"state\", \"busy\", \"capacity\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "log": {
+          "default": "",
+          "description": "Recorded plant log (one JSON object a line, as `naga watch --record` writes), a path relative to the workspace root. Empty: only check the mapping.",
+          "type": "string"
+        },
+        "mapping": {
+          "description": "Plant mapping (*.plantmap.json), a path relative to the workspace root.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model the mapping is for.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "mapping"
+      ],
+      "type": "object"
+    },
+    "name": "get_plant_timeline",
+    "read_only": true
+  },
+  {
+    "description": "What the plant looks like now, as the running twin last wrote it.\n\nA twin is started by a person (`naga twin run`), reads their plant through\ntheir connections and writes a result every few seconds; this tool reads\nthat result and nothing else. `sources` says whether each source is live\nand how old its last word is; `view` holds the items in each block, each\nresource's state and the levels at model time `at` (`approximate` is true\nwhen the plant names no items, so counts are estimates; `counters` is what\nthe plant itself counted as having left a block since the twin first saw\nthat counter, observed and not estimated); `problems` are\ncoded, with what the twin did about each. Check `written` before trusting\nthe picture: a twin that stopped leaves its last result behind, and one\nthat runs writes every `cadence.every` seconds (null: it is run one step\nat a time by a scheduler). `at` is model time, in `model.time_unit` from\n`model.epoch` (null where the source has no epoch).\n\nReturns {\"cycle\", \"written\", \"started\", \"cadence\": {\"every\",\n\"forecast_every\"}, \"model\": {\"name\", \"hash\", \"time_unit\", \"epoch\"}, \"at\", \"stamp\",\n\"sources\": [{\"name\", \"state\", \"age\", \"lost\", \"gaps\"}], \"view\": {\"approximate\",\n\"wip\", \"blocks\", \"in_service\", \"resources\", \"levels\", \"counters\"}, \"mapped\", \"problems\":\n[{\"code\", \"severity\", \"message\", \"path\", \"hint\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_twin_monitor",
+    "read_only": true
+  },
+  {
+    "description": "The running twin's latest forecast, and how its earlier ones compare\nwith what the plant then did.\n\n`forecast.status` is \"ok\", \"running\", \"skipped\" (a source is down),\n\"refused\" (the model cannot be started from the plant's state: `reason`\nand the monitor's problems say which kind), \"failed\" or \"none\"; with any\nstatus but \"ok\" the record shown is the last good one. The record names\nwhat it was computed from (`state` and `model` hashes, `seed`, `from`,\n`horizon`, `replications`), so it can be reproduced; `finished` and `took`\n(seconds) say when it could first be read and how long it ran. `kpis` are\nend-of-horizon means with a confidence interval (`lb`, `ub`) and the 5-95%\nband of single replications; `points` are predictions at stated times.\n`comparison` sets each prediction whose time has come beside the observed\nvalue: `inside` says whether it fell in the 5-95% band. `approximate` is\nabout counts of items inferred where the plant names none (`system/WIP`\nthen rests on estimates); a `block/<name>/out` row is what the plant's own\ncounter counted and is observed either way. `scores` sums those\ncomparisons by series and lead (how far ahead, in model time): `coverage`\nis the share inside the band (`nominal`, 0.9, when the model is right; a\nrow with `whole` true holds whole numbers only and covers more than that\non a right model, so compare its `pinball`), `bias` the mean of observed\nminus forecast mean, `error` the mean absolute error, `pinball` the\nquantile loss of the band (lower is better). Never quote a row without\n`basis` (forecasts, points, `missed` because the twin was late or a source\nnot ready, `lost` because a counter lost count, since when; `same_seed`\nforecasts are not independent samples), and say `reason` when there are no\nrows. Readings overlap in time: this is evidence in distribution, not a\ntest. When `forecast.actions` is there, the forecast ASSUMES actions a\nperson took through the twin's outbox are in the plant (`assumes` says so\nin words; `get_twin_recommendations` lists them under `standing`): say so\nwhenever you quote such a forecast.\n\nReturns {\"cycle\", \"written\", \"model\", \"forecast\": {\"status\", \"reason\",\n\"state\", \"model\", \"seed\", \"from\", \"stamp\", \"horizon\", \"replications\",\n\"approximate\", \"finished\", \"took\", \"kpis\": [...], \"points\": [...]},\n\"comparison\": [{\"state\",\n\"series\", \"at\", \"mean\", \"q05\", \"q95\", \"observed\", \"observed_at\", \"inside\"}],\n\"scores\": {\"nominal\", \"basis\": {\"forecasts\", \"same_seed\", \"points\", \"missed\",\n\"lost\", \"since\", \"first\", \"last\"}, \"reason\", \"rows\": [{\"series\", \"lead\",\n\"points\", \"missed\", \"lost\", \"whole\", \"coverage\", \"bias\", \"error\",\n\"pinball\"}]}}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_twin_forecast",
+    "read_only": true
+  },
+  {
+    "description": "What the running twin recommends now, and what became of what it\nrecommended before. Read-only: this tool cannot deliver, approve, reject\nor address a recommendation, and no tool can.\n\nThe person who started the twin gave it candidate actions and one KPI\n(`kpi`, with `better`: \"higher\" or \"lower\"). After each forecast the twin\nruns every candidate from the same plant state on the same random numbers\n(`crn`) and sets it beside doing nothing. An item has its `action`\n({\"verb\", \"target\", \"value\"}), `baseline` and `with_action` (means of the\nKPI), `effect` (the mean difference) with its 95% interval (`low`, `high`),\n`confidence` (the share of replications in which the action did better)\nand a `verdict`: \"better\" (the interval excludes no effect), \"no_effect\"\n(it includes it: do not present this as a gain), \"worse\", \"failed\" or\n\"standing\" (already taken). Only \"better\" items have a `rank`, an `id` and\na `status`: \"proposed\" (shown, not delivered), \"delivered\" (written to the\nperson's own outbox, unanswered), \"taken\", \"rejected\", \"expired\" or\n\"dropped\". With `status` \"none\", say `reason`: \"no_forecast\" (a source is\ndown or the state was refused: see `get_twin_forecast`), \"none_better\",\n\"kpi\", \"replications\" or \"failed\". `standing` lists the actions a person\ntook, which every later forecast now assumes until a person ends one\n(`ended` lists those). `effects` is what the plant's\nown counter then showed over one horizon (`observed`), and whether that fell\nin the 5-95% band the twin gave (`inside_interval`); \"missed\", \"lost\" and\n\"not_observable\" say why there is no number. This is what the model says,\nin distribution: not a causal claim about the plant, and one effect outside\nits band proves little. A proposal is acted on by a person, in their own\nqueue or in the editor; if asked to approve or send one, say that you\ncannot.\n\nReturns {\"cycle\", \"written\", \"model\", \"recommend\": {\"kpi\", \"better\",\n\"level\", \"crn\", \"measurable\", \"status\", \"reason\", \"state\", \"seed\",\n\"replications\", \"from\", \"stamp\", \"took\", \"reproducible\", \"items\": [...],\n\"standing\": [{\"id\", \"action\", \"since\"}], \"ended\": [{\"id\", \"action\",\n\"since\", \"ended\"}], \"effects\": [{\"id\", \"action\",\n\"status\", \"observed\", \"inside_interval\", \"from\", \"until\", \"q05\", \"q95\"}],\n\"outbox\": {\"sink\", \"state\", \"why\", \"records\", \"replies\"}}}; `recommend` is\nnull for a twin that was given no candidates.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_twin_recommendations",
+    "read_only": true
+  }
+]

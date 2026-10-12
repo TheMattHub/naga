@@ -1,0 +1,116 @@
+site_name: Naga
+site_description: A simulation engine for Python, built on SimPy
+site_url: https://thematthub.github.io/naga/
+# No repo_url: with one the theme asks api.github.com for the repository's numbers on every
+# page. The landing page links the repository instead.
+docs_dir: docs
+site_dir: site
+# Links name the .html file itself, so the built site also opens from disk (a CI
+# artifact). Search needs a server either way: `mkdocs serve`, or the hosted site.
+use_directory_urls: false
+
+theme:
+  name: material
+  logo: img/naga.svg
+  favicon: img/naga.svg
+  # System fonts: the theme's default asks Google Fonts for two families on every page.
+  font: false
+  # The scheme follows the reader's system. A light page in a dark browser flashed black
+  # between two pages, the browser's own background showing while the next one loaded.
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+  features:
+    - navigation.indexes
+    - content.code.copy
+
+markdown_extensions:
+  - tables
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  # The changelog and contributing pages include the repository's own files.
+  - pymdownx.snippets:
+      check_paths: true
+  # The gallery's flow diagrams are Mermaid text; the theme draws them in the browser.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+# tools/gen_engine_docs.py reads this nav to write docs/llms.txt: every page is listed here.
+nav:
+  - Home: index.md
+  - Quick start: quickstart.md
+  - Gallery:
+      - gallery/index.md
+      - Teaching: gallery/teaching.md
+      - Manufacturing: gallery/manufacturing.md
+      - Logistics: gallery/logistics.md
+      - Services: gallery/services.md
+      - Supply chain: gallery/supply-chain.md
+      - Energy: gallery/energy.md
+      - System dynamics: gallery/system-dynamics.md
+      - Agent-based: gallery/agent-based.md
+      - Games: gallery/games.md
+  - Coming from:
+      - SimPy: coming-from/simpy.md
+      - Arena: coming-from/arena.md
+      - AnyLogic: coming-from/anylogic.md
+      - Vensim: coming-from/vensim.md
+      - NetLogo: coming-from/netlogo.md
+  - Guides:
+      - Model file format: model-file-format.md
+      - System dynamics: system-dynamics.md
+      - Agent-based modelling: agent-based-modelling.md
+      - Python API: python-api.md
+      - Use with an agent: mcp.md
+      - Security: security.md
+  - Modelling guide:
+      - modelling-guide/index.md
+      - Entities and attributes: modelling-guide/entities-attributes.md
+      - Expressions and variables: modelling-guide/expressions-variables.md
+      - Resources, sets and queues: modelling-guide/resources-queues.md
+      - Schedules, failures and WAIT: modelling-guide/schedules-failures.md
+      - Units: modelling-guide/units.md
+      - Time units and transfer delays: modelling-guide/time-units.md
+      - Dates and calendars: modelling-guide/dates-and-calendars.md
+      - Batching and matching: modelling-guide/batching-matching.md
+      - Submodels: modelling-guide/submodels.md
+      - Costing: modelling-guide/costing.md
+      - Continuous quantities: modelling-guide/continuous-quantities.md
+      - Layout, paths and vehicles: modelling-guide/layout-paths-vehicles.md
+      - Finite buffers and blocking: modelling-guide/finite-buffers.md
+      - Planning and scheduling: modelling-guide/planning.md
+      - Motion cycles: modelling-guide/motion.md
+      - Batteries and charging: modelling-guide/batteries.md
+      - Mobile cobots, machine tending: modelling-guide/tending.md
+      - Investment case: modelling-guide/investment.md
+  - Experiments and files:
+      - Experiments: experiments.md
+      - Model assertions and CI: model-assertions.md
+      - Semantic diff and merge: semantic-diff.md
+      - Sharing a model (the browser viewer): sharing-a-model.md
+  - Digital twin:
+      - Digital twin: digital-twin.md
+      - A plant as a timeline: plant-timeline.md
+      - Live data: live-data.md
+  - Reference:
+      - Command line: reference/cli.md
+      - Blocks: reference/blocks.md
+      - Distributions: reference/distributions.md
+      - Expressions: reference/expressions.md
+      - KPIs: reference/kpis.md
+      - Model file keys: reference/schema.md
+      - Agent tools: reference/tools.md
+      - Python entry points: reference/api.md
+  - Project:
+      - Changelog: changelog.md
+      - Contributing: contributing.md
+
+validation:
+  anchors: warn

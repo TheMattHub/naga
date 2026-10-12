@@ -1,0 +1,339 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "arrivals",
+      "description": "Poisson walk-in arrivals",
+      "type": "CREATE",
+      "position": [
+        0.0,
+        200.0
+      ],
+      "params": {
+        "e_type": "PATIENT",
+        "arrival_mode": "Interarrival",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 2.5
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "population": "Patients",
+        "time_unit": "hours",
+        "start_time_unit": "hours"
+      }
+    },
+    {
+      "name": "triage",
+      "description": "Nurse assesses the patient",
+      "type": "PROCESS",
+      "position": [
+        220.0,
+        200.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 8.0
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Nurse",
+        "time_unit": "hours",
+        "setup_unit": "hours",
+        "renege_time_unit": "hours"
+      }
+    },
+    {
+      "name": "seize_doctor",
+      "description": "Joins the doctor's queue, ranked by highest entity.agent.acuity first (Doctor's own HighestValueFirst discipline)",
+      "type": "SEIZE",
+      "position": [
+        440.0,
+        200.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Doctor",
+        "time_unit": "hours",
+        "renege_time_unit": "hours"
+      }
+    },
+    {
+      "name": "critical_share",
+      "description": "Reads entity.agent.state: share of patients already Critical when treatment starts",
+      "type": "RECORD",
+      "position": [
+        660.0,
+        200.0
+      ],
+      "params": {
+        "stat_name": "critical_at_treatment_start",
+        "kind": "tally",
+        "expr": "IF(entity.agent.state == \"Critical\", 1, 0)"
+      }
+    },
+    {
+      "name": "treatment",
+      "description": "Doctor's service time",
+      "type": "DELAY",
+      "position": [
+        880.0,
+        200.0
+      ],
+      "params": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 3.2
+        },
+        "time_unit": "hours"
+      }
+    },
+    {
+      "name": "release_doctor",
+      "description": "Frees the doctor",
+      "type": "RELEASE",
+      "position": [
+        1100.0,
+        200.0
+      ],
+      "params": {
+        "resource_name": "Doctor",
+        "time_unit": "hours"
+      }
+    },
+    {
+      "name": "notify_treated",
+      "description": "Messages entity.agent (the default target): its \"treated\" transition fires from whichever state it is currently in",
+      "type": "SEND",
+      "position": [
+        1320.0,
+        200.0
+      ],
+      "params": {
+        "message": "treated",
+        "to": "entity.agent"
+      }
+    },
+    {
+      "name": "time_in_system",
+      "description": "Time in system per patient",
+      "type": "RECORD",
+      "position": [
+        1540.0,
+        200.0
+      ],
+      "params": {
+        "stat_name": "time_in_system",
+        "kind": "tally",
+        "expr": "now - entity.creation_time"
+      }
+    },
+    {
+      "name": "leave",
+      "description": "Patient discharged; its agent is removed with it",
+      "type": "DISPOSE",
+      "position": [
+        1760.0,
+        200.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "remove_agent": true,
+        "time_unit": "hours"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "arrivals",
+      "target": "triage"
+    },
+    {
+      "source": "triage",
+      "target": "seize_doctor"
+    },
+    {
+      "source": "seize_doctor",
+      "target": "critical_share"
+    },
+    {
+      "source": "critical_share",
+      "target": "treatment"
+    },
+    {
+      "source": "treatment",
+      "target": "release_doctor"
+    },
+    {
+      "source": "release_doctor",
+      "target": "notify_treated"
+    },
+    {
+      "source": "notify_treated",
+      "target": "time_in_system"
+    },
+    {
+      "source": "time_in_system",
+      "target": "leave"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Nurse",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Doctor",
+      "capacity": 1,
+      "discipline": "HighestValueFirst",
+      "ranking_expr": "entity.agent.acuity",
+      "rerank": true,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "PATIENT",
+      "shape": "circle",
+      "color": "red",
+      "holding_cost_time_unit": "hours"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [
+    {
+      "name": "Patient",
+      "description": "An ED patient's clinical trajectory while it waits: it may worsen before a doctor is free, which is what the doctor's queue ranking (highest entity.agent.acuity first) then reacts to.",
+      "attributes": [
+        {
+          "name": "acuity",
+          "init": "1"
+        }
+      ],
+      "states": [
+        {
+          "name": "Stable",
+          "color": "GREEN"
+        },
+        {
+          "name": "Deteriorating",
+          "color": "ORANGE"
+        },
+        {
+          "name": "Critical",
+          "color": "RED"
+        },
+        {
+          "name": "Discharged",
+          "color": "GRAY"
+        }
+      ],
+      "transitions": [
+        {
+          "from": "Stable",
+          "to": "Deteriorating",
+          "rate": "1.5",
+          "actions": [
+            {
+              "target": "self.acuity",
+              "expr": "2"
+            }
+          ],
+          "rate_unit": "hours"
+        },
+        {
+          "from": "Deteriorating",
+          "to": "Critical",
+          "rate": "1.5",
+          "actions": [
+            {
+              "target": "self.acuity",
+              "expr": "3"
+            }
+          ],
+          "rate_unit": "hours"
+        },
+        {
+          "from": "Stable",
+          "to": "Discharged",
+          "message": "treated"
+        },
+        {
+          "from": "Deteriorating",
+          "to": "Discharged",
+          "message": "treated"
+        },
+        {
+          "from": "Critical",
+          "to": "Discharged",
+          "message": "treated"
+        }
+      ],
+      "initial_state": "Stable",
+      "speed_unit": "m/h"
+    }
+  ],
+  "populations": [
+    {
+      "name": "Patients",
+      "type": "Patient",
+      "count": 0,
+      "max_count": 80
+    }
+  ],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Emergency department with patient agents",
+    "category": "Services",
+    "description": "A patient is both a DES entity and an agent (CREATE's population param). Each patient's Patient agent runs a Stable -> Deteriorating -> Critical statechart (rate transitions, 1/hour) alongside the queueing flow (arrival, triage, doctor); the doctor's queue reads the live entity.agent.acuity (Doctor's HighestValueFirst discipline, ranking_expr) so a patient who has deteriorated while waiting is served ahead of a Stable one queued earlier. A RECORD block reads entity.agent.state to tally the share already Critical when treatment starts, and SEND messages entity.agent (its default target) with \"treated\" once the doctor releases it, driving every state to Discharged; DISPOSE then removes the agent with remove_agent.",
+    "author": "Naga example"
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 240.0,
+    "warmup": 24.0,
+    "replications": 10,
+    "time_unit": "hours",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

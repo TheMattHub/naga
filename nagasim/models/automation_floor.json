@@ -1,0 +1,4419 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "robot_arm_cell_1",
+      "description": "Robot arm cell",
+      "type": "SUBMODEL",
+      "position": [
+        200.0,
+        100.0
+      ],
+      "layout_position": [
+        12.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Robot arm cell",
+        "arguments": {},
+        "preset": ""
+      }
+    },
+    {
+      "name": "safety_zone_1",
+      "description": "Safety zone",
+      "type": "SUBMODEL",
+      "position": [
+        400.0,
+        -60.0
+      ],
+      "layout_position": [
+        26.0,
+        7.0
+      ],
+      "params": {
+        "definition": "Safety zone",
+        "arguments": {},
+        "preset": ""
+      }
+    },
+    {
+      "name": "cobot_cell_1",
+      "description": "Cobot cell",
+      "type": "SUBMODEL",
+      "position": [
+        400.0,
+        100.0
+      ],
+      "layout_position": [
+        26.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Cobot cell",
+        "arguments": {
+          "hrc": "separation",
+          "zone": "safety_zone_1/zone"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "palletiser_1",
+      "description": "Palletiser",
+      "type": "SUBMODEL",
+      "position": [
+        800.0,
+        300.0
+      ],
+      "layout_position": [
+        66.0,
+        2.0
+      ],
+      "params": {
+        "definition": "Palletiser",
+        "arguments": {
+          "cases_per_pallet": 8,
+          "pallet_change_time": 10.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "amr_fleet_1",
+      "description": "AMR fleet",
+      "type": "SUBMODEL",
+      "position": [
+        800.0,
+        100.0
+      ],
+      "layout_position": [
+        42.0,
+        20.0
+      ],
+      "params": {
+        "definition": "AMR fleet",
+        "arguments": {
+          "home_node": "line_out",
+          "destination": "Pallet in"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "charger_1",
+      "description": "Charger",
+      "type": "SUBMODEL",
+      "position": [
+        1000.0,
+        -60.0
+      ],
+      "layout_position": [
+        52.0,
+        22.0
+      ],
+      "params": {
+        "definition": "Charger",
+        "arguments": {},
+        "preset": ""
+      }
+    },
+    {
+      "name": "mobile_cobot_fleet_1",
+      "description": "Mobile cobot fleet",
+      "type": "SUBMODEL",
+      "position": [
+        400.0,
+        500.0
+      ],
+      "layout_position": [
+        8.0,
+        38.0
+      ],
+      "params": {
+        "definition": "Mobile cobot fleet",
+        "arguments": {
+          "home_node": "raw"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "tended_machine_1",
+      "description": "Tended machine",
+      "type": "SUBMODEL",
+      "position": [
+        400.0,
+        660.0
+      ],
+      "layout_position": [
+        34.0,
+        40.0
+      ],
+      "params": {
+        "definition": "Tended machine",
+        "arguments": {
+          "station": "Lathe",
+          "process_time": 40.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "cases",
+      "description": "A case every 20 s",
+      "type": "CREATE",
+      "position": [
+        0.0,
+        100.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Interarrival",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 20.0
+        },
+        "time_unit": "seconds",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "seconds"
+      }
+    },
+    {
+      "name": "Line out",
+      "description": "Line out",
+      "type": "STATION",
+      "position": [
+        600.0,
+        100.0
+      ],
+      "params": {
+        "station": "Line out",
+        "node": "line_out"
+      }
+    },
+    {
+      "name": "Pallet in",
+      "description": "Pallet in",
+      "type": "STATION",
+      "position": [
+        600.0,
+        300.0
+      ],
+      "params": {
+        "station": "Pallet in",
+        "node": "pallet_in"
+      }
+    },
+    {
+      "name": "pallets",
+      "description": "Full pallets leave",
+      "type": "DISPOSE",
+      "position": [
+        1000.0,
+        300.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "seconds"
+      }
+    },
+    {
+      "name": "shuttled",
+      "description": "The AMR's own exit (the case goes on from Pallet in)",
+      "type": "DISPOSE",
+      "position": [
+        1000.0,
+        100.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "seconds"
+      }
+    },
+    {
+      "name": "blanks",
+      "description": "A blank every 90 s",
+      "type": "CREATE",
+      "position": [
+        0.0,
+        500.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Interarrival",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 90.0
+        },
+        "time_unit": "seconds",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "sequence": "Tend",
+        "start_time_unit": "seconds"
+      }
+    },
+    {
+      "name": "Raw",
+      "description": "Raw",
+      "type": "STATION",
+      "position": [
+        200.0,
+        500.0
+      ],
+      "params": {
+        "station": "Raw",
+        "node": "raw"
+      }
+    },
+    {
+      "name": "Finished",
+      "description": "Finished",
+      "type": "STATION",
+      "position": [
+        800.0,
+        500.0
+      ],
+      "params": {
+        "station": "Finished",
+        "node": "finished"
+      }
+    },
+    {
+      "name": "parts",
+      "description": "Machined parts leave",
+      "type": "DISPOSE",
+      "position": [
+        1000.0,
+        500.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "seconds"
+      }
+    },
+    {
+      "name": "tended",
+      "description": "The mobile cobot's own exit",
+      "type": "DISPOSE",
+      "position": [
+        600.0,
+        500.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "seconds"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "cases",
+      "target": "robot_arm_cell_1",
+      "target_port": "in"
+    },
+    {
+      "source": "robot_arm_cell_1",
+      "target": "cobot_cell_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "cobot_cell_1",
+      "target": "Line out",
+      "source_port": "out"
+    },
+    {
+      "source": "Line out",
+      "target": "amr_fleet_1",
+      "target_port": "in"
+    },
+    {
+      "source": "amr_fleet_1",
+      "target": "shuttled",
+      "source_port": "done"
+    },
+    {
+      "source": "Pallet in",
+      "target": "palletiser_1",
+      "target_port": "in"
+    },
+    {
+      "source": "palletiser_1",
+      "target": "pallets",
+      "source_port": "out"
+    },
+    {
+      "source": "blanks",
+      "target": "Raw"
+    },
+    {
+      "source": "Raw",
+      "target": "mobile_cobot_fleet_1",
+      "target_port": "in"
+    },
+    {
+      "source": "tended_machine_1",
+      "target": "mobile_cobot_fleet_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "mobile_cobot_fleet_1",
+      "target": "tended",
+      "source_port": "done"
+    },
+    {
+      "source": "Finished",
+      "target": "parts"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Auto Robot",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Auto Cobot",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Auto Palletiser",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Auto Machine",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [
+    {
+      "name": "Tend",
+      "steps": [
+        {
+          "station": "Lathe"
+        },
+        {
+          "station": "Finished"
+        }
+      ]
+    }
+  ],
+  "variables": [],
+  "entities": [
+    {
+      "name": "DEFAULT",
+      "shape": "circle",
+      "color": "BLACK",
+      "holding_cost_time_unit": "seconds"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [
+    {
+      "name": "Auto Robot capex",
+      "category": "Capital",
+      "amount": "price * robots",
+      "capex": true
+    },
+    {
+      "name": "Auto Cobot capex",
+      "category": "Capital",
+      "amount": "price * robots",
+      "capex": true
+    },
+    {
+      "name": "Auto Palletiser capex",
+      "category": "Capital",
+      "amount": "price * robots",
+      "capex": true
+    },
+    {
+      "name": "Auto AMR capex",
+      "category": "Capital",
+      "amount": "price * vehicles",
+      "capex": true
+    },
+    {
+      "name": "Auto Charger capex",
+      "category": "Capital",
+      "amount": "price * points",
+      "capex": true
+    },
+    {
+      "name": "Auto Mobile cobot capex",
+      "category": "Capital",
+      "amount": "(base_price + arm_price) * vehicles",
+      "capex": true
+    },
+    {
+      "name": "Auto Machine capex",
+      "category": "Capital",
+      "amount": "price * machines",
+      "capex": true
+    }
+  ],
+  "fleets": [
+    {
+      "name": "Auto AMRs",
+      "count": 2,
+      "speed": 80.0,
+      "speed_empty": 90.0,
+      "load_time": "0.3",
+      "unload_time": "0.3",
+      "time_unit": "minutes",
+      "home": "",
+      "park": "stay",
+      "dispatch": "nearest",
+      "select": "nearest",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours",
+      "power": {
+        "busy": 0.4
+      },
+      "battery": {
+        "capacity_kwh": 2.0,
+        "low": 0.25,
+        "target": 0.9,
+        "strategy": "opportunity",
+        "opportunity_below": 0.8
+      },
+      "length_m": 1.0,
+      "speed_unit": "m/s"
+    },
+    {
+      "name": "Auto Mobile cobots",
+      "count": 2,
+      "speed": 80.0,
+      "speed_empty": 90.0,
+      "load_time": "0.3",
+      "unload_time": "0.3",
+      "time_unit": "minutes",
+      "home": "",
+      "park": "stay",
+      "dispatch": "nearest",
+      "select": "nearest",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours",
+      "power": {
+        "busy": 0.4
+      },
+      "battery": {
+        "capacity_kwh": 2.0,
+        "low": 0.25,
+        "target": 0.9,
+        "strategy": "opportunity",
+        "opportunity_below": 0.8
+      },
+      "arm": "$Auto Mobile arm",
+      "length_m": 1.1,
+      "speed_unit": "m/s"
+    }
+  ],
+  "motion_profiles": [
+    {
+      "name": "Auto Robot arm",
+      "kind": "robot",
+      "speed": 2.0,
+      "accel": 6.0,
+      "payload_max": 20.0,
+      "payload_derate": 0.7,
+      "collaborative_speed": 0.25,
+      "speed_unit": "m/s",
+      "payload_unit": "kg"
+    },
+    {
+      "name": "Auto Cobot arm",
+      "kind": "robot",
+      "speed": 1.0,
+      "accel": 2.0,
+      "payload_max": 10.0,
+      "payload_derate": 0.8,
+      "collaborative_speed": 0.25,
+      "speed_unit": "m/s",
+      "payload_unit": "kg"
+    },
+    {
+      "name": "Auto Palletiser arm",
+      "kind": "robot",
+      "speed": 2.0,
+      "accel": 4.0,
+      "payload_max": 180.0,
+      "payload_derate": 0.6,
+      "collaborative_speed": 0.25,
+      "speed_unit": "m/s",
+      "payload_unit": "kg"
+    },
+    {
+      "name": "Auto Mobile arm",
+      "kind": "robot",
+      "speed": 1.0,
+      "accel": 2.0,
+      "payload_max": 10.0,
+      "payload_derate": 0.8,
+      "collaborative_speed": 0.25,
+      "speed_unit": "m/s",
+      "payload_unit": "kg"
+    }
+  ],
+  "chargers": [
+    {
+      "name": "Auto AMR charger",
+      "node": "$base",
+      "kind": "charge",
+      "points": 1,
+      "power_kw": 1.0
+    },
+    {
+      "name": "Auto Charger",
+      "node": "$bay",
+      "kind": "charge",
+      "points": 2,
+      "power_kw": 1.0
+    },
+    {
+      "name": "Auto Mobile cobot charger",
+      "node": "$base",
+      "kind": "charge",
+      "points": 1,
+      "power_kw": 1.0
+    }
+  ],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": {
+    "nodes": [
+      {
+        "name": "line_out",
+        "x": 34.0,
+        "y": 14.0
+      },
+      {
+        "name": "pallet_in",
+        "x": 60.0,
+        "y": 14.0
+      },
+      {
+        "name": "raw",
+        "x": 0.0,
+        "y": 30.0
+      },
+      {
+        "name": "finished",
+        "x": 50.0,
+        "y": 30.0
+      },
+      {
+        "name": "cross",
+        "x": 34.0,
+        "y": 30.0
+      },
+      {
+        "name": "robot_arm_cell_1/cell",
+        "x": 12.0,
+        "y": 0.0
+      },
+      {
+        "name": "safety_zone_1/zone",
+        "x": 26.0,
+        "y": 7.0
+      },
+      {
+        "name": "cobot_cell_1/cell",
+        "x": 26.0,
+        "y": 0.0
+      },
+      {
+        "name": "amr_fleet_1/base",
+        "x": 42.0,
+        "y": 20.0
+      },
+      {
+        "name": "charger_1/bay",
+        "x": 52.0,
+        "y": 22.0
+      },
+      {
+        "name": "mobile_cobot_fleet_1/base",
+        "x": 8.0,
+        "y": 38.0
+      },
+      {
+        "name": "tended_machine_1/machine",
+        "x": 34.0,
+        "y": 40.0
+      }
+    ],
+    "segments": [
+      {
+        "from": "line_out",
+        "to": "pallet_in",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "line_out",
+        "to": "cross",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "raw",
+        "to": "cross",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "cross",
+        "to": "finished",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "line_out",
+        "to": "robot_arm_cell_1/cell",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "line_out",
+        "to": "safety_zone_1/zone",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "line_out",
+        "to": "cobot_cell_1/cell",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "line_out",
+        "to": "amr_fleet_1/base",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "pallet_in",
+        "to": "charger_1/bay",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "raw",
+        "to": "mobile_cobot_fleet_1/base",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      },
+      {
+        "from": "cross",
+        "to": "tended_machine_1/machine",
+        "length_unit": "meters",
+        "speed_unit": "m/s"
+      }
+    ]
+  },
+  "annotations": [],
+  "submodels": {
+    "Robot arm cell": {
+      "info": {
+        "description": "A robot arm that picks a part, carries it over the reach distance, places it and works on it. The cycle time follows from the arm's speed, acceleration and payload (Results > Motion shows the time per motion). The cell brings its purchase price as capex for the investment case, its power and a maintenance cost per hour. Its \"cell\" node is where vehicles deliver to; leave it unjoined in a model with no vehicles.",
+        "library": {
+          "library": "automation",
+          "asset": "robot_arm_cell",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "station",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Station name",
+            "help": "The name a sequence step or a fleet's destination uses for this place. Empty: the instance's own station block.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reach_m",
+            "type": "number",
+            "default": 0.8,
+            "unit": "m",
+            "label": "Reach distance",
+            "help": "One way, from the pick position to the place position.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_kg",
+            "type": "number",
+            "default": 2.0,
+            "unit": "kg",
+            "label": "Payload",
+            "help": "Carried on the way back; slows the arm towards its rated payload.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pick_time",
+            "type": "number",
+            "default": 0.5,
+            "unit": "seconds",
+            "label": "Pick time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "place_time",
+            "type": "number",
+            "default": 0.5,
+            "unit": "seconds",
+            "label": "Place time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "process_time",
+            "type": "number",
+            "default": 5.0,
+            "unit": "seconds",
+            "label": "Process time",
+            "help": "The work done on the part once it is placed.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cycles_per_tool_change",
+            "type": "int",
+            "default": 100,
+            "unit": "",
+            "label": "Cycles before a tool change",
+            "help": "The tool change time is spread evenly over this many cycles: each cycle carries its share, so the average is right and no single cycle stops for the change.",
+            "group": "Cycle",
+            "min": 1,
+            "max": 1000000,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "tool_change_time",
+            "type": "number",
+            "default": 0.0,
+            "unit": "seconds",
+            "label": "Tool change time",
+            "help": "0: no tool change.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "robots",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Robots",
+            "help": "",
+            "group": "Robot",
+            "min": 1,
+            "max": 50,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed",
+            "type": "number",
+            "default": 2.0,
+            "unit": "m/s",
+            "label": "Arm speed",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "accel",
+            "type": "number",
+            "default": 6.0,
+            "unit": "m/s^2",
+            "label": "Arm acceleration",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_max",
+            "type": "number",
+            "default": 20.0,
+            "unit": "kg",
+            "label": "Rated payload",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_derate",
+            "type": "number",
+            "default": 0.7,
+            "unit": "",
+            "label": "Speed fraction at rated payload",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "power_kw",
+            "type": "number",
+            "default": 1.5,
+            "unit": "kW",
+            "label": "Power drawn while working",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "price",
+            "type": "number",
+            "default": 40000.0,
+            "unit": "currency",
+            "label": "Purchase price per robot",
+            "help": "The investment the investment case counts as capex, times the count.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "maintenance_per_hour",
+            "type": "number",
+            "default": 2.0,
+            "unit": "currency per hour",
+            "label": "Maintenance per unit hour",
+            "help": "Charged for every scheduled hour, working or idle.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "cell",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "catalogue": {
+          "catalogue": "Auto Robot and human profiles",
+          "label": "Robot",
+          "group": "Robot",
+          "map": {
+            "speed": "speed",
+            "accel": "accel",
+            "payload_max": "payload_max",
+            "payload_derate": "payload_derate",
+            "power_kw": "power_kw",
+            "price": "price"
+          },
+          "rows": [
+            "6-axis robot, small",
+            "6-axis robot, medium",
+            "6-axis robot, large",
+            "SCARA",
+            "Delta",
+            "Palletising robot",
+            "Cobot 5 kg",
+            "Cobot 10 kg",
+            "Cobot 16 kg",
+            "Human walk",
+            "Human reach"
+          ],
+          "units": {
+            "speed": "m/s",
+            "accel": "m/s^2",
+            "payload_max": "kg",
+            "payload_derate": "speed fraction at payload_max",
+            "collaborative_speed": "m/s",
+            "power_kw": "kW",
+            "price": "currency"
+          },
+          "values": {
+            "6-axis robot, small": {
+              "speed": 2.0,
+              "accel": 8.0,
+              "payload_max": 7.0,
+              "payload_derate": 0.7,
+              "power_kw": 0.5,
+              "price": 25000.0
+            },
+            "6-axis robot, medium": {
+              "speed": 2.0,
+              "accel": 6.0,
+              "payload_max": 20.0,
+              "payload_derate": 0.7,
+              "power_kw": 1.5,
+              "price": 40000.0
+            },
+            "6-axis robot, large": {
+              "speed": 1.5,
+              "accel": 4.0,
+              "payload_max": 165.0,
+              "payload_derate": 0.6,
+              "power_kw": 5.0,
+              "price": 70000.0
+            },
+            "SCARA": {
+              "speed": 3.0,
+              "accel": 15.0,
+              "payload_max": 6.0,
+              "payload_derate": 0.6,
+              "power_kw": 0.4,
+              "price": 15000.0
+            },
+            "Delta": {
+              "speed": 5.0,
+              "accel": 50.0,
+              "payload_max": 3.0,
+              "payload_derate": 0.5,
+              "power_kw": 0.6,
+              "price": 30000.0
+            },
+            "Palletising robot": {
+              "speed": 2.0,
+              "accel": 4.0,
+              "payload_max": 180.0,
+              "payload_derate": 0.6,
+              "power_kw": 6.0,
+              "price": 80000.0
+            },
+            "Cobot 5 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 5.0,
+              "payload_derate": 0.8,
+              "power_kw": 0.2,
+              "price": 28000.0
+            },
+            "Cobot 10 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 10.0,
+              "payload_derate": 0.8,
+              "power_kw": 0.35,
+              "price": 38000.0
+            },
+            "Cobot 16 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 16.0,
+              "payload_derate": 0.75,
+              "power_kw": 0.4,
+              "price": 45000.0
+            },
+            "Human walk": {
+              "speed": 1.2,
+              "accel": 0.8,
+              "payload_max": 15.0,
+              "payload_derate": 0.7,
+              "power_kw": 0.0,
+              "price": 0.0
+            },
+            "Human reach": {
+              "speed": 0.8,
+              "accel": 4.0,
+              "payload_max": 10.0,
+              "payload_derate": 0.7,
+              "power_kw": 0.0,
+              "price": 0.0
+            }
+          },
+          "sources": {
+            "6-axis robot, small": "Illustrative: a 7 kg articulated arm. Collaborative speed is the 250 mm/s reduced speed.",
+            "6-axis robot, medium": "Illustrative: a 20 kg articulated arm.",
+            "6-axis robot, large": "Illustrative: a 165 kg articulated arm.",
+            "SCARA": "Illustrative: fast planar pick and place.",
+            "Delta": "Illustrative: a parallel picker for light parts.",
+            "Palletising robot": "Illustrative: a 4-axis palletiser.",
+            "Cobot 5 kg": "Illustrative: a 5 kg collaborative arm.",
+            "Cobot 10 kg": "Illustrative: a 10 kg collaborative arm.",
+            "Cobot 16 kg": "Illustrative: a 16 kg collaborative arm.",
+            "Human walk": "Illustrative: a person walking; no power and no purchase price.",
+            "Human reach": "Illustrative: a person's arm reach; no power and no purchase price."
+          }
+        },
+        "owns": {
+          "resources": [
+            "Auto Robot"
+          ],
+          "motion_profiles": [
+            "Auto Robot arm"
+          ],
+          "fixed_costs": [
+            "Auto Robot capex"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station",
+          "default": "",
+          "type": "name",
+          "description": "The name a sequence step or a fleet's destination uses for this place. Empty: the instance's own station block."
+        },
+        {
+          "name": "reach_m",
+          "default": 0.8,
+          "type": "number",
+          "description": "One way, from the pick position to the place position."
+        },
+        {
+          "name": "payload_kg",
+          "default": 2.0,
+          "type": "number",
+          "description": "Carried on the way back; slows the arm towards its rated payload."
+        },
+        {
+          "name": "pick_time",
+          "default": 0.5,
+          "type": "number"
+        },
+        {
+          "name": "place_time",
+          "default": 0.5,
+          "type": "number"
+        },
+        {
+          "name": "process_time",
+          "default": 5.0,
+          "type": "number",
+          "description": "The work done on the part once it is placed."
+        },
+        {
+          "name": "cycles_per_tool_change",
+          "default": 100,
+          "type": "int",
+          "description": "The tool change time is spread evenly over this many cycles: each cycle carries its share, so the average is right and no single cycle stops for the change."
+        },
+        {
+          "name": "tool_change_time",
+          "default": 0.0,
+          "type": "number",
+          "description": "0: no tool change."
+        },
+        {
+          "name": "robots",
+          "default": 1,
+          "type": "int"
+        },
+        {
+          "name": "speed",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "accel",
+          "default": 6.0,
+          "type": "number"
+        },
+        {
+          "name": "payload_max",
+          "default": 20.0,
+          "type": "number"
+        },
+        {
+          "name": "payload_derate",
+          "default": 0.7,
+          "type": "number"
+        },
+        {
+          "name": "power_kw",
+          "default": 1.5,
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "default": 40000.0,
+          "type": "number",
+          "description": "The investment the investment case counts as capex, times the count."
+        },
+        {
+          "name": "maintenance_per_hour",
+          "default": 2.0,
+          "type": "number",
+          "description": "Charged for every scheduled hour, working or idle."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Auto Robot": {
+            "capacity": "robots",
+            "cost_busy": "maintenance_per_hour",
+            "cost_idle": "maintenance_per_hour",
+            "power.busy": "power_kw"
+          }
+        },
+        "motion_profiles": {
+          "Auto Robot arm": {
+            "speed": "speed",
+            "accel": "accel",
+            "payload_max": "payload_max",
+            "payload_derate": "payload_derate"
+          }
+        },
+        "fixed_costs": {
+          "Auto Robot capex": {}
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Parts arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_cell",
+          "description": "Cell",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station"
+            },
+            "node": "$cell"
+          }
+        },
+        {
+          "name": "work",
+          "description": "Pick, place and process",
+          "type": "MOTION",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "resource_name": "$Auto Robot",
+            "quantity": 1,
+            "priority": 0,
+            "profile": "$Auto Robot arm",
+            "hrc": "none",
+            "time_unit": "seconds",
+            "segments": [
+              {
+                "kind": "move",
+                "distance_m": {
+                  "$arg": "reach_m"
+                }
+              },
+              {
+                "kind": "pick",
+                "time": "pick_time"
+              },
+              {
+                "kind": "move",
+                "distance_m": {
+                  "$arg": "reach_m"
+                },
+                "payload_kg": {
+                  "$arg": "payload_kg"
+                }
+              },
+              {
+                "kind": "place",
+                "time": "place_time"
+              },
+              {
+                "kind": "process",
+                "time": "process_time"
+              },
+              {
+                "kind": "tool_change",
+                "time": "tool_change_time / cycles_per_tool_change"
+              }
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "description": "Parts leave",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_cell"
+        },
+        {
+          "source": "at_cell",
+          "target": "work"
+        },
+        {
+          "source": "work",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Safety zone": {
+      "info": {
+        "description": "The place a cobot watches for people: one node, \"zone\". Put it where the people come close and join it to the walkways; a Cobot cell in \"separation\" mode names it as <instance>/zone and slows down while a worker is within the cell's zone radius of it, by path distance.",
+        "library": {
+          "library": "automation",
+          "asset": "safety_zone",
+          "version": "1.0.0"
+        },
+        "geometry": {
+          "nodes": [
+            {
+              "name": "zone",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "owns": {}
+      },
+      "parameters": [],
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Cobot cell": {
+      "info": {
+        "description": "A collaborative arm working next to people. \"collaborative\": every move runs at the collaborative speed. \"separation\": a move starts at the collaborative speed only while a worker is within the zone radius of a Safety zone, by path distance, and at full speed otherwise. Name the zone as <safety zone instance>/zone. The rest is a Robot arm cell.",
+        "library": {
+          "library": "automation",
+          "asset": "cobot_cell",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "station",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Station name",
+            "help": "The name a sequence step or a fleet's destination uses for this place. Empty: the instance's own station block.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reach_m",
+            "type": "number",
+            "default": 0.8,
+            "unit": "m",
+            "label": "Reach distance",
+            "help": "One way, from the pick position to the place position.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_kg",
+            "type": "number",
+            "default": 2.0,
+            "unit": "kg",
+            "label": "Payload",
+            "help": "Carried on the way back; slows the arm towards its rated payload.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pick_time",
+            "type": "number",
+            "default": 0.5,
+            "unit": "seconds",
+            "label": "Pick time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "place_time",
+            "type": "number",
+            "default": 0.5,
+            "unit": "seconds",
+            "label": "Place time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "process_time",
+            "type": "number",
+            "default": 5.0,
+            "unit": "seconds",
+            "label": "Process time",
+            "help": "The work done on the part once it is placed.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cycles_per_tool_change",
+            "type": "int",
+            "default": 100,
+            "unit": "",
+            "label": "Cycles before a tool change",
+            "help": "The tool change time is spread evenly over this many cycles: each cycle carries its share, so the average is right and no single cycle stops for the change.",
+            "group": "Cycle",
+            "min": 1,
+            "max": 1000000,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "tool_change_time",
+            "type": "number",
+            "default": 0.0,
+            "unit": "seconds",
+            "label": "Tool change time",
+            "help": "0: no tool change.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "robots",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Robots",
+            "help": "",
+            "group": "Robot",
+            "min": 1,
+            "max": 50,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed",
+            "type": "number",
+            "default": 1.0,
+            "unit": "m/s",
+            "label": "Arm speed",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "accel",
+            "type": "number",
+            "default": 2.0,
+            "unit": "m/s^2",
+            "label": "Arm acceleration",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_max",
+            "type": "number",
+            "default": 10.0,
+            "unit": "kg",
+            "label": "Rated payload",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_derate",
+            "type": "number",
+            "default": 0.8,
+            "unit": "",
+            "label": "Speed fraction at rated payload",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "collaborative_speed",
+            "type": "number",
+            "default": 0.25,
+            "unit": "m/s",
+            "label": "Collaborative speed",
+            "help": "The arm's speed when it shares its space with a person.",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "hrc",
+            "type": "choice",
+            "default": "collaborative",
+            "unit": "",
+            "label": "Collaboration",
+            "help": "collaborative: always at the collaborative speed. separation: only while a worker is inside the safety zone.",
+            "group": "Safety",
+            "min": null,
+            "max": null,
+            "choices": [
+              "collaborative",
+              "separation"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "zone",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Safety zone node",
+            "help": "With \"separation\": the node of a Safety zone, written <instance>/zone, e.g. \"safety_zone_1/zone\".",
+            "group": "Safety",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "zone_radius_m",
+            "type": "number",
+            "default": 1.5,
+            "unit": "m",
+            "label": "Zone radius",
+            "help": "With \"separation\": a worker within this path distance of the zone node slows the cobot.",
+            "group": "Safety",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "power_kw",
+            "type": "number",
+            "default": 0.35,
+            "unit": "kW",
+            "label": "Power drawn while working",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "price",
+            "type": "number",
+            "default": 38000.0,
+            "unit": "currency",
+            "label": "Purchase price per cobot",
+            "help": "The investment the investment case counts as capex, times the count.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "maintenance_per_hour",
+            "type": "number",
+            "default": 2.0,
+            "unit": "currency per hour",
+            "label": "Maintenance per unit hour",
+            "help": "Charged for every scheduled hour, working or idle.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "cell",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "catalogue": {
+          "catalogue": "Auto Robot and human profiles",
+          "label": "Cobot",
+          "group": "Robot",
+          "map": {
+            "speed": "speed",
+            "accel": "accel",
+            "payload_max": "payload_max",
+            "payload_derate": "payload_derate",
+            "collaborative_speed": "collaborative_speed",
+            "power_kw": "power_kw",
+            "price": "price"
+          },
+          "rows": [
+            "6-axis robot, small",
+            "6-axis robot, medium",
+            "6-axis robot, large",
+            "SCARA",
+            "Delta",
+            "Palletising robot",
+            "Cobot 5 kg",
+            "Cobot 10 kg",
+            "Cobot 16 kg",
+            "Human walk",
+            "Human reach"
+          ],
+          "units": {
+            "speed": "m/s",
+            "accel": "m/s^2",
+            "payload_max": "kg",
+            "payload_derate": "speed fraction at payload_max",
+            "collaborative_speed": "m/s",
+            "power_kw": "kW",
+            "price": "currency"
+          },
+          "values": {
+            "6-axis robot, small": {
+              "speed": 2.0,
+              "accel": 8.0,
+              "payload_max": 7.0,
+              "payload_derate": 0.7,
+              "collaborative_speed": 0.25,
+              "power_kw": 0.5,
+              "price": 25000.0
+            },
+            "6-axis robot, medium": {
+              "speed": 2.0,
+              "accel": 6.0,
+              "payload_max": 20.0,
+              "payload_derate": 0.7,
+              "collaborative_speed": 0.25,
+              "power_kw": 1.5,
+              "price": 40000.0
+            },
+            "6-axis robot, large": {
+              "speed": 1.5,
+              "accel": 4.0,
+              "payload_max": 165.0,
+              "payload_derate": 0.6,
+              "collaborative_speed": 0.25,
+              "power_kw": 5.0,
+              "price": 70000.0
+            },
+            "SCARA": {
+              "speed": 3.0,
+              "accel": 15.0,
+              "payload_max": 6.0,
+              "payload_derate": 0.6,
+              "collaborative_speed": 0.25,
+              "power_kw": 0.4,
+              "price": 15000.0
+            },
+            "Delta": {
+              "speed": 5.0,
+              "accel": 50.0,
+              "payload_max": 3.0,
+              "payload_derate": 0.5,
+              "collaborative_speed": 0.25,
+              "power_kw": 0.6,
+              "price": 30000.0
+            },
+            "Palletising robot": {
+              "speed": 2.0,
+              "accel": 4.0,
+              "payload_max": 180.0,
+              "payload_derate": 0.6,
+              "collaborative_speed": 0.25,
+              "power_kw": 6.0,
+              "price": 80000.0
+            },
+            "Cobot 5 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 5.0,
+              "payload_derate": 0.8,
+              "collaborative_speed": 0.25,
+              "power_kw": 0.2,
+              "price": 28000.0
+            },
+            "Cobot 10 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 10.0,
+              "payload_derate": 0.8,
+              "collaborative_speed": 0.25,
+              "power_kw": 0.35,
+              "price": 38000.0
+            },
+            "Cobot 16 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 16.0,
+              "payload_derate": 0.75,
+              "collaborative_speed": 0.25,
+              "power_kw": 0.4,
+              "price": 45000.0
+            },
+            "Human walk": {
+              "speed": 1.2,
+              "accel": 0.8,
+              "payload_max": 15.0,
+              "payload_derate": 0.7,
+              "collaborative_speed": 1.2,
+              "power_kw": 0.0,
+              "price": 0.0
+            },
+            "Human reach": {
+              "speed": 0.8,
+              "accel": 4.0,
+              "payload_max": 10.0,
+              "payload_derate": 0.7,
+              "collaborative_speed": 0.8,
+              "power_kw": 0.0,
+              "price": 0.0
+            }
+          },
+          "sources": {
+            "6-axis robot, small": "Illustrative: a 7 kg articulated arm. Collaborative speed is the 250 mm/s reduced speed.",
+            "6-axis robot, medium": "Illustrative: a 20 kg articulated arm.",
+            "6-axis robot, large": "Illustrative: a 165 kg articulated arm.",
+            "SCARA": "Illustrative: fast planar pick and place.",
+            "Delta": "Illustrative: a parallel picker for light parts.",
+            "Palletising robot": "Illustrative: a 4-axis palletiser.",
+            "Cobot 5 kg": "Illustrative: a 5 kg collaborative arm.",
+            "Cobot 10 kg": "Illustrative: a 10 kg collaborative arm.",
+            "Cobot 16 kg": "Illustrative: a 16 kg collaborative arm.",
+            "Human walk": "Illustrative: a person walking; no power and no purchase price.",
+            "Human reach": "Illustrative: a person's arm reach; no power and no purchase price."
+          }
+        },
+        "owns": {
+          "resources": [
+            "Auto Cobot"
+          ],
+          "motion_profiles": [
+            "Auto Cobot arm"
+          ],
+          "fixed_costs": [
+            "Auto Cobot capex"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station",
+          "default": "",
+          "type": "name",
+          "description": "The name a sequence step or a fleet's destination uses for this place. Empty: the instance's own station block."
+        },
+        {
+          "name": "reach_m",
+          "default": 0.8,
+          "type": "number",
+          "description": "One way, from the pick position to the place position."
+        },
+        {
+          "name": "payload_kg",
+          "default": 2.0,
+          "type": "number",
+          "description": "Carried on the way back; slows the arm towards its rated payload."
+        },
+        {
+          "name": "pick_time",
+          "default": 0.5,
+          "type": "number"
+        },
+        {
+          "name": "place_time",
+          "default": 0.5,
+          "type": "number"
+        },
+        {
+          "name": "process_time",
+          "default": 5.0,
+          "type": "number",
+          "description": "The work done on the part once it is placed."
+        },
+        {
+          "name": "cycles_per_tool_change",
+          "default": 100,
+          "type": "int",
+          "description": "The tool change time is spread evenly over this many cycles: each cycle carries its share, so the average is right and no single cycle stops for the change."
+        },
+        {
+          "name": "tool_change_time",
+          "default": 0.0,
+          "type": "number",
+          "description": "0: no tool change."
+        },
+        {
+          "name": "robots",
+          "default": 1,
+          "type": "int"
+        },
+        {
+          "name": "speed",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "accel",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "payload_max",
+          "default": 10.0,
+          "type": "number"
+        },
+        {
+          "name": "payload_derate",
+          "default": 0.8,
+          "type": "number"
+        },
+        {
+          "name": "collaborative_speed",
+          "default": 0.25,
+          "type": "number",
+          "description": "The arm's speed when it shares its space with a person."
+        },
+        {
+          "name": "hrc",
+          "default": "collaborative",
+          "type": "choice",
+          "description": "collaborative: always at the collaborative speed. separation: only while a worker is inside the safety zone."
+        },
+        {
+          "name": "zone",
+          "default": "",
+          "type": "name",
+          "description": "With \"separation\": the node of a Safety zone, written <instance>/zone, e.g. \"safety_zone_1/zone\"."
+        },
+        {
+          "name": "zone_radius_m",
+          "default": 1.5,
+          "type": "number",
+          "description": "With \"separation\": a worker within this path distance of the zone node slows the cobot."
+        },
+        {
+          "name": "power_kw",
+          "default": 0.35,
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "default": 38000.0,
+          "type": "number",
+          "description": "The investment the investment case counts as capex, times the count."
+        },
+        {
+          "name": "maintenance_per_hour",
+          "default": 2.0,
+          "type": "number",
+          "description": "Charged for every scheduled hour, working or idle."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Auto Cobot": {
+            "capacity": "robots",
+            "cost_busy": "maintenance_per_hour",
+            "cost_idle": "maintenance_per_hour",
+            "power.busy": "power_kw"
+          }
+        },
+        "motion_profiles": {
+          "Auto Cobot arm": {
+            "speed": "speed",
+            "accel": "accel",
+            "payload_max": "payload_max",
+            "payload_derate": "payload_derate",
+            "collaborative_speed": "collaborative_speed"
+          }
+        },
+        "fixed_costs": {
+          "Auto Cobot capex": {}
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Parts arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_cell",
+          "description": "Cell",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station"
+            },
+            "node": "$cell"
+          }
+        },
+        {
+          "name": "work",
+          "description": "Pick, place and process",
+          "type": "MOTION",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "resource_name": "$Auto Cobot",
+            "quantity": 1,
+            "priority": 0,
+            "profile": "$Auto Cobot arm",
+            "hrc": {
+              "$arg": "hrc"
+            },
+            "time_unit": "seconds",
+            "segments": [
+              {
+                "kind": "move",
+                "distance_m": {
+                  "$arg": "reach_m"
+                }
+              },
+              {
+                "kind": "pick",
+                "time": "pick_time"
+              },
+              {
+                "kind": "move",
+                "distance_m": {
+                  "$arg": "reach_m"
+                },
+                "payload_kg": {
+                  "$arg": "payload_kg"
+                }
+              },
+              {
+                "kind": "place",
+                "time": "place_time"
+              },
+              {
+                "kind": "process",
+                "time": "process_time"
+              },
+              {
+                "kind": "tool_change",
+                "time": "tool_change_time / cycles_per_tool_change"
+              }
+            ],
+            "zone": {
+              "node": {
+                "$arg": "zone"
+              },
+              "radius_m": {
+                "$arg": "zone_radius_m"
+              }
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Parts leave",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_cell"
+        },
+        {
+          "source": "at_cell",
+          "target": "work"
+        },
+        {
+          "source": "work",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Palletiser": {
+      "info": {
+        "description": "A robot that stacks cases onto a pallet: one motion cycle per case, and after the last case of a pallet the same robot is held for the pallet change. Cases go in, full pallets come out.",
+        "library": {
+          "library": "automation",
+          "asset": "palletiser",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "cases_per_pallet",
+            "type": "int",
+            "default": 40,
+            "unit": "",
+            "label": "Cases per pallet",
+            "help": "",
+            "group": "Cycle",
+            "min": 1,
+            "max": 10000,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reach_m",
+            "type": "number",
+            "default": 1.5,
+            "unit": "m",
+            "label": "Reach distance",
+            "help": "One way, from the infeed to the pallet.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "case_kg",
+            "type": "number",
+            "default": 10.0,
+            "unit": "kg",
+            "label": "Case weight",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pick_time",
+            "type": "number",
+            "default": 1.0,
+            "unit": "seconds",
+            "label": "Pick time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "place_time",
+            "type": "number",
+            "default": 1.0,
+            "unit": "seconds",
+            "label": "Place time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pallet_change_time",
+            "type": "number",
+            "default": 30.0,
+            "unit": "seconds",
+            "label": "Pallet change time",
+            "help": "The robot waits this long while the full pallet is replaced.",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "robots",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Robots",
+            "help": "",
+            "group": "Robot",
+            "min": 1,
+            "max": 50,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed",
+            "type": "number",
+            "default": 2.0,
+            "unit": "m/s",
+            "label": "Arm speed",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "accel",
+            "type": "number",
+            "default": 4.0,
+            "unit": "m/s^2",
+            "label": "Arm acceleration",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_max",
+            "type": "number",
+            "default": 180.0,
+            "unit": "kg",
+            "label": "Rated payload",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "payload_derate",
+            "type": "number",
+            "default": 0.6,
+            "unit": "",
+            "label": "Speed fraction at rated payload",
+            "help": "",
+            "group": "Robot",
+            "min": 1e-09,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "power_kw",
+            "type": "number",
+            "default": 6.0,
+            "unit": "kW",
+            "label": "Power drawn while working",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "price",
+            "type": "number",
+            "default": 80000.0,
+            "unit": "currency",
+            "label": "Purchase price per robot",
+            "help": "The investment the investment case counts as capex, times the count.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "maintenance_per_hour",
+            "type": "number",
+            "default": 2.0,
+            "unit": "currency per hour",
+            "label": "Maintenance per unit hour",
+            "help": "Charged for every scheduled hour, working or idle.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Auto Robot and human profiles",
+          "label": "Robot",
+          "group": "Robot",
+          "map": {
+            "speed": "speed",
+            "accel": "accel",
+            "payload_max": "payload_max",
+            "payload_derate": "payload_derate",
+            "power_kw": "power_kw",
+            "price": "price"
+          },
+          "rows": [
+            "6-axis robot, small",
+            "6-axis robot, medium",
+            "6-axis robot, large",
+            "SCARA",
+            "Delta",
+            "Palletising robot",
+            "Cobot 5 kg",
+            "Cobot 10 kg",
+            "Cobot 16 kg",
+            "Human walk",
+            "Human reach"
+          ],
+          "units": {
+            "speed": "m/s",
+            "accel": "m/s^2",
+            "payload_max": "kg",
+            "payload_derate": "speed fraction at payload_max",
+            "collaborative_speed": "m/s",
+            "power_kw": "kW",
+            "price": "currency"
+          },
+          "values": {
+            "6-axis robot, small": {
+              "speed": 2.0,
+              "accel": 8.0,
+              "payload_max": 7.0,
+              "payload_derate": 0.7,
+              "power_kw": 0.5,
+              "price": 25000.0
+            },
+            "6-axis robot, medium": {
+              "speed": 2.0,
+              "accel": 6.0,
+              "payload_max": 20.0,
+              "payload_derate": 0.7,
+              "power_kw": 1.5,
+              "price": 40000.0
+            },
+            "6-axis robot, large": {
+              "speed": 1.5,
+              "accel": 4.0,
+              "payload_max": 165.0,
+              "payload_derate": 0.6,
+              "power_kw": 5.0,
+              "price": 70000.0
+            },
+            "SCARA": {
+              "speed": 3.0,
+              "accel": 15.0,
+              "payload_max": 6.0,
+              "payload_derate": 0.6,
+              "power_kw": 0.4,
+              "price": 15000.0
+            },
+            "Delta": {
+              "speed": 5.0,
+              "accel": 50.0,
+              "payload_max": 3.0,
+              "payload_derate": 0.5,
+              "power_kw": 0.6,
+              "price": 30000.0
+            },
+            "Palletising robot": {
+              "speed": 2.0,
+              "accel": 4.0,
+              "payload_max": 180.0,
+              "payload_derate": 0.6,
+              "power_kw": 6.0,
+              "price": 80000.0
+            },
+            "Cobot 5 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 5.0,
+              "payload_derate": 0.8,
+              "power_kw": 0.2,
+              "price": 28000.0
+            },
+            "Cobot 10 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 10.0,
+              "payload_derate": 0.8,
+              "power_kw": 0.35,
+              "price": 38000.0
+            },
+            "Cobot 16 kg": {
+              "speed": 1.0,
+              "accel": 2.0,
+              "payload_max": 16.0,
+              "payload_derate": 0.75,
+              "power_kw": 0.4,
+              "price": 45000.0
+            },
+            "Human walk": {
+              "speed": 1.2,
+              "accel": 0.8,
+              "payload_max": 15.0,
+              "payload_derate": 0.7,
+              "power_kw": 0.0,
+              "price": 0.0
+            },
+            "Human reach": {
+              "speed": 0.8,
+              "accel": 4.0,
+              "payload_max": 10.0,
+              "payload_derate": 0.7,
+              "power_kw": 0.0,
+              "price": 0.0
+            }
+          },
+          "sources": {
+            "6-axis robot, small": "Illustrative: a 7 kg articulated arm. Collaborative speed is the 250 mm/s reduced speed.",
+            "6-axis robot, medium": "Illustrative: a 20 kg articulated arm.",
+            "6-axis robot, large": "Illustrative: a 165 kg articulated arm.",
+            "SCARA": "Illustrative: fast planar pick and place.",
+            "Delta": "Illustrative: a parallel picker for light parts.",
+            "Palletising robot": "Illustrative: a 4-axis palletiser.",
+            "Cobot 5 kg": "Illustrative: a 5 kg collaborative arm.",
+            "Cobot 10 kg": "Illustrative: a 10 kg collaborative arm.",
+            "Cobot 16 kg": "Illustrative: a 16 kg collaborative arm.",
+            "Human walk": "Illustrative: a person walking; no power and no purchase price.",
+            "Human reach": "Illustrative: a person's arm reach; no power and no purchase price."
+          }
+        },
+        "owns": {
+          "resources": [
+            "Auto Palletiser"
+          ],
+          "motion_profiles": [
+            "Auto Palletiser arm"
+          ],
+          "fixed_costs": [
+            "Auto Palletiser capex"
+          ],
+          "entities": [
+            "Auto Pallet"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "cases_per_pallet",
+          "default": 40,
+          "type": "int"
+        },
+        {
+          "name": "reach_m",
+          "default": 1.5,
+          "type": "number",
+          "description": "One way, from the infeed to the pallet."
+        },
+        {
+          "name": "case_kg",
+          "default": 10.0,
+          "type": "number"
+        },
+        {
+          "name": "pick_time",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "place_time",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "pallet_change_time",
+          "default": 30.0,
+          "type": "number",
+          "description": "The robot waits this long while the full pallet is replaced."
+        },
+        {
+          "name": "robots",
+          "default": 1,
+          "type": "int"
+        },
+        {
+          "name": "speed",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "accel",
+          "default": 4.0,
+          "type": "number"
+        },
+        {
+          "name": "payload_max",
+          "default": 180.0,
+          "type": "number"
+        },
+        {
+          "name": "payload_derate",
+          "default": 0.6,
+          "type": "number"
+        },
+        {
+          "name": "power_kw",
+          "default": 6.0,
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "default": 80000.0,
+          "type": "number",
+          "description": "The investment the investment case counts as capex, times the count."
+        },
+        {
+          "name": "maintenance_per_hour",
+          "default": 2.0,
+          "type": "number",
+          "description": "Charged for every scheduled hour, working or idle."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Auto Palletiser": {
+            "capacity": "robots",
+            "cost_busy": "maintenance_per_hour",
+            "cost_idle": "maintenance_per_hour",
+            "power.busy": "power_kw"
+          }
+        },
+        "motion_profiles": {
+          "Auto Palletiser arm": {
+            "speed": "speed",
+            "accel": "accel",
+            "payload_max": "payload_max",
+            "payload_derate": "payload_derate"
+          }
+        },
+        "fixed_costs": {
+          "Auto Palletiser capex": {}
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Cases arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "stack",
+          "description": "Stack a case",
+          "type": "MOTION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "resource_name": "$Auto Palletiser",
+            "quantity": 1,
+            "priority": 0,
+            "profile": "$Auto Palletiser arm",
+            "hrc": "none",
+            "time_unit": "seconds",
+            "segments": [
+              {
+                "kind": "move",
+                "distance_m": {
+                  "$arg": "reach_m"
+                }
+              },
+              {
+                "kind": "pick",
+                "time": "pick_time"
+              },
+              {
+                "kind": "move",
+                "distance_m": {
+                  "$arg": "reach_m"
+                },
+                "payload_kg": {
+                  "$arg": "case_kg"
+                }
+              },
+              {
+                "kind": "place",
+                "time": "place_time"
+              }
+            ]
+          }
+        },
+        {
+          "name": "pallet",
+          "description": "Full pallet",
+          "type": "BATCH",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "batch_size": {
+              "$arg": "cases_per_pallet"
+            },
+            "batched_entity_type": "Auto Pallet",
+            "max_wait": "",
+            "max_wait_time_unit": "base"
+          }
+        },
+        {
+          "name": "change",
+          "description": "Change the pallet",
+          "type": "PROCESS",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "pallet_change_time"
+            },
+            "time_unit": "seconds",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Auto Palletiser"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Pallets leave",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "stack"
+        },
+        {
+          "source": "stack",
+          "target": "pallet"
+        },
+        {
+          "source": "pallet",
+          "target": "change"
+        },
+        {
+          "source": "change",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "AMR fleet": {
+      "info": {
+        "description": "Autonomous mobile robots that carry parts between stations, and the ONE block that moves them: wire every station's exit into this asset's \"in\" port. The robots charge whenever they are idle below 80 % and a point is free, must charge below 25 %, and leave at 90 %. The fleet brings one charger of its own at its \"base\" node -- join that node to the aisles -- and also uses every Charger in the model. Its purchase price is capex for the investment case.",
+        "library": {
+          "library": "automation",
+          "asset": "amr_fleet",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "vehicles",
+            "type": "int",
+            "default": 2,
+            "unit": "",
+            "label": "Robots",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_loaded",
+            "type": "number",
+            "default": 80.0,
+            "unit": "metres per minute",
+            "label": "Speed carrying a load",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_empty",
+            "type": "number",
+            "default": 90.0,
+            "unit": "metres per minute",
+            "label": "Speed running empty",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "load_time",
+            "type": "time",
+            "default": 0.3,
+            "unit": "minutes",
+            "label": "Time to take a load",
+            "help": "",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "unload_time",
+            "type": "time",
+            "default": 0.3,
+            "unit": "minutes",
+            "label": "Time to set a load down",
+            "help": "",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "home_node",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Home node",
+            "help": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model.",
+            "group": "Vehicles",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "park",
+            "type": "choice",
+            "default": "stay",
+            "unit": "",
+            "label": "When a job ends",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "stay",
+              "home"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "dispatch",
+            "type": "choice",
+            "default": "nearest",
+            "unit": "",
+            "label": "Which request is served first",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fifo",
+              "nearest"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "select",
+            "type": "choice",
+            "default": "nearest",
+            "unit": "",
+            "label": "Which vehicle takes it",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "nearest",
+              "longest_idle",
+              "cyclic"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "destination",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Fixed destination station",
+            "help": "Leave empty to follow the part's routing. Name a STATION for a point-to-point shuttle.",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "priority",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Request priority",
+            "help": "",
+            "group": "Dispatching",
+            "min": -100,
+            "max": 100,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "battery_kwh",
+            "type": "number",
+            "default": 2.0,
+            "unit": "kWh",
+            "label": "Battery capacity",
+            "help": "",
+            "group": "Battery",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "drive_kw",
+            "type": "number",
+            "default": 0.4,
+            "unit": "kW",
+            "label": "Power drawn while working",
+            "help": "",
+            "group": "Battery",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "charge_points",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Charging points at the base",
+            "help": "",
+            "group": "Battery",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "charger_kw",
+            "type": "number",
+            "default": 1.0,
+            "unit": "kW",
+            "label": "Charger power",
+            "help": "",
+            "group": "Battery",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "price",
+            "type": "number",
+            "default": 35000.0,
+            "unit": "currency",
+            "label": "Purchase price per robot",
+            "help": "Its charger included. Capex for the investment case, times the number of robots.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "maintenance_per_hour",
+            "type": "number",
+            "default": 2.0,
+            "unit": "currency per hour",
+            "label": "Maintenance per unit hour",
+            "help": "Charged for every scheduled hour, working or idle.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "base",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "catalogue": {
+          "catalogue": "Auto AMR classes",
+          "label": "AMR class",
+          "group": "Vehicles",
+          "map": {
+            "speed_loaded": "speed_loaded",
+            "speed_empty": "speed_empty",
+            "battery_kwh": "battery_kwh",
+            "drive_kw": "drive_kw",
+            "charger_kw": "charger_kw",
+            "price": "price"
+          },
+          "rows": [
+            "AMR 100 kg",
+            "AMR 300 kg",
+            "AMR 1000 kg"
+          ],
+          "units": {
+            "speed_loaded": "metres per minute",
+            "speed_empty": "metres per minute",
+            "battery_kwh": "kWh",
+            "drive_kw": "kW",
+            "charger_kw": "kW",
+            "price": "currency"
+          },
+          "values": {
+            "AMR 100 kg": {
+              "speed_loaded": 90.0,
+              "speed_empty": 100.0,
+              "battery_kwh": 1.0,
+              "drive_kw": 0.2,
+              "charger_kw": 0.5,
+              "price": 25000.0
+            },
+            "AMR 300 kg": {
+              "speed_loaded": 80.0,
+              "speed_empty": 90.0,
+              "battery_kwh": 2.0,
+              "drive_kw": 0.4,
+              "charger_kw": 1.0,
+              "price": 35000.0
+            },
+            "AMR 1000 kg": {
+              "speed_loaded": 70.0,
+              "speed_empty": 80.0,
+              "battery_kwh": 5.0,
+              "drive_kw": 1.0,
+              "charger_kw": 3.0,
+              "price": 60000.0
+            }
+          },
+          "sources": {
+            "AMR 100 kg": "Illustrative: a tote or small-load AMR, its charger included.",
+            "AMR 300 kg": "Illustrative: a shelf or cart AMR, its charger included.",
+            "AMR 1000 kg": "Illustrative: a pallet AMR, its charger included."
+          }
+        },
+        "owns": {
+          "fleets": [
+            "Auto AMRs"
+          ],
+          "chargers": [
+            "Auto AMR charger"
+          ],
+          "fixed_costs": [
+            "Auto AMR capex"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "vehicles",
+          "default": 2,
+          "type": "int"
+        },
+        {
+          "name": "speed_loaded",
+          "default": 80.0,
+          "type": "number"
+        },
+        {
+          "name": "speed_empty",
+          "default": 90.0,
+          "type": "number"
+        },
+        {
+          "name": "load_time",
+          "default": 0.3,
+          "type": "time"
+        },
+        {
+          "name": "unload_time",
+          "default": 0.3,
+          "type": "time"
+        },
+        {
+          "name": "home_node",
+          "default": "",
+          "type": "name",
+          "description": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model."
+        },
+        {
+          "name": "park",
+          "default": "stay",
+          "type": "choice"
+        },
+        {
+          "name": "dispatch",
+          "default": "nearest",
+          "type": "choice"
+        },
+        {
+          "name": "select",
+          "default": "nearest",
+          "type": "choice"
+        },
+        {
+          "name": "destination",
+          "default": "",
+          "type": "name",
+          "description": "Leave empty to follow the part's routing. Name a STATION for a point-to-point shuttle."
+        },
+        {
+          "name": "priority",
+          "default": 0,
+          "type": "int"
+        },
+        {
+          "name": "battery_kwh",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.4,
+          "type": "number"
+        },
+        {
+          "name": "charge_points",
+          "default": 1,
+          "type": "int"
+        },
+        {
+          "name": "charger_kw",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "default": 35000.0,
+          "type": "number",
+          "description": "Its charger included. Capex for the investment case, times the number of robots."
+        },
+        {
+          "name": "maintenance_per_hour",
+          "default": 2.0,
+          "type": "number",
+          "description": "Charged for every scheduled hour, working or idle."
+        }
+      ],
+      "scoped": {
+        "fleets": {
+          "Auto AMRs": {
+            "count": {
+              "$arg": "vehicles"
+            },
+            "speed": "speed_loaded",
+            "speed_empty": "speed_empty",
+            "load_time": "load_time",
+            "unload_time": "unload_time",
+            "home": {
+              "$arg": "home_node"
+            },
+            "park": {
+              "$arg": "park"
+            },
+            "dispatch": {
+              "$arg": "dispatch"
+            },
+            "select": {
+              "$arg": "select"
+            },
+            "cost_busy": "maintenance_per_hour",
+            "cost_idle": "maintenance_per_hour",
+            "power.busy": "drive_kw",
+            "battery.capacity_kwh": "battery_kwh"
+          }
+        },
+        "chargers": {
+          "Auto AMR charger": {
+            "points": {
+              "$arg": "charge_points"
+            },
+            "power_kw": "charger_kw"
+          }
+        },
+        "fixed_costs": {
+          "Auto AMR capex": {}
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Parts to move",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "carry",
+          "description": "Carry to the next station",
+          "type": "TRANSPORT",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "fleet": "$Auto AMRs",
+            "destination": {
+              "$arg": "destination"
+            },
+            "priority": {
+              "$arg": "priority"
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Routing finished",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "port": "done"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "carry"
+        },
+        {
+          "source": "carry",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Charger": {
+      "info": {
+        "description": "Charging points at one place on the floor, for every battery fleet in the model. Join its \"bay\" node to the aisles: a robot that needs charge drives to the charger that costs it the least drive and wait. Power tapers above 80 %. The price per point is capex for the investment case; a charger has no maintenance cost of its own.",
+        "library": {
+          "library": "automation",
+          "asset": "charger",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "points",
+            "type": "int",
+            "default": 2,
+            "unit": "",
+            "label": "Charging points",
+            "help": "",
+            "group": "Charger",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "power_kw",
+            "type": "number",
+            "default": 1.0,
+            "unit": "kW",
+            "label": "Power per point",
+            "help": "",
+            "group": "Charger",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "price",
+            "type": "number",
+            "default": 3000.0,
+            "unit": "currency",
+            "label": "Purchase price per point",
+            "help": "Capex for the investment case, times the number of points.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "bay",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "catalogue": {
+          "catalogue": "Auto AMR classes",
+          "label": "Sized for AMR class",
+          "group": "Charger",
+          "map": {
+            "charger_kw": "power_kw"
+          },
+          "rows": [
+            "AMR 100 kg",
+            "AMR 300 kg",
+            "AMR 1000 kg"
+          ],
+          "units": {
+            "speed_loaded": "metres per minute",
+            "speed_empty": "metres per minute",
+            "battery_kwh": "kWh",
+            "drive_kw": "kW",
+            "charger_kw": "kW",
+            "price": "currency"
+          },
+          "values": {
+            "AMR 100 kg": {
+              "power_kw": 0.5
+            },
+            "AMR 300 kg": {
+              "power_kw": 1.0
+            },
+            "AMR 1000 kg": {
+              "power_kw": 3.0
+            }
+          },
+          "sources": {
+            "AMR 100 kg": "Illustrative: a tote or small-load AMR, its charger included.",
+            "AMR 300 kg": "Illustrative: a shelf or cart AMR, its charger included.",
+            "AMR 1000 kg": "Illustrative: a pallet AMR, its charger included."
+          }
+        },
+        "owns": {
+          "chargers": [
+            "Auto Charger"
+          ],
+          "fixed_costs": [
+            "Auto Charger capex"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "points",
+          "default": 2,
+          "type": "int"
+        },
+        {
+          "name": "power_kw",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "default": 3000.0,
+          "type": "number",
+          "description": "Capex for the investment case, times the number of points."
+        }
+      ],
+      "scoped": {
+        "chargers": {
+          "Auto Charger": {
+            "points": {
+              "$arg": "points"
+            },
+            "power_kw": "power_kw"
+          }
+        },
+        "fixed_costs": {
+          "Auto Charger capex": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Mobile cobot fleet": {
+      "info": {
+        "description": "AMRs that carry an arm: a mobile cobot brings a part to a Tended machine, puts it in, and takes the finished part out and on. Wire every station's exit into this asset's \"in\" port, as for an AMR fleet. With \"exchange\" the cobot has a second holding place and swaps a finished part for a new one in one visit; one cobot without it can stall at a single machine. Battery and charger are an AMR fleet's; the base defaults are the 300 kg AMR class. Capex is base plus arm.",
+        "library": {
+          "library": "automation",
+          "asset": "mobile_cobot_fleet",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "vehicles",
+            "type": "int",
+            "default": 2,
+            "unit": "",
+            "label": "Mobile cobots",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_loaded",
+            "type": "number",
+            "default": 80.0,
+            "unit": "metres per minute",
+            "label": "Speed carrying a load",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_empty",
+            "type": "number",
+            "default": 90.0,
+            "unit": "metres per minute",
+            "label": "Speed running empty",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "load_time",
+            "type": "time",
+            "default": 0.3,
+            "unit": "minutes",
+            "label": "Time to take a load",
+            "help": "",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "unload_time",
+            "type": "time",
+            "default": 0.3,
+            "unit": "minutes",
+            "label": "Time to set a load down",
+            "help": "",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "home_node",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Home node",
+            "help": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model.",
+            "group": "Vehicles",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "park",
+            "type": "choice",
+            "default": "stay",
+            "unit": "",
+            "label": "When a job ends",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "stay",
+              "home"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "dispatch",
+            "type": "choice",
+            "default": "nearest",
+            "unit": "",
+            "label": "Which request is served first",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fifo",
+              "nearest"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "select",
+            "type": "choice",
+            "default": "nearest",
+            "unit": "",
+            "label": "Which vehicle takes it",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "nearest",
+              "longest_idle",
+              "cyclic"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "destination",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Fixed destination station",
+            "help": "Leave empty to follow the part's routing. Name a STATION for a point-to-point shuttle.",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "priority",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Request priority",
+            "help": "",
+            "group": "Dispatching",
+            "min": -100,
+            "max": 100,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "battery_kwh",
+            "type": "number",
+            "default": 2.0,
+            "unit": "kWh",
+            "label": "Battery capacity",
+            "help": "",
+            "group": "Battery",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "drive_kw",
+            "type": "number",
+            "default": 0.4,
+            "unit": "kW",
+            "label": "Power drawn while working",
+            "help": "",
+            "group": "Battery",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "charge_points",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Charging points at the base",
+            "help": "",
+            "group": "Battery",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "charger_kw",
+            "type": "number",
+            "default": 1.0,
+            "unit": "kW",
+            "label": "Charger power",
+            "help": "",
+            "group": "Battery",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "exchange",
+            "type": "bool",
+            "default": false,
+            "unit": "",
+            "label": "Exchange (second holding place)",
+            "help": "A double gripper or a tray: pick the finished part and place the new one in one visit.",
+            "group": "Arm",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "arm_speed",
+            "type": "number",
+            "default": 1.0,
+            "unit": "m/s",
+            "label": "Arm speed",
+            "help": "",
+            "group": "Arm",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "arm_accel",
+            "type": "number",
+            "default": 2.0,
+            "unit": "m/s^2",
+            "label": "Arm acceleration",
+            "help": "",
+            "group": "Arm",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "arm_payload_max",
+            "type": "number",
+            "default": 10.0,
+            "unit": "kg",
+            "label": "Rated payload",
+            "help": "",
+            "group": "Arm",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "arm_payload_derate",
+            "type": "number",
+            "default": 0.8,
+            "unit": "",
+            "label": "Speed fraction at rated payload",
+            "help": "",
+            "group": "Arm",
+            "min": 1e-09,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "arm_collaborative_speed",
+            "type": "number",
+            "default": 0.25,
+            "unit": "m/s",
+            "label": "Collaborative speed",
+            "help": "The arm's speed when it shares its space with a person.",
+            "group": "Arm",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "base_price",
+            "type": "number",
+            "default": 35000.0,
+            "unit": "currency",
+            "label": "Purchase price per base",
+            "help": "The AMR base, its charger included.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "arm_price",
+            "type": "number",
+            "default": 38000.0,
+            "unit": "currency",
+            "label": "Purchase price per arm",
+            "help": "Capex for the investment case is base plus arm, times the number of cobots.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "maintenance_per_hour",
+            "type": "number",
+            "default": 2.0,
+            "unit": "currency per hour",
+            "label": "Maintenance per unit hour",
+            "help": "Charged for every scheduled hour, working or idle.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "base",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "catalogue": {
+          "catalogue": "Auto Robot and human profiles",
+          "label": "Arm",
+          "group": "Arm",
+          "map": {
+            "speed": "arm_speed",
+            "accel": "arm_accel",
+            "payload_max": "arm_payload_max",
+            "payload_derate": "arm_payload_derate",
+            "collaborative_speed": "arm_collaborative_speed",
+            "price": "arm_price"
+          },
+          "rows": [
+            "6-axis robot, small",
+            "6-axis robot, medium",
+            "6-axis robot, large",
+            "SCARA",
+            "Delta",
+            "Palletising robot",
+            "Cobot 5 kg",
+            "Cobot 10 kg",
+            "Cobot 16 kg",
+            "Human walk",
+            "Human reach"
+          ],
+          "units": {
+            "speed": "m/s",
+            "accel": "m/s^2",
+            "payload_max": "kg",
+            "payload_derate": "speed fraction at payload_max",
+            "collaborative_speed": "m/s",
+            "power_kw": "kW",
+            "price": "currency"
+          },
+          "values": {
+            "6-axis robot, small": {
+              "arm_speed": 2.0,
+              "arm_accel": 8.0,
+              "arm_payload_max": 7.0,
+              "arm_payload_derate": 0.7,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 25000.0
+            },
+            "6-axis robot, medium": {
+              "arm_speed": 2.0,
+              "arm_accel": 6.0,
+              "arm_payload_max": 20.0,
+              "arm_payload_derate": 0.7,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 40000.0
+            },
+            "6-axis robot, large": {
+              "arm_speed": 1.5,
+              "arm_accel": 4.0,
+              "arm_payload_max": 165.0,
+              "arm_payload_derate": 0.6,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 70000.0
+            },
+            "SCARA": {
+              "arm_speed": 3.0,
+              "arm_accel": 15.0,
+              "arm_payload_max": 6.0,
+              "arm_payload_derate": 0.6,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 15000.0
+            },
+            "Delta": {
+              "arm_speed": 5.0,
+              "arm_accel": 50.0,
+              "arm_payload_max": 3.0,
+              "arm_payload_derate": 0.5,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 30000.0
+            },
+            "Palletising robot": {
+              "arm_speed": 2.0,
+              "arm_accel": 4.0,
+              "arm_payload_max": 180.0,
+              "arm_payload_derate": 0.6,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 80000.0
+            },
+            "Cobot 5 kg": {
+              "arm_speed": 1.0,
+              "arm_accel": 2.0,
+              "arm_payload_max": 5.0,
+              "arm_payload_derate": 0.8,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 28000.0
+            },
+            "Cobot 10 kg": {
+              "arm_speed": 1.0,
+              "arm_accel": 2.0,
+              "arm_payload_max": 10.0,
+              "arm_payload_derate": 0.8,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 38000.0
+            },
+            "Cobot 16 kg": {
+              "arm_speed": 1.0,
+              "arm_accel": 2.0,
+              "arm_payload_max": 16.0,
+              "arm_payload_derate": 0.75,
+              "arm_collaborative_speed": 0.25,
+              "arm_price": 45000.0
+            },
+            "Human walk": {
+              "arm_speed": 1.2,
+              "arm_accel": 0.8,
+              "arm_payload_max": 15.0,
+              "arm_payload_derate": 0.7,
+              "arm_collaborative_speed": 1.2,
+              "arm_price": 0.0
+            },
+            "Human reach": {
+              "arm_speed": 0.8,
+              "arm_accel": 4.0,
+              "arm_payload_max": 10.0,
+              "arm_payload_derate": 0.7,
+              "arm_collaborative_speed": 0.8,
+              "arm_price": 0.0
+            }
+          },
+          "sources": {
+            "6-axis robot, small": "Illustrative: a 7 kg articulated arm. Collaborative speed is the 250 mm/s reduced speed.",
+            "6-axis robot, medium": "Illustrative: a 20 kg articulated arm.",
+            "6-axis robot, large": "Illustrative: a 165 kg articulated arm.",
+            "SCARA": "Illustrative: fast planar pick and place.",
+            "Delta": "Illustrative: a parallel picker for light parts.",
+            "Palletising robot": "Illustrative: a 4-axis palletiser.",
+            "Cobot 5 kg": "Illustrative: a 5 kg collaborative arm.",
+            "Cobot 10 kg": "Illustrative: a 10 kg collaborative arm.",
+            "Cobot 16 kg": "Illustrative: a 16 kg collaborative arm.",
+            "Human walk": "Illustrative: a person walking; no power and no purchase price.",
+            "Human reach": "Illustrative: a person's arm reach; no power and no purchase price."
+          }
+        },
+        "owns": {
+          "fleets": [
+            "Auto Mobile cobots"
+          ],
+          "motion_profiles": [
+            "Auto Mobile arm"
+          ],
+          "chargers": [
+            "Auto Mobile cobot charger"
+          ],
+          "fixed_costs": [
+            "Auto Mobile cobot capex"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "vehicles",
+          "default": 2,
+          "type": "int"
+        },
+        {
+          "name": "speed_loaded",
+          "default": 80.0,
+          "type": "number"
+        },
+        {
+          "name": "speed_empty",
+          "default": 90.0,
+          "type": "number"
+        },
+        {
+          "name": "load_time",
+          "default": 0.3,
+          "type": "time"
+        },
+        {
+          "name": "unload_time",
+          "default": 0.3,
+          "type": "time"
+        },
+        {
+          "name": "home_node",
+          "default": "",
+          "type": "name",
+          "description": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model."
+        },
+        {
+          "name": "park",
+          "default": "stay",
+          "type": "choice"
+        },
+        {
+          "name": "dispatch",
+          "default": "nearest",
+          "type": "choice"
+        },
+        {
+          "name": "select",
+          "default": "nearest",
+          "type": "choice"
+        },
+        {
+          "name": "destination",
+          "default": "",
+          "type": "name",
+          "description": "Leave empty to follow the part's routing. Name a STATION for a point-to-point shuttle."
+        },
+        {
+          "name": "priority",
+          "default": 0,
+          "type": "int"
+        },
+        {
+          "name": "battery_kwh",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.4,
+          "type": "number"
+        },
+        {
+          "name": "charge_points",
+          "default": 1,
+          "type": "int"
+        },
+        {
+          "name": "charger_kw",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "exchange",
+          "default": false,
+          "type": "bool",
+          "description": "A double gripper or a tray: pick the finished part and place the new one in one visit."
+        },
+        {
+          "name": "arm_speed",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "arm_accel",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "arm_payload_max",
+          "default": 10.0,
+          "type": "number"
+        },
+        {
+          "name": "arm_payload_derate",
+          "default": 0.8,
+          "type": "number"
+        },
+        {
+          "name": "arm_collaborative_speed",
+          "default": 0.25,
+          "type": "number",
+          "description": "The arm's speed when it shares its space with a person."
+        },
+        {
+          "name": "base_price",
+          "default": 35000.0,
+          "type": "number",
+          "description": "The AMR base, its charger included."
+        },
+        {
+          "name": "arm_price",
+          "default": 38000.0,
+          "type": "number",
+          "description": "Capex for the investment case is base plus arm, times the number of cobots."
+        },
+        {
+          "name": "maintenance_per_hour",
+          "default": 2.0,
+          "type": "number",
+          "description": "Charged for every scheduled hour, working or idle."
+        }
+      ],
+      "scoped": {
+        "fleets": {
+          "Auto Mobile cobots": {
+            "count": {
+              "$arg": "vehicles"
+            },
+            "speed": "speed_loaded",
+            "speed_empty": "speed_empty",
+            "load_time": "load_time",
+            "unload_time": "unload_time",
+            "home": {
+              "$arg": "home_node"
+            },
+            "park": {
+              "$arg": "park"
+            },
+            "dispatch": {
+              "$arg": "dispatch"
+            },
+            "select": {
+              "$arg": "select"
+            },
+            "cost_busy": "maintenance_per_hour",
+            "cost_idle": "maintenance_per_hour",
+            "power.busy": "drive_kw",
+            "battery.capacity_kwh": "battery_kwh",
+            "exchange": {
+              "$arg": "exchange"
+            }
+          }
+        },
+        "motion_profiles": {
+          "Auto Mobile arm": {
+            "speed": "arm_speed",
+            "accel": "arm_accel",
+            "payload_max": "arm_payload_max",
+            "payload_derate": "arm_payload_derate",
+            "collaborative_speed": "arm_collaborative_speed"
+          }
+        },
+        "chargers": {
+          "Auto Mobile cobot charger": {
+            "points": {
+              "$arg": "charge_points"
+            },
+            "power_kw": "charger_kw"
+          }
+        },
+        "fixed_costs": {
+          "Auto Mobile cobot capex": {}
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Parts to move",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "carry",
+          "description": "Carry to the next station",
+          "type": "TRANSPORT",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "fleet": "$Auto Mobile cobots",
+            "destination": {
+              "$arg": "destination"
+            },
+            "priority": {
+              "$arg": "priority"
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Routing finished",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "port": "done"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "carry"
+        },
+        {
+          "source": "carry",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Tended machine": {
+      "info": {
+        "description": "A machine loaded and unloaded by a Mobile cobot fleet. Name it as a step of the part's routing: the cobot arriving with a part runs the place cycle, the machine works, and the finished part stays in the machine until a cobot has run the pick cycle. Wire \"out\" into the fleet's \"in\" port and join the \"machine\" node to the aisles. \"stay\" keeps the cobot at the machine until the part is done. A price of 0 is a machine that is already there.",
+        "library": {
+          "library": "automation",
+          "asset": "tended_machine",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "station",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Station name",
+            "help": "The name a sequence step or a fleet's destination uses for this machine. Empty: the instance's own station block.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "process_time",
+            "type": "number",
+            "default": 60.0,
+            "unit": "seconds",
+            "label": "Process time",
+            "help": "",
+            "group": "Cycle",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reach_m",
+            "type": "number",
+            "default": 0.8,
+            "unit": "m",
+            "label": "Reach distance",
+            "help": "The arm's move into and out of the machine.",
+            "group": "Tending",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "part_kg",
+            "type": "number",
+            "default": 2.0,
+            "unit": "kg",
+            "label": "Part weight",
+            "help": "",
+            "group": "Tending",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "place_time",
+            "type": "number",
+            "default": 2.0,
+            "unit": "seconds",
+            "label": "Place time",
+            "help": "",
+            "group": "Tending",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pick_time",
+            "type": "number",
+            "default": 2.0,
+            "unit": "seconds",
+            "label": "Pick time",
+            "help": "",
+            "group": "Tending",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cobot",
+            "type": "choice",
+            "default": "leave",
+            "unit": "",
+            "label": "After placing, the cobot",
+            "help": "leave: it is free for other jobs and any cobot comes back for the pick. stay: it waits and picks the part itself.",
+            "group": "Tending",
+            "min": null,
+            "max": null,
+            "choices": [
+              "leave",
+              "stay"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "machines",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Machines",
+            "help": "",
+            "group": "Machine",
+            "min": 1,
+            "max": 50,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "power_kw",
+            "type": "number",
+            "default": 5.0,
+            "unit": "kW",
+            "label": "Power drawn while working",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "price",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency",
+            "label": "Purchase price per machine",
+            "help": "Capex for the investment case, times the number of machines. 0: the machine is already there.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "maintenance_per_hour",
+            "type": "number",
+            "default": 2.0,
+            "unit": "currency per hour",
+            "label": "Maintenance per unit hour",
+            "help": "Charged for every scheduled hour, working or idle.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "machine",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        },
+        "owns": {
+          "resources": [
+            "Auto Machine"
+          ],
+          "fixed_costs": [
+            "Auto Machine capex"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station",
+          "default": "",
+          "type": "name",
+          "description": "The name a sequence step or a fleet's destination uses for this machine. Empty: the instance's own station block."
+        },
+        {
+          "name": "process_time",
+          "default": 60.0,
+          "type": "number"
+        },
+        {
+          "name": "reach_m",
+          "default": 0.8,
+          "type": "number",
+          "description": "The arm's move into and out of the machine."
+        },
+        {
+          "name": "part_kg",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "place_time",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "pick_time",
+          "default": 2.0,
+          "type": "number"
+        },
+        {
+          "name": "cobot",
+          "default": "leave",
+          "type": "choice",
+          "description": "leave: it is free for other jobs and any cobot comes back for the pick. stay: it waits and picks the part itself."
+        },
+        {
+          "name": "machines",
+          "default": 1,
+          "type": "int"
+        },
+        {
+          "name": "power_kw",
+          "default": 5.0,
+          "type": "number"
+        },
+        {
+          "name": "price",
+          "default": 0.0,
+          "type": "number",
+          "description": "Capex for the investment case, times the number of machines. 0: the machine is already there."
+        },
+        {
+          "name": "maintenance_per_hour",
+          "default": 2.0,
+          "type": "number",
+          "description": "Charged for every scheduled hour, working or idle."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Auto Machine": {
+            "capacity": "machines",
+            "cost_busy": "maintenance_per_hour",
+            "cost_idle": "maintenance_per_hour",
+            "power.busy": "power_kw"
+          }
+        },
+        "fixed_costs": {
+          "Auto Machine capex": {}
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Parts arriving by hand",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_machine",
+          "description": "Machine",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station"
+            },
+            "node": "$machine",
+            "tending": {
+              "place": [
+                {
+                  "kind": "move",
+                  "distance_m": {
+                    "$arg": "reach_m"
+                  },
+                  "payload_kg": {
+                    "$arg": "part_kg"
+                  }
+                },
+                {
+                  "kind": "place",
+                  "time": {
+                    "$arg": "place_time"
+                  }
+                }
+              ],
+              "pick": [
+                {
+                  "kind": "move",
+                  "distance_m": {
+                    "$arg": "reach_m"
+                  }
+                },
+                {
+                  "kind": "pick",
+                  "time": {
+                    "$arg": "pick_time"
+                  }
+                }
+              ],
+              "time_unit": "seconds",
+              "hrc": "none",
+              "cobot": {
+                "$arg": "cobot"
+              }
+            }
+          }
+        },
+        {
+          "name": "machine",
+          "description": "Machine",
+          "type": "PROCESS",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "process_time"
+            },
+            "time_unit": "seconds",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Auto Machine"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Finished parts",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_machine"
+        },
+        {
+          "source": "at_machine",
+          "target": "machine"
+        },
+        {
+          "source": "machine",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Automation floor (robot cells, AMR, palletiser)",
+    "category": "Manufacturing",
+    "description": "Every asset of the Automation library on one floor: a robot arm cell and a cobot cell in line, an AMR shuttle to a palletiser, and mobile cobots tending a lathe. In the results, read the motion summary (each arm's cycle by phase), the fleet's trips and waiting, and the tending summary for the lathe. Illustrative figures."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 1800,
+    "warmup": 0,
+    "replications": 3,
+    "time_unit": "seconds",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0
+  },
+  "outputs": {}
+}

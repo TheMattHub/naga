@@ -1,0 +1,241 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "workforce_delay1_1",
+      "description": "Workforce (goal-seeking)",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Workforce (goal-seeking)",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "SD Workforce",
+      "initial": 20.0,
+      "min": null,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "flows": [
+    {
+      "name": "SD hiring",
+      "rate": "(AUX(\"$SD target workforce\") - LEVEL(\"$SD Workforce\")) / AUX(\"$SD adjustment time\")",
+      "to": "SD Workforce",
+      "biflow": true,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [
+    {
+      "name": "SD target workforce",
+      "expr": "100"
+    },
+    {
+      "name": "SD adjustment time",
+      "expr": "10"
+    },
+    {
+      "name": "SD reporting delay",
+      "expr": "2"
+    },
+    {
+      "name": "SD Reported Workforce",
+      "expr": "DELAY1(LEVEL(\"$SD Workforce\"), AUX(\"$SD reporting delay\"))"
+    }
+  ],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Workforce (goal-seeking)": {
+      "info": {
+        "description": "Headcount that hires (or attrits) toward a target at a fixed adjustment rate -- the textbook first-order goal-seeking structure, (target - Workforce) / adjustment_time -- an exact exponential approach to the target. \"SD Reported Workforce\" is a DELAY1-smoothed reading of the headcount (a reported figure that lags the real one, e.g. because payroll reports it monthly); it does not feed back into hiring. Needs simulation.sd.",
+        "library": {
+          "library": "sd",
+          "asset": "workforce_delay1",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "initial_workforce",
+            "type": "number",
+            "default": 20.0,
+            "unit": "",
+            "label": "Initial Workforce",
+            "help": "Headcount at t=0.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "target_workforce",
+            "type": "number",
+            "default": 100.0,
+            "unit": "",
+            "label": "Target Workforce",
+            "help": "Headcount the hiring plan aims for.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "adjustment_time",
+            "type": "number",
+            "default": 10.0,
+            "unit": "",
+            "label": "Adjustment Time",
+            "help": "How fast hiring closes the gap; the time constant of the exponential approach.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reporting_delay",
+            "type": "number",
+            "default": 2.0,
+            "unit": "",
+            "label": "Reporting Delay",
+            "help": "Lag of the reported headcount behind the real one.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "levels": [
+            "SD Workforce"
+          ],
+          "auxiliaries": [
+            "SD target workforce",
+            "SD adjustment time",
+            "SD reporting delay",
+            "SD Reported Workforce"
+          ],
+          "flows": [
+            "SD hiring"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "initial_workforce",
+          "default": 20.0,
+          "type": "number",
+          "description": "Headcount at t=0."
+        },
+        {
+          "name": "target_workforce",
+          "default": 100.0,
+          "type": "number",
+          "description": "Headcount the hiring plan aims for."
+        },
+        {
+          "name": "adjustment_time",
+          "default": 10.0,
+          "type": "number",
+          "description": "How fast hiring closes the gap; the time constant of the exponential approach."
+        },
+        {
+          "name": "reporting_delay",
+          "default": 2.0,
+          "type": "number",
+          "description": "Lag of the reported headcount behind the real one."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "SD Workforce": {
+            "initial": {
+              "$arg": "initial_workforce"
+            }
+          }
+        },
+        "auxiliaries": {
+          "SD target workforce": {
+            "expr": {
+              "$arg": "target_workforce"
+            }
+          },
+          "SD adjustment time": {
+            "expr": {
+              "$arg": "adjustment_time"
+            }
+          },
+          "SD reporting delay": {
+            "expr": {
+              "$arg": "reporting_delay"
+            }
+          },
+          "SD Reported Workforce": {}
+        },
+        "flows": {
+          "SD hiring": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Workforce (goal-seeking)",
+    "category": "System dynamics",
+    "description": "Headcount that hires (or attrits) toward a target at a fixed adjustment rate -- the textbook first-order goal-seeking structure, (target - Workforce) / adjustment_time -- an exact exponential approach to the target. \"SD Reported Workforce\" is a DELAY1-smoothed reading of the headcount (a reported figure that lags the real one, e.g. because payroll reports it monthly); it does not feed back into hiring. Needs simulation.sd."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 40.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0,
+    "sd": {
+      "dt": 0.1,
+      "method": "rk4",
+      "time_unit": "minutes"
+    }
+  },
+  "outputs": {}
+}

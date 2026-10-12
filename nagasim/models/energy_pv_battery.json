@@ -1,0 +1,271 @@
+{
+  "schema_version": 29,
+  "blocks": [],
+  "links": [],
+  "scenarios": [
+    {
+      "name": "Bigger battery",
+      "description": "20 kWh at 5 kW instead of 10 kWh at 3 kW.",
+      "overrides": [
+        {
+          "path": "levels.Battery.capacity",
+          "value": 20
+        },
+        {
+          "path": "levels.Battery.max_inflow",
+          "value": 5
+        },
+        {
+          "path": "levels.Battery.max_outflow",
+          "value": 5
+        },
+        {
+          "path": "variables.battery_kwh.initial",
+          "value": 20
+        }
+      ]
+    },
+    {
+      "name": "No battery",
+      "description": "PV only: every surplus is exported and every deficit imported.",
+      "overrides": [
+        {
+          "path": "levels.Battery.capacity",
+          "value": 0
+        },
+        {
+          "path": "levels.Battery.initial",
+          "value": 0
+        },
+        {
+          "path": "variables.battery_kwh.initial",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [
+    {
+      "name": "battery_kwh",
+      "initial": 10
+    }
+  ],
+  "entities": [],
+  "timeseries_inputs": [
+    {
+      "name": "pv",
+      "description": "Rooftop PV output, kW, one hourly value per hour of the day.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.2,
+        0.8,
+        1.8,
+        2.8,
+        3.6,
+        4.0,
+        4.2,
+        4.0,
+        3.5,
+        2.6,
+        1.6,
+        0.6,
+        0.1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "load",
+      "description": "Household demand, kW, one hourly value per hour of the day.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.3,
+        0.3,
+        0.3,
+        0.3,
+        0.3,
+        0.4,
+        0.8,
+        1.2,
+        0.9,
+        0.6,
+        0.5,
+        0.5,
+        0.6,
+        0.5,
+        0.5,
+        0.6,
+        1.0,
+        1.6,
+        2.0,
+        1.8,
+        1.4,
+        0.9,
+        0.5,
+        0.3
+      ]
+    },
+    {
+      "name": "tariff",
+      "description": "Import price, EUR/kWh: off-peak, mid and an evening peak.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.25,
+        0.15,
+        0.15
+      ]
+    }
+  ],
+  "levels": [
+    {
+      "name": "Battery",
+      "description": "Usable battery energy.",
+      "unit": "kWh",
+      "capacity": 10,
+      "min": 0,
+      "initial": 2,
+      "max_inflow": 3,
+      "max_outflow": 3,
+      "rate_time_unit": "hours",
+      "thresholds": [
+        {
+          "value": 1,
+          "direction": "falling",
+          "variable": "battery_low"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "pv_generation",
+      "description": "Accounting only: the PV energy produced, for the self-consumption KPI.",
+      "rate": "TS(\"pv\")",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "charge",
+      "description": "Rule dispatch: every kW of surplus goes to the battery, up to its charge power. What the battery cannot take is Spilled -- curtailed PV.",
+      "to": "Battery",
+      "rate": "max(TS(\"pv\") - TS(\"load\"), 0)",
+      "rate_time_unit": "hours",
+      "efficiency": 0.95
+    },
+    {
+      "name": "discharge",
+      "description": "Rule dispatch: cover the deficit from the battery. The rate is what is DRAWN, so it is the deficit divided by the discharge efficiency.",
+      "from": "Battery",
+      "rate": "max(TS(\"load\") - TS(\"pv\"), 0) / 0.95",
+      "rate_time_unit": "hours",
+      "efficiency": 0.95
+    },
+    {
+      "name": "grid_import",
+      "description": "Whatever the PV and the battery together could not cover. FLOW(\"discharge\") is the rate the battery ACTUALLY managed, after its power limit and its state of charge. Its Peak Rate carries a 1.5 EUR/kW demand charge, billed once for the week.",
+      "rate": "max(TS(\"load\") - TS(\"pv\") - FLOW(\"discharge\") * 0.95, 0)",
+      "rate_time_unit": "hours",
+      "price": "TS(\"tariff\")",
+      "emission_factor": 0.35,
+      "peak_price": 1.5
+    },
+    {
+      "name": "grid_export",
+      "description": "Surplus the battery could not absorb, sold at a flat feed-in price (a negative cost is revenue).",
+      "rate": "max(TS(\"pv\") - TS(\"load\") - FLOW(\"charge\"), 0)",
+      "rate_time_unit": "hours",
+      "price": -0.05
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [
+    {
+      "name": "Battery capital",
+      "description": "450 EUR/kWh at a 9% annual charge, prorated over the run so capex and the grid bill cover the same week.",
+      "amount": "battery_kwh * 450 * 0.09 * HORIZON / 8760",
+      "category": "Capital"
+    }
+  ],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "PV + battery sizing and dispatch",
+    "category": "Energy",
+    "description": "PV + battery sizing and dispatch. A purely CONTINUOUS model: no entities, no queues -- a daily PV profile, a household load profile and a time-of-use tariff drive a battery with power limits and round-trip efficiency, under a simple rule dispatch (charge on surplus, discharge on deficit). Base unit hours, one week.",
+    "author": "Naga",
+    "notes": "Energy is in kWh and rates in kW, so a rate times an hour is a kWh. Total Cost is the grid bill (import at the tariff minus export at 0.05 EUR/kWh) plus a 1.5 EUR/kW demand charge on the peak import power and the battery's capital charge -- the two lump sums are itemised in the cost summary. Total Impact is kg CO2e at 0.35 per imported kWh. Size the battery with `naga optimize --factor levels.Battery.capacity,variables.battery_kwh.initial=continuous:0:20 --response system/Total Cost --goal min`: one factor drives both paths, so the capital charge follows the size it is pricing."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 168,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "hours",
+    "currency": "EUR",
+    "timeseries_points": 168,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

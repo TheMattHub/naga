@@ -1,0 +1,268 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "sir_small_world_1",
+      "description": "SIR on a small-world network",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "SIR on a small-world network",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [
+    {
+      "name": "SIR SW Person",
+      "parameters": {
+        "recovery_time": 5.0
+      },
+      "states": [
+        {
+          "name": "S"
+        },
+        {
+          "name": "I"
+        },
+        {
+          "name": "R"
+        }
+      ],
+      "transitions": [
+        {
+          "from": "S",
+          "to": "I",
+          "message": "infect"
+        },
+        {
+          "from": "I",
+          "to": "R",
+          "timeout": "recovery_time",
+          "actions": [
+            {
+              "send": "infect",
+              "to": "links"
+            }
+          ],
+          "timeout_unit": "minutes"
+        }
+      ],
+      "initial_state": "S",
+      "speed_unit": "m/min"
+    }
+  ],
+  "populations": [
+    {
+      "name": "SIR SW People",
+      "type": "SIR SW Person",
+      "count": 200,
+      "initial": [
+        {
+          "state": "I",
+          "count": 1
+        }
+      ],
+      "network": {
+        "kind": "small_world",
+        "k": 4,
+        "beta": 0.1
+      }
+    }
+  ],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "SIR on a small-world network": {
+      "info": {
+        "description": "SIR spreading over a Watts-Strogatz network (Population Person agents, `network`: \"small_world\", degree K, rewiring Beta): a Susceptible only ever becomes Infected by MESSAGE from a linked neighbour, sent the instant that neighbour recovers (`send(\"infect\", \"links\")` on its own I->R transition) -- so infection rides the network structure itself, not a mean-field rate. Beta=0 collapses the network to a plain ring (each agent linked to its K nearest) and, with a CONSTANT recovery time instead of an exponential one, the outbreak becomes a deterministic wavefront: node at ring-distance d recovers at exactly (d + 1) * Recovery time, so Recovered(t) is an EXACT closed form, not a Monte Carlo estimate -- the oracle this asset ships with. The default instance (Beta 0.1) is an ordinary small-world outbreak, faster and larger than the pure ring since the rewired long-range links shortcut the front; Degree, Beta, Recovery time, Population and Initial infected are this instance's own.",
+        "library": {
+          "library": "abm_classics",
+          "asset": "sir_small_world",
+          "version": "1.2.0"
+        },
+        "parameters": [
+          {
+            "name": "degree",
+            "type": "int",
+            "default": 4,
+            "unit": "",
+            "label": "Degree K",
+            "help": "Each agent links to its K nearest ring neighbours before rewiring (even).",
+            "group": "Parameters",
+            "min": 2,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "beta",
+            "type": "number",
+            "default": 0.1,
+            "unit": "",
+            "label": "Rewiring beta",
+            "help": "Probability each ring link is rewired to a random agent (0 = a plain ring).",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "recovery_time",
+            "type": "number",
+            "default": 5.0,
+            "unit": "",
+            "label": "Recovery time",
+            "help": "Fixed duration an Infected agent stays infectious.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "population",
+            "type": "int",
+            "default": 200,
+            "unit": "",
+            "label": "Population",
+            "help": "Number of Person agents N.",
+            "group": "Parameters",
+            "min": 3,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "initial_infected",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Initial Infected",
+            "help": "Agents that start Infected; the rest start Susceptible.",
+            "group": "Parameters",
+            "min": 1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "agent_types": [
+            "SIR SW Person"
+          ],
+          "populations": [
+            "SIR SW People"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "degree",
+          "default": 4,
+          "type": "int",
+          "description": "Each agent links to its K nearest ring neighbours before rewiring (even)."
+        },
+        {
+          "name": "beta",
+          "default": 0.1,
+          "type": "number",
+          "description": "Probability each ring link is rewired to a random agent (0 = a plain ring)."
+        },
+        {
+          "name": "recovery_time",
+          "default": 5.0,
+          "type": "number",
+          "description": "Fixed duration an Infected agent stays infectious."
+        },
+        {
+          "name": "population",
+          "default": 200,
+          "type": "int",
+          "description": "Number of Person agents N."
+        },
+        {
+          "name": "initial_infected",
+          "default": 1,
+          "type": "int",
+          "description": "Agents that start Infected; the rest start Susceptible."
+        }
+      ],
+      "scoped": {
+        "agent_types": {
+          "SIR SW Person": {
+            "parameters.recovery_time": {
+              "$arg": "recovery_time"
+            }
+          }
+        },
+        "populations": {
+          "SIR SW People": {
+            "count": {
+              "$arg": "population"
+            },
+            "initial.0.count": {
+              "$arg": "initial_infected"
+            },
+            "network.k": {
+              "$arg": "degree"
+            },
+            "network.beta": {
+              "$arg": "beta"
+            }
+          }
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "SIR on a small-world network",
+    "category": "Agent-based",
+    "description": "SIR spreading over a Watts-Strogatz network (Population Person agents, `network`: \"small_world\", degree K, rewiring Beta): a Susceptible only ever becomes Infected by MESSAGE from a linked neighbour, sent the instant that neighbour recovers (`send(\"infect\", \"links\")` on its own I->R transition) -- so infection rides the network structure itself, not a mean-field rate. Beta=0 collapses the network to a plain ring (each agent linked to its K nearest) and, with a CONSTANT recovery time instead of an exponential one, the outbreak becomes a deterministic wavefront: node at ring-distance d recovers at exactly (d + 1) * Recovery time, so Recovered(t) is an EXACT closed form, not a Monte Carlo estimate -- the oracle this asset ships with. The default instance (Beta 0.1) is an ordinary small-world outbreak, faster and larger than the pure ring since the rewired long-range links shortcut the front; Degree, Beta, Recovery time, Population and Initial infected are this instance's own."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 52.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0
+  },
+  "outputs": {}
+}

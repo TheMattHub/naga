@@ -1,0 +1,255 @@
+{
+ "csv": {
+  "columns": [
+   "id",
+   "quantity",
+   "hours",
+   "site"
+  ],
+  "kinds": [
+   "O",
+   "i",
+   "f",
+   "O"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "WO-1",
+    2,
+    1.5,
+    "north"
+   ],
+   [
+    "WO-2",
+    4,
+    2.25,
+    "south"
+   ],
+   [
+    "WO-3",
+    9,
+    0.5,
+    "north"
+   ]
+  ]
+ },
+ "csv-missing": {
+  "code": "E_DATA_READ",
+  "hint": "the location is relative to the model file",
+  "message": "no such file: missing.csv"
+ },
+ "csv-options": {
+  "columns": [
+   "id",
+   "hours"
+  ],
+  "kinds": [
+   "O",
+   "O"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "WO-1",
+    "1.5"
+   ],
+   [
+    "WO-2",
+    "2.25"
+   ],
+   [
+    "WO-3",
+    "0.5"
+   ]
+  ]
+ },
+ "csv-unc": {
+  "code": "E_DATA_NETWORK_REFUSED",
+  "hint": "only a human can allow this: pass --allow-network, or point the source at a local path or a mapped drive",
+  "message": "'\\\\server\\share\\orders.csv' is a network path, so it was not read"
+ },
+ "json_url-data": {
+  "columns": [
+   "id",
+   "ok"
+  ],
+  "kinds": [
+   "O",
+   "b"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "a",
+    true
+   ]
+  ]
+ },
+ "json_url-list": {
+  "columns": [
+   "id",
+   "n"
+  ],
+  "kinds": [
+   "O",
+   "f"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "a",
+    1.0
+   ],
+   [
+    "b",
+    2.5
+   ]
+  ]
+ },
+ "json_url-off": {
+  "code": "E_DATA_NETWORK_REFUSED",
+  "hint": "only a human can allow this: pass --allow-network to the CLI or to `naga mcp`, or grant it in the editor's consent dialog",
+  "message": "network access is off, so 'https://example.invalid/data.json' was not fetched"
+ },
+ "sql-env-name": {
+  "code": "E_DATA_ENV_NAME",
+  "hint": "a model file may reference only variables whose names start with NAGASIM_DATA_; the person running the model sets one, for example NAGASIM_DATA_DB_URL, and the source names that",
+  "message": "'${PATH}' names an environment variable a model file may not read"
+ },
+ "sql-env-unset": {
+  "code": "E_DATA_ENV",
+  "hint": "set NAGASIM_DATA_NOT_SET_ANYWHERE before running, or edit the source's location",
+  "message": "environment variable 'NAGASIM_DATA_NOT_SET_ANYWHERE' is not set"
+ },
+ "sql-no-driver": {
+  "code": "E_DATA_READ",
+  "hint": "pip install \"nagasim[sql]\" (or: pip install sqlalchemy), or use a sqlite source",
+  "message": "a sql source needs the optional sqlalchemy package"
+ },
+ "sql-off": {
+  "code": "E_DATA_NETWORK_REFUSED",
+  "hint": "only a human can allow this: pass --allow-network to the CLI or to `naga mcp`, or grant it in the editor's consent dialog",
+  "message": "network access is off, so 'postgresql://user@host/db' was not connected to"
+ },
+ "sql-password": {
+  "code": "E_DATA_CREDENTIALS",
+  "hint": "write the whole URL as \"${NAGASIM_DATA_DB_URL}\" and set that environment variable",
+  "message": "source 's': the location embeds a password"
+ },
+ "sql-sqlite-url": {
+  "code": "E_DATA_URL_SCHEME",
+  "hint": "declare it as a \"sqlite\" source instead, whose path is confined like any other file",
+  "message": "'sqlite:///C:/Windows/win.ini' is a local file, not a network database"
+ },
+ "sqlite": {
+  "columns": [
+   "id",
+   "twice"
+  ],
+  "kinds": [
+   "O",
+   "i"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "WO-3",
+    18
+   ],
+   [
+    "WO-2",
+    8
+   ],
+   [
+    "WO-1",
+    4
+   ]
+  ]
+ },
+ "sqlite-missing-and-env": {
+  "code": "E_DATA_READ",
+  "hint": "the location is relative to the model file",
+  "message": "no such file: missing.sqlite"
+ },
+ "unknown-kind": {
+  "code": "E_DATA_SOURCE_KIND",
+  "hint": null,
+  "message": "unknown source kind 'parquet'"
+ },
+ "unknown-kind-env": {
+  "code": "E_DATA_ENV",
+  "hint": "set NAGASIM_DATA_NOT_SET_ANYWHERE before running, or edit the source's location",
+  "message": "environment variable 'NAGASIM_DATA_NOT_SET_ANYWHERE' is not set"
+ },
+ "xlsx": {
+  "columns": [
+   "id",
+   "quantity",
+   "hours",
+   "site"
+  ],
+  "kinds": [
+   "O",
+   "i",
+   "f",
+   "O"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "WO-1",
+    2,
+    1.5,
+    "north"
+   ],
+   [
+    "WO-2",
+    4,
+    2.25,
+    "south"
+   ],
+   [
+    "WO-3",
+    9,
+    0.5,
+    "north"
+   ]
+  ]
+ },
+ "xlsx-sheet": {
+  "columns": [
+   "id",
+   "quantity",
+   "hours",
+   "site"
+  ],
+  "kinds": [
+   "O",
+   "i",
+   "f",
+   "O"
+  ],
+  "stamp": true,
+  "values": [
+   [
+    "WO-1",
+    2,
+    1.5,
+    "north"
+   ],
+   [
+    "WO-2",
+    4,
+    2.25,
+    "south"
+   ],
+   [
+    "WO-3",
+    9,
+    0.5,
+    "north"
+   ]
+  ]
+ }
+}

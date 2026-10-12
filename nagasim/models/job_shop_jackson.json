@@ -1,0 +1,401 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "create_1",
+      "description": "External Poisson arrivals to Cutting, rate 1.0/min",
+      "type": "CREATE",
+      "position": [
+        100.0,
+        300.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 1.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "process_cutting",
+      "description": "Cutting station (single server)",
+      "type": "PROCESS",
+      "position": [
+        300.0,
+        300.0
+      ],
+      "layout_position": [
+        3.0,
+        8.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 1.65
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Cutting",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "decide_cutting",
+      "description": "Cutting routes: 0.6 to Drilling, 0.4 to Assembly",
+      "type": "DECIDE",
+      "position": [
+        500.0,
+        300.0
+      ],
+      "params": {
+        "mode": "Chance",
+        "probs": [
+          0.6,
+          0.4
+        ],
+        "conditions": []
+      }
+    },
+    {
+      "name": "process_drilling",
+      "description": "Drilling station (resource SET of two single-capacity drills)",
+      "type": "PROCESS",
+      "position": [
+        700.0,
+        200.0
+      ],
+      "layout_position": [
+        23.0,
+        3.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.5
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Drilling",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "decide_drilling",
+      "description": "Drilling routes: 0.5 to Assembly, 0.5 exits",
+      "type": "DECIDE",
+      "position": [
+        900.0,
+        200.0
+      ],
+      "params": {
+        "mode": "Chance",
+        "probs": [
+          0.5,
+          0.5
+        ],
+        "conditions": []
+      }
+    },
+    {
+      "name": "process_assembly",
+      "description": "Assembly station (capacity 2)",
+      "type": "PROCESS",
+      "position": [
+        700.0,
+        400.0
+      ],
+      "layout_position": [
+        23.0,
+        13.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.55
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "AssemblyStation",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "decide_assembly",
+      "description": "Assembly routes: 0.2 rework to Cutting, 0.8 exits",
+      "type": "DECIDE",
+      "position": [
+        900.0,
+        400.0
+      ],
+      "params": {
+        "mode": "Chance",
+        "probs": [
+          0.2,
+          0.8
+        ],
+        "conditions": []
+      }
+    },
+    {
+      "name": "assign_rework",
+      "description": "Count reworked jobs (model variable, via expression)",
+      "type": "ASSIGN",
+      "position": [
+        1100.0,
+        500.0
+      ],
+      "params": {
+        "assignments": [
+          {
+            "target": "reworks",
+            "expr": "reworks + 1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "record_drilling_exit",
+      "description": "Tally time in system for jobs exiting after Drilling",
+      "type": "RECORD",
+      "position": [
+        1100.0,
+        200.0
+      ],
+      "params": {
+        "stat_name": "time_in_system",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "record_assembly_exit",
+      "description": "Tally time in system for jobs exiting after Assembly",
+      "type": "RECORD",
+      "position": [
+        1100.0,
+        400.0
+      ],
+      "params": {
+        "stat_name": "time_in_system",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "Jobs leave the shop",
+      "type": "DISPOSE",
+      "position": [
+        1300.0,
+        300.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "create_1",
+      "target": "process_cutting"
+    },
+    {
+      "source": "process_cutting",
+      "target": "decide_cutting"
+    },
+    {
+      "source": "decide_cutting",
+      "target": "process_drilling"
+    },
+    {
+      "source": "decide_cutting",
+      "target": "process_assembly"
+    },
+    {
+      "source": "process_drilling",
+      "target": "decide_drilling"
+    },
+    {
+      "source": "decide_drilling",
+      "target": "process_assembly"
+    },
+    {
+      "source": "decide_drilling",
+      "target": "record_drilling_exit"
+    },
+    {
+      "source": "process_assembly",
+      "target": "decide_assembly"
+    },
+    {
+      "source": "decide_assembly",
+      "target": "assign_rework"
+    },
+    {
+      "source": "decide_assembly",
+      "target": "record_assembly_exit"
+    },
+    {
+      "source": "assign_rework",
+      "target": "process_cutting"
+    },
+    {
+      "source": "record_drilling_exit",
+      "target": "dispose_1"
+    },
+    {
+      "source": "record_assembly_exit",
+      "target": "dispose_1"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Extra Assembly server",
+      "description": "AssemblyStation capacity 2 -> 3 (a third assembler)",
+      "overrides": [
+        {
+          "path": "resources.AssemblyStation.capacity",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "name": "Less rework",
+      "description": "Assembly rework probability 0.2 -> 0.1 (decide_assembly probs kept consistent: [0.1, 0.9])",
+      "overrides": [
+        {
+          "path": "blocks.decide_assembly.params.probs",
+          "value": [
+            0.1,
+            0.9
+          ]
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Cutting",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 28.0,
+      "cost_idle": 8.0,
+      "cost_per_use": 0.5,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Drill1",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 22.0,
+      "cost_idle": 6.0,
+      "cost_per_use": 0.3,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Drill2",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 22.0,
+      "cost_idle": 6.0,
+      "cost_per_use": 0.3,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "AssemblyStation",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_busy": 32.0,
+      "cost_idle": 9.0,
+      "cost_per_use": 0.4,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [
+    {
+      "name": "Drilling",
+      "members": [
+        "Drill1",
+        "Drill2"
+      ],
+      "rule": "SmallestNumberBusy"
+    }
+  ],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [
+    {
+      "name": "reworks",
+      "initial": 0
+    }
+  ],
+  "entities": [
+    {
+      "name": "DEFAULT",
+      "shape": "circle",
+      "color": "BLACK",
+      "holding_cost": 0.05,
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Job shop (Jackson network)",
+    "category": "Manufacturing",
+    "description": "Three-station job shop (Cutting, then a 0.6/0.4 split to Drilling or Assembly, with a 0.2 rework loop back to Cutting) modelled as an open Jackson network -- costed resources, a WIP holding cost, and two example scenarios (extra Assembly capacity, less rework)."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 10000,
+    "warmup": 2000,
+    "replications": 20,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

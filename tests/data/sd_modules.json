@@ -1,0 +1,65 @@
+{
+  "levels": [
+    {"name": "Mod1 Level", "initial": "0.0", "min": null},
+    {"name": "Mod2 Level", "initial": "0.0", "min": null}
+  ],
+  "flows": [
+    {"name": "Mod1 Inflow",
+     "rate": "((AUX(\"$Mod1 Input\") - LEVEL(\"$Mod1 Level\")) / AUX(\"$Mod1 Tau\"))",
+     "to": "Mod1 Level", "biflow": true},
+    {"name": "Mod2 Inflow",
+     "rate": "((AUX(\"$Mod2 Input\") - LEVEL(\"$Mod2 Level\")) / AUX(\"$Mod2 Tau\"))",
+     "to": "Mod2 Level", "biflow": true}
+  ],
+  "auxiliaries": [
+    {"name": "Mod1 Input", "expr": "0"},
+    {"name": "Mod1 Tau", "expr": "2.0"},
+    {"name": "Mod1 Output", "expr": "LEVEL(\"$Mod1 Level\")"},
+    {"name": "Mod2 Input", "expr": "0"},
+    {"name": "Mod2 Tau", "expr": "3.0"},
+    {"name": "Mod2 Output", "expr": "LEVEL(\"$Mod2 Level\")"},
+    {"name": "OuterInput", "expr": "5.0"},
+    {"name": "Total", "expr": "(AUX(\"mod1/Mod1 Output\") + AUX(\"mod2/Mod2 Output\"))"}
+  ],
+  "tables": [],
+  "subscripts": [],
+  "simulation": {
+    "time_limit": 10.0,
+    "time_unit": "minutes",
+    "sd": {"dt": 1.0, "method": "euler", "time_unit": "base"}
+  },
+  "blocks": [
+    {"name": "mod1", "description": "mod1", "type": "SUBMODEL", "position": [0, 0],
+     "params": {"definition": "Mod1", "arguments": {"input": "AUX(\"OuterInput\")"}}},
+    {"name": "mod2", "description": "mod2", "type": "SUBMODEL", "position": [0, 0],
+     "params": {"definition": "Mod2", "arguments": {"input": "AUX(\"OuterInput\")"}}}
+  ],
+  "submodels": {
+    "Mod1": {
+      "blocks": [], "links": [],
+      "parameters": [{"name": "input", "type": "string", "default": "0"}],
+      "scoped": {
+        "levels": {"Mod1 Level": {}},
+        "flows": {"Mod1 Inflow": {}},
+        "auxiliaries": {
+          "Mod1 Input": {"expr": {"$arg": "input"}},
+          "Mod1 Tau": {},
+          "Mod1 Output": {}
+        }
+      }
+    },
+    "Mod2": {
+      "blocks": [], "links": [],
+      "parameters": [{"name": "input", "type": "string", "default": "0"}],
+      "scoped": {
+        "levels": {"Mod2 Level": {}},
+        "flows": {"Mod2 Inflow": {}},
+        "auxiliaries": {
+          "Mod2 Input": {"expr": {"$arg": "input"}},
+          "Mod2 Tau": {},
+          "Mod2 Output": {}
+        }
+      }
+    }
+  }
+}

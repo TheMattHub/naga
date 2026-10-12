@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+  <header>
+    <name>Conveyor A - no leak</name>
+    <vendor>Naga</vendor>
+    <product version="1.0">Naga test fixture</product>
+  </header>
+  <!-- method="RK4" on purpose: a conveyor forces euler on import (C2), with a
+       warning; the slat model has no RK substep of its own. -->
+  <sim_specs method="RK4" time_units="days">
+    <start>0</start>
+    <stop>3.5</stop>
+    <dt>0.5</dt>
+  </sim_specs>
+  <model>
+    <variables>
+      <flow name="hire">
+        <eqn>100</eqn>
+        <non_negative/>
+      </flow>
+      <flow name="graduate">
+        <eqn>0</eqn>
+      </flow>
+      <stock name="Training">
+        <eqn>0</eqn>
+        <inflow>hire</inflow>
+        <outflow>graduate</outflow>
+        <conveyor>
+          <len>2</len>
+        </conveyor>
+      </stock>
+    </variables>
+  </model>
+</xmile>

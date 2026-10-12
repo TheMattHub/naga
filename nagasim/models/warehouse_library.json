@@ -1,0 +1,3365 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "trucks_fast",
+      "description": "Truck arrivals",
+      "type": "SUBMODEL",
+      "position": [
+        -600.0,
+        -200.0
+      ],
+      "layout_position": [
+        -12.0,
+        6.0
+      ],
+      "params": {
+        "definition": "Truck arrivals",
+        "arguments": {
+          "arrival_mode": "Interarrival",
+          "truck_schedule": "",
+          "interval": 55.0,
+          "interval_distribution": "fixed",
+          "pallets_per_truck": 12,
+          "pallet_type": "Fast mover",
+          "truck_type": "TRUCK",
+          "route": "Fast mover",
+          "max_trucks": 0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "trucks_bulk",
+      "description": "Truck arrivals",
+      "type": "SUBMODEL",
+      "position": [
+        -600.0,
+        0.0
+      ],
+      "layout_position": [
+        -12.0,
+        16.0
+      ],
+      "params": {
+        "definition": "Truck arrivals",
+        "arguments": {
+          "arrival_mode": "Interarrival",
+          "truck_schedule": "",
+          "interval": 35.0,
+          "interval_distribution": "fixed",
+          "pallets_per_truck": 5,
+          "pallet_type": "Bulk",
+          "truck_type": "TRUCK",
+          "route": "Bulk",
+          "max_trucks": 0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "dock",
+      "description": "Dock (inbound)",
+      "type": "SUBMODEL",
+      "position": [
+        -350.0,
+        -100.0
+      ],
+      "layout_position": [
+        0.0,
+        10.0
+      ],
+      "params": {
+        "definition": "Dock (inbound)",
+        "arguments": {
+          "station_name": "Dock",
+          "doors": 2,
+          "unload_time": 3.0,
+          "time_distribution": "triangular",
+          "crew": "Log Dock crew",
+          "door_cost_rate": 0.25
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "zone_a",
+      "description": "Storage zone",
+      "type": "SUBMODEL",
+      "position": [
+        -50.0,
+        -250.0
+      ],
+      "layout_position": [
+        20.0,
+        30.0
+      ],
+      "params": {
+        "definition": "Storage zone",
+        "arguments": {
+          "station_name": "Storage A",
+          "mode": "stock",
+          "initial_stock": 20,
+          "positions": 40,
+          "putaway_time": 1.5,
+          "dwell_time": 60.0,
+          "dwell_distribution": "exponential"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "zone_b",
+      "description": "Storage zone",
+      "type": "SUBMODEL",
+      "position": [
+        -50.0,
+        -80.0
+      ],
+      "layout_position": [
+        45.0,
+        40.0
+      ],
+      "params": {
+        "definition": "Storage zone",
+        "arguments": {
+          "station_name": "Storage B",
+          "mode": "stock",
+          "initial_stock": 28,
+          "positions": 45,
+          "putaway_time": 2.5,
+          "dwell_time": 60.0,
+          "dwell_distribution": "exponential"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "orders_fast",
+      "description": "Order arrivals",
+      "type": "SUBMODEL",
+      "position": [
+        -600.0,
+        250.0
+      ],
+      "params": {
+        "definition": "Order arrivals",
+        "arguments": {
+          "arrival_mode": "Interarrival",
+          "order_schedule": "",
+          "interval": 9.5,
+          "interval_distribution": "exponential",
+          "lines_per_order": 2.0,
+          "lines_distribution": "fixed",
+          "units_per_line": 1.0,
+          "due_in": 60.0,
+          "order_type": "ORDER",
+          "max_orders": 0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "orders_bulk",
+      "description": "Order arrivals",
+      "type": "SUBMODEL",
+      "position": [
+        -600.0,
+        420.0
+      ],
+      "params": {
+        "definition": "Order arrivals",
+        "arguments": {
+          "arrival_mode": "Interarrival",
+          "order_schedule": "",
+          "interval": 23.0,
+          "interval_distribution": "exponential",
+          "lines_per_order": 3.0,
+          "lines_distribution": "fixed",
+          "units_per_line": 1.0,
+          "due_in": 60.0,
+          "order_type": "ORDER",
+          "max_orders": 0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "pick_a",
+      "description": "Order picking from stock",
+      "type": "SUBMODEL",
+      "position": [
+        -300.0,
+        250.0
+      ],
+      "layout_position": [
+        20.0,
+        42.0
+      ],
+      "params": {
+        "definition": "Order picking from stock",
+        "arguments": {
+          "station_name": "Picking A",
+          "stock_level": "zone_a/Log Zone stock",
+          "quantity_source": "attribute",
+          "units_per_order": 1.0,
+          "lines_source": "attribute",
+          "lines_per_order": 2.0,
+          "setup_time": 1.0,
+          "time_per_line": 1.5,
+          "pickers": "Log Pickers"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "pick_b",
+      "description": "Order picking from stock",
+      "type": "SUBMODEL",
+      "position": [
+        -300.0,
+        420.0
+      ],
+      "layout_position": [
+        45.0,
+        52.0
+      ],
+      "params": {
+        "definition": "Order picking from stock",
+        "arguments": {
+          "station_name": "Picking B",
+          "stock_level": "zone_b/Log Zone stock",
+          "quantity_source": "attribute",
+          "units_per_order": 1.0,
+          "lines_source": "attribute",
+          "lines_per_order": 3.0,
+          "setup_time": 1.0,
+          "time_per_line": 1.5,
+          "pickers": "Log Pickers"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "belt",
+      "description": "Conveyor segment",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        340.0
+      ],
+      "layout_position": [
+        60.0,
+        25.0
+      ],
+      "params": {
+        "definition": "Conveyor segment",
+        "arguments": {
+          "station_name": "",
+          "length_m": 30.0,
+          "speed": 12.0,
+          "spacing": 1.4,
+          "accumulating": true,
+          "exit_resource": ""
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "shipping",
+      "description": "Shipping dock (outbound)",
+      "type": "SUBMODEL",
+      "position": [
+        300.0,
+        340.0
+      ],
+      "layout_position": [
+        70.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Shipping dock (outbound)",
+        "arguments": {
+          "station_name": "Shipping",
+          "pallets_per_load": 10,
+          "cut_off": 45.0,
+          "doors": 1,
+          "load_time_per_pallet": 0.5,
+          "door_cost_rate": 0.2
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "forklifts",
+      "description": "Vehicle fleet",
+      "type": "SUBMODEL",
+      "position": [
+        150.0,
+        -100.0
+      ],
+      "params": {
+        "definition": "Vehicle fleet",
+        "arguments": {
+          "vehicles": 2,
+          "speed_loaded": 50.0,
+          "speed_empty": 70.0,
+          "load_time": 0.4,
+          "unload_time": 0.4,
+          "home_node": "dock/door",
+          "park": "stay",
+          "dispatch": "nearest",
+          "select": "nearest",
+          "shift_schedule": "",
+          "cost_busy": 0.0,
+          "cost_idle": 0.0,
+          "destination": "",
+          "priority": 0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "left_site",
+      "description": "Left the site",
+      "type": "DISPOSE",
+      "position": [
+        600.0,
+        340.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "trucks_fast",
+      "target": "dock",
+      "source_port": "trucks",
+      "target_port": "in"
+    },
+    {
+      "source": "trucks_bulk",
+      "target": "dock",
+      "source_port": "trucks",
+      "target_port": "in"
+    },
+    {
+      "source": "dock",
+      "target": "forklifts",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "zone_a",
+      "target": "left_site",
+      "source_port": "out"
+    },
+    {
+      "source": "zone_b",
+      "target": "left_site",
+      "source_port": "out"
+    },
+    {
+      "source": "forklifts",
+      "target": "left_site",
+      "source_port": "done"
+    },
+    {
+      "source": "orders_fast",
+      "target": "pick_a",
+      "source_port": "orders",
+      "target_port": "orders"
+    },
+    {
+      "source": "orders_bulk",
+      "target": "pick_b",
+      "source_port": "orders",
+      "target_port": "orders"
+    },
+    {
+      "source": "pick_a",
+      "target": "belt",
+      "source_port": "picked",
+      "target_port": "in"
+    },
+    {
+      "source": "pick_b",
+      "target": "belt",
+      "source_port": "picked",
+      "target_port": "in"
+    },
+    {
+      "source": "belt",
+      "target": "shipping",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "shipping",
+      "target": "left_site",
+      "source_port": "shipped"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Demand surge",
+      "overrides": [
+        {
+          "path": "blocks.orders_fast.params.arguments.interval",
+          "value": 7.0
+        },
+        {
+          "path": "blocks.orders_bulk.params.arguments.interval",
+          "value": 16.0
+        }
+      ]
+    },
+    {
+      "name": "Deeper opening stock",
+      "overrides": [
+        {
+          "path": "blocks.zone_a.params.arguments.initial_stock",
+          "value": 38
+        },
+        {
+          "path": "blocks.zone_b.params.arguments.initial_stock",
+          "value": 42
+        }
+      ]
+    },
+    {
+      "name": "A second picker",
+      "overrides": [
+        {
+          "path": "resources.Log Pickers.capacity",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "name": "A third forklift",
+      "overrides": [
+        {
+          "path": "blocks.forklifts.params.arguments.vehicles",
+          "value": 3
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Log Dock door",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Log Dock crew",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_busy": 32.0,
+      "cost_idle": 22.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Log Pickers",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 30.0,
+      "cost_idle": 21.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Log Shipping door",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [
+    {
+      "name": "Fast mover",
+      "steps": [
+        {
+          "station": "Storage A",
+          "values": {}
+        }
+      ]
+    },
+    {
+      "name": "Bulk",
+      "steps": [
+        {
+          "station": "Storage B",
+          "values": {}
+        }
+      ]
+    }
+  ],
+  "variables": [],
+  "entities": [
+    {
+      "name": "Fast mover",
+      "shape": "square",
+      "color": "BLUE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "Bulk",
+      "shape": "circle",
+      "color": "ORANGE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "PALLET",
+      "shape": "square",
+      "color": "BROWN",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "TRUCK",
+      "shape": "rect",
+      "color": "GREY",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "ORDER",
+      "shape": "triangle",
+      "color": "GREEN",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "TRUCKLOAD",
+      "shape": "rect",
+      "color": "BLUE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "Log Zone stock",
+      "description": "Pallet positions in use.",
+      "unit": "pallets",
+      "min": 0,
+      "initial": 0,
+      "capacity": 400,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [
+    {
+      "name": "Log Forklifts",
+      "count": 3,
+      "speed": 50.0,
+      "speed_empty": 70.0,
+      "load_time": "0.4",
+      "unload_time": "0.4",
+      "time_unit": "minutes",
+      "home": "",
+      "park": "stay",
+      "dispatch": "nearest",
+      "select": "nearest",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours",
+      "speed_unit": "m/min"
+    }
+  ],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": {
+    "nodes": [
+      {
+        "name": "trucks_fast/yard",
+        "x": -12.0,
+        "y": 6.0
+      },
+      {
+        "name": "trucks_bulk/yard",
+        "x": -12.0,
+        "y": 16.0
+      },
+      {
+        "name": "dock/door",
+        "x": 0.0,
+        "y": 10.0
+      },
+      {
+        "name": "zone_a/zone",
+        "x": 20.0,
+        "y": 30.0
+      },
+      {
+        "name": "zone_b/zone",
+        "x": 45.0,
+        "y": 40.0
+      },
+      {
+        "name": "pick_a/pick",
+        "x": 20.0,
+        "y": 42.0
+      },
+      {
+        "name": "pick_b/pick",
+        "x": 45.0,
+        "y": 52.0
+      },
+      {
+        "name": "belt/start",
+        "x": 60.0,
+        "y": 25.0
+      },
+      {
+        "name": "belt/end",
+        "x": 70.0,
+        "y": 5.0
+      },
+      {
+        "name": "shipping/bay",
+        "x": 70.0,
+        "y": 0.0
+      },
+      {
+        "name": "aisle_w",
+        "x": 20.0,
+        "y": 10.0
+      },
+      {
+        "name": "aisle_m",
+        "x": 45.0,
+        "y": 10.0
+      },
+      {
+        "name": "aisle_e",
+        "x": 70.0,
+        "y": 10.0
+      }
+    ],
+    "segments": [
+      {
+        "from": "dock/door",
+        "to": "aisle_w",
+        "length": 20.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_w",
+        "to": "aisle_m",
+        "length": 25.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_m",
+        "to": "aisle_e",
+        "length": 25.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_w",
+        "to": "zone_a/zone",
+        "length": 20.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_m",
+        "to": "zone_b/zone",
+        "length": 30.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "zone_a/zone",
+        "to": "pick_a/pick",
+        "length": 6.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "zone_b/zone",
+        "to": "pick_b/pick",
+        "length": 6.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_e",
+        "to": "belt/start",
+        "length": 18.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_e",
+        "to": "shipping/bay",
+        "length": 10.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "trucks_fast/yard",
+        "to": "dock/door",
+        "length": 13.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "trucks_bulk/yard",
+        "to": "dock/door",
+        "length": 13.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      }
+    ]
+  },
+  "annotations": [],
+  "submodels": {
+    "Truck arrivals": {
+      "info": {
+        "description": "Inbound trucks. Each truck is an ENTITY carrying its load: the pallets are created, batched into one truck, and the truck leaves by \"trucks\" -- link it to a Dock's \"in\" port, where it holds a door until it is empty. That is what makes truck turnaround, door time per truck and trucks waiting real KPIs instead of pallet-level averages. Trucks come on an interarrival time or on a named arrival schedule (trucks per period). Place one instance per product stream: the mix is visible on the palette and each stream keeps its own routing, its own load size and its own rate. The pallets' routing starts AFTER the dock -- the truck brings them there.",
+        "library": {
+          "library": "logistics",
+          "asset": "truck_arrivals",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "arrival_mode",
+            "type": "choice",
+            "default": "Interarrival",
+            "unit": "",
+            "label": "Trucks arrive by",
+            "help": "Interarrival: a mean time between trucks. Schedule: an arrival schedule naming trucks per period, for a day that is busy in the morning.",
+            "group": "Arrivals",
+            "min": null,
+            "max": null,
+            "choices": [
+              "Interarrival",
+              "Schedule"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "truck_schedule",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Arrival schedule",
+            "help": "Used only in Schedule mode: an arrival-kind schedule of trucks per period.",
+            "group": "Arrivals",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "schedule"
+          },
+          {
+            "name": "interval",
+            "type": "time",
+            "default": 30.0,
+            "unit": "minutes",
+            "label": "Mean time between trucks",
+            "help": "",
+            "group": "Arrivals",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "interval_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Spacing",
+            "help": "fixed is an appointment book, exponential is unbooked traffic.",
+            "group": "Arrivals",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "pallets_per_truck",
+            "type": "int",
+            "default": 20,
+            "unit": "",
+            "label": "Pallets per truck",
+            "help": "Pallets on one truck; the truck is unloaded one pallet's worth at a time.",
+            "group": "Load",
+            "min": 1,
+            "max": 60,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pallet_type",
+            "type": "name",
+            "default": "PALLET",
+            "unit": "",
+            "label": "Pallet entity type",
+            "help": "",
+            "group": "Load",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          },
+          {
+            "name": "truck_type",
+            "type": "name",
+            "default": "TRUCK",
+            "unit": "",
+            "label": "Truck entity type",
+            "help": "The entity type the truck itself gets, so `entity_summary` reports trucks and pallets separately and a pallet KPI is never inflated by a truck.",
+            "group": "Load",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          },
+          {
+            "name": "route",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Routing",
+            "help": "The sequence of stations these PALLETS visit after they are unloaded -- storage zone, picking, shipping. The dock is not a step: the truck brings them there. Leave it empty and the pallets leave straight by \"unrouted\".",
+            "group": "Load",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "sequence"
+          },
+          {
+            "name": "max_trucks",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Stop after this many trucks",
+            "help": "0 keeps trucks coming for the whole run; a number is a known inbound plan.",
+            "group": "Arrivals",
+            "min": 0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "yard",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "arrival_mode",
+          "default": "Interarrival",
+          "type": "choice",
+          "description": "Interarrival: a mean time between trucks. Schedule: an arrival schedule naming trucks per period, for a day that is busy in the morning."
+        },
+        {
+          "name": "truck_schedule",
+          "default": "",
+          "type": "name",
+          "refers_to": "schedule",
+          "description": "Used only in Schedule mode: an arrival-kind schedule of trucks per period."
+        },
+        {
+          "name": "interval",
+          "default": 30.0,
+          "type": "time"
+        },
+        {
+          "name": "interval_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "fixed is an appointment book, exponential is unbooked traffic."
+        },
+        {
+          "name": "pallets_per_truck",
+          "default": 20,
+          "type": "int",
+          "description": "Pallets on one truck; the truck is unloaded one pallet's worth at a time."
+        },
+        {
+          "name": "pallet_type",
+          "default": "PALLET",
+          "type": "name",
+          "refers_to": "entity"
+        },
+        {
+          "name": "truck_type",
+          "default": "TRUCK",
+          "type": "name",
+          "refers_to": "entity",
+          "description": "The entity type the truck itself gets, so `entity_summary` reports trucks and pallets separately and a pallet KPI is never inflated by a truck."
+        },
+        {
+          "name": "route",
+          "default": "",
+          "type": "name",
+          "refers_to": "sequence",
+          "description": "The sequence of stations these PALLETS visit after they are unloaded -- storage zone, picking, shipping. The dock is not a step: the truck brings them there. Leave it empty and the pallets leave straight by \"unrouted\"."
+        },
+        {
+          "name": "max_trucks",
+          "default": 0,
+          "type": "int",
+          "description": "0 keeps trucks coming for the whole run; a number is a known inbound plan."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "arrive",
+          "description": "Trucks",
+          "type": "CREATE",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "e_type": {
+              "$arg": "pallet_type"
+            },
+            "arrival_mode": {
+              "$arg": "arrival_mode"
+            },
+            "schedule_name": {
+              "$arg": "truck_schedule"
+            },
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "interval if interval_distribution == 'fixed' else (EXPO(interval) if interval_distribution == 'exponential' else TRIA(0.5 * interval, interval, 1.5 * interval))"
+            },
+            "time_unit": "minutes",
+            "entities_per_arrival": {
+              "$arg": "pallets_per_truck"
+            },
+            "max_arrivals": {
+              "$arg": "max_trucks"
+            },
+            "start_time": 0,
+            "sequence": {
+              "$arg": "route"
+            }
+          }
+        },
+        {
+          "name": "load",
+          "description": "One truckload",
+          "type": "BATCH",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "batch_size": {
+              "$arg": "pallets_per_truck"
+            },
+            "batched_entity_type": {
+              "$arg": "truck_type"
+            },
+            "max_wait": "",
+            "max_wait_time_unit": "minutes"
+          }
+        },
+        {
+          "name": "manifest",
+          "description": "Stamp the load",
+          "type": "ASSIGN",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.pallets",
+                "expr": "pallets_per_truck"
+              }
+            ]
+          }
+        },
+        {
+          "name": "trucks",
+          "description": "Trucks leaving the yard",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "trucks"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "arrive",
+          "target": "load"
+        },
+        {
+          "source": "load",
+          "target": "manifest"
+        },
+        {
+          "source": "manifest",
+          "target": "trucks"
+        }
+      ],
+      "annotations": []
+    },
+    "Dock (inbound)": {
+      "info": {
+        "description": "A receiving dock: a number of doors, and a crew shared with the rest of the site. A TRUCK arrives at a door, holds it for its whole stay, is unloaded pallet by pallet by one member of the crew, and its pallets leave by \"out\" on their own routing. Door time is therefore per truck, not per pallet, and the truck's own time in system is its turnaround. The dock is a STATION and brings its own network node, so put it where the doors really are and draw an aisle to it.",
+        "library": {
+          "library": "logistics",
+          "asset": "inbound_dock",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "Dock",
+            "unit": "",
+            "label": "Station name",
+            "help": "The name a routing step uses for this dock. It must be unique in the model.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "doors",
+            "type": "int",
+            "default": 2,
+            "unit": "",
+            "label": "Doors",
+            "help": "Trucks beyond this wait in the yard.",
+            "group": "Dock",
+            "min": 1,
+            "max": 60,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "unload_time",
+            "type": "time",
+            "default": 3.0,
+            "unit": "minutes",
+            "label": "Unload time per pallet",
+            "help": "Time to take one pallet off a truck. A truck of N pallets holds its door and one crew member for N times this.",
+            "group": "Dock",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": "triangular",
+            "unit": "",
+            "label": "Unload time distribution",
+            "help": "",
+            "group": "Dock",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "crew",
+            "type": "name",
+            "default": "Log Dock crew",
+            "unit": "",
+            "label": "Dock crew pool",
+            "help": "The shared pool a TRUCK takes one member of while it is unloaded. Two docks naming the same pool really do compete for it.",
+            "group": "Dock",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "door_cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate per door",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "door",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "Dock",
+          "type": "name",
+          "description": "The name a routing step uses for this dock. It must be unique in the model."
+        },
+        {
+          "name": "doors",
+          "default": 2,
+          "type": "int",
+          "description": "Trucks beyond this wait in the yard."
+        },
+        {
+          "name": "unload_time",
+          "default": 3.0,
+          "type": "time",
+          "description": "Time to take one pallet off a truck. A truck of N pallets holds its door and one crew member for N times this."
+        },
+        {
+          "name": "time_distribution",
+          "default": "triangular",
+          "type": "choice"
+        },
+        {
+          "name": "crew",
+          "default": "Log Dock crew",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The shared pool a TRUCK takes one member of while it is unloaded. Two docks naming the same pool really do compete for it."
+        },
+        {
+          "name": "door_cost_rate",
+          "default": 0.0,
+          "type": "number"
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Log Dock door": {
+            "capacity": "doors",
+            "cost_busy": "door_cost_rate"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Trucks arriving",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_dock",
+          "description": "Dock",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station_name"
+            },
+            "node": "$door"
+          }
+        },
+        {
+          "name": "take_door",
+          "description": "Take a door",
+          "type": "SEIZE",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Log Dock door",
+            "balk_if": "",
+            "renege_after": "",
+            "renege_time_unit": "base"
+          }
+        },
+        {
+          "name": "unload",
+          "description": "Unload the truck with the crew",
+          "type": "PROCESS",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "entity.pallets * (unload_time if time_distribution == 'fixed' else (EXPO(unload_time) if time_distribution == 'exponential' else TRIA(0.5 * unload_time, unload_time, 1.5 * unload_time)))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": {
+              "$arg": "crew"
+            }
+          }
+        },
+        {
+          "name": "free_door",
+          "description": "Free the door",
+          "type": "RELEASE",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "minutes",
+            "resource_name": "$Log Dock door"
+          }
+        },
+        {
+          "name": "drop",
+          "description": "Pallets off the truck",
+          "type": "SEPARATE",
+          "position": [
+            900.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Retain original entity values",
+            "attrs": []
+          }
+        },
+        {
+          "name": "at_door",
+          "description": "The pallets are at the dock",
+          "type": "ASSIGN",
+          "position": [
+            950.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.station",
+                "expr": "station_name"
+              }
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "description": "Pallets off the truck",
+          "type": "SUB_EXIT",
+          "position": [
+            1050.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_dock"
+        },
+        {
+          "source": "at_dock",
+          "target": "take_door"
+        },
+        {
+          "source": "take_door",
+          "target": "unload"
+        },
+        {
+          "source": "unload",
+          "target": "free_door"
+        },
+        {
+          "source": "free_door",
+          "target": "drop"
+        },
+        {
+          "source": "drop",
+          "target": "at_door"
+        },
+        {
+          "source": "at_door",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Storage zone": {
+      "info": {
+        "description": "A rack zone with a finite number of pallet positions. A pallet claims a position when it arrives -- and WAITS in the aisle if the zone is full, which is what makes \"Time Full %\" and the zone's average occupancy real KPIs -- and is put away. What happens next is the MODE. \"stock\": the pallet's journey ends in the rack as stock, and an Order picking instance bound to this zone's level draws it out later, which is the order-driven warehouse. \"pass_through\": the pallet dwells for a sampled time and leaves by \"out\", carrying its own position back with it -- the original behaviour, for a model with no order stream. The zone is a routed STATION with its own network node, and its pallet positions are a level, so a fill indicator draws how full the racking is.",
+        "library": {
+          "library": "logistics",
+          "asset": "storage_zone",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "Storage",
+            "unit": "",
+            "label": "Station name",
+            "help": "",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "mode",
+            "type": "choice",
+            "default": "pass_through",
+            "unit": "",
+            "label": "Zone mode",
+            "help": "pass_through: a pallet dwells for the sampled time below and leaves by \"out\". stock: it stays in the rack as stock and nothing leaves by \"out\" -- an Order picking instance whose \"Zone stock\" names THIS instance's level (<this block>/Log Zone stock) takes it out when a customer order asks for it. The dwell parameters are ignored in stock mode.",
+            "group": "Zone",
+            "min": null,
+            "max": null,
+            "choices": [
+              "pass_through",
+              "stock"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "initial_stock",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Opening stock",
+            "help": "Pallet positions already taken when the run starts -- the stock the warehouse opens with. It is clamped to the zone's capacity, and it is what keeps a stock-mode zone from starting every run with a queue of backorders.",
+            "group": "Zone",
+            "min": 0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "positions",
+            "type": "int",
+            "default": 400,
+            "unit": "",
+            "label": "Pallet positions",
+            "help": "How many pallets fit. A pallet arriving at a full zone waits for a position.",
+            "group": "Zone",
+            "min": 1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "putaway_time",
+            "type": "time",
+            "default": 1.5,
+            "unit": "minutes",
+            "label": "Put-away time",
+            "help": "",
+            "group": "Zone",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "dwell_time",
+            "type": "time",
+            "default": 60.0,
+            "unit": "minutes",
+            "label": "Dwell time before picking",
+            "help": "pass_through mode only: how long a pallet sits in the rack before it is wanted. This is what fills the zone -- with none, a zone is never more than momentarily occupied. In stock mode the dwell is an OUTCOME (how long the pallet waited for an order), not an input.",
+            "group": "Zone",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "dwell_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Dwell time distribution",
+            "help": "pass_through mode only.",
+            "group": "Zone",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "zone",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "Storage",
+          "type": "name"
+        },
+        {
+          "name": "mode",
+          "default": "pass_through",
+          "type": "choice",
+          "description": "pass_through: a pallet dwells for the sampled time below and leaves by \"out\". stock: it stays in the rack as stock and nothing leaves by \"out\" -- an Order picking instance whose \"Zone stock\" names THIS instance's level (<this block>/Log Zone stock) takes it out when a customer order asks for it. The dwell parameters are ignored in stock mode."
+        },
+        {
+          "name": "initial_stock",
+          "default": 0,
+          "type": "int",
+          "description": "Pallet positions already taken when the run starts -- the stock the warehouse opens with. It is clamped to the zone's capacity, and it is what keeps a stock-mode zone from starting every run with a queue of backorders."
+        },
+        {
+          "name": "positions",
+          "default": 400,
+          "type": "int",
+          "description": "How many pallets fit. A pallet arriving at a full zone waits for a position."
+        },
+        {
+          "name": "putaway_time",
+          "default": 1.5,
+          "type": "time"
+        },
+        {
+          "name": "dwell_time",
+          "default": 60.0,
+          "type": "time",
+          "description": "pass_through mode only: how long a pallet sits in the rack before it is wanted. This is what fills the zone -- with none, a zone is never more than momentarily occupied. In stock mode the dwell is an OUTCOME (how long the pallet waited for an order), not an input."
+        },
+        {
+          "name": "dwell_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "pass_through mode only."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "Log Zone stock": {
+            "capacity": {
+              "$arg": "positions"
+            },
+            "initial": "min(initial_stock, positions)"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Pallets starting here",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_zone",
+          "description": "Storage zone",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station_name"
+            },
+            "node": "$zone"
+          }
+        },
+        {
+          "name": "claim",
+          "description": "Claim a position",
+          "type": "TRANSFER",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "level": "$Log Zone stock",
+            "amount": "1",
+            "mode": "add",
+            "wait": true
+          }
+        },
+        {
+          "name": "putaway",
+          "description": "Put away",
+          "type": "DELAY",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "putaway_time"
+            },
+            "time_unit": "minutes"
+          }
+        },
+        {
+          "name": "route",
+          "description": "Dwell and leave, or stay as stock",
+          "type": "DECIDE",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "1 if mode == 'pass_through' else 0"
+            ]
+          }
+        },
+        {
+          "name": "dwell",
+          "description": "Waiting to be picked",
+          "type": "DELAY",
+          "position": [
+            1000.0,
+            -80.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "dwell_time if dwell_distribution == 'fixed' else (EXPO(dwell_time) if dwell_distribution == 'exponential' else TRIA(0.5 * dwell_time, dwell_time, 1.5 * dwell_time))"
+            },
+            "time_unit": "minutes"
+          }
+        },
+        {
+          "name": "stored",
+          "description": "In stock, waiting for an order",
+          "type": "DISPOSE",
+          "position": [
+            1000.0,
+            80.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "base"
+          }
+        },
+        {
+          "name": "release_position",
+          "description": "Give the position back",
+          "type": "TRANSFER",
+          "position": [
+            1200.0,
+            -80.0
+          ],
+          "params": {
+            "level": "$Log Zone stock",
+            "amount": "1",
+            "mode": "remove",
+            "wait": false
+          }
+        },
+        {
+          "name": "out",
+          "description": "Picked from stock",
+          "type": "SUB_EXIT",
+          "position": [
+            1400.0,
+            -80.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_zone"
+        },
+        {
+          "source": "at_zone",
+          "target": "claim"
+        },
+        {
+          "source": "claim",
+          "target": "putaway"
+        },
+        {
+          "source": "putaway",
+          "target": "route"
+        },
+        {
+          "source": "route",
+          "target": "dwell"
+        },
+        {
+          "source": "route",
+          "target": "stored"
+        },
+        {
+          "source": "dwell",
+          "target": "release_position"
+        },
+        {
+          "source": "release_position",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Order arrivals": {
+      "info": {
+        "description": "A stream of customer orders: one order at a time on a mean interval, or an arrival schedule for a day whose order intake has a shape. Each order is stamped with its number of LINES (entity.log_lines) and the stock it needs (entity.log_qty = lines x units per line), which is what an Order picking station reads. Give it a promised lead time and it also stamps entity.due_date, so the run reports a service level against it. No input port -- this asset starts the outbound flow.",
+        "library": {
+          "library": "logistics",
+          "asset": "order_arrivals",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "arrival_mode",
+            "type": "choice",
+            "default": "Interarrival",
+            "unit": "",
+            "label": "Orders arrive by",
+            "help": "Interarrival: a mean time between orders. Schedule: an arrival schedule of orders per period, for an intake that peaks.",
+            "group": "Arrivals",
+            "min": null,
+            "max": null,
+            "choices": [
+              "Interarrival",
+              "Schedule"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "order_schedule",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Arrival schedule",
+            "help": "Used only in Schedule mode: an arrival-kind schedule of orders per period.",
+            "group": "Arrivals",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "schedule"
+          },
+          {
+            "name": "interval",
+            "type": "time",
+            "default": 20.0,
+            "unit": "minutes",
+            "label": "Mean time between orders",
+            "help": "",
+            "group": "Arrivals",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "interval_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Spacing",
+            "help": "exponential is unbooked demand, fixed is a metronome.",
+            "group": "Arrivals",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "lines_per_order",
+            "type": "number",
+            "default": 4.0,
+            "unit": "",
+            "label": "Lines per order",
+            "help": "",
+            "group": "Order",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "lines_distribution",
+            "type": "choice",
+            "default": "fixed",
+            "unit": "",
+            "label": "Lines distribution",
+            "help": "uniform draws a whole number of lines between half and one and a half of the mean.",
+            "group": "Order",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "uniform"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "units_per_line",
+            "type": "number",
+            "default": 1.0,
+            "unit": "",
+            "label": "Units per line",
+            "help": "Stock drawn per line, in the unit the zone's positions are counted in -- one pallet position per unit.",
+            "group": "Order",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "due_in",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Promised lead time",
+            "help": "0 stamps no due date at all. Anything above it stamps entity.due_date = now + this, and the run reports lateness, tardiness and the service level against it -- the same accounting the Services library's Service target uses.",
+            "group": "Service",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "order_type",
+            "type": "name",
+            "default": "ORDER",
+            "unit": "",
+            "label": "Order entity type",
+            "help": "Orders get their own entity type, so a pallet KPI is never diluted by one.",
+            "group": "Order",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          },
+          {
+            "name": "max_orders",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Stop after this many orders",
+            "help": "0 keeps orders coming for the whole run.",
+            "group": "Arrivals",
+            "min": 0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "arrival_mode",
+          "default": "Interarrival",
+          "type": "choice",
+          "description": "Interarrival: a mean time between orders. Schedule: an arrival schedule of orders per period, for an intake that peaks."
+        },
+        {
+          "name": "order_schedule",
+          "default": "",
+          "type": "name",
+          "refers_to": "schedule",
+          "description": "Used only in Schedule mode: an arrival-kind schedule of orders per period."
+        },
+        {
+          "name": "interval",
+          "default": 20.0,
+          "type": "time"
+        },
+        {
+          "name": "interval_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "exponential is unbooked demand, fixed is a metronome."
+        },
+        {
+          "name": "lines_per_order",
+          "default": 4.0,
+          "type": "number"
+        },
+        {
+          "name": "lines_distribution",
+          "default": "fixed",
+          "type": "choice",
+          "description": "uniform draws a whole number of lines between half and one and a half of the mean."
+        },
+        {
+          "name": "units_per_line",
+          "default": 1.0,
+          "type": "number",
+          "description": "Stock drawn per line, in the unit the zone's positions are counted in -- one pallet position per unit."
+        },
+        {
+          "name": "due_in",
+          "default": 0.0,
+          "type": "time",
+          "description": "0 stamps no due date at all. Anything above it stamps entity.due_date = now + this, and the run reports lateness, tardiness and the service level against it -- the same accounting the Services library's Service target uses."
+        },
+        {
+          "name": "order_type",
+          "default": "ORDER",
+          "type": "name",
+          "refers_to": "entity",
+          "description": "Orders get their own entity type, so a pallet KPI is never diluted by one."
+        },
+        {
+          "name": "max_orders",
+          "default": 0,
+          "type": "int",
+          "description": "0 keeps orders coming for the whole run."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "arrive",
+          "description": "Customer orders",
+          "type": "CREATE",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "e_type": {
+              "$arg": "order_type"
+            },
+            "arrival_mode": {
+              "$arg": "arrival_mode"
+            },
+            "schedule_name": {
+              "$arg": "order_schedule"
+            },
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "interval if interval_distribution == 'fixed' else EXPO(interval)"
+            },
+            "time_unit": "minutes",
+            "entities_per_arrival": 1,
+            "max_arrivals": {
+              "$arg": "max_orders"
+            },
+            "start_time": 0,
+            "sequence": ""
+          }
+        },
+        {
+          "name": "size",
+          "description": "Lines and stock needed",
+          "type": "ASSIGN",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.log_lines",
+                "expr": "lines_per_order if lines_distribution == 'fixed' else max(round(UNIF(0.5 * lines_per_order, 1.5 * lines_per_order)), 1)"
+              },
+              {
+                "target": "entity.log_qty",
+                "expr": "entity.log_lines * units_per_line"
+              }
+            ]
+          }
+        },
+        {
+          "name": "promised",
+          "description": "Is a lead time promised?",
+          "type": "DECIDE",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "1 if due_in > 0 else 0"
+            ]
+          }
+        },
+        {
+          "name": "due",
+          "description": "Promise it",
+          "type": "ASSIGN",
+          "position": [
+            600.0,
+            -60.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.due_date",
+                "expr": "TNOW + due_in"
+              }
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "description": "Orders leave",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "port": "orders"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "arrive",
+          "target": "size"
+        },
+        {
+          "source": "size",
+          "target": "promised"
+        },
+        {
+          "source": "promised",
+          "target": "due"
+        },
+        {
+          "source": "promised",
+          "target": "out"
+        },
+        {
+          "source": "due",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Order picking from stock": {
+      "info": {
+        "description": "The outbound half of an order-driven warehouse: an order arrives, DRAWS its quantity from a storage zone's stock, and is picked. Name the zone's own level in \"Zone stock\" -- a Storage zone instance called zone_a owns \"zone_a/Log Zone stock\" -- and this station empties the racking another asset fills, with no wiring between the two. An order the zone cannot fill WAITS as a backorder and is served the exact instant a put-away brings the stock up, so \"Log fill rate\" (the share served straight from stock) and \"Log backorder time\" are the two service numbers a warehouse is judged on. Pick time is a fixed part per order plus a part per line, exactly as the Picking station's is; use THAT asset instead when pallets flow through the racking rather than being drawn from it.",
+        "library": {
+          "library": "logistics",
+          "asset": "order_picking",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "Order picking",
+            "unit": "",
+            "label": "Station name",
+            "help": "",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "stock_level",
+            "type": "name",
+            "default": "Log Zone stock",
+            "unit": "",
+            "label": "Zone stock",
+            "help": "The level an order draws from. A Storage zone in stock mode owns \"<its block name>/Log Zone stock\"; naming the bare template instead shares one pool of stock across every instance that names it.",
+            "group": "Stock",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "level"
+          },
+          {
+            "name": "quantity_source",
+            "type": "choice",
+            "default": "attribute",
+            "unit": "",
+            "label": "Quantity from",
+            "help": "attribute: the order's own entity.log_qty, which Order arrivals stamps. fixed: the number below, for a uniform order profile.",
+            "group": "Stock",
+            "min": null,
+            "max": null,
+            "choices": [
+              "attribute",
+              "fixed"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "units_per_order",
+            "type": "number",
+            "default": 1.0,
+            "unit": "",
+            "label": "Units per order",
+            "help": "",
+            "group": "Stock",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "lines_source",
+            "type": "choice",
+            "default": "attribute",
+            "unit": "",
+            "label": "Lines from",
+            "help": "attribute: the order's own entity.log_lines. fixed: the number below.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              "attribute",
+              "fixed"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "lines_per_order",
+            "type": "number",
+            "default": 4.0,
+            "unit": "",
+            "label": "Lines per order",
+            "help": "",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "setup_time",
+            "type": "time",
+            "default": 1.0,
+            "unit": "minutes",
+            "label": "Time per order",
+            "help": "Walking to the aisle, scanning, wrapping -- the part that does not scale.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_per_line",
+            "type": "time",
+            "default": 0.5,
+            "unit": "minutes",
+            "label": "Time per line",
+            "help": "",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pickers",
+            "type": "name",
+            "default": "Log Pickers",
+            "unit": "",
+            "label": "Picker pool",
+            "help": "Shared with the rest of the site; set the pool's cost rate on the model's own resource record.",
+            "group": "Resource",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "pick",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "Order picking",
+          "type": "name"
+        },
+        {
+          "name": "stock_level",
+          "default": "Log Zone stock",
+          "type": "name",
+          "refers_to": "level",
+          "description": "The level an order draws from. A Storage zone in stock mode owns \"<its block name>/Log Zone stock\"; naming the bare template instead shares one pool of stock across every instance that names it."
+        },
+        {
+          "name": "quantity_source",
+          "default": "attribute",
+          "type": "choice",
+          "description": "attribute: the order's own entity.log_qty, which Order arrivals stamps. fixed: the number below, for a uniform order profile."
+        },
+        {
+          "name": "units_per_order",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "lines_source",
+          "default": "attribute",
+          "type": "choice",
+          "description": "attribute: the order's own entity.log_lines. fixed: the number below."
+        },
+        {
+          "name": "lines_per_order",
+          "default": 4.0,
+          "type": "number"
+        },
+        {
+          "name": "setup_time",
+          "default": 1.0,
+          "type": "time",
+          "description": "Walking to the aisle, scanning, wrapping -- the part that does not scale."
+        },
+        {
+          "name": "time_per_line",
+          "default": 0.5,
+          "type": "time"
+        },
+        {
+          "name": "pickers",
+          "default": "Log Pickers",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "Shared with the rest of the site; set the pool's cost rate on the model's own resource record."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Orders arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "orders"
+          }
+        },
+        {
+          "name": "at_pick",
+          "description": "Order picking",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station_name"
+            },
+            "node": "$pick"
+          }
+        },
+        {
+          "name": "need",
+          "description": "What it needs, and whether the zone has it",
+          "type": "ASSIGN",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.log_pick_qty",
+                "expr": "entity.log_qty if quantity_source == 'attribute' else units_per_order"
+              },
+              {
+                "target": "entity.log_pick_lines",
+                "expr": "entity.log_lines if lines_source == 'attribute' else lines_per_order"
+              },
+              {
+                "target": "entity.log_from_stock",
+                "expr": "1 if LEVEL(stock_level) >= entity.log_pick_qty else 0"
+              },
+              {
+                "target": "entity.log_asked_at",
+                "expr": "TNOW"
+              }
+            ]
+          }
+        },
+        {
+          "name": "fill",
+          "description": "Fill rate",
+          "type": "RECORD",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "stat_name": "$Log fill rate",
+            "kind": "tally",
+            "expr": "entity.log_from_stock"
+          }
+        },
+        {
+          "name": "draw",
+          "description": "Take the stock out of the zone",
+          "type": "TRANSFER",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "level": {
+              "$arg": "stock_level"
+            },
+            "amount": "entity.log_pick_qty",
+            "mode": "remove",
+            "wait": true
+          }
+        },
+        {
+          "name": "waited",
+          "description": "Backorder time",
+          "type": "RECORD",
+          "position": [
+            1000.0,
+            0.0
+          ],
+          "params": {
+            "stat_name": "$Log backorder time",
+            "kind": "tally",
+            "expr": "TNOW - entity.log_asked_at"
+          }
+        },
+        {
+          "name": "pick",
+          "description": "Pick the order",
+          "type": "PROCESS",
+          "position": [
+            1200.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "setup_time + time_per_line * entity.log_pick_lines"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": {
+              "$arg": "pickers"
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Picked orders leave",
+          "type": "SUB_EXIT",
+          "position": [
+            1400.0,
+            0.0
+          ],
+          "params": {
+            "port": "picked"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_pick"
+        },
+        {
+          "source": "at_pick",
+          "target": "need"
+        },
+        {
+          "source": "need",
+          "target": "fill"
+        },
+        {
+          "source": "fill",
+          "target": "draw"
+        },
+        {
+          "source": "draw",
+          "target": "waited"
+        },
+        {
+          "source": "waited",
+          "target": "pick"
+        },
+        {
+          "source": "pick",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Conveyor segment": {
+      "info": {
+        "description": "A belt between two points on the floor. Capacity is floor(length / spacing) and travel is length / speed, both exact. A belt only backs up against something the model can name: give it the resource at its far end (the loaders, the wrapper, a Picking station's picker pool) and an accumulating belt packs pallets against the stop while a non-accumulating one stops dead. The end stop may belong to ANOTHER asset -- a shared pool by its plain name, or one asset's own scoped resource as \"<instance>/<resource>\". The asset brings both of its endpoints as network nodes; drag the far one to where the belt really ends. Name the station at its head and the belt becomes a routing step in its own right, so a vehicle delivers onto it.",
+        "library": {
+          "library": "logistics",
+          "asset": "conveyor_segment",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Station at the head",
+            "help": "Name this belt as a routing STEP and a vehicle can deliver onto it: the pallet is carried to the head of the belt and rides from there. Empty leaves the belt an ordinary linked block.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "length_m",
+            "type": "number",
+            "default": 40.0,
+            "unit": "metres",
+            "label": "Belt length",
+            "help": "",
+            "group": "Belt",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed",
+            "type": "number",
+            "default": 12.0,
+            "unit": "metres per minute",
+            "label": "Belt speed",
+            "help": "",
+            "group": "Belt",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "spacing",
+            "type": "number",
+            "default": 1.4,
+            "unit": "metres",
+            "label": "Space one pallet takes",
+            "help": "",
+            "group": "Belt",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "accumulating",
+            "type": "bool",
+            "default": true,
+            "unit": "",
+            "label": "Accumulating",
+            "help": "On: a blocked pallet's followers pack against it and the belt keeps loading. Off: the whole belt stops until the far end clears.",
+            "group": "Belt",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "exit_resource",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "End stop",
+            "help": "The resource a pallet must take a unit of before it may leave the belt -- the usual pairing is a PROCESS with action \"Delay Release\" at the far end, which is what a Picking station does with \"Picker taken\" set to Delay Release. A resource owned by another asset instance is written \"<instance>/<resource>\". Empty means a free-running belt that never blocks.",
+            "group": "Belt",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "start",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            },
+            {
+              "name": "end",
+              "dx": 20.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "",
+          "type": "name",
+          "description": "Name this belt as a routing STEP and a vehicle can deliver onto it: the pallet is carried to the head of the belt and rides from there. Empty leaves the belt an ordinary linked block."
+        },
+        {
+          "name": "length_m",
+          "default": 40.0,
+          "type": "number"
+        },
+        {
+          "name": "speed",
+          "default": 12.0,
+          "type": "number"
+        },
+        {
+          "name": "spacing",
+          "default": 1.4,
+          "type": "number"
+        },
+        {
+          "name": "accumulating",
+          "default": true,
+          "type": "bool",
+          "description": "On: a blocked pallet's followers pack against it and the belt keeps loading. Off: the whole belt stops until the far end clears."
+        },
+        {
+          "name": "exit_resource",
+          "default": "",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The resource a pallet must take a unit of before it may leave the belt -- the usual pairing is a PROCESS with action \"Delay Release\" at the far end, which is what a Picking station does with \"Picker taken\" set to Delay Release. A resource owned by another asset instance is written \"<instance>/<resource>\". Empty means a free-running belt that never blocks."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Onto the belt",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_belt",
+          "description": "Head of the belt",
+          "type": "STATION",
+          "position": [
+            100.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station_name"
+            },
+            "node": "$start"
+          }
+        },
+        {
+          "name": "belt",
+          "description": "Belt",
+          "type": "CONVEYOR",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "length": {
+              "$arg": "length_m"
+            },
+            "speed": {
+              "$arg": "speed"
+            },
+            "spacing": {
+              "$arg": "spacing"
+            },
+            "accumulating": {
+              "$arg": "accumulating"
+            },
+            "exit_resource": {
+              "$arg": "exit_resource"
+            },
+            "from_node": "$start",
+            "to_node": "$end"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Off the belt",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_belt"
+        },
+        {
+          "source": "at_belt",
+          "target": "belt"
+        },
+        {
+          "source": "belt",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Shipping dock (outbound)": {
+      "info": {
+        "description": "The outbound end: pallets are consolidated into truck loads, the load is loaded through one of the dock's doors, and the pallets leave again as themselves -- so pallet counts, costs and DUE DATES all survive the batch. A load goes out when it is full or when the cut-off time since its first pallet passes, whichever comes first; a cut-off of 0 means a truck only ever leaves full.",
+        "library": {
+          "library": "logistics",
+          "asset": "shipping_dock",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "Shipping",
+            "unit": "",
+            "label": "Station name",
+            "help": "",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "pallets_per_load",
+            "type": "int",
+            "default": 20,
+            "unit": "",
+            "label": "Pallets per truck load",
+            "help": "",
+            "group": "Consolidation",
+            "min": 2,
+            "max": 60,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cut_off",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Cut-off after the first pallet",
+            "help": "A part load leaves once this long has passed. 0 waits for a full load.",
+            "group": "Consolidation",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "doors",
+            "type": "int",
+            "default": 2,
+            "unit": "",
+            "label": "Doors",
+            "help": "",
+            "group": "Dock",
+            "min": 1,
+            "max": 60,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "load_time_per_pallet",
+            "type": "time",
+            "default": 1.0,
+            "unit": "minutes",
+            "label": "Loading time per pallet",
+            "help": "A full load takes this times the load size, whether or not the load is full -- the truck is at the door either way.",
+            "group": "Dock",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "door_cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate per door",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {
+              "name": "bay",
+              "dx": 0.0,
+              "dy": 0.0,
+              "attach": true
+            }
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "Shipping",
+          "type": "name"
+        },
+        {
+          "name": "pallets_per_load",
+          "default": 20,
+          "type": "int"
+        },
+        {
+          "name": "cut_off",
+          "default": 0.0,
+          "type": "time",
+          "description": "A part load leaves once this long has passed. 0 waits for a full load."
+        },
+        {
+          "name": "doors",
+          "default": 2,
+          "type": "int"
+        },
+        {
+          "name": "load_time_per_pallet",
+          "default": 1.0,
+          "type": "time",
+          "description": "A full load takes this times the load size, whether or not the load is full -- the truck is at the door either way."
+        },
+        {
+          "name": "door_cost_rate",
+          "default": 0.0,
+          "type": "number"
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Log Shipping door": {
+            "capacity": "doors",
+            "cost_busy": "door_cost_rate"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Pallets starting here",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "at_bay",
+          "description": "Shipping",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station_name"
+            },
+            "node": "$bay"
+          }
+        },
+        {
+          "name": "consolidate",
+          "description": "Build a truck load",
+          "type": "BATCH",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "batch_size": {
+              "$arg": "pallets_per_load"
+            },
+            "batched_entity_type": "TRUCKLOAD",
+            "max_wait": "cut_off if cut_off > 0 else 1e12",
+            "max_wait_time_unit": "minutes"
+          }
+        },
+        {
+          "name": "load",
+          "description": "Load the truck",
+          "type": "PROCESS",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "load_time_per_pallet * pallets_per_load"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Log Shipping door"
+          }
+        },
+        {
+          "name": "unbatch",
+          "description": "Back to pallets",
+          "type": "SEPARATE",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Retain original entity values",
+            "attrs": []
+          }
+        },
+        {
+          "name": "out",
+          "description": "Shipped",
+          "type": "SUB_EXIT",
+          "position": [
+            1000.0,
+            0.0
+          ],
+          "params": {
+            "port": "shipped"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "at_bay"
+        },
+        {
+          "source": "at_bay",
+          "target": "consolidate"
+        },
+        {
+          "source": "consolidate",
+          "target": "load"
+        },
+        {
+          "source": "load",
+          "target": "unbatch"
+        },
+        {
+          "source": "unbatch",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Vehicle fleet": {
+      "info": {
+        "description": "The vehicles that carry pallets between stations, and the ONE block that moves them. Wire every station's exit into this asset's \"in\" port: the vehicle drives empty to the pallet, loads it, drives it to the pallet's next routing step and unloads. A model needs one of these per fleet, not one per station -- a second instance is a second fleet (AGVs beside forklifts), not a second mover block. Distances come from the path network, so the answer to \"should the dock move\" is geometry rather than a guess.",
+        "library": {
+          "library": "logistics",
+          "asset": "vehicle_fleet",
+          "version": "2.1.0"
+        },
+        "parameters": [
+          {
+            "name": "vehicles",
+            "type": "int",
+            "default": 3,
+            "unit": "",
+            "label": "Vehicles",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_loaded",
+            "type": "number",
+            "default": 50.0,
+            "unit": "metres per minute",
+            "label": "Speed carrying a load",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_empty",
+            "type": "number",
+            "default": 70.0,
+            "unit": "metres per minute",
+            "label": "Speed running empty",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "load_time",
+            "type": "time",
+            "default": 0.4,
+            "unit": "minutes",
+            "label": "Time to pick a pallet up",
+            "help": "",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "unload_time",
+            "type": "time",
+            "default": 0.4,
+            "unit": "minutes",
+            "label": "Time to set a pallet down",
+            "help": "",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "home_node",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Home node",
+            "help": "The network node the vehicles start at, and park at under \"drive home\". An asset's own node is written <instance>/<node>, e.g. \"dock_1/door\"; empty takes the first node in the model.",
+            "group": "Vehicles",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "park",
+            "type": "choice",
+            "default": "stay",
+            "unit": "",
+            "label": "When a job ends",
+            "help": "stay: the vehicle waits where it dropped off. home: it drives back, and is busy on the way.",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "stay",
+              "home"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "dispatch",
+            "type": "choice",
+            "default": "nearest",
+            "unit": "",
+            "label": "Which request is served first",
+            "help": "nearest picks the request with the shortest empty drive, decided when a vehicle frees. fifo is longest waiting first.",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fifo",
+              "nearest"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "select",
+            "type": "choice",
+            "default": "nearest",
+            "unit": "",
+            "label": "Which vehicle takes it",
+            "help": "",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [
+              "nearest",
+              "longest_idle",
+              "cyclic"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "destination",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Fixed destination station",
+            "help": "Leave empty to follow the pallet's routing, which is the usual case. Name a STATION for a point-to-point shuttle with no sequences at all.",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "priority",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Request priority",
+            "help": "Lower is served first, under either dispatching rule.",
+            "group": "Dispatching",
+            "min": -100,
+            "max": 100,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "shift_schedule",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Shift schedule",
+            "help": "A capacity-kind schedule taking vehicles off shift. They finish the job in hand first.",
+            "group": "Availability",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "schedule"
+          },
+          {
+            "name": "cost_busy",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per hour",
+            "label": "Cost per vehicle hour, working",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_idle",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per hour",
+            "label": "Cost per vehicle hour, idle",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Log Vehicle classes",
+          "label": "Vehicle class",
+          "group": "Vehicles",
+          "map": {
+            "speed_loaded": "speed_loaded",
+            "speed_empty": "speed_empty",
+            "load_time": "load_time",
+            "unload_time": "unload_time",
+            "cost_busy": "cost_busy"
+          },
+          "rows": [
+            "Counterbalance forklift",
+            "Reach truck",
+            "Powered pallet truck",
+            "AGV tugger",
+            "Autonomous mobile robot"
+          ],
+          "units": {
+            "speed_loaded": "metres per minute",
+            "speed_empty": "metres per minute",
+            "load_time": "minutes",
+            "unload_time": "minutes",
+            "cost_busy": "currency per hour"
+          },
+          "values": {
+            "Counterbalance forklift": {
+              "speed_loaded": 50.0,
+              "speed_empty": 70.0,
+              "load_time": 0.4,
+              "unload_time": 0.4,
+              "cost_busy": 42.0
+            },
+            "Reach truck": {
+              "speed_loaded": 45.0,
+              "speed_empty": 60.0,
+              "load_time": 0.6,
+              "unload_time": 0.6,
+              "cost_busy": 45.0
+            },
+            "Powered pallet truck": {
+              "speed_loaded": 35.0,
+              "speed_empty": 45.0,
+              "load_time": 0.3,
+              "unload_time": 0.3,
+              "cost_busy": 32.0
+            },
+            "AGV tugger": {
+              "speed_loaded": 60.0,
+              "speed_empty": 60.0,
+              "load_time": 0.8,
+              "unload_time": 0.8,
+              "cost_busy": 18.0
+            },
+            "Autonomous mobile robot": {
+              "speed_loaded": 70.0,
+              "speed_empty": 80.0,
+              "load_time": 0.7,
+              "unload_time": 0.7,
+              "cost_busy": 22.0
+            }
+          },
+          "sources": {
+            "Counterbalance forklift": "Illustrative: a diesel/LPG counterbalance truck, driver included.",
+            "Reach truck": "Illustrative: narrow-aisle reach truck, slower at the rack face.",
+            "Powered pallet truck": "Illustrative: ground-level pallet moves only.",
+            "AGV tugger": "Illustrative: automated, no driver, slower handling, same speed either way.",
+            "Autonomous mobile robot": "Illustrative: AMR under a pallet; amortised purchase, no driver."
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "vehicles",
+          "default": 3,
+          "type": "int"
+        },
+        {
+          "name": "speed_loaded",
+          "default": 50.0,
+          "type": "number"
+        },
+        {
+          "name": "speed_empty",
+          "default": 70.0,
+          "type": "number"
+        },
+        {
+          "name": "load_time",
+          "default": 0.4,
+          "type": "time"
+        },
+        {
+          "name": "unload_time",
+          "default": 0.4,
+          "type": "time"
+        },
+        {
+          "name": "home_node",
+          "default": "",
+          "type": "name",
+          "description": "The network node the vehicles start at, and park at under \"drive home\". An asset's own node is written <instance>/<node>, e.g. \"dock_1/door\"; empty takes the first node in the model."
+        },
+        {
+          "name": "park",
+          "default": "stay",
+          "type": "choice",
+          "description": "stay: the vehicle waits where it dropped off. home: it drives back, and is busy on the way."
+        },
+        {
+          "name": "dispatch",
+          "default": "nearest",
+          "type": "choice",
+          "description": "nearest picks the request with the shortest empty drive, decided when a vehicle frees. fifo is longest waiting first."
+        },
+        {
+          "name": "select",
+          "default": "nearest",
+          "type": "choice"
+        },
+        {
+          "name": "destination",
+          "default": "",
+          "type": "name",
+          "description": "Leave empty to follow the pallet's routing, which is the usual case. Name a STATION for a point-to-point shuttle with no sequences at all."
+        },
+        {
+          "name": "priority",
+          "default": 0,
+          "type": "int",
+          "description": "Lower is served first, under either dispatching rule."
+        },
+        {
+          "name": "shift_schedule",
+          "default": "",
+          "type": "name",
+          "refers_to": "schedule",
+          "description": "A capacity-kind schedule taking vehicles off shift. They finish the job in hand first."
+        },
+        {
+          "name": "cost_busy",
+          "default": 0.0,
+          "type": "number"
+        },
+        {
+          "name": "cost_idle",
+          "default": 0.0,
+          "type": "number"
+        }
+      ],
+      "scoped": {
+        "fleets": {
+          "Log Forklifts": {
+            "count": {
+              "$arg": "vehicles"
+            },
+            "speed": "speed_loaded",
+            "speed_empty": "speed_empty",
+            "load_time": "load_time",
+            "unload_time": "unload_time",
+            "home": {
+              "$arg": "home_node"
+            },
+            "park": {
+              "$arg": "park"
+            },
+            "dispatch": {
+              "$arg": "dispatch"
+            },
+            "select": {
+              "$arg": "select"
+            },
+            "capacity_schedule": {
+              "$arg": "shift_schedule"
+            },
+            "cost_busy": "cost_busy",
+            "cost_idle": "cost_idle"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Pallets to move",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "carry",
+          "description": "Carry to the next station",
+          "type": "TRANSPORT",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "fleet": "$Log Forklifts",
+            "destination": {
+              "$arg": "destination"
+            },
+            "priority": {
+              "$arg": "priority"
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Routing finished",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "port": "done"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "carry"
+        },
+        {
+          "source": "carry",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Order-driven warehouse (library assets)",
+    "category": "Logistics",
+    "description": "An order-driven warehouse built from the Logistics library alone: inbound trucks, a receiving dock, forklifts putting pallets away into two rack zones that HOLD them as stock, customer orders drawing that stock with backorders when it is short, order picking, a take-away belt and an outbound dock that consolidates truck loads. Inbound and outbound are two entity streams that meet at each zone's level; each asset brought its own network node when it was placed, and the aisles joining them are the only geometry drawn by hand.",
+    "author": "Naga",
+    "notes": "Metres, minutes, metres per minute. Fast movers and bulk pallets have their own zone, their own order stream and their own picking station, so a shortage in one is visible on its own fill rate. The zones open with about half their positions filled and the two streams are sized to roughly balance, which is what makes the demand-surge scenario a real question rather than a foregone conclusion."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 960,
+    "warmup": 180,
+    "replications": 5,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

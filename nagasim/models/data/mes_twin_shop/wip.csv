@@ -1,0 +1,3 @@
+work_order,operation,work_centre,quantity,arrived,started,position
+WO-1056,assemble,Assembly,1,2026-09-03T05:43:46Z,2026-09-03T05:43:46Z,0
+WO-1057,assemble,Assembly,1,2026-09-03T05:50:54Z,,0

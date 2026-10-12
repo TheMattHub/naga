@@ -1,0 +1,312 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "create_1",
+      "description": "Jobs arrive",
+      "type": "CREATE",
+      "position": [
+        160.0,
+        320.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 1.0
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "time_unit": "minutes",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "assign_1",
+      "description": "Draw a priority, start with no rework",
+      "type": "ASSIGN",
+      "position": [
+        380.0,
+        320.0
+      ],
+      "params": {
+        "assignments": [
+          {
+            "target": "entity.priority",
+            "expr": "DISC(1, 0.3, 2, 0.7)"
+          },
+          {
+            "target": "entity.rework",
+            "expr": "0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "seize_1",
+      "description": "Serve",
+      "type": "SEIZE",
+      "position": [
+        600.0,
+        320.0
+      ],
+      "params": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 1.25
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Server",
+        "time_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "release_1",
+      "description": "release_1",
+      "type": "RELEASE",
+      "position": [
+        800.0,
+        320.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "resource_name": "Server",
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "decide_1",
+      "description": "Rework at most twice, 20% of the time",
+      "type": "DECIDE",
+      "position": [
+        1000.0,
+        320.0
+      ],
+      "params": {
+        "mode": "Condition",
+        "probs": [],
+        "conditions": [
+          "entity.rework < 2 and RAND() < 0.2"
+        ]
+      }
+    },
+    {
+      "name": "assign_rework",
+      "description": "Count the rework, on the entity and model-wide",
+      "type": "ASSIGN",
+      "position": [
+        1000.0,
+        160.0
+      ],
+      "params": {
+        "assignments": [
+          {
+            "target": "entity.rework",
+            "expr": "entity.rework + 1"
+          },
+          {
+            "target": "rework_count",
+            "expr": "rework_count + 1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "record_rework_count",
+      "description": "RECORD (ROADMAP 1.3): tally each rework event as a user statistic",
+      "type": "RECORD",
+      "position": [
+        850.0,
+        160.0
+      ],
+      "params": {
+        "stat_name": "rework_events",
+        "kind": "count",
+        "expr": "1"
+      }
+    },
+    {
+      "name": "delay_rework",
+      "description": "Rework takes a fixed extra minute",
+      "type": "DELAY",
+      "position": [
+        700.0,
+        160.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.0
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "decide_reworked",
+      "description": "Split off entities that were reworked at least once",
+      "type": "DECIDE",
+      "position": [
+        1150.0,
+        320.0
+      ],
+      "params": {
+        "mode": "Condition",
+        "probs": [],
+        "conditions": [
+          "entity.rework > 0"
+        ]
+      }
+    },
+    {
+      "name": "record_rework_time",
+      "description": "RECORD (ROADMAP 1.3): tally time in system for reworked entities",
+      "type": "RECORD",
+      "position": [
+        1150.0,
+        460.0
+      ],
+      "params": {
+        "stat_name": "time_in_system_reworked",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "dispose_1",
+      "type": "DISPOSE",
+      "position": [
+        1400.0,
+        320.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "create_1",
+      "target": "assign_1"
+    },
+    {
+      "source": "assign_1",
+      "target": "seize_1"
+    },
+    {
+      "source": "seize_1",
+      "target": "release_1"
+    },
+    {
+      "source": "release_1",
+      "target": "decide_1"
+    },
+    {
+      "source": "decide_1",
+      "target": "assign_rework"
+    },
+    {
+      "source": "decide_1",
+      "target": "decide_reworked"
+    },
+    {
+      "source": "assign_rework",
+      "target": "record_rework_count"
+    },
+    {
+      "source": "record_rework_count",
+      "target": "delay_rework"
+    },
+    {
+      "source": "delay_rework",
+      "target": "seize_1"
+    },
+    {
+      "source": "decide_reworked",
+      "target": "record_rework_time"
+    },
+    {
+      "source": "decide_reworked",
+      "target": "dispose_1"
+    },
+    {
+      "source": "record_rework_time",
+      "target": "dispose_1"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Server",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [
+    {
+      "name": "rework_count",
+      "initial": 0
+    }
+  ],
+  "entities": [
+    {
+      "name": "DEFAULT",
+      "shape": "circle",
+      "color": "BLACK",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Priority jobs with rework",
+    "category": "Manufacturing",
+    "description": "Jobs arrive with a random priority and can be sent back for rework up to twice (20% chance each pass); RECORD blocks tally the rework count and the extra time in system it costs."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 300,
+    "warmup": 0,
+    "replications": 2,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

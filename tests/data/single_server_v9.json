@@ -1,0 +1,99 @@
+{
+  "schema_version": 9,
+  "blocks": [
+    {
+      "name": "create_1",
+      "description": "create_1",
+      "type": "CREATE",
+      "position": [
+        200.0,
+        320.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 1.0
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0
+      }
+    },
+    {
+      "name": "process_1",
+      "description": "Serve",
+      "type": "PROCESS",
+      "position": [
+        520.0,
+        320.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 1.25
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Server"
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "dispose_1",
+      "type": "DISPOSE",
+      "position": [
+        840.0,
+        320.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "create_1",
+      "target": "process_1"
+    },
+    {
+      "source": "process_1",
+      "target": "dispose_1"
+    }
+  ],
+  "resources": [
+    {
+      "name": "Server",
+      "capacity": 1,
+      "discipline": "FIFO"
+    }
+  ],
+  "resource_sets": [],
+  "entities": [
+    {
+      "name": "DEFAULT",
+      "shape": "circle",
+      "color": "BLACK",
+      "graphic": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"5\" fill=\"#4C8DF6\" stroke=\"#25283D\" stroke-width=\"2.2\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"#FFFFFF\" stroke=\"#25283D\" stroke-width=\"1.8\"/></svg>"
+    }
+  ],
+  "variables": [],
+  "schedules": [],
+  "failures": [],
+  "scenarios": [],
+  "info": {
+    "title": "Single server (M/M/1)",
+    "category": "Teaching",
+    "description": "The classic M/M/1 queue: a single Server processes arriving customers one at a time -- the baseline example for utilization and waiting-time KPIs."
+  },
+  "simulation": {
+    "time_limit": 1000,
+    "warmup": 100,
+    "replications": 5,
+    "time_unit": "minutes"
+  }
+}

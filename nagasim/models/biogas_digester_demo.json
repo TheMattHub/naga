@@ -1,0 +1,358 @@
+{
+  "schema_version": 29,
+  "blocks": [],
+  "links": [],
+  "scenarios": [
+    {
+      "name": "Bigger gas holder",
+      "description": "2000 Nm3 instead of 1000: less flaring, more CHP hours.",
+      "overrides": [
+        {
+          "path": "levels.Gas holder.capacity",
+          "value": 2000
+        },
+        {
+          "path": "flows.Flare.rate",
+          "value": "flare_rate * (1 if LEVEL(\"Gas holder\") >= 1900 else 0)"
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "CHP engine",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [
+    {
+      "name": "CHP maintenance",
+      "uptime": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 240
+        },
+        "time_unit": "hours"
+      },
+      "downtime": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 12
+        },
+        "time_unit": "hours"
+      },
+      "resources": [
+        "CHP engine"
+      ]
+    }
+  ],
+  "tables": [],
+  "sequences": [],
+  "variables": [
+    {
+      "name": "maize_rate",
+      "initial": 4.0
+    },
+    {
+      "name": "slurry_rate",
+      "initial": 10.0
+    },
+    {
+      "name": "flare_rate",
+      "initial": 400.0
+    },
+    {
+      "name": "chp_gas_max",
+      "initial": 250.0
+    },
+    {
+      "name": "chp_gate",
+      "initial": 300.0
+    }
+  ],
+  "entities": [],
+  "timeseries_inputs": [
+    {
+      "name": "maize_window",
+      "description": "Maize is fed 4 hours a day, from 06:00.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "slurry_window",
+      "description": "Slurry is pumped 4 hours every OTHER day, so the feed mix -- and the methane share of the gas -- moves over the run.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "period": 48,
+      "values": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "levels": [
+    {
+      "name": "Maize silo",
+      "description": "Solid feedstock in store.",
+      "unit": "t",
+      "capacity": 2000,
+      "min": 0,
+      "initial": 800,
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Slurry tank",
+      "description": "Liquid feedstock in store.",
+      "unit": "m3",
+      "capacity": 1500,
+      "min": 0,
+      "initial": 900,
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Gas holder",
+      "description": "Biogas storage. Its methane share is a tracked component: every inflow carries a share and every outflow draws the holder's own blend, so CH4 is conserved exactly.",
+      "unit": "Nm3",
+      "capacity": 1000,
+      "min": 0,
+      "initial": 300,
+      "components": [
+        {
+          "name": "ch4",
+          "initial_fraction": 0.53
+        }
+      ],
+      "thresholds": [
+        {
+          "value": 950,
+          "direction": "both",
+          "variable": "holder_high"
+        },
+        {
+          "value": 850,
+          "direction": "rising",
+          "variable": "chp_gate"
+        },
+        {
+          "value": 300,
+          "direction": "falling",
+          "variable": "chp_gate"
+        }
+      ],
+      "rate_time_unit": "hours"
+    }
+  ],
+  "flows": [
+    {
+      "name": "Feed maize",
+      "description": "The feeder, on its daily window.",
+      "from": "Maize silo",
+      "rate": "maize_rate * TS(\"maize_window\")",
+      "rate_time_unit": "hours",
+      "price": 42.0
+    },
+    {
+      "name": "Feed slurry",
+      "description": "The slurry pump, on its two-day window.",
+      "from": "Slurry tank",
+      "rate": "slurry_rate * TS(\"slurry_window\")",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Biogas",
+      "description": "The digester's product. CONV() is the released rate, piecewise constant between cohort closings and curve steps; FRACTION() is the methane share of what is being released right now, which follows the feed mix over the days.",
+      "to": "Gas holder",
+      "rate": "CONV(\"Digester\")",
+      "rate_time_unit": "hours",
+      "components": {
+        "ch4": "FRACTION(\"Digester\", \"ch4\")"
+      },
+      "tag": "biogas"
+    },
+    {
+      "name": "CHP gas",
+      "description": "Gas to the engine. AVAILABLE(\"CHP engine\") is 0 while the maintenance failure holds the unit, so the engine stops for exactly the downtime. The start/stop band is HYSTERESIS built from two level thresholds writing chp_gate (on above 850 Nm3, off below 300), which is how a model asks for a minimum on-time; min_rate on top makes the machine semi-continuous -- it runs at 200 Nm3/h or not at all. Each restart crosses the rate threshold and is charged 25 EUR, and counted as the flow's Starts.",
+      "from": "Gas holder",
+      "rate": "AVAILABLE(\"CHP engine\") * min(chp_gas_max, LEVEL(\"Gas holder\") - 150) * (1 if chp_gate > 500 else 0)",
+      "rate_time_unit": "hours",
+      "min_rate": 200,
+      "thresholds": [
+        {
+          "value": 20,
+          "direction": "rising",
+          "cost": 25,
+          "cost_item": "CHP starts",
+          "category": "Operations"
+        }
+      ]
+    },
+    {
+      "name": "Flare",
+      "description": "The safety flare: it opens above 950 Nm3 and keeps the holder off its capacity. The level threshold at 950 is what makes the opening instant exact.",
+      "from": "Gas holder",
+      "rate": "flare_rate * (1 if LEVEL(\"Gas holder\") >= 950 else 0)",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "CHP electricity",
+      "description": "Accounting: the methane actually burned times 9.97 kWh per Nm3 of CH4 times the electrical efficiency, sold at 0.18 EUR/kWh (a negative price is revenue).",
+      "rate": "FLOW(\"CHP gas\") * FRACTION(\"Gas holder\", \"ch4\") * 9.97 * 0.40",
+      "rate_time_unit": "hours",
+      "price": -0.18,
+      "tag": "electricity"
+    }
+  ],
+  "conversions": [
+    {
+      "name": "Digester",
+      "description": "Feed in, biogas out over the following days: one release curve and one methane share per feedstock. Cohorts close hourly, which is also the grid every curve step lands on.",
+      "unit": "Nm3",
+      "cohort_interval": 1,
+      "time_unit": "hours",
+      "substrates": [
+        {
+          "name": "maize",
+          "feed": "FLOW(\"Feed maize\")",
+          "yield": 200.0,
+          "half_life": 60,
+          "steps": 12,
+          "components": {
+            "ch4": 0.52
+          },
+          "initial_feed_rate": 0.6667,
+          "feed_time_unit": "hours"
+        },
+        {
+          "name": "slurry",
+          "feed": "FLOW(\"Feed slurry\")",
+          "yield": 25.0,
+          "half_life": 30,
+          "steps": 8,
+          "components": {
+            "ch4": 0.6
+          },
+          "initial_feed_rate": 0.8333,
+          "feed_time_unit": "hours"
+        }
+      ]
+    }
+  ],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Biogas digester, holder and CHP",
+    "category": "Energy",
+    "description": "Digester, gas holder and CHP. A purely CONTINUOUS model: two feedstocks are fed on a daily recipe into a digester that releases biogas over the following days (a yield curve per substrate), the gas is stored in a holder whose methane share is tracked as a component, a CHP burns it under a minimum load and a maintenance failure, and the holder flares what it cannot keep. Base unit hours, 30 days.",
+    "author": "Naga",
+    "notes": "Gas is in Nm3 and rates in Nm3/h. The digester starts in the steady state for its average feed (initial_feed_rate), so there is no start-up transient to wait out. The CHP's gas rate reads AVAILABLE(\"CHP engine\"), so its failure stops the engine for exactly the downtime; its min_rate makes it semi-continuous (off, or at least 40 Nm3/h); and its rate threshold charges a 25 EUR start cost every time it restarts, counted as the flow's Starts. Total Cost is the feedstock bill plus the start costs, against the electricity revenue on the CHP output."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 720,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "hours",
+    "currency": "EUR",
+    "timeseries_points": 360,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

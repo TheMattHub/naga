@@ -1,0 +1,4 @@
+id,name,equipment_class,state,since,operation
+Cutting,Cutting,work centre,idle,2026-09-02T12:57:04Z,
+Drilling,Drilling,work centre,idle,2026-09-01T06:00:00Z,
+Assembly,Assembly,work centre,running,2026-09-02T16:37:29Z,

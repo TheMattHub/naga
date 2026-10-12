@@ -1,0 +1,327 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "demand",
+      "description": "One customer every 0.25 days",
+      "type": "CREATE",
+      "position": [
+        80.0,
+        100.0
+      ],
+      "params": {
+        "e_type": "CUSTOMER",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.25
+        },
+        "time_unit": "days",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "sequence": "",
+        "start_time_unit": "days"
+      }
+    },
+    {
+      "name": "take_stock",
+      "description": "Draw 5 units, waiting if the shelf is short",
+      "type": "TRANSFER",
+      "position": [
+        260.0,
+        100.0
+      ],
+      "params": {
+        "level": "Stock",
+        "amount": "5",
+        "mode": "remove",
+        "wait": true
+      }
+    },
+    {
+      "name": "sold",
+      "description": "Units sold",
+      "type": "RECORD",
+      "position": [
+        440.0,
+        100.0
+      ],
+      "params": {
+        "stat_name": "units_sold",
+        "kind": "count",
+        "expr": "5"
+      }
+    },
+    {
+      "name": "leave",
+      "description": "Customer leaves",
+      "type": "DISPOSE",
+      "position": [
+        620.0,
+        100.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "days"
+      }
+    },
+    {
+      "name": "agent",
+      "description": "One long-lived purchasing agent",
+      "type": "CREATE",
+      "position": [
+        80.0,
+        260.0
+      ],
+      "params": {
+        "e_type": "AGENT",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.0
+        },
+        "time_unit": "days",
+        "entities_per_arrival": 1,
+        "max_arrivals": 1,
+        "start_time": 0,
+        "sequence": "",
+        "start_time_unit": "days"
+      }
+    },
+    {
+      "name": "wait_reorder",
+      "description": "Wait for the stock to fall through s",
+      "type": "HOLD",
+      "position": [
+        260.0,
+        260.0
+      ],
+      "params": {
+        "mode": "Signal",
+        "signal_name": "reorder",
+        "conditions": [],
+        "scan_interval": 1.0,
+        "scan_interval_unit": "days"
+      }
+    },
+    {
+      "name": "order_placed",
+      "description": "Replenishment orders placed",
+      "type": "RECORD",
+      "position": [
+        440.0,
+        260.0
+      ],
+      "params": {
+        "stat_name": "orders_placed",
+        "kind": "count",
+        "expr": "1"
+      }
+    },
+    {
+      "name": "order_charge",
+      "description": "Ordering cost",
+      "type": "RECORD",
+      "position": [
+        440.0,
+        380.0
+      ],
+      "params": {
+        "stat_name": "ordering cost",
+        "kind": "cost",
+        "expr": "35",
+        "category": "Ordering"
+      }
+    },
+    {
+      "name": "lead_time",
+      "description": "Supplier lead time",
+      "type": "DELAY",
+      "position": [
+        620.0,
+        260.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.9
+        },
+        "time_unit": "days"
+      }
+    },
+    {
+      "name": "receive",
+      "description": "Put the order-up-to quantity on the shelf",
+      "type": "TRANSFER",
+      "position": [
+        800.0,
+        260.0
+      ],
+      "params": {
+        "level": "Stock",
+        "amount": "70",
+        "mode": "add",
+        "wait": false
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "demand",
+      "target": "take_stock"
+    },
+    {
+      "source": "take_stock",
+      "target": "sold"
+    },
+    {
+      "source": "sold",
+      "target": "leave"
+    },
+    {
+      "source": "agent",
+      "target": "wait_reorder"
+    },
+    {
+      "source": "wait_reorder",
+      "target": "order_placed"
+    },
+    {
+      "source": "order_placed",
+      "target": "order_charge"
+    },
+    {
+      "source": "lead_time",
+      "target": "receive"
+    },
+    {
+      "source": "receive",
+      "target": "wait_reorder"
+    },
+    {
+      "source": "order_charge",
+      "target": "lead_time"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Longer lead time",
+      "description": "4 days instead of 1.9: the stock runs out and customers are backordered.",
+      "overrides": [
+        {
+          "path": "blocks.lead_time.params.dist_params.value",
+          "value": 4.0
+        }
+      ]
+    },
+    {
+      "name": "Higher reorder point",
+      "description": "Reorder at s = 70 instead of 50.",
+      "overrides": [
+        {
+          "path": "levels.Stock.thresholds",
+          "value": [
+            {
+              "value": 70,
+              "direction": "falling",
+              "signal": "reorder",
+              "variable": "stock_at_reorder"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [
+    {
+      "name": "stock_at_reorder",
+      "initial": 0
+    }
+  ],
+  "entities": [
+    {
+      "name": "CUSTOMER",
+      "shape": "circle",
+      "color": "BLUE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "days"
+    },
+    {
+      "name": "AGENT",
+      "shape": "square",
+      "color": "GREY",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "days"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "Stock",
+      "description": "Units on the shelf. Unmet counts units a customer could not get at once.",
+      "unit": "units",
+      "capacity": 200,
+      "min": 0,
+      "initial": 80,
+      "thresholds": [
+        {
+          "value": 50,
+          "direction": "falling",
+          "signal": "reorder",
+          "variable": "stock_at_reorder"
+        }
+      ],
+      "rate_time_unit": "days"
+    }
+  ],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "(s, S) inventory with backorders",
+    "category": "Supply chain",
+    "description": "(s, S) inventory control with a replenishment lead time and backorders. Stock is a LEVEL; customers are entities that draw from it through a TRANSFER block and WAIT when it is short -- the backorder. A falling threshold at s fires the reorder signal that releases the purchasing agent. Base unit days.",
+    "author": "Naga",
+    "notes": "s = 50, S = 120, so the order quantity is S - s = 70. Demand is deterministic: 4 customers a day from t=0, 5 units each = 20 units a day. Starting from 80 the stock falls through 50 at t=1.25, the order arrives 1.9 days later with 15 on the shelf and takes it to 85, and that 3.5-day cycle then repeats. Over 34 days: 10 orders placed, 9 received (630 units), 137 customers served (685 units), closing stock 80 + 630 - 685 = 25, and no customer ever waits. Each of the 10 orders carries a 35 EUR ordering cost (a RECORD with kind=cost), so Total Cost is 350 EUR -- a lump sum the engine accrues and itemises in the cost summary, not a rate."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 34,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "days",
+    "currency": "EUR",
+    "timeseries_points": 200,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

@@ -1,0 +1,27 @@
+{
+  "hash": "6cda29f12d386382799e4a42fc5491eb5af2e067597017b860666d660fd41a0c",
+  "model": "priority_rework.json",
+  "payload": {
+    "entity_count": 327,
+    "system": {
+      "Avg Queue Length": 18.7063,
+      "Avg Resource Usage %": 96.64,
+      "Avg Throughput Time": 17.8395,
+      "Avg WIP (Little)": 16.8881,
+      "Cost per Completed Entity": 0.0,
+      "Entity Log Truncated": 0,
+      "Max Queue Length": 48.0,
+      "Resource/Store Log Truncated": 0,
+      "Run": 1,
+      "Simulation Time": 300.0,
+      "Throughput (per time unit)": 0.9467,
+      "Time Unit": "minutes",
+      "Total Cost": 0.0,
+      "Total Entities Completed": 284,
+      "Total Entities Created": 327,
+      "Total Entity Holding Cost": 0.0,
+      "Total Resource Cost": 0.0
+    }
+  },
+  "seed": 1
+}

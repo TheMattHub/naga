@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+  <header>
+    <name>Two modules</name>
+    <vendor>Naga</vendor>
+    <product version="1.0">Naga test fixture</product>
+  </header>
+  <sim_specs>
+    <start>0</start>
+    <stop>10</stop>
+    <dt>1</dt>
+  </sim_specs>
+  <model>
+    <variables>
+      <aux name="OuterInput">
+        <eqn>5</eqn>
+      </aux>
+      <module name="mod1">
+        <connect to="mod1.input" from="OuterInput"/>
+      </module>
+      <module name="mod2">
+        <connect to="mod2.input" from="OuterInput"/>
+      </module>
+      <aux name="Total">
+        <eqn>mod1.output + mod2.output</eqn>
+      </aux>
+    </variables>
+  </model>
+  <model name="mod1">
+    <variables>
+      <aux name="input" access="input">
+        <eqn>0</eqn>
+      </aux>
+      <aux name="tau">
+        <eqn>2</eqn>
+      </aux>
+      <flow name="inflow">
+        <eqn>(input-level)/tau</eqn>
+      </flow>
+      <stock name="level">
+        <eqn>0</eqn>
+        <inflow>inflow</inflow>
+      </stock>
+      <aux name="output" access="output">
+        <eqn>level</eqn>
+      </aux>
+    </variables>
+  </model>
+  <model name="mod2">
+    <variables>
+      <aux name="input" access="input">
+        <eqn>0</eqn>
+      </aux>
+      <aux name="tau">
+        <eqn>3</eqn>
+      </aux>
+      <flow name="inflow">
+        <eqn>(input-level)/tau</eqn>
+      </flow>
+      <stock name="level">
+        <eqn>0</eqn>
+        <inflow>inflow</inflow>
+      </stock>
+      <aux name="output" access="output">
+        <eqn>level</eqn>
+      </aux>
+    </variables>
+  </model>
+</xmile>

@@ -1,0 +1,1515 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "pv",
+      "description": "PV array",
+      "type": "SUBMODEL",
+      "position": [
+        -300.0,
+        -200.0
+      ],
+      "layout_position": [
+        10.0,
+        5.0
+      ],
+      "params": {
+        "definition": "PV array",
+        "arguments": {
+          "installed_kwp": 120.0,
+          "performance_ratio": 0.85,
+          "capex_per_kwp": 750.0,
+          "annual_cost_rate": 0.08
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "load",
+      "description": "Electrical load",
+      "type": "SUBMODEL",
+      "position": [
+        -300.0,
+        0.0
+      ],
+      "layout_position": [
+        4.0,
+        15.0
+      ],
+      "params": {
+        "definition": "Electrical load",
+        "arguments": {
+          "peak_kw": 40.0,
+          "profile": "Nrg load profile"
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "evs",
+      "description": "EV charging",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        -200.0
+      ],
+      "layout_position": [
+        24.0,
+        2.0
+      ],
+      "params": {
+        "definition": "EV charging",
+        "arguments": {
+          "chargers": 20,
+          "power_per_charger_kw": 11.0,
+          "site_limit_kw": 150.0,
+          "presence_profile": "Nrg EV presence",
+          "energy_per_session_kwh": 25.0,
+          "dwell_hours": 6.0,
+          "dispatch": "uncontrolled",
+          "price_profile": "Nrg tariff",
+          "charge_below_price": 0.2,
+          "merit": 5
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "tank",
+      "description": "Thermal storage",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "layout_position": [
+        21.0,
+        14.0
+      ],
+      "params": {
+        "definition": "Thermal storage",
+        "arguments": {
+          "capacity_kwh": 700.0,
+          "initial_fill": 0.6,
+          "standing_loss_kw": 0.6,
+          "heater_kw": 40.0,
+          "cop": 3.2,
+          "cop_profile": "",
+          "surplus_kw": 0.0,
+          "dispatch": "cheap_hours",
+          "price_profile": "Nrg tariff",
+          "charge_below_price": 0.2,
+          "demand_profile": "Nrg Heat demand profile",
+          "demand_scale": 0.8,
+          "bought_heat_price": 0.08,
+          "merit": 6
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "grid",
+      "description": "Grid connection",
+      "type": "SUBMODEL",
+      "position": [
+        300.0,
+        -100.0
+      ],
+      "layout_position": [
+        39.0,
+        7.0
+      ],
+      "params": {
+        "definition": "Grid connection",
+        "arguments": {
+          "import_profile": "Nrg tariff",
+          "export_price": 0.05,
+          "intensity_profile": "Nrg grid intensity",
+          "import_limit_kw": 250.0,
+          "export_limit_kw": 100.0,
+          "demand_charge_per_kw": 0.0
+        },
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [
+    {
+      "name": "Smart charging",
+      "description": "The same chargers shifted into the cheap hours and onto the PV surplus.",
+      "overrides": [
+        {
+          "path": "blocks.evs.params.arguments.dispatch",
+          "value": "smart"
+        }
+      ]
+    },
+    {
+      "name": "A 40 kW charging cap",
+      "description": "The same uncontrolled charging behind a transformer that allows 40 kW.",
+      "overrides": [
+        {
+          "path": "blocks.evs.params.arguments.site_limit_kw",
+          "value": 40.0
+        }
+      ]
+    },
+    {
+      "name": "Heat pump on PV surplus",
+      "description": "The tank charged only on generation the site cannot use itself.",
+      "overrides": [
+        {
+          "path": "blocks.tank.params.arguments.dispatch",
+          "value": "pv_surplus"
+        }
+      ]
+    },
+    {
+      "name": "No thermal store",
+      "description": "The heat pump sized to the demand with a tank of one hour's cover.",
+      "overrides": [
+        {
+          "path": "blocks.tank.params.arguments.capacity_kwh",
+          "value": 60.0
+        },
+        {
+          "path": "blocks.tank.params.arguments.dispatch",
+          "value": "always"
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [
+    {
+      "name": "Nrg pv profile",
+      "description": "Illustrative PV output, kW per kW installed, one value per hour of the day (about 5 kWh per kWp per day). Replace it with your own measured or modelled profile.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0.02,
+        0.1,
+        0.25,
+        0.42,
+        0.58,
+        0.7,
+        0.75,
+        0.72,
+        0.62,
+        0.48,
+        0.3,
+        0.12,
+        0.02,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Nrg load profile",
+      "description": "Illustrative household demand, normalised to its evening peak, one value per hour of the day (about 9 times the peak in kWh per day).",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.2,
+        0.4,
+        0.6,
+        0.45,
+        0.3,
+        0.25,
+        0.25,
+        0.3,
+        0.25,
+        0.25,
+        0.3,
+        0.5,
+        0.8,
+        1.0,
+        0.9,
+        0.7,
+        0.45,
+        0.25,
+        0.15
+      ]
+    },
+    {
+      "name": "Nrg EV presence",
+      "description": "Illustrative workplace charging: vehicles plugged in by hour.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        4,
+        9,
+        14,
+        16,
+        16,
+        15,
+        14,
+        14,
+        13,
+        11,
+        7,
+        4,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "name": "Nrg tariff",
+      "description": "Illustrative time-of-use import price, EUR/kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.25,
+        0.15,
+        0.15
+      ]
+    },
+    {
+      "name": "Nrg Heat demand profile",
+      "description": "Illustrative site heat demand, kW thermal by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        30,
+        28,
+        26,
+        26,
+        28,
+        45,
+        70,
+        85,
+        80,
+        70,
+        62,
+        60,
+        58,
+        56,
+        55,
+        58,
+        65,
+        78,
+        85,
+        80,
+        68,
+        55,
+        45,
+        36
+      ]
+    },
+    {
+      "name": "Nrg flat tariff",
+      "description": "A flat import price, EUR/kWh: one value, held for the whole run.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "hold",
+      "values": [
+        0.25
+      ]
+    },
+    {
+      "name": "Nrg grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day: cleaner around midday, dirtier at the evening peak.",
+      "start": 0,
+      "step": 1,
+      "time_unit": "hours",
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.34,
+        0.32,
+        0.3,
+        0.27,
+        0.24,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.38,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35
+      ]
+    }
+  ],
+  "levels": [
+    {
+      "name": "Nrg EV demand",
+      "description": "Energy still owed to the vehicles plugged in right now, kWh.",
+      "unit": "kWh",
+      "min": 0,
+      "initial": 0,
+      "capacity": 400,
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg Heat tank",
+      "description": "Heat stored in the tank, kWh thermal.",
+      "unit": "kWh",
+      "min": 0,
+      "initial": 250,
+      "capacity": 500,
+      "rate_time_unit": "hours"
+    }
+  ],
+  "flows": [
+    {
+      "name": "Nrg PV",
+      "description": "Generation injected into the site bus, kW.",
+      "rate": "TS(profile) * installed_kwp * performance_ratio",
+      "rate_time_unit": "hours",
+      "tag": "generation"
+    },
+    {
+      "name": "Nrg load",
+      "description": "Site demand drawn from the bus, kW.",
+      "rate": "TS(profile) * peak_kw",
+      "rate_time_unit": "hours",
+      "tag": "demand"
+    },
+    {
+      "name": "Nrg EV plug-in",
+      "to": "Nrg EV demand",
+      "description": "Energy need arriving with the vehicles that plug in, kWh/h: presence / dwell is the arrival rate, and each arrival brings its session's need.",
+      "rate": "min(TS(presence_profile), chargers) / dwell_hours * energy_per_session_kwh",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg EV charging",
+      "from": "Nrg EV demand",
+      "description": "Power actually delivered to the vehicles, kW. The level being empty is what stops it asking for more than is owed.",
+      "rate": "min(min(TS(presence_profile), chargers) * power_per_charger_kw, (site_limit_kw if site_limit_kw > 0 else 1e9)) * (dispatch == \"uncontrolled\") + (dispatch == \"smart\") * min(min(min(TS(presence_profile), chargers) * power_per_charger_kw, (site_limit_kw if site_limit_kw > 0 else 1e9)), max((TS(price_profile) < charge_below_price) * 1e9, max(FLOWSUM(\"generation\") - FLOWSUM(\"demand\", merit), 0)))",
+      "rate_time_unit": "hours",
+      "tag": "demand",
+      "priority": 5
+    },
+    {
+      "name": "Nrg EV unserved",
+      "from": "Nrg EV demand",
+      "description": "Energy leaving with the vehicles that unplug before they are full, kWh/h: the outstanding need divided by the mean dwell.",
+      "rate": "LEVEL(\"$Nrg EV demand\") / dwell_hours",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg Heat demand",
+      "description": "The site's heat demand on the heat bus, kW thermal.",
+      "rate": "TS(demand_profile) * demand_scale",
+      "rate_time_unit": "hours",
+      "tag": "heat_demand",
+      "priority": 1
+    },
+    {
+      "name": "Nrg Heat from heater",
+      "to": "Nrg Heat tank",
+      "description": "Heat made by the heat pump or heater, kW thermal. A full tank refuses it, which is what stops the heater drawing power.",
+      "rate": "(TS(cop_profile) if cop_profile != \"\" else cop) * (heater_kw * ((dispatch == \"always\") + (dispatch == \"cheap_hours\") * (TS(price_profile) < charge_below_price)) + (dispatch == \"pv_surplus\") * min(heater_kw, max(FLOWSUM(\"generation\") - FLOWSUM(\"demand\", merit), 0)))",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg Heat from surplus",
+      "to": "Nrg Heat tank",
+      "description": "Heat the site would otherwise waste, taken off the heat bus at the tank's own merit so it never competes with the demand.",
+      "rate": "min(surplus_kw, max(FLOWSUM(\"heat_supply\", merit) - FLOWSUM(\"heat_demand\", merit), 0))",
+      "rate_time_unit": "hours",
+      "tag": "heat_demand",
+      "priority": 5
+    },
+    {
+      "name": "Nrg Heater power",
+      "description": "Electricity the heater actually drew, kW: the heat it managed to put in the tank divided by the COP.",
+      "rate": "FLOW(\"$Nrg Heat from heater\") / (TS(cop_profile) if cop_profile != \"\" else cop)",
+      "rate_time_unit": "hours",
+      "tag": "demand",
+      "priority": 5
+    },
+    {
+      "name": "Nrg Heat served",
+      "from": "Nrg Heat tank",
+      "description": "Heat the tank delivered, kW thermal: what the demand still wants after every supply ahead of it. An empty tank serves less, which is exactly the unmet heat below.",
+      "rate": "max(FLOWSUM(\"heat_demand\", merit) - FLOWSUM(\"heat_supply\", merit), 0)",
+      "rate_time_unit": "hours",
+      "tag": "heat_supply",
+      "priority": 5
+    },
+    {
+      "name": "Nrg Heat standing loss",
+      "from": "Nrg Heat tank",
+      "description": "Constant loss from the tank, kW thermal.",
+      "rate": "standing_loss_kw",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg Heat unmet",
+      "description": "Heat bought in because the tank could not cover the demand, kW thermal. It closes the heat balance and carries the bought price.",
+      "rate": "max(FLOWSUM(\"heat_demand\", merit) - FLOWSUM(\"heat_supply\", 9), 0)",
+      "rate_time_unit": "hours",
+      "tag": "heat_supply",
+      "priority": 9,
+      "price": 0.08
+    },
+    {
+      "name": "Nrg import",
+      "description": "Whatever the site could not cover itself, up to the connection limit, kW.",
+      "rate": "min(max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\"), 0), import_limit_kw)",
+      "rate_time_unit": "hours",
+      "price": "TS(import_profile)",
+      "emission_factor": "TS(intensity_profile)",
+      "tag": "import",
+      "peak_price": 0.0
+    },
+    {
+      "name": "Nrg unserved",
+      "description": "Demand the connection limit could not deliver, kW.",
+      "rate": "max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\") - FLOW(\"$Nrg import\"), 0)",
+      "rate_time_unit": "hours",
+      "tag": "unserved"
+    },
+    {
+      "name": "Nrg export",
+      "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
+      "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
+      "rate_time_unit": "hours",
+      "price": "-export_price",
+      "tag": "export"
+    },
+    {
+      "name": "Nrg curtailed",
+      "description": "Generation that was neither used, stored nor exported, kW.",
+      "rate": "max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\") - FLOW(\"$Nrg export\"), 0)",
+      "rate_time_unit": "hours",
+      "tag": "curtailed"
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [
+    {
+      "name": "Nrg PV capital",
+      "description": "Capital cost of the array, annualised and prorated over the run.",
+      "amount": "installed_kwp * capex_per_kwp * annual_cost_rate * HORIZON / 8760",
+      "category": "Capital"
+    }
+  ],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "PV array": {
+      "info": {
+        "description": "Non-dispatchable generation from a normalised profile: output = profile x installed capacity x performance ratio. The profile is one value per hour of the day, in kW per kW installed, so the same asset is a wind turbine or a run-of-river plant with a different profile. Its output joins the site bus under the tag \"generation\", which every dispatchable asset reads -- place two arrays with different profiles and they simply add up. The annualised capital cost is a FIXED cost, prorated over the run, so a sizing run over installed_kwp compares like with like. No ports: this is a continuous asset, nothing flows through it.",
+        "library": {
+          "library": "energy",
+          "asset": "pv_array",
+          "version": "1.3.0"
+        },
+        "parameters": [
+          {
+            "name": "installed_kwp",
+            "type": "number",
+            "default": 5.0,
+            "unit": "kWp",
+            "label": "Installed capacity",
+            "help": "Peak DC capacity. The profile is per kW installed, so this is the multiplier.",
+            "group": "Array",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "profile",
+            "type": "name",
+            "default": "Nrg pv profile",
+            "unit": "",
+            "label": "Output profile",
+            "help": "Normalised output, kW per kW installed, by hour of the day. Edit the values in the model's Time series tab, or import a measured year from CSV.",
+            "group": "Array",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "performance_ratio",
+            "type": "number",
+            "default": 0.85,
+            "unit": "",
+            "label": "Performance ratio",
+            "help": "Everything between the panel rating and the meter: soiling, temperature, inverter and cable losses.",
+            "group": "Array",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "capex_per_kwp",
+            "type": "number",
+            "default": 900.0,
+            "unit": "EUR/kWp",
+            "label": "Capital cost",
+            "help": "Installed cost per kWp. Charged into Total Cost as a fixed cost (see the annual cost rate), so a sizing run trades it against the energy it saves.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "annual_cost_rate",
+            "type": "number",
+            "default": 0.08,
+            "unit": "",
+            "label": "Annual cost rate",
+            "help": "Fraction of the capital cost charged per year -- depreciation plus cost of capital. The charge is PRORATED over the run: amount x HORIZON / 8760, so a one-week run pays one week of it and capex and operating cost cover the same window. 0 leaves the capital cost out of Total Cost entirely. The model's time unit must be hours.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "installed_kwp",
+          "default": 5.0,
+          "type": "number",
+          "description": "Peak DC capacity. The profile is per kW installed, so this is the multiplier."
+        },
+        {
+          "name": "profile",
+          "default": "Nrg pv profile",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Normalised output, kW per kW installed, by hour of the day. Edit the values in the model's Time series tab, or import a measured year from CSV."
+        },
+        {
+          "name": "performance_ratio",
+          "default": 0.85,
+          "type": "number",
+          "description": "Everything between the panel rating and the meter: soiling, temperature, inverter and cable losses."
+        },
+        {
+          "name": "capex_per_kwp",
+          "default": 900.0,
+          "type": "number",
+          "description": "Installed cost per kWp. Charged into Total Cost as a fixed cost (see the annual cost rate), so a sizing run trades it against the energy it saves."
+        },
+        {
+          "name": "annual_cost_rate",
+          "default": 0.08,
+          "type": "number",
+          "description": "Fraction of the capital cost charged per year -- depreciation plus cost of capital. The charge is PRORATED over the run: amount x HORIZON / 8760, so a one-week run pays one week of it and capex and operating cost cover the same window. 0 leaves the capital cost out of Total Cost entirely. The model's time unit must be hours."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg PV": {}
+        },
+        "fixed_costs": {
+          "Nrg PV capital": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Electrical load": {
+      "info": {
+        "description": "The site's electrical demand, from a normalised profile x a peak. Its draw joins the site bus under the tag \"demand\", which storage, a generator and the grid connection all read, so two loads (a building and a process) simply add up. No ports: this is a continuous asset.",
+        "library": {
+          "library": "energy",
+          "asset": "site_load",
+          "version": "1.3.0"
+        },
+        "parameters": [
+          {
+            "name": "peak_kw",
+            "type": "number",
+            "default": 2.0,
+            "unit": "kW",
+            "label": "Peak demand",
+            "help": "What a profile value of 1.0 means in kW.",
+            "group": "Load",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "profile",
+            "type": "name",
+            "default": "Nrg load profile",
+            "unit": "",
+            "label": "Demand profile",
+            "help": "Normalised demand by hour of the day, 1.0 at the peak. Edit the values in the model's Time series tab, or bind them to metered data.",
+            "group": "Load",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "peak_kw",
+          "default": 2.0,
+          "type": "number",
+          "description": "What a profile value of 1.0 means in kW."
+        },
+        {
+          "name": "profile",
+          "default": "Nrg load profile",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Normalised demand by hour of the day, 1.0 at the peak. Edit the values in the model's Time series tab, or bind them to metered data."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg load": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "EV charging": {
+      "info": {
+        "description": "A depot or car park of chargers, modelled as ONE virtual battery rather than one entity per session: the presence profile says how many vehicles are plugged in each hour, each arriving vehicle brings its session's energy need, and the level holds the energy still owed to the vehicles connected right now. \"uncontrolled\" charges at whatever power the connected vehicles and the site cap allow; \"smart\" charges at full power while the price is below the threshold and otherwise only on the site's PV surplus, which is what shifting inside the dwell window costs and saves. Energy a vehicle does not get before it leaves is reported as unserved. It joins the site bus as \"demand\", so the Grid connection prices it with every other load and the peak it causes is its flow's Peak Rate. Limits: the aggregate is a FLEET AVERAGE -- it spreads a session's draw over the dwell instead of charging each car flat out on arrival, so the peak is honest for a carpark and optimistic for three cars; and departures take their unmet need away at the mean-dwell rate, which is exact for an exponential dwell and an approximation otherwise. No ports: this is a continuous asset.",
+        "library": {
+          "library": "energy",
+          "asset": "ev_charging",
+          "version": "1.3.0"
+        },
+        "parameters": [
+          {
+            "name": "chargers",
+            "type": "int",
+            "default": 20,
+            "unit": "",
+            "label": "Charge points",
+            "help": "Vehicles that can be plugged in at once; the presence profile is clamped to this.",
+            "group": "Site",
+            "min": 1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "power_per_charger_kw",
+            "type": "number",
+            "default": 11.0,
+            "unit": "kW",
+            "label": "Power per charge point",
+            "help": "",
+            "group": "Site",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "site_limit_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kW",
+            "label": "Site power cap",
+            "help": "Largest power the whole charging site may draw, whatever the chargers could manage. 0 means no cap of its own.",
+            "group": "Site",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "presence_profile",
+            "type": "name",
+            "default": "Nrg EV presence",
+            "unit": "",
+            "label": "Vehicles present",
+            "help": "Vehicles plugged in, by hour of the day. This is the shape of the demand: arrivals per hour are this divided by the dwell time.",
+            "group": "Sessions",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "energy_per_session_kwh",
+            "type": "number",
+            "default": 20.0,
+            "unit": "kWh",
+            "label": "Energy needed per session",
+            "help": "",
+            "group": "Sessions",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "dwell_hours",
+            "type": "number",
+            "default": 4.0,
+            "unit": "hours",
+            "label": "Mean time plugged in",
+            "help": "How long a vehicle stays. It sets both the arrival rate (presence / dwell) and the rate at which vehicles leave with whatever they did not get.",
+            "group": "Sessions",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "dispatch",
+            "type": "choice",
+            "default": "uncontrolled",
+            "unit": "",
+            "label": "Dispatch rule",
+            "help": "uncontrolled: charge on arrival, at whatever power is available. smart: charge at full power while the price is below the threshold, and otherwise only on the surplus the site's own generation leaves after every load ahead of this one.",
+            "group": "Dispatch",
+            "min": null,
+            "max": null,
+            "choices": [
+              "uncontrolled",
+              "smart"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "price_profile",
+            "type": "name",
+            "default": "Nrg tariff",
+            "unit": "",
+            "label": "Price profile",
+            "help": "Watched by the smart rule only.",
+            "group": "Dispatch",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "charge_below_price",
+            "type": "number",
+            "default": 0.2,
+            "unit": "EUR/kWh",
+            "label": "Charge below",
+            "help": "",
+            "group": "Dispatch",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "merit",
+            "type": "int",
+            "default": 5,
+            "unit": "",
+            "label": "Merit order",
+            "help": "Where this load sits on the bus: the surplus it may use is what generation leaves after every flow with a LOWER number. Keep it above the site's inflexible loads.",
+            "group": "Dispatch",
+            "min": 1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "chargers",
+          "default": 20,
+          "type": "int",
+          "description": "Vehicles that can be plugged in at once; the presence profile is clamped to this."
+        },
+        {
+          "name": "power_per_charger_kw",
+          "default": 11.0,
+          "type": "number"
+        },
+        {
+          "name": "site_limit_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Largest power the whole charging site may draw, whatever the chargers could manage. 0 means no cap of its own."
+        },
+        {
+          "name": "presence_profile",
+          "default": "Nrg EV presence",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Vehicles plugged in, by hour of the day. This is the shape of the demand: arrivals per hour are this divided by the dwell time."
+        },
+        {
+          "name": "energy_per_session_kwh",
+          "default": 20.0,
+          "type": "number"
+        },
+        {
+          "name": "dwell_hours",
+          "default": 4.0,
+          "type": "number",
+          "description": "How long a vehicle stays. It sets both the arrival rate (presence / dwell) and the rate at which vehicles leave with whatever they did not get."
+        },
+        {
+          "name": "dispatch",
+          "default": "uncontrolled",
+          "type": "choice",
+          "description": "uncontrolled: charge on arrival, at whatever power is available. smart: charge at full power while the price is below the threshold, and otherwise only on the surplus the site's own generation leaves after every load ahead of this one."
+        },
+        {
+          "name": "price_profile",
+          "default": "Nrg tariff",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Watched by the smart rule only."
+        },
+        {
+          "name": "charge_below_price",
+          "default": 0.2,
+          "type": "number"
+        },
+        {
+          "name": "merit",
+          "default": 5,
+          "type": "int",
+          "description": "Where this load sits on the bus: the surplus it may use is what generation leaves after every flow with a LOWER number. Keep it above the site's inflexible loads."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "Nrg EV demand": {
+            "capacity": "chargers * energy_per_session_kwh"
+          }
+        },
+        "flows": {
+          "Nrg EV plug-in": {},
+          "Nrg EV charging": {
+            "priority": {
+              "$arg": "merit"
+            }
+          },
+          "Nrg EV unserved": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Thermal storage": {
+      "info": {
+        "description": "A hot-water tank on the site's HEAT bus, in kWh thermal. It is charged by a heat pump or an electric heater -- which draws its electricity from the same site bus as every other load, divided by the COP -- and, if you give it a surplus limit, by heat the site is otherwise wasting (the Biogas library's CHP posts exactly that as \"heat_supply\"). It discharges against the heat demand, and whatever the tank cannot cover is bought in and reported as unmet heat. Dispatch: charge always (a thermostat), only while power is cheap, or only on the site's PV surplus -- which is what a power-to-heat case is. The standing loss is a CONSTANT kW, because a loss proportional to the content would make the tank's trajectory exponential and break the engine's exact crossings: set it to the tank's average loss, e.g. a 500 kWh tank losing 2 % of a 60 % mean fill a day is 500 x 0.6 x 0.02 / 24 = 0.25 kW. No ports: this is a continuous asset.",
+        "library": {
+          "library": "energy",
+          "asset": "thermal_storage",
+          "version": "1.3.0"
+        },
+        "parameters": [
+          {
+            "name": "capacity_kwh",
+            "type": "number",
+            "default": 500.0,
+            "unit": "kWh",
+            "label": "Tank capacity",
+            "help": "Usable heat in the tank, kWh thermal.",
+            "group": "Tank",
+            "min": 0.1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "initial_fill",
+            "type": "number",
+            "default": 0.5,
+            "unit": "",
+            "label": "Initial fill",
+            "help": "",
+            "group": "Tank",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "standing_loss_kw",
+            "type": "number",
+            "default": 0.25,
+            "unit": "kW",
+            "label": "Standing loss",
+            "help": "Constant loss to the plant room. A loss proportional to the content is not modelled; see the note above for turning a percentage into this number.",
+            "group": "Tank",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "heater_kw",
+            "type": "number",
+            "default": 50.0,
+            "unit": "kW",
+            "label": "Heater electrical power",
+            "help": "Electrical input of the heat pump or heater. 0 leaves the tank charged by surplus heat alone.",
+            "group": "Charging",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cop",
+            "type": "number",
+            "default": 3.0,
+            "unit": "",
+            "label": "COP",
+            "help": "Heat out per unit of electricity in: 1 for a resistive heater, 3 to 4 for a heat pump.",
+            "group": "Charging",
+            "min": 0.1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cop_profile",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "COP profile",
+            "help": "Optional: a series of COP by hour (a heat pump is worse on a cold night). It overrides the number above when it is named.",
+            "group": "Charging",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "surplus_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kW",
+            "label": "Surplus heat taken",
+            "help": "Largest rate at which the tank takes heat the site is producing and nobody wants -- a CHP's surplus on the \"heat_supply\" bus. 0 means it takes none.",
+            "group": "Charging",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "dispatch",
+            "type": "choice",
+            "default": "cheap_hours",
+            "unit": "",
+            "label": "Dispatch rule",
+            "help": "always: run the heater whenever the tank has room. cheap_hours: only below the price threshold. pv_surplus: only on the generation the site cannot use itself.",
+            "group": "Dispatch",
+            "min": null,
+            "max": null,
+            "choices": [
+              "always",
+              "cheap_hours",
+              "pv_surplus"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "price_profile",
+            "type": "name",
+            "default": "Nrg tariff",
+            "unit": "",
+            "label": "Price profile",
+            "help": "",
+            "group": "Dispatch",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "charge_below_price",
+            "type": "number",
+            "default": 0.2,
+            "unit": "EUR/kWh",
+            "label": "Charge below",
+            "help": "",
+            "group": "Dispatch",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "demand_profile",
+            "type": "name",
+            "default": "Nrg Heat demand profile",
+            "unit": "",
+            "label": "Heat demand profile",
+            "help": "The site's heat demand, kW thermal by hour. Set the scale below to 0 on a second tank, or on a site whose heat demand is posted by another asset.",
+            "group": "Demand",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "demand_scale",
+            "type": "number",
+            "default": 1.0,
+            "unit": "",
+            "label": "Heat demand scale",
+            "help": "",
+            "group": "Demand",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "bought_heat_price",
+            "type": "number",
+            "default": 0.08,
+            "unit": "EUR/kWh",
+            "label": "Bought heat price",
+            "help": "What heat the tank cannot cover costs -- a gas boiler or district heat. It is charged on the unmet heat and joins Total Cost.",
+            "group": "Demand",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "merit",
+            "type": "int",
+            "default": 5,
+            "unit": "",
+            "label": "Merit order",
+            "help": "Where the tank sits on both buses: it serves heat after every supply with a lower number, and its heater takes electrical surplus after every load with one.",
+            "group": "Dispatch",
+            "min": 2,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "capacity_kwh",
+          "default": 500.0,
+          "type": "number",
+          "description": "Usable heat in the tank, kWh thermal."
+        },
+        {
+          "name": "initial_fill",
+          "default": 0.5,
+          "type": "number"
+        },
+        {
+          "name": "standing_loss_kw",
+          "default": 0.25,
+          "type": "number",
+          "description": "Constant loss to the plant room. A loss proportional to the content is not modelled; see the note above for turning a percentage into this number."
+        },
+        {
+          "name": "heater_kw",
+          "default": 50.0,
+          "type": "number",
+          "description": "Electrical input of the heat pump or heater. 0 leaves the tank charged by surplus heat alone."
+        },
+        {
+          "name": "cop",
+          "default": 3.0,
+          "type": "number",
+          "description": "Heat out per unit of electricity in: 1 for a resistive heater, 3 to 4 for a heat pump."
+        },
+        {
+          "name": "cop_profile",
+          "default": "",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Optional: a series of COP by hour (a heat pump is worse on a cold night). It overrides the number above when it is named."
+        },
+        {
+          "name": "surplus_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Largest rate at which the tank takes heat the site is producing and nobody wants -- a CHP's surplus on the \"heat_supply\" bus. 0 means it takes none."
+        },
+        {
+          "name": "dispatch",
+          "default": "cheap_hours",
+          "type": "choice",
+          "description": "always: run the heater whenever the tank has room. cheap_hours: only below the price threshold. pv_surplus: only on the generation the site cannot use itself."
+        },
+        {
+          "name": "price_profile",
+          "default": "Nrg tariff",
+          "type": "name",
+          "refers_to": "timeseries_input"
+        },
+        {
+          "name": "charge_below_price",
+          "default": 0.2,
+          "type": "number"
+        },
+        {
+          "name": "demand_profile",
+          "default": "Nrg Heat demand profile",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "The site's heat demand, kW thermal by hour. Set the scale below to 0 on a second tank, or on a site whose heat demand is posted by another asset."
+        },
+        {
+          "name": "demand_scale",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "name": "bought_heat_price",
+          "default": 0.08,
+          "type": "number",
+          "description": "What heat the tank cannot cover costs -- a gas boiler or district heat. It is charged on the unmet heat and joins Total Cost."
+        },
+        {
+          "name": "merit",
+          "default": 5,
+          "type": "int",
+          "description": "Where the tank sits on both buses: it serves heat after every supply with a lower number, and its heater takes electrical surplus after every load with one."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "Nrg Heat tank": {
+            "capacity": "capacity_kwh",
+            "initial": "capacity_kwh * initial_fill"
+          }
+        },
+        "flows": {
+          "Nrg Heat demand": {},
+          "Nrg Heat from heater": {},
+          "Nrg Heat from surplus": {
+            "priority": {
+              "$arg": "merit"
+            }
+          },
+          "Nrg Heater power": {
+            "priority": {
+              "$arg": "merit"
+            }
+          },
+          "Nrg Heat served": {
+            "priority": {
+              "$arg": "merit"
+            }
+          },
+          "Nrg Heat standing loss": {},
+          "Nrg Heat unmet": {
+            "price": {
+              "$arg": "bought_heat_price"
+            }
+          }
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Grid connection": {
+      "info": {
+        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
+        "library": {
+          "library": "energy",
+          "asset": "grid_connection",
+          "version": "1.3.0"
+        },
+        "parameters": [
+          {
+            "name": "import_profile",
+            "type": "name",
+            "default": "Nrg tariff",
+            "unit": "",
+            "label": "Import tariff",
+            "help": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile.",
+            "group": "Prices",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "export_price",
+            "type": "number",
+            "default": 0.05,
+            "unit": "EUR/kWh",
+            "label": "Export price",
+            "help": "Paid for every exported kWh: it enters Total Cost as a negative cost.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "intensity_profile",
+            "type": "name",
+            "default": "Nrg grid intensity",
+            "unit": "",
+            "label": "Grid carbon intensity",
+            "help": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead.",
+            "group": "Emissions",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "import_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Import limit",
+            "help": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "export_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Export limit",
+            "help": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "demand_charge_per_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "EUR/kW",
+            "label": "Demand charge",
+            "help": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Nrg tariffs",
+          "label": "Tariff",
+          "group": "Prices",
+          "map": {
+            "import_profile": "import_profile",
+            "export_price": "export_price"
+          },
+          "rows": [
+            "Flat",
+            "Time of use",
+            "Time of use, no export"
+          ],
+          "units": {
+            "export_price": "EUR/kWh"
+          },
+          "values": {
+            "Flat": {
+              "import_profile": "Nrg flat tariff",
+              "export_price": 0.05
+            },
+            "Time of use": {
+              "import_profile": "Nrg tariff",
+              "export_price": 0.05
+            },
+            "Time of use, no export": {
+              "import_profile": "Nrg tariff",
+              "export_price": 0.0
+            }
+          },
+          "sources": {
+            "Flat": "Illustrative starting point (Naga); not market data.",
+            "Time of use": "Illustrative starting point (Naga); not market data.",
+            "Time of use, no export": "Illustrative starting point (Naga); not market data."
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "import_profile",
+          "default": "Nrg tariff",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile."
+        },
+        {
+          "name": "export_price",
+          "default": 0.05,
+          "type": "number",
+          "description": "Paid for every exported kWh: it enters Total Cost as a negative cost."
+        },
+        {
+          "name": "intensity_profile",
+          "default": "Nrg grid intensity",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead."
+        },
+        {
+          "name": "import_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied."
+        },
+        {
+          "name": "export_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for."
+        },
+        {
+          "name": "demand_charge_per_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg import": {
+            "peak_price": {
+              "$arg": "demand_charge_per_kw"
+            }
+          },
+          "Nrg unserved": {},
+          "Nrg export": {},
+          "Nrg curtailed": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Depot: PV, EV charging and heat pump",
+    "category": "Energy",
+    "description": "A depot on one electricity bus: a PV roof, the building's own load, twenty EV charge points and a heat-pump water tank, with a grid connection closing the balance. Nothing is wired -- the five assets meet on the named flow tags FLOWSUM() adds up, and the tank adds a SECOND medium (heat) fed from the same bus through its COP. Base unit hours, one week.",
+    "author": "Naga",
+    "notes": "EV charging is an AGGREGATE model: one level holds the energy still owed to the vehicles plugged in, so the peak it reports is a fleet average rather than twenty cars starting at once. The scenarios are the two dispatch questions a depot actually has -- shift the charging, or size the heat store -- and the unserved-energy KPI is what keeps smart charging honest."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 168,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "hours",
+    "currency": "EUR",
+    "timeseries_points": 168,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

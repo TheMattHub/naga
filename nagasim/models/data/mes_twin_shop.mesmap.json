@@ -1,0 +1,54 @@
+{
+  "format_version": 1,
+  "description": "Maps the mock MES in models/data/mes_twin_shop/ onto mes_twin_shop.json. Data only: it names no adapter and carries no credential -- the caller chooses both (ARCHITECTURE 7.6).",
+  "time": {
+    "epoch": "2026-09-01T06:00:00Z",
+    "unit": "minutes"
+  },
+  "work_centres": [
+    {
+      "mes": "Cutting",
+      "station": "Cutting",
+      "resource": "cutting/Mfg Routed machine",
+      "failure": "Cutting breakdowns",
+      "asset": "cutting"
+    },
+    {
+      "mes": "Drilling",
+      "station": "Drilling",
+      "resource": "drilling/Mfg Routed machine",
+      "failure": "Drilling breakdowns",
+      "asset": "drilling"
+    },
+    {
+      "mes": "Assembly",
+      "station": "Assembly",
+      "resource": "assembly/Mfg Routed machine",
+      "failure": "Assembly breakdowns",
+      "asset": "assembly"
+    }
+  ],
+  "products": [
+    {"mes": "WIDGET", "entity_type": "WIDGET", "sequence": "Widget"},
+    {"mes": "BRACKET", "entity_type": "BRACKET", "sequence": "Bracket"}
+  ],
+  "feeds": {
+    "plan": true,
+    "state": true,
+    "parameters": true,
+    "sequences": false
+  },
+  "parameters": {
+    "process_time_table": "Mfg Process times",
+    "min_samples": 20,
+    "window_days": 14
+  },
+  "state": {
+    "default_repair_time": 30.0
+  },
+  "alerts": {
+    "late_probability": 0.25,
+    "utilisation": 0.85,
+    "wip": 12
+  }
+}

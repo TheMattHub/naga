@@ -1,0 +1,912 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "create_1",
+      "description": "Calls (time-varying rate)",
+      "type": "CREATE",
+      "position": [
+        200.0,
+        320.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Schedule",
+        "schedule_name": "call_rate",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.7
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "time_unit": "minutes",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "process_1",
+      "description": "Handle the call",
+      "type": "PROCESS",
+      "position": [
+        520.0,
+        320.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.25
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Agents",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "record_1",
+      "description": "Time in system",
+      "type": "RECORD",
+      "position": [
+        840.0,
+        320.0
+      ],
+      "params": {
+        "stat_name": "time_in_system",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "dispose_1",
+      "type": "DISPOSE",
+      "position": [
+        1160.0,
+        320.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "create_1",
+      "target": "process_1"
+    },
+    {
+      "source": "process_1",
+      "target": "record_1"
+    },
+    {
+      "source": "record_1",
+      "target": "dispose_1"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "One more agent on the peak shift",
+      "description": "agent_shifts 11:00-12:00 goes from 5 to 6 agents on every weekday; the resource's own capacity is the schedule's maximum, so it moves with it",
+      "overrides": [
+        {
+          "path": "schedules.agent_shifts.weekly",
+          "value": {
+            "mon": [
+              [
+                "08:00",
+                "09:00",
+                2
+              ],
+              [
+                "09:00",
+                "10:00",
+                3
+              ],
+              [
+                "10:00",
+                "11:00",
+                4
+              ],
+              [
+                "11:00",
+                "12:00",
+                6
+              ],
+              [
+                "12:00",
+                "13:00",
+                3
+              ],
+              [
+                "13:00",
+                "14:00",
+                5
+              ],
+              [
+                "14:00",
+                "15:00",
+                3
+              ],
+              [
+                "15:00",
+                "16:00",
+                2
+              ]
+            ],
+            "tue": [
+              [
+                "08:00",
+                "09:00",
+                2
+              ],
+              [
+                "09:00",
+                "10:00",
+                3
+              ],
+              [
+                "10:00",
+                "11:00",
+                4
+              ],
+              [
+                "11:00",
+                "12:00",
+                6
+              ],
+              [
+                "12:00",
+                "13:00",
+                3
+              ],
+              [
+                "13:00",
+                "14:00",
+                5
+              ],
+              [
+                "14:00",
+                "15:00",
+                3
+              ],
+              [
+                "15:00",
+                "16:00",
+                2
+              ]
+            ],
+            "wed": [
+              [
+                "08:00",
+                "09:00",
+                2
+              ],
+              [
+                "09:00",
+                "10:00",
+                3
+              ],
+              [
+                "10:00",
+                "11:00",
+                4
+              ],
+              [
+                "11:00",
+                "12:00",
+                6
+              ],
+              [
+                "12:00",
+                "13:00",
+                3
+              ],
+              [
+                "13:00",
+                "14:00",
+                5
+              ],
+              [
+                "14:00",
+                "15:00",
+                3
+              ],
+              [
+                "15:00",
+                "16:00",
+                2
+              ]
+            ],
+            "thu": [
+              [
+                "08:00",
+                "09:00",
+                2
+              ],
+              [
+                "09:00",
+                "10:00",
+                3
+              ],
+              [
+                "10:00",
+                "11:00",
+                4
+              ],
+              [
+                "11:00",
+                "12:00",
+                6
+              ],
+              [
+                "12:00",
+                "13:00",
+                3
+              ],
+              [
+                "13:00",
+                "14:00",
+                5
+              ],
+              [
+                "14:00",
+                "15:00",
+                3
+              ],
+              [
+                "15:00",
+                "16:00",
+                2
+              ]
+            ],
+            "fri": [
+              [
+                "08:00",
+                "09:00",
+                2
+              ],
+              [
+                "09:00",
+                "10:00",
+                3
+              ],
+              [
+                "10:00",
+                "11:00",
+                4
+              ],
+              [
+                "11:00",
+                "12:00",
+                6
+              ],
+              [
+                "12:00",
+                "13:00",
+                3
+              ],
+              [
+                "13:00",
+                "14:00",
+                5
+              ],
+              [
+                "14:00",
+                "15:00",
+                3
+              ],
+              [
+                "15:00",
+                "16:00",
+                2
+              ]
+            ],
+            "sat": [
+              [
+                "08:00",
+                "09:00",
+                2
+              ],
+              [
+                "09:00",
+                "10:00",
+                3
+              ],
+              [
+                "10:00",
+                "11:00",
+                3
+              ],
+              [
+                "11:00",
+                "12:00",
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "path": "resources.Agents.capacity",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "name": "Faster handling",
+      "description": "mean handling time 4.0 -> 3.3 minutes",
+      "overrides": [
+        {
+          "path": "blocks.process_1.params.dist_params.rate",
+          "value": 0.3
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Agents",
+      "capacity": 5,
+      "discipline": "FIFO",
+      "capacity_schedule": "agent_shifts",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [
+    {
+      "name": "call_rate",
+      "kind": "arrival",
+      "time_unit": "hours",
+      "off_value": 0,
+      "weekly": {
+        "mon": [
+          [
+            "08:00",
+            "09:00",
+            12
+          ],
+          [
+            "09:00",
+            "10:00",
+            30
+          ],
+          [
+            "10:00",
+            "11:00",
+            54
+          ],
+          [
+            "11:00",
+            "12:00",
+            72
+          ],
+          [
+            "12:00",
+            "13:00",
+            24
+          ],
+          [
+            "13:00",
+            "14:00",
+            60
+          ],
+          [
+            "14:00",
+            "15:00",
+            36
+          ],
+          [
+            "15:00",
+            "16:00",
+            18
+          ]
+        ],
+        "tue": [
+          [
+            "08:00",
+            "09:00",
+            12
+          ],
+          [
+            "09:00",
+            "10:00",
+            30
+          ],
+          [
+            "10:00",
+            "11:00",
+            54
+          ],
+          [
+            "11:00",
+            "12:00",
+            72
+          ],
+          [
+            "12:00",
+            "13:00",
+            24
+          ],
+          [
+            "13:00",
+            "14:00",
+            60
+          ],
+          [
+            "14:00",
+            "15:00",
+            36
+          ],
+          [
+            "15:00",
+            "16:00",
+            18
+          ]
+        ],
+        "wed": [
+          [
+            "08:00",
+            "09:00",
+            12
+          ],
+          [
+            "09:00",
+            "10:00",
+            30
+          ],
+          [
+            "10:00",
+            "11:00",
+            54
+          ],
+          [
+            "11:00",
+            "12:00",
+            72
+          ],
+          [
+            "12:00",
+            "13:00",
+            24
+          ],
+          [
+            "13:00",
+            "14:00",
+            60
+          ],
+          [
+            "14:00",
+            "15:00",
+            36
+          ],
+          [
+            "15:00",
+            "16:00",
+            18
+          ]
+        ],
+        "thu": [
+          [
+            "08:00",
+            "09:00",
+            12
+          ],
+          [
+            "09:00",
+            "10:00",
+            30
+          ],
+          [
+            "10:00",
+            "11:00",
+            54
+          ],
+          [
+            "11:00",
+            "12:00",
+            72
+          ],
+          [
+            "12:00",
+            "13:00",
+            24
+          ],
+          [
+            "13:00",
+            "14:00",
+            60
+          ],
+          [
+            "14:00",
+            "15:00",
+            36
+          ],
+          [
+            "15:00",
+            "16:00",
+            18
+          ]
+        ],
+        "fri": [
+          [
+            "08:00",
+            "09:00",
+            12
+          ],
+          [
+            "09:00",
+            "10:00",
+            30
+          ],
+          [
+            "10:00",
+            "11:00",
+            54
+          ],
+          [
+            "11:00",
+            "12:00",
+            72
+          ],
+          [
+            "12:00",
+            "13:00",
+            24
+          ],
+          [
+            "13:00",
+            "14:00",
+            60
+          ],
+          [
+            "14:00",
+            "15:00",
+            36
+          ],
+          [
+            "15:00",
+            "16:00",
+            18
+          ]
+        ],
+        "sat": [
+          [
+            "08:00",
+            "09:00",
+            12
+          ],
+          [
+            "09:00",
+            "10:00",
+            24
+          ],
+          [
+            "10:00",
+            "11:00",
+            30
+          ],
+          [
+            "11:00",
+            "12:00",
+            18
+          ]
+        ]
+      },
+      "exceptions": [
+        {
+          "start": "2026-01-06",
+          "value": 0,
+          "description": "Epiphany: the line is closed"
+        }
+      ]
+    },
+    {
+      "name": "agent_shifts",
+      "kind": "capacity",
+      "time_unit": "hours",
+      "off_value": 0,
+      "weekly": {
+        "mon": [
+          [
+            "08:00",
+            "09:00",
+            2
+          ],
+          [
+            "09:00",
+            "10:00",
+            3
+          ],
+          [
+            "10:00",
+            "11:00",
+            4
+          ],
+          [
+            "11:00",
+            "12:00",
+            5
+          ],
+          [
+            "12:00",
+            "13:00",
+            3
+          ],
+          [
+            "13:00",
+            "14:00",
+            5
+          ],
+          [
+            "14:00",
+            "15:00",
+            3
+          ],
+          [
+            "15:00",
+            "16:00",
+            2
+          ]
+        ],
+        "tue": [
+          [
+            "08:00",
+            "09:00",
+            2
+          ],
+          [
+            "09:00",
+            "10:00",
+            3
+          ],
+          [
+            "10:00",
+            "11:00",
+            4
+          ],
+          [
+            "11:00",
+            "12:00",
+            5
+          ],
+          [
+            "12:00",
+            "13:00",
+            3
+          ],
+          [
+            "13:00",
+            "14:00",
+            5
+          ],
+          [
+            "14:00",
+            "15:00",
+            3
+          ],
+          [
+            "15:00",
+            "16:00",
+            2
+          ]
+        ],
+        "wed": [
+          [
+            "08:00",
+            "09:00",
+            2
+          ],
+          [
+            "09:00",
+            "10:00",
+            3
+          ],
+          [
+            "10:00",
+            "11:00",
+            4
+          ],
+          [
+            "11:00",
+            "12:00",
+            5
+          ],
+          [
+            "12:00",
+            "13:00",
+            3
+          ],
+          [
+            "13:00",
+            "14:00",
+            5
+          ],
+          [
+            "14:00",
+            "15:00",
+            3
+          ],
+          [
+            "15:00",
+            "16:00",
+            2
+          ]
+        ],
+        "thu": [
+          [
+            "08:00",
+            "09:00",
+            2
+          ],
+          [
+            "09:00",
+            "10:00",
+            3
+          ],
+          [
+            "10:00",
+            "11:00",
+            4
+          ],
+          [
+            "11:00",
+            "12:00",
+            5
+          ],
+          [
+            "12:00",
+            "13:00",
+            3
+          ],
+          [
+            "13:00",
+            "14:00",
+            5
+          ],
+          [
+            "14:00",
+            "15:00",
+            3
+          ],
+          [
+            "15:00",
+            "16:00",
+            2
+          ]
+        ],
+        "fri": [
+          [
+            "08:00",
+            "09:00",
+            2
+          ],
+          [
+            "09:00",
+            "10:00",
+            3
+          ],
+          [
+            "10:00",
+            "11:00",
+            4
+          ],
+          [
+            "11:00",
+            "12:00",
+            5
+          ],
+          [
+            "12:00",
+            "13:00",
+            3
+          ],
+          [
+            "13:00",
+            "14:00",
+            5
+          ],
+          [
+            "14:00",
+            "15:00",
+            3
+          ],
+          [
+            "15:00",
+            "16:00",
+            2
+          ]
+        ],
+        "sat": [
+          [
+            "08:00",
+            "09:00",
+            2
+          ],
+          [
+            "09:00",
+            "10:00",
+            3
+          ],
+          [
+            "10:00",
+            "11:00",
+            3
+          ],
+          [
+            "11:00",
+            "12:00",
+            2
+          ]
+        ]
+      },
+      "exceptions": [
+        {
+          "start": "2026-01-06",
+          "value": 0,
+          "description": "Epiphany: no agents on shift"
+        }
+      ]
+    }
+  ],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "DEFAULT",
+      "shape": "circle",
+      "color": "BLACK",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Call centre on real dates",
+    "category": "Services",
+    "description": "A call centre on REAL DATES: the week of Monday 5 January 2026, Europe/Rome. The arrival rate and the agent roster are both weekday schedules in local wall-clock time -- Mon-Fri 08:00-16:00, a short Saturday morning, Sunday closed -- with Epiphany (Tuesday 6 January) closed by a dated exception. RECORD tracks each call's time in system; every chart, the playback clock and the exported workbook show the real day and hour."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 10080,
+    "warmup": 0,
+    "replications": 5,
+    "time_unit": "minutes",
+    "calendar": {
+      "start": "2026-01-05T08:00:00",
+      "timezone": "Europe/Rome"
+    },
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

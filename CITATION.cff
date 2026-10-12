@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+title: Naga engine
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - family-names: Brunetti
+    given-names: Matteo
+version: 0.6.0
+date-released: "2026-10-12"
+license: Apache-2.0
+abstract: A SimPy-based simulation engine for discrete-event, system-dynamics and agent-based models in one event-driven clock, with a JSON model format, experiments, optimization, calibration and forecasting.

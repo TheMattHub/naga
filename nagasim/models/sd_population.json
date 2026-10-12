@@ -1,0 +1,205 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "population_1",
+      "description": "Population (logistic)",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Population (logistic)",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "SD Population",
+      "initial": 10.0,
+      "min": 0.0,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "flows": [
+    {
+      "name": "SD growth",
+      "rate": "AUX(\"$SD growth rate\") * LEVEL(\"$SD Population\") * (1 - LEVEL(\"$SD Population\") / AUX(\"$SD carrying capacity\"))",
+      "to": "SD Population",
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [
+    {
+      "name": "SD growth rate",
+      "expr": "0.2"
+    },
+    {
+      "name": "SD carrying capacity",
+      "expr": "1000"
+    }
+  ],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Population (logistic)": {
+      "info": {
+        "description": "The textbook logistic-growth stock and flow: one level (Population) fed by one flow whose rate reads the level itself, r * P * (1 - P/K), so growth slows as the population nears its carrying capacity. Needs the system-dynamics grid (simulation.sd) to integrate -- placing this asset does not set it for you (Run > Run experiment (SD step and method)), because a model may mix this with entities that need no grid at all.",
+        "library": {
+          "library": "sd",
+          "asset": "population",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "initial_population",
+            "type": "number",
+            "default": 10.0,
+            "unit": "",
+            "label": "Initial population",
+            "help": "Population at t=0.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "growth_rate",
+            "type": "number",
+            "default": 0.2,
+            "unit": "",
+            "label": "Growth rate",
+            "help": "Intrinsic growth rate r, per base time unit.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "carrying_capacity",
+            "type": "number",
+            "default": 1000.0,
+            "unit": "",
+            "label": "Carrying capacity",
+            "help": "The level the population approaches, K.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "levels": [
+            "SD Population"
+          ],
+          "auxiliaries": [
+            "SD growth rate",
+            "SD carrying capacity"
+          ],
+          "flows": [
+            "SD growth"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "initial_population",
+          "default": 10.0,
+          "type": "number",
+          "description": "Population at t=0."
+        },
+        {
+          "name": "growth_rate",
+          "default": 0.2,
+          "type": "number",
+          "description": "Intrinsic growth rate r, per base time unit."
+        },
+        {
+          "name": "carrying_capacity",
+          "default": 1000.0,
+          "type": "number",
+          "description": "The level the population approaches, K."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "SD Population": {
+            "initial": {
+              "$arg": "initial_population"
+            }
+          }
+        },
+        "auxiliaries": {
+          "SD growth rate": {
+            "expr": {
+              "$arg": "growth_rate"
+            }
+          },
+          "SD carrying capacity": {
+            "expr": {
+              "$arg": "carrying_capacity"
+            }
+          }
+        },
+        "flows": {
+          "SD growth": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Population (logistic)",
+    "category": "System dynamics",
+    "description": "The textbook logistic-growth stock and flow: one level (Population) fed by one flow whose rate reads the level itself, r * P * (1 - P/K), so growth slows as the population nears its carrying capacity. Needs the system-dynamics grid (simulation.sd) to integrate -- placing this asset does not set it for you (Run > Run experiment (SD step and method)), because a model may mix this with entities that need no grid at all."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 50.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0,
+    "sd": {
+      "dt": 0.1,
+      "method": "rk4",
+      "time_unit": "minutes"
+    }
+  },
+  "outputs": {}
+}

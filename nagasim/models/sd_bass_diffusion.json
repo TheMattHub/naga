@@ -1,0 +1,216 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "bass_diffusion_1",
+      "description": "Bass diffusion",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Bass diffusion",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "SD Adopters",
+      "initial": 0.0,
+      "min": 0.0,
+      "capacity": 1000.0,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "flows": [
+    {
+      "name": "SD adoption",
+      "rate": "(AUX(\"$SD innovation coeff\") + AUX(\"$SD imitation coeff\") * LEVEL(\"$SD Adopters\") / AUX(\"$SD market potential\")) * (AUX(\"$SD market potential\") - LEVEL(\"$SD Adopters\"))",
+      "to": "SD Adopters",
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [
+    {
+      "name": "SD market potential",
+      "expr": "1000"
+    },
+    {
+      "name": "SD innovation coeff",
+      "expr": "0.03"
+    },
+    {
+      "name": "SD imitation coeff",
+      "expr": "0.4"
+    }
+  ],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Bass diffusion": {
+      "info": {
+        "description": "Frank Bass's new-product adoption model: one stock (cumulative Adopters) and one flow, (p + q*Adopters/m) * (m - Adopters) -- innovators (rate p) plus imitators (rate q, proportional to the fraction already adopted). Needs simulation.sd (Run > Run experiment (SD step and method)).",
+        "library": {
+          "library": "sd",
+          "asset": "bass_diffusion",
+          "version": "1.1.0"
+        },
+        "parameters": [
+          {
+            "name": "market_potential",
+            "type": "number",
+            "default": 1000.0,
+            "unit": "",
+            "label": "Market Potential",
+            "help": "Total eventual adopters, m.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "innovation_coeff",
+            "type": "number",
+            "default": 0.03,
+            "unit": "",
+            "label": "Innovation Coeff",
+            "help": "Innovation coefficient p.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "imitation_coeff",
+            "type": "number",
+            "default": 0.4,
+            "unit": "",
+            "label": "Imitation Coeff",
+            "help": "Imitation coefficient q.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "levels": [
+            "SD Adopters"
+          ],
+          "auxiliaries": [
+            "SD market potential",
+            "SD innovation coeff",
+            "SD imitation coeff"
+          ],
+          "flows": [
+            "SD adoption"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "market_potential",
+          "default": 1000.0,
+          "type": "number",
+          "description": "Total eventual adopters, m."
+        },
+        {
+          "name": "innovation_coeff",
+          "default": 0.03,
+          "type": "number",
+          "description": "Innovation coefficient p."
+        },
+        {
+          "name": "imitation_coeff",
+          "default": 0.4,
+          "type": "number",
+          "description": "Imitation coefficient q."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "SD Adopters": {
+            "capacity": {
+              "$arg": "market_potential"
+            }
+          }
+        },
+        "auxiliaries": {
+          "SD market potential": {
+            "expr": {
+              "$arg": "market_potential"
+            }
+          },
+          "SD innovation coeff": {
+            "expr": {
+              "$arg": "innovation_coeff"
+            }
+          },
+          "SD imitation coeff": {
+            "expr": {
+              "$arg": "imitation_coeff"
+            }
+          }
+        },
+        "flows": {
+          "SD adoption": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Bass diffusion",
+    "category": "System dynamics",
+    "description": "Frank Bass's new-product adoption model: one stock (cumulative Adopters) and one flow, (p + q*Adopters/m) * (m - Adopters) -- innovators (rate p) plus imitators (rate q, proportional to the fraction already adopted). Needs simulation.sd (Run > Run experiment (SD step and method))."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 40.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0,
+    "sd": {
+      "dt": 0.05,
+      "method": "rk4",
+      "time_unit": "minutes"
+    }
+  },
+  "outputs": {}
+}

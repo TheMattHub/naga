@@ -1,0 +1,6 @@
+product,step,operation,work_centre,standard_time,setup_family,work_order
+WIDGET,1,cut,Cutting,20.0,,
+WIDGET,2,drill,Drilling,35.0,,
+WIDGET,3,assemble,Assembly,40.0,,
+BRACKET,1,cut,Cutting,18.0,,
+BRACKET,2,assemble,Assembly,35.0,,

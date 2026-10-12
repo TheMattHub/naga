@@ -1,0 +1,202 @@
+{
+  "schema_version": 29,
+  "blocks": [],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "Applicants",
+      "initial": 60.0,
+      "min": 0.0,
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "Training",
+      "initial": 0.0,
+      "conveyor": {
+        "transit_time": 12,
+        "leak_kind": "linear"
+      },
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "Staff",
+      "initial": 40.0,
+      "min": 0.0,
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "Dropouts",
+      "initial": 0.0,
+      "min": 0.0,
+      "rate_time_unit": "weeks"
+    }
+  ],
+  "flows": [
+    {
+      "name": "apply",
+      "description": "New applicants join the pool",
+      "rate": "AUX(\"arrival_rate\")",
+      "to": "Applicants",
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "hire",
+      "description": "Admitted into the training school: capped by the school's own capacity and by the hiring gap",
+      "rate": "min(LEVEL(\"Applicants\"), AUX(\"capacity\"), max(0, (AUX(\"staff_goal\") - (LEVEL(\"Staff\") + LEVEL(\"Training\"))) / AUX(\"adj_time\")))",
+      "from": "Applicants",
+      "to": "Training",
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "graduate",
+      "description": "The conveyor's one primary outflow: whoever reaches the end of training",
+      "rate": "",
+      "from": "Training",
+      "to": "Staff",
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "dropout",
+      "description": "Linear leakage along the belt: trainees who never finish",
+      "rate": "",
+      "from": "Training",
+      "leak": {
+        "fraction": "AUX(\"leak_frac\")"
+      },
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "tally_dropouts",
+      "description": "An accounting flow reading the leak's own volume, for the dashboard KPI",
+      "rate": "FLOW(\"dropout\")",
+      "to": "Dropouts",
+      "rate_time_unit": "weeks"
+    },
+    {
+      "name": "leave_staff",
+      "description": "Staff who leave the floor",
+      "rate": "AUX(\"attrition\") * LEVEL(\"Staff\")",
+      "from": "Staff",
+      "rate_time_unit": "weeks"
+    }
+  ],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [
+    {
+      "name": "arrival_rate",
+      "expr": "6"
+    },
+    {
+      "name": "capacity",
+      "expr": "8"
+    },
+    {
+      "name": "staff_goal",
+      "expr": "120"
+    },
+    {
+      "name": "adj_time",
+      "expr": "6"
+    },
+    {
+      "name": "leak_frac",
+      "expr": "0.15"
+    },
+    {
+      "name": "attrition",
+      "expr": "0.02"
+    }
+  ],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Training pipeline with attrition",
+    "category": "System dynamics",
+    "description": "A Stella conveyor as a hiring pipeline: Applicants are admitted into a 12-week Training conveyor, capped by the school's own capacity and by a goal-seeking hiring rule ((staff_goal - in-pipeline headcount) / adj_time); about 15% leak out as dropouts along the way (linear leakage), the rest graduate onto Staff, which loses a small fraction to attrition every week. Needs simulation.sd on method \"euler\" (Stella's slat model moves one slat per DT). In the results, read Staff, Training against Staff over time and cumulative dropouts; \"Hiring target (staff goal)\" can be changed during a run.",
+    "author": "Naga example"
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 90.0,
+    "warmup": 0.0,
+    "replications": 1,
+    "time_unit": "weeks",
+    "currency": "EUR",
+    "energy_price": 0,
+    "sd": {
+      "dt": 1.0,
+      "method": "euler",
+      "time_unit": "weeks"
+    },
+    "length_unit": "meters"
+  },
+  "outputs": {},
+  "dashboard": {
+    "widgets": [
+      {
+        "name": "staff_kpi",
+        "kind": "kpi",
+        "title": "Staff on the floor",
+        "expr": "LEVEL(\"Staff\")"
+      },
+      {
+        "name": "pipeline_line",
+        "kind": "line",
+        "title": "Training vs. Staff",
+        "series": [
+          {
+            "label": "Training",
+            "expr": "LEVEL(\"Training\")"
+          },
+          {
+            "label": "Staff",
+            "expr": "LEVEL(\"Staff\")"
+          }
+        ]
+      },
+      {
+        "name": "dropouts_kpi",
+        "kind": "kpi",
+        "title": "Cumulative dropouts",
+        "expr": "LEVEL(\"Dropouts\")"
+      }
+    ],
+    "controls": [
+      {
+        "name": "staff_goal_slider",
+        "kind": "slider",
+        "title": "Hiring target (staff goal)",
+        "target": {
+          "constant": "staff_goal"
+        },
+        "min": 40,
+        "max": 200,
+        "step": 5
+      }
+    ]
+  }
+}

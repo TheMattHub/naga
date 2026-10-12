@@ -1,0 +1,104 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+concurrency:
+  group: tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  # The OPC UA reader runs on an optional library (asyncua, the extra `opcua`), so its
+  # probe and its session tests skip wherever that is not installed. This job installs it.
+  # The servers and brokers are in-process fakes on 127.0.0.1: no service is contacted.
+  opcua:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-dev.txt
+      - name: Install with the opcua extra
+        run: pip install -e ".[opcua]" -r requirements-dev.txt
+      - name: Run the OPC UA probe, the readers and the feed
+        run: pytest -q -rs tests/test_opcua_probe.py tests/test_readers.py tests/test_live.py tests/test_netguard.py
+
+  # The browser viewer: its real-browser tests need the pinned Pyodide runtime (29 MB, kept
+  # in a cache keyed on the pin and fetched on a miss, every file checked against the
+  # pin), node 22 and Chrome, and skip wherever one is missing. This job has all three,
+  # so "the same engine in the page" is checked on every push. Nothing else here downloads.
+  viewer:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+      NAGASIM_VIEWER_RUNTIME: ${{ github.workspace }}/.viewer-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install (core only)
+        run: pip install -e . pytest
+      - name: The pinned browser runtime, from the cache
+        uses: actions/cache@v4
+        with:
+          path: .viewer-runtime
+          key: viewer-runtime-${{ hashFiles('nagasim/viewer_runtime.py') }}
+      - name: Fetch the runtime on a cache miss
+        run: naga viewer --fetch
+      - name: Run the viewer's tests, the real-browser ones included
+        run: pytest -q -rs -m "slow or not slow" tests/test_viewer.py
+
+  matrix:
+    # Every push: each Python version on Ubuntu, and Windows and macOS on one version. Six
+    # jobs, not twelve: a version break shows on any system, a system break on any version.
+    # The Ubuntu 3.12 job also installs the optional backends, so their tests run somewhere
+    # and nowhere twice; the others install the core only, so a backend without a wheel
+    # for a new Python cannot fail them.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          # `extras` is a key the lists above do not have, so this adds to the Ubuntu 3.12
+          # job instead of making a second one.
+          - {os: ubuntu-latest, python: "3.12", extras: true}
+          - {os: windows-latest, python: "3.12"}
+          - {os: macos-latest, python: "3.12"}
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: pip install ${{ matrix.extras && '-e ".[plan,ml,sql,plot]" -r requirements-dev.txt' || '-e . pytest pytest-xdist hypothesis pyyaml jsonschema' }}
+      - name: Run the fast set
+        # The slowest tests are listed: a job that takes ten times the others' time
+        # (Python 3.14, first run) is then explained by its own log.
+        run: pytest -q -n auto --durations=15

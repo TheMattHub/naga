@@ -1,0 +1,191 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "network_courier_1",
+      "description": "Courier on a path network",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Courier on a path network",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [
+    {
+      "name": "Courier",
+      "parameters": {
+        "courier_speed": 5
+      },
+      "space": {
+        "kind": "network"
+      },
+      "speed": "courier_speed",
+      "states": [
+        {
+          "name": "Moving",
+          "entry": [
+            {
+              "move_to": "'Dropoff'"
+            }
+          ]
+        },
+        {
+          "name": "Delivered"
+        }
+      ],
+      "initial_state": "Moving",
+      "transitions": [
+        {
+          "from": "Moving",
+          "to": "Delivered",
+          "message": "arrived"
+        }
+      ],
+      "speed_unit": "m/min"
+    }
+  ],
+  "populations": [
+    {
+      "name": "Couriers",
+      "type": "Courier",
+      "count": 1,
+      "placement": {
+        "kind": "table",
+        "nodes": [
+          "Dock"
+        ]
+      }
+    }
+  ],
+  "reality_checks": [],
+  "network": {
+    "nodes": [
+      {
+        "name": "Dock",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "name": "Dropoff",
+        "x": 100,
+        "y": 0
+      }
+    ],
+    "segments": [
+      {
+        "from": "Dock",
+        "to": "Dropoff",
+        "length": 100.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      }
+    ]
+  },
+  "annotations": [],
+  "submodels": {
+    "Courier on a path network": {
+      "info": {
+        "description": "One Courier agent moving on the model's own path network (`network`) instead of continuous space: it starts at a node named \"Dock\", is sent to a node named \"Dropoff\" the instant it starts, and enters Delivered on arrival. Needs the model to declare those two node names and a segment joining them -- validation reports E_AGENT_SPACE with a clear hint if they are missing. move_to's travel time is segment length / speed, exact, so a fixed leg gives an exact sojourn oracle just like the continuous walker asset.",
+        "library": {
+          "library": "agents",
+          "asset": "network_courier",
+          "version": "1.2.0"
+        },
+        "parameters": [
+          {
+            "name": "courier_speed",
+            "type": "number",
+            "default": 5,
+            "unit": "",
+            "label": "Speed",
+            "help": "Network length units per time unit.",
+            "group": "Parameters",
+            "min": 0.0001,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "agent_types": [
+            "Courier"
+          ],
+          "populations": [
+            "Couriers"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "courier_speed",
+          "default": 5,
+          "type": "number",
+          "description": "Network length units per time unit."
+        }
+      ],
+      "scoped": {
+        "agent_types": {
+          "Courier": {
+            "parameters.courier_speed": {
+              "$arg": "courier_speed"
+            }
+          }
+        },
+        "populations": {
+          "Couriers": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Courier on a path network",
+    "category": "Agent-based",
+    "description": "One Courier agent moving on the model's own path network (`network`) instead of continuous space: it starts at a node named \"Dock\", is sent to a node named \"Dropoff\" the instant it starts, and enters Delivered on arrival. Needs the model to declare those two node names and a segment joining them -- validation reports E_AGENT_SPACE with a clear hint if they are missing. move_to's travel time is segment length / speed, exact, so a fixed leg gives an exact sojourn oracle just like the continuous walker asset."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 100.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0
+  },
+  "outputs": {}
+}

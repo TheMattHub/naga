@@ -1,0 +1,677 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "pallets_fast",
+      "description": "pallets_fast",
+      "type": "CREATE",
+      "position": [
+        -260.0,
+        -120.0
+      ],
+      "layout_position": [
+        -18.0,
+        2.0
+      ],
+      "params": {
+        "e_type": "Fast mover",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.22
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "sequence": "Fast mover",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "pallets_bulk",
+      "description": "pallets_bulk",
+      "type": "CREATE",
+      "position": [
+        -260.0,
+        40.0
+      ],
+      "layout_position": [
+        -18.0,
+        18.0
+      ],
+      "params": {
+        "e_type": "Bulk",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.14
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "sequence": "Bulk",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "to_first_stop",
+      "description": "to_first_stop",
+      "type": "ROUTE",
+      "position": [
+        -100.0,
+        -40.0
+      ],
+      "layout_position": [
+        -9.0,
+        10.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes",
+        "travel": "time",
+        "speed": "",
+        "speed_unit": "m/min"
+      }
+    },
+    {
+      "name": "Dock",
+      "description": "Dock",
+      "type": "STATION",
+      "position": [
+        60.0,
+        -40.0
+      ],
+      "params": {
+        "station": "",
+        "node": "dock"
+      }
+    },
+    {
+      "name": "unload",
+      "description": "unload",
+      "type": "PROCESS",
+      "position": [
+        200.0,
+        -40.0
+      ],
+      "layout_position": [
+        0.0,
+        20.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "resource_name": "Dock crew",
+        "distribution": "Triangular",
+        "dist_params": {
+          "low": 2.0,
+          "mode": 3.0,
+          "high": 5.0
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "Storage A",
+      "description": "Storage A",
+      "type": "STATION",
+      "position": [
+        60.0,
+        80.0
+      ],
+      "params": {
+        "station": "",
+        "node": "zone_a"
+      }
+    },
+    {
+      "name": "putaway_a",
+      "description": "putaway_a",
+      "type": "DELAY",
+      "position": [
+        200.0,
+        80.0
+      ],
+      "layout_position": [
+        30.0,
+        30.0
+      ],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {
+          "low": 1.0,
+          "mode": 1.5,
+          "high": 2.5
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "Storage B",
+      "description": "Storage B",
+      "type": "STATION",
+      "position": [
+        60.0,
+        200.0
+      ],
+      "params": {
+        "station": "",
+        "node": "zone_b"
+      }
+    },
+    {
+      "name": "putaway_b",
+      "description": "putaway_b",
+      "type": "DELAY",
+      "position": [
+        200.0,
+        200.0
+      ],
+      "layout_position": [
+        55.0,
+        40.0
+      ],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {
+          "low": 1.5,
+          "mode": 2.5,
+          "high": 4.0
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "Picking",
+      "description": "Picking",
+      "type": "STATION",
+      "position": [
+        60.0,
+        320.0
+      ],
+      "params": {
+        "station": "",
+        "node": "pick"
+      }
+    },
+    {
+      "name": "pick_order",
+      "description": "pick_order",
+      "type": "PROCESS",
+      "position": [
+        200.0,
+        320.0
+      ],
+      "layout_position": [
+        80.0,
+        30.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "resource_name": "Pickers",
+        "distribution": "Triangular",
+        "dist_params": {
+          "low": 3.0,
+          "mode": 4.5,
+          "high": 7.0
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "forklift_move",
+      "description": "forklift_move",
+      "type": "TRANSPORT",
+      "position": [
+        400.0,
+        140.0
+      ],
+      "layout_position": [
+        45.0,
+        22.0
+      ],
+      "params": {
+        "fleet": "Forklifts",
+        "destination": "",
+        "priority": 0
+      }
+    },
+    {
+      "name": "takeaway_belt",
+      "description": "takeaway_belt",
+      "type": "CONVEYOR",
+      "position": [
+        580.0,
+        140.0
+      ],
+      "params": {
+        "length": 0.0,
+        "speed": 12.0,
+        "spacing": 1.4,
+        "accumulating": true,
+        "exit_resource": "Loaders",
+        "from_node": "pick",
+        "to_node": "ship",
+        "length_unit": "meters",
+        "speed_unit": "m/min",
+        "spacing_unit": "meters"
+      }
+    },
+    {
+      "name": "Shipping",
+      "description": "Shipping",
+      "type": "STATION",
+      "position": [
+        740.0,
+        140.0
+      ],
+      "params": {
+        "station": "",
+        "node": "ship"
+      }
+    },
+    {
+      "name": "load_truck",
+      "description": "load_truck",
+      "type": "PROCESS",
+      "position": [
+        880.0,
+        140.0
+      ],
+      "layout_position": [
+        80.0,
+        0.0
+      ],
+      "params": {
+        "action": "Delay Release",
+        "resource_name": "Loaders",
+        "distribution": "Triangular",
+        "dist_params": {
+          "low": 1.0,
+          "mode": 1.5,
+          "high": 2.5
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "shipped",
+      "description": "shipped",
+      "type": "DISPOSE",
+      "position": [
+        1020.0,
+        140.0
+      ],
+      "layout_position": [
+        90.0,
+        0.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "pallets_fast",
+      "target": "to_first_stop"
+    },
+    {
+      "source": "pallets_bulk",
+      "target": "to_first_stop"
+    },
+    {
+      "source": "to_first_stop",
+      "target": "shipped"
+    },
+    {
+      "source": "Dock",
+      "target": "unload"
+    },
+    {
+      "source": "unload",
+      "target": "forklift_move"
+    },
+    {
+      "source": "Storage A",
+      "target": "putaway_a"
+    },
+    {
+      "source": "putaway_a",
+      "target": "forklift_move"
+    },
+    {
+      "source": "Storage B",
+      "target": "putaway_b"
+    },
+    {
+      "source": "putaway_b",
+      "target": "forklift_move"
+    },
+    {
+      "source": "Picking",
+      "target": "pick_order"
+    },
+    {
+      "source": "pick_order",
+      "target": "forklift_move"
+    },
+    {
+      "source": "forklift_move",
+      "target": "takeaway_belt"
+    },
+    {
+      "source": "takeaway_belt",
+      "target": "Shipping"
+    },
+    {
+      "source": "Shipping",
+      "target": "load_truck"
+    },
+    {
+      "source": "load_truck",
+      "target": "shipped"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Four forklifts",
+      "overrides": [
+        {
+          "path": "fleets.Forklifts.count",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "name": "Dock across the yard",
+      "overrides": [
+        {
+          "path": "network.nodes.dock.x",
+          "value": -70.0
+        },
+        {
+          "path": "network.segments.dock->aisle_w.length",
+          "value": 90.0
+        }
+      ]
+    },
+    {
+      "name": "FIFO dispatch",
+      "overrides": [
+        {
+          "path": "fleets.Forklifts.dispatch",
+          "value": "fifo"
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Dock crew",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_busy": 32.0,
+      "cost_idle": 22.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Pickers",
+      "capacity": 3,
+      "discipline": "FIFO",
+      "cost_busy": 30.0,
+      "cost_idle": 21.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Loaders",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_busy": 30.0,
+      "cost_idle": 21.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [
+    {
+      "name": "Fast mover",
+      "steps": [
+        {
+          "station": "Dock",
+          "values": {}
+        },
+        {
+          "station": "Storage A",
+          "values": {}
+        },
+        {
+          "station": "Picking",
+          "values": {}
+        }
+      ]
+    },
+    {
+      "name": "Bulk",
+      "steps": [
+        {
+          "station": "Dock",
+          "values": {}
+        },
+        {
+          "station": "Storage B",
+          "values": {}
+        },
+        {
+          "station": "Picking",
+          "values": {}
+        }
+      ]
+    }
+  ],
+  "variables": [],
+  "entities": [
+    {
+      "name": "Fast mover",
+      "shape": "square",
+      "color": "BLUE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "Bulk",
+      "shape": "circle",
+      "color": "ORANGE",
+      "holding_cost": 0.0,
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [
+    {
+      "name": "Forklifts",
+      "count": 3,
+      "speed": 50.0,
+      "speed_empty": 70.0,
+      "load_time": "0.4",
+      "unload_time": "0.4",
+      "time_unit": "minutes",
+      "home": "dock",
+      "park": "stay",
+      "dispatch": "nearest",
+      "select": "nearest",
+      "cost_busy": 41.0,
+      "cost_idle": 16.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours",
+      "speed_unit": "m/min"
+    }
+  ],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": {
+    "length_factor": 1.0,
+    "nodes": [
+      {
+        "name": "dock",
+        "x": 0.0,
+        "y": 10.0
+      },
+      {
+        "name": "aisle_w",
+        "x": 20.0,
+        "y": 10.0
+      },
+      {
+        "name": "aisle_m",
+        "x": 45.0,
+        "y": 10.0
+      },
+      {
+        "name": "aisle_e",
+        "x": 70.0,
+        "y": 10.0
+      },
+      {
+        "name": "zone_a",
+        "x": 20.0,
+        "y": 30.0
+      },
+      {
+        "name": "zone_b",
+        "x": 45.0,
+        "y": 40.0
+      },
+      {
+        "name": "pick",
+        "x": 70.0,
+        "y": 30.0
+      },
+      {
+        "name": "ship",
+        "x": 70.0,
+        "y": 0.0
+      }
+    ],
+    "segments": [
+      {
+        "from": "dock",
+        "to": "aisle_w",
+        "length": 20.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_w",
+        "to": "aisle_m",
+        "length": 25.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_m",
+        "to": "aisle_e",
+        "length": 25.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_w",
+        "to": "zone_a",
+        "length": 20.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_m",
+        "to": "zone_b",
+        "length": 30.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_e",
+        "to": "pick",
+        "length": 20.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "aisle_e",
+        "to": "ship",
+        "length": 10.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      }
+    ]
+  },
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Warehouse with forklifts (floor plan)",
+    "category": "Logistics",
+    "description": "A small warehouse on a real-metre floor plan: pallets are unloaded at the dock, driven by forklift to one of two storage zones, driven again to picking, and leave on a take-away conveyor to shipping. Travel time is geometry -- distance along the aisle network divided by the forklift speed -- so moving the dock or adding a truck changes the KPIs the way hand reasoning says it should.",
+    "author": "Naga",
+    "notes": "Distances in metres, times in minutes, speeds in metres per minute (50 m/min loaded is about 0.8 m/s, a cautious indoor forklift; the belt runs at 12 m/min). Fast movers are stored close to the dock, bulk pallets far away, so the two routings really do cost different amounts of driving."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 960,
+    "warmup": 120,
+    "replications": 5,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

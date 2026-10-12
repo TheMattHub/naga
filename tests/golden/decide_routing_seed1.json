@@ -1,0 +1,27 @@
+{
+  "hash": "ccb044a5fe6f80d80f77de1fb8b0d22b8ed72bb657fd4872465c42867682ad47",
+  "model": "decide_routing.json",
+  "payload": {
+    "entity_count": 524,
+    "system": {
+      "Avg Queue Length": 0,
+      "Avg Resource Usage %": 0,
+      "Avg Throughput Time": 2.1528,
+      "Avg WIP (Little)": 2.2433,
+      "Cost per Completed Entity": 0.0,
+      "Entity Log Truncated": 0,
+      "Max Queue Length": 0,
+      "Resource/Store Log Truncated": 0,
+      "Run": 1,
+      "Simulation Time": 500.0,
+      "Throughput (per time unit)": 1.042,
+      "Time Unit": "minutes",
+      "Total Cost": 0.0,
+      "Total Entities Completed": 521,
+      "Total Entities Created": 524,
+      "Total Entity Holding Cost": 0.0,
+      "Total Resource Cost": 0.0
+    }
+  },
+  "seed": 1
+}

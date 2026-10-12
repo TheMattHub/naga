@@ -1,0 +1,19 @@
+{
+  "blocks": [],
+  "links": [],
+  "subscripts": [{"name": "Region", "elements": ["north", "south"]}],
+  "levels": [{"name": "Population", "initial": 50, "dims": ["Region"]}],
+  "flows": [
+    {"name": "births", "dims": ["Region"], "to": "Population",
+     "rate": "AUX(\"r\") * LEVEL(\"Population[Region]\") * (1 - AUX(\"crowding[Region]\"))"},
+    {"name": "deaths", "dims": ["Region"], "from": "Population",
+     "rate": "0.02 * LEVEL(\"Population[Region]\")"}
+  ],
+  "auxiliaries": [
+    {"name": "r", "expr": "0.1"},
+    {"name": "K", "expr": "500"},
+    {"name": "crowding", "dims": ["Region"], "expr": "LEVEL(\"Population[Region]\") / AUX(\"K\")"}
+  ],
+  "simulation": {"time_limit": 20.0, "time_unit": "days",
+                 "sd": {"dt": 0.25, "method": "euler"}}
+}

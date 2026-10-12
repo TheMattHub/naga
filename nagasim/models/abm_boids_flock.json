@@ -1,0 +1,274 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "boids_flock_1",
+      "description": "Boids flock (continuous, heading)",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "definition": "Boids flock (continuous, heading)",
+        "arguments": {},
+        "preset": ""
+      }
+    }
+  ],
+  "links": [],
+  "scenarios": [],
+  "orders": [],
+  "resources": [],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [
+    {
+      "name": "Boid",
+      "parameters": {
+        "radius": 10.0,
+        "align_gain": 0.3,
+        "noise_sd": 6.0,
+        "speed": 2.0
+      },
+      "attributes": [
+        {
+          "name": "ux"
+        },
+        {
+          "name": "uy"
+        },
+        {
+          "name": "polar"
+        }
+      ],
+      "states": [
+        {
+          "name": "Alive",
+          "entry": [
+            {
+              "target": "self.heading",
+              "expr": "UNIF(0, 360)"
+            },
+            {
+              "target": "self.ux",
+              "expr": "COS(RAD(self.heading))"
+            },
+            {
+              "target": "self.uy",
+              "expr": "SIN(RAD(self.heading))"
+            }
+          ]
+        }
+      ],
+      "initial_state": "Alive",
+      "space": {
+        "kind": "continuous",
+        "bounds": [
+          0.0,
+          0.0,
+          100.0,
+          100.0
+        ],
+        "edge": "wrap"
+      },
+      "tick": {
+        "dt": 1,
+        "time_unit": "minutes"
+      },
+      "on_tick": [
+        {
+          "turn": "align_gain * IF(NEAR(\"$Boids\", radius) > 0, ((NEAR_HEADING(\"$Boids\", radius) - self.heading + 540) % 360 - 180), 0) + NORM(0, noise_sd)"
+        },
+        {
+          "forward": "speed"
+        },
+        {
+          "target": "self.ux",
+          "expr": "COS(RAD(self.heading))"
+        },
+        {
+          "target": "self.uy",
+          "expr": "SIN(RAD(self.heading))"
+        },
+        {
+          "target": "self.polar",
+          "expr": "SQRT(MEAN(\"$Boids\", \"ux\") ** 2 + MEAN(\"$Boids\", \"uy\") ** 2)"
+        }
+      ],
+      "speed_unit": "m/min"
+    }
+  ],
+  "populations": [
+    {
+      "name": "Boids",
+      "type": "Boid",
+      "count": 150,
+      "placement": {
+        "kind": "random"
+      }
+    }
+  ],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Boids flock (continuous, heading)": {
+      "info": {
+        "description": "Reynolds/Vicsek-style flocking: 150 Boid agents in a 100x100 wrapped continuous space, each turning each tick toward NEAR_HEADING (the circular mean heading of neighbours within Radius) plus a little noise, then stepping Speed forward -- alignment only, so the effect measured is alignment alone. Each boid keeps its unit heading vector (ux, uy) = (COS(RAD(heading)), SIN(RAD(heading))) and `polar`, the textbook POLARISATION order parameter: the norm of the flock's mean unit heading, SQRT(MEAN(ux)^2 + MEAN(uy)^2) -- about 1/SQRT(N) (0.07 for 150) for random headings, 1 for a perfectly aligned flock. A synchronous tick reads the tick-start snapshot, so `polar` after tick k measures the headings of tick k - 1. With Align gain 0.3 and Noise sd 6 degrees it climbs from the random baseline past 0.9 within 60 ticks. Radius, Align gain, Noise sd and Speed are this instance's own.",
+        "library": {
+          "library": "abm_classics",
+          "asset": "boids_flock",
+          "version": "1.2.0"
+        },
+        "parameters": [
+          {
+            "name": "radius",
+            "type": "number",
+            "default": 10.0,
+            "unit": "",
+            "label": "Radius",
+            "help": "Neighbourhood radius for the alignment average.",
+            "group": "Parameters",
+            "min": 0.1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "align_gain",
+            "type": "number",
+            "default": 0.3,
+            "unit": "",
+            "label": "Align gain",
+            "help": "Fraction of the heading gap to neighbours closed each tick.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "noise_sd",
+            "type": "number",
+            "default": 6.0,
+            "unit": "",
+            "label": "Noise sd (deg)",
+            "help": "Standard deviation of the random heading jitter each tick.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed",
+            "type": "number",
+            "default": 2.0,
+            "unit": "",
+            "label": "Speed",
+            "help": "Distance moved forward each tick.",
+            "group": "Parameters",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "agent_types": [
+            "Boid"
+          ],
+          "populations": [
+            "Boids"
+          ]
+        }
+      },
+      "parameters": [
+        {
+          "name": "radius",
+          "default": 10.0,
+          "type": "number",
+          "description": "Neighbourhood radius for the alignment average."
+        },
+        {
+          "name": "align_gain",
+          "default": 0.3,
+          "type": "number",
+          "description": "Fraction of the heading gap to neighbours closed each tick."
+        },
+        {
+          "name": "noise_sd",
+          "default": 6.0,
+          "type": "number",
+          "description": "Standard deviation of the random heading jitter each tick."
+        },
+        {
+          "name": "speed",
+          "default": 2.0,
+          "type": "number",
+          "description": "Distance moved forward each tick."
+        }
+      ],
+      "scoped": {
+        "agent_types": {
+          "Boid": {
+            "parameters.radius": {
+              "$arg": "radius"
+            },
+            "parameters.align_gain": {
+              "$arg": "align_gain"
+            },
+            "parameters.noise_sd": {
+              "$arg": "noise_sd"
+            },
+            "parameters.speed": {
+              "$arg": "speed"
+            }
+          }
+        },
+        "populations": {
+          "Boids": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Boids flock (continuous, heading)",
+    "category": "Agent-based",
+    "description": "Reynolds/Vicsek-style flocking: 150 Boid agents in a 100x100 wrapped continuous space, each turning each tick toward NEAR_HEADING (the circular mean heading of neighbours within Radius) plus a little noise, then stepping Speed forward -- alignment only, so the effect measured is alignment alone. Each boid keeps its unit heading vector (ux, uy) = (COS(RAD(heading)), SIN(RAD(heading))) and `polar`, the textbook POLARISATION order parameter: the norm of the flock's mean unit heading, SQRT(MEAN(ux)^2 + MEAN(uy)^2) -- about 1/SQRT(N) (0.07 for 150) for random headings, 1 for a perfectly aligned flock. A synchronous tick reads the tick-start snapshot, so `polar` after tick k measures the headings of tick k - 1. With Align gain 0.3 and Noise sd 6 degrees it climbs from the random baseline past 0.9 within 60 ticks. Radius, Align gain, Noise sd and Speed are this instance's own."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 1.0,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "length_unit": "meters",
+    "currency": "EUR",
+    "energy_price": 0
+  },
+  "outputs": {}
+}

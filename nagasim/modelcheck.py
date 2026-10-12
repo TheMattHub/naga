@@ -1,0 +1,509 @@
+"""Model assertions, `naga check`, CI template (PHASE6 6D W7 Q3, ARCHITECTURE D126;
+three states and the engine move: Matteo's 2026-09-26 review).
+
+A model assertion (schema v25, `core/schema/`) pins one KPI -- an
+`experiments.flatten_kpis` key, e.g. `"resource/Server/Usage % (snapshot)"` --
+against a comparison operator and value, checked over the model's OWN
+replications by a Student-t confidence interval:
+
+    {"name": "util_ok", "kpi": "resource/Server/Usage % (snapshot)", "op": "<=",
+     "value": 80, "replications": 5, "confidence": 0.95, "tolerance": 0}
+
+An assertion is THREE-STATE: "pass" when the WHOLE interval satisfies the
+op (`<`/`<=`/`>`/`>=` clears the bound; `==` lies inside `value +/-
+tolerance`), "fail" when the whole interval instead VIOLATES it (for `==`,
+lies entirely outside the tolerance band), and "inconclusive" when the
+interval straddles the boundary -- neither the whole interval nor its
+complement. `Result.passed` is kept as `status == "pass"` for callers that
+only care about the boolean. A single replication, or one with zero
+variance, has no interval to speak of -- the "interval" collapses to the
+point estimate (never a straddling result from an undefined bound).
+
+`check(layout)` also runs the model's existing "reality_checks" section
+(PHASE6 S8, `run_reality_checks` below) in the same pass, as extra `Result`s
+of kind "reality_check" -- one command, one pass, both kinds of model test.
+A reality check is one deterministic replication with no CI, so it stays
+plain pass/fail, never inconclusive.
+
+ENGINE side (O8, ARCHITECTURE section 10.1): this module is in
+`packages/engine/build_wheel.py`'s ENGINE list, so the engine wheel alone can
+run `naga check`/`naga ci-template` (dispatched as an ordinary engine
+subcommand from `nagasim/cli.py`; also reachable as `product check`/
+`product ci-template` on the full install).
+
+REALITY CHECKS (F4: folded in from the former `nagasim/realitycheck.py`,
+PHASE6 S8). A reality check pairs a TEST INPUT -- a condition imposed on the
+model, such as "workforce = 0" or a parameter pushed to an extreme -- with a
+CONSTRAINT expected to hold given that input, such as "production = 0" or
+"inventory never negative". Each check is its own run: apply the input,
+simulate, and walk the result looking for the first instant the constraint
+fails.
+
+    table = run_reality_checks(layout)
+    table[["Check", "Passed", "Violation time"]]
+
+A model file section (schema v23, `core/schema/`, `core/document.py`):
+
+    {"reality_checks": [
+        {"name": "shutdown", "inputs": {"auxiliaries.Workforce.expr": "0"},
+         "constraint": "AUX(\\"Production\\") <= 0", "when": "always"}]}
+
+INPUTS. `{override path: value}`, the same dotted-path grammar
+`experiments.apply_overrides` already gives a scenario -- a map here rather
+than a list because a check names each path once. Whether a path actually
+addresses something in this model is `apply_overrides`'s job, exactly as for a
+scenario; `core/schema/`'s structural validation only checks the shape.
+
+CONSTRAINT. A boolean expression over LEVEL()/AUX()/FLOW() and TNOW -- the
+model's own safe expression grammar (`core/expressions.py`), so nothing new to
+parse or trust. It is evaluated twice (DEVLOG #165):
+
+* LIVE, at every level-engine re-evaluation -- each SD grid point with
+  `simulation.sd`, each event otherwise -- by a hidden "sample" delay the check
+  adds (`_with_probe`, the SAMPLE_IF_TRUE machinery) that holds the first
+  instant the constraint failed. Between events without a grid, a level moves
+  linearly and an AUX of TNOW is not re-read: that is the resolution limit.
+* On every "timeseries" sample (`simulation.timeseries_points`), which also
+  gives the Snapshot row. AUX is looked up directly there (its expression tree
+  is not carried in the results): the sampler evaluated it the same way.
+
+The earlier of the two failures is reported; Snapshot is None when only the
+live probe saw it (it fell between samples).
+
+WHEN. "always" (every sample, the default), "final" (the last sample only), or
+"after <t>" (samples at or after time t) -- Vensim's own three shapes for when
+the consequence is expected to hold.
+
+RUN. Each check is ONE deterministic replication (replication 1) at the same
+seed as every other check in the set (Vensim-style CRN across checks: unrelated
+checks then draw identically wherever the model still samples anything, so a
+difference in outcome is the input, not the noise).
+"""
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import difflib
+import json
+import sys
+import warnings
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+
+from nagasim import api, experiments
+from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
+from nagasim.core.stats import ci95
+
+__all__ = ["Result", "check", "assert_model", "main", "run_reality_checks", "RESULT_COLUMNS"]
+
+_OPS = ("<", "<=", ">", ">=", "==")
+_STATUSES = ("pass", "fail", "inconclusive")
+
+
+@dataclasses.dataclass
+class Result:
+    """One assertion or reality check outcome. `kpi`/`op`/`value`/`mean`/
+    `half_width`/`lower`/`upper` are None for a reality check (it has no CI:
+    one deterministic replication, pass/fail from `run_reality_checks`,
+    so its `status` is only ever "pass" or "fail", never "inconclusive")."""
+    name: str
+    kpi: str | None
+    op: str | None
+    value: float | None
+    mean: float | None
+    half_width: float | None
+    lower: float | None
+    upper: float | None
+    status: str  # "pass" | "fail" | "inconclusive"
+    message: str
+    kind: str  # "assertion" | "reality_check"
+
+    @property
+    def passed(self) -> bool:
+        """Compatibility with the old boolean-only Result: True iff `status == "pass"`."""
+        return self.status == "pass"
+
+
+def _close_kpis(kpi: str, available) -> str:
+    matches = difflib.get_close_matches(kpi, available, n=3)
+    return f"; close keys: {', '.join(matches)}" if matches else ""
+
+
+def _interval(values, confidence: float) -> tuple[float, float, float]:
+    """(mean, lower, upper) -- a single replication or zero variance collapses
+    the interval to the point estimate rather than the NaN `ci95` gives an
+    n<2 sample, so a downstream comparison never has a bound to fail on."""
+    stat = ci95(values, confidence)
+    mean = float(stat["mean"])
+    if len(values) < 2 or not (stat["sd"] > 0):
+        return mean, mean, mean
+    return mean, float(stat["lb"]), float(stat["ub"])
+
+
+def _op_status(op: str, value: float, tolerance: float, lower: float, upper: float) -> str:
+    """"pass" when the WHOLE interval satisfies *op*, "fail" when the whole
+    interval instead violates it, "inconclusive" when it straddles the
+    boundary (neither the whole interval nor its complement)."""
+    if op == "==":
+        lo, hi = value - tolerance, value + tolerance
+        if lower >= lo and upper <= hi:
+            return "pass"
+        if upper < lo or lower > hi:
+            return "fail"
+        return "inconclusive"
+    pass_cond, fail_cond = {
+        "<": (upper < value, lower >= value),
+        "<=": (upper <= value, lower > value),
+        ">": (lower > value, upper <= value),
+        ">=": (lower >= value, upper < value),
+    }[op]
+    if pass_cond:
+        return "pass"
+    if fail_cond:
+        return "fail"
+    return "inconclusive"
+
+
+def _check_assertion(entry: dict, flat, available: list[str]) -> Result:
+    name = entry["name"]
+    kpi = entry["kpi"]
+    op = entry["op"]
+    if op not in _OPS:
+        raise ValueError(f"assertion '{name}': unknown op {op!r}; use one of {', '.join(_OPS)}")
+    value = float(entry["value"])
+    tolerance = float(entry.get("tolerance", 0))
+    confidence = float(entry.get("confidence", 0.95))
+
+    values = (flat.loc[flat["KPI"] == kpi, "Value"].to_numpy(dtype=float)
+              if flat is not None else [])
+    if len(values) == 0:
+        return Result(name, kpi, op, value, None, None, None, None, "fail",
+                      f"assertion '{name}': unknown KPI {kpi!r}{_close_kpis(kpi, available)}",
+                      "assertion")
+
+    mean, lower, upper = _interval(values, confidence)
+    half_width = (upper - lower) / 2.0
+    bound = f"{value} +/- {tolerance}" if op == "==" else f"{op} {value}"
+    status = _op_status(op, value, tolerance, lower, upper)
+    word = {"pass": "passed", "fail": "failed", "inconclusive": "inconclusive"}[status]
+    message = (f"assertion '{name}' {word}: {kpi} = {mean:.6g} "
+              f"[{lower:.6g}, {upper:.6g}] {bound}")
+    return Result(name, kpi, op, value, mean, half_width, lower, upper, status, message, "assertion")
+
+
+def _reality_result(row) -> Result:
+    name = row["Check"]
+    passed = bool(row["Passed"])
+    status = "pass" if passed else "fail"
+    if passed:
+        message = f"reality check '{name}' passed"
+    else:
+        when = row["Violation time"]
+        message = (f"reality check '{name}' failed" +
+                  (f" at t={when:.6g}" if when is not None else ""))
+    return Result(name, None, None, None, None, None, None, None, status, message, "reality_check")
+
+
+# ---------------------------------------------------------------------- reality checks
+
+RESULT_COLUMNS = ["Check", "Passed", "Violation time", "Snapshot"]
+# Hidden "sample" delay + auxiliary holding the first failing instant (#165).
+_PROBE = "~reality_check"
+
+
+def _overrides(name: str, inputs) -> list:
+    if inputs is not None and not isinstance(inputs, dict):
+        raise ValueError(f"reality check '{name}': \"inputs\" must be a {{path: value}} object")
+    return [{"path": path, "value": value} for path, value in (inputs or {}).items()]
+
+
+def _when_mask(name: str, when, times: np.ndarray) -> np.ndarray:
+    when = (when or "always").strip() if isinstance(when, str) else when
+    if when == "always":
+        return np.ones_like(times, dtype=bool)
+    if when == "final":
+        mask = np.zeros_like(times, dtype=bool)
+        if len(mask):
+            mask[-1] = True
+        return mask
+    prefix = "after "
+    if isinstance(when, str) and when.startswith(prefix):
+        try:
+            after = float(when[len(prefix):])
+        except ValueError:
+            after = None
+        if after is not None:
+            return times >= after
+    raise ValueError(f"reality check '{name}': unknown \"when\" {when!r}; use \"always\", "
+                     f"\"final\" or \"after <t>\"")
+
+
+def _with_probe(layout: dict, constraint_text: str, when) -> dict:
+    """*layout* plus the live probe (DEVLOG #165): a sample delay whose
+    condition is "not yet failed and the constraint fails now" and whose input
+    is TNOW, so it holds the first failing instant (-1 while none), read back
+    through an auxiliary. "final" needs no probe: the last sample is exact."""
+    when = (when or "always").strip() if isinstance(when, str) else when
+    if when == "final":
+        return layout
+    after = f" and TNOW >= {float(when[len('after '):])!r}" if when != "always" else ""
+    probe = json.dumps(_PROBE)
+    return {**layout,
+            "delays": list(layout.get("delays") or []) + [{
+                "name": _PROBE, "kind": "sample", "input": "TNOW", "initial": -1,
+                "condition": f"DELAY({probe}) < 0 and not ({constraint_text}){after}"}],
+            "auxiliaries": list(layout.get("auxiliaries") or []) + [
+                {"name": _PROBE, "expr": f"DELAY({probe})"}]}
+
+
+def _row_scope(t: float, row: dict) -> ExpressionScope:
+    """A scope for LEVEL()/AUX()/FLOW()/TNOW backed by one sampled row of the
+    "timeseries" frame instead of a live run.
+
+    AUX short-circuits through `aux_memo` -- `core/expressions.py`'s own
+    per-pass memo, checked before it would otherwise re-evaluate the
+    auxiliary's expression tree, which is not available after the run ends.
+    LEVEL/FLOW read a level/flow stand-in exposing only the one field each
+    function touches; `_level`'s own resync check (`system._last_t !=
+    system.env.now`) is defeated by giving the fake clock the same value
+    twice, so it never calls a `.sync()` the stand-in does not have.
+    """
+    levels = {name[len("level/"):]: SimpleNamespace(level=value)
+             for name, value in row.items() if name.startswith("level/")}
+    flows = {name[len("flow/"):]: SimpleNamespace(actual=value)
+            for name, value in row.items() if name.startswith("flow/")}
+    aux_memo = {name[len("aux/"):]: value for name, value in row.items() if name.startswith("aux/")}
+    system = SimpleNamespace(levels=levels, flow_index=flows, _last_t=t,
+                             env=SimpleNamespace(now=t))
+    ctx = SimpleNamespace(now=t, level_system=system, aux_memo=aux_memo, variables=None)
+    return ExpressionScope(ctx=ctx)
+
+
+def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dict:
+    name = entry.get("name") or ""
+    if not name:
+        raise ValueError("reality check: \"name\" must not be empty")
+    constraint_text = entry.get("constraint") or ""
+    if not constraint_text:
+        raise ValueError(f"reality check '{name}': \"constraint\" must not be empty")
+    try:
+        constraint = compile_expression(constraint_text)
+    except ExpressionError as exc:
+        raise ValueError(f"reality check '{name}': {exc}") from None
+
+    when = entry.get("when", "always")
+    layout = experiments.apply_overrides(base, _overrides(name, entry.get("inputs")))
+    _when_mask(name, when, np.zeros(0))                 # reject a bad "when" before running
+    layout = _with_probe(layout, constraint_text, when)
+    results = api.run_model(layout, replications=1, seed=seed, run_length=run_length, warmup=warmup)
+    if results is None:
+        raise ValueError(f"reality check '{name}': the run produced no result")
+    df = results.get("timeseries")
+    if df is None or df.empty:
+        raise ValueError(f"reality check '{name}': needs the timeseries sampler on "
+                         f"(simulation.timeseries_points, or a run length)")
+
+    pivot = df.pivot(index="Time", columns="Series", values="Value").sort_index()
+    column = f"aux/{_PROBE}"
+    live = pivot.pop(column).dropna() if column in pivot else None
+    first = float(live.iloc[-1]) if live is not None and len(live) else -1.0
+    times = pivot.index.to_numpy(dtype=float)
+    mask = _when_mask(name, when, times)
+
+    for t, keep in zip(times, mask):
+        if not keep or (first >= 0 and t > first):
+            continue
+        row = pivot.loc[t].dropna().to_dict()
+        try:
+            passed = bool(constraint.evaluate(_row_scope(float(t), row)))
+        except ExpressionError as exc:
+            raise ValueError(f"reality check '{name}': {exc}") from None
+        if not passed:
+            return {"Check": name, "Passed": False, "Violation time": float(t), "Snapshot": row}
+    if first >= 0:
+        return {"Check": name, "Passed": False, "Violation time": first, "Snapshot": None}
+    return {"Check": name, "Passed": True, "Violation time": None, "Snapshot": None}
+
+
+def run_reality_checks(layout, *, seed: int = 0, run_length=None, warmup=None,
+                       should_stop=None) -> pd.DataFrame:
+    """Run every "reality_checks" entry and report pass/fail.
+
+    Each check applies its own "inputs" over the base model (as an
+    `experiments.apply_overrides` scenario) and runs ONE deterministic
+    replication at *seed* -- every check uses the same seed, so unrelated
+    randomness lines up across checks (CRN) and a difference in outcome is the
+    input, not the noise. *run_length*/*warmup* fall back to the model's own
+    settings, like `api.run_model`. *should_stop*, polled between checks, ends
+    the sweep early with whatever finished so far.
+
+    Returns a `RESULT_COLUMNS` DataFrame: "Check", "Passed", "Violation time"
+    (the first sampled instant the constraint failed, None if it never did) and
+    "Snapshot" (that instant's LEVEL()/AUX()/FLOW() values, None when passed).
+    A model with no "reality_checks" returns an empty frame.
+    """
+    base = experiments._as_layout(layout)
+    rows = []
+    for entry in base.get("reality_checks") or []:
+        if should_stop is not None and should_stop():
+            break
+        rows.append(_check_one(base, entry, seed=seed, run_length=run_length, warmup=warmup))
+    return pd.DataFrame(rows, columns=RESULT_COLUMNS)
+
+
+# ---------------------------------------------------------------------- assertions + reality checks
+
+def check(layout, *, workers: int = 1) -> list[Result]:
+    """Every "assertions" and "reality_checks" entry, as `Result`s.
+
+    Assertions sharing a "replications" count run in ONE batch of
+    `api.run_model` replications (the KPI is read off the same run for all of
+    them), so N assertions at 5 replications each cost 5 runs total, not 5N.
+    `workers` is passed straight through to that run.
+    """
+    base = experiments._as_layout(layout)
+    results: list[Result] = []
+
+    by_reps: dict[int, list[dict]] = {}
+    for entry in base.get("assertions") or []:
+        by_reps.setdefault(int(entry.get("replications", 5)), []).append(entry)
+
+    for reps in sorted(by_reps):
+        group = by_reps[reps]
+        run_results = api.run_model(base, replications=reps, seed=0, workers=workers)
+        flat = experiments.flatten_kpis(run_results) if run_results is not None else None
+        available = sorted(set(flat["KPI"])) if flat is not None else []
+        for entry in group:
+            results.append(_check_assertion(entry, flat, available))
+
+    reality = run_reality_checks(base)
+    for _, row in reality.iterrows():
+        results.append(_reality_result(row))
+
+    return results
+
+
+def assert_model(path_or_layout, strict: bool = False) -> None:
+    """pytest helper: `nagasim.modelcheck.assert_model("model.json")` raises
+    AssertionError naming every failed assertion/reality check, so a normal
+    pytest failure report shows what went wrong. An inconclusive result (an
+    assertion's CI straddles the bound) does not raise by default -- it is
+    reported through `warnings.warn` instead -- unless `strict=True`, which
+    treats it as a failure too."""
+    results = check(path_or_layout)
+    failed = [r for r in results if r.status == "fail"]
+    inconclusive = [r for r in results if r.status == "inconclusive"]
+    if strict:
+        failed = failed + inconclusive
+        inconclusive = []
+    if failed:
+        detail = "; ".join(f"{r.name}: {r.message}" for r in failed)
+        raise AssertionError(f"model check failed ({len(failed)}): {detail}")
+    for r in inconclusive:
+        warnings.warn(f"model check inconclusive: {r.name}: {r.message}", stacklevel=2)
+
+
+# ---------------------------------------------------------------------- CLI
+
+def _junit_xml(all_results: list[tuple[str, list[Result]]]) -> str:
+    """One <testsuite> per model file (classname = its stem), one <testcase>
+    per Result: a <failure> child for "fail", a <skipped> child for
+    "inconclusive" (JUnit has no native third state; "skipped" is the closest
+    -- neither pass nor a hard failure)."""
+    root = ET.Element("testsuites")
+    for model_path, results in all_results:
+        classname = Path(model_path).stem
+        suite = ET.SubElement(root, "testsuite", name=classname,
+                              tests=str(len(results)),
+                              failures=str(sum(1 for r in results if r.status == "fail")),
+                              skipped=str(sum(1 for r in results if r.status == "inconclusive")))
+        for r in results:
+            case = ET.SubElement(suite, "testcase", name=r.name, classname=classname)
+            if r.status == "fail":
+                failure = ET.SubElement(case, "failure", message=r.message)
+                failure.text = r.message
+            elif r.status == "inconclusive":
+                skipped = ET.SubElement(case, "skipped", message=r.message)
+                skipped.text = r.message
+    return ET.tostring(root, encoding="unicode", xml_declaration=True)
+
+
+def _print_table(model_path: str, results: list[Result]) -> None:
+    print(f"{model_path}:")
+    if not results:
+        print("  (no assertions or reality checks)")
+        return
+    for r in results:
+        status = r.status.upper()
+        print(f"  [{status}] {r.kind:13s} {r.name}: {r.message if r.status != 'pass' else 'ok'}")
+
+
+_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+
+
+def _ci_template(path: str, install: str = "pip install .") -> str:
+    """The workflow text. *path* lands inside a double-quoted bash word (so a
+    space is safe; a `"` or `$` in it would still be bash's to read), and the
+    default install assumes the workflow runs in the product's own checkout --
+    the package is not on PyPI (DEVLOG #217)."""
+    text = (_TEMPLATE_DIR / "naga-models.yml").read_text(encoding="utf-8")
+    return text.replace("{{MODELS_PATH}}", path).replace("{{INSTALL}}", install)
+
+
+def _run_check(model_paths: list[str], *, junit: str | None, workers: int, strict: bool) -> int:
+    all_results: list[tuple[str, list[Result]]] = []
+    for path in model_paths:
+        try:
+            results = check(path, workers=workers)
+        except (OSError, ValueError) as exc:
+            print(f"naga check: {path}: {exc}", file=sys.stderr)
+            return 2
+        _print_table(path, results)
+        all_results.append((path, results))
+
+    if junit:
+        Path(junit).write_text(_junit_xml(all_results), encoding="utf-8")
+
+    failing_statuses = {"fail", "inconclusive"} if strict else {"fail"}
+    any_failed = any(r.status in failing_statuses for _, results in all_results for r in results)
+    return 1 if any_failed else 0
+
+
+def main(argv=None) -> int:
+    """`naga check MODEL.json ... [--junit OUT.xml] [--workers N] [--strict]` and
+    `naga ci-template [--path DIR] [--install CMD]`, both dispatched here since both share
+    this module's own argparse subparsers."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(prog="naga",
+                                     description="Model assertions and CI integration.")
+    subs = parser.add_subparsers(dest="command", required=True)
+
+    check_p = subs.add_parser("check", help="run a model's assertions and reality checks")
+    check_p.add_argument("models", nargs="+", help="model file(s) to check")
+    check_p.add_argument("--junit", default=None, help="write a JUnit XML report here")
+    check_p.add_argument("--workers", type=int, default=1)
+    check_p.add_argument("--strict", action="store_true",
+                         help="treat an inconclusive assertion (its CI straddles the bound) "
+                              "as a failure too (exit 1)")
+
+    tmpl_p = subs.add_parser("ci-template",
+                             help="print a GitHub Actions workflow running naga check")
+    tmpl_p.add_argument("--path", default="models/",
+                        help="directory of *.json models to check (default models/)")
+    tmpl_p.add_argument("--install", default="pip install .",
+                        help='the install step (default "pip install .": '
+                             "the product package from the repository checkout)")
+
+    args = parser.parse_args(argv)
+    if args.command == "ci-template":
+        print(_ci_template(args.path, args.install))
+        return 0
+    return _run_check(args.models, junit=args.junit, workers=args.workers, strict=args.strict)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

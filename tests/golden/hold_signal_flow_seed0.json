@@ -1,0 +1,27 @@
+{
+  "hash": "a6bdeeab77c1320c505342466496d472fcaddec066d6c583e7608e94e2550534",
+  "model": "hold_signal_flow.json",
+  "payload": {
+    "entity_count": 30,
+    "system": {
+      "Avg Queue Length": 0.6604,
+      "Avg Resource Usage %": 56.62,
+      "Avg Throughput Time": 1.7688,
+      "Avg WIP (Little)": 2.9068,
+      "Cost per Completed Entity": 0.0,
+      "Entity Log Truncated": 0,
+      "Max Queue Length": 2,
+      "Resource/Store Log Truncated": 0,
+      "Run": 0,
+      "Simulation Time": 18.255519,
+      "Throughput (per time unit)": 1.6433,
+      "Time Unit": "minutes",
+      "Total Cost": 0.0,
+      "Total Entities Completed": 30,
+      "Total Entities Created": 30,
+      "Total Entity Holding Cost": 0.0,
+      "Total Resource Cost": 0.0
+    }
+  },
+  "seed": 0
+}

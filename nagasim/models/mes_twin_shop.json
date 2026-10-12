@@ -1,0 +1,1375 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "release_orders",
+      "description": "Releases every work order at its own release time",
+      "type": "CREATE",
+      "position": [
+        140.0,
+        300.0
+      ],
+      "params": {
+        "e_type": "WIDGET",
+        "arrival_mode": "Orders",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "sequence": "",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "dispatch",
+      "description": "Send each job to the first station of its routing",
+      "type": "ROUTE",
+      "position": [
+        380.0,
+        300.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 2.0
+        },
+        "time_unit": "minutes",
+        "speed_unit": "m/min"
+      }
+    },
+    {
+      "name": "cutting",
+      "description": "Cutting cell (one saw)",
+      "type": "SUBMODEL",
+      "position": [
+        640.0,
+        140.0
+      ],
+      "layout_position": [
+        2.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Routed station",
+        "arguments": {
+          "station_name": "Cutting",
+          "time_source": "table",
+          "machines": 1,
+          "transfer_time": 2.0,
+          "cost_rate": 0.6
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "drilling",
+      "description": "Drilling cell (two drills)",
+      "type": "SUBMODEL",
+      "position": [
+        640.0,
+        300.0
+      ],
+      "layout_position": [
+        2.0,
+        9.0
+      ],
+      "params": {
+        "definition": "Routed station",
+        "arguments": {
+          "station_name": "Drilling",
+          "time_source": "table",
+          "machines": 2,
+          "transfer_time": 2.0,
+          "cost_rate": 0.6
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "assembly",
+      "description": "Assembly cell (one bench) -- the shop's bottleneck",
+      "type": "SUBMODEL",
+      "position": [
+        640.0,
+        460.0
+      ],
+      "layout_position": [
+        2.0,
+        17.0
+      ],
+      "params": {
+        "definition": "Routed station",
+        "arguments": {
+          "station_name": "Assembly",
+          "time_source": "table",
+          "machines": 1,
+          "transfer_time": 2.0,
+          "cost_rate": 0.6
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "record_exit",
+      "description": "Tally shop-floor time for a finished job",
+      "type": "RECORD",
+      "position": [
+        940.0,
+        300.0
+      ],
+      "params": {
+        "stat_name": "shop_floor_time",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "ship",
+      "description": "Finished jobs leave the shop",
+      "type": "DISPOSE",
+      "position": [
+        1140.0,
+        300.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "release_orders",
+      "target": "dispatch"
+    },
+    {
+      "source": "dispatch",
+      "target": "record_exit"
+    },
+    {
+      "source": "cutting",
+      "target": "record_exit",
+      "source_port": "out"
+    },
+    {
+      "source": "drilling",
+      "target": "record_exit",
+      "source_port": "out"
+    },
+    {
+      "source": "assembly",
+      "target": "record_exit",
+      "source_port": "out"
+    },
+    {
+      "source": "record_exit",
+      "target": "ship"
+    }
+  ],
+  "scenarios": [],
+  "orders": [
+    {
+      "id": "WO-1000",
+      "release": 0.0,
+      "due": 150.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1001",
+      "release": 50.0,
+      "due": 200.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1002",
+      "release": 100.0,
+      "due": 250.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1003",
+      "release": 150.0,
+      "due": 300.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1004",
+      "release": 200.0,
+      "due": 350.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1005",
+      "release": 250.0,
+      "due": 400.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1006",
+      "release": 300.0,
+      "due": 450.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1007",
+      "release": 350.0,
+      "due": 500.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1008",
+      "release": 400.0,
+      "due": 550.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1009",
+      "release": 450.0,
+      "due": 600.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1010",
+      "release": 500.0,
+      "due": 650.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1011",
+      "release": 550.0,
+      "due": 700.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1012",
+      "release": 600.0,
+      "due": 750.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1013",
+      "release": 650.0,
+      "due": 800.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1014",
+      "release": 700.0,
+      "due": 850.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1015",
+      "release": 750.0,
+      "due": 900.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1016",
+      "release": 800.0,
+      "due": 950.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1017",
+      "release": 850.0,
+      "due": 1000.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1018",
+      "release": 900.0,
+      "due": 1050.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1019",
+      "release": 950.0,
+      "due": 1100.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1020",
+      "release": 1000.0,
+      "due": 1150.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1021",
+      "release": 1050.0,
+      "due": 1200.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1022",
+      "release": 1100.0,
+      "due": 1250.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1023",
+      "release": 1150.0,
+      "due": 1300.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1024",
+      "release": 1200.0,
+      "due": 1350.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1025",
+      "release": 1250.0,
+      "due": 1400.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1026",
+      "release": 1300.0,
+      "due": 1450.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1027",
+      "release": 1350.0,
+      "due": 1500.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1028",
+      "release": 1400.0,
+      "due": 1550.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1029",
+      "release": 1450.0,
+      "due": 1600.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1030",
+      "release": 1500.0,
+      "due": 1650.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1031",
+      "release": 1550.0,
+      "due": 1700.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1032",
+      "release": 1600.0,
+      "due": 1750.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1033",
+      "release": 1650.0,
+      "due": 1800.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1034",
+      "release": 1700.0,
+      "due": 1850.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1035",
+      "release": 1750.0,
+      "due": 1900.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1036",
+      "release": 1800.0,
+      "due": 1950.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1037",
+      "release": 1850.0,
+      "due": 2000.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1038",
+      "release": 1900.0,
+      "due": 2050.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1039",
+      "release": 1950.0,
+      "due": 2100.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1040",
+      "release": 2000.0,
+      "due": 2150.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1041",
+      "release": 2050.0,
+      "due": 2200.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1042",
+      "release": 2100.0,
+      "due": 2250.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1043",
+      "release": 2150.0,
+      "due": 2300.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1044",
+      "release": 2200.0,
+      "due": 2350.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1045",
+      "release": 2250.0,
+      "due": 2400.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1046",
+      "release": 2300.0,
+      "due": 2450.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1047",
+      "release": 2350.0,
+      "due": 2500.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1048",
+      "release": 2400.0,
+      "due": 2550.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1049",
+      "release": 2450.0,
+      "due": 2600.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1050",
+      "release": 2500.0,
+      "due": 2650.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1051",
+      "release": 2550.0,
+      "due": 2700.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1052",
+      "release": 2600.0,
+      "due": 2750.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1053",
+      "release": 2650.0,
+      "due": 2800.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1054",
+      "release": 2700.0,
+      "due": 2850.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1055",
+      "release": 2750.0,
+      "due": 2900.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1056",
+      "release": 2800.0,
+      "due": 2950.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1057",
+      "release": 2850.0,
+      "due": 3000.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1058",
+      "release": 2900.0,
+      "due": 3050.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1059",
+      "release": 2950.0,
+      "due": 3100.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1060",
+      "release": 3000.0,
+      "due": 3150.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1061",
+      "release": 3050.0,
+      "due": 3200.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1062",
+      "release": 3100.0,
+      "due": 3250.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1063",
+      "release": 3150.0,
+      "due": 3300.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1064",
+      "release": 3200.0,
+      "due": 3350.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1065",
+      "release": 3250.0,
+      "due": 3400.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1066",
+      "release": 3300.0,
+      "due": 3450.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1067",
+      "release": 3350.0,
+      "due": 3500.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1068",
+      "release": 3400.0,
+      "due": 3550.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1069",
+      "release": 3450.0,
+      "due": 3600.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1070",
+      "release": 3500.0,
+      "due": 3650.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1071",
+      "release": 3550.0,
+      "due": 3700.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1072",
+      "release": 3600.0,
+      "due": 3750.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1073",
+      "release": 3650.0,
+      "due": 3800.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1074",
+      "release": 3700.0,
+      "due": 3850.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1075",
+      "release": 3750.0,
+      "due": 3900.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1076",
+      "release": 3800.0,
+      "due": 3950.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1077",
+      "release": 3850.0,
+      "due": 4000.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1078",
+      "release": 3900.0,
+      "due": 4050.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1079",
+      "release": 3950.0,
+      "due": 4100.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1080",
+      "release": 4000.0,
+      "due": 4150.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 1
+    },
+    {
+      "id": "WO-1081",
+      "release": 4050.0,
+      "due": 4200.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1082",
+      "release": 4100.0,
+      "due": 4250.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1083",
+      "release": 4150.0,
+      "due": 4300.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    },
+    {
+      "id": "WO-1084",
+      "release": 4200.0,
+      "due": 4350.0,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Widget",
+      "priority": 0
+    },
+    {
+      "id": "WO-1085",
+      "release": 4250.0,
+      "due": 4400.0,
+      "quantity": 1,
+      "entity_type": "BRACKET",
+      "sequence": "Bracket",
+      "priority": 0
+    }
+  ],
+  "resources": [
+    {
+      "name": "Mfg Routed machine",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [
+    {
+      "name": "Cutting breakdowns",
+      "resources": [
+        "cutting/Mfg Routed machine"
+      ],
+      "uptime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.0011111111111111111
+        },
+        "time_unit": "minutes"
+      },
+      "downtime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.03333333333333333
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "Drilling breakdowns",
+      "resources": [
+        "drilling/Mfg Routed machine"
+      ],
+      "uptime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.0008333333333333334
+        },
+        "time_unit": "minutes"
+      },
+      "downtime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.04
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "Assembly breakdowns",
+      "resources": [
+        "assembly/Mfg Routed machine"
+      ],
+      "uptime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.0020833333333333333
+        },
+        "time_unit": "minutes"
+      },
+      "downtime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.022222222222222223
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "tables": [
+    {
+      "name": "Mfg Process times",
+      "description": "Process time in minutes by product (rows) and station (columns). The MES parameter feed refits these cells from the plant's own operation history. BRACKET never visits Drilling, so that cell is never observed and the thin-data guard leaves it alone.",
+      "keys": [
+        "WIDGET",
+        "BRACKET"
+      ],
+      "columns": [
+        "Cutting",
+        "Drilling",
+        "Assembly"
+      ],
+      "values": [
+        [
+          20.0,
+          35.0,
+          40.0
+        ],
+        [
+          18.0,
+          35.0,
+          35.0
+        ]
+      ],
+      "key_mode": "exact",
+      "column_mode": "exact",
+      "default": 20.0
+    }
+  ],
+  "sequences": [
+    {
+      "name": "Widget",
+      "description": "Cut, drill, assemble",
+      "steps": [
+        {
+          "station": "Cutting",
+          "values": {
+            "operation": "cut",
+            "process_time": 20.0
+          }
+        },
+        {
+          "station": "Drilling",
+          "values": {
+            "operation": "drill",
+            "process_time": 35.0
+          }
+        },
+        {
+          "station": "Assembly",
+          "values": {
+            "operation": "assemble",
+            "process_time": 40.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bracket",
+      "description": "Cut, assemble (no drilling)",
+      "steps": [
+        {
+          "station": "Cutting",
+          "values": {
+            "operation": "cut",
+            "process_time": 18.0
+          }
+        },
+        {
+          "station": "Assembly",
+          "values": {
+            "operation": "assemble",
+            "process_time": 35.0
+          }
+        }
+      ]
+    }
+  ],
+  "variables": [],
+  "entities": [
+    {
+      "name": "WIDGET",
+      "shape": "circle",
+      "color": "BLUE",
+      "holding_cost": 0.02,
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "BRACKET",
+      "shape": "square",
+      "color": "GREEN",
+      "holding_cost": 0.02,
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Routed station": {
+      "info": {
+        "description": "A station a routing sends jobs to: it carries a station NAME a sequence step can use, works the job for the time its routing gives it, and routes it on to its next step. Wire 'in' only for jobs that start here; everything else arrives by routing.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "routed_station",
+          "version": "2.0.0"
+        },
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "Station 1",
+            "unit": "",
+            "label": "Station name",
+            "help": "Name a sequence step uses for this station, and what jobs here report as `entity.station`. It must be unique in the model.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_source",
+            "type": "choice",
+            "default": "attribute",
+            "unit": "",
+            "label": "Process time from",
+            "help": "attribute: the routing step's own `process_time` value. table: the 'Mfg Process times' table, by entity type and station.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              "attribute",
+              "table"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "machines",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Machines",
+            "help": "Parallel units in this station (the per-instance resource's capacity).",
+            "group": "Resource",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "transfer_time",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Transfer time to the next station",
+            "help": "Travel time to the next step's station, in minutes.",
+            "group": "Routing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate",
+            "help": "Cost charged per minute while the station is busy; 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "Station 1",
+          "type": "name",
+          "description": "Name a sequence step uses for this station, and what jobs here report as `entity.station`. It must be unique in the model."
+        },
+        {
+          "name": "time_source",
+          "default": "attribute",
+          "type": "choice",
+          "description": "attribute: the routing step's own `process_time` value. table: the 'Mfg Process times' table, by entity type and station."
+        },
+        {
+          "name": "machines",
+          "default": 1,
+          "type": "int",
+          "description": "Parallel units in this station (the per-instance resource's capacity)."
+        },
+        {
+          "name": "transfer_time",
+          "default": 0.0,
+          "type": "time",
+          "description": "Travel time to the next step's station, in minutes."
+        },
+        {
+          "name": "cost_rate",
+          "default": 0.0,
+          "type": "number",
+          "description": "Cost charged per minute while the station is busy; 0 leaves it out of the costing."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Mfg Routed machine": {
+            "capacity": "machines",
+            "cost_busy": "cost_rate"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs starting here",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "station",
+          "description": "Station",
+          "type": "STATION",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "station": {
+              "$arg": "station_name"
+            }
+          }
+        },
+        {
+          "name": "work",
+          "description": "Machine",
+          "type": "PROCESS",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "entity.process_time if time_source == 'attribute' else TABLE('Mfg Process times', entity.e_type, entity.station)"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Mfg Routed machine"
+          }
+        },
+        {
+          "name": "leave",
+          "description": "To the next step",
+          "type": "ROUTE",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "transfer_time"
+            },
+            "time_unit": "minutes"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Routing finished",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "station"
+        },
+        {
+          "source": "station",
+          "target": "work"
+        },
+        {
+          "source": "work",
+          "target": "leave"
+        },
+        {
+          "source": "leave",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Job shop with MES digital twin",
+    "category": "Manufacturing",
+    "description": "A three-station job shop built from Manufacturing library Routed stations, driven by a Manufacturing Execution System. Two products follow their own routings, process times come from a lookup table the MES parameter feed refits, and each station breaks down. On its own it runs as a plain job shop; an MES twin runs it against the mock MES in models/data/mes_twin_shop/ with the mapping in models/data/mes_twin_shop.mesmap.json."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 480,
+    "warmup": 0,
+    "replications": 20,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "entity_log_limit": 100000,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

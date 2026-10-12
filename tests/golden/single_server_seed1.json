@@ -1,0 +1,27 @@
+{
+  "hash": "ce6f18050bf51fc310a48fbb5017db403a499348debf77bbe279460a329f2bca",
+  "model": "single_server.json",
+  "payload": {
+    "entity_count": 903,
+    "system": {
+      "Avg Queue Length": 2.7023,
+      "Avg Resource Usage %": 79.36,
+      "Avg Throughput Time": 3.4795,
+      "Avg WIP (Little)": 3.4564,
+      "Cost per Completed Entity": 0.0,
+      "Entity Log Truncated": 0,
+      "Max Queue Length": 15.0,
+      "Resource/Store Log Truncated": 0,
+      "Run": 1,
+      "Simulation Time": 900.0,
+      "Throughput (per time unit)": 0.9933,
+      "Time Unit": "minutes",
+      "Total Cost": 0.0,
+      "Total Entities Completed": 894,
+      "Total Entities Created": 900,
+      "Total Entity Holding Cost": 0.0,
+      "Total Resource Cost": 0.0
+    }
+  },
+  "seed": 1
+}

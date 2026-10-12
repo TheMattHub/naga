@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nagasim"
+dynamic = ["version"]
+description = "A simulation engine on SimPy for discrete-event, system-dynamics and agent-based models, with model files, experiments, a twin and agent tools"
+readme = "README.md"
+keywords = ["simulation", "discrete-event", "system dynamics", "agent-based", "simpy", "digital twin", "mcp"]
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "Matteo Brunetti"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Manufacturing",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "simpy>=4.1,<5",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "scipy>=1.14",
+    "openpyxl>=3.1",
+    "tzdata>=2024.1; sys_platform == 'win32'",
+]
+
+[project.urls]
+Homepage = "https://github.com/TheMattHub/naga"
+Documentation = "https://thematthub.github.io/naga/"
+Source = "https://github.com/TheMattHub/naga"
+
+[project.optional-dependencies]
+# The engine's own lazy, optional imports, each behind a
+# try/except with an install hint naming "nagasim[<extra>]" -- these extras
+# must exist here too, not just on the product's product[...] (root
+# pyproject.toml), which an engine-only install never sees.
+# nagasim/planning.py + nagasim/cpsat.py: `--propose`'s CP-SAT search.
+plan = ["ortools>=9.10"]
+# nagasim/optimize (method="optuna") + nagasim/surrogate.py + nagasim/rl.py.
+ml = ["optuna", "scikit-learn", "gymnasium"]
+# nagasim/databind.py: a `sql:` data-binding source.
+sql = ["sqlalchemy"]
+# nagasim/readers/opcua.py: an `opcua` live data source (D223). LGPL-3.0, imported
+# lazily, installed by the user, never bundled; `tests/test_opcua_probe.py` checks it.
+# Bounds: 2.1 is the lowest version whose node-id parsing was read, and the first with the
+# public message-limit attributes; a new major is not assumed.
+opcua = ["asyncua>=2.1,<3"]
+# nagasim/results.py: Results.plot() for notebook use.
+plot = ["matplotlib"]
+# nagasim/mcp_server.py: `naga mcp`.
+mcp = ["mcp>=1.2"]
+# nagasim/llm.py: the Anthropic provider of `naga assist`.
+assistant = ["anthropic>=0.40"]
+
+[project.scripts]
+naga = "nagasim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nagasim*"]
+
+[tool.setuptools.package-data]
+# templates/*.yml: `naga ci-template`'s GitHub Actions workflow, read by path from
+# nagasim/modelcheck.py at run time. models/data/mes_twin_shop/*.csv and
+# models/data/*.mesmap.json: the MES twin demo.
+nagasim = ["models/*.json", "models/data/*.csv", "models/data/*.mesmap.json",
+          "models/data/mes_twin_shop/*.csv", "templates/*.yml", "templates/*.txt"]
+
+[tool.setuptools.dynamic]
+version = {attr = "nagasim.__version__"}

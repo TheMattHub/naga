@@ -1,0 +1,314 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "release_orders",
+      "description": "Releases every declared order at its own release time",
+      "type": "CREATE",
+      "position": [
+        120.0,
+        300.0
+      ],
+      "params": {
+        "e_type": "WIDGET",
+        "arrival_mode": "Orders",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "sequence": "",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "route_1",
+      "description": "Send each job to the next station of its routing",
+      "type": "ROUTE",
+      "position": [
+        340.0,
+        300.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes",
+        "speed_unit": "m/min"
+      }
+    },
+    {
+      "name": "Cut",
+      "description": "Cutting station entry point",
+      "type": "STATION",
+      "position": [
+        600.0,
+        200.0
+      ],
+      "layout_position": [
+        3.0,
+        3.0
+      ],
+      "params": {}
+    },
+    {
+      "name": "Pack",
+      "description": "Packing station entry point",
+      "type": "STATION",
+      "position": [
+        600.0,
+        400.0
+      ],
+      "layout_position": [
+        3.0,
+        13.0
+      ],
+      "params": {}
+    },
+    {
+      "name": "process_cut",
+      "description": "Cutting; the time comes with the job, from its routing step",
+      "type": "PROCESS",
+      "position": [
+        820.0,
+        200.0
+      ],
+      "layout_position": [
+        14.0,
+        3.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": "entity.process_time"
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Cutter",
+        "setup": "",
+        "setup_key": "",
+        "initial_key": "",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "process_pack",
+      "description": "Packing; same, one step later",
+      "type": "PROCESS",
+      "position": [
+        820.0,
+        400.0
+      ],
+      "layout_position": [
+        14.0,
+        13.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": "entity.process_time"
+        },
+        "time_unit": "minutes",
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Packer",
+        "setup": "",
+        "setup_key": "",
+        "initial_key": "",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "Job leaves; its lateness against entity.due_date is recorded here",
+      "type": "DISPOSE",
+      "position": [
+        340.0,
+        520.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "release_orders",
+      "target": "route_1"
+    },
+    {
+      "source": "route_1",
+      "target": "dispose_1"
+    },
+    {
+      "source": "Cut",
+      "target": "process_cut"
+    },
+    {
+      "source": "Pack",
+      "target": "process_pack"
+    },
+    {
+      "source": "process_cut",
+      "target": "route_1"
+    },
+    {
+      "source": "process_pack",
+      "target": "route_1"
+    }
+  ],
+  "scenarios": [],
+  "orders": [
+    {
+      "id": "WO-1",
+      "description": "One widget, comfortable due date",
+      "release": 0,
+      "due": 10,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Fast"
+    },
+    {
+      "id": "WO-2",
+      "description": "Two widgets on one order",
+      "release": 0,
+      "due": 20,
+      "quantity": 2,
+      "entity_type": "WIDGET",
+      "sequence": "Fast"
+    },
+    {
+      "id": "WO-3",
+      "description": "A gadget behind the widgets: late by 3",
+      "release": 0,
+      "due": 8,
+      "quantity": 1,
+      "entity_type": "GADGET",
+      "sequence": "Slow"
+    }
+  ],
+  "resources": [
+    {
+      "name": "Cutter",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Packer",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [
+    {
+      "name": "Fast",
+      "description": "Cut 2, pack 1",
+      "steps": [
+        {
+          "station": "Cut",
+          "values": {
+            "process_time": 2.0
+          }
+        },
+        {
+          "station": "Pack",
+          "values": {
+            "process_time": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Slow",
+      "description": "Cut 3, pack 2",
+      "steps": [
+        {
+          "station": "Cut",
+          "values": {
+            "process_time": 3.0
+          }
+        },
+        {
+          "station": "Pack",
+          "values": {
+            "process_time": 2.0
+          }
+        }
+      ]
+    }
+  ],
+  "variables": [],
+  "entities": [
+    {
+      "name": "WIDGET",
+      "shape": "square",
+      "color": "BLUE",
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "GADGET",
+      "shape": "circle",
+      "color": "GREEN",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Orders, due dates and tardiness",
+    "category": "Manufacturing",
+    "description": "Three released work orders through a two-station routed shop, every process time a constant, so every completion time, lateness and tardiness is exact arithmetic. The smallest model that shows orders, due dates and the two KPI frames they fill.",
+    "author": "Naga",
+    "notes": "Release and due times are in the base time unit (minutes). Orders release at t=0 in id order; the Cutter and the Packer are single servers, FIFO. Cut then Pack: WO-1 finishes at 3 (due 10), WO-2 at 7 (due 20), WO-3 at 11 (due 8) -- late by 3. Service level 3/4 of the entities, 2/3 of the orders."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": null,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "entity_log_limit": 100000,
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

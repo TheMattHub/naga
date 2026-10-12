@@ -1,0 +1,224 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "calls",
+      "description": "Walk-in customers",
+      "type": "CREATE",
+      "position": [
+        160.0,
+        240.0
+      ],
+      "params": {
+        "e_type": "Customer",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.5
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "time_unit": "minutes",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "escalations",
+      "description": "Escalated cases",
+      "type": "CREATE",
+      "position": [
+        160.0,
+        480.0
+      ],
+      "params": {
+        "e_type": "Escalation",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.05
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "time_unit": "minutes",
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "desk",
+      "description": "Service desk",
+      "type": "PROCESS",
+      "position": [
+        480.0,
+        240.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.25
+        },
+        "priority": 5,
+        "quantity": 1,
+        "resource_name": "Agents",
+        "balk_if": "queue_length >= 5",
+        "renege_after": "EXPO(10)",
+        "renege_time_unit": "minutes",
+        "on_preempt": "resume",
+        "time_unit": "minutes",
+        "setup_unit": "minutes"
+      }
+    },
+    {
+      "name": "escalated",
+      "description": "Escalation, interrupts a normal case",
+      "type": "PROCESS",
+      "position": [
+        480.0,
+        480.0
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.2
+        },
+        "priority": 1,
+        "quantity": 1,
+        "resource_name": "Agents",
+        "preempt": true,
+        "time_unit": "minutes",
+        "setup_unit": "minutes",
+        "renege_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "served",
+      "description": "Served",
+      "type": "DISPOSE",
+      "position": [
+        800.0,
+        240.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    },
+    {
+      "name": "lost",
+      "description": "Left without service",
+      "type": "DISPOSE",
+      "position": [
+        800.0,
+        400.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "calls",
+      "target": "desk"
+    },
+    {
+      "source": "escalations",
+      "target": "escalated"
+    },
+    {
+      "source": "desk",
+      "target": "served"
+    },
+    {
+      "source": "desk",
+      "target": "lost"
+    },
+    {
+      "source": "escalated",
+      "target": "served"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Three agents",
+      "description": "One more agent on the desk",
+      "overrides": [
+        {
+          "path": "resources.Agents.capacity",
+          "value": 3
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Agents",
+      "capacity": 2,
+      "discipline": "FIFO",
+      "cost_busy": 45.0,
+      "cost_idle": 30.0,
+      "cost_per_use": 0.0,
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "Customer",
+      "holding_cost_time_unit": "minutes"
+    },
+    {
+      "name": "Escalation",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {},
+  "background": null,
+  "info": {
+    "title": "Impatient customers (balking and reneging)",
+    "category": "Services"
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 480.0,
+    "warmup": 60.0,
+    "replications": 10,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

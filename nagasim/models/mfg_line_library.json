@@ -1,0 +1,1147 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "release",
+      "description": "Release jobs",
+      "type": "CREATE",
+      "position": [
+        -400.0,
+        0.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Interarrival",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 6.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "wip_cap_conwip_kanban_loop_1",
+      "description": "WIP cap (CONWIP / kanban loop)",
+      "type": "SUBMODEL",
+      "position": [
+        -200.0,
+        0.0
+      ],
+      "layout_position": [
+        1.0,
+        0.0
+      ],
+      "params": {
+        "definition": "WIP cap (CONWIP / kanban loop)",
+        "arguments": {
+          "cap": 12
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "batch_oven_1",
+      "description": "Batch oven",
+      "type": "SUBMODEL",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "layout_position": [
+        12.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Batch oven",
+        "arguments": {
+          "bake_time": 18.0,
+          "time_distribution": 1,
+          "ovens": 1
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "workstation_1",
+      "description": "Workstation",
+      "type": "SUBMODEL",
+      "position": [
+        200.0,
+        0.0
+      ],
+      "layout_position": [
+        22.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Workstation",
+        "arguments": {
+          "process_time": 4.0,
+          "mtbf": 3000.0,
+          "mttr": 90.0,
+          "setup_time": 15.0,
+          "cost_rate": 0.55,
+          "machines": 1
+        },
+        "preset": "Paint booth"
+      }
+    },
+    {
+      "name": "inspection_1",
+      "description": "Inspection",
+      "type": "SUBMODEL",
+      "position": [
+        400.0,
+        0.0
+      ],
+      "layout_position": [
+        32.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Inspection",
+        "arguments": {
+          "inspection_time": 4.0,
+          "pass_probability": 0.85,
+          "rework_probability": 0.1
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "shipped",
+      "description": "Shipped",
+      "type": "DISPOSE",
+      "position": [
+        800.0,
+        0.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "release",
+      "target": "wip_cap_conwip_kanban_loop_1",
+      "target_port": "in"
+    },
+    {
+      "source": "wip_cap_conwip_kanban_loop_1",
+      "target": "batch_oven_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "batch_oven_1",
+      "target": "workstation_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "workstation_1",
+      "target": "inspection_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "inspection_1",
+      "target": "wip_cap_conwip_kanban_loop_1",
+      "source_port": "pass",
+      "target_port": "return"
+    },
+    {
+      "source": "inspection_1",
+      "target": "workstation_1",
+      "source_port": "rework",
+      "target_port": "in"
+    },
+    {
+      "source": "inspection_1",
+      "target": "wip_cap_conwip_kanban_loop_1",
+      "source_port": "scrap",
+      "target_port": "return"
+    },
+    {
+      "source": "wip_cap_conwip_kanban_loop_1",
+      "target": "shipped",
+      "source_port": "done"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Mfg WIP tokens",
+      "capacity": 10,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Mfg Oven",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Mfg Machine",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    },
+    {
+      "name": "Mfg Inspector",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [
+    {
+      "name": "Mfg Machine breakdown",
+      "resources": [
+        "Mfg Machine"
+      ],
+      "uptime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.001
+        },
+        "time_unit": "minutes"
+      },
+      "downtime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.05
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "Mfg Load",
+      "shape": "square",
+      "color": "RED",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "WIP cap (CONWIP / kanban loop)": {
+      "info": {
+        "description": "Caps the work in progress of a region. Wire the line's entry through 'in' -> 'out' and its exit through 'return' -> 'done': a job takes one of this instance's tokens on the way in and gives it back on the way out, so at most 'cap' jobs are ever inside.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "wip_cap",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "cap",
+            "type": "int",
+            "default": 10,
+            "unit": "",
+            "label": "WIP cap (tokens)",
+            "help": "Largest number of jobs allowed inside the region at once.",
+            "group": "Control",
+            "min": 1,
+            "max": 10000,
+            "choices": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "cap",
+          "default": 10,
+          "description": "Largest number of jobs allowed inside the region at once."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Mfg WIP tokens": {
+            "capacity": "cap"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs entering the region",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "take_token",
+          "description": "Take a WIP token",
+          "type": "SEIZE",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Mfg WIP tokens"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Jobs admitted",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        },
+        {
+          "name": "return",
+          "description": "Jobs leaving the region",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            150.0
+          ],
+          "params": {
+            "port": "return"
+          }
+        },
+        {
+          "name": "give_token",
+          "description": "Give the token back",
+          "type": "RELEASE",
+          "position": [
+            200.0,
+            150.0
+          ],
+          "params": {
+            "distribution": "Constant",
+            "dist_params": {
+              "value": 0.0
+            },
+            "time_unit": "minutes",
+            "resource_name": "$Mfg WIP tokens"
+          }
+        },
+        {
+          "name": "done",
+          "description": "Jobs released",
+          "type": "SUB_EXIT",
+          "position": [
+            400.0,
+            150.0
+          ],
+          "params": {
+            "port": "done"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "take_token"
+        },
+        {
+          "source": "take_token",
+          "target": "out"
+        },
+        {
+          "source": "return",
+          "target": "give_token"
+        },
+        {
+          "source": "give_token",
+          "target": "done"
+        }
+      ],
+      "annotations": []
+    },
+    "Batch oven": {
+      "info": {
+        "description": "Collects 4 jobs, processes them together for one bake time, then splits them again. The batch size is fixed in the definition: open the instance and edit the 'collect' block to change it.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "batch_oven",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "bake_time",
+            "type": "time",
+            "default": 30.0,
+            "unit": "minutes",
+            "label": "Bake time",
+            "help": "Time one whole batch spends in the oven, in minutes.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": 2,
+            "unit": "",
+            "label": "Time distribution (1 fixed, 2 exponential, 3 triangular +/-30%)",
+            "help": "Shape of the process time around its mean: 1 = exactly the mean, 2 = exponential, 3 = triangular between 70% and 130% of it.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "name": "ovens",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Ovens",
+            "help": "Parallel units in this station (the per-instance resource's capacity).",
+            "group": "Resource",
+            "min": 1,
+            "max": 200,
+            "choices": []
+          },
+          {
+            "name": "cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate",
+            "help": "Cost charged per minute while the station is busy; 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "bake_time",
+          "default": 30.0,
+          "description": "Time one whole batch spends in the oven, in minutes."
+        },
+        {
+          "name": "time_distribution",
+          "default": 2,
+          "description": "Shape of the process time around its mean: 1 = exactly the mean, 2 = exponential, 3 = triangular between 70% and 130% of it."
+        },
+        {
+          "name": "ovens",
+          "default": 1,
+          "description": "Parallel units in this station (the per-instance resource's capacity)."
+        },
+        {
+          "name": "cost_rate",
+          "default": 0.0,
+          "description": "Cost charged per minute while the station is busy; 0 leaves it out of the costing."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Mfg Oven": {
+            "capacity": "ovens",
+            "cost_busy": "cost_rate"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "collect",
+          "description": "Collect 4 jobs",
+          "type": "BATCH",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "batch_size": 4,
+            "batched_entity_type": "Mfg Load"
+          }
+        },
+        {
+          "name": "bake",
+          "description": "Oven",
+          "type": "PROCESS",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "bake_time if time_distribution == 1 else (EXPO(bake_time) if time_distribution == 2 else TRIA(0.7 * bake_time, bake_time, 1.3 * bake_time))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Mfg Oven"
+          }
+        },
+        {
+          "name": "unload",
+          "description": "Split the load",
+          "type": "SEPARATE",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Retain original entity values",
+            "attrs": []
+          }
+        },
+        {
+          "name": "out",
+          "description": "Jobs leave",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "collect"
+        },
+        {
+          "source": "collect",
+          "target": "bake"
+        },
+        {
+          "source": "bake",
+          "target": "unload"
+        },
+        {
+          "source": "unload",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Workstation": {
+      "info": {
+        "description": "One station with its own queue and machines: jobs seize a machine, are worked on, and leave. Optional breakdowns (MTBF/MTTR) and a changeover time when the job type changes.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "workstation",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "process_time",
+            "type": "time",
+            "default": 2.5,
+            "unit": "minutes",
+            "label": "Mean process time",
+            "help": "Mean time one job spends being worked on, in minutes.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": 2,
+            "unit": "",
+            "label": "Time distribution (1 fixed, 2 exponential, 3 triangular +/-30%)",
+            "help": "Shape of the process time around its mean: 1 = exactly the mean, 2 = exponential, 3 = triangular between 70% and 130% of it.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "name": "setup_time",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Changeover time",
+            "help": "Time to change the station over when the entity type changes; a run of identical jobs pays nothing. 0 means no changeover.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          },
+          {
+            "name": "machines",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Machines",
+            "help": "Parallel units in this station (the per-instance resource's capacity).",
+            "group": "Resource",
+            "min": 1,
+            "max": 200,
+            "choices": []
+          },
+          {
+            "name": "mtbf",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Mean time between failures",
+            "help": "Mean uptime between breakdowns, in minutes. 0 means the machine never fails.",
+            "group": "Reliability",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          },
+          {
+            "name": "mttr",
+            "type": "time",
+            "default": 30.0,
+            "unit": "minutes",
+            "label": "Mean time to repair",
+            "help": "Mean repair time once a breakdown starts, in minutes.",
+            "group": "Reliability",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          },
+          {
+            "name": "cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate",
+            "help": "Cost charged per minute while the station is busy; 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Machine classes",
+          "label": "Machine class",
+          "group": "Timing",
+          "map": {
+            "process_time": "process_time",
+            "mtbf": "mtbf",
+            "mttr": "mttr",
+            "setup_time": "setup_time",
+            "cost_rate": "cost_rate"
+          },
+          "rows": [
+            "Manual bench",
+            "CNC mill",
+            "Laser cutter",
+            "Press",
+            "Paint booth"
+          ],
+          "units": {
+            "process_time": "minutes",
+            "mtbf": "minutes",
+            "mttr": "minutes",
+            "setup_time": "minutes",
+            "cost_rate": "currency per minute"
+          },
+          "values": {
+            "Manual bench": {
+              "process_time": 6.0,
+              "mtbf": 0.0,
+              "mttr": 0.0,
+              "setup_time": 2.0,
+              "cost_rate": 0.35
+            },
+            "CNC mill": {
+              "process_time": 2.5,
+              "mtbf": 1800.0,
+              "mttr": 45.0,
+              "setup_time": 8.0,
+              "cost_rate": 0.9
+            },
+            "Laser cutter": {
+              "process_time": 1.2,
+              "mtbf": 2400.0,
+              "mttr": 30.0,
+              "setup_time": 3.0,
+              "cost_rate": 1.2
+            },
+            "Press": {
+              "process_time": 0.6,
+              "mtbf": 1200.0,
+              "mttr": 60.0,
+              "setup_time": 12.0,
+              "cost_rate": 0.7
+            },
+            "Paint booth": {
+              "process_time": 4.0,
+              "mtbf": 3000.0,
+              "mttr": 90.0,
+              "setup_time": 15.0,
+              "cost_rate": 0.55
+            }
+          },
+          "sources": {
+            "Manual bench": "Generic reference value (Naga); replace with plant data.",
+            "CNC mill": "Generic reference value (Naga); replace with plant data.",
+            "Laser cutter": "Generic reference value (Naga); replace with plant data.",
+            "Press": "Generic reference value (Naga); replace with plant data.",
+            "Paint booth": "Generic reference value (Naga); replace with plant data."
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "process_time",
+          "default": 2.5,
+          "description": "Mean time one job spends being worked on, in minutes."
+        },
+        {
+          "name": "time_distribution",
+          "default": 2,
+          "description": "Shape of the process time around its mean: 1 = exactly the mean, 2 = exponential, 3 = triangular between 70% and 130% of it."
+        },
+        {
+          "name": "setup_time",
+          "default": 0.0,
+          "description": "Time to change the station over when the entity type changes; a run of identical jobs pays nothing. 0 means no changeover."
+        },
+        {
+          "name": "machines",
+          "default": 1,
+          "description": "Parallel units in this station (the per-instance resource's capacity)."
+        },
+        {
+          "name": "mtbf",
+          "default": 0.0,
+          "description": "Mean uptime between breakdowns, in minutes. 0 means the machine never fails."
+        },
+        {
+          "name": "mttr",
+          "default": 30.0,
+          "description": "Mean repair time once a breakdown starts, in minutes."
+        },
+        {
+          "name": "cost_rate",
+          "default": 0.0,
+          "description": "Cost charged per minute while the station is busy; 0 leaves it out of the costing."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Mfg Machine": {
+            "capacity": "machines",
+            "cost_busy": "cost_rate"
+          }
+        },
+        "failures": {
+          "Mfg Machine breakdown": {
+            "uptime.dist_params.rate": "1.0 / mtbf if mtbf > 0 else 1e-9",
+            "downtime.dist_params.rate": "1.0 / mttr if mttr > 0 else 1.0"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "machine",
+          "description": "Machine",
+          "type": "PROCESS",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "process_time if time_distribution == 1 else (EXPO(process_time) if time_distribution == 2 else TRIA(0.7 * process_time, process_time, 1.3 * process_time))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Mfg Machine",
+            "setup": "setup_time",
+            "setup_key": "entity.e_type"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Jobs leave",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "machine"
+        },
+        {
+          "source": "machine",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Inspection": {
+      "info": {
+        "description": "Inspect a job and send it out by one of three exits: pass, rework (wire it back to the station that should redo it) or scrap.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "inspection",
+          "version": "1.0.0"
+        },
+        "parameters": [
+          {
+            "name": "inspection_time",
+            "type": "time",
+            "default": 1.0,
+            "unit": "minutes",
+            "label": "Mean inspection time",
+            "help": "Mean time to inspect one job, in minutes.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": 2,
+            "unit": "",
+            "label": "Time distribution (1 fixed, 2 exponential, 3 triangular +/-30%)",
+            "help": "Shape of the process time around its mean: 1 = exactly the mean, 2 = exponential, 3 = triangular between 70% and 130% of it.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "name": "inspectors",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Inspection stations",
+            "help": "Parallel units in this station (the per-instance resource's capacity).",
+            "group": "Resource",
+            "min": 1,
+            "max": 200,
+            "choices": []
+          },
+          {
+            "name": "pass_probability",
+            "type": "number",
+            "default": 0.9,
+            "unit": "",
+            "label": "Pass probability",
+            "help": "Share of jobs that pass first time and leave by the 'pass' exit.",
+            "group": "Quality",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": []
+          },
+          {
+            "name": "rework_probability",
+            "type": "number",
+            "default": 0.08,
+            "unit": "",
+            "label": "Rework probability",
+            "help": "Share of jobs sent out by the 'rework' exit. Whatever is left over is scrapped.",
+            "group": "Quality",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": []
+          },
+          {
+            "name": "cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate",
+            "help": "Cost charged per minute while the station is busy; 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "inspection_time",
+          "default": 1.0,
+          "description": "Mean time to inspect one job, in minutes."
+        },
+        {
+          "name": "time_distribution",
+          "default": 2,
+          "description": "Shape of the process time around its mean: 1 = exactly the mean, 2 = exponential, 3 = triangular between 70% and 130% of it."
+        },
+        {
+          "name": "inspectors",
+          "default": 1,
+          "description": "Parallel units in this station (the per-instance resource's capacity)."
+        },
+        {
+          "name": "pass_probability",
+          "default": 0.9,
+          "description": "Share of jobs that pass first time and leave by the 'pass' exit."
+        },
+        {
+          "name": "rework_probability",
+          "default": 0.08,
+          "description": "Share of jobs sent out by the 'rework' exit. Whatever is left over is scrapped."
+        },
+        {
+          "name": "cost_rate",
+          "default": 0.0,
+          "description": "Cost charged per minute while the station is busy; 0 leaves it out of the costing."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Mfg Inspector": {
+            "capacity": "inspectors",
+            "cost_busy": "cost_rate"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "inspect",
+          "description": "Inspection",
+          "type": "PROCESS",
+          "position": [
+            200.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "inspection_time if time_distribution == 1 else (EXPO(inspection_time) if time_distribution == 2 else TRIA(0.7 * inspection_time, inspection_time, 1.3 * inspection_time))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Mfg Inspector"
+          }
+        },
+        {
+          "name": "draw",
+          "description": "Draw the verdict",
+          "type": "ASSIGN",
+          "position": [
+            400.0,
+            0.0
+          ],
+          "params": {
+            "assignments": [
+              {
+                "target": "entity.inspection_draw",
+                "expr": "RAND()"
+              }
+            ]
+          }
+        },
+        {
+          "name": "verdict",
+          "description": "Pass, rework or scrap",
+          "type": "DECIDE",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "mode": "Condition",
+            "probs": [],
+            "conditions": [
+              "entity.inspection_draw < pass_probability",
+              "entity.inspection_draw < pass_probability + rework_probability"
+            ]
+          }
+        },
+        {
+          "name": "pass",
+          "description": "Good jobs",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            -100.0
+          ],
+          "params": {
+            "port": "pass"
+          }
+        },
+        {
+          "name": "rework",
+          "description": "Jobs to redo",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            0.0
+          ],
+          "params": {
+            "port": "rework"
+          }
+        },
+        {
+          "name": "scrap",
+          "description": "Scrapped jobs",
+          "type": "SUB_EXIT",
+          "position": [
+            800.0,
+            100.0
+          ],
+          "params": {
+            "port": "scrap"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "inspect"
+        },
+        {
+          "source": "inspect",
+          "target": "draw"
+        },
+        {
+          "source": "draw",
+          "target": "verdict"
+        },
+        {
+          "source": "verdict",
+          "target": "pass"
+        },
+        {
+          "source": "verdict",
+          "target": "rework"
+        },
+        {
+          "source": "verdict",
+          "target": "scrap"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Make-to-order line (library assets)",
+    "category": "Manufacturing",
+    "description": "A small make-to-order line built entirely from Manufacturing 1.0.0 assets, and deliberately still on those v1 definitions (the library has a 2.0.0 since). Jobs are released every 6 minutes into a CONWIP loop of 12 tokens, baked four to a load, machined, then inspected -- 85% pass, 10% go back to the machine, 5% are scrapped, and every job gives its token back whichever way it leaves. All four resources run at 60-85%, so the queues, the rework loop and the oven's batching are all visible in the results."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 1500,
+    "warmup": 200,
+    "replications": 3,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

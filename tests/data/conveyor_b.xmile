@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+  <header>
+    <name>Conveyor B - linear leak, f=0.5</name>
+    <vendor>Naga</vendor>
+    <product version="1.0">Naga test fixture</product>
+  </header>
+  <sim_specs method="euler" time_units="days">
+    <start>0</start>
+    <stop>3.5</stop>
+    <dt>0.5</dt>
+  </sim_specs>
+  <model>
+    <variables>
+      <flow name="hire">
+        <eqn>100</eqn>
+        <non_negative/>
+      </flow>
+      <flow name="graduate">
+        <eqn>0</eqn>
+      </flow>
+      <!-- <leak>expr</leak> form: the fraction is the leak element's own text. -->
+      <flow name="dropout">
+        <leak>0.5</leak>
+      </flow>
+      <stock name="Training">
+        <eqn>0</eqn>
+        <inflow>hire</inflow>
+        <outflow>graduate</outflow>
+        <outflow>dropout</outflow>
+        <conveyor>
+          <len>2</len>
+        </conveyor>
+      </stock>
+    </variables>
+  </model>
+</xmile>

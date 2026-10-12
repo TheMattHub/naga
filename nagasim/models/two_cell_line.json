@@ -1,0 +1,281 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "create_1",
+      "description": "External Poisson arrivals, 0.8/min",
+      "type": "CREATE",
+      "position": [
+        100.0,
+        200.0
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.8
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "cell_1",
+      "description": "Cell 1 (rate 1.2/min)",
+      "type": "SUBMODEL",
+      "position": [
+        320.0,
+        200.0
+      ],
+      "layout_position": [
+        3.0,
+        3.0
+      ],
+      "params": {
+        "definition": "Cell",
+        "arguments": {
+          "rate": 1.2
+        }
+      }
+    },
+    {
+      "name": "cell_2",
+      "description": "Cell 2 (rate 1.5/min)",
+      "type": "SUBMODEL",
+      "position": [
+        540.0,
+        200.0
+      ],
+      "layout_position": [
+        14.0,
+        3.0
+      ],
+      "params": {
+        "definition": "Cell",
+        "arguments": {
+          "rate": 1.5
+        }
+      }
+    },
+    {
+      "name": "record_exit",
+      "description": "Tally the end-to-end time in system",
+      "type": "RECORD",
+      "position": [
+        760.0,
+        200.0
+      ],
+      "params": {
+        "stat_name": "time_in_system",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "dispose_1",
+      "description": "Jobs leave the line",
+      "type": "DISPOSE",
+      "position": [
+        980.0,
+        200.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "create_1",
+      "target": "cell_1"
+    },
+    {
+      "source": "cell_1",
+      "target": "cell_2"
+    },
+    {
+      "source": "cell_2",
+      "target": "record_exit"
+    },
+    {
+      "source": "record_exit",
+      "target": "dispose_1"
+    }
+  ],
+  "scenarios": [],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Machine",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "DEFAULT",
+      "shape": "circle",
+      "color": "BLACK",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Cell": {
+      "info": {
+        "description": "One work cell: a machine with a rework loop."
+      },
+      "parameters": [
+        {
+          "name": "rate",
+          "default": 1.0,
+          "description": "Service rate of one machine, per model time unit"
+        },
+        {
+          "name": "servers",
+          "default": 1,
+          "description": "Machines in the cell; sets $Machine's capacity (a scoped override)"
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Machine": {
+            "capacity": "servers"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs enter the cell",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            200.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "machine",
+          "description": "Machine (per-instance resource, cloned from the Machine template; capacity = servers, a scoped override)",
+          "type": "PROCESS",
+          "position": [
+            200.0,
+            200.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Exponential",
+            "dist_params": {
+              "rate": "rate"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Machine"
+          }
+        },
+        {
+          "name": "rework",
+          "description": "10% of jobs are reworked on the same machine",
+          "type": "DECIDE",
+          "position": [
+            400.0,
+            200.0
+          ],
+          "params": {
+            "mode": "Chance",
+            "probs": [
+              0.1,
+              0.9
+            ],
+            "conditions": []
+          }
+        },
+        {
+          "name": "out",
+          "description": "Jobs leave the cell",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            200.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "machine"
+        },
+        {
+          "source": "machine",
+          "target": "rework"
+        },
+        {
+          "source": "rework",
+          "target": "machine"
+        },
+        {
+          "source": "rework",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Two-cell line (reusable submodel)",
+    "category": "Manufacturing",
+    "description": "Two identical work cells built from one reusable submodel definition Cell(rate, servers): a machine on a per-instance `$Machine` resource with a 10% rework loop. An open Jackson network of two M/M/1 nodes with feedback."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 6000,
+    "warmup": 1000,
+    "replications": 10,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}

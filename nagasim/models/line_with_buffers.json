@@ -1,0 +1,864 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "release",
+      "description": "Raw parts released every minute -- more than the line can make, so station 1 is never starved",
+      "type": "CREATE",
+      "position": [
+        60.0,
+        200.0
+      ],
+      "params": {
+        "e_type": "Part",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 1.0
+        },
+        "time_unit": "minutes",
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0,
+        "start_time_unit": "minutes"
+      }
+    },
+    {
+      "name": "station_1",
+      "description": "Station 1",
+      "type": "SUBMODEL",
+      "position": [
+        260.0,
+        200.0
+      ],
+      "layout_position": [
+        2.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Workstation",
+        "arguments": {
+          "process_time": 1.0,
+          "time_distribution": "fixed",
+          "machines": 1,
+          "cost_rate": 0.5,
+          "mtbf": 120.0,
+          "mttr": 10.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "station_2",
+      "description": "Station 2",
+      "type": "SUBMODEL",
+      "position": [
+        500.0,
+        200.0
+      ],
+      "layout_position": [
+        20.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Workstation",
+        "arguments": {
+          "process_time": 1.0,
+          "time_distribution": "fixed",
+          "machines": 1,
+          "cost_rate": 0.5,
+          "mtbf": 120.0,
+          "mttr": 10.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "buffer_1",
+      "description": "Buffer 1: the space between stations 1 and 2",
+      "type": "SUBMODEL",
+      "position": [
+        400.0,
+        200.0
+      ],
+      "layout_position": [
+        13.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Buffer",
+        "arguments": {
+          "places": 4
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "station_3",
+      "description": "Station 3 -- the unreliable one (MTBF 60 min, MTTR 12 min)",
+      "type": "SUBMODEL",
+      "position": [
+        740.0,
+        200.0
+      ],
+      "layout_position": [
+        39.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Workstation",
+        "arguments": {
+          "process_time": 1.0,
+          "time_distribution": "fixed",
+          "machines": 1,
+          "cost_rate": 0.5,
+          "mtbf": 60.0,
+          "mttr": 12.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "buffer_2",
+      "description": "Buffer 2: the space between stations 2 and 3",
+      "type": "SUBMODEL",
+      "position": [
+        640.0,
+        200.0
+      ],
+      "layout_position": [
+        31.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Buffer",
+        "arguments": {
+          "places": 4
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "station_4",
+      "description": "Station 4",
+      "type": "SUBMODEL",
+      "position": [
+        980.0,
+        200.0
+      ],
+      "layout_position": [
+        57.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Workstation",
+        "arguments": {
+          "process_time": 1.0,
+          "time_distribution": "fixed",
+          "machines": 1,
+          "cost_rate": 0.5,
+          "mtbf": 120.0,
+          "mttr": 10.0
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "buffer_3",
+      "description": "Buffer 3: the space between stations 3 and 4",
+      "type": "SUBMODEL",
+      "position": [
+        880.0,
+        200.0
+      ],
+      "layout_position": [
+        50.0,
+        1.0
+      ],
+      "params": {
+        "definition": "Buffer",
+        "arguments": {
+          "places": 4
+        },
+        "preset": ""
+      }
+    },
+    {
+      "name": "finished",
+      "description": "Finished parts leave the line",
+      "type": "DISPOSE",
+      "position": [
+        1300.0,
+        200.0
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "release",
+      "target": "station_1",
+      "target_port": "in"
+    },
+    {
+      "source": "station_1",
+      "target": "buffer_1",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "buffer_1",
+      "target": "station_2",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "station_2",
+      "target": "buffer_2",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "buffer_2",
+      "target": "station_3",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "station_3",
+      "target": "buffer_3",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "buffer_3",
+      "target": "station_4",
+      "source_port": "out",
+      "target_port": "in"
+    },
+    {
+      "source": "station_4",
+      "target": "finished",
+      "source_port": "out"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "No buffers",
+      "description": "Zero places anywhere: every stoppage at one station stops the whole line.",
+      "overrides": [
+        {
+          "path": "blocks.buffer_1.params.arguments.places",
+          "value": 0
+        },
+        {
+          "path": "blocks.buffer_2.params.arguments.places",
+          "value": 0
+        },
+        {
+          "path": "blocks.buffer_3.params.arguments.places",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "name": "Even split",
+      "description": "Four places between each pair of stations -- the model as it is saved.",
+      "overrides": [
+        {
+          "path": "blocks.buffer_1.params.arguments.places",
+          "value": 4
+        },
+        {
+          "path": "blocks.buffer_2.params.arguments.places",
+          "value": 4
+        },
+        {
+          "path": "blocks.buffer_3.params.arguments.places",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "name": "Protect the bottleneck",
+      "description": "All twelve places either side of station 3, the unreliable one.",
+      "overrides": [
+        {
+          "path": "blocks.buffer_1.params.arguments.places",
+          "value": 0
+        },
+        {
+          "path": "blocks.buffer_2.params.arguments.places",
+          "value": 6
+        },
+        {
+          "path": "blocks.buffer_3.params.arguments.places",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "name": "All at the front",
+      "description": "Every place before station 2 and none after it.",
+      "overrides": [
+        {
+          "path": "blocks.buffer_1.params.arguments.places",
+          "value": 12
+        },
+        {
+          "path": "blocks.buffer_2.params.arguments.places",
+          "value": 0
+        },
+        {
+          "path": "blocks.buffer_3.params.arguments.places",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "name": "All at the back",
+      "description": "Every place before station 4 and none earlier.",
+      "overrides": [
+        {
+          "path": "blocks.buffer_1.params.arguments.places",
+          "value": 0
+        },
+        {
+          "path": "blocks.buffer_2.params.arguments.places",
+          "value": 0
+        },
+        {
+          "path": "blocks.buffer_3.params.arguments.places",
+          "value": 12
+        }
+      ]
+    }
+  ],
+  "orders": [],
+  "resources": [
+    {
+      "name": "Mfg Machine",
+      "capacity": 1,
+      "discipline": "FIFO",
+      "cost_time_unit": "hours"
+    }
+  ],
+  "resource_sets": [],
+  "schedules": [],
+  "failures": [
+    {
+      "name": "Mfg Machine breakdown",
+      "resources": [
+        "Mfg Machine"
+      ],
+      "uptime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.001
+        },
+        "time_unit": "minutes"
+      },
+      "downtime": {
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.05
+        },
+        "time_unit": "minutes"
+      }
+    }
+  ],
+  "tables": [],
+  "sequences": [],
+  "variables": [],
+  "entities": [
+    {
+      "name": "Part",
+      "shape": "square",
+      "color": "BLUE",
+      "holding_cost_time_unit": "minutes"
+    }
+  ],
+  "timeseries_inputs": [],
+  "levels": [
+    {
+      "name": "Mfg Buffer stock",
+      "description": "Jobs waiting in the buffer.",
+      "unit": "jobs",
+      "min": 0,
+      "initial": 0,
+      "capacity": 5,
+      "rate_time_unit": "minutes"
+    }
+  ],
+  "flows": [],
+  "conversions": [],
+  "fixed_costs": [],
+  "fleets": [],
+  "motion_profiles": [],
+  "chargers": [],
+  "auxiliaries": [],
+  "delays": [],
+  "subscripts": [],
+  "agent_types": [],
+  "populations": [],
+  "reality_checks": [],
+  "network": null,
+  "annotations": [],
+  "submodels": {
+    "Workstation": {
+      "info": {
+        "description": "One station with its own queue and machines: jobs seize a machine, are worked on, and leave. Optional breakdowns (MTBF/MTTR), a changeover time and cost when the job type changes, and a finite input buffer that blocks the station upstream when it is full.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "workstation",
+          "version": "2.2.0"
+        },
+        "parameters": [
+          {
+            "name": "process_time",
+            "type": "time",
+            "default": 2.5,
+            "unit": "minutes",
+            "label": "Mean process time",
+            "help": "Mean time one job spends being worked on, in minutes.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "time_distribution",
+            "type": "choice",
+            "default": "exponential",
+            "unit": "",
+            "label": "Time distribution",
+            "help": "Shape of the time around its mean: fixed = exactly the mean, exponential = memoryless, triangular = between 70% and 130% of it.",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [
+              "fixed",
+              "exponential",
+              "triangular"
+            ],
+            "refers_to": ""
+          },
+          {
+            "name": "setup_time",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Changeover time",
+            "help": "Time to change the station over when the entity type changes; a run of identical jobs pays nothing. 0 means no changeover.",
+            "group": "Timing",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "machines",
+            "type": "int",
+            "default": 1,
+            "unit": "",
+            "label": "Machines",
+            "help": "Parallel units in this station (the per-instance resource's capacity).",
+            "group": "Resource",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "mtbf",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "Mean time between failures",
+            "help": "Mean uptime between breakdowns, in minutes. 0 means the machine never fails.",
+            "group": "Reliability",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "mttr",
+            "type": "time",
+            "default": 30.0,
+            "unit": "minutes",
+            "label": "Mean time to repair",
+            "help": "Mean repair time once a breakdown starts, in minutes.",
+            "group": "Reliability",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "setup_cost",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per changeover",
+            "label": "Changeover cost",
+            "help": "Money charged once per ACTUAL changeover -- scrap, a technician, a purge -- not per job. A run of identical jobs pays nothing. 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_rate",
+            "type": "number",
+            "default": 0.0,
+            "unit": "currency per minute",
+            "label": "Busy cost rate",
+            "help": "Cost charged per minute while the station is busy; 0 leaves it out of the costing.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "input_buffer",
+            "type": "int",
+            "default": 0,
+            "unit": "",
+            "label": "Input buffer capacity",
+            "help": "Places in this station's own input queue. 0 (the default) is an unlimited queue. With a positive value the station holds at most that many waiting jobs, and the station upstream stays BLOCKED -- occupied, holding its finished job -- while there is no room. Use a Buffer asset instead when the space between two stations belongs to neither of them.",
+            "group": "Resource",
+            "min": 0,
+            "max": 10000,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Machine classes",
+          "label": "Machine class",
+          "group": "Timing",
+          "map": {
+            "process_time": "process_time",
+            "mtbf": "mtbf",
+            "mttr": "mttr",
+            "setup_time": "setup_time",
+            "cost_rate": "cost_rate"
+          },
+          "rows": [
+            "Manual bench",
+            "CNC mill",
+            "Laser cutter",
+            "Press",
+            "Paint booth"
+          ],
+          "units": {
+            "process_time": "minutes",
+            "mtbf": "minutes",
+            "mttr": "minutes",
+            "setup_time": "minutes",
+            "cost_rate": "currency per minute"
+          },
+          "values": {
+            "Manual bench": {
+              "process_time": 6.0,
+              "mtbf": 0.0,
+              "mttr": 0.0,
+              "setup_time": 2.0,
+              "cost_rate": 0.35
+            },
+            "CNC mill": {
+              "process_time": 2.5,
+              "mtbf": 1800.0,
+              "mttr": 45.0,
+              "setup_time": 8.0,
+              "cost_rate": 0.9
+            },
+            "Laser cutter": {
+              "process_time": 1.2,
+              "mtbf": 2400.0,
+              "mttr": 30.0,
+              "setup_time": 3.0,
+              "cost_rate": 1.2
+            },
+            "Press": {
+              "process_time": 0.6,
+              "mtbf": 1200.0,
+              "mttr": 60.0,
+              "setup_time": 12.0,
+              "cost_rate": 0.7
+            },
+            "Paint booth": {
+              "process_time": 4.0,
+              "mtbf": 3000.0,
+              "mttr": 90.0,
+              "setup_time": 15.0,
+              "cost_rate": 0.55
+            }
+          },
+          "sources": {
+            "Manual bench": "Generic reference value (Naga); replace with plant data.",
+            "CNC mill": "Generic reference value (Naga); replace with plant data.",
+            "Laser cutter": "Generic reference value (Naga); replace with plant data.",
+            "Press": "Generic reference value (Naga); replace with plant data.",
+            "Paint booth": "Generic reference value (Naga); replace with plant data."
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "process_time",
+          "default": 2.5,
+          "type": "time",
+          "description": "Mean time one job spends being worked on, in minutes."
+        },
+        {
+          "name": "time_distribution",
+          "default": "exponential",
+          "type": "choice",
+          "description": "Shape of the time around its mean: fixed = exactly the mean, exponential = memoryless, triangular = between 70% and 130% of it."
+        },
+        {
+          "name": "setup_time",
+          "default": 0.0,
+          "type": "time",
+          "description": "Time to change the station over when the entity type changes; a run of identical jobs pays nothing. 0 means no changeover."
+        },
+        {
+          "name": "machines",
+          "default": 1,
+          "type": "int",
+          "description": "Parallel units in this station (the per-instance resource's capacity)."
+        },
+        {
+          "name": "mtbf",
+          "default": 0.0,
+          "type": "time",
+          "description": "Mean uptime between breakdowns, in minutes. 0 means the machine never fails."
+        },
+        {
+          "name": "mttr",
+          "default": 30.0,
+          "type": "time",
+          "description": "Mean repair time once a breakdown starts, in minutes."
+        },
+        {
+          "name": "setup_cost",
+          "default": 0.0,
+          "type": "number",
+          "description": "Money charged once per ACTUAL changeover -- scrap, a technician, a purge -- not per job. A run of identical jobs pays nothing. 0 leaves it out of the costing."
+        },
+        {
+          "name": "cost_rate",
+          "default": 0.0,
+          "type": "number",
+          "description": "Cost charged per minute while the station is busy; 0 leaves it out of the costing."
+        },
+        {
+          "name": "input_buffer",
+          "default": 0,
+          "type": "int",
+          "description": "Places in this station's own input queue. 0 (the default) is an unlimited queue. With a positive value the station holds at most that many waiting jobs, and the station upstream stays BLOCKED -- occupied, holding its finished job -- while there is no room. Use a Buffer asset instead when the space between two stations belongs to neither of them."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "Mfg Machine": {
+            "capacity": "machines",
+            "cost_busy": "cost_rate"
+          }
+        },
+        "failures": {
+          "Mfg Machine breakdown": {
+            "uptime.dist_params.rate": "1.0 / mtbf if mtbf > 0 else 1e-9",
+            "downtime.dist_params.rate": "1.0 / mttr if mttr > 0 else 1.0"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "machine",
+          "description": "Machine",
+          "type": "PROCESS",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "action": "Seize Delay Release",
+            "distribution": "Constant",
+            "dist_params": {
+              "value": "process_time if time_distribution == 'fixed' else (EXPO(process_time) if time_distribution == 'exponential' else TRIA(0.7 * process_time, process_time, 1.3 * process_time))"
+            },
+            "time_unit": "minutes",
+            "priority": 0,
+            "quantity": 1,
+            "resource_name": "$Mfg Machine",
+            "setup": "setup_time",
+            "setup_key": "entity.e_type",
+            "setup_cost": "setup_cost",
+            "setup_cost_category": "Changeover",
+            "queue_capacity": {
+              "$arg": "input_buffer"
+            }
+          }
+        },
+        {
+          "name": "out",
+          "description": "Jobs leave",
+          "type": "SUB_EXIT",
+          "position": [
+            600.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "machine"
+        },
+        {
+          "source": "machine",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    },
+    "Buffer": {
+      "info": {
+        "description": "The finite space between two stations. A job takes a place on the way in and keeps it until the next station starts it, so the station upstream stays BLOCKED -- occupied, holding its finished job -- while the buffer is full. 0 places is the classic zero-buffer line. For an unlimited queue, do not place a buffer at all.",
+        "library": {
+          "library": "manufacturing",
+          "asset": "buffer",
+          "version": "2.2.0"
+        },
+        "parameters": [
+          {
+            "name": "places",
+            "type": "int",
+            "default": 5,
+            "unit": "",
+            "label": "Places",
+            "help": "How many jobs fit between the two stations. 0 means none at all: the upstream machine holds its finished job until the next station starts it.",
+            "group": "Capacity",
+            "min": 0,
+            "max": 10000,
+            "choices": [],
+            "refers_to": ""
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "places",
+          "default": 5,
+          "type": "int",
+          "description": "How many jobs fit between the two stations. 0 means none at all: the upstream machine holds its finished job until the next station starts it."
+        }
+      ],
+      "scoped": {
+        "levels": {
+          "Mfg Buffer stock": {
+            "capacity": "places"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "description": "Jobs arrive",
+          "type": "SUB_ENTRY",
+          "position": [
+            0.0,
+            0.0
+          ],
+          "params": {
+            "port": "in"
+          }
+        },
+        {
+          "name": "places",
+          "description": "Buffer",
+          "type": "BUFFER",
+          "position": [
+            250.0,
+            0.0
+          ],
+          "params": {
+            "capacity": {
+              "$arg": "places"
+            },
+            "level": "$Mfg Buffer stock"
+          }
+        },
+        {
+          "name": "out",
+          "description": "Jobs leave",
+          "type": "SUB_EXIT",
+          "position": [
+            500.0,
+            0.0
+          ],
+          "params": {
+            "port": "out"
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "in",
+          "target": "places"
+        },
+        {
+          "source": "places",
+          "target": "out"
+        }
+      ],
+      "annotations": []
+    }
+  },
+  "background": null,
+  "info": {
+    "title": "Line with finite buffers",
+    "category": "Manufacturing",
+    "description": "A four-station line with finite buffers between the stations: when a buffer is full the machine behind it stays BLOCKED, holding its finished part. Station 3 breaks down often, so where the twelve available buffer places go decides the line's throughput -- the scenarios move them around without ever adding any."
+  },
+  "data_sources": [],
+  "data_bindings": [],
+  "initial_state": {},
+  "simulation": {
+    "time_limit": 2400,
+    "warmup": 240,
+    "replications": 10,
+    "time_unit": "minutes",
+    "currency": "EUR",
+    "energy_price": 0,
+    "length_unit": "meters"
+  },
+  "outputs": {}
+}
