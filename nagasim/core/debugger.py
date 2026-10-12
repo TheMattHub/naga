@@ -10,11 +10,14 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from nagasim.core.expressions import (Expression, ExpressionError, ExpressionScope,
-                                      compile_expression, functions_with)
+from nagasim.core.expressions import (FUNCTIONS, SD_MACROS, SD_VALUE_MACROS, Expression,
+                                      ExpressionError, ExpressionScope, compile_expression,
+                                      functions_with, name_sections)
 from nagasim.core.sim_classes import Entity
+from nagasim.core.submodels import SubmodelError, flatten
 
-__all__ = ["Stops", "entity_view", "readonly_expression", "watch_values"]
+__all__ = ["Stops", "entity_view", "readonly_expression", "watch_functions", "watch_names",
+           "watch_values"]
 
 _SAMPLERS = frozenset(functions_with("sampler"))
 # RecursionError and MemoryError too: a text from a tool argument can nest just under the
@@ -35,6 +38,47 @@ def readonly_expression(text: str) -> Expression:
     if drawn:
         raise ExpressionError(f"{drawn[0]}() draws a random number; a watch or a stop only reads")
     return expression
+
+
+def watch_functions() -> dict:
+    """{name: call hint} of the functions worth offering for a watch or a stop: the
+    registry, minus the samplers (refused above), the functions that read `self`
+    (a watch has no agent in hand) and the system-dynamics macros (expanded only
+    inside an SD field). `NQ("name")`: the first argument names a model record."""
+    skipped = _SAMPLERS | set(functions_with("near", "grid", "link")) | set(SD_MACROS)         | set(SD_VALUE_MACROS)
+    hints = {}
+    for name in sorted(set(FUNCTIONS) - skipped, key=str.lower):
+        _, _, low, high = FUNCTIONS[name]
+        letters = ['"name"' if name_sections(name) else "a", *"bcdefgh"]
+        text = ", ".join(letters[:low])
+        if high is None:
+            text += ", ..." if text else "..."
+        else:
+            text += "".join(f"[, {letter}]" for letter in letters[low:high])
+        hints[name] = f"{name}({text})"
+    return hints
+
+
+_ALL_SECTIONS = tuple(dict.fromkeys(s for f in FUNCTIONS for s in name_sections(f)))
+
+
+def watch_names(layout: dict, function: str | None = None) -> list:
+    """[(name, section)] of the records the first argument of *function* may name
+    in *layout*, in section order; every named record when the registry does not
+    say what the function takes. Names are the flattened ones a run knows
+    (`cell_1/Machine`)."""
+    try:
+        layout = flatten(layout)
+    except SubmodelError:
+        pass                    # a model that cannot be expanded still has its top level
+    out = []
+    for section in name_sections(function or "") or _ALL_SECTIONS:
+        records = layout.get(section)
+        for record in records if isinstance(records, list) else ():
+            name = record.get("name") if isinstance(record, dict) else None
+            if isinstance(name, str) and name:
+                out.append((name, section))
+    return out
 
 
 @contextmanager

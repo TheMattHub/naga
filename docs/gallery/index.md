@@ -3,7 +3,7 @@
 
 # Gallery
 
-The 52 models that ship in the package, by kind. Each runs as it is.
+The 54 models that ship in the package, by kind. Each runs as it is.
 
 | Page | Models |
 |---|---|
@@ -15,7 +15,7 @@ The 52 models that ship in the package, by kind. Each runs as it is.
 | [Services](services.md) | Call centre on real dates, Walk-in clinic (library assets), Walk-in clinic digital twin, Emergency department with patient agents, Impatient customers (balking and reneging) |
 | [Supply chain](supply-chain.md) | (s, S) inventory with backorders, Two-echelon supply chain (library assets) |
 | [System dynamics](system-dynamics.md) | Bass diffusion, Inventory with lead time, Population (logistic), SIR epidemic, Training pipeline with attrition, Workforce (goal-seeking) |
-| [Teaching](teaching.md) | Chance-based branching (DECIDE), HOLD on a store's contents, Delay, seize/release and signal HOLD, Policy-routed parallel servers, Single server (M/M/1), Process time lookup table, Two tellers (resource set) |
+| [Teaching](teaching.md) | Chance-based branching (DECIDE), HOLD on a store's contents, Delay, seize/release and signal HOLD, Policy-routed parallel servers, Single server (M/M/1), Single server, general service times (M/G/1), Process time lookup table, Tank: fill, overflow and run dry, Two tellers (resource set) |
 
 ## Run one, read one
 
@@ -30,6 +30,6 @@ Some models use submodels that came from the asset libraries of a separate produ
 
 ## How the numbers are made
 
-`tools/gen_engine_docs.py` runs every model and writes these pages: seed 0, the model's own run length and warm-up, and as many replications as the model itself asks for, at most 3. Each number is the mean over those replications, at three significant digits, with the half-width of its 95% Student-t interval when there is more than one replication. A test regenerates every page and compares, so a number here is what the engine gives, on the version these pages were built from. Few replications make wide intervals: these are illustrations, not results to cite.
+`tools/gen_engine_docs.py` runs every model and writes these pages: seed 0, the model's own run length and warm-up, and as many replications as the model itself asks for, at most 3. Each number is the mean over those replications, at three significant digits, with the half-width of its 95% Student-t interval when there is more than one replication. A test regenerates every page and compares, so a number here is what the engine gives, on the version these pages were built from. Few replications make wide intervals: these are illustrations, not results to cite. The models whose answer is known exactly are compared with it on [Reference models](../reference-models.md).
 
 The diagrams are the model's own blocks and links, written as Mermaid text. They are drawn by a script your browser loads from unpkg.com, the one request these pages make to another site; without it a diagram shows as its text. A model of stocks and flows or of agents alone has no blocks to draw.

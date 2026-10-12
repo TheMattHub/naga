@@ -925,7 +925,11 @@ def _summary(doc: dict) -> list[str]:
     if len(shown["scores"]["lines"]) > 1:
         lines += [_show(line, 1000) for line in shown["scores"]["lines"][1:]]
     if shown["recommend"]:
-        lines.append("recommend: " + _show(shown["recommend"]["lines"][0], 1000))
+        # Plainest form (D358): what stands, the recommendation and the outbox first; the
+        # rows; then the basis, indented. Nothing is hidden behind a flag.
+        lead = shown["recommend"]["lead"]
+        lines.append("recommend: " + _show(lead[0], 1000))
+        lines += ["  " + _show(line, 1000) for line in lead[1:]]
         lines += [f"  {'' if rank is None else f'{rank:g}. '}{_show(action, 120)}: {_show(verdict)}"
                   + ("" if effect is None else f", effect {effect:+.4g}"
                      + ("" if None in (low, high) else f" [{low:.4g}, {high:.4g}]")
@@ -933,7 +937,8 @@ def _summary(doc: dict) -> list[str]:
                   + (f", {_show(status)}" if status else "") + (f" ({_show(ident)})" if ident else "")
                   for rank, action, effect, low, high, confidence, verdict, status, ident
                   in shown["recommend"]["rows"]]
-        lines += [_show(line, 1000) for line in shown["recommend"]["lines"][2:]]
+        fold = shown["recommend"]["fold"]       # the KPI line, then effects; ADVICE is the page's
+        lines += ["  basis: " + _show(fold[0], 1000)] + ["    " + _show(line, 1000) for line in fold[2:]]
     lines += [f"{_show(table(p).get('code'))}: {_show(table(p).get('message'))}"
               for p in doc.get("problems") or []]
     return lines

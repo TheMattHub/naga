@@ -9,8 +9,9 @@ import pytest
 from conftest import chain, create, delay, dispose, layout
 
 from nagasim.core.context import build_context
-from nagasim.core.debugger import Stops, entity_view, readonly_expression, watch_values
-from nagasim.core.expressions import ExpressionError
+from nagasim.core.debugger import (Stops, entity_view, readonly_expression, watch_functions,
+                                   watch_names, watch_values)
+from nagasim.core.expressions import FUNCTIONS, ExpressionError, functions_with
 from nagasim.core.session import SimSession
 from nagasim.core.sim_classes import Entity
 from nagasim.core.trace import TraceRecorder
@@ -516,3 +517,31 @@ def test_stops_steps_and_reads_around_decisions_leave_the_game_as_it_was(model):
     assert debugged.game_log == plain.game_log          # entry for entry, "step" included
     _frames_equal(got, expected)
     _frames_equal(SimSession.replay(doc, 0, plain.game_log), expected)
+
+
+# -- what a watch field offers (composing a watch, D360) ---------------------------
+def test_watch_functions_are_the_registry_minus_what_a_watch_cannot_read():
+    hints = watch_functions()
+    assert set(hints) <= set(FUNCTIONS) and not set(hints) & set(functions_with("sampler"))
+    assert not {"NEAR", "SMOOTH", "INITIAL"} & set(hints)
+    assert hints["NQ"] == 'NQ("name")' and hints["PI"] == "PI()"
+    assert hints["TS"] == 'TS("name"[, b])' and hints["min"] == "min(a, ...)"
+    assert hints["IF"] == "IF(a, b, c)"
+    for hint in hints.values():         # the hint, less its optional part, is a valid watch
+        call = hint.split("[")[0].replace(", ...", "")
+        readonly_expression(call if call.endswith(")") else call + ")")
+
+
+def test_watch_names_follow_the_function_and_are_the_flattened_names():
+    doc = _load("two_cell_line.json")
+    assert ("cell_1/Machine", "resources") in watch_names(doc, "NQ")
+    assert {section for _, section in watch_names(doc, "NQ")} == {"resources"}
+    doc = _line(resources=[{"name": "Server", "capacity": 1}],
+                resource_sets=[{"name": "Crew", "members": ["Server"]}],
+                variables=[{"name": "x", "initial": 0}], levels="not a list")
+    assert watch_names(doc, "NQ") == [("Server", "resources"), ("Crew", "resource_sets")]
+    assert watch_names(doc, "VAR") == [("x", "variables")] and watch_names(doc, "LEVEL") == []
+    assert ("delay_1", "blocks") in watch_names(doc, "NS")
+    everything = watch_names(doc)       # a function the registry says nothing about: all
+    assert everything == watch_names(doc, "DISTANCE") == watch_names(doc, "max")
+    assert {"Server", "Crew", "x", "delay_1"} <= {name for name, _ in everything}

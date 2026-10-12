@@ -3,7 +3,7 @@
 
 # Teaching
 
-7 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+9 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
 
 ## Chance-based branching (DECIDE)
 
@@ -163,6 +163,32 @@ flowchart LR
 | `system/Avg Queue Length` | 2.39 | 1.2 |
 | `system/Avg Resource Usage %` | 76.5 | 6.3 |
 
+## Single server, general service times (M/G/1)
+
+The single-server queue with Poisson arrivals (one a minute) and a service time that is not exponential: uniform between 0.2 and 1.4 minutes, mean 0.8. The server is as busy as in an M/M/1 queue of the same load (80%), but the queue is shorter, because the service time varies less. Read the Server's average queue length: the Pollaczek-Khinchine formula gives lambda^2 E[S^2] / (2 (1 - rho)) = 0.76 / 0.4 = 1.9.
+
+```console
+naga run single_server_general --replications 3
+```
+
+```mermaid
+flowchart LR
+    b0["create_1 (CREATE)"]
+    b1["process_1 (PROCESS)"]
+    b2["dispose_1 (DISPOSE)"]
+    b0 --> b1
+    b1 --> b2
+```
+
+3 replications, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 5,010 | 170 |
+| `system/Avg Throughput Time` | 2.77 | 0.11 |
+| `system/Avg Queue Length` | 1.97 | 0.049 |
+| `system/Avg Resource Usage %` | 80.6 | 2.8 |
+
 ## Process time lookup table
 
 Process time by product and station, read from a 2-D lookup table. Deterministic on purpose: one WIDGET and one GADGET (entity types are upper-cased by the engine, so the table's keys are too), far enough apart that neither ever queues, so every KPI is exact by hand.
@@ -192,6 +218,20 @@ flowchart LR
 | `system/Avg Throughput Time` | 7.5 |  |
 | `system/Avg Queue Length` | 0 |  |
 | `system/Avg Resource Usage %` | 6.82 |  |
+
+## Tank: fill, overflow and run dry
+
+A tank of 100 litres that starts with 20, a pump that delivers 6 litres a minute for 40 minutes and then stops, and a constant demand of 2 litres a minute. Nothing is random and no time step is involved: the level moves in straight lines and the engine computes the instants it reaches a bound. Read the Tank's row: it is full from minute 20 to 40 (80 litres spilled), empty from minute 90 (20 litres of demand unmet), and holds 57 litres on average over the 100 minutes.
+
+```console
+naga run tank_fill_and_drain
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `level/Tank/Average` | 57 |  |
 
 ## Two tellers (resource set)
 

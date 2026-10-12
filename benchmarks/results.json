@@ -1,0 +1,165 @@
+{
+  "date": "2026-10-13",
+  "quick": false,
+  "python": "3.12.4",
+  "machine": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel, 20 logical CPUs, Windows 11",
+  "versions": {
+    "SimPy": "4.1.1",
+    "salabim": "26.0.8",
+    "Ciw": "3.2.7",
+    "Naga": "0.6.0"
+  },
+  "settings": {
+    "run_length": 10000,
+    "warmup": 1000,
+    "replications": 10,
+    "repeats": 3
+  },
+  "customers": 100000.0,
+  "models": {
+    "mm1": {
+      "title": "M/M/1 queue",
+      "theory": 4.000000000000002,
+      "rows": {
+        "SimPy": {
+          "mean": 3.9958139060674585,
+          "ci95": 0.17421985100245424,
+          "seconds": 0.578125,
+          "customers_per_second": 172972.97297297296
+        },
+        "salabim": {
+          "mean": 3.9958139060674585,
+          "ci95": 0.17421985100245424,
+          "seconds": 15.53125,
+          "customers_per_second": 6438.631790744467
+        },
+        "Ciw": {
+          "mean": 4.315453051510906,
+          "ci95": 0.3415858531195017,
+          "seconds": 1.03125,
+          "customers_per_second": 96969.69696969698
+        },
+        "Naga": {
+          "mean": 3.98148,
+          "ci95": 0.2211400652685191,
+          "seconds": 3.21875,
+          "customers_per_second": 31067.961165048542
+        },
+        "Naga, logs and sampler off": {
+          "mean": 3.98148,
+          "ci95": 0.2211400652685191,
+          "seconds": 2.46875,
+          "customers_per_second": 40506.329113924054
+        }
+      }
+    },
+    "mm3": {
+      "title": "M/M/3 queue",
+      "theory": 6.011235955056181,
+      "rows": {
+        "SimPy": {
+          "mean": 6.100560440293472,
+          "ci95": 0.3570115590484057,
+          "seconds": 0.625,
+          "customers_per_second": 160000.0
+        },
+        "salabim": {
+          "mean": 6.100560440293472,
+          "ci95": 0.3570115590484057,
+          "seconds": 16.078125,
+          "customers_per_second": 6219.630709426628
+        },
+        "Ciw": {
+          "mean": 6.049231391217597,
+          "ci95": 0.3799473080379637,
+          "seconds": 1.078125,
+          "customers_per_second": 92753.62318840579
+        },
+        "Naga": {
+          "mean": 5.9433,
+          "ci95": 0.32722107313833687,
+          "seconds": 3.25,
+          "customers_per_second": 30769.23076923077
+        },
+        "Naga, logs and sampler off": {
+          "mean": 5.9433,
+          "ci95": 0.32722107313833687,
+          "seconds": 2.46875,
+          "customers_per_second": 40506.329113924054
+        }
+      }
+    },
+    "tandem": {
+      "title": "Line of 3 stations",
+      "theory": 7.000000000000002,
+      "rows": {
+        "SimPy": {
+          "mean": 7.418107038135702,
+          "ci95": 0.4572492982690262,
+          "seconds": 1.421875,
+          "customers_per_second": 70329.67032967033
+        },
+        "salabim": {
+          "mean": 6.929561251361624,
+          "ci95": 0.3858921853546156,
+          "seconds": 20.328125,
+          "customers_per_second": 4919.292851652575
+        },
+        "Ciw": {
+          "mean": 6.98772690123622,
+          "ci95": 0.39883444678842117,
+          "seconds": 2.96875,
+          "customers_per_second": 33684.21052631579
+        },
+        "Naga": {
+          "mean": 7.03073,
+          "ci95": 0.23339284754326883,
+          "seconds": 7.34375,
+          "customers_per_second": 13617.021276595744
+        },
+        "Naga, logs and sampler off": {
+          "mean": 7.03073,
+          "ci95": 0.23339284754326883,
+          "seconds": 5.578125,
+          "customers_per_second": 17927.17086834734
+        }
+      }
+    },
+    "jackson": {
+      "title": "Job shop, 3 stations with rework",
+      "theory": 8.376087901991639,
+      "rows": {
+        "SimPy": {
+          "mean": 8.456755241277012,
+          "ci95": 0.3529620316529564,
+          "seconds": 1.359375,
+          "customers_per_second": 73563.2183908046
+        },
+        "salabim": {
+          "mean": 8.494519634723595,
+          "ci95": 0.256818361138003,
+          "seconds": 20.625,
+          "customers_per_second": 4848.484848484848
+        },
+        "Ciw": {
+          "mean": 8.47428454238123,
+          "ci95": 0.34163903906996285,
+          "seconds": 2.859375,
+          "customers_per_second": 34972.67759562842
+        },
+        "Naga": {
+          "mean": 8.34827,
+          "ci95": 0.20803766967450565,
+          "seconds": 7.328125,
+          "customers_per_second": 13646.055437100213
+        },
+        "Naga, logs and sampler off": {
+          "mean": 8.34827,
+          "ci95": 0.20803766967450565,
+          "seconds": 5.640625,
+          "customers_per_second": 17728.53185595568
+        }
+      }
+    }
+  }
+}

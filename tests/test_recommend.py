@@ -755,28 +755,34 @@ def test_a_summary_words_the_recommendations_once_and_status_prints_them(tmp_pat
     doc = cycle.step()
     shown = monitor.summary(doc)["recommend"]
     won = doc["recommend"]["items"][0]
-    assert shown["lines"][0].startswith(f"On {KPI} (higher is better), from state ")
-    assert shown["lines"][1] == monitor.ADVICE and "not a promise about the plant" in monitor.ADVICE
+    assert shown["fold"][0].startswith(f"On {KPI} (higher is better), from state ")
+    assert shown["fold"][1] == monitor.ADVICE and "not a promise about the plant" in monitor.ADVICE
     assert shown["rows"][0] == [1, "set_capacity Server = 2", won["effect"], won["low"], won["high"],
                                 1.0, "better", "delivered", won["id"][:12]]
     assert shown["rows"][1][:2] == [None, "set_capacity Spare = 5"] and shown["rows"][1][6] == "no effect"
-    assert any(line.startswith("Outbox (file): 1 delivered") for line in shown["lines"])
+    assert any(line.startswith("Outbox (file): 1 delivered") for line in shown["lead"])
+    # D358: the standing action and the recommendation first, the outbox last; the rest folds.
+    assert shown["lead"][0].startswith("Recommended: set_capacity Server = 2, effect ")
+    assert shown["lead"][-1].startswith("Outbox (file)") and monitor.ADVICE not in shown["lead"]
     assert str(tmp_path) not in json.dumps(shown)           # no sink, no path
     replies(advisor.sink, {"id": won["id"], "decision": "taken", "by": "Ada"}, b"junk")
     for t in (12.5, 25.0):
         clock.mono = t
         doc = cycle.step()
-    lines = monitor.summary(doc)["recommend"]["lines"]
+    lines = monitor.summary(doc)["recommend"]["lead"]
     assert any(line.startswith("Taken and standing in every forecast since ") for line in lines)
-    assert any(line.startswith("Effect of set_capacity Server = 2: measured, ") for line in lines)
+    assert lines[0].startswith("Taken and standing") and lines[-1].startswith("Replies dropped")
+    assert not any(line.startswith("Recommended") for line in lines)     # it is answered
+    folded = monitor.summary(doc)["recommend"]["fold"]
+    assert any(line.startswith("Effect of set_capacity Server = 2: measured, ") for line in folded)
     assert "Replies dropped: 1 malformed." in lines and "Ada" not in json.dumps(lines)
     assert twin.main(["status", str(tmp_path / "out")]) == 0
     printed = capsys.readouterr().out
-    assert "recommend: On timeseries/block/p/out/max" in printed and "Taken and standing" in printed
+    assert "basis: On timeseries/block/p/out/max" in printed and "Taken and standing" in printed
     # No recommendation: its reason, in words; and a twin that was asked for none says nothing.
     for reason, text in monitor.NO_ADVICE.items():
         said = monitor.summary({"recommend": {"status": "none", "reason": reason, "items": []}})
-        assert text in said["recommend"]["lines"] and text.startswith("No recommendation: ")
+        assert text in said["recommend"]["lead"] and text.startswith("No recommendation: ")
     assert monitor.summary({})["recommend"] is None
     assert monitor.summary({"recommend": "text"})["recommend"]["rows"] == []      # a file's
     assert set(monitor.NO_ADVICE) == set(recommend.REASONS)
@@ -795,6 +801,9 @@ def test_the_page_shows_recommendations_and_no_sink(tmp_path):
     assert won["id"] not in text and "Ada" not in text and "q.jsonl" not in text
     assert str(tmp_path).replace("\\", "\\\\") not in text and str(tmp_path) not in text
     assert 'id="m-advice-rows"' in text and "Approve" not in text and "Reject" not in text
+    # D358: the explanation and the rows sit inside the one <details>, after the lead.
+    head = text.index('id="m-advice"')
+    assert head < text.index("<details>", head) < text.index('id="m-advice-fold"')         < text.index('id="m-advice-rows"') < text.index("</details>", head)
     assert "fetch(" not in text and "XMLHttpRequest" not in text and "<form" not in text
 
 
@@ -911,7 +920,7 @@ def test_a_standing_action_is_ended_through_the_outbox(tmp_path, capsys):
     assert "assumes" not in T.call("get_twin_forecast")["forecast"]
     # The candidate is compared again, and the surfaces say what ended.
     assert [i["verdict"] for i in doc["recommend"]["items"]] == ["better", "no_effect"]
-    lines = monitor.summary(doc)["recommend"]["lines"]
+    lines = monitor.summary(doc)["recommend"]["lead"]
     assert any(line.startswith("Ended ") and "set_capacity Server = 2" in line for line in lines)
     assert "Ada" not in json.dumps(doc)
     ledger = json.loads((tmp_path / "out" / recommend.LEDGER_FILE).read_text(encoding="utf-8"))

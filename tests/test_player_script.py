@@ -88,6 +88,14 @@ def test_the_sample_of_a_time_is_the_last_one_at_or_before_it():
     assert run_script("[sampleIndex([0], 3), sampleIndex([0, 0], 0)]") == [0, 0]
 
 
+def test_a_step_goes_to_the_next_sample_and_stops_at_the_ends():
+    times = [0.0, 10.0, 10.0, 20.0]
+    got = run_script("[[0, 1], [5, 1], [10, 1], [20, 1], [25, 1], [5, -1], [10, -1], [20, -1],"
+                     " [0, -1]].map(function (a) { return stepTime(TIMES, a[0], a[1]); })", TIMES=times)
+    assert got == [10.0, 10.0, 20.0, 20.0, 25.0, 0.0, 0.0, 10.0, 0.0]
+    assert run_script("stepTime([0], 0, 1)") == 0
+
+
 def test_a_real_tape_is_read_as_python_reads_it():
     layout, recorder = recorded("warehouse_forklifts.json")
     run = tape.TapeWriter(layout, "layout").run(recorder, 120)
@@ -187,7 +195,14 @@ fire("play", "click"); fire("play", "click"); flush(5);
 for (var i = 1; i < SCENARIOS.length; i += 1) {
   nodes.scenario.value = SCENARIOS[i]; fire("scenario", "change"); flush(8);
 }
-console.log(JSON.stringify({made: made.filter(function (tag, i) { return made.indexOf(tag) === i; }).sort(),
+nodes.seek.value = 0; fire("seek", "input"); flush(2);
+var at = [];
+fire("step", "click"); flush(2); at.push(Number(nodes.seek.value));
+fire("play", "click"); fire("step", "click"); flush(5); at.push(Number(nodes.seek.value), nodes.play.textContent);
+fire("back", "click"); flush(2); at.push(Number(nodes.seek.value));
+nodes.seek.value = 1000; fire("seek", "input"); flush(2);
+fire("step", "click"); flush(2); at.push(Number(nodes.seek.value));
+console.log(JSON.stringify({stepped: at, made: made.filter(function (tag, i) { return made.indexOf(tag) === i; }).sort(),
                             sources: sources, banned: banned, titles: titles}));
 """
 
@@ -203,6 +218,9 @@ def run_page(page: str) -> dict:
     assert done.returncode == 0, done.stderr[-2000:]
     report = json.loads(done.stdout)
     assert report["banned"] == []
+    first, second, play, back, end = report["stepped"]
+    # One sample forward, then another (pausing a playing page), one back, none past the end.
+    assert 0 < first < second and play == "Play" and back == first and end == 1000
     assert set(report["made"]) <= {"option", "tr", "th", "td", "div", "span"}
     assert set(report["sources"]) <= set(data["pics"])      # no `src` but a picture of the data
     assert report["titles"] == [data["title"]]

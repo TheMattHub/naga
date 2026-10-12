@@ -157,43 +157,40 @@ def _action(value) -> str:
 
 
 def _recommend(doc: dict) -> dict | None:
-    """The recommendations of a result as lines and rows (D309), or None for a twin that
-    was asked for none. A row: rank, action, effect, low, high, confidence, verdict, the
-    record's status, the first characters of its id. No sink, no path, no reply text."""
+    """The recommendations of a result in two parts (D358), or None for a twin that was asked
+    for none. `lead`: what stands now, the recommended action, the outbox -- always at least
+    the outbox line. `fold`: the basis and the explanation (KPI line, ADVICE, effects). Rows:
+    rank, action, effect, low, high, confidence, verdict, the record's status, the first
+    characters of its id. No sink, no path, no reply text."""
     if "recommend" not in doc:
         return None
     said = _table(doc.get("recommend"))
     box, items = _table(said.get("outbox")), _rows(said.get("items"))
-    lines = [f"On {_text(said.get('kpi'))[:200]} ({_text(said.get('better'))} is better)"
-             + (f", from state {_text(said.get('state'))[:12]}, seed {_g(said.get('seed'))}, "
-                f"{_g(said.get('replications'))} replications" if said.get("state") else "") + ".",
-             ADVICE]
+    lead = []
+    for standing in _rows(said.get("standing"))[:_ADVICE]:
+        lead.append(f"Taken and standing in every forecast since {_text(standing.get('since'))}: "
+                    f"{_action(standing.get('action'))}.")
+    for ended in _rows(said.get("ended"))[:_ADVICE]:
+        lead.append(f"Ended {_text(ended.get('ended'))}: {_action(ended.get('action'))} (taken "
+                    f"{_text(ended.get('since'))}); later forecasts no longer assume it.")
     if said.get("status") != "ok":
         reason = _text(said.get("reason"))
-        lines.append(NO_ADVICE.get(reason, f"No recommendation: {reason or 'no reason was given'}."))
+        lead.append(NO_ADVICE.get(reason, f"No recommendation: {reason or 'no reason was given'}."))
+    else:
+        better = [i for i in items if i.get("verdict") == "better"      # not yet answered
+                  and i.get("status") in ("delivered", "proposed")]
+        if better:
+            top = better[0]
+            lead.append(
+                f"Recommended: {_action(top.get('action'))}, effect {_g(top.get('effect'))} "
+                f"(95% interval {_g(top.get('low'))} to {_g(top.get('high'))})"
+                + (f"; {len(better) - 1} more in the table" if len(better) > 1 else "") + ".")
     if said.get("reproducible") is False:
-        lines.append("This set's state could not be kept: it does not reproduce, and none of "
-                     "it is delivered.")
-    for standing in _rows(said.get("standing"))[:_ADVICE]:
-        lines.append(f"Taken and standing in every forecast since {_text(standing.get('since'))}: "
-                     f"{_action(standing.get('action'))}.")
-    for ended in _rows(said.get("ended"))[:_ADVICE]:
-        lines.append(f"Ended {_text(ended.get('ended'))}: {_action(ended.get('action'))} (taken "
-                     f"{_text(ended.get('since'))}); later forecasts no longer assume it.")
-    for effect in _rows(said.get("effects"))[:_ADVICE]:
-        status = _text(effect.get("status"))
-        line = f"Effect of {_action(effect.get('action'))}: {_EFFECT.get(status, status)}"
-        if status == "measured":
-            line += (f", {_g(effect.get('observed'))} observed against a band of "
-                     f"{_g(effect.get('q05'))} to {_g(effect.get('q95'))} ("
-                     + ("inside" if effect.get("inside_interval") is True else "outside") + ")")
-        lines.append(line + ".")
-    if said.get("measurable") is False:
-        lines.append("The effect of an action taken cannot be measured on this KPI: a plant "
-                     "shows only what a counted block let out.")
+        lead.append("This set's state could not be kept: it does not reproduce, and none of "
+                    "it is delivered.")
     records = _table(box.get("records"))
     if box.get("sink"):
-        lines.append(
+        lead.append(
             f"Outbox ({_text(box.get('sink'))[:20]}): {_g(records.get('delivered'))} delivered "
             f"and unanswered, {_g(records.get('proposed'))} waiting, {_g(records.get('taken'))} "
             f"taken, {_g(records.get('rejected'))} rejected, {_g(records.get('expired'))} "
@@ -204,11 +201,26 @@ def _recommend(doc: dict) -> dict | None:
                    if key in ("unknown", "repeated", "early", "late", "not_standing",
                               "malformed") and _number(value)}
         if dropped:
-            lines.append("Replies dropped: " + ", ".join(
+            lead.append("Replies dropped: " + ", ".join(
                 f"{count:g} {kind}" for kind, count in sorted(dropped.items())) + ".")
     else:
-        lines.append("No outbox: the recommendations are shown here and written nowhere else.")
-    return {"lines": lines, "more": max(len(items) - _ADVICE, 0),
+        lead.append("No outbox: the recommendations are shown here and written nowhere else.")
+    fold = [f"On {_text(said.get('kpi'))[:200]} ({_text(said.get('better'))} is better)"
+            + (f", from state {_text(said.get('state'))[:12]}, seed {_g(said.get('seed'))}, "
+               f"{_g(said.get('replications'))} replications" if said.get("state") else "") + ".",
+            ADVICE]
+    for effect in _rows(said.get("effects"))[:_ADVICE]:
+        status = _text(effect.get("status"))
+        line = f"Effect of {_action(effect.get('action'))}: {_EFFECT.get(status, status)}"
+        if status == "measured":
+            line += (f", {_g(effect.get('observed'))} observed against a band of "
+                     f"{_g(effect.get('q05'))} to {_g(effect.get('q95'))} ("
+                     + ("inside" if effect.get("inside_interval") is True else "outside") + ")")
+        fold.append(line + ".")
+    if said.get("measurable") is False:
+        fold.append("The effect of an action taken cannot be measured on this KPI: a plant "
+                    "shows only what a counted block let out.")
+    return {"lead": lead, "fold": fold, "more": max(len(items) - _ADVICE, 0),
             "rows": [[_number(i.get("rank")), _action(i.get("action")), _number(i.get("effect")),
                       _number(i.get("low")), _number(i.get("high")), _number(i.get("confidence")),
                       _VERDICT.get(_text(i.get("verdict")), _text(i.get("verdict"))[:20]),
@@ -401,7 +413,8 @@ _BOTTOM = """<section><h2>Sources</h2><table id="m-sources" class="text"></table
 <section><h2>Forecast</h2><div id="m-forecast"></div>
 <table id="m-kpis"></table><table id="m-points"></table></section>
 <section id="m-advice-box"><h2>Recommendations</h2><div id="m-advice"></div>
-<table id="m-advice-rows" class="text"></table></section>
+<details><summary>Basis, explanation and the candidates compared</summary>
+<div id="m-advice-fold"></div><table id="m-advice-rows" class="text"></table></details></section>
 <section><h2>Scores</h2><div id="m-scores"></div><table id="m-score-rows"></table></section>
 <section id="m-counted-box"><h2>Counted by the plant</h2><p class="note" id="m-counted"></p>
 <table id="m-counters"></table></section>
@@ -458,10 +471,12 @@ function monitor(m, el, add, clear) {
   /* Read-only: a page opened from disk can send nothing, so it cannot approve. */
   el("m-advice-box").style.display = s.recommend ? "" : "none";
   clear(el("m-advice"));
+  clear(el("m-advice-fold"));
   clear(el("m-advice-rows"));
   if (s.recommend) {
-    s.recommend.lines.forEach(function (line, index) { add("p", el("m-advice"), line, index ? "note" : ""); });
-    if (s.recommend.more) { add("p", el("m-advice"), "+" + s.recommend.more + " more not listed", "note"); }
+    s.recommend.lead.forEach(function (line) { add("p", el("m-advice"), line, ""); });
+    s.recommend.fold.forEach(function (line) { add("p", el("m-advice-fold"), line, "note"); });
+    if (s.recommend.more) { add("p", el("m-advice-fold"), "+" + s.recommend.more + " more not listed", "note"); }
     if (s.recommend.rows.length) {
       rows("m-advice-rows", ["Rank", "Action", "Effect", "Low", "High", "Confidence", "Verdict",
                              "Status", "Id"], s.recommend.rows, "", function (r) {

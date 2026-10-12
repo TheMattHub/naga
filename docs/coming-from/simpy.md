@@ -119,9 +119,43 @@ change the model, or when the model also has stocks and flows or agents.
 
 ## Speed
 
-<!-- BENCHMARKS: measured against SimPy, salabim and Ciw on the same models, with the scripts
-     in the repository. This section is filled from those results and from nothing else. -->
+Naga runs on SimPy and does more per event, so on a model both can express it is slower than a
+bare SimPy loop. This is by how much, on four small queueing models that SimPy, salabim, Ciw and
+Naga can all express exactly: a single queue, a three-server queue, a line of three stations and
+a three-station job shop with rework.
 
-No measurement is published here yet. Naga does more per event than a bare SimPy loop (it
-records the statistics of every block and resource), so expect it to be slower on a model both
-can express; by how much will be stated here with the script that measured it.
+<!-- BENCHMARKS: benchmarks/results.md is written by benchmarks/compare.py from its
+     measurements. Nothing in the table is typed. -->
+
+--8<-- "benchmarks/results.md"
+
+How to read it:
+
+- **The same model, the same run.** Poisson arrivals, exponential service, first come first
+  served, the same run length, warm-up and number of replications in every library, each
+  written the way that library is normally used, one short file per library.
+- **Correct before fast.** A library is timed only if the theory's mean time in system lies
+  inside the confidence interval of its own estimate. The random numbers differ between
+  libraries, so the estimates do too.
+- **What is timed** is the CPU time of the whole run in one process: building the model, the
+  replications, and reading the one statistic. "Customers per second" divides the expected number
+  of arrivals, the same for every library, by that time.
+- **The libraries do not do the same work in that time.** The SimPy code keeps one number per
+  customer and nothing else. salabim keeps monitors on every resource and component. Ciw keeps
+  a record of every visit to a station. Naga collects the statistics of every block, resource
+  and queue, logs every entity and resource event, samples a time series, and builds its result
+  tables for each replication. The row "logs and sampler off" is Naga with
+  `"record_logs": false` and `"timeseries_points": 0` under `simulation`; the summary statistics
+  have no switch.
+- **The limits.** One machine, one Python version, small models with nothing but queues. A
+  model with expressions, schedules or failures does more per event and was not measured; nor
+  was memory. Take the ratios, not the seconds. In the salabim version measured, most of the
+  time goes to creating a component per customer, not to its event loop.
+
+The scripts are in the repository's `benchmarks/` folder. To measure on your machine:
+
+<!-- no-run: needs salabim and Ciw installed, and takes minutes -->
+```console
+$ pip install -r benchmarks/requirements.txt
+$ python benchmarks/compare.py
+```

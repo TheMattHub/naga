@@ -328,7 +328,7 @@ var out = {made: made.filter(function (tag, i) { return made.indexOf(tag) === i;
            banned: banned, sources: sources, hidden: nodes.bar.style.display};
 ["m-head", "m-state", "m-notes", "m-sources", "m-problems", "m-forecast", "m-kpis", "m-points",
  "m-events", "m-more", "now-t", "now-wip", "run-h", "foot", "m-scores", "m-score-rows",
- "m-counted", "m-counters"].forEach(function (id) {
+ "m-counted", "m-counters", "m-advice", "m-advice-fold", "m-advice-rows"].forEach(function (id) {
   out[id] = text(nodes[id]); });
 out["counted-hidden"] = nodes["m-counted-box"].style.display || "";
 out.stale = nodes["m-state"].className;
@@ -532,3 +532,20 @@ def test_the_script_shows_the_scores_and_the_counters(tmp_path):
                      live.stamp(doc["written"]) + 1.0)
     assert bare["counted-hidden"] == "none" and shown["counted-hidden"] == ""
     assert bare["m-scores"] == monitor.NO_SCORE["none_due"] and bare["m-score-rows"] == ""
+
+
+def test_the_script_leads_with_the_action_and_folds_the_explanation_escaped(tmp_path):
+    """D358: lead lines outside the fold, basis and rows inside it; a hostile name is text in both."""
+    page = monitor.Page(slow_line(), tmp_path / "m.html", every=5.0)
+    doc = result()
+    doc["recommend"] = {
+        "status": "ok", "kpi": HOSTILE, "better": "higher", "outbox": {"sink": "file"},
+        "items": [{"rank": 1, "verdict": "better", "status": "delivered", "effect": 1.0,
+                   "low": 0.5, "high": 1.5, "confidence": 1.0, "id": "a" * 64,
+                   "action": {"verb": "set_capacity", "target": HOSTILE, "value": 2}}]}
+    text = page.build(doc, [])
+    assert "<details>" in text and "<img src=x" not in text.replace(HOSTILE, "")
+    shown = run_panel(text, live.stamp(doc["written"]) + 1.0)
+    assert shown["m-advice"].startswith("Recommended: set_capacity " + HOSTILE)
+    assert monitor.ADVICE not in shown["m-advice"] and monitor.ADVICE in shown["m-advice-fold"]
+    assert HOSTILE in shown["m-advice-fold"] and HOSTILE in shown["m-advice-rows"]

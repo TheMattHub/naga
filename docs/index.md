@@ -33,6 +33,7 @@ Python 3.11 or later. It depends on SimPy, NumPy, pandas, SciPy and openpyxl.
 |---|---|
 | run something in a minute | [Quick start](quickstart.md) |
 | see what a model looks like and what it gives | [Gallery](gallery/index.md) |
+| check the engine against models with a known answer | [Reference models](reference-models.md) |
 | map what you know onto this | Coming from [SimPy](coming-from/simpy.md), [Arena](coming-from/arena.md), [AnyLogic](coming-from/anylogic.md), [Vensim](coming-from/vensim.md), [NetLogo](coming-from/netlogo.md) |
 | write a model file | [Model file format](model-file-format.md), [Blocks](reference/blocks.md) |
 | know what a part of a model does when it runs | [Modelling guide](modelling-guide/index.md) |

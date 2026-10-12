@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- Added: the engine's package carries `py.typed`, so a type checker reads its annotations
+  from an install.
+- Added: the HTML player has Step and Step back buttons that move the shown time by one
+  recorded sample and pause (the twin monitor page does not show them).
+- Changed: a recommendation on the monitor page and in `naga twin status` leads with what
+  stands, the recommended action and the outbox line; the basis, the explanation and the
+  compared candidates fold (a `<details>` block on the page, an indented "basis:" block in the
+  status text). Nothing is removed and the result documents are unchanged.
+- Added: **benchmarks.** `benchmarks/compare.py` measures Naga against raw SimPy, salabim and
+  Ciw on four queueing models with known theory, timing an implementation only when its result
+  agrees with it; the "Coming from SimPy" guide shows the measured table.
+- Added: **reference models**, a documentation page that sets eleven exact answers (queueing
+  formulas, a Jackson network, logistic, Bass and SIR closed forms, an agent epidemic's exact
+  mean final size, a tank followed by hand) beside what a run of the bundled model gives, with
+  its 95% interval; the page is generated and a test repeats every run.
+- Added: two bundled models, `single_server_general` (an M/G/1 queue with a uniform service
+  time) and `tank_fill_and_drain` (a tank that fills, overflows and runs dry, exact by hand).
+- Added: `core.debugger.watch_functions()` and `watch_names(layout, function)`, and
+  `expressions.name_sections(function)`: the functions a watch may call, with a call hint, and
+  the model names each one's first argument takes.
+
 ## 0.6.0 (2026-10-12)
 
 The first public release. Naga is a simulation engine built on SimPy: a model is a data file of

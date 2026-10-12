@@ -57,6 +57,7 @@ nav:
       - System dynamics: gallery/system-dynamics.md
       - Agent-based: gallery/agent-based.md
       - Games: gallery/games.md
+      - Reference models: reference-models.md
   - Coming from:
       - SimPy: coming-from/simpy.md
       - Arena: coming-from/arena.md

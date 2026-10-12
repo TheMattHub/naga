@@ -1,5 +1,5 @@
 """Generate the engine site's generated pages (`docs/reference/*.md`, `docs/gallery/*.md`,
-`docs/llms.txt`) from the live registries, the bundled models and the site's own nav.
+`docs/reference-models.md`, `docs/llms.txt`) from the live registries, the bundled models and the site's own nav.
 
     python tools/gen_engine_docs.py
 
@@ -955,7 +955,9 @@ def gallery_index(catalogue: dict) -> str:
               "of its 95% Student-t interval when there is more than one replication. A test "
               "regenerates every page and compares, so a number here is what the engine "
               "gives, on the version these pages were built from. Few replications make wide "
-              "intervals: these are illustrations, not results to cite.", "",
+              "intervals: these are illustrations, not results to cite. The models whose "
+              "answer is known exactly are compared with it on "
+              "[Reference models](../reference-models.md).", "",
               "The diagrams are the model's own blocks and links, written as Mermaid text. They "
               "are drawn by a script your browser loads from unpkg.com, the one request these "
               "pages make to another site; without it a diagram shows as its text. A model of "
@@ -971,6 +973,354 @@ def gen_gallery(out: Path, only: str | None = None) -> None:
     for category, models in catalogue.items():
         if only in (None, category):
             _write(out, f"{_slug(category)}.md", [gallery_page(category, models)])
+
+
+# ------------------------------------------------------- reference-models.md
+#
+# Bundled models whose answer is known in closed form, beside what a run of each gives.
+# The parameters are read from the model file and the run is made here: no number is
+# typed. `tests/test_reference_models.py` derives every formula below a second way,
+# repeats every run and asserts the exact value is inside the interval.
+
+REFERENCE_SEED = GALLERY_SEED
+
+
+def _layout(model: str) -> dict:
+    import json
+
+    return json.loads((MODELS / f"{model}.json").read_text(encoding="utf-8"))
+
+
+def _named(items: list, name: str) -> dict:
+    return next(item for item in items if item["name"] == name)
+
+
+def _aux(layout: dict, name: str) -> float:
+    return float(_named(layout["auxiliaries"], name)["expr"])
+
+
+def erlang_c_lq(lam: float, mu: float, servers: int) -> float:
+    """Mean number waiting in an M/M/c queue: Lq = p0 a^c rho / (c! (1 - rho)^2), with
+    a = lam / mu, rho = a / c and 1 / p0 = sum_{n<c} a^n / n! + a^c / (c! (1 - rho))."""
+    from math import factorial
+
+    a = lam / mu
+    rho = a / servers
+    tail = a ** servers / factorial(servers)
+    p0 = 1.0 / (sum(a ** n / factorial(n) for n in range(servers)) + tail / (1.0 - rho))
+    return p0 * tail * rho / (1.0 - rho) ** 2
+
+
+def open_network(layout: dict) -> tuple[dict, dict, dict]:
+    """A model of CREATE, PROCESS and chance DECIDE blocks as an open queueing network:
+    ({station: external arrival rate}, {station: {next station: probability}},
+    {station: (service rate, servers)}). Blocks that take no time are passed through."""
+    blocks = {block["name"]: block for block in layout["blocks"]}
+    out: dict[str, list[str]] = {}
+    for link in layout["links"]:
+        out.setdefault(link["source"], []).append(link["target"])
+
+    def station(name: str) -> str | None:
+        while blocks[name]["type"] not in ("PROCESS", "DISPOSE"):
+            (name,) = out[name]
+        return name if blocks[name]["type"] == "PROCESS" else None
+
+    def servers(resource: str) -> int:
+        for group in layout.get("resource_sets") or []:
+            if group["name"] == resource:
+                return sum(_named(layout["resources"], member)["capacity"] for member in group["members"])
+        return _named(layout["resources"], resource)["capacity"]
+
+    gamma: dict[str, float] = {}
+    routing: dict[str, dict] = {}
+    service: dict[str, tuple[float, int]] = {}
+    for name, block in blocks.items():
+        params = block["params"]
+        if block["type"] == "CREATE":
+            target = station(out[name][0])
+            gamma[target] = gamma.get(target, 0.0) + params["dist_params"]["rate"]
+        elif block["type"] == "PROCESS":
+            service[name] = (params["dist_params"]["rate"], servers(params["resource_name"]))
+            (after,) = out[name]
+            branches = (zip(out[after], blocks[after]["params"]["probs"])
+                        if blocks[after]["type"] == "DECIDE" else [(after, 1.0)])
+            routing[name] = {}
+            for target, prob in branches:
+                target = station(target)
+                if target is not None:
+                    routing[name][target] = routing[name].get(target, 0.0) + prob
+    return gamma, routing, service
+
+
+def station_rates(layout: dict) -> tuple[float, list[tuple[float, float, int]]]:
+    """(total external arrival rate, [(arrival rate, service rate, servers)] per station):
+    the traffic equations lam_i = gamma_i + sum_j lam_j p_ji, solved."""
+    import numpy as np
+
+    gamma, routing, service = open_network(layout)
+    names = list(service)
+    p = np.array([[routing[a].get(b, 0.0) for b in names] for a in names])
+    lam = np.linalg.solve(np.eye(len(names)) - p.T, np.array([gamma.get(n, 0.0) for n in names]))
+    return sum(gamma.values()), [(float(rate), *service[n]) for rate, n in zip(lam, names)]
+
+
+def exact_queue_length(layout: dict, horizon: float) -> float:
+    """Erlang C for the model's one station."""
+    _total, ((lam, mu, servers),) = station_rates(layout)
+    return erlang_c_lq(lam, mu, servers)
+
+
+def exact_pollaczek_khinchine(layout: dict, horizon: float) -> float:
+    """Lq = lam^2 E[S^2] / (2 (1 - lam E[S])), S uniform on [low, high]:
+    E[S] = (low + high) / 2, E[S^2] = (low^2 + low high + high^2) / 3."""
+    create, process = (next(b for b in layout["blocks"] if b["type"] == kind)["params"]
+                       for kind in ("CREATE", "PROCESS"))
+    lam, low, high = create["dist_params"]["rate"], process["dist_params"]["low"], process["dist_params"]["high"]
+    return lam ** 2 * (low * low + low * high + high * high) / 3.0 / (2.0 * (1.0 - lam * (low + high) / 2.0))
+
+
+def exact_network_time(layout: dict, horizon: float) -> float:
+    """W = sum_i L_i / gamma: each station an M/M/c queue at its traffic-equation rate
+    (Jackson's theorem), L_i = Lq_i + lam_i / mu_i, then Little's law on the whole shop."""
+    total, stations = station_rates(layout)
+    return sum(erlang_c_lq(lam, mu, c) + lam / mu for lam, mu, c in stations) / total
+
+
+def exact_logistic(layout: dict, horizon: float) -> float:
+    """P(t) = K / (1 + (K / P0 - 1) exp(-r t))."""
+    from math import exp
+
+    r, k = _aux(layout, "SD growth rate"), _aux(layout, "SD carrying capacity")
+    p0 = float(_named(layout["levels"], "SD Population")["initial"])
+    return k / (1.0 + (k / p0 - 1.0) * exp(-r * horizon))
+
+
+def exact_bass(layout: dict, horizon: float) -> float:
+    """A(t) = m (1 - exp(-(p + q) t)) / (1 + (q / p) exp(-(p + q) t)), from A(0) = 0."""
+    from math import exp
+
+    m, p, q = (_aux(layout, f"SD {name}") for name in ("market potential", "innovation coeff",
+                                                         "imitation coeff"))
+    decay = exp(-(p + q) * horizon)
+    return m * (1.0 - decay) / (1.0 + q / p * decay)
+
+
+def exact_sir_peak(layout: dict, horizon: float) -> float:
+    """I_max = I0 + S0 - rho (1 + ln(S0 / rho)), rho = gamma N / beta: the infected count
+    when S has fallen to rho, on the curve I + S - rho ln S = constant."""
+    from math import log
+
+    n, beta, gamma = (_aux(layout, f"SD {name}") for name in ("population", "beta", "gamma"))
+    i0 = float(_named(layout["levels"], "SD Infected")["initial"])
+    rho = gamma * n / beta
+    return n - rho * (1.0 + log((n - i0) / rho))
+
+
+def exact_busy_fraction(layout: dict, horizon: float) -> float:
+    """lam / (lam + mu): mean busy time 1 / mu over the mean cycle 1 / lam + 1 / mu."""
+    rates = layout["agent_types"][0]["parameters"]
+    return rates["arrival_rate"] / (rates["arrival_rate"] + rates["service_rate"])
+
+
+def exact_final_size(layout: dict, horizon: float) -> float:
+    """The mean number ever infected when the epidemic has died out, over the Markov chain
+    of (S, I) itself. From (S, I) the next event is an infection with probability
+    q = beta S / (beta S + gamma N), whatever I is, else a recovery; the epidemic ends at I = 0.
+    Level by level in S: visits[i] = entering[i] + (1 - q) visits[i + 1]."""
+    import numpy as np
+    from scipy.signal import lfilter
+
+    rates, (people,) = layout["agent_types"][0]["parameters"], layout["populations"]
+    n = people["count"]
+    infected = sum(row["count"] for row in people["initial"])
+    entering = np.zeros(n + 2)                  # probability of reaching this S with i infected
+    entering[infected] = 1.0
+    mean_s = 0.0
+    for s in range(n - infected, -1, -1):
+        q = rates["beta"] * s / (rates["beta"] * s + rates["gamma"] * n)
+        visits = lfilter([1.0], [1.0, q - 1.0], entering[::-1])[::-1]
+        mean_s += s * (1.0 - q) * visits[1]     # the last infected recovers: the end, at this S
+        entering = np.zeros(n + 2)
+        entering[2:] = q * visits[1:-1]         # an infection: S - 1, one more infected
+    return n - mean_s
+
+
+def _tank(layout: dict, horizon: float) -> tuple[float, float]:
+    """(time-average level, quantity spilled) of a tank filled at a constant rate until
+    the pump stops and drawn at a constant rate throughout: three straight lines."""
+    (tank,), (pump,) = layout["levels"], layout["timeseries_inputs"]
+    fill, stop = pump["values"][0], pump["step"]
+    draw = float(_named(layout["flows"], "draw")["rate"])
+    cap, start = tank["capacity"], tank["initial"]
+    full = (cap - start) / (fill - draw)            # rising at fill - draw
+    empty = stop + cap / draw                       # falling at draw from a full tank
+    assert full < stop and empty < horizon and pump["values"][1] == 0
+    area = (start + cap) / 2 * full + cap * (stop - full) + cap / 2 * (empty - stop)
+    return area / horizon, (fill - draw) * (stop - full)
+
+
+def exact_tank_average(layout: dict, horizon: float) -> float:
+    """The area under the three lines over the horizon."""
+    return _tank(layout, horizon)[0]
+
+
+def exact_tank_spilled(layout: dict, horizon: float) -> float:
+    """(fill - draw) x the time the tank stays full while the pump runs."""
+    return _tank(layout, horizon)[1]
+
+
+# name, method, bundled model, KPI key, what the page calls it, the closed form and its
+# text, run settings other than the model's own. The stochastic runs are sized to take a
+# few seconds each: the interval narrows with the square root of the simulated time.
+REFERENCE_CASES: tuple[tuple, ...] = (
+    ("M/M/1 queue", "Discrete-event", "single_server", "resource/Server/Queue Length Avg",
+     "mean number waiting", exact_queue_length,
+     "Lq = rho^2 / (1 - rho), rho = lambda / mu",
+     {"replications": 20, "run_length": 10500, "warmup": 500}),
+    ("M/M/2 queue (Erlang C)", "Discrete-event", "two_teller_set", "resource/Tellers/Queue Length Avg",
+     "mean number waiting", exact_queue_length,
+     "Lq = p0 a^c rho / (c! (1 - rho)^2), a = lambda / mu, rho = a / c, "
+     "1 / p0 = sum over n < c of a^n / n! + a^c / (c! (1 - rho))",
+     {"replications": 20, "run_length": 5500, "warmup": 500}),
+    ("M/G/1 queue (Pollaczek-Khinchine)", "Discrete-event", "single_server_general",
+     "resource/Server/Queue Length Avg", "mean number waiting", exact_pollaczek_khinchine,
+     "Lq = lambda^2 E[S^2] / (2 (1 - rho)), rho = lambda E[S]", {}),
+    ("Open Jackson network", "Discrete-event", "job_shop_jackson", "system/Avg Throughput Time",
+     "mean time in the shop", exact_network_time,
+     "W = sum of L_i / gamma: station i an M/M/c queue at the rate lambda_i of the traffic "
+     "equations lambda_i = gamma_i + sum over j of lambda_j p_ji, L_i = Lq_i + lambda_i / mu_i",
+     {"replications": 10, "run_length": 6500, "warmup": 500}),
+    ("Logistic growth", "System dynamics", "sd_population", "level/population_1/SD Population/Final",
+     "population at t = 25", exact_logistic,
+     "P(t) = K / (1 + (K / P0 - 1) exp(-r t))", {"run_length": 25}),
+    ("Bass diffusion", "System dynamics", "sd_bass_diffusion", "level/bass_diffusion_1/SD Adopters/Final",
+     "adopters at t = 10", exact_bass,
+     "A(t) = m (1 - exp(-(p + q) t)) / (1 + (q / p) exp(-(p + q) t))", {"run_length": 10}),
+    ("SIR epidemic", "System dynamics", "sd_sir", "level/sir_1/SD Infected/Max",
+     "peak number infected", exact_sir_peak,
+     "I_max = N - rho (1 + ln(S0 / rho)), rho = gamma N / beta", {}),
+    ("Busy/idle cycle", "Agent-based", "agents_server_utilization",
+     "agent/server_utilization_1/Servers/Busy/Avg Count", "share of the time busy",
+     exact_busy_fraction, "lambda / (lambda + mu)", {"replications": 10}),
+    ("SIR epidemic of agents", "Agent-based", "agents_sir_agents",
+     "agent/sir_agents_1/SIR People/R/Final", "final number recovered", exact_final_size,
+     "the mean of N - S when the last infected agent recovers, summed over every path of "
+     "the Markov chain: from (S, I) the next event is an infection with probability "
+     "beta S / (beta S + gamma N), else a recovery", {"replications": 20, "run_length": 300}),
+    ("Tank, average level", "Rate-based", "tank_fill_and_drain", "level/Tank/Average",
+     "time-average level", exact_tank_average,
+     "the area under three straight lines (rise to full, full, fall to empty) over the run", {}),
+    ("Tank, overflow", "Rate-based", "tank_fill_and_drain", "level/Tank/Spilled",
+     "quantity spilled", exact_tank_spilled,
+     "(fill - draw) x the time the tank is full while the pump runs", {}),
+)
+
+
+def _replications(case: tuple) -> int:
+    return int(case[7].get("replications") or _layout(case[2])["simulation"].get("replications") or 1)
+
+
+def reference_result(case: tuple) -> tuple[float, float, float, int]:
+    """(exact value, the run's mean, its 95% half-width, replications) of one case; the
+    half-width is NaN for a run of one replication."""
+    import logging
+
+    from nagasim.api import run_model
+
+    _name, _method, model, key, _quantity, exact, _formula, run = case
+    layout = _layout(model)
+    replications = _replications(case)
+    logging.disable(logging.WARNING)
+    try:
+        kpis = run_model(str(MODELS / f"{model}.json"), seed=REFERENCE_SEED,
+                         **{**run, "replications": replications}).kpis()
+    finally:
+        logging.disable(logging.NOTSET)
+    row = kpis[kpis["metric"] == key].iloc[0]
+    horizon = float(run.get("run_length") or layout["simulation"]["time_limit"])
+    return float(exact(layout, horizon)), float(row["mean"]), float(row["ci95"]), replications
+
+
+def reference_command(case: tuple) -> str:
+    """The command that makes the case's run: the seed is the command's default."""
+    model, run = case[2], case[7]
+    asked = int(_layout(model)["simulation"].get("replications") or 1)
+    flags = [f"--{name.replace('_', '-')} {value}" for name, value in run.items()
+             if not (name == "replications" and value == asked)]
+    return " ".join([f"naga run {model}", *flags])
+
+
+def reference_row(case: tuple, result: tuple) -> str:
+    """One line of the table, from the case's `reference_result`."""
+    name, method, model, _key, quantity, _exact, _formula, _run = case
+    exact, mean, half, replications = result
+    if replications > 1:
+        interval = f"{_sig(mean - half)} to {_sig(mean + half)}"
+        inside = "yes" if abs(exact - mean) <= half else "**no**"
+    else:
+        interval, inside = "no randomness", "equal" if _sig(exact) == _sig(mean) else "**no**"
+    return (f"| {name} | {method} | `{model}` | {quantity} | {_sig(exact)} | {_sig(mean)} | "
+            f"{interval} | {inside} | {replications} | {REFERENCE_SEED} |")
+
+
+def reference_page(rows: list[str]) -> str:
+    """The page around its table rows (`reference_row` of every case, in order)."""
+    random = sum(1 for case in REFERENCE_CASES if _replications(case) > 1)
+    lines = ["# Reference models", "",
+             "Models whose answer is known exactly, from a formula found in the textbooks of "
+             "the subject, beside what the engine gives when it runs them. Every model here is "
+             "one of the [bundled models](gallery/index.md), so each line can be repeated "
+             "with one command.", "",
+             "| Case | Method | Model | Quantity | Exact | Naga | 95% interval | Exact inside | "
+             "Replications | Seed |", "|---|---|---|---|---|---|---|---|---|---|",
+             *rows, "",
+             "## How to read it", "",
+             "**Exact** is the formula's value, computed from the parameters in the model "
+             "file. **Naga** is the mean over the replications of a run made when this page "
+             "was generated, and the interval is its 95% Student-t confidence interval over "
+             "those replications. Numbers are printed at three significant digits; "
+             "\"inside\" is decided before rounding.", "",
+             f"A 95% interval misses the true value one time in twenty by chance. {random} "
+             "lines here have an interval, so a \"no\" somewhere in the table is expected "
+             f"for about one seed in {round(1 / (1 - 0.95 ** random))}, with nothing wrong. "
+             "Where a line has no interval, the model has no randomness and the two numbers "
+             "are compared as printed.", "",
+             "The intervals are a few percent wide because the runs are "
+             "kept to a few seconds each. An interval narrows with the square root of the "
+             "simulated time: give a command below a longer `--run-length` or more "
+             "`--replications` to see it close in on the exact value.", "",
+             "`tools/gen_engine_docs.py` makes the runs and writes this page; no number on "
+             "it is typed. A test derives each value a second way (the Markov chain summed "
+             "state by state, or the differential equation integrated numerically), "
+             "repeats each run, and fails when the exact value is "
+             "outside the interval or when a line here is not what the run gives.", "",
+             "## The cases"]
+    seen = set()
+    for case in REFERENCE_CASES:
+        name, _method, model, key, quantity, _exact, formula, _run = case
+        info = _layout(model)["info"]
+        lines += ["", f"### {name}", "",
+                  f"{info['title']} (`{model}`), {quantity}: the KPI `{key}`.", "",
+                  f"Exact: {formula}.", ""]
+        command = reference_command(case)
+        if command in seen:
+            lines += ["The same run as the line above."]
+            continue
+        seen.add(command)
+        if _replications(case) > 1:
+            lines += ["<!-- no-run: takes several seconds; a test of its own repeats this run -->"]
+        lines += ["```console", command, "```"]
+    lines += ["", "## What this does not show", "",
+              "Agreement on these cases says the engine's clock, queues, random streams, "
+              "integrators and statistics are right where a formula can check them. It says "
+              "nothing about a model that has no formula, which is most models: for those, "
+              "see [Model assertions](model-assertions.md) and [Experiments](experiments.md)."]
+    return "\n".join(lines)
+
+
+def gen_reference_models(out: Path) -> None:
+    rows = [reference_row(case, reference_result(case)) for case in REFERENCE_CASES]
+    _write(out, "reference-models.md", [reference_page(rows)])
 
 
 # ------------------------------------------------------------------ llms.txt
@@ -1049,6 +1399,7 @@ def main() -> None:
     for generate in REFERENCE:
         generate(DOCS / "reference")
     gen_gallery(DOCS / "gallery")
+    gen_reference_models(DOCS)
     gen_llms(DOCS)
     sys.stdout.write(f"gen_engine_docs: wrote {DOCS}\n")
 

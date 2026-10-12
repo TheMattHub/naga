@@ -11,8 +11,8 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 
 ## Gallery
 
-- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 52 models that ship in the package, by kind.
-- [Teaching](https://thematthub.github.io/naga/gallery/teaching.html): 7 of the bundled models.
+- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 54 models that ship in the package, by kind.
+- [Teaching](https://thematthub.github.io/naga/gallery/teaching.html): 9 of the bundled models.
 - [Manufacturing](https://thematthub.github.io/naga/gallery/manufacturing.html): 11 of the bundled models.
 - [Logistics](https://thematthub.github.io/naga/gallery/logistics.html): 2 of the bundled models.
 - [Services](https://thematthub.github.io/naga/gallery/services.html): 5 of the bundled models.
@@ -21,6 +21,7 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 - [System dynamics](https://thematthub.github.io/naga/gallery/system-dynamics.html): 6 of the bundled models.
 - [Agent-based](https://thematthub.github.io/naga/gallery/agent-based.html): 12 of the bundled models.
 - [Games](https://thematthub.github.io/naga/gallery/games.html): 2 of the bundled models.
+- [Reference models](https://thematthub.github.io/naga/reference-models.html): Models whose answer is known exactly, from a formula found in the textbooks of the subject, beside what the engine gives when it runs them.
 
 ## Coming from
 

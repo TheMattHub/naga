@@ -684,6 +684,23 @@ def lookup_sections(*names: str) -> dict:
     return {name: LOOKUP_SECTION[name] for name in names}
 
 
+def name_sections(function: str) -> tuple:
+    """The layout sections whose records the first argument of *function* names,
+    () when it names none or the registry does not say (DISTANCE: a place is a
+    block or a network node). For a completer; validation has its own maps."""
+    tags = TRAITS.get(function, ())
+    if "resource_state" in tags:
+        return ("resources", "resource_sets")
+    if "store_state" in tags:
+        return ("blocks",)          # a Hold's or a Batch's store, under the block's name
+    if "population" in tags:
+        return ("populations",)
+    if function in ("TABLE", "TABLE_EXTRAPOLATE"):
+        return ("tables",)
+    section = LOOKUP_SECTION.get(function)
+    return (section,) if section and section != "network" else ()
+
+
 _NAMED_LOOKUPS = functions_with("named_lookup")
 # Recorded in `refs` the same way so an event-driven HOLD condition knows which
 # resource or store it reads (PHASE5 O4).

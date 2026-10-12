@@ -91,6 +91,18 @@ function sampleIndex(times, t) {
   return k;
 }
 
+/* The time of the sample after t (dir 1) or before it (dir -1); t itself when there is
+   none. A step is a sample: the tape keeps samples, not single events. */
+function stepTime(times, t, dir) {
+  var k = sampleIndex(times, t);
+  if (dir > 0) {
+    while (k < times.length - 1 && times[k] <= t) { k += 1; }
+    return times[k] > t ? times[k] : t;
+  }
+  while (k > 0 && times[k] >= t) { k -= 1; }
+  return times[k] < t ? times[k] : t;
+}
+
 /* The entries of this sample, each moved the share f of the way to its place in the
    next sample when it is there too. An entry is named by its first `named` fields;
    x and y are fields 2 and 3. One only in this sample stays put; one only in the next
@@ -420,6 +432,15 @@ function boot() {
     el("play").textContent = state.playing ? "Pause" : "Play";
     wake();
   });
+  function step(dir) {
+    state.playing = false;
+    el("play").textContent = "Play";
+    state.t = stepTime(run().t, state.t, dir);
+    state.k = -1; state.slides = [];
+    wake();
+  }
+  el("back").addEventListener("click", function () { step(-1); });
+  el("step").addEventListener("click", function () { step(1); });
   el("seek").addEventListener("input", function () {
     state.t = duration() * el("seek").value / 1000;
     state.k = -1; state.slides = [];
@@ -454,6 +475,8 @@ __HEAD__</head>
 <h1 id="title"></h1>
 <div id="bar">
 <button id="play" type="button">Play</button>
+<button id="back" type="button" aria-label="Step back">&lt;|</button>
+<button id="step" type="button" aria-label="Step">|&gt;</button>
 <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Time">
 <select id="speed" aria-label="Speed">
 <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
