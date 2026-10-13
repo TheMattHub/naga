@@ -83,6 +83,9 @@ A `signals` entry:
 | `resource` | A resource or a fleet of the model. |
 | `block` | A block of the flattened model. |
 | `level` | A level of the model. |
+| `fleet` | "vehicle", "load": a fleet of the model. |
+| `unit` | "vehicle", "load": which vehicle of the fleet, from 0 (default 0). |
+| `nodes` | "vehicle": plant value -> the network node the vehicle is at. |
 | `states` | Plant value -> busy, idle, blocked, down, up. |
 | `blocks` | Plant value -> block. |
 | `gone` | Values that end the entity (a null always does). |

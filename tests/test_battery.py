@@ -282,7 +282,7 @@ def test_warm_up_during_a_charge_resets_the_counters_and_keeps_the_charge():
     assert at(events, "charge_end") == [(pytest.approx(13.0 + charge_hours(10, 0.2, 0.9, 5)),
                                          pytest.approx(0.9))]
     assert mover.charge_trips == 0 and mover.drain_kwh == 0.0 and mover.trips == 0
-    assert mover.min_soc == pytest.approx(0.2)        # as it stood at the reset
+    assert mover.min_soc == pytest.approx(0.45)       # as it stood at the reset (#418)
     # Half an hour of the charge (0.2 -> 0.45) was warm-up: 10 x (0.9 - 0.45) kWh remain.
     assert chargers["dock"].grid_kwh == pytest.approx(4.5)
 

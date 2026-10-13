@@ -93,20 +93,24 @@ Engine module: stdlib + the engine's own imports only, no pandas, no Qt.
 from __future__ import annotations
 
 import logging
+import math
 
 from nagasim.core import calendar as cal
 from nagasim.core.block_registry import holding_types, queueing_types, service_types
+from nagasim.core.network import build_network
+from nagasim.core.timeunits import units_of
 from nagasim.core.problems import Problem, problem
 from nagasim.core.quantities import SECTION_FIELDS, field_factor, param, scaled
-from nagasim.core.utils import is_number as _number, timeout_at
+from nagasim.core.utils import is_number, timeout_at
 import simpy
 
+from nagasim.core import blocking, movers
 from nagasim.core.seizing import acquire, preempt_release, release
 from nagasim.core.sim_classes import Entity, spawn_entity
 
 log = logging.getLogger(__name__)
 
-__all__ = ["SECTION", "HOLDING_TYPES", "SERVICE_TYPES", "has_initial_state", "clock_of",
+__all__ = ["SECTION", "HOLDING_TYPES", "SERVICE_TYPES", "has_initial_state", "clock_of", "put_back",
            "validate_initial_state_structured", "apply", "default_warmup", "schedule_offset"]
 
 SECTION = "initial_state"
@@ -126,11 +130,18 @@ SERVICE_TYPES = service_types()
 _QUEUEING = frozenset(queueing_types()) | {"HOLD", "BATCH", "MATCH"}   # ... or in a store
 
 
+def _number(value) -> bool:
+    """A finite number. A state inside a model file is as untrusted as a state document,
+    which `state.check` holds to the same: no time or count is Infinity or NaN."""
+    return is_number(value) and math.isfinite(value)
+
+
 def has_initial_state(layout: dict) -> bool:
     """True when the model declares anything a warm start would act on."""
     state = layout.get(SECTION) or {}
     return bool(state.get("entities") or state.get("variables") or state.get("resources")
-                or state.get("levels") or state.get("clock") or state.get("arrivals"))
+                or state.get("levels") or state.get("clock") or state.get("arrivals")
+                or state.get("fleets"))
 
 
 def schedule_offset(layout: dict) -> float:
@@ -200,6 +211,8 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                       if isinstance(l, dict) for t in l.get("thresholds") or []
                       if isinstance(t, dict) and t.get("variable")}
     declared_res = {r.get("name") for r in layout.get("resources", [])}
+    declared_res |= {f.get("name") for f in layout.get("fleets") or []    # a fleet is one
+                     if isinstance(f, dict)}
     declared_levels = {l.get("name") for l in layout.get("levels", []) or []}
     conveyor_levels = {l.get("name") for l in layout.get("levels", []) or []
                        if isinstance(l, dict) and l.get("conveyor")}
@@ -320,7 +333,8 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
     for name, spec in (state.get("blocks") or {}).items():
         params = (blocks.get(name) or {}).get("params") or {}
         setup = spec.get("setup") if isinstance(spec, dict) else None
-        if not (params.get("setup") or params.get("setup_cost"))                 or not isinstance(setup, (str, int, float)) or isinstance(setup, bool):
+        if not (params.get("setup") or params.get("setup_cost")) \
+            or not isinstance(setup, (str, int, float)) or isinstance(setup, bool):
             problems.append(problem(
                 "E_INITIAL_BLOCK", f"initial_state: blocks.{name}.setup must be a text or a "
                 f"number, for a block of this model that has a changeover",
@@ -329,25 +343,45 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
     serving: dict = {}      # resource -> units the in-service entities hold
     waiting: dict = {}      # block -> entities queued in it
     flagged = set()         # resources an entry of its own already exceeds
-    for index, entry in enumerate(state.get("entities") or []):
+    entries = state.get("entities") or []
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+        # #420: everything below, and the run, reads each entry as an object
+        return problems + [problem(
+            "E_INITIAL_BLOCK", "initial_state: entities must be a list of objects, each "
+            "naming its block", f"/{SECTION}/entities",
+            hint="one object per entry: {\"block\": \"<name>\", \"count\": 1, ...}")]
+    for index, entry in enumerate(entries):
         at = f"/{SECTION}/entities/{index}"
         name = entry.get("block", "")
-        block = blocks.get(name)
+        block = blocks.get(name) if isinstance(name, str) else None     # #420: a list is no name
         if block is None:
             problems.append(problem(
-                "E_INITIAL_BLOCK", f"initial_state: unknown block '{name}'", f"{at}/block",
+                "E_INITIAL_BLOCK", f"initial_state: unknown block '{str(name)[:80]}'",
+                f"{at}/block",
                 hint="name a block of this model; a block inside a submodel is named "
                      "\"<instance>/<inner>\" once flattened"))
             continue
         btype = block.get("type", "").upper()
         # An entity on a link ARRIVES like any other: only one put inside needs a holder.
-        if btype not in HOLDING_TYPES and (entry.get("arrives") is None or btype == "CREATE"):
+        # A load on its trip is at its TRANSPORT (`_validate_fleets`); every other check of
+        # an entry holds for it too.
+        riding = btype == "TRANSPORT" and entry.get("trip") is not None
+        if btype not in HOLDING_TYPES and not riding \
+            and (entry.get("arrives") is None or btype == "CREATE"):
             problems.append(problem(
                 "E_INITIAL_BLOCK_TYPE",
                 f"initial_state: block '{name}' is a {btype}, which cannot hold entities",
                 f"{at}/block", block=name,
                 hint=f"inject into one of: {', '.join(HOLDING_TYPES)}"))
             continue
+
+        attributes = entry.get("attributes")
+        if attributes is not None and not (isinstance(attributes, dict)
+                                           and all(isinstance(k, str) for k in attributes)):
+            problems.append(problem(        # #419: each is set on the entity by its name
+                "E_INITIAL_BLOCK", f"initial_state: block '{name}': attributes must be an "
+                f"object of named values", f"{at}/attributes", block=name,
+                hint="for example {\"priority\": 2}"))
 
         count = entry.get("count", 0)
         if not isinstance(count, int) or isinstance(count, bool) or count < 0:
@@ -388,7 +422,7 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
             if entry.get("member") is not None:     # of a set: the member holds the units
                 resource = entry["member"]
             serving[resource] = serving.get(resource, 0) + in_service * quantity
-            if entry.get("arrives") is None:
+            if entry.get("arrives") is None and entry.get("place") is not False:
                 waiting[name] = waiting.get(name, 0) + count - in_service
             if capacity is not None and in_service * quantity > capacity:
                 flagged.add(resource)
@@ -400,7 +434,7 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                     hint="lower in_service, or raise the resource's capacity"))
 
         member = entry.get("member")
-        if member is not None and member not in sets.get(
+        if member is not None and entry.get("held_by") is None and member not in sets.get(
                 (block.get("params") or {}).get("resource_name"), ()):
             problems.append(problem(
                 "E_INITIAL_SET", f"initial_state: block '{name}': member '{member}' is not a "
@@ -456,6 +490,9 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 f"on an entry of one entity that is not in service", f"{at}/arrives", block=name,
                 hint="the absolute time an entity on a link reaches the block"))
 
+    _validate_places(layout, state, blocks, sets, serving, waiting, start, problems)
+    _validate_fleets(layout, state, blocks, start, problems)
+
     # Consistency over the whole state: a plant is where it goes wrong, and the engine does
     # not choose which observed entity to drop (D236).
     capacities = {r.get("name"): int(r.get("capacity", 1)) for r in layout.get("resources", [])}
@@ -476,7 +513,7 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 f"/{SECTION}/resources/{name}/busy",
                 hint="every busy unit needs an in_service entity at a block that seizes it"))
     for name, queued in waiting.items():
-        room = int((blocks[name].get("params") or {}).get("queue_capacity", 0) or 0)
+        room = _places(blocks[name])
         if room and queued > room:
             problems.append(problem(
                 "E_INITIAL_QUEUE_CAPACITY",
@@ -493,6 +530,270 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
             "/simulation/warmup",
             hint="set simulation.warmup to 0 for a warm-started model"))
     return problems
+
+
+def _places(block: dict) -> int:
+    """The places of a block's own finite space: a BUFFER's capacity, a station's
+    queue_capacity; 0 when it has none."""
+    params = block.get("params") or {}
+    key = "capacity" if str(block.get("type", "")).upper() == "BUFFER" else "queue_capacity"
+    value = params.get(key, 1 if key == "capacity" else 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
+def _validate_places(layout, state, blocks, sets, serving, waiting, start, problems) -> None:
+    """Blocking and finite buffers (D381, D382): `held_by`, `held_since` and `place` of the
+    waiting entries. Adds the units a blocked station keeps to *serving* and the places a
+    buffer's parts hold to *waiting*, so the capacity checks of the caller count them."""
+    out_links: dict = {}
+    for link in layout.get("links") or []:
+        if isinstance(link, dict):
+            out_links.setdefault(link.get("source"), []).append(link.get("target"))
+    kind = {name: str(b.get("type", "")).upper() for name, b in blocks.items()}
+    blockers = blocking.layout_blocking_graph(list(blocks.values()), out_links)[0]
+
+    def through(n) -> bool:
+        # what a held part crosses without leaving its holder: the transparent blocks and
+        # a buffer with no place
+        return kind.get(n) in blocking.TRANSPARENT_TYPES \
+            or (kind.get(n) == "BUFFER" and not _places(blocks[n]))
+
+    ends: dict = {}         # holder -> where a part it still holds can wait, walked once
+
+    def reaches(holder, target) -> bool:
+        if holder not in ends:
+            ends[holder] = blocking.stops(holder, lambda n: out_links.get(n, []),
+                                          lambda n: not through(n), through)
+        return target in ends[holder]
+
+    for index, entry in enumerate(state.get("entities") or []):
+        if not isinstance(entry.get("block"), str) or entry["block"] not in blocks:
+            continue
+        at, name = f"/{SECTION}/entities/{index}", entry["block"]
+        place, holder = entry.get("place"), entry.get("held_by")
+        if place is not None and (not isinstance(place, bool) or entry.get("in_service")
+                                  or entry.get("arrives") is not None
+                                  or (place is False and not _places(blocks[name]))):
+            problems.append(problem(
+                "E_INITIAL_BLOCK", f"initial_state: block '{name}': place must be true or false, "
+                f"on waiting entities, and false only at a block that has places",
+                f"{at}/place", block=name,
+                hint="false says the entity waits for a place of a BUFFER or of a queue_capacity"))
+        if holder is None:
+            continue
+        known = isinstance(holder, str) and holder in blocks
+        params = (blocks[holder].get("params") or {}) if known else {}
+        buffer = known and kind[holder] == "BUFFER" and _places(blocks[holder]) > 0
+        station = (known and kind[holder] in blocking.PROCESS_TYPES
+                   and params.get("action", "Seize Delay Release") == "Seize Delay Release"
+                   and bool(params.get("resource_name")) and holder in blockers)
+        # A part that has a place of the block it waits at was accepted there: nothing
+        # holds it any more.
+        if not (buffer or station) or entry.get("count") != 1 or entry.get("in_service") \
+                or entry.get("arrives") is not None or not reaches(holder, name) \
+                or (_places(blocks[name]) and place is not False):
+            problems.append(problem(
+                "E_INITIAL_BLOCK", f"initial_state: block '{name}': held_by must name a BUFFER "
+                f"with places, or a station that blocks after service, from which one waiting "
+                f"entity that has no place here can have come", f"{at}/held_by", block=name,
+                hint="the block that still holds the part: the buffer whose place it has, or "
+                     "the station that keeps its unit until the part is accepted"))
+            continue
+        if buffer:
+            waiting[holder] = waiting.get(holder, 0) + 1
+            continue
+        since, member = entry.get("held_since"), entry.get("member")
+        if since is not None and not (_number(since) and since <= start):
+            problems.append(problem(
+                "E_INITIAL_REMAINING", f"initial_state: block '{name}': held_since must be a "
+                f"time at or before the clock", f"{at}/held_since", block=name,
+                hint="the absolute time the station in held_by seized its unit"))
+        if member is not None and member not in sets.get(params.get("resource_name"), ()):
+            problems.append(problem(
+                "E_INITIAL_SET", f"initial_state: block '{name}': member '{member}' is not a "
+                f"member of the resource set the station in held_by seizes", f"{at}/member",
+                block=name, hint="member names which resource of the set holds the part"))
+            continue
+        resource = member if member is not None else params.get("resource_name")
+        quantity = params.get("quantity", 1)
+        serving[resource] = serving.get(resource, 0) + (quantity if isinstance(quantity, int)
+                                                        else 1)
+
+
+_STAGES = ("pickup", "load", "carry", "unload")
+
+
+def _validate_fleets(layout, state, blocks, start, problems) -> None:
+    """Fleets and vehicles (D384, D385): `initial_state.fleets` and the `trip` of each load.
+    Everything `MoverFleet.restore` and `Transport.resume` read is checked here, so neither
+    can meet a name the model does not have or a path the network does not."""
+    said = state.get("fleets")
+    trips = [(i, e) for i, e in enumerate(state.get("entities") or [])
+             if isinstance(e, dict) and e.get("trip") is not None]
+    if said is None and not trips:
+        return
+
+    def bad(text, at, hint="see the state page of the documentation: fleets and vehicles"):
+        problems.append(problem("E_INITIAL_FLEET", f"initial_state: {text}",
+                                f"/{SECTION}/{at}", hint=hint))
+
+    def time(value, past: bool) -> bool:
+        return _number(value) and (value <= start if past else value >= start)
+
+    if not isinstance(said, dict):
+        return bad("fleets must be an object of fleets, one record per vehicle", "fleets")
+    units = units_of(layout.get("simulation"))
+    try:
+        network = build_network(layout.get("network"), units)
+    except Exception:       # a broken network is the network section's own problem
+        return bad("the fleets need the model's network, which cannot be built", "fleets")
+
+    def path(a, b) -> bool:
+        return a == b or bool(network.path(a, b))
+
+    def overdue(fleet, record, loaded) -> bool:
+        """A drive that was due to end before the clock: the state contradicts itself."""
+        try:
+            speed = movers._speeds(fleet, units)[0 if loaded else 1]
+            route = network.path(record["node"], record["drive"]["to"], speed)
+            return record["drive"]["started"] + network.travel_time(route, speed) < start
+        except (TypeError, ValueError):     # a broken speed is the fleets section's own problem
+            return False
+
+    declared = {f.get("name"): f for f in layout.get("fleets") or [] if isinstance(f, dict)}
+    chargers = {c.get("name"): c for c in layout.get("chargers") or [] if isinstance(c, dict)}
+    zoned = any(isinstance(s, dict) and s.get("capacity") is not None
+                for s in (layout.get("network") or {}).get("segments") or ())
+    plugged: dict = {}
+    for name, spec in said.items():
+        at, fleet = f"fleets/{name}", declared.get(name)
+        vehicles = spec.get("vehicles") if isinstance(spec, dict) else None
+        count = fleet and (len([u for u in fleet.get("units") or [] if isinstance(u, dict)])
+                           or max(int(fleet.get("count", 1)), 1))
+        if fleet is None or not isinstance(vehicles, list) or len(vehicles) != count \
+                or not all(isinstance(v, dict) for v in vehicles):
+            bad(f"'{name}' must be a fleet of the model with one record per vehicle", at)
+            said = {k: v for k, v in said.items() if k != name}
+            continue
+        cursor = spec.get("cursor")
+        if cursor is not None and (not isinstance(cursor, int) or isinstance(cursor, bool)
+                                   or not -1 <= cursor < count):
+            bad(f"fleet '{name}': cursor must be -1 or the index of a vehicle", f"{at}/cursor")
+        # D386: what no vehicle record says is refused here as it is when a state is taken.
+        battery = fleet.get("battery") if isinstance(fleet.get("battery"), dict) else {}
+        kind = ("a gantry" if fleet.get("motion") == "gantry"
+                else "a worker fleet" if fleet.get("kind") == "worker"
+                else "scheduled charging" if battery.get("strategy") == "scheduled"
+                else "a drive under way on a network with segment capacities"
+                if zoned and any(v.get("drive") is not None for v in vehicles) else None)
+        if kind:
+            bad(f"fleet '{name}': a state cannot carry {kind}", at,
+                hint="see the coverage table of the state documentation")
+            said = {k: v for k, v in said.items() if k != name}
+            continue
+        for unit, record in enumerate(vehicles):
+            here, node = f"{at}/vehicles/{unit}", record.get("node")
+            drive, charge, until = record.get("drive"), record.get("charge"), record.get("until")
+            ok = isinstance(node, str) and network.has(node)
+            ok = ok and (record.get("idle_since") is None or time(record["idle_since"], True))
+            soc = record.get("soc")
+            ok = ok and (soc is None or (_number(soc) and soc <= 1 and bool(fleet.get("battery"))))
+            ok = ok and (until is None or (time(until, False) and drive is None))
+            if ok and drive is not None:
+                ok = (isinstance(drive, dict) and isinstance(drive.get("to"), str)
+                      and network.has(drive["to"]) and drive["to"] != node
+                      and path(node, drive["to"]) and time(drive.get("started"), True))
+            if ok and charge is not None:
+                station = chargers.get(charge["charger"]) if isinstance(charge, dict) \
+                    and isinstance(charge.get("charger"), str) else None
+                stage = charge.get("stage", "charge") if station else None
+                held, place = charge.get("held", True) if station else None, \
+                    charge.get("wait", 0) if station else None
+                ok = (station is not None and station.get("kind", "charge") == "charge"
+                      and bool(fleet.get("battery")) and isinstance(held, bool) and until is None
+                      and stage in ("drive", "wait", "charge")
+                      and (stage == "drive") == (drive is not None)
+                      and (stage != "drive" or drive["to"] == station.get("node"))
+                      and (stage == "drive" or node == station.get("node"))
+                      and (stage != "charge" or time(charge.get("until"), False))
+                      and (stage != "wait" or (held and isinstance(place, int)
+                                               and not isinstance(place, bool) and place >= 0)))
+                if ok and stage == "charge":
+                    plugged[charge["charger"]] = plugged.get(charge["charger"], 0) + 1
+            if not ok:
+                bad(f"fleet '{name}', vehicle {unit}: a record is a node of the network, and "
+                    f"optionally idle_since, soc, and one of drive (to, started), until or "
+                    f"charge (charger, held, stage, until, wait)", here,
+                    hint="times are absolute: started and idle_since at or before the clock, "
+                         "until at or after it; soc is at most 1; a drive needs a path")
+                said = {k: v for k, v in said.items() if k != name}
+                break
+    for name, used in plugged.items():
+        points = chargers[name].get("points", 1)
+        if not isinstance(points, int) or used > points:
+            bad(f"{used} vehicles charge at '{name}', which has {points} points",
+                "fleets", hint="the state shows more than the charger holds")
+
+    taken: dict = {}
+    for index, entry in trips:
+        at, name, trip = f"entities/{index}/trip", entry.get("block"), entry["trip"]
+        block = blocks.get(name) if isinstance(name, str) else None
+        fleet = ((block or {}).get("params") or {}).get("fleet")
+        block = block or {}
+        ok = (str(block.get("type", "")).upper() == "TRANSPORT" and isinstance(trip, dict)
+              and entry.get("count") == 1 and not entry.get("in_service")
+              and entry.get("arrives") is None and entry.get("held_by") is None
+              and fleet in said)
+        ok = ok and all(isinstance(trip.get(k), str) and network.has(trip[k])
+                        for k in ("origin", "destination"))
+        ok = ok and path(trip["origin"], trip["destination"])
+        ok = ok and isinstance(trip.get("target"), str) \
+            and str(blocks.get(trip["target"], {}).get("type", "")).upper() == "STATION"
+        unit = trip.get("unit") if ok else None
+        if ok and unit is None:
+            ok = trip.get("stage") is None
+        elif ok:
+            vehicles = said[fleet]["vehicles"]
+            ok = isinstance(unit, int) and not isinstance(unit, bool) \
+                and 0 <= unit < len(vehicles) and (fleet, unit) not in taken
+            record = vehicles[unit] if ok else {}
+            stage, drive = trip.get("stage", "carry"), record.get("drive")
+            goal = trip["origin"] if stage in ("pickup", "load") else trip["destination"]
+            ok = (ok and stage in _STAGES and record.get("charge") is None
+                  and (trip.get("unload") is None or (_number(trip["unload"])
+                                                      and trip["unload"] >= 0))
+                  and (drive is None or (stage in ("pickup", "carry") and drive["to"] == goal))
+                  and (record.get("until") is None or stage in ("load", "unload"))
+                  and path(record["node"], goal)
+                  and (stage in ("pickup", "carry") or record["node"] == goal))
+            taken[(fleet, unit)] = stage
+        if not ok:
+            bad(f"block '{name}': a trip is at a TRANSPORT block whose fleet the state lists, "
+                f"for one entity, with an origin and a destination node joined by a path, a "
+                f"target STATION and, once a vehicle has it, its unit and stage", at,
+                hint=f"stage is one of: {', '.join(_STAGES)}; a vehicle carries one trip")
+    for name, spec in said.items():
+        fleet = declared[name]
+        homes = [u.get("home") for u in fleet.get("units") or [] if isinstance(u, dict)]
+        for unit, record in enumerate(spec["vehicles"]):
+            here, drive, stage = f"fleets/{name}/vehicles/{unit}", record.get("drive"), \
+                taken.get((name, unit))
+            idle = stage is None and record.get("charge") is None
+            home = str((homes[unit] if homes else "") or fleet.get("home") or "").strip() \
+                or next(iter(network.nodes), "")
+            if idle and (record.get("until") is not None or (drive or {}).get("loaded")):
+                bad(f"fleet '{name}', vehicle {unit} is handling or loaded and no entity's "
+                    f"trip names it", here, hint="give the entity it carries a trip with this unit")
+            elif idle and drive is not None and not (fleet.get("park") == "home"
+                                                     and drive["to"] == home):
+                bad(f"fleet '{name}', vehicle {unit} drives to '{drive['to']}' for no trip and "
+                    f"no charge, which is only its return to its home node under park \"home\"",
+                    here, hint="give the entity it drives for a trip with this unit")
+            elif drive is not None and overdue(fleet, record, stage == "carry"):
+                bad(f"fleet '{name}', vehicle {unit}: its drive to '{drive['to']}' was due to end "
+                    f"before the clock", here,
+                    hint="a drive under way arrives at or after the clock; one that has arrived "
+                         "is a vehicle at that node")
 
 
 # ---------------------------------------------------------------- injection
@@ -517,19 +818,7 @@ def _in_service_process(block, entity, remaining, end=None, since=None, member=N
     """
     seizes = getattr(block, "seizes", False) or block.block.block_type == "SEIZE"
     if seizes:
-        yield from acquire(block, entity, _target_name(block),
-                           getattr(block, "quantity", 1), getattr(block, "priority", 0),
-                           member=member)
-        if since is not None:       # busy cost runs from when it really seized
-            held = entity.req_params[_target_name(block)]
-            held["seized_at"] = since
-            # #362: and it holds its unit as of then. Seized again at the clock, every
-            # warm-started job had one request time, and a preempting request picked its
-            # victim among equals instead of the one that came last. (The time it seized
-            # stands in for the time it asked: on a FIFO resource the two order alike.)
-            for request in held["requests"]:
-                request.time = since
-                request.key = (request.priority, since, not request.preempt)
+        yield from _seize(block, entity, since, member)
     block.ctx.settling -= 1         # it holds its unit: the controllers may act (#346)
     block.active_entity = entity
     while True:
@@ -550,8 +839,47 @@ def _in_service_process(block, entity, remaining, end=None, since=None, member=N
                                getattr(block, "priority", 0), resumed=True)
     block.remove_active_entity(entity)
     if getattr(block, "releases", False):
+        if block.block_after_service and not block.hold_until_space:
+            # #416: the station keeps the part and its unit until the part is accepted (D78)
+            yield from blocking.hold_until_accepted(block, entity, 0)
+            release(block, entity, _target_name(block))
+            return
         release(block, entity, _target_name(block))
     block.forward(entity, 0)
+
+
+def _seize(block, entity, since, member):
+    """Generator: *block* seizes for *entity* as it had before the state was taken."""
+    cost, auto = entity.cost, entity._auto_cost
+    yield from acquire(block, entity, _target_name(block),
+                       getattr(block, "quantity", 1), getattr(block, "priority", 0),
+                       member=member)
+    # #417: this use was charged before the state, where the uninterrupted run's warm-up
+    # clips it; seized again at the clock it would be charged inside the window.
+    entity.cost, entity._auto_cost = cost, auto
+    if since is not None:       # busy cost runs from when it really seized
+        held = entity.req_params[_target_name(block)]
+        held["seized_at"] = since
+        # #362: and it holds its unit as of then. Seized again at the clock, every
+        # warm-started job had one request time, and a preempting request picked its
+        # victim among equals instead of the one that came last. (The time it seized
+        # stands in for the time it asked: on a FIFO resource the two order alike.)
+        for request in held["requests"]:
+            request.time = since
+            request.key = (request.priority, since, not request.preempt)
+
+
+def _blocked_process(block, entity, since, member):
+    """A finished part its station still holds (D381): the station seizes with the jobs in
+    service, then keeps its unit until the part is accepted where it was put back. The
+    part's own wait (`_since`) is not this seize's: it is kept aside meanwhile, and the
+    waiting entities are put back only once every such station holds its unit."""
+    waited, entity._since = entity._since, None
+    yield from _seize(block, entity, since, member)
+    entity._since = waited
+    block.ctx.settling -= 1
+    yield from blocking.hold_until_accepted(block, entity, forward=False)
+    release(block, entity, _target_name(block))
 
 
 def _arrive(block, entity, at: float):
@@ -603,6 +931,16 @@ def _down_until(resource, until: float):
     resource.down.set(0.0, env.now)
     resource.emit_state("up", 0)
     resource._notify_bottleneck_down(False, env.now)
+
+
+def put_back(env, waiting: list) -> None:
+    """The waiting entities join where they waited, in the order of the state: each
+    arrives at its block, a load asks its fleet for a vehicle again."""
+    for block, entity, *trip in waiting:
+        if trip:
+            env.process(block.resume(entity, trip[0], None, trip[1]))
+        else:
+            block.self_run(entity)
 
 
 def apply(env, model, state: dict) -> int:
@@ -658,7 +996,15 @@ def apply(env, model, state: dict) -> int:
         if block is not None and (spec or {}).get("setup") is not None:
             block._previous_key = spec["setup"]     # what the station is set up for (D263)
 
-    injected, waiting = 0, []
+    fleets = state.get("fleets") or {}
+    for name, spec in fleets.items():           # before any load: where each vehicle is
+        fleet = ctx.fleets.get(name)
+        if fleet is not None:
+            fleet.restore(spec, {e["trip"].get("unit") for e in state.get("entities") or []
+                                 if e.get("trip") and e.get("block") in model.blocks
+                                 and model.blocks[e["block"]].fleet_name == name})
+
+    injected, waiting, blocked = 0, [], False
     for entry in state.get("entities") or []:
         block = model.blocks.get(entry.get("block"))
         if block is None:
@@ -675,6 +1021,17 @@ def apply(env, model, state: dict) -> int:
             # progress that went negative when it left.
             if entry.get("arrives") is not None:
                 env.process(_arrive(block, entity, float(entry["arrives"])))
+                continue
+            trip = entry.get("trip")
+            if trip is not None:        # a load: its TRANSPORT carries on at its stage (D385)
+                block.emit("entity_created", entity=entity)
+                record = None
+                if trip.get("unit") is not None:
+                    ctx.settling += 1
+                    record = fleets[block.fleet_name]["vehicles"][trip["unit"]]
+                    env.process(block.resume(entity, trip, record))
+                else:
+                    waiting.append((block, entity, trip, entry.get("since")))
                 continue
             waits = (index >= in_service and entry.get("since") is not None
                      and block.block.block_type in _QUEUEING)
@@ -695,16 +1052,27 @@ def apply(env, model, state: dict) -> int:
                 env.process(_in_service_process(block, entity, float(hold), None, since,
                                                 member))
             else:
+                holder = model.blocks.get(entry.get("held_by"))
+                if holder is not None and holder.block.block_type == "BUFFER":
+                    holder.hold(entity)             # it has a place there (D381)
+                elif holder is not None:
+                    ctx.settling += 1
+                    blocked = True
+                    env.process(_blocked_process(holder, entity, entry.get("held_since"),
+                                                 entry.get("member")))
+                elif block.space is not None and block.space.capacity \
+                        and entry.get("place") is not False:
+                    block.space.occupy(entity)      # the place it had, before any other (D382)
                 waiting.append((block, entity))
     # #350: with jobs in service the controllers wait for them to seize, so an entity
     # put back now would find a unit free that is down or off shift. `setup_run` puts
     # them back once the controllers have acted. With none in service the controllers
     # act first anyway, and with no controller at all nothing can be taken: the old order
     # stands, so a warm start that needs none of this runs event for event as before.
-    if ctx.settling and any(r.has_controller for r in ctx.resource_manager.resources.values()):
+    if ctx.settling and (blocked or any(r.has_controller
+                                        for r in ctx.resource_manager.resources.values())):
         ctx.put_back = waiting
     else:
-        for block, entity in waiting:
-            block.self_run(entity)
+        put_back(env, waiting)
     log.info(f"Initial state: injected {injected} entities")
     return injected

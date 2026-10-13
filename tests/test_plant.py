@@ -592,7 +592,8 @@ def test_a_run_starts_from_what_the_plant_looks_like_now():
     model = _slow_line()
     mapper, events = _seen_until(model, 10.5)
     doc, problems = state.from_plant(model, mapper.snapshot(), name="line")
-    assert doc["taken"] == {"source": "observed", "at": 10.0, "stamp": "1970-01-01T00:00:10+00:00"}
+    assert doc["taken"] == {"source": "observed", "at": 10.0, "stamp": "1970-01-01T00:00:10+00:00",
+                            "engine": nagasim.__version__}
     assert doc["state"] == {
         "clock": 10.0,
         "entities": [{"block": "p", "count": 1, "e_type": "DEFAULT", "in_service": 1},

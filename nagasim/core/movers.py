@@ -87,6 +87,7 @@ from nagasim.core.seizing import QUEUEING_BLOCK_TYPES
 from nagasim.core.stats import TimeWeighted
 from nagasim.core.quantities import SECTION_FIELDS, field_factor, param, scaled
 from nagasim.core.timeunits import ModelUnits, conversion_factor
+from nagasim.core.utils import timeout_at
 
 log = logging.getLogger(__name__)
 
@@ -279,7 +280,8 @@ class Mover:
     __slots__ = ("fleet", "unit", "node", "state", "_since", "times",
                  "distance_empty", "distance_loaded", "trips", "idle_since",
                  "homing", "trip", "name", "skills", "home", "pos",
-                 "soc", "min_soc", "depleted", "drain_kwh", "charge_trips", "charger", "session")
+                 "soc", "min_soc", "depleted", "drain_kwh", "charge_trips", "charger", "session",
+                 "leg", "until", "task")
 
     def __init__(self, fleet: "MoverFleet", unit: int, node: str, t: float,
                  name: str = "", skills=(), home: str = ""):
@@ -312,6 +314,10 @@ class Mover:
         self.charge_trips = 0
         self.charger = None
         self.session = None
+        # What a state reads (D383), stale once over: `leg` is `(started, to, loaded)`
+        # while it drives a path in one go, `until` when its handling or charge ends,
+        # `task` is `(stage, job, unload time)` of the TRANSPORT trip it is on.
+        self.leg = self.until = self.task = None
 
     def __repr__(self):
         return f"<Mover {self.fleet.name}#{self.unit} at {self.node} {self.state}>"
@@ -412,7 +418,10 @@ class Mover:
         self.distance_empty = 0.0
         self.distance_loaded = 0.0
         self.trips = 0
-        self.min_soc = self.soc
+        # #418: of a vehicle on a charger, the charge it has got to, not the one it
+        # plugged in with (`soc` is as of then until it unplugs).
+        self.min_soc = (self.soc if self.session is None
+                        else self.charger.soc(self.session[0], t))
         self.depleted = 0
         self.drain_kwh = 0.0
         self.charge_trips = 0
@@ -529,6 +538,7 @@ class MoverFleet:
         self._free = list(self.movers)
         self._down: list[Mover] = []
         self._cursor = -1
+        self._stood = 0            # requests a state put back, counted: their order (D385)
         # Per-segment traversals, keyed by the segment's reported name.
         self.segment_traversals: dict[str, int] = {}
         self.queue_len = TimeWeighted(t)      # requests waiting, for the fleet frame
@@ -649,7 +659,7 @@ class MoverFleet:
 
     # -- the trip ------------------------------------------------------------
     def acquire(self, block, entity, origin: str, priority: int = 0, skill: str | None = None,
-                job=None):
+                job=None, since=None):
         """Generator: wait for a vehicle (one with *skill*, when given) and
         return the (request, Mover) pair. With *job* (a TRANSPORT's trip) the
         request may instead be ATTACHED to another vehicle's tour (W3-M4): the
@@ -658,7 +668,15 @@ class MoverFleet:
         t0 = self.env.now
         self.queue_len.add(1, t0)
         res._core.pending_tag = (origin, skill or None)
-        request = res.request(priority=priority, rank=0)
+        request = res.request(priority=priority, rank=0, since=since)
+        if since is not None:       # put back by a state: it asked then, and queues as of then
+            request.time = since
+            request.key = (request.priority, since, not request.preempt)
+            # ... and stands where the state found it (the entries come in the queue's own
+            # order): after a grant under "nearest" that is the grant's distance order, not
+            # key order, until the next request, and the next grant breaks a tie by it.
+            request.stood = self._stood = self._stood + 1
+            list.sort(res._core.put_queue, key=lambda r: getattr(r, "stood", math.inf))
         request.mover_origin = origin
         request.job = job
         yield request
@@ -675,7 +693,7 @@ class MoverFleet:
         return request, mover
 
     def drive(self, mover: Mover, to_node: str, *, loaded: bool, block=None,
-              interruptible: bool = False):
+              interruptible: bool = False, started=None):
         """Generator: move *mover* to *to_node*, accruing distance and time.
 
         With *interruptible* the drive publishes `mover.trip`, from which
@@ -685,7 +703,8 @@ class MoverFleet:
         one timeout for the whole path, as it always was -- unless the path
         crosses a capacity-limited segment (D117), which needs `_drive_zoned`,
         or the fleet is a gantry (D118), which needs neither -- see
-        `_drive_gantry`.
+        `_drive_gantry`. *started*: a state found the drive under way since then (D384);
+        it ends when it was due and is counted as the uninterrupted run counts it.
         """
         if mover.node == to_node and mover.pos is None:
             return 0.0
@@ -706,23 +725,28 @@ class MoverFleet:
                                                  interruptible))
         duration = self.network.travel_time(path, speed)
         distance = self.network.path_length(path, speed)
-        self._moved(block, mover, path, duration, "loaded" if loaded else "empty")
+        left = self.env.now if started is None else started
+        self._moved(block, mover, path, duration if started is None
+                    else max(started + duration - self.env.now, 0.0),
+                    "loaded" if loaded else "empty")
+        mover.leg = (left, to_node, loaded)
         if interruptible:
             # Counted on arrival instead (or, for a diverted vehicle, only the
             # segments it really crossed): `segment_summary` reports traversals
             # times length, so half a segment must not be one.
-            mover.trip = (self.env.now, path, segments, speed)
-        else:
+            mover.trip = (left, path, segments, speed)
+        elif started is None:
             self._crossed(segments)
         try:
-            yield self.env.timeout(duration)
+            yield (self.env.timeout(duration) if started is None
+                   else timeout_at(self.env, started + duration))
         except simpy.Interrupt:
             if not interruptible:
                 raise
             return 0.0             # `_divert` owns the position and the distance
         if interruptible:
             self._crossed(segments)
-        mover.trip = None
+        mover.trip = mover.leg = None
         mover.node = to_node
         if loaded:
             mover.distance_loaded += distance
@@ -863,7 +887,7 @@ class MoverFleet:
         gantry (D118) has no segment to back off: `_settle_gantry_divert`
         reads its exact position instead."""
         mover.homing.interrupt()
-        mover.homing = None
+        mover.homing = mover.leg = None
         if mover.session is not None:           # dispatched off an opportunity charge
             self._unplug(mover)
         mover.charger = None
@@ -943,23 +967,27 @@ class MoverFleet:
             return                # (a vehicle off to charge parks when it is done)
         mover.homing = self.env.process(self._go_home(mover, block))
 
-    def _go_home(self, mover: Mover, block=None):
+    def _go_home(self, mover: Mover, block=None, started=None):
         try:
             yield from self.drive(mover, mover.home, loaded=False, block=block,
-                                  interruptible=True)
+                                  interruptible=True, started=started)
         except simpy.Interrupt:                 # interrupted before the drive began
             return
         if mover.homing is not None:            # it made it home undisturbed
             mover.homing = None
             mover.enter("idle", self.env.now)
 
-    def handle(self, mover: Mover, seconds: float):
-        """Generator: load or unload for *seconds* (the vehicle is busy, still)."""
-        if seconds <= 0:
+    def handle(self, mover: Mover, seconds: float, until=None):
+        """Generator: load or unload for *seconds* (the vehicle is busy, still), or, put
+        back by a state, until the absolute time *until* it was due to end at."""
+        if seconds <= 0 and until is None:
             return
-        mover.enter("handling", self.env.now)
-        self._moved(None, mover, (mover.node,), seconds, "handling")
-        yield self.env.timeout(seconds)
+        now = self.env.now
+        mover.enter("handling", now)
+        mover.until = now + seconds if until is None else until
+        self._moved(None, mover, (mover.node,), seconds if until is None
+                    else max(until - now, 0.0), "handling")
+        yield self.env.timeout(seconds) if until is None else timeout_at(self.env, until)
 
     def free(self, request, mover: Mover, block=None, entity=None) -> None:
         """Give the vehicle back. `park: "home"` has already driven it home.
@@ -969,6 +997,7 @@ class MoverFleet:
         until it has charged, so the fleet never grants a vehicle it does not
         have; otherwise an opportunity charge leaves it free and dispatchable."""
         mover.enter("idle", self.env.now)
+        mover.task = None
         plan = self._charge_plan(mover) if self.capacity_kwh else None
         held = plan is not None and plan[1]
         if not held:
@@ -1071,8 +1100,10 @@ class MoverFleet:
         mover.enter("charging", now)
         mover.session = (charger.plug(self.capacity_kwh, mover.soc, self.target), point)
         self._emit("charge_start", mover, charger.name)
-        return min(charger.duration(self.capacity_kwh, mover.soc, self.target),
-                   max(until - now, 0.0))
+        lasts = min(charger.duration(self.capacity_kwh, mover.soc, self.target),
+                    max(until - now, 0.0))
+        mover.until = now + lasts
+        return lasts
 
     def _unplug(self, mover: Mover) -> None:
         """The charge ends now, complete or cut short: SoC and grid energy are
@@ -1085,17 +1116,18 @@ class MoverFleet:
         mover.enter("idle", self.env.now)
         self._emit("charge_end", mover, charger.name)
 
-    def _charge_held(self, request, mover: Mover, until: float, block, entity):
+    def _charge_held(self, request, mover: Mover, until: float, block, entity, started=None):
         """Generator: drive to the charger, wait for a point, charge (or swap
         the pack), and only then give the vehicle back. Waiting is idle time
         at idle power; the drive is empty travel."""
         env, charger = self.env, mover.charger
-        yield from self.drive(mover, charger.node, loaded=False, block=block)
+        yield from self.drive(mover, charger.node, loaded=False, block=block, started=started)
         mover.charge_trips += 1
         mover.enter("idle", env.now)
         arrived = env.now
         charger.queue_len.add(1, arrived)
         point = charger.points.request()
+        point.mover = mover                 # D383: who waits for a point, for a state
         yield point
         if charger.packs is not None:
             yield charger.packs.get(1)             # a swap waits for a charged pack
@@ -1114,12 +1146,105 @@ class MoverFleet:
         else:
             yield env.timeout(self._plug(mover, point, arrived, until))
             self._unplug(mover)
+        self._charged(request, mover, block)
+
+    def _charged(self, request, mover: Mover, block) -> None:
+        """A held charge is over: the vehicle is given back."""
         self._free.append(mover)
         self.resource.release(request)
         self._moved(block, mover, (mover.node,), 0.0, "idle")
         self.park_home(mover, block)
 
-    def _charge_free(self, mover: Mover, until: float, block):
+    # -- put back by a state (D384) --------------------------------------------
+    def claim(self, mover: Mover):
+        """The unit of a vehicle a state found busy: asked for now, with the fleet's units
+        all free, so granted before anything queues. The caller yields it."""
+        self._free.remove(mover)
+        return self.resource.request(priority=0, rank=0)
+
+    def restore(self, spec: dict, busy: set) -> None:
+        """Put every vehicle where the state *spec* found it; the units in *busy* are on a
+        trip, which `Transport.resume` carries on. Called before any entity is put back,
+        the vehicles on a point first and those waiting for one in their order."""
+        env, now, chargers = self.env, self.env.now, self.env.ctx.chargers
+        if spec.get("cursor") is not None:
+            self._cursor = int(spec["cursor"])
+        waiting = []
+        for mover, record in zip(self.movers, spec.get("vehicles") or []):
+            mover.node = record["node"]
+            if record.get("soc") is not None:
+                mover.soc = mover.min_soc = float(record["soc"])
+            drive, charge = record.get("drive"), record.get("charge")
+            if charge is not None:
+                mover.charger = chargers[charge["charger"]]
+                stage = charge.get("stage", "charge")
+                held = bool(charge.get("held", True))
+                request = None
+                if held:
+                    env.ctx.settling += 1
+                    request = self.claim(mover)
+                if stage == "charge":
+                    self._plug(mover, mover.charger.points.request(), now, math.inf)
+                    mover.until = float(charge["until"])
+                    work = (self._resume_charge(request, mover, None) if held
+                            else self._resume_free_charge(mover))
+                elif stage == "wait":
+                    mover.enter("idle", now)
+                    waiting.append((charge.get("wait", 0), mover.unit, mover, request,
+                                    record.get("idle_since", now)))
+                    continue
+                elif held:
+                    work = self._resume_drive_to_charge(request, mover, drive["started"])
+                else:
+                    work = self._charge_free(mover, math.inf, None, drive["started"])
+                process = env.process(work)
+                if not held:
+                    mover.homing = process
+            elif mover.unit not in busy and drive is not None:      # on its way home
+                mover.homing = env.process(self._go_home(mover, None, drive["started"]))
+            if record.get("idle_since") is not None:
+                mover.idle_since = float(record["idle_since"])
+        for _place, _unit, mover, request, arrived in sorted(waiting, key=lambda w: w[:2]):
+            mover.charger.queue_len.add(1, now)
+            point = mover.charger.points.request()
+            point.mover = mover
+            mover.idle_since = float(arrived)
+            env.process(self._resume_charge(request, mover, point))
+
+    def _resume_drive_to_charge(self, request, mover: Mover, started: float):
+        yield request
+        self.env.ctx.settling -= 1
+        yield from self._charge_held(request, mover, math.inf, None, None, started)
+
+    def _resume_charge(self, request, mover: Mover, point):
+        """Generator: a held charge a state found waiting for *point* (it arrived at
+        `idle_since`), or with no *point* on one until `mover.until`: `_charge_held` from
+        there."""
+        env, charger = self.env, mover.charger
+        yield request
+        env.ctx.settling -= 1
+        if point is not None:
+            yield point
+            charger.queue_len.add(-1, env.now)
+            yield env.timeout(self._plug(mover, point, mover.idle_since, math.inf))
+        else:
+            yield timeout_at(env, mover.until)
+        self._unplug(mover)
+        self._charged(request, mover, None)
+
+    def _resume_free_charge(self, mover: Mover):
+        """Generator: an opportunity charge a state found on its point: the end of
+        `_charge_free`."""
+        try:
+            yield timeout_at(self.env, mover.until)
+            self._unplug(mover)
+        except simpy.Interrupt:
+            return
+        mover.homing = mover.charger = None
+        mover.enter("idle", self.env.now)
+        self.park_home(mover, None)
+
+    def _charge_free(self, mover: Mover, until: float, block, started=None):
         """Generator: an opportunity charge. The vehicle is FREE throughout,
         like one driving home: a dispatch (`_divert`) or a blocker
         (`take_unit`) interrupts it, having itself settled where the vehicle
@@ -1127,7 +1252,7 @@ class MoverFleet:
         charger = mover.charger
         try:
             yield from self.drive(mover, charger.node, loaded=False, block=block,
-                                  interruptible=True)
+                                  interruptible=True, started=started)
             if mover.homing is None:
                 return                             # diverted on the way
             if mover in self._free and charger.points.count < charger.capacity:

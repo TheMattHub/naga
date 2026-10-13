@@ -226,8 +226,7 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
         while queue and queue[0][0] <= env.now and (queue[0][1] == URGENT or env.ctx.settling):
             env.step()
         waiting, env.ctx.put_back = env.ctx.put_back, []
-        for block, entity in waiting:
-            block.self_run(entity)
+        initial_state.put_back(env, waiting)
     if clock > 0:
         # The state is what was there BEFORE the window: every injected job seizes
         # first, then the statistics restart, exactly as a warm-up reset would find

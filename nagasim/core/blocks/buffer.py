@@ -52,6 +52,17 @@ class Buffer(BaseProcess):
         self.space.give_back(slot)
         self._mirror(-1)
 
+    def hold(self, entity) -> None:
+        """A state puts *entity* back in the place it had here while it waits further on
+        (D381): the place is taken and the token armed at once, and the place is given back
+        when the next station accepts the part. The mirrored level already counts it."""
+        self.env.process(self._until_accepted(arm(self, entity), self.space.claim()))
+
+    def _until_accepted(self, token, slot):
+        yield token
+        self.space.give_back(slot)
+        self._mirror(-1)
+
     def _mirror(self, delta: int) -> None:
         """Keep `level` equal to the content, for a fill indicator (D75)."""
         if not self.level_name:
@@ -98,5 +109,5 @@ SPEC = BlockSpec(
                               "asset can draw it as a fill indicator. Empty = no level.", quantity="none"),
     ),
     factory=lambda env, block: Buffer(env, block),
-    family="move",
+    family="move", holding=True,
 )

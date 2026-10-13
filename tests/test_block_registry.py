@@ -161,7 +161,7 @@ def test_behaviour_flags_derive_the_pre_e2_hand_kept_type_sets():
 
     expected_duration = {"CREATE", "DELAY", "SEIZE", "PROCESS", "MOTION", "RELEASE", "DISPOSE",
                          "SIGNAL", "ROUTE"}
-    expected_holding = {"PROCESS", "MOTION", "SEIZE", "DELAY", "HOLD", "BATCH", "MATCH",
+    expected_holding = {"PROCESS", "MOTION", "SEIZE", "DELAY", "HOLD", "BATCH", "MATCH", "BUFFER",
                         "SEPARATE", "DUPLICATE", "SIGNAL", "LOGIC"}
     expected_service = {"PROCESS", "MOTION", "SEIZE", "DELAY"}
     expected_transparent = {"ASSIGN", "RECORD", "DECIDE", "STATION", "LOGIC"}

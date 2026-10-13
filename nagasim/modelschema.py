@@ -2103,6 +2103,43 @@ def _defs() -> dict:
                         "additionalProperties": False}},
                 "variables": {"type": "object",
                               "description": "Model variable values to start from."},
+                "fleets": {
+                    "type": "object",
+                    "description": "Where each vehicle of a fleet is: one record per unit, in "
+                                   "unit order. Times are absolute.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "cursor": {"type": "integer", "minimum": -1,
+                                       "description": "The unit a fleet with select "
+                                                      "\"cyclic\" picked last, -1 for none."},
+                            "vehicles": {"type": "array", "items": {
+                                "type": "object",
+                                "properties": {
+                                    "node": {"type": "string",
+                                             "description": "The network node it stands at, or "
+                                                            "left from when it drives."},
+                                    "idle_since": {"type": "number"},
+                                    "soc": {"type": "number", "maximum": 1,
+                                            "description": "Its battery's state of charge."},
+                                    "until": {"type": "number",
+                                              "description": "When its loading or unloading "
+                                                             "ends."},
+                                    "drive": {"type": "object", "properties": {
+                                        "to": {"type": "string"}, "started": {"type": "number"},
+                                        "loaded": {"type": "boolean"}},
+                                        "required": ["to", "started"],
+                                        "additionalProperties": False},
+                                    "charge": {"type": "object", "properties": {
+                                        "charger": {"type": "string"},
+                                        "held": {"type": "boolean"},
+                                        "stage": {"enum": ["drive", "wait", "charge"]},
+                                        "until": {"type": "number"},
+                                        "wait": {"type": "integer", "minimum": 0}},
+                                        "required": ["charger"],
+                                        "additionalProperties": False}},
+                                "required": ["node"], "additionalProperties": False}}},
+                        "required": ["vehicles"], "additionalProperties": False}},
                 "levels": {"type": "object", "additionalProperties": {"type": "number"},
                            "description": "Level values to start from: the state of "
                                           "charge of a battery, the stock on hand in a warehouse."},
@@ -2145,6 +2182,34 @@ def _defs() -> dict:
                             "arrives": {"type": "number",
                                         "description": "The absolute time an entity on a link "
                                                        "reaches the block (count 1)."},
+                            "held_by": {"type": "string",
+                                        "description": "The block that still holds a waiting "
+                                                       "entity: the BUFFER whose place it has, or "
+                                                       "the station blocked after service that "
+                                                       "keeps its unit until the entity is "
+                                                       "accepted (count 1)."},
+                            "held_since": {"type": "number",
+                                           "description": "The absolute time the station in "
+                                                          "held_by seized its unit."},
+                            "place": {"type": "boolean",
+                                      "description": "false: the entity waits for a place of the "
+                                                     "block (a BUFFER, a queue_capacity) and has "
+                                                     "none yet."},
+                            "trip": {"type": "object",
+                                     "description": "A load's trip, at its TRANSPORT block: the "
+                                                    "origin and destination nodes, the target "
+                                                    "STATION block and, once a vehicle has it, "
+                                                    "its unit, the stage (pickup, load, carry, "
+                                                    "unload) and the unload time already drawn.",
+                                     "properties": {
+                                         "origin": {"type": "string"},
+                                         "destination": {"type": "string"},
+                                         "target": {"type": "string"},
+                                         "unit": {"type": "integer", "minimum": 0},
+                                         "stage": {"enum": ["pickup", "load", "carry", "unload"]},
+                                         "unload": {"type": "number", "minimum": 0}},
+                                     "required": ["origin", "destination", "target"],
+                                     "additionalProperties": False},
                         },
                         "required": ["block", "count"],
                         "additionalProperties": False,

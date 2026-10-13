@@ -29,18 +29,19 @@ import copy
 import hashlib
 import json
 import math
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim.core import initial_state, schema
+from nagasim.core import blocking, initial_state, schema
 from nagasim.core.block_registry import queueing_types
 from nagasim.core.problems import Problem, problem
 from nagasim.core.session import SimSession
 from nagasim.live import stamp as stamp_seconds
 
 __all__ = ["FORMAT", "MAX_BYTES", "MAX_ENTITIES", "StateError", "Tap", "take", "observe", "from_plant",
-           "refused_kind",
+           "refused_kind", "coverage",
            "document", "model_hash", "start", "check", "read", "main"]
 
 FORMAT = 1
@@ -102,9 +103,12 @@ def document(layout, state: dict, *, name: str | None = None, **taken) -> dict:
     """The document of *state* for the model *layout*; *taken* is recorded, not hashed."""
     model = _model(layout)
     digest = model_hash(model)
+    from nagasim import __version__         # D389: which version wrote it, not hashed
+
     return {"format": FORMAT,
             "model": {"name": name or (model.get("info") or {}).get("name") or "", "hash": digest},
-            "taken": taken, "state": state, "hash": _sha(_canonical([digest, state]))}
+            "taken": {**taken, "engine": __version__}, "state": state,
+            "hash": _sha(_canonical([digest, state]))}
 
 
 # ---------------------------------------------------------------- out of a run
@@ -155,15 +159,27 @@ def _refuse_kinds(session) -> None:
     """The element kinds with no vocabulary: refused whole, by name."""
     ctx = session.ctx
     for kind, found in (("agent populations", ctx.agent_system is not None),
-                        ("fleets and vehicles", ctx.fleets),
                         ("conveyors", ctx.conveyors),
-                        ("chargers", ctx.chargers),
-                        ("blocking and finite buffers", ctx.blocking_nodes),
                         ("a dispatch plan", ctx.plan_gates is not None)):
         if found:
             raise _unsupported(kind, "the model has some")
+    # D386: what a vehicle record cannot say, by the fleet's own declaration.
+    tended = any(station.tending for station in ctx.stations.values())
+    for name, fleet in ctx.fleets.items():
+        for kind, found in (("a worker fleet", fleet.kind == "worker"),
+                            ("a gantry", fleet.motion == "gantry"),
+                            ("segment capacities", fleet.traffic is not None),
+                            ("a mobile cobot that tends", bool(fleet.arm) and tended),
+                            ("scheduled charging", fleet.charge_schedule is not None)):
+            if found:
+                raise _unsupported(kind, f"fleet '{name}'")
+    for name, charger in ctx.chargers.items():
+        if charger.kind == "swap":
+            raise _unsupported("a swap station", f"'{name}'")
     for block in session.model.blocks.values():
         kind = block.block.block_type
+        if block.hold_until_space:      # a place reserved before the job starts (D386)
+            raise _unsupported("blocking before service", f"'{block.name}' holds until space")
         # A store's entities are carried by arriving again (D260); what runs beside them
         # on a clock of its own is not.
         if kind == "BATCH" and block._timer is not None:
@@ -251,10 +267,121 @@ def _place(block, entity) -> float:
     return items.index(entity) if entity in items else math.inf
 
 
-def _entities(session, tap: Tap) -> list:
+def _fleets(session) -> tuple:
+    """(the `fleets` section, {id(entity): (TRANSPORT block name, trip, since or None)}):
+    one record per vehicle (D384) and the trip of every load (D385), the waiting ones in
+    the order of their fleet's queue."""
+    ctx, now = session.ctx, session.now
+    out, trips = {}, {}
+
+    def due(t) -> float:
+        if t == now:
+            raise _unsupported("an instant with an event due", f"a vehicle's at t = {now:g}; "
+                               "take the state at a time between two events")
+        return float(t)
+
+    def trip_of(job) -> dict:
+        return {"origin": job[2], "destination": job[3], "target": job[4].name}
+
+    for name, fleet in ctx.fleets.items():
+        resource = fleet.resource
+        if resource._blockers or fleet._down:
+            raise _unsupported("a vehicle out of service", f"fleet '{name}': a failure or a "
+                               f"shift holds one")
+        # In the order the queue stands in: under "nearest" that of its last grant's
+        # distance sort until the next request, and the next grant breaks a tie by it.
+        for request in resource._core.put_queue:
+            job = getattr(request, "job", None)
+            if job is None:
+                raise _unsupported("a request for a vehicle that is no load", f"fleet '{name}'")
+            trips[id(job[1])] = (job[0].name, trip_of(job), float(resource._enqueued[request]))
+        vehicles = []
+        for mover in fleet.movers:
+            record = {"node": mover.node, "idle_since": float(mover.idle_since)}
+            if fleet.capacity_kwh:
+                mover.settle(now)       # drained up to now, as the reset at a warm-up does
+                record["soc"] = float(mover.soc if mover.session is None
+                                      else mover.charger.soc(mover.session[0], now))
+            free, leg = mover in fleet._free, mover.leg
+            drive = None if leg is None else {"to": leg[1], "started": float(leg[0])}
+            charge = None
+            if mover.charger is not None:
+                charge = {"charger": mover.charger.name, "held": not free}
+                if mover.session is not None:
+                    charge.update(stage="charge", until=due(mover.until))
+                elif drive is not None:
+                    charge["stage"] = "drive"
+                else:
+                    queue = [getattr(r, "mover", None) for r in mover.charger.points.queue]
+                    if free or mover not in queue:
+                        raise _unsupported("a vehicle between two tasks", f"{mover.name}")
+                    charge.update(stage="wait", wait=queue.index(mover))
+            if mover.task is not None and not free and charge is None:
+                stage, job, unload = mover.task
+                trip = {**trip_of(job), "unit": mover.unit, "stage": stage}
+                if stage == "carry":
+                    trip["unload"] = float(unload)
+                if stage in ("load", "unload"):
+                    record["until"] = due(mover.until)
+                elif drive is None:
+                    raise _unsupported("a vehicle between two tasks", f"{mover.name}")
+                trips[id(job[1])] = (job[0].name, trip, None)
+            elif not free and charge is None or (free and mover.homing is not None
+                                                 and drive is None and mover.session is None):
+                # on a tour, called back from its way home, summoned: no stage says it
+                raise _unsupported("a vehicle on a tour or between two tasks", f"{mover.name}")
+            if drive is not None:
+                speed = fleet.speed if leg[2] else fleet.speed_empty
+                path = fleet.network.path(mover.node, leg[1], speed)
+                due(leg[0] + fleet.network.travel_time(path, speed))
+                record["drive"] = drive
+            if charge is not None:
+                record["charge"] = charge
+            vehicles.append(record)
+        out[name] = {"vehicles": vehicles}
+        if fleet.select == "cyclic":
+            out[name]["cursor"] = fleet._cursor
+    return out, trips
+
+
+def _uncharge(entity, entry: dict) -> None:
+    """#417: the cost the engine charged before the state (busy, usage, holding) is not
+    carried: the uninterrupted run clips it at its warm-up. What the model assigned stays."""
+    if entity._auto_cost and "cost" in entry["attributes"]:
+        entry["attributes"]["cost"] = entity.cost - entity._auto_cost
+
+
+def _holder(entity, held: set) -> dict:
+    """What still holds a waiting *entity* (D381): the BUFFER whose place it has, or the
+    station blocked after service, whose unit is then taken out of *held*."""
+    holder = blocking.holder_of(entity)
+    if holder is None:
+        return {}
+    kind = holder.block.block_type
+    if kind == "BUFFER":
+        return {"held_by": holder.name}
+    target = initial_state._target_name(holder)
+    if kind not in blocking.PROCESS_TYPES or not (holder.seizes and holder.releases) \
+            or target not in held:
+        raise _unsupported("a part held by its last block", f"entity {entity.id} by the {kind} "
+                           f"'{holder.name}'")
+    held.discard(target)
+    out = {"held_by": holder.name, "held_since": float(entity.req_params[target]["seized_at"])}
+    if entity.req_params[target]["set"] is not None:
+        out["member"] = entity.req_params[target]["resource"].name
+    return out
+
+
+def _entities(session, tap: Tap, trips: dict | None = None) -> list:
     ctx, model, now = session.ctx, session.model, session.now
+    trips = trips or {}
+    riding = {}                     # a load's entry, by its place among the trips (D385)
     serving, others = [], []        # in service first: each must seize before a queue forms
     queued, kept, stored = [], [], 0    # waiting for a resource; waiting in a store
+    outside = []                    # waiting for a place of a finite space (D382)
+    asking = {id(request.entity): (order, place) for order, node in enumerate(
+                  ctx.blocking_nodes.values()) if node.space is not None and node.space.capacity
+              for place, request in enumerate(node.space._pool.queue)}
     live = ctx.live_entities._items
     for entity_id, (block_name, arrives, since) in tap.where.items():
         entity = live.get(entity_id)
@@ -267,8 +394,18 @@ def _entities(session, tap: Tap) -> list:
         held = set(getattr(entity, "req_params", None) or ())
         entry = {"block": block_name, "count": 1, "e_type": entity.e_type,
                  "age": float(now - entity.creation_time), "attributes": _attributes(entity)}
-        if entity._auto_cost or entity._holding_cost:
-            entry.update(auto_cost=entity._auto_cost, holding_cost=entity._holding_cost)
+        holder = _holder(entity, held)
+        _uncharge(entity, entry)
+        if id(entity) in trips:
+            if held:
+                raise _unsupported("a job that holds a resource between blocks",
+                                   f"entity {entity.id} on a vehicle")
+            where, trip, asked = trips[id(entity)]
+            entry.update(block=where, trip=trip)
+            if asked is not None:
+                entry["since"] = asked
+            riding[id(entity)] = entry
+            continue
         if arrives is not None and arrives >= now:
             if held:
                 raise _unsupported("a job that holds a resource between blocks",
@@ -294,7 +431,14 @@ def _entities(session, tap: Tap) -> list:
                 if entity.req_params[target]["set"] is not None:    # and on which member
                     entry["member"] = entity.req_params[target]["resource"].name
             serving.append(entry)
+        elif id(entity) in asking and not held:
+            if getattr(block, "balk_if", "") or getattr(block, "renege_after", ""):
+                raise _unsupported("a finite queue that balks or reneges, with an entity "
+                                   "waiting for a place", f"'{block_name}'")
+            outside.append((asking[id(entity)], {**entry, **holder, "place": False}))
         elif kind in _QUEUEING and not held:
+            entry.update(holder)
+            since = float(getattr(entity, "_asked", since))     # a place may have come first (D383)
             if _rank_can_drift(session, initial_state._target_name(block)):
                 raise _unsupported("a ranked queue whose ranks were fixed when each entity "
                                    "joined", f"'{block_name}': its ranking reads more than the "
@@ -325,8 +469,7 @@ def _entities(session, tap: Tap) -> list:
             entry = {"block": block_name, "count": 1, "e_type": entity.e_type,
                      "age": float(now - entity.creation_time),
                      "attributes": _attributes(entity), "arrives": float(arrives)}
-            if entity._auto_cost or entity._holding_cost:
-                entry.update(auto_cost=entity._auto_cost, holding_cost=entity._holding_cost)
+            _uncharge(entity, entry)
             others.append(entry)
     # #349: in the order of the queue or the store ITSELF, not the order each was heard
     # setting out: one that came over a timed link stands behind those that arrived
@@ -334,6 +477,8 @@ def _entities(session, tap: Tap) -> list:
     # order its requests were made in. A store: its own items. Then those still on a link.
     others.sort(key=lambda e: e["arrives"])
     others = [e for *_key, e in sorted(queued, key=lambda q: q[:2])] \
+        + [riding[key] for key in trips if key in riding] \
+        + [e for _key, e in sorted(outside, key=lambda o: o[0])] \
         + [e for *_key, e in sorted(kept, key=lambda k: k[:3])] + others
     if len(live) != len(serving) + len(others):
         raise _unsupported("an entity with no known place", "one was made outside a block")
@@ -422,7 +567,10 @@ def _read(session, tap: Tap) -> dict:
                                "its setup key is neither a text nor a number")
     if setups:              # D263: what each station is set up for; a changeover under
         state["blocks"] = setups        # way is refused with the job that is in it
-    entities = _entities(session, tap)
+    fleets, trips = _fleets(session)
+    if fleets:
+        state["fleets"] = fleets
+    entities = _entities(session, tap, trips)
     if entities:
         state["entities"] = entities
     try:
@@ -442,8 +590,7 @@ _KINDS = (
     ("variables", lambda m: m.get("variables"), "variables"),
     ("resources and failures", lambda m: m.get("failures"), "resources"),
     ("levels", lambda m: m.get("levels"), "levels"),
-    ("fleets and vehicles", lambda m: m.get("fleets"), None),
-    ("chargers", lambda m: m.get("chargers"), None),
+    ("fleets and vehicles", lambda m: m.get("fleets"), "fleets"),
     ("agent populations", lambda m: m.get("populations"), None),
 )
 
@@ -540,14 +687,71 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                     f"/{initial_state.SECTION}/resources/{rname}",
                     hint="a resource with one failure starts down, its repair drawn afresh"))
 
+    fleets, loads = _plant_fleets(flat, blocks, seen, entities, problems)
+    out_links: dict = {}
+    for link in flat.get("links") or []:
+        out_links.setdefault(link.get("source"), []).append(link.get("target"))
+    blockers = blocking.layout_blocking_graph(list(blocks.values()), out_links)[0]
+    incoming: dict = {}
+    for source, targets in out_links.items():
+        for target in targets:
+            incoming.setdefault(target, []).append(source)
+
+    def kind_of(name) -> str:
+        return str(blocks.get(name, {}).get("type", "")).upper()
+
+    def behind(name):
+        """The BUFFER a part waiting at station *name* still has a place of (D381): the
+        one block every part reaches it through, across what a held part crosses. A run
+        shows such a part at the station, a plant in the buffer: both mean this."""
+        seen = set()                # a dead loop of transparent blocks has no first block
+        while len(incoming.get(name, ())) == 1 and name not in seen:
+            seen.add(name)
+            name = incoming[name][0]
+            if kind_of(name) == "BUFFER" and initial_state._places(blocks[name]):
+                return name
+            if kind_of(name) not in blocking.TRANSPARENT_TYPES and kind_of(name) != "BUFFER":
+                return None
+        return None
+
+    inside: dict = {}               # buffer -> the places its parts have: those further on first
+    for entity in entities:
+        name = entity["block"]
+        entity["kind"], entity["places"] = kind_of(name), initial_state._places(blocks.get(name, {}))
+        waits = not entity["serving"] and entity["kind"] in _QUEUEING and not entity["places"]
+        entity["behind"] = behind(name) if waits else None
+        if entity["behind"] is not None:
+            inside[entity["behind"]] = inside.get(entity["behind"], 0) + 1
+
     def entry(entity):
-        out = {"block": entity["block"], "count": 1}
+        name, kind, places = entity["block"], entity["kind"], entity["places"]
+        out = {"block": name, "count": 1}
         if entity["e_type"]:
             out["e_type"] = entity["e_type"]
+        if id(entity) in loads:
+            out.update(loads[id(entity)])
+            return out
+        # Reported further on while its last station still holds its unit: that station
+        # is blocked after service, and the part waits where it is (D381).
+        held = [b for r in entity["holds"] for b in seizes.get(r, []) if b != name]
+        if len(held) == 1 and len(entity["holds"]) == 1 and not entity["serving"] \
+                and held[0] in blockers:
+            out["held_by"] = held[0]
+            if places:
+                out["place"] = False
+            return out
         if entity["serving"]:
             out["in_service"] = 1
-        elif entity["since"] is not None and entity["since"] <= clock and str(
-                blocks.get(entity["block"], {}).get("type", "")).upper() in _QUEUEING:
+            return out
+        if kind == "BUFFER" and places:
+            # In the buffer while it has a place left; the ones beyond wait to get in.
+            inside[name] = inside.get(name, 0) + 1
+            if inside[name] > places:
+                out["place"] = False
+            return out
+        if entity["behind"] is not None:
+            out["held_by"] = entity["behind"]
+        if entity["since"] is not None and entity["since"] <= clock and kind in _QUEUEING:
             out["since"] = entity["since"]
         return out
     # In service first: each must seize before a queue forms behind it (as `_entities`).
@@ -555,9 +759,25 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
     listed = [entry(e) for e in entities if e["serving"]] + [entry(e) for e in entities
                                                               if not e["serving"]]
     levels = {l.get("name") for l in flat.get("levels") or []}
-    for key, value in (("entities", listed), ("resources", resources),
-                       ("levels", {k: v for k, v in (seen.get("levels") or {}).items()
-                                   if k in levels})):
+    reported = {k: v for k, v in (seen.get("levels") or {}).items() if k in levels}
+    # A BUFFER that mirrors a level: a part put back AT it counts itself in on arriving, one
+    # that has its place while it waits further on (`held_by`) is counted here. So the
+    # parts make the level, and the level the plant reports is not added to them.
+    for name in blocks:
+        level = (blocks[name].get("params") or {}).get("level")
+        held = sum(e.get("held_by") == name for e in listed)
+        parts = held + sum(e["block"] == name and e.get("place") is not False for e in listed)
+        if kind_of(name) != "BUFFER" or level not in levels or not parts:
+            continue
+        if reported.get(level, parts) != parts:
+            problems.append(problem(
+                "W_PLANT_CONTRADICTION", f"the plant reports level '{level}' at "
+                f"{reported[level]:g} and {parts} parts in BUFFER '{name}', which mirrors it: "
+                f"the parts stand", f"/{initial_state.SECTION}/levels/{level}",
+                hint="the level a BUFFER mirrors is its parts; map one of the two"))
+        reported[level] = held
+    for key, value in (("entities", listed), ("resources", resources), ("fleets", fleets),
+                       ("levels", reported)):
         if value:
             state[key] = value
     for kind, has, key in _KINDS:
@@ -568,6 +788,62 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                 hint="map a signal for it, or accept the model's start"))
     return document(model, state, name=name, source="observed", at=clock,
                     stamp=seen.get("stamp")), problems
+
+
+def _plant_fleets(flat, blocks, seen, entities, problems) -> tuple:
+    """(the `fleets` section, {id(entity dict): its trip entry}) a plant's vehicles make
+    (D387): each stands at the node it last reported, idle, or carrying its load from there
+    to the destination its TRANSPORT block declares. A fleet is written whole or not at
+    all: a vehicle not observed, a load whose destination no block declares and a load
+    waiting for a vehicle are each said, and the fleet is left for the caller to refuse."""
+    def missing(fleet, what):
+        problems.append(problem(
+            "W_STATE_NOT_COVERED", f"the observed timeline cannot place fleet '{fleet}': {what}",
+            f"/{initial_state.SECTION}/fleets/{fleet}",
+            hint="map a \"vehicle\" and a \"load\" signal for every vehicle, and give the "
+                 "TRANSPORT block a destination"))
+
+    stations = {}
+    for name, block in blocks.items():
+        if str(block.get("type", "")).upper() == "STATION":
+            node = (block.get("params") or {}).get("node")
+            stations[name] = stations[(block.get("params") or {}).get("station") or name] = (name, node)
+    carriers: dict = {}             # fleet -> its TRANSPORT blocks
+    for name, block in blocks.items():
+        if str(block.get("type", "")).upper() == "TRANSPORT":
+            carriers.setdefault((block.get("params") or {}).get("fleet"), []).append(name)
+    out, loads = {}, {}
+    for spec in flat.get("fleets") or []:
+        fleet = spec.get("name")
+        count = len(spec.get("units") or []) or max(int(spec.get("count", 1)), 1)
+        said = {v["unit"]: v for v in (seen.get("vehicles") or {}).get(fleet, [])}
+        if not all(unit in said and said[unit]["node"] for unit in range(count)):
+            missing(fleet, "not every vehicle reports a node")     # none of them too (D270)
+            continue
+        riding = [e for e in entities if e.get("on") and e["on"][0] == fleet]
+        waiting = [e for e in entities if e["block"] in carriers.get(fleet, ()) and not e.get("on")]
+        trips = {}
+        for entity in riding:
+            unit = entity["on"][1]
+            via = entity["block"] if entity["block"] in carriers.get(fleet, ()) else (
+                carriers[fleet][0] if len(carriers.get(fleet, ())) == 1 else None)
+            target = stations.get((blocks.get(via, {}).get("params") or {}).get("destination"))
+            if target is None or not target[1] or unit in trips or unit not in said:
+                trips = None
+                break
+            trips[unit] = (entity, {"block": via, "trip": {
+                "origin": said[unit]["node"], "destination": target[1], "target": target[0],
+                "unit": unit, "stage": "carry"}})
+        if trips is None:
+            missing(fleet, "a load's TRANSPORT block declares no destination station")
+        elif waiting:
+            missing(fleet, "a load waits for a vehicle, and where it waits is not observed")
+        elif any(said[unit]["load"] and unit not in trips for unit in range(count)):
+            missing(fleet, "a vehicle carries an item no signal places")
+        else:
+            out[fleet] = {"vehicles": [{"node": said[unit]["node"]} for unit in range(count)]}
+            loads.update({id(entity): trip for entity, trip in trips.values()})
+    return out, loads
 
 
 # ---------------------------------------------------------------- into a run
@@ -614,6 +890,34 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
                            else f"the observed state is {age:.0f} s old, over the {max_age:g} s "
                                 f"asked for", "observe it again, or allow an older state")
     return []
+
+
+def coverage(layout, doc) -> list:
+    """Warnings for what the model has and the state *doc* says nothing about (D389): a
+    fleet, or parts in a buffer, of a state written before these were carried or observed
+    without them. They start as the model declares them."""
+    flat = schema.prepare(_model(layout))[0]
+    said = doc.get("state") if isinstance(doc, dict) and isinstance(doc.get("state"), dict) else {}
+    taken = doc.get("taken") if isinstance(doc, dict) and isinstance(doc.get("taken"), dict) else {}
+    # The document is untrusted: only a short, plain version text reaches the console.
+    engine = taken.get("engine")
+    writer = "a version before 0.6.2" if engine is None else f"nagasim {engine}" \
+        if isinstance(engine, str) and re.fullmatch(r"[A-Za-z0-9.+-]{1,40}", engine) \
+        else "an unnamed version"
+    places = any(initial_state._places(b) for b in flat.get("blocks") or [])
+    buffers = [b.get("name") for b in flat.get("blocks") or []
+               if str(b.get("type", "")).upper() == "BUFFER"]
+    held = any(isinstance(e, dict) and (e.get("held_by") or e.get("block") in buffers)
+               for e in (said.get("entities") if isinstance(said.get("entities"), list) else []))
+    missing = [kind for kind, absent in (
+        ("fleets and vehicles", flat.get("fleets") and "fleets" not in said),
+        ("parts in buffers and blocked stations", places and not held and "engine" not in taken),
+    ) if absent]
+    return [problem("W_STATE_NOT_COVERED", f"the state (written by {writer}) says "
+                    f"nothing about {kind}: they start as the model declares them",
+                    f"/{initial_state.SECTION}",
+                    hint="take or observe the state again with this version")
+            for kind in missing]
 
 
 def start(layout, doc, *, max_age: float | None = None, now: float | None = None,
@@ -726,6 +1030,7 @@ def main(argv=None) -> int:
     problems = problems or start(args.model, doc, max_age=args.max_age)[1]
     if not problems:
         print(f"state {doc['hash']} may start this model")
+        problems = coverage(args.model, doc)
     return _report(problems)
 
 

@@ -126,8 +126,12 @@ naga state observe model.json --out state.json
   | A batch whose maximum wait is running; a HOLD on a condition that is scanned on a clock; a MATCH with no `type_store_map` | refused |
   | A preempted job; a job holding a resource between two blocks; a formed batch | refused |
   | A ranked queue whose `ranking_expr` reads more than the entity (a variable, the clock) and does not `rerank` | refused |
-  | Blocking and finite buffers | refused |
-  | Fleets and vehicles, chargers, conveyors | refused |
+  | Blocking after service and finite buffers (a BUFFER, a `queue_capacity`): the parts in a buffer, the machine holding its finished part, who waits for a place | carried (`held_by`, `place`) |
+  | Blocking before service (`hold_until_space`); a finite queue that balks or reneges while an entity waits for a place | refused |
+  | Fleets and vehicles: where each one is, its drive, loading or unloading under way, its load, the dispatch queue in its order, a return home | carried (`fleets`, `trip`) |
+  | A battery's charge; a vehicle driving to a charger, waiting for a point or charging | carried (`soc`, `charge`) |
+  | A tour under way (`loads` above 1); a vehicle called back from its way home, or out of service; segment capacities; a gantry; a worker fleet; a mobile cobot that tends; a swap station; scheduled charging | refused |
+  | Conveyors | refused |
   | Agent populations | refused |
 
 - **What it reproduces.** A run started from a state taken at t gives the results of the
@@ -138,8 +142,8 @@ naga state observe model.json --out state.json
   an arrival schedule restarts its random thinning at the clock, so it matches in distribution
   only. Time-series samples are taken on a grid that starts at the clock: their instants are the
   uninterrupted run's only when the clock is on that grid.
-- **What it refuses.** `naga state take` writes a whole state or none. Agent populations, fleets
-  and vehicles, conveyors, chargers, finite buffers and blocking, a changeover under way, a
+- **What it refuses.** `naga state take` writes a whole state or none. Agent populations,
+  conveyors, what the table above lists as refused, a changeover under way, a
   store's content that is not entities waiting at a HOLD, a BATCH or a MATCH, a pending
   decision, a pipeline delay and a job that
   holds a resource between two blocks are refused with `E_STATE_UNSUPPORTED`, which names the one
@@ -256,8 +260,9 @@ open. `twin.json` holds:
 - `problems`: coded, each with what the twin did about it.
 
 A twin never starts a forecast from an empty model when it cannot read the plant's state. A model
-with vehicles, conveyors, blocking or agents is monitored and its forecast is refused
-(`E_TWIN_STATE`, naming the kind); a source that is down skips the forecast until it answers
+with conveyors, agents or a fleet whose vehicles the plant mapping does not observe is monitored
+and its forecast is refused (`E_TWIN_STATE`, naming the kind); a line with finite buffers, and a
+fleet whose every vehicle reports where it is, are forecast like any other model; a source that is down skips the forecast until it answers
 (`W_TWIN_SOURCE`), and so does a plant whose observations the mapping reads nothing of. The twin
 keeps the model it loaded: after editing the model file, start the twin again.
 

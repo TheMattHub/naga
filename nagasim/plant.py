@@ -74,6 +74,9 @@ KINDS = {
     "seen": ("block", ("leaves", "type")),
     "level": ("level", ("scale",)),
     "counter": ("block", ("rollover",)),
+    # A vehicle of a fleet (D387): the node it last reported, and the item it carries.
+    "vehicle": ("fleet", ("unit", "nodes")),
+    "load": ("fleet", ("unit",)),
 }
 STATES = ("busy", "idle", "blocked", "down", "up")
 _UNITS_STATES = frozenset({"busy", "idle", "blocked"})     # the ones that hold or free a unit
@@ -115,7 +118,12 @@ def _names(layout) -> dict:
     types = {str(e).upper() for e in of("entities")}
     types |= {str((b.get("params") or {}).get(key)).upper() for b in flat.get("blocks") or []
               for key in ("e_type", "batch_type") if (b.get("params") or {}).get(key)}
+    network = flat.get("network") if isinstance(flat.get("network"), dict) else {}
     return {"block": of("blocks"), "resource": of("resources") + of("fleets"),
+            "fleet": of("fleets"), "node": [str(n["name"]) for n in network.get("nodes") or []
+                                            if isinstance(n, dict) and n.get("name")],
+            "units": {str(f["name"]): len(f.get("units") or []) or f.get("count", 1)
+                      for f in flat.get("fleets") or [] if f.get("name")},
             "level": of("levels"), "types": sorted(types), "unit": units_of(flat.get("simulation")).time}
 
 
@@ -205,9 +213,10 @@ def check(mapping, layout=None) -> list[Problem]:
                                        and len(signal[name]) <= 200):
                 bad(f"signal {index}: {name} must be a text of at most 200 characters",
                     f"{at}/{name}")
-        tables = {"states": STATES, "blocks": None, "types": None}
+        tables = {"states": STATES, "blocks": None, "types": None, "nodes": None}
         for name, allowed in tables.items():
-            if name in signal or (name, kind) in (("states", "state"), ("blocks", "at")):
+            if name in signal or (name, kind) in (("states", "state"), ("blocks", "at"),
+                                                  ("nodes", "vehicle")):
                 reason = _table(signal.get(name), allowed)
                 if reason:
                     bad(f"signal {index}: {name} {reason}", f"{at}/{name}")
@@ -228,6 +237,12 @@ def check(mapping, layout=None) -> list[Problem]:
                 f"the counter returns to 0 at", f"{at}/rollover")
         if "leaves" in signal and not isinstance(signal["leaves"], bool):
             bad(f"signal {index}: leaves must be true or false", f"{at}/leaves")
+        unit = signal.get("unit", 0 if kind in ("vehicle", "load") else None)
+        if unit is not None and (isinstance(unit, bool) or not isinstance(unit, int)
+                                 or not 0 <= unit < LIMITS["count"]):
+            bad(f"signal {index}: unit must be the index of a vehicle of the fleet, from 0",
+                f"{at}/unit")
+            continue
         # What it speaks of: one name, a table of them, or (seen) a way out.
         if kind == "at":
             named = list(signal["blocks"].values()) if isinstance(signal.get("blocks"), dict) else []
@@ -245,6 +260,14 @@ def check(mapping, layout=None) -> list[Problem]:
                     bad(f"signal {index}: the model has no {group} '{name[:80]}'", f"{at}/{target}",
                         "E_PLANTMAP_NAME", f"its {group}s: "
                         f"{', '.join(sorted(names[group])[:20]) or '(none)'}")
+            if group == "fleet" and named[0] in names["units"] and unit >= names["units"][named[0]]:
+                bad(f"signal {index}: fleet '{named[0][:80]}' has no vehicle {unit}", f"{at}/unit",
+                    "E_PLANTMAP_NAME", f"its vehicles are 0 to {names['units'][named[0]] - 1}")
+            for node in (signal["nodes"].values() if isinstance(signal.get("nodes"), dict) else ()):
+                if isinstance(node, str) and node not in names["node"]:
+                    bad(f"signal {index}: the model's network has no node '{node[:80]}'",
+                        f"{at}/nodes", "E_PLANTMAP_NAME",
+                        f"its nodes: {', '.join(sorted(names['node'])[:20]) or '(none)'}")
         if kind in ("job", "busy", "blocked") or (
                 kind == "state" and isinstance(signal.get("states"), dict)
                 and _UNITS_STATES & set(signal["states"].values())):
@@ -255,7 +278,7 @@ def check(mapping, layout=None) -> list[Problem]:
         if kind not in ("job", "at", "seen"):
             # Two keys for one count, state or level would undo each other's events at every
             # change; several jobs, and several ways to see an item, are what a plant has.
-            what = f"\"{kind}\" of {group} '{named[0]}'"
+            what = f"\"{kind}\" of {group} '{named[0]}'" + ("" if unit is None else f" {unit}")
             told[what] = told.get(what, 0) + 1
         if group == "block" and kind != "counter":     # a counter tells what left, not what is there
             for name in named:
@@ -308,6 +331,11 @@ def schema() -> dict:
                         "resource": {**text, "description": "A resource or a fleet of the model."},
                         "block": {**text, "description": "A block of the flattened model."},
                         "level": {**text, "description": "A level of the model."},
+                        "fleet": {**text, "description": "\"vehicle\", \"load\": a fleet of the model."},
+                        "unit": {"type": "integer", "minimum": 0, "description": "\"vehicle\", "
+                                 "\"load\": which vehicle of the fleet, from 0 (default 0)."},
+                        "nodes": {**table, "description": "\"vehicle\": plant value -> the "
+                                  "network node the vehicle is at."},
                         "states": {**table, "description": "Plant value -> "
                                    + ", ".join(STATES) + "."},
                         "blocks": {**table, "description": "Plant value -> block."},
@@ -493,6 +521,7 @@ class Mapper:
         self._units = {"busy": {}, "blocked": {}}   # resource -> units nobody names
         self._down: dict[str, bool] = {}
         self._capacity: dict[str, float] = {}
+        self._vehicles: dict[tuple, list] = {}      # (fleet, unit) -> [node, the entity it carries]
         self._levels: dict[str, tuple] = {}         # level -> (time, value) last said
         # block -> [last value, total, since, resets, when it last spoke]
         self._counters: dict[str, list] = {}
@@ -794,6 +823,29 @@ class Mapper:
         if entity is not None and entity.present:
             out.append(_event(t, "entity_disposed", entity.id, entity.e_type, entity.block))
 
+    # ------------------------------------------------------------ vehicles (D387)
+    def _as_vehicle(self, signal, _key, _ident, cell, _row, t, out) -> None:
+        """Where a vehicle is: the node it last reported. Its progress along a segment,
+        its battery and what it is on its way to are not observed."""
+        node, which = signal["nodes"].get(_text(cell)), (signal["fleet"], signal.get("unit", 0))
+        if node is None:
+            return self._drop("value")
+        seen = self._vehicles.setdefault(which, [None, None])
+        if seen[0] != node:
+            seen[0] = node
+            out.append(_event(t, "mover_moved", which[1], target=which[0], resource=which[0],
+                              state="idle" if seen[1] is None else "loaded", path=(node,)))
+
+    def _as_load(self, signal, _key, _ident, cell, _row, _t, _out) -> None:
+        """The item a vehicle carries, by the id its `at` or `seen` signal gave it; none
+        when the value is null or empty. An item seen nowhere is a load all the same."""
+        if isinstance(cell, bool) or isinstance(cell, float) and not cell.is_integer():
+            return self._drop("value")
+        entity = None if cell is None or cell == "" else self.ids.get(_text(cell), -1)
+        if entity == -1:
+            self._drop("job_unseen")
+        self._vehicles.setdefault((signal["fleet"], signal.get("unit", 0)), [None, None])[1] = entity
+
     # ------------------------------------------------------------ levels
     def _as_level(self, signal, _key, _ident, cell, _row, t, out) -> None:
         if not _number(cell):
@@ -874,8 +926,18 @@ class Mapper:
         present = sorted((e for e in self._entities.values() if e.present), key=lambda e: e.order)
         def typed(e_type):
             return None if e_type in (UNTYPED, "", None) else e_type
+        riding = {entity: [fleet, unit] for (fleet, unit), (_node, entity)
+                  in self._vehicles.items() if entity is not None}
         entities = [{"block": e.block, "e_type": typed(e.e_type),
-                     "since": e.since, "holds": holds.get(e.id, [])} for e in present]
+                     "since": e.since, "holds": holds.get(e.id, []),
+                     **({"on": riding[e.id]} if e.id in riding else {})} for e in present]
+        vehicles: dict = {}
+        for (fleet, unit), (node, entity) in sorted(self._vehicles.items()):
+            # `load`: True with an item on it; "unseen" when that item is nowhere to be found
+            vehicles.setdefault(fleet, []).append({
+                "unit": unit, "node": node, "load": entity is not None and (
+                    True if entity in self._entities and self._entities[entity].present
+                    else "unseen")})
         entities += [{"block": block, "e_type": typed(self._anonymous_type.get(block)),
                       "since": None, "holds": []}
                      for block, members in self._anonymous.items() for _ in members]
@@ -885,6 +947,7 @@ class Mapper:
                                      "down": self._down.get(name, False)}
                               for name in sorted({*busy, *self._down, *self._capacity})},
                 "levels": {name: said[1] for name, said in self._levels.items()},
+                "vehicles": vehicles,
                 "counters": self.counters()}
 
     def stamp(self) -> str | None:

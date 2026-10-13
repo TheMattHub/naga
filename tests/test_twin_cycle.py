@@ -570,7 +570,7 @@ def test_a_model_no_state_can_carry_is_monitored_and_refused_by_name(tmp_path):
     assert doc["forecast"] == {"status": "refused", "reason": "E_TWIN_STATE"}
     refusal = next(p for p in doc["problems"] if p["code"] == "E_TWIN_STATE")
     assert refusal["message"] == ("this model cannot be started from plant state yet: "
-                                  "fleets and vehicles")
+                                  "conveyors")
     assert doc["view"]["wip"] == 1 and sum(doc["view"]["blocks"].values()) == 1
 
 

@@ -236,6 +236,8 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
     since = entity._since           # None but for a warm-started entity's first wait
     if since is not None:
         entity._since = None
+    if block.ctx.bus.has_subscribers:   # D383: when it asked, for a state (not when it arrived:
+        entity._asked = block.env.now if since is None else since   # a place may come first)
     if isinstance(target, ResourceSet):
         member, requests = yield from _acquire_from_set(block, target, quantity, priority, scope,
                                                         patience, since, member, until)

@@ -33,6 +33,7 @@ import logging
 from nagasim.core import blocking, tending
 from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, ParamSpec
+from nagasim.core.utils import timeout_at
 
 log = logging.getLogger(__name__)
 
@@ -137,24 +138,110 @@ class Transport(BaseProcess):
                 return        # a cobot waiting loaded at this machine exchanges it (D170)
             if picks:
                 tending.check_stall(self.env, fleet)   # no cobot may ever come
-            request, mover = yield from fleet.acquire(self, entity, origin, self.priority, job=job)
-            if mover is None:
-                return        # attached to another vehicle's tour or exchange, which carries it
-            jobs = fleet.attach(mover)
-            if jobs:
-                yield from self._tour(fleet, mover, [job] + jobs)
-                fleet.free(request, mover, block=self, entity=entity)
-                fleet.park_home(mover, block=self)
+            got = yield from self._dispatch(fleet, job)
+            if got is None:
                 return
+            request, mover = got
+        mover.task = ("pickup", job, None)          # D383: what a state reads
         yield from fleet.drive(mover, origin, loaded=False, block=self)
         if picks:
             yield from tending.pick(self, entity, fleet, mover, here, arrived)
         else:
+            mover.task = ("load", job, None)
             yield from fleet.handle(mover, fleet.duration(self, entity, fleet.load_time))
+        yield from self._deliveries(fleet, request, mover, job)
+
+    def _dispatch(self, fleet, job, since=None):
+        """Generator: wait for a vehicle for *job*; (request, vehicle), or None when
+        another vehicle's tour or exchange carries it, or this one's tour is done."""
+        _block, entity, origin, _destination, _target = job
+        request, mover = yield from fleet.acquire(self, entity, origin, self.priority, job=job,
+                                                  since=since)
+        if mover is None:
+            return None       # attached to another vehicle's tour or exchange, which carries it
+        jobs = fleet.attach(mover)
+        if jobs:
+            yield from self._tour(fleet, mover, [job] + jobs)
+            fleet.free(request, mover, block=self, entity=entity)
+            fleet.park_home(mover, block=self)
+            return None
+        return request, mover
+
+    def _deliveries(self, fleet, request, mover, job):
         # A loop, not a recursion: each delivery may exchange its part for the
         # next job, with no end to the chain.
         while job is not None:
             job = yield from job[0]._deliver(fleet, request, mover, *job[1:])
+
+    def resume(self, entity, trip: dict, record: dict | None, since=None):
+        """Generator: a trip a state found waiting for a vehicle or under way (D385),
+        entered at its stage. A stage with its time (`drive.started`, `until`) ends when
+        it was due; one without (a plant says where a vehicle is, not since when) starts
+        now from the vehicle's node."""
+        fleet, env = self.ctx.fleets[self.fleet_name], self.env
+        origin, destination = trip["origin"], trip["destination"]
+        target = self.ctx.stations[trip["target"]]
+        job = (self, entity, origin, destination, target)
+        if trip.get("unit") is None:
+            got = yield from self._dispatch(fleet, job, since)
+            if got is None:
+                return
+            request, mover = got
+            stage, record = "pickup", {}
+        else:
+            mover = fleet.movers[trip["unit"]]
+            request = fleet.claim(mover)
+            yield request
+            self.ctx.settling -= 1
+            stage, record = trip.get("stage", "carry"), record or {}
+        started = (record.get("drive") or {}).get("started")
+        if stage in ("pickup", "load"):
+            until = None
+            if stage == "pickup":
+                mover.task = ("pickup", job, None)
+                yield from fleet.drive(mover, origin, loaded=False, block=self, started=started)
+            else:
+                until = record.get("until")        # a load under way ends when it was due
+            mover.task = ("load", job, None)
+            if until is None:
+                yield from fleet.handle(mover, fleet.duration(self, entity, fleet.load_time))
+            else:
+                yield from fleet.handle(mover, 0.0, until)
+            yield from self._deliveries(fleet, request, mover, job)
+            return
+        if stage == "carry" and started is None:
+            # from where the vehicle stands: the block's own loaded half
+            yield from self._deliveries(fleet, request, mover,
+                                        (self, entity, mover.node, destination, target))
+            return
+        if stage == "carry":
+            unload = float(trip.get("unload") or 0.0)
+            mover.task = ("carry", job, unload)
+            path, travel = fleet.leg(mover.node, destination, fleet.speed)
+            self.emit("entity_moved", entity=entity, next_index=0, target=target.name,
+                      duration=max(started + travel + unload - env.now, 0.0), path=tuple(path),
+                      travel=max(started + travel - env.now, 0.0))
+            yield from fleet.drive(mover, destination, loaded=True, block=self, started=started)
+            mover.task = ("unload", job, None)
+            yield from fleet.handle(mover, unload)
+        else:
+            mover.task = ("unload", job, None)
+            self.emit("entity_moved", entity=entity, next_index=0, target=target.name,
+                      duration=max((record.get("until") or env.now) - env.now, 0.0),
+                      path=(destination,), travel=0.0)
+            yield from fleet.handle(mover, fleet.duration(self, entity, fleet.unload_time)
+                                    if record.get("until") is None else 0.0, record.get("until"))
+        self.trip_count += 1
+        self._drop(fleet, request, mover, entity, target)
+
+    def _drop(self, fleet, request, mover, entity, target) -> None:
+        """The entity is delivered the moment it is unloaded, and the vehicle is
+        free the moment it is empty: under `park: "home"` the drive home is
+        its own interruptible process, so a request arriving mid-return
+        diverts it from wherever it has got to (PHASE4 T7, ARCHITECTURE D68)."""
+        target.self_run(entity)
+        fleet.free(request, mover, block=self, entity=entity)
+        fleet.park_home(mover, block=self)
 
     def _deliver(self, fleet, request, mover, entity, origin, destination, target):
         """Generator: the loaded half of one trip -- drive, unload, hand the
@@ -170,6 +257,7 @@ class Transport(BaseProcess):
         self.emit("entity_moved", entity=entity, next_index=0, target=target.name,
                   duration=travel + unload, path=tuple(path), travel=travel)
 
+        mover.task = ("carry", (self, entity, origin, destination, target), unload)
         yield from fleet.drive(mover, destination, loaded=True, block=self)
         swapped = None
         if places:
@@ -177,6 +265,7 @@ class Transport(BaseProcess):
             # places it; the part entered the station inside `place`.
             swapped = yield from tending.place(self, entity, fleet, mover, target)
         else:
+            mover.task = ("unload", mover.task[1], None)
             yield from fleet.handle(mover, unload)
         self.trip_count += 1
         if self.ctx.debug:
@@ -187,12 +276,9 @@ class Transport(BaseProcess):
         if (places and target.tending.get("cobot") == "stay"
                 and tending.stay(self, entity, fleet, request, mover, target)):
             return None       # the slot stays held; the next TRANSPORT or the exit frees it
-        # The entity is delivered the moment it is unloaded, and the vehicle is
-        # free the moment it is empty: under `park: "home"` the drive home is
-        # its own interruptible process, so a request arriving mid-return
-        # diverts it from wherever it has got to (PHASE4 T7, ARCHITECTURE D68).
         if not places:
-            target.self_run(entity)
+            self._drop(fleet, request, mover, entity, target)
+            return None
         fleet.free(request, mover, block=self, entity=entity)
         fleet.park_home(mover, block=self)
         return None

@@ -521,7 +521,8 @@ PROBLEM_CODES: dict[str, str] = {
     "W_LIVE_DROPPED": "A live source sent something over a bound or of a type that is not data; "
                       "it was dropped and counted.",
     # -- warm start (ROADMAP 3.4b) --------------------------------------------
-    "E_INITIAL_BLOCK": "An initial-state entry names a block the model does not have.",
+    "E_INITIAL_BLOCK": "An initial-state entry is not an object, names a block the model does not have, or "
+                       "misstates its place, its holder or its attributes.",
     "E_INITIAL_BLOCK_TYPE": "An initial-state entry names a block type that cannot hold entities.",
     "E_INITIAL_COUNT": "An initial-state entry's count is negative or not an integer.",
     "E_INITIAL_IN_SERVICE": "in_service exceeds the entry's count or the resource's capacity.",
@@ -532,7 +533,9 @@ PROBLEM_CODES: dict[str, str] = {
                          "not have, or gives it no next or down_until time.",
     "E_INITIAL_SET": "initial_state names a resource set, a cursor or a member the model does not have.",
     "E_INITIAL_BUSY": "A resource is reported busy with a number of units the in-service entities do not hold.",
-    "E_INITIAL_QUEUE_CAPACITY": "More entities wait at a block than its queue_capacity holds.",
+    "E_INITIAL_QUEUE_CAPACITY": "More entities wait at a block, or sit in a BUFFER, than it has places.",
+    "E_INITIAL_FLEET": "initial_state.fleets or an entity's trip does not fit the model: a fleet, a "
+                       "vehicle record, a node, a charger or a stage it does not have.",
     "E_INITIAL_AGE": "An initial-state entry's age is negative or not a number.",
     "E_INITIAL_RESOURCE": "initial_state.resources names a resource the model does not declare.",
     "E_INITIAL_VARIABLE": "initial_state.variables names a variable the model does not declare.",

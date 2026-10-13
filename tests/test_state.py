@@ -183,7 +183,7 @@ def test_the_run_marks_what_a_state_needs():
 def test_a_state_taken_from_a_run_names_what_was_there():
     doc = state.take(_line(failures=FAILURE), 8.5, seed=3, name="line")
     assert doc["format"] == 1 and doc["model"]["name"] == "line"
-    assert doc["taken"] == {"source": "run", "at": 8.5, "seed": 3}
+    assert doc["taken"] == {"source": "run", "at": 8.5, "seed": 3, "engine": nagasim.__version__}
     assert doc["state"] == {
         "clock": 8.5,
         "arrivals": {"c": {"count": 5, "next": 10.0}},
@@ -361,8 +361,7 @@ def test_discrete_event_a_stochastic_run_is_reproduced_in_distribution():
 
 @pytest.mark.parametrize("name, at, kind", [("agents_sir_agents", 5.0, "agent populations"),
                                             ("abm_wolf_sheep", 5.0, "agent populations"),
-                                            ("warehouse_forklifts", 50.0, "fleets and vehicles"),
-                                            ("line_with_buffers", 100.0, "blocking")])
+                                            ("warehouse_forklifts", 50.0, "conveyors")])
 def test_what_a_state_cannot_carry_is_refused_by_name(name, at, kind):
     assert kind in _refusal(_bundled(name), at)
 
@@ -748,7 +747,7 @@ def test_a_bundled_library_model_with_stores_is_reproduced_exactly():
 
 
 @pytest.mark.parametrize("name, at, kind", [
-    ("automation_floor", 50.3, "fleets and vehicles"), ("warehouse_library", 20.3, "fleets and vehicles"),
+    ("automation_floor", 50.3, "a mobile cobot that tends"), ("warehouse_library", 20.3, "conveyors"),
     ("automation_cell", 50.3, "mid-cycle"),
     ("mfg_line_library", 50.3, "holds a resource between blocks"),
     ("clinic_library", 60.3, "holds a resource between blocks"),

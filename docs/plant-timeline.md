@@ -53,6 +53,8 @@ what each key asserts about the model. It is data: no path, no address, no code,
 | `queue` | how many items are in a block | that many anonymous entities |
 | `at` | where item `{id}` is: `blocks` maps the plant's value to a block; a value of `gone` (or no value) ends it, one of `merged` takes it into a batch | the entity created where it is first seen, moved when seen elsewhere, gone |
 | `seen` | the item named by the value is in `block`, or with `"leaves": true` has left | the same |
+| `vehicle` | where vehicle `unit` (from 0) of `fleet` is: `nodes` maps the plant's value to the network node it last reported | the vehicle at that node |
+| `load` | which item vehicle `unit` of `fleet` carries, or none | nothing by itself: the state of now puts the item on that vehicle |
 | `level` | what a level holds, times `scale` | the level, linear between two values |
 | `counter` | the plant's running total of items that left `block` (parts made at a station, parts scrapped at an exit) | nothing: a count is not an item. The twin shows it and compares forecasts with it |
 
@@ -64,8 +66,8 @@ what each key asserts about the model. It is data: no path, no address, no code,
 - A resource may be a fleet. An entity's type comes from the mapping (`type`, or `types`), never
   from the plant.
 
-**Not mappable now:** vehicles (position, load, battery), chargers, conveyors, cycle phases and
-agents; an item on a timed link (it stays in the block it left until it is seen at the next);
+**Not mappable now:** a vehicle's progress along a segment, its battery and what it is on its way
+to; chargers, conveyors, cycle phases and agents; an item on a timed link (it stays in the block it left until it is seen at the next);
 attributes; a job's remaining time; a counter of a resource or of one item type.
 
 **Counters.** Many plants give no item ids, only totals. A `counter` is counted from where the
@@ -127,8 +129,14 @@ which are in service, the busy units, a resource that is down (when it has one f
 levels. The plant does not say when a service ends, so one in progress is drawn afresh. Units
 reported busy with no job named: when one block seizes the resource its longest-waiting entities
 are taken as in service (`W_PLANT_SERVICE_INFERRED`); otherwise the start is refused
-(`E_INITIAL_BUSY`). Fleets, agents, variables and arrival clocks start as the model declares them
-(`W_STATE_NOT_COVERED`).
+(`E_INITIAL_BUSY`). An item in a BUFFER has one of its places, the ones beyond its capacity wait
+to get in, and an item reported further on while its last station still holds its unit (`job`)
+leaves that station blocked. A fleet is placed when every vehicle reports a node: each stands
+there idle, or carries its load from there to the destination its TRANSPORT block declares, the
+drive starting afresh. A fleet with a vehicle not observed, a load whose block declares no
+destination and a load waiting for a vehicle are said (`W_STATE_NOT_COVERED`), and a twin then
+refuses the forecast by name. Agents, variables and arrival clocks start as the model declares
+them (`W_STATE_NOT_COVERED`).
 
 ## Bounds
 

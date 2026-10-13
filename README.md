@@ -145,8 +145,10 @@ configured. A model's own Python behaviour never runs through either.
 
 - No test has run against a real broker, OPC UA server, MES or plant counter: the readers and
   the twin are tested on in-process stand-ins and recorded logs.
-- A twin cannot yet start from the state of a model with vehicles or blocking buffers; such a
-  model is monitored and its forecast is refused by name.
+- A twin starts from the state of a line with finite buffers, and of a fleet whose vehicles each
+  report where they are and what they carry. It cannot yet start from a model with conveyors,
+  mobile cobots that tend, tours, gantries or segment capacities: such a model is monitored and
+  its forecast is refused by name.
 - Recommendations build one action, a resource's capacity, and one sink, a file.
 - The viewer needs Chrome, Edge or Firefox on a desktop.
 - There is no editor and no animation here beyond the recorded player: Naga is an engine.

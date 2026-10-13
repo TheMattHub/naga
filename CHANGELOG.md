@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Added: a state carries a line with finite buffers (the parts in each buffer, a machine
+  holding its finished part, who waits for a place) and fleets and vehicles (where each
+  vehicle is, its drive, loading or unloading under way, its load, the dispatch queue in its
+  order, its battery charge, a vehicle driving to a charger, waiting for a point or
+  charging): `naga state take`, `naga run --state`.
+- Added: a plant mapping can observe a vehicle (`"as": "vehicle"`: the node it last
+  reported) and its load (`"as": "load"`); a twin of a line with finite buffers, or of a
+  fleet whose vehicles each report where they are, forecasts instead of being refused. A
+  twin refuses when any declared fleet is not observed whole.
+- Added: `naga state check` says when a state says nothing about the model's vehicles or
+  buffers, and which version wrote it.
+- Still refused by name: conveyors, tours, segment capacities, gantries, worker fleets,
+  mobile cobots that tend, swap stations, scheduled charging, a vehicle out of service,
+  blocking before service.
+- Changed: the minimum state of charge after a warm-up that falls during a charge is the
+  charge at the warm-up, not the charge the vehicle plugged in with.
+- Changed: a state no longer carries the cost charged to an entity before it was taken, so a
+  run started from it reports the costs of its own window, as a warm-up does. Infinity and
+  NaN are refused in a model file's `initial_state`.
+- Fixed: a job put in service by an initial state blocks after service like any other. An
+  initial-state entry whose `attributes` are no object, an entity that is no object, a
+  `block` that is no name or `entities` that is no list is `E_INITIAL_BLOCK`, not an
+  exception. From a plant, the level a BUFFER mirrors is made of its parts.
 - Added: a twin started again, as each scheduled `naga twin once` is, goes on counting from
   each plant counter's last reading (`readings` in `twin.json`), so its forecasts of throughput
   are scored and an action's measured effect survives a restart; a reset, a reading older than

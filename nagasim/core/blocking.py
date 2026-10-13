@@ -49,7 +49,7 @@ from nagasim.core.stats import TimeWeighted
 
 log = logging.getLogger(__name__)
 
-__all__ = ["Space", "TRANSPARENT_TYPES", "accept", "arm", "analyse", "cycles", "gate", "placed",
+__all__ = ["Space", "TRANSPARENT_TYPES", "accept", "arm", "holder_of", "analyse", "cycles", "gate", "placed",
            "hold_until_accepted", "layout_blocking_graph", "on_forward", "reserve",
            "drop_reservation", "hold_target", "resource_name_of", "check_deadlock",
            "deadlock_at_end", "PROCESS_TYPES"]
@@ -108,12 +108,25 @@ class Space:
             request = held[1]
         else:
             request = self._pool.request()
+            request.entity = entity         # D383: who waits for a place, for a state
             yield request
             self._granted()
         if accepts:
             accept(entity)
             yield from placed(entity)
         return request
+
+    def claim(self):
+        """A place taken at once, for a state putting back what had one: the request to hand
+        back to `give_back`."""
+        request = self._pool.request()
+        self._granted()
+        return request
+
+    def occupy(self, entity) -> None:
+        """A state puts *entity* back in a place it had (D382): taken at once and carried
+        as a reservation, so `take` steps into it without a wait of its own."""
+        setattr(entity, _RESERVED, (self, self.claim()))
 
     def _granted(self) -> None:
         self.entered += 1
@@ -144,6 +157,7 @@ class Space:
 def arm(block, entity):
     """Keep *entity* in *block* until somebody accepts it; returns the event."""
     token = block.env.event()
+    token.holder = block            # D383: who still holds the entity, for a state
     setattr(entity, _TOKEN, token)
     return token
 
@@ -157,6 +171,12 @@ def accept(entity) -> None:
     delattr(entity, _TOKEN)
     if not token.triggered:
         token.succeed()
+
+
+def holder_of(entity):
+    """The block that still holds *entity* (a BUFFER whose place it has, a station blocked
+    after service), or None."""
+    return getattr(getattr(entity, _TOKEN, None), "holder", None)
 
 
 def gate(block, entity):
@@ -188,16 +208,18 @@ def on_forward(entity, target) -> None:
     accept(entity)
 
 
-def hold_until_accepted(block, entity, index: int = 0):
+def hold_until_accepted(block, entity, index: int = 0, forward: bool = True):
     """Generator: forward *entity* and keep holding the resource until some
     block downstream accepts it. The caller releases once this returns.
 
     `block.blocked` is the time-weighted "this station is blocked" collector,
     and the resource gets a `blocked` state event for playback. An entity
     accepted in the same instant costs a zero-length interval, i.e. nothing.
+    *forward* False: a state put the part back where it waits (D381), it is not sent again.
     """
     token = arm(block, entity)
-    block.forward(entity, index)
+    if forward:
+        block.forward(entity, index)
     if token.triggered:
         return
     block.blocked.add(1, block.env.now)

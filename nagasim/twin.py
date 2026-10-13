@@ -884,6 +884,14 @@ class PlantSource:
                      "documentation")]
         seen = dict(self.mapper.snapshot(), at=self._at)
         doc, found = state.from_plant(self.model, seen, name=self.name or None)
+        if any(str(p.path).startswith("/initial_state/fleets/") for p in found):
+            # D388: a fleet the mapping does not observe would start as declared under a
+            # plant that says otherwise. Refused by name, as before; the rest is carried.
+            return None, None, found + [problem(
+                "E_TWIN_STATE", "this model cannot be started from plant state yet: fleets "
+                "and vehicles the plant mapping does not observe", "/initial_state",
+                hint="map a \"vehicle\" signal for every vehicle of the fleet; the twin goes "
+                     "on monitoring")]
         model, refused = state.start(self.model, doc, until=self._at + float(horizon))
         if model is not None:
             # A forecast has no warm-up (it would discard the state it starts from); the
