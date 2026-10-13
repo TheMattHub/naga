@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 (2026-10-13)
+
+What the first days after the release asked for: a Step button in the recorded player,
+recommendations that say the action first, measured benchmarks and reference models in the
+documentation, and four fixes that let a small local model get further with the agent tools.
+Nothing in the model file or the Python API changed.
 
 - Added: the engine's package carries `py.typed`, so a type checker reads its annotations
   from an install.
