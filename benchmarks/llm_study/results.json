@@ -1,0 +1,180 @@
+{
+ "tasks": {
+  "mm1": {
+   "title": "One clerk, one queue (M/M/1): the mean time a customer spends in the shop",
+   "answer": 11.999999999999998,
+   "tolerance": 2.100575
+  },
+  "mmc": {
+   "title": "Three agents, one queue (M/M/3): the mean wait before a call is answered",
+   "answer": 3.4065420560747675,
+   "tolerance": 0.767
+  },
+  "md1": {
+   "title": "A machine with a fixed cycle time (M/D/1): the mean wait before a job starts",
+   "answer": 2.2500000000000004,
+   "tolerance": 0.302925
+  },
+  "tandem": {
+   "title": "Two machines in a row (tandem M/M/1 queues): the mean time a part spends in the line",
+   "answer": 19.16666666666667,
+   "tolerance": 2.5441200000000004
+  },
+  "rework": {
+   "title": "Machining and inspection with rework (a Jackson network): the mean time a job is in the shop",
+   "answer": 26.666666666666668,
+   "tolerance": 3.103435
+  },
+  "priority": {
+   "title": "Urgent jobs go first (a non-preemptive priority M/M/1 queue): the mean time of an urgent job",
+   "answer": 7.5,
+   "tolerance": 0.5278
+  },
+  "batch": {
+   "title": "Trays of five through a tunnel oven (batching): the mean time of an item",
+   "answer": 7.0,
+   "tolerance": 0.11658
+  },
+  "carpark": {
+   "title": "A car park with ten spaces and no queue (an Erlang loss system): the share turned away",
+   "answer": 9.954371305634096,
+   "tolerance": 0.978635
+  },
+  "shift": {
+   "title": "A robot that works 65 minutes and charges 35 (a capacity schedule): the mean time of a parcel",
+   "answer": 13.0,
+   "tolerance": 0.25
+  },
+  "cooling": {
+   "title": "A cup of coffee cooling (system dynamics, one stock): its temperature after 15 minutes",
+   "answer": 35.61911121039009,
+   "tolerance": 0.5
+  },
+  "repair": {
+   "title": "Twenty machines that fail and are repaired (agents with two states): how many run on average",
+   "answer": 18.18181818181818,
+   "tolerance": 0.2741012223434215
+  },
+  "tank": {
+   "title": "A tank filled by a pump on a timer and drawn from steadily (rates): the share of time it is empty",
+   "answer": 16.666666666666668,
+   "tolerance": 0.5
+  }
+ },
+ "attempts": [
+  {
+   "comparison": "claude",
+   "model": "haiku",
+   "task": "mm1",
+   "arm": "simpy",
+   "repeat": 1,
+   "valid": true,
+   "runnable": true,
+   "correct": true,
+   "answer": 12.890452788604582,
+   "note": "",
+   "turns": 3,
+   "tool_calls": 2,
+   "budget": 30,
+   "model_id": "claude-haiku-4-5-20251001",
+   "tokens_in": 26,
+   "tokens_out": 4600,
+   "tokens_cached": 32056,
+   "cost_usd": 0.040344599999999994,
+   "expected": 11.999999999999998,
+   "tolerance": 2.100575,
+   "seconds": 40.9,
+   "date": "2026-10-13",
+   "versions": {
+    "nagasim": "0.6.0",
+    "simpy": "4.1.1",
+    "python": "3.12.4"
+   }
+  },
+  {
+   "comparison": "claude",
+   "model": "haiku",
+   "task": "mm1",
+   "arm": "tools",
+   "repeat": 1,
+   "valid": true,
+   "runnable": true,
+   "correct": true,
+   "answer": 12.1692,
+   "note": "",
+   "turns": 20,
+   "tool_calls": 19,
+   "budget": 30,
+   "model_id": "claude-haiku-4-5-20251001",
+   "tokens_in": 122,
+   "tokens_out": 2847,
+   "expected": 11.999999999999998,
+   "tolerance": 2.100575,
+   "seconds": 53.3,
+   "date": "2026-10-13",
+   "versions": {
+    "nagasim": "0.6.0",
+    "simpy": "4.1.1",
+    "python": "3.12.4"
+   }
+  },
+  {
+   "comparison": "claude",
+   "model": "haiku",
+   "task": "shift",
+   "arm": "simpy",
+   "repeat": 1,
+   "valid": true,
+   "runnable": true,
+   "correct": true,
+   "answer": 12.95025075226807,
+   "note": "",
+   "turns": 3,
+   "tool_calls": 2,
+   "budget": 30,
+   "model_id": "claude-haiku-4-5-20251001",
+   "tokens_in": 26,
+   "tokens_out": 12903,
+   "tokens_cached": 40465,
+   "cost_usd": 0.0995045,
+   "expected": 13.0,
+   "tolerance": 0.25,
+   "seconds": 101.9,
+   "date": "2026-10-13",
+   "versions": {
+    "nagasim": "0.6.0",
+    "simpy": "4.1.1",
+    "python": "3.12.4"
+   }
+  },
+  {
+   "comparison": "claude",
+   "model": "haiku",
+   "task": "shift",
+   "arm": "tools",
+   "repeat": 1,
+   "valid": true,
+   "runnable": true,
+   "correct": true,
+   "answer": 12.9368,
+   "note": "",
+   "turns": 29,
+   "tool_calls": 28,
+   "budget": 30,
+   "model_id": "claude-haiku-4-5-20251001",
+   "tokens_in": 170,
+   "tokens_out": 7100,
+   "tokens_cached": 888343,
+   "cost_usd": 0.1846863,
+   "expected": 13.0,
+   "tolerance": 0.25,
+   "seconds": 104.7,
+   "date": "2026-10-13",
+   "versions": {
+    "nagasim": "0.6.0",
+    "simpy": "4.1.1",
+    "python": "3.12.4"
+   }
+  }
+ ]
+}

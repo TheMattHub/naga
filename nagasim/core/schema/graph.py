@@ -222,5 +222,6 @@ def _is_endless_zero_gap(params: dict) -> bool:
         return False
     if params.get("distribution", "Constant") != "Constant" or params.get("max_arrivals", 0):
         return False
-    value = (params.get("dist_params") or {}).get("value", 1.0)
+    given = params.get("dist_params")       # not a mapping: reported as E_PARAM_TYPE (#407)
+    value = given.get("value", 1.0) if isinstance(given, dict) else 1.0
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value <= 0

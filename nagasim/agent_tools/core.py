@@ -229,13 +229,54 @@ def _document_args(tool_name, /, **docs) -> None:
         _ARG_DOCS[(tool_name, arg)] = text
 
 
+_JSON_KINDS = {"object": dict, "array": list}
+
+
+def _parse_json_arguments(schema: dict, kwargs: dict) -> None:
+    """Small local models send an object/array argument as a JSON string (#408). Parse it
+    when the schema declares object/array, so the call works and a bad string is blamed
+    on the argument, not on its content. json.loads only; nothing else is coerced."""
+    for key, value in kwargs.items():
+        kinds = (schema["properties"].get(key) or {}).get("type", [])
+        kind = next((k for k in ([kinds] if isinstance(kinds, str) else kinds) if k in _JSON_KINDS), None)
+        if kind is None or not isinstance(value, str):
+            continue
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, _JSON_KINDS[kind]):
+            raise ToolError("E_BAD_ARGUMENT",
+                            f"`{key}` must be an {kind}, not a string",
+                            f"send `{key}` as a JSON {kind}, not as text")
+        kwargs[key] = parsed
+
+
+def _require_arguments(schema: dict, kwargs: dict) -> None:
+    """A required argument left out is named, and said to be inside an object argument
+    when it was put there (#409: `type` sent inside `params`); Python's own TypeError
+    text is nothing a model can act on."""
+    for key in schema["required"]:
+        if key in kwargs:
+            continue
+        inside = next((name for name, value in kwargs.items()
+                       if isinstance(value, dict) and key in value), None)
+        raise ToolError("E_BAD_ARGUMENT", f"`{key}` is required",
+                        f"it was sent inside `{inside}`: put `{key}` beside `{inside}`, not in it"
+                        if inside else "see this tool's input schema")
+
+
 def tool(read_only: bool = False):
     """Register a function as a tool: wrap it so it never raises, derive its
     input schema from the signature, keep the docstring as the description."""
 
     def decorate(fn):
+        schema = _input_schema(fn)
+
         def safe(**kwargs):
             try:
+                _parse_json_arguments(schema, kwargs)
+                _require_arguments(schema, kwargs)
                 return fn(**kwargs)
             except ToolError as exc:
                 return exc.as_dict()
@@ -258,7 +299,7 @@ def tool(read_only: bool = False):
         safe.__annotations__ = dict(getattr(fn, "__annotations__", {}))
         TOOLS[fn.__name__] = ToolSpec(name=fn.__name__, fn=safe,
                                       description=inspect.getdoc(fn) or "",
-                                      input_schema=_input_schema(fn), read_only=read_only,
+                                      input_schema=schema, read_only=read_only,
                                       origin=fn.__module__)
         return safe
 
@@ -437,8 +478,8 @@ def new_model(name: str) -> dict:
 
     This is the starting point for building a model from a description: create
     it, add blocks, connect them, then validate. Nothing is written to disk
-    until you call `save_model`. An empty model is invalid (no CREATE, no
-    DISPOSE); that is expected and the returned problems say so.
+    until you call `save_model`. An empty model validates and runs, and
+    answers nothing: the first problems appear with the first block.
 
     Returns the usual edit answer: {"ok", "introduced", "fixed", "errors",
     "warnings", "model"}.

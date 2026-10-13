@@ -1,0 +1,3 @@
+# One file per attempt, with its transcript: kept on the machine that ran them.
+attempts/
+attempts-*/

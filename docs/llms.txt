@@ -38,6 +38,7 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 - [Agent-based modelling](https://thematthub.github.io/naga/agent-based-modelling.html): Populations of agents, each running its own small statechart, alongside the ordinary block flow chart and system dynamics -- the same model file, the same run_model.
 - [Python API](https://thematthub.github.io/naga/python-api.html): The command line is a thin layer over a few functions.
 - [Use with an agent](https://thematthub.github.io/naga/mcp.html): The engine has a set of tools an LLM agent calls to build, validate, run, debug and analyse a model: Agent tools lists every one.
+- [Tools or code, an LLM case study](https://thematthub.github.io/naga/llm-study.html): The agent tools rest on a claim: a language model that builds a simulation through them gets a model that is valid, runs and gives the right answer more often than the same model writing SimPy code for the same request.
 - [Security](https://thematthub.github.io/naga/security.html): A model file (.json) is untrusted data, exactly like a document someone emailed you.
 
 ## Modelling guide

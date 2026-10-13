@@ -938,6 +938,12 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
 
         for text in validate_params(btype, params):
             problems.append(_param_problem(text, name, btype, str(index)))
+        # A `distribution` that is not a name or a `dist_params` that is not a mapping is
+        # reported just above; the checks below read them as what they should be (#407).
+        misshapen = [key for key, kind in (("distribution", str), ("dist_params", dict))
+                     if key in params and not isinstance(params[key], kind)]
+        if misshapen:
+            params = {key: value for key, value in params.items() if key not in misshapen}
         # A block expanded out of a submodel instance carries its parameters in
         # "locals" (ROADMAP 2.3 part B); they are legal names in its expressions.
         in_scope = variables | set(block.get("locals") or {})

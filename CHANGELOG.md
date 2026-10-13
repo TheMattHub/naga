@@ -22,6 +22,14 @@
 - Added: `core.debugger.watch_functions()` and `watch_names(layout, function)`, and
   `expressions.name_sections(function)`: the functions a watch may call, with a call hint, and
   the model names each one's first argument takes.
+- Added: an LLM case study under `benchmarks/llm_study/` (twelve tasks with derived answers,
+  a tools arm and a SimPy arm, a local and a Claude Code harness) and its docs page.
+- Fixed: an agent tool called with a JSON string for an object or array argument (what small
+  local models send) now parses it; a string that is not that JSON is refused naming the
+  argument. A required argument left out is named, and said to be inside another argument
+  when it was put there. A block whose distribution is malformed is reported as a problem
+  instead of making validation raise. The `new_model` tool no longer says an empty model is
+  invalid.
 
 ## 0.6.0 (2026-10-12)
 

@@ -70,6 +70,7 @@ nav:
       - Agent-based modelling: agent-based-modelling.md
       - Python API: python-api.md
       - Use with an agent: mcp.md
+      - Tools or code, an LLM case study: llm-study.md
       - Security: security.md
   - Modelling guide:
       - modelling-guide/index.md

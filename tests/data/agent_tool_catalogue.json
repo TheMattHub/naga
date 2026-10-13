@@ -75,7 +75,7 @@
     "read_only": true
   },
   {
-    "description": "Create an empty model in the workspace under *name*.\n\nThis is the starting point for building a model from a description: create\nit, add blocks, connect them, then validate. Nothing is written to disk\nuntil you call `save_model`. An empty model is invalid (no CREATE, no\nDISPOSE); that is expected and the returned problems say so.\n\nReturns the usual edit answer: {\"ok\", \"introduced\", \"fixed\", \"errors\",\n\"warnings\", \"model\"}.",
+    "description": "Create an empty model in the workspace under *name*.\n\nThis is the starting point for building a model from a description: create\nit, add blocks, connect them, then validate. Nothing is written to disk\nuntil you call `save_model`. An empty model validates and runs, and\nanswers nothing: the first problems appear with the first block.\n\nReturns the usual edit answer: {\"ok\", \"introduced\", \"fixed\", \"errors\",\n\"warnings\", \"model\"}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
