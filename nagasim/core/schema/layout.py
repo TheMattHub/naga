@@ -521,7 +521,21 @@ def _validate_resource_refs(layout: dict, problems: list) -> None:
     for index, block in enumerate(layout.get("blocks", [])):
         if block.get("type", "").upper() not in _RESOURCE_NAME_BLOCK_TYPES:
             continue
-        name = (block.get("params") or {}).get("resource_name")
+        params = block.get("params") or {}
+        name = params.get("resource_name")
+        # DEVLOG #411: a block that seizes or releases with nothing to name used to
+        # validate and then raise in the run (the blocks' own "has no resource" check).
+        btype = block.get("type", "").upper()
+        action = str(params.get("action") or "Seize Delay Release")
+        uses = btype != "PROCESS" or action.startswith("Seize") or action.endswith("Release")
+        if not name and uses and not (params.get("worker_fleet") and btype != "RELEASE"):
+            problems.append(problem(
+                "E_RESOURCE_UNKNOWN",
+                f"{block.get('name')}: {btype} has no resource_name",
+                f"/blocks/{index}/params/resource_name", block=block.get("name"),
+                hint="set resource_name to a declared resource or resource set"
+                     + ("; or use action \"Delay\" if it should only wait"
+                        if btype == "PROCESS" else "")))
         if name and name not in declared:
             problems.append(problem(
                 "E_RESOURCE_UNKNOWN",

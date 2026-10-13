@@ -662,7 +662,8 @@ def test_naga_twin_status_and_the_agent_tool_give_the_scores_with_their_basis(tm
 def test_a_twin_started_again_never_reads_a_count_against_another_mappers_start(tmp_path):
     """C1 of the review: a new process has a new mapper, whose counters begin again at 0.
     The forecast the process before it left has its start under the old count: its
-    points are not compared, never filled with a negative increase."""
+    points are not compared, never filled with a negative increase. Since D378 that is
+    the case of a directory with no last reading in it (a twin of 0.6.1 left none)."""
     model = slow_line()
     source, clock, events, mapping, log = playing(model, counters=True)
     first = cycle_on(source, clock, tmp_path)
@@ -670,6 +671,9 @@ def test_a_twin_started_again_never_reads_a_count_against_another_mappers_start(
     doc = first.step()
     assert doc["forecast"]["base"]["block/p/out"][0] == left(events, "p", 10.5) > 0
     due = min(p["at"] for p in doc["forecast"]["points"] if p["series"] == "block/p/out")
+    result = json.loads((tmp_path / twin.RESULT_FILE).read_text(encoding="utf-8"))
+    assert result.pop("readings")["p"]["value"] == left(events, "p", 10.5)
+    twin.write_json(tmp_path / twin.RESULT_FILE, result)    # an older twin's result
     # The second process: a broker gives it what the plant says from now on, not the past.
     later = Clock()
     tail = [line for line in log if line["source_time"] >= 11.0]
@@ -686,6 +690,22 @@ def test_a_twin_started_again_never_reads_a_count_against_another_mappers_start(
     history = json.loads((tmp_path / twin.HISTORY_FILE).read_text(encoding="utf-8"))
     assert all(p["observed"] is None or p["observed"] >= 0
                for record in history["forecasts"] for p in record["points"])
+    # This twin made no forecast of its own, and by design (D270): the tail it joined names
+    # a job of an item its mapper never saw, so the state contradicts itself and the start
+    # is refused by name. It is the set-up of this test, not a twin started again.
+    assert (doc["forecast"]["status"], doc["forecast"]["reason"]) == ("refused", "E_INITIAL_BUSY")
+    assert len(history["forecasts"]) == 1
+    # Started again over the same directory and told the whole plant (what a retained
+    # topic, a poll or a recorded log gives), it forecasts at its first step.
+    third = Clock()
+    feed = twin.LogFeed(log, speed=1.0, monotonic=lambda: third.mono)
+    whole = cycle_on(twin.PlantSource(model, mapping, feed, name="line", clock=feed.clock),
+                     third, tmp_path)
+    third.mono = due + 0.5
+    doc = whole.step()
+    assert doc["forecast"]["status"] == "ok" and doc["forecast"]["from"] == due + 0.5
+    history = json.loads((tmp_path / twin.HISTORY_FILE).read_text(encoding="utf-8"))
+    assert [r["from"] for r in history["forecasts"]] == [10.5, due + 0.5]
 
 
 def test_a_number_no_float_can_hold_stops_neither_a_counter_nor_a_twin(tmp_path):
@@ -748,3 +768,175 @@ def test_the_blocks_to_count_are_validated_and_bounded():
     nested["simulation"]["timeseries_counts"] = [name + "x"]
     assert [p.code for p in schema.validate_model_structured(nested)
             if p.code == "E_TIMESERIES_COUNTS"] == ["E_TIMESERIES_COUNTS"]
+
+
+# ---------------------------------------------------------------- counters across twins (D378)
+def test_a_count_goes_on_from_a_carried_reading_or_begins_again():
+    signals = ({"key": "parts", "as": "counter", "block": "p"},
+               {"key": "wrap", "as": "counter", "block": "d", "rollover": 100})
+    first = counting(*signals)
+    first.feed([said("parts", 1200, 10.0), said("parts", 1204, 20.0), said("wrap", 98, 20.0)])
+    left_behind = first.readings()
+    assert left_behind == {"d": {"value": 98, "total": 0, "since": 20.0, "resets": 0, "at": 20.0},
+                           "p": {"value": 1204, "total": 4, "since": 10.0, "resets": 0, "at": 20.0}}
+
+    def again(readings, *lines, max_age=60.0):
+        mapper = counting(*signals)
+        mapper.carry(json.loads(json.dumps(readings)), max_age)
+        mapper.feed(list(lines))
+        return mapper
+    # The next value: the same count, under the same marker; a declared rollover wraps.
+    mapper = again(left_behind, said("parts", 1207, 50.0), said("wrap", 3, 50.0))
+    assert mapper.counters() == {"d": {"total": 5, "since": 20.0, "resets": 0},
+                                 "p": {"total": 7, "since": 10.0, "resets": 0}}
+    assert mapper.readings()["p"] == {"value": 1207, "total": 7, "since": 10.0, "resets": 0, "at": 50.0}
+    # A counter that has not spoken yet is not observed, and its reading is not dropped.
+    quiet = again(left_behind, said("wrap", 99, 50.0))
+    assert list(quiet.counters()) == ["d"] and quiet.readings()["p"] == left_behind["p"]
+    # A value under the carried one: a reset, counted, so the marker is another.
+    back = again(left_behind, said("parts", 3, 50.0), said("parts", 5, 55.0))
+    assert back.counters()["p"] == {"total": 6, "since": 10.0, "resets": 1}
+    assert back.report()["counts"]["counter_back"] == 1
+    # Later than the stated age, or earlier than the reading (this mapper is told the past
+    # itself): a count of its own, from where it first sees the counter.
+    for t in (80.5, 19.0):
+        own = again(left_behind, said("parts", 1210, t), said("parts", 1211, t + 1))
+        assert own.counters()["p"] == {"total": 1, "since": t, "resets": 0}
+    assert again(left_behind, said("parts", 1210, 80.0)).counters()["p"]["total"] == 10
+    assert again(left_behind, said("parts", 1210, 50.0), max_age=None).counters()["p"]["since"] == 50.0
+    # What is read back is data: an entry that is no sound reading is no reading.
+    good = left_behind["p"]
+    for damage in ({"value": -1}, {"value": 2.5}, {"value": "1204"}, {"value": True},
+                   {"value": 10 ** 400}, {"total": 2 ** 53 + 2}, {"total": None}, {"resets": -1},
+                   {"since": float("nan")}, {"since": 30.0}, {"at": "soon"}, {"at": 10 ** 400}):
+        mapper = counting(*signals)
+        mapper.carry({"p": {**good, **damage}}, 60.0)
+        assert mapper.readings() == {}, damage
+    for whole in (None, [], "p", 7, {"p": None}, {"p": [1204, 4, 10.0, 0, 20.0]}, {"p": {}},
+                  {"nowhere": good}, {"p": {k: v for k, v in good.items() if k != "at"}}):
+        mapper = counting(*signals)
+        mapper.carry(whole, 60.0)
+        mapper.feed([said("parts", 1210, 50.0)])
+        assert mapper.readings() == {"p": {"value": 1210, "total": 0, "since": 50.0, "resets": 0,
+                                           "at": 50.0}}, whole
+
+
+def polled(model, out, times, *, horizon=30.0, counter=None, between=None):
+    """A twin under a scheduler: a NEW source and cycle at each of *times* over the one
+    directory *out*, each told the plant's state up to then and what every counter shows
+    then (a poll), and stepped once, as `naga twin once` is. *counter* turns what a counter
+    shows at a time into what the plant says; *between* runs before each start.
+    Returns (the results, the plant log of the whole period, the mapping, the trace)."""
+    mapping = plant.scaffold(model, counters=True)
+    mapping["time"] = EPOCH
+    recorder = TraceRecorder()
+    api.run_model(model, replications=1, seed=1, trace=recorder, record_logs=False)
+    keys = {s["key"]: s["block"] for s in mapping["signals"] if s["as"] == "counter"}
+    state = [line for line in plant.log_of(recorder.events, mapping) if line["key"] not in keys]
+    counter = counter or (lambda block, t, value: value)
+    polls = {t: [{**said(key, counter(block, t, left(recorder.events, block, t)), t),
+                  "source": state[0]["source"]} for key, block in keys.items()] for t in times}
+    docs = []
+    for index, t in enumerate(times):
+        if between is not None:
+            between(index)
+        feed = twin.LogFeed([line for line in state if line["source_time"] <= t] + polls[t])
+        source = twin.PlantSource(model, mapping, feed, name="line", clock=feed.clock)
+        docs.append(cycle_on(source, Clock(), out, horizon=horizon, replications=5).step())
+    whole = [line for line in state if line["source_time"] <= times[-1]]
+    return docs, whole + [line for t in times for line in polls[t]], mapping, recorder.events
+
+
+def test_scheduled_twins_score_throughput_against_the_plant_and_the_log_gives_the_same(
+        tmp_path, capsys):
+    """Two and more processes over one directory: the second scores the first's forecast
+    of throughput, which no twin of one step could before D378; `naga twin score` computes
+    every stored reading and score again from the plant log."""
+    model = busy_line()
+    times = [100.0 + 5.5 * k for k in range(12)]
+    docs, log, mapping, events = polled(model, tmp_path / "out", times)
+    assert all(doc["forecast"]["status"] == "ok" and doc["cycle"] == 1 for doc in docs)
+    # The count is one count over every process: begun at the first poll, never lost.
+    assert docs[-1]["view"]["counters"]["p"] == {
+        "total": left(events, "p", times[-1]) - left(events, "p", 100.0), "since": 100.0, "resets": 0}
+    assert docs[0]["readings"]["p"] == {"value": left(events, "p", 100.0), "total": 0,
+                                        "since": 100.0, "resets": 0, "at": 100.0}
+    # The second step already reads the first's forecast of what left each block.
+    counted = [r for r in docs[1]["comparison"] if r["series"].startswith("block/")]
+    assert {r["series"] for r in counted} == {"block/c/out", "block/p/out", "block/d/out"}
+    assert all(r["observed"] == left(events, r["series"].split("/")[1], times[1])
+               - left(events, r["series"].split("/")[1], 100.0) for r in counted)
+    rows = [r for r in docs[-1]["scores"]["rows"] if r["series"] == "block/p/out"]
+    assert sum(r["points"] for r in rows) > 20 and not any(r["lost"] for r in rows)
+    history = json.loads((tmp_path / "out" / twin.HISTORY_FILE).read_text(encoding="utf-8"))
+    for record in history["forecasts"]:
+        for found in record["points"]:
+            if found["series"] == "block/p/out" and found["observed"] is not None:
+                assert found["observed"] == left(events, "p", found["observed_at"]) \
+                    - left(events, "p", record["from"])
+    # The exit check of 7.14, across processes: from the log, as a command.
+    lines, differences = score.recompute(tmp_path / "out", model, mapping, log)
+    assert differences == 0, lines
+    # Every forecast but the last, whose stated times lie ahead, is in the rolling score.
+    assert f"the rolling score ({len(times) - 1} forecasts) equals its recomputation" in lines
+    paths = [str(tmp_path / name) for name in ("line.json", "line.plantmap.json", "plant.jsonl")]
+    for path, data in zip(paths, (model, mapping)):
+        Path(path).write_text(json.dumps(data), encoding="utf-8")
+    plant.write_log(paths[2], log)
+    assert twin.main(["score", str(tmp_path / "out"), paths[0], "--map", paths[1],
+                      "--log", paths[2]]) == 0
+    assert "every stored score equals its recomputation from the log" in capsys.readouterr().out
+
+
+def test_a_reading_that_is_damaged_reset_or_too_old_is_no_previous_reading(tmp_path):
+    """Never an error that ends a step (F1 of 7.12's review), never a count made up."""
+    model = busy_line()
+
+    def second(name, *, times=(100.0, 105.5), damage=None, **more):
+        path = tmp_path / name / twin.RESULT_FILE
+
+        def between(index):
+            if index and damage is not None:
+                path.write_text(damage(path.read_text(encoding="utf-8")), encoding="utf-8")
+        docs, *_ = polled(model, tmp_path / name, list(times), between=between, **more)
+        doc = docs[-1]
+        assert doc["forecast"]["status"] == "ok"        # the step is made whatever it found
+        rows = [r for r in doc["scores"]["rows"] if r["series"].startswith("block/")]
+        return doc, sum(r["points"] for r in rows), sum(r["lost"] for r in rows)
+
+    assert second("sound")[1:] == (3, 0)
+
+    def edited(change):
+        def damage(text):
+            doc = json.loads(text)
+            change(doc)
+            return json.dumps(doc)
+        return damage
+    for index, change in enumerate((
+            lambda doc: doc.pop("readings"),                            # an older twin's result
+            lambda doc: doc.update(readings="many"),
+            lambda doc: doc.update(readings={name: None for name in "cpd"}),
+            lambda doc: [r.update(value=-5) for r in doc["readings"].values()],
+            lambda doc: [r.pop("at") for r in doc["readings"].values()],
+            lambda doc: [r.update(total=10 ** 400) for r in doc["readings"].values()],
+            lambda doc: doc["model"].update(hash="x" * 64),             # another model's twin
+            lambda doc: doc.update(model=None))):
+        doc, points, lost = second(f"damaged{index}", damage=edited(change))
+        assert (points, lost) == (0, 3), index
+        assert doc["view"]["counters"]["p"] == {"total": 0, "since": 105.5, "resets": 0}
+    for index, damage in enumerate((lambda text: "{", lambda text: "[" * 100_000,
+                                    lambda text: " " * (twin.LIMITS["result_bytes"] + 1))):
+        assert second(f"unread{index}", damage=damage)[1:] == (0, 3)
+    # One sound reading among damaged ones is still continued.
+    doc, points, lost = second("mixed", damage=edited(
+        lambda doc: [doc["readings"][name].update(value="x") for name in "cd"]))
+    assert (points, lost) == (1, 2) and doc["view"]["counters"]["p"]["since"] == 100.0
+    # A counter set back to 0 between the two: lost, as within one twin, and said.
+    doc, points, lost = second("reset", counter=lambda block, t, value: (
+        value if t == 100.0 or block != "p" else 1))
+    assert (points, lost) == (2, 1) and doc["view"]["counters"]["p"]["resets"] == 1
+    assert any(p["code"] == "W_PLANT_CONTRADICTION" and "went backwards" in p["message"]
+               for p in doc["problems"])
+    # A reading older than one horizon is not continued: the count begins again.
+    doc, points, lost = second("old", times=(100.0, 104.0), horizon=3.0)
+    assert points == 0 and doc["view"]["counters"]["p"]["since"] == 104.0

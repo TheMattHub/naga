@@ -250,6 +250,9 @@ open. `twin.json` holds:
   and any one can be run again from its record;
 - `comparison`: each prediction whose time has come, beside the value then observed;
 - `scores`: how the stored forecasts held (below);
+- `readings`: each counter's last raw `value`, the model time `at` which it was said, and the
+  count it stands in (`total`, `since`, `resets`). The twin started next on the same `--out`
+  goes on counting from it;
 - `problems`: coded, each with what the twin did about it.
 
 A twin never starts a forecast from an empty model when it cannot read the plant's state. A model
@@ -279,7 +282,7 @@ looked, in the model's time unit):
 
 | Field | Meaning |
 |---|---|
-| `points`, `missed`, `lost` | readings scored; stated times the twin was not there for (stopped, source down); counted readings not compared because the counter lost count, or the twin was started again, after the forecast began |
+| `points`, `missed`, `lost` | readings scored; stated times the twin was not there for (stopped, source down); counted readings not compared because, after the forecast began, the counter lost count or the twin was started again with no last reading to go on from |
 | `coverage` | share of readings inside the band. About 0.9 when the model is right; much lower says the forecast is too sure or off, 1.0 over many readings that its band is too wide. A row of whole numbers (`whole`, shown with a *: units in service, items, counts) covers more than 0.9 on a right model, because a band of whole numbers cannot be cut at exactly 5% and 95%: compare such a row by its `pinball` |
 | `bias` | mean of observed minus forecast mean: positive when the plant runs above the forecast |
 | `error` | mean absolute error |
@@ -294,8 +297,15 @@ forecasts on the same seed every time (`basis.same_seed` counts those): give eac
 `--seed` if you want independent forecasts. The rolling score restarts when the model or
 `--horizon` changes, and the twin says so once (`W_TWIN_SCORE`): keep one `--out` directory a
 model and a horizon. A count is compared as its increase since the forecast started, and not
-at all across a counter reset or a restart of the twin (it counts from where it first sees a
-counter, so a twin run by `naga twin once` compares no counts).
+at all across a counter reset. A twin that is started again, as each `naga twin once` under a
+scheduler is, goes on counting from the last reading in `twin.json` (`readings`), so its
+forecasts of throughput are scored like the others. It does not when the counter then shows
+less than that reading and declares no `rollover` (a reset: `lost`), when the counter next
+speaks more than one `--horizon` after it, or when the reading is missing or cannot be read
+(a twin of 0.6.1 or older wrote none): the count then begins where the counter is first seen.
+A counter that was reset between two runs and has counted past its old value again cannot be
+told from one that went on, as between any two readings; and a counter that says nothing
+while a scheduled twin listens gives that step no reading.
 
 To check a score, or to see what late plant events cost it, record the plant
 (`naga watch --record`) and compute everything again from the log:
@@ -360,8 +370,8 @@ naga twin run line.json --map line.plantmap.json --connections conn.json --out t
   action on the same target, or change the model. If the KPI is what a counted block let out (`timeseries/block/<name>/out/max`, see
   counters above), the twin measures the effect itself: the counter's increase over one horizon
   from the moment it read your reply, set against the band it had given. Any other KPI is
-  `not_observable`; a twin that was late says `missed`, and one that was started again in
-  between says `lost`.
+  `not_observable`; a twin that was late says `missed`, and one that lost the count in
+  between (a counter reset, or a restart with no last reading to go on from) says `lost`.
 - **Reproducing.** `naga twin reproduce twin_out line.json` computes every stored
   recommendation again from its stored state and seed and prints each difference (exit 1 if
   there is one). The twin keeps the newest 20 states under `twin_out/states/` for this.

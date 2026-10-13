@@ -354,6 +354,7 @@ def scaffold(layout, anonymous: bool = False, counters: bool = False) -> dict:
 
 # ---------------------------------------------------------------- observations into events
 _WHOLE = 2 ** 53        # the largest count a float holds exactly
+_READING = ("value", "total", "since", "resets", "at")      # of a counter (`Mapper.readings`)
 
 
 def _number(value) -> bool:
@@ -493,7 +494,11 @@ class Mapper:
         self._down: dict[str, bool] = {}
         self._capacity: dict[str, float] = {}
         self._levels: dict[str, tuple] = {}         # level -> (time, value) last said
-        self._counters: dict[str, list] = {}        # block -> [last value, total, since, resets]
+        # block -> [last value, total, since, resets, when it last spoke]
+        self._counters: dict[str, list] = {}
+        self._carried: dict[str, list] = {}         # the same, of a mapper before this one
+        self._carry_age = 0.0
+        self._counted = {s["block"] for s in mapping.get("signals", []) if s.get("as") == "counter"}
         self._counts: dict[str, int] = {}
         self._holes: list = []                      # the first 1000, for a report
         self._hole_totals = [0, 0, 0]               # holes, events lost, breaks: exact
@@ -810,15 +815,44 @@ class Mapper:
             return self._drop("value")      # no count, or one no float holds exactly (#373)
         held = self._counters.get(signal["block"])
         if held is None:
-            self._counters[signal["block"]] = [cell, 0, t, 0]
-            return None
+            # The count of a mapper before this one goes on (`carry`) when this is its next
+            # reading: not an earlier one (this mapper is told the past itself and counts
+            # it) and not one later than the stated age. Judged once, at the first value.
+            before = self._carried.pop(signal["block"], None)
+            held = self._counters[signal["block"]] = before if before is not None                 and before[4] <= t <= before[4] + self._carry_age else [cell, 0, t, 0, t]
         step, roll = cell - held[0], signal.get("rollover")
         if step < 0 and roll and max(cell, held[0]) < roll:
             step += roll
         elif step < 0:
             step, held[3] = 0, held[3] + 1
             self._drop("counter_back")
-        held[0], held[1] = cell, held[1] + int(step)
+        held[0], held[1], held[4] = cell, held[1] + int(step), t
+
+    def carry(self, readings, max_age: float) -> None:
+        """Go on from the counts of a mapper before this one (a twin started again, D378).
+        *readings* is what its `readings()` gave and is read back from a file: an entry
+        that is not a sound reading of a counted block is no reading. A count goes on only
+        if its counter next speaks within *max_age* (model time) of what is carried; a
+        value under the carried one is then a reset, or a declared rollover, as within
+        one mapper. A reset that has counted past the carried value again cannot be told
+        from an increase, as between any two readings."""
+        self._carry_age = float(max_age) if _number(max_age) and max_age > 0 else 0.0
+        self._carried = {}
+        for block in self._counted.intersection(readings if isinstance(readings, dict) else ()):
+            said = readings[block]
+            row = [said.get(key) for key in _READING] if isinstance(said, dict) else [None]
+            if all(_number(v) for v in row) and row[2] <= row[4] and all(
+                    0 <= row[i] <= _WHOLE and float(row[i]).is_integer() for i in (0, 1, 3)):
+                self._carried[block] = [int(row[0]), int(row[1]), float(row[2]), int(row[3]),
+                                        float(row[4])]
+
+    def readings(self) -> dict:
+        """block -> the last raw reading of its counter and the count it stands in:
+        `value`, `total`, `since`, `resets` and `at`, the model time the counter last
+        spoke at. What `carry` takes. A carried count whose counter has not spoken yet is
+        still given, so a quiet counter is not lost by one mapper that never heard it."""
+        return {block: dict(zip(_READING, held))
+                for block, held in sorted({**self._carried, **self._counters}.items())}
 
     def counters(self) -> dict:
         """block -> what its counter has counted since this mapper first saw it: `total`,

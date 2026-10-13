@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Added: a twin started again, as each scheduled `naga twin once` is, goes on counting from
+  each plant counter's last reading (`readings` in `twin.json`), so its forecasts of throughput
+  are scored and an action's measured effect survives a restart; a reset, a reading older than
+  one horizon, or a damaged or missing reading starts the count again and is never an error.
+- Fixed: a flow rate that reads `TNOW` in a model with no step grid (`simulation.sd`) is
+  warned (`W_FLOW_CLOCK_NO_GRID`); before, the rate was read once at the start and a timed
+  pump or draw never switched, with no signal.
+- Fixed: a PROCESS, SEIZE or RELEASE block with no resource is `E_RESOURCE_UNKNOWN` at
+  validation instead of an error in the run, and the `run_model` tool answers a failed run
+  as `E_RUN_FAILED`.
+- Checked: SimPy 4.1.2 leaves its stop event in the queue after `run(until=)`; the engine
+  never calls it, results are identical on 4.1.1 and 4.1.2, and a test holds that.
+
 ## 0.6.1 (2026-10-13)
 
 What the first days after the release asked for: a Step button in the recorded player,

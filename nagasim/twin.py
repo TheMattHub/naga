@@ -226,7 +226,8 @@ def _reading(record: dict, series: str, seen: dict):
     """What *seen* gives a stated point of *series* of *record*: the value; None when the
     series is not observed now; False for a running total that cannot be compared (D290:
     it lost count since the forecast started, was first seen after it, or is another
-    mapper's count: a twin started again counts from 0 again). A total is read as its
+    mapper's count: a twin started again with no last reading to go on from counts from 0
+    again, D378). A total is read as its
     increase since the forecast's start, and only under the marker that start was taken
     under, whole: when the count began and how often it was lost."""
     value = _num((seen.get("observed") or {}).get(series))
@@ -305,6 +306,19 @@ class Cycle:
                 hint="the stored forecasts keep their own scores; use one --out directory "
                      "a model and a horizon to keep a score"))
         self._observes = False              # whether the source offers a series to compare
+        # A twin started again goes on from the counters' last readings (D378), which the
+        # result in this directory holds when it is this model's. The oldest reading that
+        # is continued is one horizon old: no increase is read over more than that. The
+        # file is data: the source judges each entry, and one it refuses is no reading.
+        carry = getattr(source, "carry", None)
+        last = None if carry is None or self.out_dir is None else _read(
+            self.out_dir / RESULT_FILE, KIND, LIMITS["result_bytes"])
+        if last is not None and isinstance(last.get("model"), dict)                 and last["model"].get("hash") == getattr(source, "model_hash", None):
+            try:
+                carry(last.get("readings"), self.horizon)
+            except Exception as exc:        # as `observe`: no step is lost to a file
+                log.warning("twin: the counters' last readings were not continued (%s)",
+                            type(exc).__name__)
 
     # ------------------------------------------------------------ one step
     def step(self) -> dict:
@@ -585,6 +599,8 @@ class Cycle:
                 else "none_due" if self._history else "no_forecast"
         if seen.get("mapped"):
             doc["mapped"] = seen["mapped"]
+        if seen.get("readings"):
+            doc["readings"] = seen["readings"]      # for the twin started next (D378)
         if self._advice is not None:
             doc["advice"] = self._advice
         if self._advisor is not None:
@@ -834,9 +850,18 @@ class PlantSource:
                                for name, said in counters.items()},
                 "sources": [dict(row) for row in self._rows.values()],
                 "cursors": dict(self._cursors),     # what a record was computed from (D228)
+                # Each counter's last raw value and when it was said: what a twin started
+                # after this one continues the count from (D378).
+                "readings": cut(self.mapper.readings()),
                 "mapped": {key: report[key] for key in ("observations", "events", "entities",
                                                         "counts")},
                 "problems": problems + self.mapper.problems()}
+
+    def carry(self, readings, max_age: float) -> None:
+        """Go on from the counters' readings a twin before this one left (D378): before
+        the first `observe`. Each entry is judged by the mapper (`plant.Mapper.carry`)."""
+        if not self._refused:
+            self.mapper.carry(readings, max_age)
 
     def take(self) -> list:
         """The trace events mapped since this was last called, whoever called `observe` in

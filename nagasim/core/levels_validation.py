@@ -12,7 +12,7 @@ import math
 from nagasim.core import sd
 from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.levels import (DEFAULT_BLEND_TOLERANCE, SD_METHODS, THRESHOLD_DIRECTIONS,
-                                  _BUS_CALLS, _SAMPLER_CALLS, _half_up, is_dynamic)
+                                  _BUS_CALLS, _CLOCK_NAMES, _SAMPLER_CALLS, _half_up, is_dynamic)
 from nagasim.core.problems import problem
 from nagasim.core.timeunits import UNITS
 from nagasim.core.utils import is_number as _is_number
@@ -147,11 +147,35 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
         _check_thresholds(problems, f"flow '{name}'", entry.get("thresholds"),
                           f"{at}/thresholds", "E_FLOW_THRESHOLD")
     _check_sd(problems, layout)
+    _check_clock_rates(problems, layout)
     _check_conveyors(problems, layout)
     return problems, levels, flows
 
 
 LEAK_KINDS = ("linear", "exponential")
+
+
+def _check_clock_rates(problems: list, layout: dict) -> None:
+    """DEVLOG #410: a rate is re-evaluated only at events, so one that reads TNOW changes
+    between them only on the SD grid. Without one the clock is read at t=0 and a timed
+    pump never switches (no error, a plausible wrong answer). LEVEL() reads are fine: a
+    level change is itself an event."""
+    if (layout.get("simulation") or {}).get("sd") is not None:
+        return
+    auxes = {}      # no grid, so no auxiliaries to follow (they need one)
+    for index, entry in enumerate(layout.get("flows", []) or []):
+        try:
+            expression = compile_expression(str(entry.get("rate", "0")), None)
+        except ExpressionError:
+            continue        # reported as E_EXPRESSION by the expression checks
+        if any(_CLOCK_NAMES & e.names for e in sd.reach(expression, auxes)):
+            problems.append(problem(
+                "W_FLOW_CLOCK_NO_GRID",
+                f"flow '{entry.get('name', '')}': the rate reads TNOW but the model has no "
+                f"step grid, so it is evaluated only at events and the clock is stale between "
+                f"them", f"/flows/{index}/rate",
+                hint="add \"simulation\": {\"sd\": {\"dt\": 0.5}} (set_sd_settings), with dt "
+                     "well below the shortest interval the rate switches on"))
 
 
 def _check_conveyors(problems: list, layout: dict) -> None:

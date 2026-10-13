@@ -159,3 +159,45 @@ def test_two_decisions_of_one_step_are_pending_answered_in_any_order_and_replaye
     replayed = _Where()
     SimSession.replay(_two_at_once(), 0, s.game_log, trace=replayed)
     assert replayed == where
+
+
+def test_a_paused_run_leaves_no_stop_event_in_the_queue_on_any_simpy():
+    """The audit of the first engine CI run's note. SimPy 4.1.2 puts the stop event of
+    `Environment.run(until=)` back into the queue (4.1.1 dropped it), so a `peek()` after
+    it gives the pause time and not the next event's. The engine never calls `run`: it
+    steps and moves the clock itself (`step_until`, `_move_clock`), so no such event
+    exists, here or in the debugger, game mode, a state taken at a pause or the sampler.
+    This runs on both versions (CI installs 4.1.2)."""
+    import re
+    from pathlib import Path
+
+    import simpy
+
+    import nagasim
+    from conftest import process
+
+    env = simpy.Environment()
+    env.timeout(5)
+    env.run(until=3)
+    # What SimPy itself does: 5 before 4.1.2, 3 from it on. The engine depends on neither.
+    assert env.peek() in (3, 5)
+    called = [path.name for path in Path(nagasim.__file__).parent.rglob("*.py")
+              if re.search(r"\benv\.run\(|StopSimulation", path.read_text(encoding="utf-8"))]
+    assert called == []         # a first call of it is a reason to read this test again
+
+    c = create("c", distribution="Exponential", dist_params={"rate": 0.2})
+    p, d = process("p", value=0.25, distribution="Exponential"), dispose("d")
+    model = layout([c, p, d], chain(c, p, d), resources=[{"name": "Server", "capacity": 1}],
+                   simulation={"time_limit": 200, "warmup": 0, "replications": 1})
+    whole = SimSession(model, seed=3)
+    assert whole.advance() == "horizon"
+    paused = SimSession(model, seed=3)
+    for k in range(1, 40):
+        assert paused.advance(to=k * 5.5) == ("time" if k * 5.5 < 200 else "horizon")
+        # Nothing of the pause is queued: the next event is the model's, after the pause.
+        assert not [item for item in paused.env._queue
+                    if type(item[3]) is simpy.Event and not item[3].callbacks]
+        assert paused.env.peek() > paused.now == min(k * 5.5, 200.0)
+    one, other = whole.finish(), paused.finish()
+    assert one["system"].equals(other["system"])
+    assert one["resource_summary"].equals(other["resource_summary"])

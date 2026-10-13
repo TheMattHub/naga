@@ -319,8 +319,12 @@ def test_a_long_or_empty_viewer_is_said(tmp_path, monkeypatch):
     made = viewer.build_viewer(model(), tmp_path / "a.html", runtime=folder, baseline=slow)
     assert made["estimate"] == 12.5 and [w.code for w in made["warnings"]] == ["W_VIEWER_LONG_RUN"]
     assert "30 replications is estimated at 6 minutes" in made["warnings"][0].message
+    # The estimate is MEASURED, so both baselines carry a fixed time (bug 412: on a busy
+    # machine the real one made the empty model "long" too).
+    quick = viewer.what_if(model("agents_machine_repair.json"), replications=3)
+    quick["seconds"] = 3 * 0.01
     empty = viewer.build_viewer(model("agents_machine_repair.json"), tmp_path / "b.html",
-                                runtime=folder)
+                                runtime=folder, baseline=quick)
     assert [w.code for w in empty["warnings"]] == ["W_VIEWER_EMPTY", "W_VIEWER_EMPTY"]
 
 

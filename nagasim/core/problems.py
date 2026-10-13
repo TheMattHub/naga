@@ -104,6 +104,8 @@ PROBLEM_CODES: dict[str, str] = {
                        "four times per step.",
     "W_SD_RK4_BUS": "A dynamic flow rate reads FLOW()/FLOWSUM() under RK4, whose stages ignore "
                     "saturation.",
+    "W_FLOW_CLOCK_NO_GRID": "A flow rate reads TNOW in a model with no simulation.sd step grid, so "
+                            "the clock is only read at events.",
     # -- conveyors (PHASE6 depth C1) ------------------------------------------
     "E_CONVEYOR_SPEC": "A conveyor has no transit_time or an unknown leak_kind.",
     "E_CONVEYOR_GRID": "A conveyor stock needs simulation.sd (it moves one slat per DT).",

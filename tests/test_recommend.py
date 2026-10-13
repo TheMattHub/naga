@@ -563,7 +563,7 @@ def test_the_effect_of_a_taken_action_is_measured_from_the_plants_counter(tmp_pa
 
 
 def test_an_effect_that_cannot_be_read_is_said_by_name(tmp_path):
-    for name in "abcd":
+    for name in ("a", "b", "b0", "c", "d"):
         (tmp_path / name).mkdir()
     # The twin was not there in time: missed.
     cycle, advisor, clock, *_rest = advised(tmp_path / "a")
@@ -573,22 +573,29 @@ def test_an_effect_that_cannot_be_read_is_said_by_name(tmp_path):
     cycle.step()
     clock.mono = 30.0
     assert cycle.step()["recommend"]["effects"][0]["status"] == "missed"
-    # A twin started again counts from 0 again (D290): lost, never a negative increase.
-    cycle, advisor, clock, model, mapping, log = advised(tmp_path / "b")
-    won = cycle.step()["recommend"]["items"][0]
-    replies(advisor.sink, {"id": won["id"], "decision": "taken"})
-    clock.mono = 12.5
-    cycle.step()
-    later = Clock()
-    feed = twin.LogFeed([line for line in log if line["source_time"] >= 13.0], speed=1.0,
-                        monotonic=lambda: later.mono)
-    again = recommend.Advisor(recommend.load(asked(tmp_path / "b"), model), model=model,
-                              horizon=12.0, out_dir=tmp_path / "b" / "out", sink=advisor.sink)
-    restarted = cycle_on(twin.PlantSource(model, mapping, feed, name="line", clock=feed.clock),
-                         later, tmp_path / "b" / "out", advisor=again)
-    later.mono = 12.0
-    effect = restarted.step()["recommend"]["effects"][0]
-    assert (effect["status"], effect["observed"]) == ("lost", None)
+    # A twin started again goes on from the counter's last reading and measures (D378); with
+    # no reading to go on from (an older twin's result) it counts from 0 again (D290):
+    # lost, never a negative increase.
+    for name, expected in (("b", ("measured", 4.0)), ("b0", ("lost", None))):
+        cycle, advisor, clock, model, mapping, log = advised(tmp_path / name)
+        won = cycle.step()["recommend"]["items"][0]
+        replies(advisor.sink, {"id": won["id"], "decision": "taken"})
+        clock.mono = 12.5
+        cycle.step()
+        if expected[0] == "lost":
+            result = tmp_path / name / "out" / twin.RESULT_FILE
+            twin.write_json(result, {k: v for k, v in json.loads(
+                result.read_text(encoding="utf-8")).items() if k != "readings"})
+        later = Clock()
+        feed = twin.LogFeed([line for line in log if line["source_time"] >= 13.0], speed=1.0,
+                            monotonic=lambda: later.mono)
+        again = recommend.Advisor(recommend.load(asked(tmp_path / name), model), model=model,
+                                  horizon=12.0, out_dir=tmp_path / name / "out", sink=advisor.sink)
+        restarted = cycle_on(twin.PlantSource(model, mapping, feed, name="line", clock=feed.clock),
+                             later, tmp_path / name / "out", advisor=again)
+        later.mono = 12.0
+        effect = restarted.step()["recommend"]["effects"][0]
+        assert (effect["status"], effect["observed"]) == expected
     # A KPI no plant counts: not observable, said at the start and in the result.
     cycle, advisor, clock, *_rest = advised(tmp_path / "c")
     advisor.kpi, advisor.better, advisor.series = "timeseries/system/WIP/max", "lower", None

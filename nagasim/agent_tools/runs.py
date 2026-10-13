@@ -53,10 +53,15 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     doc = ws.document(model)
     layout = _runnable_layout(doc, model)
     base_dir = doc.path.parent if doc.path is not None else ws.root
-    results = api.run_model(layout, replications=replications, seed=seed, warmup=warmup,
-                            run_length=run_length, bind_data=bind_data, base_dir=base_dir,
-                            network=ws.network, confine_to=ws.root,
-                            should_stop=_budget(max_seconds))
+    try:
+        results = api.run_model(layout, replications=replications, seed=seed, warmup=warmup,
+                                run_length=run_length, bind_data=bind_data, base_dir=base_dir,
+                                network=ws.network, confine_to=ws.root,
+                                should_stop=_budget(max_seconds))
+    except RuntimeError as exc:
+        # DEVLOG #411: a model error found only while running (the blocks raise
+        # RuntimeError) must reach the agent as an answer, not undo its turn.
+        raise ToolError("E_RUN_FAILED", str(exc), "call validate_model and fix the model") from exc
     if results is None:
         raise ToolError("E_NO_RESULTS", "the run produced no completed replication",
                         "raise max_seconds, or lower replications/run_length")
