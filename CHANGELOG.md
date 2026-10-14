@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added: the recommendation verb `reroute` (a DECIDE of the model, to the block one of its
+  links leads to); `naga twin --outbox mqtt:<connection>` publishes each record at QoS 1, not
+  retained, to `<root>/proposals/<id>` over a connection of your file kept for an outbox, and
+  reads replies from `<root>/replies`. The order verbs stay refused by name.
 - Added: `write_model` takes a whole model file in one call and answers with its problems and
   their places; `get_model_format` describes the file from the engine's own registries. The
   compact tool list of the assistant and `naga mcp --tools compact` serve that surface. In the

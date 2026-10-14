@@ -153,7 +153,9 @@ def _scores(doc: dict, unit: str) -> dict:
 
 def _action(value) -> str:
     said = _table(value)
-    return f"{_text(said.get('verb'))} {_text(said.get('target'))[:80]} = {_g(said.get('value'))}"
+    value = said.get("value")       # a capacity, or the block a reroute names (D406)
+    shown = _text(value)[:80] if isinstance(value, str) else _g(value)
+    return f"{_text(said.get('verb'))} {_text(said.get('target'))[:80]} = {shown}"
 
 
 def _recommend(doc: dict) -> dict | None:

@@ -42,12 +42,13 @@ FORMAT = 1
 KIND = "naga-candidates"
 # Vocabulary 1 (D228). A verb is built by a decision, with its scoring rule (D299).
 VERBS = ("set_capacity", "resequence", "expedite", "hold", "release", "reroute")
-BUILT = ("set_capacity",)
-_NOT_BUILT = {
-    **dict.fromkeys(("resequence", "expedite", "hold", "release"),
-                    "a twin's state carries no order, so the items already in the plant would "
-                    "not be touched and the comparison would be untrue"),
-    "reroute": "the model declares no alternative route an action could name"}
+BUILT = ("set_capacity", "reroute")
+# D407: the plant's state names no order (a mapping has no order signal, and the state of an
+# observed timeline says nothing about arrivals), so an order verb would act on the model
+# file's order list, not on the plant's.
+_NOT_BUILT = dict.fromkeys(("resequence", "expedite", "hold", "release"),
+                           "the plant's state names no order, so the comparison would act on "
+                           "the model file's order list, not on the orders in the plant")
 LEVEL = 0.95                    # of the interval on an effect
 BETTER = ("higher", "lower")
 REASONS = ("no_forecast", "none_better", "kpi", "replications", "failed")
@@ -57,6 +58,7 @@ LIMITS = {
     "file_bytes": 2 ** 20,      # a candidates file
     "kpi": 200,                 # characters of the KPI's name
     "value": 10_000,            # units of a capacity
+    "name": 200,                # characters of a block a reroute names
     "expires": 86400.0,         # seconds a record may live
     "entries": 200,             # records of the ledger, the newest
     "states": 20,               # state documents kept for reproduction, the newest
@@ -80,6 +82,7 @@ _RECORD_KEYS = frozenset({"format", "kind", "id", "created", "expires", "action"
 _EXPECTED_KEYS = frozenset({"kpi", "better", "level", "baseline", "with_action", "effect", "low",
                             "high", "q05", "q95"})
 _EFFECTS = ("waiting", "measured", "missed", "lost", "not_observable")
+_BUDGET = 5.0                   # seconds of one step spent delivering (D410)
 _PULLS = 10                     # of the replies in one step, 100 replies each
 _HEX = re.compile(r"^[0-9a-f]{64}$")
 _STATE_FILE = re.compile(r"^[0-9a-f]{64}\.json$")
@@ -103,6 +106,13 @@ def _whole(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _value_ok(verb, value) -> bool:
+    """Whether *value* is of the kind *verb* takes: a capacity, or a block's name."""
+    if verb == "reroute":
+        return isinstance(value, str) and 0 < len(value) <= LIMITS["name"] and value.isprintable()
+    return verb == "set_capacity" and _whole(value) and 1 <= value <= LIMITS["value"]
+
+
 # ---------------------------------------------------------------- the vocabulary
 def check_action(action, model: dict) -> dict:
     """*action* as `{"verb", "target", "value"}` when the migrated *model* can answer it,
@@ -120,9 +130,14 @@ def check_action(action, model: dict) -> dict:
         raise Refused("E_CANDIDATE_VERB", f"the verb '{verb[:40]}' is "
                       + (f"not built in this version: {why}" if why else "no verb"),
                       f"built: {', '.join(BUILT)}")
-    if not (_whole(value) and 1 <= value <= LIMITS["value"]):
-        raise refuse(f"set_capacity: the value for '{target[:80]}' must be a whole number "
+    if not _value_ok(verb, value):
+        raise refuse(f"reroute: the value for '{target[:80]}' is the name of a block"
+                     if verb == "reroute" else
+                     f"set_capacity: the value for '{target[:80]}' must be a whole number "
                      f"from 1 to {LIMITS['value']}")
+    if len(target) > LIMITS["name"]:
+        raise refuse(f"the target '{target[:80]}' is over {LIMITS['name']} characters",
+                     "a record holds no longer name; rename the block")
     action = {"verb": verb, "target": target, "value": value}
     override_of(action, model)          # the model can answer it, or `Refused` says why not
     return action
@@ -130,7 +145,44 @@ def check_action(action, model: dict) -> dict:
 
 def override_of(action: dict, model: dict) -> dict:
     """The one override of the grammar (`experiments.apply_overrides`) an action is on the
-    migrated *model*, or `Refused` (D298). A resource of the model itself: its capacity. A
+    migrated *model*, or `Refused` (D298)."""
+    if action["verb"] == "reroute":
+        return _reroute(action, model)
+    return _capacity(action, model)
+
+
+def _reroute(action: dict, model: dict) -> dict:
+    """`reroute` (D406): every item that reaches the DECIDE *target* from now on goes down
+    its one link to the block *value*. A DECIDE holds nobody and routes on arrival, so what
+    is past it is untouched in the plant and in the run alike. The conditions are our own
+    two constants: no text of the action enters an expression."""
+    target, short = action["target"], action["target"][:80]
+
+    def refuse(text, hint=None):
+        return Refused("E_CANDIDATES", f"reroute: {text}", hint)
+
+    block = next((b for b in model.get("blocks") or [] if isinstance(b, dict)
+                  and b.get("name") == target), None)
+    if block is None or str(block.get("type", "")).upper() != "DECIDE":
+        raise refuse(f"the model declares no DECIDE block '{short}'",
+                     "a target is a DECIDE of the model itself, not one inside an asset")
+    # The links in the order the block's outlets are wired (`GraphModel.link`).
+    outlets = [link.get("target") for link in model.get("links") or []
+               if isinstance(link, dict) and link.get("source") == target]
+    if len(outlets) < 2:
+        raise refuse(f"'{short}' has no alternative: it has {len(outlets)} link(s)")
+    if outlets.count(action["value"]) != 1:
+        raise refuse(f"'{short}' has " + ("two links" if action["value"] in outlets else "no link")
+                     + f" to '{action['value'][:80]}'",
+                     "the value is the block one of its links leads to, and only one")
+    params = dict(block.get("params") or {})
+    params.update(mode="Condition", conditions=["True" if name == action["value"] else "False"
+                                                for name in outlets])
+    return {"path": f"blocks.{target}.params", "value": params}
+
+
+def _capacity(action: dict, model: dict) -> dict:
+    """`set_capacity`. A resource of the model itself: its capacity. A
     resource of an asset instance, named as it is after flattening (`<instance>/<name>`):
     the instance's own argument that sets its capacity. A capacity that instances bind is
     NOT the template's to set: such an override would be accepted and change no run."""
@@ -369,7 +421,8 @@ def check(record) -> bool:
         return bool(
             isinstance(action, dict) and set(action) == {"verb", "target", "value"}
             and action["verb"] in BUILT and isinstance(action["target"], str)
-            and _whole(action["value"]) and 1 <= action["value"] <= LIMITS["value"]
+            and len(action["target"]) <= LIMITS["name"]
+            and _value_ok(action["verb"], action["value"])
             and isinstance(expected, dict) and set(expected) == _EXPECTED_KEYS
             and isinstance(expected["kpi"], str) and len(expected["kpi"]) <= LIMITS["kpi"]
             and expected["better"] in BETTER and expected["level"] == LEVEL
@@ -683,6 +736,9 @@ class Advisor:
                 for found in got.problems:
                     self._say("replies", found)
                 return
+            for found in got.problems:          # a drop or a loss while live (D409)
+                if found.code in ("W_LIVE_DROPPED", "W_LIVE_LOST"):
+                    self._say("replies:" + found.code, found)
             self._once.discard("replies")
             for event in got.events:
                 self._reply(event.value, seen, present)
@@ -778,8 +834,11 @@ class Advisor:
         mono, today = self._monotonic(), _iso(wall)[:10]
         if self._day[0] != today:
             self._day = [today, 0]
+        began = time.monotonic()
         for entry in self._entries:
             ident = entry["record"]["id"]
+            if entry["status"] == "proposed" and time.monotonic() - began > _BUDGET:
+                break                       # the rest waits for the next step (D410)
             if entry["status"] != "proposed" or not entry.get("kept") \
                     or self._retry.get(ident, (mono, 0))[0] > mono:
                 continue
@@ -876,7 +935,7 @@ def _sound(entry) -> bool:
             and isinstance(entry.get("standing"), list) and len(entry["standing"]) <= 50
             and all(isinstance(a, dict) and set(a) == {"verb", "target", "value"}
                     and a["verb"] in BUILT and isinstance(a["target"], str)
-                    and _whole(a["value"]) for a in entry["standing"]))
+                    and _value_ok(a["verb"], a["value"]) for a in entry["standing"]))
 
 
 def _sound_effect(effect) -> bool:

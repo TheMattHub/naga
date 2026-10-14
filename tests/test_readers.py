@@ -588,8 +588,8 @@ class _Broker:
     def __init__(self, tls_files=None, connack=0, suback=None):
         import ssl
 
-        self.connack, self.suback = connack, suback
-        self.connects, self.subscribes, self.packets = [], [], []
+        self.connack, self.suback, self.puback = connack, suback, True
+        self.connects, self.subscribes, self.packets, self.published = [], [], [], []
         self.client = None
         self.ready = threading.Event()
         self.context = None
@@ -631,13 +631,18 @@ class _Broker:
                 if self.server.fileno() == -1:
                     return
                 continue
-            try:
-                self._session(client)
-            except OSError:
-                pass
-            finally:
+            # A client a thread: the outbox's sink publishes while its replies are subscribed.
+            threading.Thread(target=self._serve_one, args=(client,), daemon=True).start()
+
+    def _serve_one(self, client):
+        try:
+            self._session(client)
+        except OSError:
+            pass
+        finally:
+            if client is self.client:
                 self.ready.clear()
-                client.close()
+            client.close()
 
     def _session(self, client):
         while True:
@@ -666,6 +671,13 @@ class _Broker:
                 client.sendall(_mq_frame(0x90, body[:2] + granted))
                 self.client = client
                 self.ready.set()
+            elif kind == 3:                                     # PUBLISH, from a sink
+                size = struct.unpack(">H", body[:2])[0]
+                topic, rest = body[2:2 + size].decode(), body[2 + size:]
+                qos = flags >> 1 & 3
+                self.published.append({"topic": topic, "flags": flags, "payload": rest[2:] if qos else rest})
+                if qos == 1 and self.puback:
+                    client.sendall(bytes([0x40, 2]) + rest[:2])
             elif kind == 12:                                    # PINGREQ
                 client.sendall(bytes([0xD0, 0]))
             elif kind == 14:                                    # DISCONNECT

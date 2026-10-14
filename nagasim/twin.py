@@ -1060,8 +1060,11 @@ def main(argv=None, *, wait=time.sleep) -> int:
         verb.add_argument("--outbox", default=None, metavar="SPEC",
                           help="with --candidates: where each recommendation is also written "
                                "as a record, file:<path> (one JSON line each, appended; "
-                               "replies are read from <path>.replies). A queue of yours: "
-                               "nothing here acts on a plant. Default: nothing is written "
+                               "replies are read from <path>.replies) or mqtt:<connection> "
+                               "(a connection of --connections with \"use\": \"outbox\"; "
+                               "<root>/proposals/<id>, replies on <root>/replies). A "
+                               "queue of yours: nothing here acts on a plant. Default: "
+                               "nothing is written "
                                "outside --out")
         verb.add_argument("--horizon", type=float, required=True, metavar="T",
                           help="how far each forecast looks, in the model's base time unit")
@@ -1119,12 +1122,16 @@ def main(argv=None, *, wait=time.sleep) -> int:
     if args.outbox and not args.candidates:
         print("--outbox needs --candidates: there is nothing to recommend without them")
         return 1
+    connections = None if args.log else netguard.load_connections(args.connections)
     if args.candidates:
         from nagasim import outbox, recommend
 
         try:
             asked = recommend.load(args.candidates, layout)
-            sink = outbox.open_sink(args.outbox) if args.outbox else None
+            if args.log and str(args.outbox or "").startswith("mqtt:"):
+                raise outbox.SinkError("an mqtt outbox needs --connections",
+                                       "it names a connection of your connections file")
+            sink = outbox.open_sink(args.outbox, connections) if args.outbox else None
         except (recommend.Refused, outbox.SinkError) as exc:
             print(f"{exc.code}: {exc.message}" + (f" ({exc.hint})" if exc.hint else ""))
             return 1
@@ -1135,7 +1142,6 @@ def main(argv=None, *, wait=time.sleep) -> int:
         feed = LogFeed(observations, speed=speed)
         names, clock = None, feed.clock
     else:
-        connections = netguard.load_connections(args.connections)
         specs = [s for s in layout.get("data_sources", []) if s.get("kind") in readers.KINDS
                  and (not args.source or s.get("name") in args.source)]
         if not specs:
@@ -1159,7 +1165,11 @@ def main(argv=None, *, wait=time.sleep) -> int:
                       "" if advisor.series else "; the effect of an action taken cannot be "
                       "measured on this KPI (only timeseries/block/<name>/out/max of a "
                       "counted block can)"))
-            if sink is not None:
+            if sink is not None and sink.kind == "mqtt":
+                print(netguard.describe_connection(sink.conn))
+                print(f"outbox: records are published to {sink.topic('<id>')} (QoS 1, not "
+                      f"retained); replies are read from {sink.root}/replies")
+            elif sink is not None:
                 print(f"outbox: records are appended to {sink.path}; replies are read from "
                       f"{sink.replies.name} beside it")
         cycle = Cycle(source, horizon=args.horizon, replications=args.replications,
@@ -1210,6 +1220,8 @@ def main(argv=None, *, wait=time.sleep) -> int:
         return 0
     finally:
         feed.close()
+        if sink is not None and sink.kind == "mqtt":
+            sink.close()
 
 
 if __name__ == "__main__":

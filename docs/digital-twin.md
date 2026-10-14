@@ -345,8 +345,11 @@ naga twin run line.json --map line.plantmap.json --connections conn.json --out t
   this version: `set_capacity` (a resource of the model with a plain capacity, 1 to 10 000;
   for a resource inside an asset instance, name it as `<instance>/<resource>`, such as
   `station_1/Mfg Machine`: the template's own capacity is refused, since each instance sets
-  its own).
-  `expedite`, `resequence`, `hold`, `release` and `reroute` are reserved and refused by name.
+  its own) and `reroute` (`{"verb": "reroute", "target": "<a DECIDE>", "value": "<the block
+  one of its links leads to>"}`: every item that reaches that branch from now on goes down
+  that link; a DECIDE of the model itself, and one link to that block).
+  `expedite`, `resequence`, `hold` and `release` are reserved and refused by name: the
+  plant's state names no order, so they would act on your file's order list, not the plant's.
   A candidate is tried as an override on the forecast; your model file is never changed.
 - **What you get.** For each candidate, on the one KPI you named: the effect (the mean
   difference against doing nothing) with its 95% interval, and `confidence`, the share of
@@ -362,9 +365,16 @@ naga twin run line.json --map line.plantmap.json --connections conn.json --out t
   appended to that file as one JSON line (a record: the action, the expected effect, an expiry,
   and the state, seed and model it was computed from). Without it, nothing is written outside
   `--out`. The twin never acts on a plant: a record is a proposal until you act on it.
+  With `--outbox mqtt:<connection>` each record is published instead, at QoS 1 and not
+  retained, to `<root>/proposals/<id>` on a connection of your `--connections` file that you
+  kept for it (`"use": "outbox"`, `"root"` a plain topic such as `plant/line1/naga`); no
+  model, mapping or tool can name one, and no source can read over it. A broker that is
+  down keeps the record waiting, tried again until it expires.
   **A consumer that executes proposals without a human is the caller's system acting, on the
   caller's authority.**
-- **Answering.** Append a line to `<path>.replies`:
+- **Answering.** Append a line to `<path>.replies` (with an MQTT outbox, publish it to
+  `<root>/replies`, the id in the payload, at most 1 KiB; the twin hears replies only while it is connected,
+  unless you publish them retained):
   `{"id": "<the record's id>", "decision": "taken"}` (or `"rejected"`, `"expired"`; `at`, `by`
   and `note` are optional). The first reply for a
   record wins; one for an unknown id, a second one, or one after the expiry is counted and

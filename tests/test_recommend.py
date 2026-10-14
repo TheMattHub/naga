@@ -76,7 +76,7 @@ def test_a_candidates_file_is_closed(tmp_path):
         assert refused(**{key: "file:C:/x"})[0] == "E_CANDIDATES"
         assert refused({**MORE, key: "x"})[0] == "E_CANDIDATES"
     # The verbs listed and not built are refused by name, with why.
-    for verb in ("expedite", "resequence", "hold", "release", "reroute"):
+    for verb in ("expedite", "resequence", "hold", "release"):
         code, message = refused({"verb": verb, "target": "Server", "value": 1})
         assert code == "E_CANDIDATE_VERB" and verb in message and "not built" in message
     assert "no verb" in refused({"verb": "run", "target": "Server", "value": 1})[1]
@@ -146,8 +146,9 @@ from nagasim import outbox  # noqa: E402
 AN_ID, OTHER_ID = "a" * 64, "b" * 64
 
 
-def test_only_a_file_sink_is_built_and_the_rest_is_refused_by_name(tmp_path):
-    for spec, said in (("mqtt:plant", "mqtt sink is not built"), ("rest:mes", "names no sink"),
+def test_a_sink_is_a_file_or_a_callers_connection_and_the_rest_is_refused_by_name(tmp_path):
+    for spec, said in (("mqtt:plant", "no connection named"), ("mqtt:", "names no sink"),
+                       ("rest:mes", "names no sink"),
                        ("file:", "names no sink"), (str(tmp_path / "q"), "names no sink"),
                        (r"file:\\server\share\q.jsonl", "UNC"),
                        (f"file:{tmp_path / 'none' / 'q.jsonl'}", "folder")):
@@ -1022,3 +1023,87 @@ def test_a_candidate_the_state_cannot_hold_fails_alone():
 def test_the_advice_says_what_many_candidates_cost():
     """M5."""
     assert "about 1 in 20 pass by chance" in monitor.ADVICE
+
+
+# ---------------------------------------------------------------- reroute (D406)
+FAST = {"verb": "reroute", "target": "split", "value": "fast"}
+SLOW = {"verb": "reroute", "target": "split", "value": "slow"}
+DONE = "timeseries/block/d/out/max"
+
+
+def branch_line():
+    """Arrivals every 2 s split by chance between a slow station (9 s) and a fast one (1 s)."""
+    c = create("c", dist_params={"value": 2.0})
+    split = {"name": "split", "description": "split", "type": "DECIDE", "position": [1, 0],
+             "params": {"mode": "Chance", "probs": [0.5, 0.5], "conditions": []}}
+    slow, fast, d = process("slow", "Slow", 9.0), process("fast", "Fast", 1.0), dispose("d")
+    links = [{"source": "c", "target": "split"}, {"source": "split", "target": "slow"},
+             {"source": "split", "target": "fast"}, {"source": "slow", "target": "d"},
+             {"source": "fast", "target": "d"}]
+    return layout([c, split, slow, fast, d], links,
+                  resources=[{"name": "Slow", "capacity": 1}, {"name": "Fast", "capacity": 1}],
+                  simulation={"time_limit": 40, "warmup": 0, "replications": 1,
+                              "time_unit": "seconds", "timeseries_counts": ["d"]})
+
+
+def test_reroute_sends_every_item_reaching_its_branch_down_the_link_it_names():
+    model = state._model(branch_line())
+    assert recommend.check_action(FAST, model) == FAST
+    # Two constants of our own, one a link: no text of the action enters an expression.
+    assert recommend.override_of(SLOW, model) == {"path": "blocks.split.params", "value": {
+        "mode": "Condition", "probs": [0.5, 0.5], "conditions": ["True", "False"]}}
+    twice = branch_line()
+    twice["links"].append({"source": "split", "target": "fast"})
+    lone = branch_line()
+    lone["links"] = [link for link in lone["links"] if link["target"] != "slow"]
+    for action, on, said in (({**FAST, "target": "fast"}, model, "no DECIDE"),
+                             ({**FAST, "target": "nobody"}, model, "no DECIDE"),
+                             ({**FAST, "value": "d"}, model, "no link"),
+                             ({**FAST, "value": "True or entity"}, model, "no link"),
+                             ({**FAST, "value": 2}, model, "name of a block"),
+                             ({**FAST, "value": ""}, model, "name of a block"),
+                             (FAST, state._model(twice), "two links"),
+                             (FAST, state._model(lone), "no alternative")):
+        with pytest.raises(recommend.Refused, match=said) as caught:
+            recommend.check_action(action, on)
+        assert caught.value.code == "E_CANDIDATES"
+    # What the forecast says: everything to the fast station lets more out, to the slow less.
+    rows, reason = recommend.effects(model, [SLOW, FAST], kpi=DONE, better="higher",
+                                     horizon=12.0, replications=8, seed=3)
+    assert reason is None and [(r["action"], r["verdict"]) for r in rows] == [
+        (FAST, "better"), (SLOW, "worse")]
+    assert rows[0]["low"] > 0 and model["blocks"][1]["params"]["mode"] == "Chance"
+
+
+def test_a_reroute_is_recorded_taken_stands_and_reproduces(tmp_path):
+    """The record, the reply's effect on later forecasts (D307) and the exit check (D303),
+    for the second verb as for the first."""
+    model = branch_line()
+    source, clock, _events, mapping, _log = playing(model, counters=True)
+    path = tmp_path / "candidates.json"
+    path.write_text(json.dumps({"format": 1, "kind": "naga-candidates", "kpi": DONE,
+                                "candidates": [FAST, SLOW]}), encoding="utf-8")
+    advisor = recommend.Advisor(
+        recommend.load(path, model), model=model, horizon=12.0, name="line", mapping=mapping,
+        out_dir=tmp_path / "out", sink=outbox.open_sink(f"file:{tmp_path / 'q.jsonl'}"),
+        wall=lambda: clock.wall, monotonic=lambda: clock.mono)
+    cycle = cycle_on(source, clock, tmp_path / "out", advisor=advisor, replications=8,
+                     forecast_every=4.0)
+    clock.mono = 10.5
+    won = cycle.step()["recommend"]["items"][0]
+    assert (won["action"], won["verdict"], won["status"]) == (FAST, "better", "delivered")
+    (record,) = lines_of(tmp_path / "q.jsonl")
+    assert recommend.check(record) and record["action"] == FAST
+    assert not recommend.check({**record, "action": {**FAST, "value": 3}})
+    replies(advisor.sink, {"id": won["id"], "decision": "taken"})
+    clock.mono = 11.0
+    said = cycle.step()["recommend"]
+    assert [s["action"] for s in said["standing"]] == [FAST]
+    assert monitor._action(FAST) == "reroute split = fast"     # a name, not a number
+    clock.mono = 14.5
+    doc = cycle.step()
+    assert doc["forecast"]["actions"] == [won["id"]]
+    assert [(i["action"], i["verdict"]) for i in doc["recommend"]["items"]][-1] == (FAST, "standing")
+    lines, differences = recommend.reproduce(tmp_path / "out", model)
+    assert differences == 0 and sum("reproduced" in line for line in lines) >= 1, lines
+    assert "reroute split = fast" in " ".join(lines)

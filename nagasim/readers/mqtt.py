@@ -20,8 +20,8 @@ Why not a library: one would resolve the broker's name itself, read a packet of 
 declared size whole, and carry a publish call. Here the socket is the one
 `netguard.open_connection` pinned, a packet over the limit is passed over without being
 held, and the packets this client can build are CONNECT, SUBSCRIBE, PUBACK, PINGREQ and
-DISCONNECT: there is no PUBLISH encoder, no will and no persistent session, so the twin
-leaves nothing on a plant's broker. Not supported: QoS 2, MQTT 5, WebSockets, `$` topics.
+DISCONNECT: there is no PUBLISH encoder, no will and no persistent session, so a reader
+leaves nothing on a plant's broker. The one PUBLISH is the outbox's (`outbox.MqttSink`, D408). Not supported: QoS 2, MQTT 5, WebSockets, `$` topics.
 """
 from __future__ import annotations
 
@@ -94,6 +94,8 @@ def _text(value: str) -> bytes:
 
 def _framed(kind_and_flags: int, body: bytes) -> bytes:
     length, out = len(body), bytearray([kind_and_flags])
+    if length >= 268_435_456:           # MQTT's remaining length has four bytes at most
+        raise ValueError("a packet of 256 MB or more")
     while True:
         length, low = divmod(length, 128)
         out.append(low | (0x80 if length else 0))

@@ -149,7 +149,10 @@ configured. A model's own Python behaviour never runs through either.
   report where they are and what they carry. It cannot yet start from a model with conveyors,
   mobile cobots that tend, tours, gantries or segment capacities: such a model is monitored and
   its forecast is refused by name.
-- Recommendations build one action, a resource's capacity, and one sink, a file.
+- Recommendations compare two actions, a resource's capacity and a DECIDE's route, and are
+  written to a file or an MQTT topic of yours; the order actions (expedite, resequence, hold,
+  release) are refused until a plant mapping can say which order an item belongs to. Nothing
+  acts on a plant.
 - The viewer needs Chrome, Edge or Firefox on a desktop.
 - There is no editor and no animation here beyond the recorded player: Naga is an engine.
 
