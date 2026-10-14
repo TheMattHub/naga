@@ -418,7 +418,7 @@ SPEC = BlockSpec(
                   description="Which of seize/delay/release run: \"Seize Delay Release\", \"Seize Delay\", "
                               "\"Delay Release\" or \"Delay\".", quantity="none"),
         *DIST_PARAMS,
-        ParamSpec("priority", int, 0, description="Lower draws first when the resource's queue is contested.", quantity="none"),
+        ParamSpec("priority", int, 0, description="Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource.", quantity="none"),
         ParamSpec("quantity", int, 1, description="Number of resource units requested/released.", quantity="count", min=1),
         ParamSpec("resource_name", str, "",
                   description="Name of the resource or resource set; required unless action is "

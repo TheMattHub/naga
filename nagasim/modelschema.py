@@ -604,7 +604,10 @@ def _defs() -> dict:
                 "elements": _ELEMENTS,
                 "description": {"type": "string"},
                 "from": {"type": ["string", "null"],
-                         "description": "Level drawn from; omit for a source outside the model."},
+                         "description": "Level drawn from; omit for a source outside the model. "
+                                        "A level at its min passes on no more than flows into it, "
+                                        "so a rate needs no guard such as IF(LEVEL(\"x\") > 0, r, 0); "
+                                        "on a step grid that guard reads the level a step late."},
                 "to": {"type": ["string", "null"],
                        "description": "Level fed; omit for a sink outside the model."},
                 "rate": {"type": ["string", "number"],

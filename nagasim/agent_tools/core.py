@@ -15,6 +15,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import re
 import threading
 import time
 import types
@@ -340,6 +341,22 @@ def _problem_dicts(problems, limit: int = MAX_PROBLEMS) -> list[dict]:
     return [p.as_dict() for p in problems[:limit]]
 
 
+def _first_sentence(text: str, limit: int = 0) -> str:
+    """The first sentence (an "e.g." does not end one), cut at *limit* characters."""
+    text = " ".join(str(text or "").split())
+    found = re.search(r"(?<!e\.g)(?<!i\.e)\. ", text)
+    text = text if found is None else text[:found.start() + 1]
+    return text if not limit or len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "..."
+
+
+def _brief_problems(problems) -> list[dict]:
+    """Problems as an edit answer carries them: code, path, message and hint. The severity
+    is the code's prefix and the block is in the path, so neither is repeated; an agent
+    reads every byte of every answer again on each later turn."""
+    return [{"code": p.code, "path": p.path, "message": p.message,
+             **({"hint": p.hint} if p.hint else {})} for p in problems]
+
+
 def _edit_result(doc: ModelDocument, before: list, extra: dict | None = None) -> dict:
     """The answer every mutating tool gives: what the edit broke, what it
     fixed, and where the model stands now."""
@@ -348,7 +365,7 @@ def _edit_result(doc: ModelDocument, before: list, extra: dict | None = None) ->
     after_keys = {p.message for p in after}
     out = {
         "ok": True,
-        "introduced": _problem_dicts([p for p in after if p.message not in before_keys]),
+        "introduced": _brief_problems([p for p in after if p.message not in before_keys][:MAX_PROBLEMS]),
         "fixed": [p.message for p in before if p.message not in after_keys][:MAX_PROBLEMS],
         "errors": sum(1 for p in after if p.severity == "error"),
         "warnings": sum(1 for p in after if p.severity == "warning"),
@@ -388,9 +405,20 @@ def _finite(value) -> float | None:
     return number if np.isfinite(number) else None
 
 
+# What else the digest carries, when the model has it: the numbers a question about entity
+# types, levels, leaving customers or agents is usually after, so answering it takes no
+# get_kpi_table call (the LLM study's priority, tank, car park and repair tasks).
+_DIGEST_EXTRA = {"entity": ("entities", ("Avg Time", "Total Completed")),
+                 "level": ("levels", ("Average", "Final", "Time Empty %", "Time Full %")),
+                 "queue": ("queues", ("Balked", "Reneged")),
+                 "agent": ("agents", ("Avg Count",))}
+
+
 def _digest(results) -> dict:
     """A run's KPI digest: every system KPI with its CI half-width, a compact
-    per-resource row, and the user statistics. Never the frames themselves."""
+    per-resource row, the user statistics and, when the model has them, a few
+    columns per entity type, level, queue behaviour and agent state. Never the
+    frames themselves."""
     if results is None:
         return {"replications": 0, "system": {}, "resources": {}, "user_stats": {}}
     flat = experiments.flatten_kpis(results)
@@ -398,21 +426,26 @@ def _digest(results) -> dict:
     system: dict[str, dict] = {}
     resources: dict[str, dict] = {}
     user_stats: dict[str, dict] = {}
+    extra: dict[str, dict] = {}
     for key, group in flat.groupby("KPI"):
         stat = ci95(group["Value"].to_numpy(dtype=float))
         entry = {"mean": _finite(stat["mean"]),
                  "ci_half_width": _finite(stat["ub"] - stat["mean"])}
         section, _, rest = key.partition("/")
+        name, _, column = rest.rpartition("/")
         if section == "system":
             system[rest] = entry
         elif section == "user":
             user_stats[rest] = entry
         elif section == "resource":
-            name, _, column = rest.rpartition("/")
             if column in _RESOURCE_COLUMNS:
                 resources.setdefault(name, {})[column] = entry
+        elif section in _DIGEST_EXTRA and column in _DIGEST_EXTRA[section][1]:
+            extra.setdefault(_DIGEST_EXTRA[section][0], {}).setdefault(name, {})[column] = entry
+    if len(extra.get("entities", {})) < 2:      # one type: the system KPIs already say it
+        extra.pop("entities", None)
     return {"replications": len(runs), "system": system, "resources": resources,
-            "user_stats": user_stats}
+            "user_stats": user_stats, **extra}
 
 
 def _rows(frame, offset: int, limit: int) -> dict:

@@ -28,18 +28,15 @@ ANSWER = _C / (SERVERS * MU - LAM)
 TOLERANCE = None
 
 NAGA = [
-    ("upsert_record", {"section": "resources", "record": {"name": "Agents", "capacity": SERVERS}}),
-    ("add_block", {"type": "CREATE", "name": "calls",
-                   "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}}),
-    ("add_block", {"type": "PROCESS", "name": "handle",
-                   "params": {"resource_name": "Agents", "distribution": "Exponential",
-                              "dist_params": {"rate": MU}}}),
-    ("add_block", {"type": "DISPOSE", "name": "done"}),
-    ("connect", {"source": "calls", "target": "handle"}),
-    ("connect", {"source": "handle", "target": "done"}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": WARMUP, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "resources": [{"name": "Agents", "capacity": SERVERS}],
+        "blocks": [{"name": "calls", "type": "CREATE", "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}},
+                   {"name": "handle", "type": "PROCESS",
+                    "params": {"resource_name": "Agents", "distribution": "Exponential", "dist_params": {"rate": MU}}},
+                   {"name": "done", "type": "DISPOSE"}],
+        "links": [{"source": "calls", "target": "handle"},
+               {"source": "handle", "target": "done"}],
+        "simulation": {"time_limit": RUN, "warmup": WARMUP, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
 ]
 

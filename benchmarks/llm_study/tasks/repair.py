@@ -28,17 +28,14 @@ ANSWER = MACHINES * _P
 TOLERANCE = 5 * (MACHINES * 2 * _P * (1 - _P) / ((1 / UP + 1 / DOWN) * RUN)) ** 0.5
 
 NAGA = [
-    ("upsert_record", {"section": "agent_types",
-                       "record": {"name": "Machine", "initial_state": "Running",
-                                  "states": [{"name": "Running"}, {"name": "Broken"}],
-                                  "transitions": [
-                                      {"from": "Running", "to": "Broken", "timeout": f"EXPO({UP})"},
-                                      {"from": "Broken", "to": "Running", "timeout": f"EXPO({DOWN})"}]}}),
-    ("upsert_record", {"section": "populations",
-                       "record": {"name": "Machines", "type": "Machine", "count": MACHINES}}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": 0, "replications": 1,
-                                 "time_unit": "hours"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "agent_types": [{"name": "Machine", "initial_state": "Running",
+                         "states": [{"name": "Running"}, {"name": "Broken"}],
+                         "transitions": [
+                             {"from": "Running", "to": "Broken", "timeout": f"EXPO({UP})"},
+                             {"from": "Broken", "to": "Running", "timeout": f"EXPO({DOWN})"}]}],
+        "populations": [{"name": "Machines", "type": "Machine", "count": MACHINES}],
+        "simulation": {"time_limit": RUN, "warmup": 0, "replications": 1, "time_unit": "hours"}}}),
     ("run_model", {}),
     ("get_kpi_table", {"frame": "agent_summary"}),
 ]

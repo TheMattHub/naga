@@ -319,7 +319,7 @@ def test_a_local_model_gets_the_compact_list_and_cannot_call_outside_it():
     result = session.run_turn("save it")
     assert [t["name"] for t in provider.calls[0]["tools"]] == sorted(asst.COMPACT_TOOL_NAMES)
     assert result.tool_calls[0].result["error"]["code"] == "E_TOOL_NOT_OFFERED"
-    assert "add_block" in result.tool_calls[0].result["error"]["hint"]
+    assert "write_model" in result.tool_calls[0].result["error"]["hint"]
 
 
 def test_a_hosted_model_cannot_call_a_registered_tool_the_list_leaves_out():

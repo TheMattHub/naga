@@ -6,9 +6,10 @@ from __future__ import annotations
 from nagasim.core import schema as schema_mod
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY, get_available_distributions
-from nagasim.core.expressions import FUNCTIONS, RESERVED_NAMES
+from nagasim.core.expressions import FUNCTION_NOTES, FUNCTIONS, RESERVED_NAMES
 
-from .core import MAX_PROBLEMS, ToolError, _document_args, _problem_dicts, tool, workspace
+from .core import (MAX_PROBLEMS, ToolError, _document_args, _first_sentence, _problem_dicts,
+                   tool, workspace)
 
 # ============================================================ reference tools
 @tool(read_only=True)
@@ -28,20 +29,26 @@ def list_block_types() -> dict:
     for name in sorted(BLOCK_REGISTRY):
         spec = BLOCK_REGISTRY[name]
         doc = " ".join((spec.cls.__doc__ or "").split())
-        out.append({"type": name, "summary": doc.split(". ")[0][:200],
+        out.append({"type": name, "summary": _first_sentence(doc, 120),
                     "required": [p.name for p in spec.params if p.required],
                     "multi_output": spec.multi_output})
     return {"block_types": out}
 
 
+_document_args("describe_block_type",
+               type_name="Block type, e.g. \"PROCESS\".",
+               detail="Every description in full; by default each is its first sentence.")
+
+
 @tool(read_only=True)
-def describe_block_type(type_name: str) -> dict:
-    """Describe one block type in full: what it does and every parameter with
-    its type, default and meaning.
+def describe_block_type(type_name: str, detail: bool = False) -> dict:
+    """Describe one block type: what it does and every parameter with its type,
+    default and meaning.
 
     Use this before `add_block`/`update_block` whenever you are unsure which
     params a type takes -- passing an unknown key is an error, and the defaults
-    tell you what you may safely leave out.
+    tell you what you may safely leave out. Each description is its first
+    sentence unless `detail` is true.
 
     Returns {"type", "description", "multi_output", "params": [{"name", "type",
     "default", "required", "description"}]}.
@@ -50,12 +57,14 @@ def describe_block_type(type_name: str) -> dict:
     if spec is None:
         raise ToolError("E_UNKNOWN_BLOCK_TYPE", f"unknown block type: {type_name}",
                         f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}")
+    said = (lambda text: " ".join(str(text or "").split())) if detail else _first_sentence
     return {
         "type": spec.type_name,
-        "description": " ".join((spec.cls.__doc__ or "").split()),
+        "description": said(spec.cls.__doc__),
         "multi_output": spec.multi_output,
         "params": [{"name": p.name, "type": p.type.__name__, "default": p.default,
-                    "required": p.required, "description": p.description} for p in spec.params],
+                    "required": p.required, "description": said(p.description)}
+                   for p in spec.params],
     }
 
 
@@ -121,14 +130,16 @@ def get_expression_help() -> dict:
     (an AST allow-list, never eval), so anything not listed here is refused at
     validation time rather than at run time.
 
-    Returns {"names", "operators", "functions": [{"name", "arity"}],
+    Returns {"names", "operators", "functions": [{"name", "arity", "note"}],
     "reserved", "examples"}.
     """
     functions = []
     for fname in sorted(FUNCTIONS):
         _, _, low, high = FUNCTIONS[fname]
         functions.append({"name": fname,
-                          "arity": str(low) if high == low else f"{low}..{'n' if high is None else high}"})
+                          "arity": str(low) if high == low else f"{low}..{'n' if high is None else high}",
+                          **({"note": _first_sentence(FUNCTION_NOTES[fname].split(";")[0], 90)}
+                             if fname in FUNCTION_NOTES else {})})
     return {
         "names": ["entity.<attribute>", "now", "TNOW", "true", "false",
                   "any declared model variable", "a submodel parameter inside a definition",

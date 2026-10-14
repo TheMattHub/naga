@@ -44,12 +44,15 @@ PROBLEM_CODES: dict[str, str] = {
     # -- blocks and parameters ---------------------------------------------
     "E_UNKNOWN_BLOCK_TYPE": "The block's `type` is not in BLOCK_REGISTRY.",
     "E_PARAM_UNKNOWN": "A param key this block type does not declare.",
+    "W_AVAILABLE_IS_CAPACITY": "A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE).",
+    "W_UNKNOWN_KEY": "A key the model file format does not have (write_model): the document drops it.",
     "E_PARAM_TYPE": "A param has the wrong Python type for its ParamSpec.",
     "E_PARAM_MISSING": "A param the block type declares as required is absent.",
     "E_DUPLICATE_BLOCK": "Two blocks share a name.",
     # -- distributions ------------------------------------------------------
     "E_UNKNOWN_DISTRIBUTION": "A distribution name that is in no registry entry.",
     "E_DISTRIBUTION_MISSING": "A duration spec (link delay, failure uptime/downtime) names no distribution.",
+    "E_DIST_PARAM_UNKNOWN": "A dist_params key the distribution does not take (it would be ignored).",
     "W_UNBOUNDED_DURATION": "A duration uses a distribution that can sample below 0; samples truncate to 0.",
     "W_EMPIRICAL_CONTINUOUS": "EmpiricalContinuous given equal-length values/probs samples discrete points.",
     "E_DETERMINISTIC_NO_MEAN": "simulation.deterministic is set and a "
@@ -79,6 +82,7 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SERIES_MODE": "A time series' interpolation or beyond-the-end mode is unknown.",
     "E_SERIES_UNKNOWN": "A TS(\"name\") call names a time series the model does not declare.",
     "E_SERIES_NO_CALENDAR": "A time series uses real timestamps but the model has no calendar.",
+    "W_SERIES_PERIOD_UNUSED": "A time series has a period but does not repeat, so the period is never read.",
     "W_SERIES_BEFORE_START": "A dated time series starts before, or ends after, the run window.",
     # -- levels and flows (PHASE4 D1) ----------------------------------------
     "E_LEVEL_NAME": "A level has an empty or duplicate name.",

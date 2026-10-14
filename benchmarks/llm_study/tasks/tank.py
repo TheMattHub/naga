@@ -24,15 +24,14 @@ ANSWER = 100 * (HOUR - ON - (PUMP - DRAW) * ON / DRAW) / HOUR
 TOLERANCE = 0.5
 
 NAGA = [
-    ("upsert_record", {"section": "levels", "record": {"name": "Tank", "initial": 0}}),
-    ("upsert_record", {"section": "flows",
-                       "record": {"name": "pump", "to": "Tank",
-                                  "rate": f"IF(MODULO(TNOW, {HOUR}) < {ON}, {PUMP}, 0)"}}),
-    ("upsert_record", {"section": "flows", "record": {"name": "draw", "from": "Tank", "rate": DRAW}}),
-    ("set_sd_settings", {"dt": 0.5, "method": "euler"}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": 0, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        # the pump's timer as a repeating step profile: switched exactly, no step grid
+        "timeseries_inputs": [{"name": "pump", "times": [0, ON], "values": [PUMP, 0],
+                               "beyond": "repeat", "period": HOUR}],
+        "levels": [{"name": "Tank", "initial": 0}],
+        "flows": [{"name": "pump", "to": "Tank", "rate": 'TS("pump")'},
+                  {"name": "draw", "from": "Tank", "rate": DRAW}],
+        "simulation": {"time_limit": RUN, "warmup": 0, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
     ("get_kpi_table", {"frame": "level_summary"}),
 ]

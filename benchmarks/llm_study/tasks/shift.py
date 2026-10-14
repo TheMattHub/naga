@@ -30,22 +30,17 @@ ANSWER = (34 + 28 + 22 + 16 + 10 + 5 * PACK) / 10
 TOLERANCE = 0.25
 
 NAGA = [
-    ("upsert_record", {"section": "schedules",
-                       "record": {"name": "Rhythm", "kind": "capacity", "repeat": True,
-                                  "points": [[ON, 1], [OFF, 0]]}}),
-    ("upsert_record", {"section": "resources",
-                       "record": {"name": "Robot", "capacity": 1, "capacity_schedule": "Rhythm"}}),
-    ("add_block", {"type": "CREATE", "name": "parcels",
-                   "params": {"distribution": "Constant", "dist_params": {"value": GAP}}}),
-    ("add_block", {"type": "PROCESS", "name": "pack",
-                   "params": {"resource_name": "Robot", "distribution": "Constant",
-                              "dist_params": {"value": PACK}}}),
-    ("add_block", {"type": "DISPOSE", "name": "packed"}),
-    ("connect", {"source": "parcels", "target": "pack"}),
-    ("connect", {"source": "pack", "target": "packed"}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": 0, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "schedules": [{"name": "Rhythm", "kind": "capacity", "repeat": True,
+                       "points": [[ON, 1], [OFF, 0]]}],
+        "resources": [{"name": "Robot", "capacity": 1, "capacity_schedule": "Rhythm"}],
+        "blocks": [{"name": "parcels", "type": "CREATE", "params": {"distribution": "Constant", "dist_params": {"value": GAP}}},
+                   {"name": "pack", "type": "PROCESS",
+                    "params": {"resource_name": "Robot", "distribution": "Constant", "dist_params": {"value": PACK}}},
+                   {"name": "packed", "type": "DISPOSE"}],
+        "links": [{"source": "parcels", "target": "pack"},
+               {"source": "pack", "target": "packed"}],
+        "simulation": {"time_limit": RUN, "warmup": 0, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
 ]
 

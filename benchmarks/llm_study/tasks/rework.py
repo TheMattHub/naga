@@ -29,26 +29,22 @@ ANSWER = sum(rho / (1 - rho) for rho in _RHO) / LAM
 TOLERANCE = None
 
 NAGA = [
-    ("upsert_record", {"section": "resources", "record": {"name": "Machine", "capacity": 1}}),
-    ("upsert_record", {"section": "resources", "record": {"name": "Inspector", "capacity": 1}}),
-    ("add_block", {"type": "CREATE", "name": "arrive",
-                   "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}}),
-    ("add_block", {"type": "PROCESS", "name": "machine",
-                   "params": {"resource_name": "Machine", "distribution": "Exponential",
-                              "dist_params": {"rate": 1 / MEANS[0]}}}),
-    ("add_block", {"type": "PROCESS", "name": "inspect",
-                   "params": {"resource_name": "Inspector", "distribution": "Exponential",
-                              "dist_params": {"rate": 1 / MEANS[1]}}}),
-    ("add_block", {"type": "DECIDE", "name": "passed", "params": {"mode": "Chance", "probs": [FAIL]}}),
-    ("add_block", {"type": "DISPOSE", "name": "leave"}),
-    ("connect", {"source": "arrive", "target": "machine"}),
-    ("connect", {"source": "machine", "target": "inspect"}),
-    ("connect", {"source": "inspect", "target": "passed"}),
-    ("connect", {"source": "passed", "target": "machine"}),      # branch 0: the inspection failed
-    ("connect", {"source": "passed", "target": "leave"}),        # the else branch
-    ("set_simulation_settings", {"run_length": RUN, "warmup": WARMUP, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "resources": [{"name": "Machine", "capacity": 1}, {"name": "Inspector", "capacity": 1}],
+        "blocks": [{"name": "arrive", "type": "CREATE", "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}},
+                   {"name": "machine", "type": "PROCESS",
+                    "params": {"resource_name": "Machine", "distribution": "Exponential", "dist_params": {"rate": 1 / MEANS[0]}}},
+                   {"name": "inspect", "type": "PROCESS",
+                    "params": {"resource_name": "Inspector", "distribution": "Exponential", "dist_params": {"rate": 1 / MEANS[1]}}},
+                   {"name": "passed", "type": "DECIDE", "params": {"mode": "Chance", "probs": [FAIL]}},
+                   {"name": "leave", "type": "DISPOSE"}],
+        # a DECIDE's links are its branches: branch 0 (the inspection failed), then the else
+        "links": [{"source": "arrive", "target": "machine"},
+               {"source": "machine", "target": "inspect"},
+               {"source": "inspect", "target": "passed"},
+               {"source": "passed", "target": "machine"},
+               {"source": "passed", "target": "leave"}],
+        "simulation": {"time_limit": RUN, "warmup": WARMUP, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
 ]
 

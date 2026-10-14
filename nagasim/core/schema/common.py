@@ -38,6 +38,26 @@ def _dist_hint() -> str:
     return f"use one of: {', '.join(sorted(_known_distributions()))}"
 
 
+def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: str,
+                           block: str | None = None) -> None:
+    """#422: a sampler reads only the parameters its distribution declares, so any other
+    key is silently ignored (Exponential {"mean": 4} ran at the default rate 1). Shared by
+    the block loop, `_validate_failures` and `_validate_link_delays`; an unknown or
+    misshapen distribution is reported elsewhere."""
+    spec = DISTRIBUTION_REGISTRY.get(dist) if isinstance(dist, str) else None
+    if spec is None or not isinstance(dist_params, dict):
+        return
+    declared = [p.name for p in spec.params]
+    for key in dist_params:
+        if key not in declared:
+            hint = f"{dist} takes: {', '.join(declared) or '(no parameters)'}"
+            if key == "mean" and "rate" in declared:
+                hint += "; a rate is 1 / the mean"
+            problems.append(problem("E_DIST_PARAM_UNKNOWN",
+                                    f"{label}: {dist} takes no parameter '{key}'",
+                                    f"{path}/{key}", block=block, hint=hint))
+
+
 def _check_deterministic_mean(problems: list, deterministic: bool, dist, dist_params: dict,
                               label: str, path: str, block: str | None = None) -> None:
     """PHASE6 W4 P1, D119: in deterministic mode, every duration-bearing

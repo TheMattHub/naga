@@ -162,7 +162,7 @@ SPEC = BlockSpec(
     type_name="SEIZE", cls=Seize,
     params=(
         *DIST_PARAMS,
-        ParamSpec("priority", int, 0, description="Lower draws first when the resource's queue is contested.", quantity="none"),
+        ParamSpec("priority", int, 0, description="Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource.", quantity="none"),
         ParamSpec("quantity", int, 1, description="Number of resource units requested.", quantity="count", min=1),
         ParamSpec("resource_name", str, "", required=True, description="Name of the resource or resource set to seize.", quantity="none"),
         ParamSpec("queue_capacity", int, 0,

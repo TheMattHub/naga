@@ -27,7 +27,7 @@
 | `ATAN` | 1 | math.atan, radians |
 | `ATAN2` | 2 | ATAN2(y, x): math.atan2, radians in (-pi, pi] |
 | `AUX` | 1 | auxiliary NAME, evaluated on read |
-| `AVAILABLE` | 1 |  |
+| `AVAILABLE` | 1 | capacity in force at resource NAME, seized units NOT deducted (free units: IDLE) |
 | `CELL_COUNT` | 1..3 | CELL_COUNT("pop"[, dx, dy]): pop's agents in self's grid cell (or an offset from it), self included; 0 off a bounded grid |
 | `CONV` | 1 |  |
 | `COS` | 1 | math.cos, radians |
@@ -42,22 +42,22 @@
 | `DISC` | 2..n | value/prob pairs (>= 1 pair), probs must sum to 1 |
 | `DISTANCE` | 2 |  |
 | `EXPO` | 1 | exponential(mean), sampled from the calling block's own rng |
-| `FLOW` | 1 |  |
+| `FLOW` | 1 | FLOW("name"): the rate flow NAME moves right now, after saturation |
 | `FLOWSUM` | 1..2 |  |
 | `FORECAST` | 3 |  |
 | `FRACTION` | 2 |  |
-| `IDLE` | 1 |  |
+| `IDLE` | 1 | free units of resource NAME: nothing holds them now (AVAILABLE minus the seized) |
 | `IF` | 3 | IF(c, a, b): a when c else b; only the branch taken is evaluated |
 | `INITIAL` | 1 |  |
 | `IS_LINKED` | 1 | IS_LINKED(ref): whether self is linked to that agent (directed: self -> it) |
 | `KNN_MEAN` | 3..4 | KNN_MEAN("pop", "attr", k[, "state"]): attr's mean over the k nearest agents of pop to self (state-filtered first, ties by ascending index); 0 if none |
 | `KNN_SUM` | 3..4 | KNN_SUM("pop", "attr", k[, "state"]): attr summed over the k nearest agents of pop to self (state-filtered first, ties by ascending index); 0 if none |
-| `LEVEL` | 1 |  |
+| `LEVEL` | 1 | LEVEL("name"): the current value of level NAME |
 | `LINKED` | 1..2 | LINKED("pop"[, "state"]): how many agents self is linked to (pop is self's own population; directed: its out-links) |
 | `LINK_MEAN` | 1..2 | LINK_MEAN("attr"[, "state"]): attr's mean over self's linked neighbours; 0 if none |
 | `LINK_SUM` | 1..2 | LINK_SUM("attr"[, "state"]): attr summed over self's linked neighbours; 0 if none |
 | `MEAN` | 1..3 | MEAN(x): SUM(x) divided by the element count (subscripts); MEAN("pop", "attr"[, "state"]): an attribute's mean over a population (in that state; 0 if none) |
-| `MODULO` | 2 |  |
+| `MODULO` | 2 | MODULO(a, b): the remainder of a / b with the sign of a |
 | `MR` | 1 | units currently scheduled at resource/set NAME (net of capacity-schedule/failure blockers) |
 | `NEAR` | 2..3 | NEAR("pop", r[, "state"]): how many of pop's agents are within r of self (inclusive), self excluded when pop is self's own population |
 | `NEAREST` | 1..2 | NEAREST("pop"[, "state"]): distance to the closest OTHER agent of pop (inf if there is none) |
@@ -96,13 +96,13 @@
 | `TANH` | 1 | math.tanh, radians |
 | `TREND` | 2..3 |  |
 | `TRIA` | 3 | triangular(low, mode, high), sampled from the calling block's own rng |
-| `TS` | 1..2 |  |
+| `TS` | 1..2 | TS("name"[, t]): time-series input NAME now, or at time t |
 | `UNIF` | 2 | uniform(low, high), sampled from the calling block's own rng |
-| `VAR` | 1 |  |
+| `VAR` | 1 | VAR("name"): model variable NAME, for a name a bare name cannot spell |
 | `VMAX` | 1 |  |
 | `VMIN` | 1 |  |
-| `XIDZ` | 2..3 |  |
-| `ZIDZ` | 2 |  |
+| `XIDZ` | 2..3 | XIDZ(a, b[, x]): a / b, or x (default 0) when b is 0 |
+| `ZIDZ` | 2 | ZIDZ(a, b): a / b, or 0 when b is 0 |
 | `abs` | 1 | plain Python |
 | `ceil` | 1 | math.ceil |
 | `exp` | 1 | math.exp |

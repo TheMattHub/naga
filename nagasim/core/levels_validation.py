@@ -174,8 +174,10 @@ def _check_clock_rates(problems: list, layout: dict) -> None:
                 f"flow '{entry.get('name', '')}': the rate reads TNOW but the model has no "
                 f"step grid, so it is evaluated only at events and the clock is stale between "
                 f"them", f"/flows/{index}/rate",
-                hint="add \"simulation\": {\"sd\": {\"dt\": 0.5}} (set_sd_settings), with dt "
-                     "well below the shortest interval the rate switches on"))
+                hint="a rate that switches on a timetable is exact read from a profile: "
+                     "TS(\"name\") of a timeseries_inputs entry with interpolation \"step\" "
+                     "and beyond \"repeat\". Otherwise add \"simulation\": {\"sd\": "
+                     "{\"dt\": ...}} (set_sd_settings): each switch is then late by up to dt"))
 
 
 def _check_conveyors(problems: list, layout: dict) -> None:

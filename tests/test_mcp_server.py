@@ -74,6 +74,22 @@ def test_the_server_publishes_every_tool_resource_and_prompt(tmp_path):
     assert {p.name for p in prompts} == {"build_model_from_description", "analyse_results"}
 
 
+def test_tools_compact_publishes_what_building_a_model_needs_and_nothing_else(tmp_path):
+    """D397: `--tools compact` is the whole-model surface, so a client pays for eight tool
+    descriptions on every turn instead of every one; it is chosen by whoever starts the
+    server, and the default stays every tool."""
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    mcp_server.add_arguments(parser)
+    assert parser.parse_args([]).tools == "all"
+    assert parser.parse_args(["--tools", "compact"]).tools == "compact"
+    server = mcp_server.build_server(tmp_path, tools=mcp_server.COMPACT_TOOLS)
+    names = {t.name for t in asyncio.run(server.list_tools())}
+    assert names == mcp_server.COMPACT_TOOLS
+    assert {"get_model_format", "write_model", "run_model", "save_model"} <= names
+
+
 def test_resources_serve_the_live_reference_and_the_bundled_examples(tmp_path):
     server = mcp_server.build_server(tmp_path)
 
@@ -98,7 +114,7 @@ def test_prompts_carry_high_signal_guidance(tmp_path):
     build = str(asyncio.run(render("build_model_from_description",
                                    {"description": "a bakery with two ovens"})))
     assert "a bakery with two ovens" in build
-    assert "validate_model" in build and "run length" in build
+    assert "write_model" in build and "time_limit" in build
     analyse = str(asyncio.run(render("analyse_results", {"question": "where is the bottleneck"})))
     assert "confidence interval" in analyse and "run_scenarios" in analyse
 
@@ -169,7 +185,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "68" and first.startswith("naga://reference/")
+    assert count == "70" and first.startswith("naga://reference/")
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):

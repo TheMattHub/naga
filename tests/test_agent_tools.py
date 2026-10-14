@@ -240,7 +240,7 @@ def test_every_tool_is_documented_for_an_llm_and_has_an_input_schema():
 
 
 def test_tool_names_are_snake_case_verbs():
-    verbs = ("list", "describe", "get", "new", "open", "save", "add", "update", "remove",
+    verbs = ("list", "describe", "get", "new", "open", "save", "write", "add", "update", "remove",
              "connect", "disconnect", "reorder", "set", "upsert", "auto", "validate", "run",
              "suggest", "optimize", "fit", "export", "undo", "redo",
              "resolve", "calibrate", "forecast", "evaluate", "place", "install", "import",

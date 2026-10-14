@@ -116,10 +116,21 @@ class Series:
             cycles = math.floor((shifted - base) / self.period)
             local = shifted - cycles * self.period
             index = bisect.bisect_right(times, local)
-            if index < n:
-                return cycles * self.period + times[index] - self.offset
-            # the wrap point
-            return cycles * self.period + base + self.period - self.offset
+
+            def at(cycles, index):          # a knot of a cycle; index n is the wrap point
+                knot = times[index] if index < n else base + self.period
+                return cycles * self.period + knot - self.offset
+
+            # DEVLOG #424: rounding can fold t a hair below the knot it sits on, which then
+            # came back as the next change and the level engine re-scheduled it forever.
+            after = at(cycles, index)
+            while after <= t:
+                if index < n:
+                    index += 1
+                else:
+                    cycles, index = cycles + 1, bisect.bisect_right(times, base)
+                after = at(cycles, index)
+            return after
         index = bisect.bisect_right(times, shifted)
         return times[index] - self.offset if index < n else None
 
@@ -332,6 +343,13 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
                                     f"{at}/values", hint="every sample of a series is a number"))
             continue
 
+        # The study's tank task: a period without beyond "repeat" is never read, and the
+        # profile holds its last value for the rest of the run.
+        if entry.get("period") is not None and entry.get("beyond", "hold") != "repeat":
+            problems.append(problem(
+                "W_SERIES_PERIOD_UNUSED",
+                f"time series '{name}': \"period\" is read only when \"beyond\" is \"repeat\"",
+                f"{at}/period", hint="add \"beyond\": \"repeat\", or drop \"period\""))
         if is_dated(entry):                            # PHASE4 T10 dated series
             problems.extend(_validate_dated(entry, at, name, calendar, horizon))
             continue
@@ -346,7 +364,8 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
         if times is not None and step:
             problems.append(problem(
                 "E_SERIES_SHAPE", f"time series '{name}': \"times\" and \"step\" are exclusive",
-                at, hint="drop \"step\" for an irregular series, or \"times\" for a regular one"))
+                at, hint="drop \"step\" for an irregular series, or \"times\" for a regular one; "
+                     "the length of a repeating cycle is \"period\""))
             continue
         if times is not None and (not isinstance(times, list)
                                   or not all(_is_number(t) for t in times)):

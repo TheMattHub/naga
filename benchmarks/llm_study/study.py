@@ -52,7 +52,12 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 TASK_IDS = ("mm1", "mmc", "md1", "tandem", "rework", "priority", "batch", "carpark", "shift",
             "cooling", "repair", "tank")
-ARMS = {"tools": "Naga tools", "simpy": "SimPy code"}
+ARMS = {"tools": "Naga tools, block by block", "whole": "Naga tools, whole model",
+        "simpy": "SimPy code"}
+# "tools" is the record of the tools before write_model (D396): the current tools are not what
+# it measured, so it is reported but never run again; "whole" is the tools arm since.
+RUNNABLE_ARMS = ("whole", "simpy")
+TOOL_ARMS = {"tools", "whole"}
 SIGMAS, SEEDS = 5, 20           # a statistical tolerance: SIGMAS standard deviations over SEEDS runs
 FULL_REPEATS = 3                # planned attempts per task and arm; a run stopped short says so
 RUN_TOOLS = {"run_model", "run_to_precision", "run_scenarios"}
@@ -223,12 +228,11 @@ def grade_model(path: Path, reply: str, task, ran_model: bool, timeout: float) -
 
 # ---------------------------------------------------------------- the local comparison
 def study_tools(_kind: str = "local", _extra: tuple = ()) -> list:
-    """What the tools arm offers: the engine's compact list for a local model, plus the two
-    tools without which a schedule's or a level's record shape and a system-dynamics step
-    cannot be set at all."""
+    """What the tools arm offers: the engine's compact list for a local model (D396: the
+    whole model file in one write_model, which takes every section and the step grid)."""
     from nagasim import assistant
 
-    return sorted({*assistant.offered_tools("local"), "get_record_schema", "set_sd_settings"})
+    return sorted(assistant.offered_tools("local"))
 
 
 class Recorder:
@@ -316,7 +320,7 @@ def local_attempt(task, arm, options):
                                 reasoning=options.reasoning, environ={})
     provider = Recorder(llm.build_provider(config))
     with tempfile.TemporaryDirectory(prefix="naga_llm_study_", ignore_cleanup_errors=True) as work:
-        grade, calls, transcript = (local_tools if arm == "tools" else local_simpy)(
+        grade, calls, transcript = (local_tools if arm in TOOL_ARMS else local_simpy)(
             task, provider, options, Path(work))
     if provider.unreachable:
         raise SystemExit(f"stopped, nothing written for this attempt: {provider.unreachable}")
@@ -332,7 +336,7 @@ def claude_command(arm: str, options, settings: Path, servers: Path) -> list:
     """Claude Code, headless, with only what a run in a throwaway folder needs. `--restricted`
     ignores this machine's own settings, keeps the file tools inside the folder and refuses to
     skip permissions; whatever is not allowed below is refused, since nobody answers a prompt."""
-    tools = "" if arm == "tools" else "Bash,Write,Edit,Read"    # the built-in tools that exist at all
+    tools = "" if arm in TOOL_ARMS else "Bash,Write,Edit,Read"    # the built-in tools that exist at all
     return [*(CLAUDE or [shutil.which("claude") or "claude"]), "-p", "--model", options.model,
             "--max-turns", str(options.max_turns), "--output-format", "stream-json", "--verbose",
             "--restricted", "--strict-mcp-config", "--mcp-config", str(servers),
@@ -348,14 +352,15 @@ def claude_attempt(task, arm, options):
         work = folder / "work"              # empty; the two configuration files stay outside it
         work.mkdir()
         servers, settings = folder / "mcp.json", folder / "settings.json"
-        naga = {"naga": {"command": sys.executable, "args": ["-m", "nagasim", "mcp", "--root", str(work)],
+        naga = {"naga": {"command": sys.executable, "args": ["-m", "nagasim", "mcp", "--root", str(work),
+                                                          "--tools", "compact"],
                          "env": {"PYTHONPATH": str(ROOT)}}}
-        servers.write_text(json.dumps({"mcpServers": naga if arm == "tools" else {}}), encoding="utf-8")
-        allow = ["mcp__naga"] if arm == "tools" else ["Read", "Write", "Edit", "Bash(python solution.py)"]
+        servers.write_text(json.dumps({"mcpServers": naga if arm in TOOL_ARMS else {}}), encoding="utf-8")
+        allow = ["mcp__naga"] if arm in TOOL_ARMS else ["Read", "Write", "Edit", "Bash(python solution.py)"]
         settings.write_text(json.dumps({"permissions": {"allow": allow}}), encoding="utf-8")
         # `python` is this interpreter, which has SimPy.
         env = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")])}
-        ask = task.request + (CLAUDE_TOOLS_ASK if arm == "tools" else CLAUDE_SIMPY_ASK)
+        ask = task.request + (CLAUDE_TOOLS_ASK if arm in TOOL_ARMS else CLAUDE_SIMPY_ASK)
         code, out, err = _run(claude_command(arm, options, settings, servers), cwd=work,
                               timeout=options.attempt_timeout, stdin=ask, env=env)
         events = []
@@ -375,7 +380,7 @@ def claude_attempt(task, arm, options):
                 for block in (event.get("message") or {}).get("content") or []
                 if isinstance(block, dict) and block.get("type") == "tool_use"]
         reply = str(result.get("result") or "")
-        if arm == "tools":
+        if arm in TOOL_ARMS:
             ran = any(str(block.get("name", "")).rsplit("__", 1)[-1] in RUN_TOOLS for block in used)
             grade = grade_model(work / "model.json", reply, task, ran, options.timeout)
         else:
@@ -455,16 +460,22 @@ def _median(rows, field, scale=1.0) -> str:
 
 def _span(shown, tasks) -> str:
     counts = [sum(r["task"] == task and r["arm"] == arm for r in mine)
-              for mine in shown.values() for task in tasks for arm in ARMS]
+              for arms, mine in shown.values() for task in tasks for arm in arms]
     low, high = min(counts), max(counts)
     return f"{low} attempt{'s' if low > 1 else ''}" if low == high else f"{low} to {high} attempts"
 
 
+# Input tokens are every token the model read, cached or not: what a long conversation costs.
+HEADER = ("| Model | Arm | Attempts | Valid | Runnable | Correct | Median replies | Median tool calls | "
+          "Median input tokens (k) | Median output tokens (k) | Median cost (USD) | Median minutes |")
+
+
 def render(results: dict) -> str:
-    """The Markdown the docs page includes, from a results file's content alone. A model is
-    shown once every task has at least one attempt in both arms, each cell with its own count;
-    a model with fewer than FULL_REPEATS in some cell is said to have been stopped short. A
-    model that has not reached every task is a pilot: counted and named, never tabulated."""
+    """The Markdown the docs page includes, from a results file's content alone. An arm of a
+    model is shown once every task has at least one attempt in it, and a model once its code
+    arm and a tools arm are, each cell with its own count; a model with fewer than
+    FULL_REPEATS in some cell is said to have been stopped short. Attempts in an arm or a
+    model not shown are a pilot: counted, never tabulated."""
     tasks = results["tasks"]
     parts = ["### The tasks", "", "| Task | What is asked | Answer | Accepted within |", "|---|---|---|---|"]
     parts += [f"| `{name}` | {entry['title']} | {entry['answer']:.4g} | {entry['tolerance']:.2g} |"
@@ -477,18 +488,19 @@ def render(results: dict) -> str:
         shown, pilots = {}, 0
         for model in dict.fromkeys(row["model"] for row in rows):
             mine = [row for row in rows if row["model"] == model]
-            counts = {(task, arm): sum(r["task"] == task and r["arm"] == arm for r in mine)
-                      for task in tasks for arm in ARMS}
-            if min(counts.values()) >= 1:
-                shown[model] = mine
+            arms = [arm for arm in ARMS if all(any(r["task"] == task and r["arm"] == arm for r in mine)
+                                               for task in tasks)]
+            if "simpy" in arms and TOOL_ARMS & set(arms):
+                shown[model] = (arms, [r for r in mine if r["arm"] in arms])
             else:
-                pilots += len(mine)
+                arms = []
+            pilots += sum(r["arm"] not in arms for r in mine)
+        pilot_note = (f" ({pilots} pilot attempts are on file; a pilot is not a result and is "
+                      f"not shown.)" if pilots else "")
         if not shown:
-            parts += ["The full runs have not been made yet." + (
-                f" ({pilots} pilot attempts are on file; a pilot is not a result and is not shown.)"
-                if pilots else ""), ""]
+            parts += ["The full runs have not been made yet." + pilot_note, ""]
             continue
-        every = [row for mine in shown.values() for row in mine]
+        every = [row for _arms, mine in shown.values() for row in mine]
         versions = every[0]["versions"]
         ids = sorted({row["model_id"] for row in every if row.get("model_id")})
         parts += [
@@ -496,30 +508,32 @@ def render(results: dict) -> str:
             f"{len(tasks)} tasks, {_span(shown, tasks)} per task and arm, at most {every[0]['budget']} "
             f"{'model replies' if comparison == 'local' else 'agent turns'} per attempt. "
             f"Naga {versions['nagasim']}, SimPy {versions['simpy']}, Python {versions['python']}."
-            + (f" Model ids as reported by Claude Code: {', '.join(ids)}." if ids else ""), "",
-            "| Model | Arm | Attempts | Valid | Runnable | Correct | Median replies | "
-            "Median tool calls | Median minutes |", "|---|---|---|---|---|---|---|---|---|"]
-        planned = len(tasks) * len(ARMS) * FULL_REPEATS
-        header = parts.index("| Model | Arm | Attempts | Valid | Runnable | Correct | Median replies | "
-                             "Median tool calls | Median minutes |", len(parts) - 2)
-        parts[header:header] = [f"`{model}` was stopped after {len(mine)} of the {planned} planned attempts "
-                                f"({FULL_REPEATS} per task and arm); its cells count what was made.\n"
-                                for model, mine in shown.items() if len(mine) < planned]
-        for model, mine in shown.items():
-            for arm, label in ARMS.items():
-                group = [row for row in mine if row["arm"] == arm]
-                parts.append(f"| `{model}` | {label} | {len(group)} | {_share(group, 'valid')} | "
+            + (f" Model ids as reported by Claude Code: {', '.join(ids)}." if ids else "")
+            + pilot_note, "",
+            HEADER, "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        header = parts.index(HEADER, len(parts) - 2)
+        parts[header:header] = [
+            f"`{model}` was stopped after {len(mine)} of the {len(tasks) * len(arms) * FULL_REPEATS} "
+            f"planned attempts ({FULL_REPEATS} per task and arm); its cells count what was made.\n"
+            for model, (arms, mine) in shown.items() if len(mine) < len(tasks) * len(arms) * FULL_REPEATS]
+        for model, (arms, mine) in shown.items():
+            for arm in arms:
+                group = [{**row, "read": None if row.get("tokens_in") is None
+                          else row["tokens_in"] + (row.get("tokens_cached") or 0)}
+                         for row in mine if row["arm"] == arm]
+                parts.append(f"| `{model}` | {ARMS[arm]} | {len(group)} | {_share(group, 'valid')} | "
                              f"{_share(group, 'runnable')} | {_share(group, 'correct')} | "
                              f"{_median(group, 'turns')} | {_median(group, 'tool_calls')} | "
-                             f"{_median(group, 'seconds', 60)} |")
-        columns = [(model, arm) for model in shown for arm in ARMS]
+                             f"{_median(group, 'read', 1000)} | {_median(group, 'tokens_out', 1000)} | "
+                             f"{_median(group, 'cost_usd')} | {_median(group, 'seconds', 60)} |")
+        columns = [(model, arm) for model, (arms, _mine) in shown.items() for arm in arms]
         parts += ["", "Correct attempts per task:", "",
                   "| Task | " + " | ".join(f"`{model}`, {ARMS[arm]}" for model, arm in columns) + " |",
                   "|---|" + "---|" * len(columns)]
         for task, entry in tasks.items():
             cells = []
             for model, arm in columns:
-                group = [r for r in shown[model] if r["task"] == task and r["arm"] == arm]
+                group = [r for r in shown[model][1] if r["task"] == task and r["arm"] == arm]
                 cells.append(f"{sum(bool(r['correct']) for r in group)}/{len(group)}")
             parts.append(f"| `{task}`: {entry['title']} | " + " | ".join(cells) + " |")
         parts.append("")
@@ -533,7 +547,7 @@ def main(argv=None) -> int:
     def attempts(name, summary):
         sub = commands.add_parser(name, help=summary)
         sub.add_argument("--tasks", nargs="+", metavar="TASK", help=f"default: all of {', '.join(TASK_IDS)}")
-        sub.add_argument("--arms", nargs="+", choices=list(ARMS), default=list(ARMS))
+        sub.add_argument("--arms", nargs="+", choices=RUNNABLE_ARMS, default=list(RUNNABLE_ARMS))
         sub.add_argument("--repeats", type=int, default=1, help="attempts per task and arm (default 1)")
         sub.add_argument("--timeout", type=float, default=120,
                          help="seconds a script or a model run may take (default 120)")

@@ -24,18 +24,15 @@ ANSWER = LAM * SERVICE ** 2 / (2 * (1 - LAM * SERVICE))
 TOLERANCE = None
 
 NAGA = [
-    ("upsert_record", {"section": "resources", "record": {"name": "Labeller", "capacity": 1}}),
-    ("add_block", {"type": "CREATE", "name": "arrive",
-                   "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}}),
-    ("add_block", {"type": "PROCESS", "name": "label",
-                   "params": {"resource_name": "Labeller", "distribution": "Constant",
-                              "dist_params": {"value": SERVICE}}}),
-    ("add_block", {"type": "DISPOSE", "name": "leave"}),
-    ("connect", {"source": "arrive", "target": "label"}),
-    ("connect", {"source": "label", "target": "leave"}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": WARMUP, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "resources": [{"name": "Labeller", "capacity": 1}],
+        "blocks": [{"name": "arrive", "type": "CREATE", "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}},
+                   {"name": "label", "type": "PROCESS",
+                    "params": {"resource_name": "Labeller", "distribution": "Constant", "dist_params": {"value": SERVICE}}},
+                   {"name": "leave", "type": "DISPOSE"}],
+        "links": [{"source": "arrive", "target": "label"},
+               {"source": "label", "target": "leave"}],
+        "simulation": {"time_limit": RUN, "warmup": WARMUP, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
 ]
 

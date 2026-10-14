@@ -38,7 +38,7 @@ from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 
 __all__ = ["build_server", "add_arguments", "serve", "main", "MCPUnavailable", "INSTALL_HINT",
-           "INSTRUCTIONS"]
+           "INSTRUCTIONS", "COMPACT_TOOLS"]
 
 INSTALL_HINT = (
     "The Model Context Protocol SDK is not installed. It is an optional extra:\n"
@@ -47,11 +47,17 @@ INSTALL_HINT = (
     "nagasim.agent_tools without it."
 )
 INSTRUCTIONS = (
-    "Build, validate, run and analyse discrete-event simulation models. Start with "
-    "list_block_types and new_model; validate_model after each batch of edits; run_model "
-    "returns a compact KPI digest with confidence intervals, and get_kpi_table pages the "
-    "raw frames."
+    "Build, validate, run and analyse discrete-event simulation models. To build one: "
+    "get_model_format once, write_model with the whole model file, fix what its answer lists "
+    "with one more write_model, run_model, save_model. run_model returns a compact KPI digest "
+    "with confidence intervals; get_kpi_table pages the raw frames. The block-by-block tools "
+    "(add_block, connect, upsert_record, ...) edit an open model."
 )
+# `naga mcp --tools compact` (D397): what building and running a model needs, and the file
+# tools around it. Every tool's description is part of each turn an agent pays for, so a
+# client that only builds models is better served by eight tools than by every one.
+COMPACT_TOOLS = frozenset({"get_model_format", "write_model", "update_block", "run_model",
+                           "get_kpi_table", "open_model", "get_model_json", "save_model"})
 
 
 class MCPUnavailable(ImportError):
@@ -157,26 +163,24 @@ def _expressions_reference() -> str:
 _BUILD_PROMPT = """\
 You are building a discrete-event simulation model from a description.
 
-Work in this order, and validate as you go:
+Work in this order:
 
 1. Read the description for: what ARRIVES (and how often), what HAPPENS to it
    (in what order, taking how long), what it COMPETES for (staff, machines,
    space), and what LEAVES.
-2. Call list_block_types and list_distributions once, so you use real names.
-3. new_model, then add_block for each step: one CREATE, the processing blocks
-   (PROCESS is seize-delay-release in one block -- prefer it), DISPOSE at the end.
-4. upsert_record(section="resources") for everything that is competed for, and
-   set each processing block's resource_name to it (get_record_schema gives a
-   record's shape).
-5. connect the blocks in flow order. A DECIDE's outgoing links are its branches
-   in order: branch 0 matches probs[0]/conditions[0]. Only DECIDE and LOGIC may
-   branch.
-6. set_simulation_settings. ALWAYS set a run length unless the model drains on
-   its own -- validate_model tells you (`requires_run_length`). Set a warm-up
-   for a steady-state question, or call suggest_warmup once you can run.
-7. validate_model after each batch of edits. Fix errors using the `hint` on each
-   problem; warnings (W_ codes) are advisory but usually worth reading.
-8. auto_layout, then save_model.
+2. Call get_model_format once: the file's shape, every block type with its
+   parameters, the distributions' parameter names, the expression functions.
+3. write_model with the WHOLE model file: one CREATE, the processing blocks
+   (PROCESS is seize-delay-release in one block -- prefer it), DISPOSE at the
+   end; a resource for everything that is competed for, named in each
+   processing block's resource_name; the links in flow order (a DECIDE's links
+   are its branches in order: branch 0 matches probs[0]/conditions[0]); and
+   simulation.time_limit unless the model drains on its own. Set a warm-up for
+   a steady-state question.
+4. The answer lists every problem with its JSON path and a hint: fix them all
+   in ONE more write_model. Warnings (W_ codes) are advisory but usually worth
+   reading.
+5. run_model, then save_model.
 
 Rules of thumb: interarrival times are Exponential unless the description says
 otherwise; service times are rarely Normal (it can go negative -- use Lognormal,
@@ -218,7 +222,8 @@ The question to answer: {question}
 
 # ---------------------------------------------------------------- server
 def build_server(root: str | Path | None = None, network=None, twin=None, *,
-                 twin_dir=None, name: str = "naga", instructions: str = INSTRUCTIONS):
+                 twin_dir=None, name: str = "naga", instructions: str = INSTRUCTIONS,
+                 tools=None):
     """Build the MCP server with every tool, resource and prompt registered.
 
     *network* is the `netguard.NetworkPolicy` the human passed at start-up; with
@@ -226,7 +231,8 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     *twin* is the twin session they configured, on the same rule: with none,
     every twin tool refuses; *twin_dir* is the result directory of a twin they
     started, which two tools read. *name* and *instructions* are what the server
-    tells a client about itself.
+    tells a client about itself. *tools* limits the published tools to those names
+    (COMPACT_TOOLS for `--tools compact`); None publishes every one.
 
     A caller that serves the result itself, not through `serve`, must call
     `agent_tools.drop_python_consent()` first, as `serve` does (D186).
@@ -249,6 +255,8 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
         return locked
 
     for spec in agent_tools.TOOLS.values():
+        if tools is not None and spec.name not in tools:
+            continue
         server.add_tool(serialised(spec.fn), name=spec.name, description=_described(spec),
                         annotations=_annotations(spec))
 
@@ -298,6 +306,10 @@ def add_arguments(parser) -> None:
                         help="workspace root: the only directory models may be read from or "
                              "written to (default: the current directory)")
     netguard.add_arguments(parser)
+    parser.add_argument("--tools", choices=("all", "compact"), default="all",
+                        help="all: every tool (default); compact: only what building, running "
+                             "and saving a model needs (get_model_format, write_model, "
+                             "run_model, ...), so a client pays for fewer tool descriptions")
     parser.add_argument("--twin", dest="twin_dir", default=None, metavar="DIR",
                         help="the result directory of a twin you started (naga twin run "
                              "--out DIR): two read-only tools then answer from it. No tool "
@@ -309,7 +321,8 @@ def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIO
     try:
         server = build_server(args.root, network=netguard.policy_from_args(args), twin=twin,
                               twin_dir=getattr(args, "twin_dir", None),
-                              name=name, instructions=instructions)
+                              name=name, instructions=instructions,
+                              tools=COMPACT_TOOLS if getattr(args, "tools", "all") == "compact" else None)
     except MCPUnavailable as exc:
         print(str(exc))     # stdout is the transport only once the server runs
         return 1

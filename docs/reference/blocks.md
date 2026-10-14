@@ -180,7 +180,7 @@ A station whose service is a cycle of motions -- moves timed from a motion profi
 | `zone` | dict | `{}` |  |  |  | With hrc "separation": {"node": <network node>, "radius_m": <metres>}. |
 | `segments` | list | `[]` |  | time | `time_unit` | The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?} or {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}. The service time is their sum. |
 | `time_unit` | str | `'seconds'` |  |  |  | Unit of every segment `time`: "base" or seconds/minutes/hours/days. Moves are always computed in seconds. |
-| `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. |
+| `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource. |
 | `quantity` | int | `1` |  | count |  | Number of resource units requested/released. |
 | `resource_name` | str | `''` |  |  |  | Name of the resource or resource set; required unless action is "Delay" or a worker_fleet does the work alone. |
 | `setup` | str | `''` |  | time | `setup_unit` | Sequence-dependent setup time: an expression charged after the seize when this block's resource changes over, e.g. TABLE("Setups", previous_key, key). `previous_key` and `key` are in scope here only. Empty = no setup. |
@@ -215,7 +215,7 @@ Seize, delay and release fused in one block; `action` selects which of the three
 | `distribution` | str | `'Constant'` |  |  |  | Name of a registered distribution (see the distribution reference). |
 | `dist_params` | dict | `{'value': 0.0}` |  | time | `time_unit` | Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential). |
 | `time_unit` | str | `'base'` |  |  |  | Unit the sampled duration is expressed in: "base" (the model's own unit, no conversion) or one of seconds/minutes/hours/days. |
-| `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. |
+| `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource. |
 | `quantity` | int | `1` |  | count |  | Number of resource units requested/released. |
 | `resource_name` | str | `''` |  |  |  | Name of the resource or resource set; required unless action is "Delay" or a worker_fleet does the work alone. |
 | `setup` | str | `''` |  | time | `setup_unit` | Sequence-dependent setup time: an expression charged after the seize when this block's resource changes over, e.g. TABLE("Setups", previous_key, key). `previous_key` and `key` are in scope here only. Empty = no setup. |
@@ -291,7 +291,7 @@ Request `quantity` units of `resource_name` (a plain resource or a resource set)
 | `distribution` | str | `'Constant'` |  |  |  | Name of a registered distribution (see the distribution reference). |
 | `dist_params` | dict | `{'value': 0.0}` |  | time | `time_unit` | Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential). |
 | `time_unit` | str | `'base'` |  |  |  | Unit the sampled duration is expressed in: "base" (the model's own unit, no conversion) or one of seconds/minutes/hours/days. |
-| `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. |
+| `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource. |
 | `quantity` | int | `1` |  | count |  | Number of resource units requested. |
 | `resource_name` | str | `''` | yes |  |  | Name of the resource or resource set to seize. |
 | `queue_capacity` | int | `0` |  | count |  | Places in this block's own input queue. 0 (the default) is an unlimited queue; with a positive value a part takes a place on arrival and frees it when it seizes, so an upstream machine with nowhere to put its finished part stays blocked. |

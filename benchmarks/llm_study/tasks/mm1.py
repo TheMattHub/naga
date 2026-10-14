@@ -24,18 +24,15 @@ ANSWER = 1 / (MU - LAM)
 TOLERANCE = None
 
 NAGA = [
-    ("upsert_record", {"section": "resources", "record": {"name": "Clerk", "capacity": 1}}),
-    ("add_block", {"type": "CREATE", "name": "arrive",
-                   "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}}),
-    ("add_block", {"type": "PROCESS", "name": "serve",
-                   "params": {"resource_name": "Clerk", "distribution": "Exponential",
-                              "dist_params": {"rate": MU}}}),
-    ("add_block", {"type": "DISPOSE", "name": "leave"}),
-    ("connect", {"source": "arrive", "target": "serve"}),
-    ("connect", {"source": "serve", "target": "leave"}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": WARMUP, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "resources": [{"name": "Clerk", "capacity": 1}],
+        "blocks": [{"name": "arrive", "type": "CREATE", "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}},
+                   {"name": "serve", "type": "PROCESS",
+                    "params": {"resource_name": "Clerk", "distribution": "Exponential", "dist_params": {"rate": MU}}},
+                   {"name": "leave", "type": "DISPOSE"}],
+        "links": [{"source": "arrive", "target": "serve"},
+               {"source": "serve", "target": "leave"}],
+        "simulation": {"time_limit": RUN, "warmup": WARMUP, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
 ]
 

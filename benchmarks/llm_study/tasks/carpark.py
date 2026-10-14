@@ -34,20 +34,19 @@ ANSWER = 100 * _erlang_b(SPACES, LAM * STAY)
 TOLERANCE = None
 
 NAGA = [
-    ("upsert_record", {"section": "resources", "record": {"name": "Spaces", "capacity": SPACES}}),
-    ("add_block", {"type": "CREATE", "name": "cars",
-                   "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}}),
-    ("add_block", {"type": "PROCESS", "name": "park",
-                   "params": {"resource_name": "Spaces", "balk_if": f'NR("Spaces") >= {SPACES}',
-                              "distribution": "Exponential", "dist_params": {"rate": 1 / STAY}}}),
-    ("add_block", {"type": "DISPOSE", "name": "leave"}),
-    ("add_block", {"type": "DISPOSE", "name": "turned_away"}),
-    ("connect", {"source": "cars", "target": "park"}),
-    ("connect", {"source": "park", "target": "leave"}),
-    ("connect", {"source": "park", "target": "turned_away"}),    # branch 1: left without service
-    ("set_simulation_settings", {"run_length": RUN, "warmup": 0, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "resources": [{"name": "Spaces", "capacity": SPACES}],
+        "blocks": [{"name": "cars", "type": "CREATE", "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}},
+                   {"name": "park", "type": "PROCESS",
+                    "params": {"resource_name": "Spaces", "balk_if": f'NR("Spaces") >= {SPACES}',
+                               "distribution": "Exponential", "dist_params": {"rate": 1 / STAY}}},
+                   {"name": "leave", "type": "DISPOSE"},
+                   {"name": "turned_away", "type": "DISPOSE"}],
+        # the second link takes the cars that balked
+        "links": [{"source": "cars", "target": "park"},
+               {"source": "park", "target": "leave"},
+               {"source": "park", "target": "turned_away"}],
+        "simulation": {"time_limit": RUN, "warmup": 0, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
     ("get_kpi_table", {"frame": "queue_summary"}),
 ]

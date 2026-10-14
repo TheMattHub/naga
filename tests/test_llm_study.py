@@ -42,7 +42,7 @@ def test_a_tasks_tool_solution_is_inside_its_tolerance(task):
     """Solvable with the tools the study offers, and the answer read off the results is right."""
     _document, results = _replay(task)
     assert not [result for result in results if "error" in result]
-    assert results[[name for name, _arguments in task.module.NAGA].index("validate_model")]["ok"]
+    assert results[0]["ok"], results[0]["problems"]      # write_model: the whole file, valid
     assert abs(task.module.naga_answer(results) - task.answer) <= task.tolerance
 
 
@@ -138,11 +138,11 @@ def test_the_local_harness_grades_both_arms_and_resumes(tmp_path, capsys):
     assert "tools" not in seen[2]["body"] and seen[2]["body"]["messages"][-1]["content"] == task.request
     assert "ValueError: boom" in seen[3]["body"]["messages"][-1]["content"]     # the traceback went back
     rows = _rows(tmp_path)
-    for arm, turns, tool_calls in (("tools", 2, len(calls)), ("simpy", 2, 2)):
+    for arm, turns, tool_calls in (("whole", 2, len(calls)), ("simpy", 2, 2)):
         row = rows[arm, 1]
         assert (row["valid"], row["runnable"], row["correct"]) == (True, True, True), row
         assert (row["turns"], row["tool_calls"], row["budget"], row["model"]) == (turns, tool_calls, 2, "fake:1b")
-    transcript = json.loads((tmp_path / "local" / "fake_1b" / "mm1.tools.1.transcript.json").read_text(encoding="utf-8"))
+    transcript = json.loads((tmp_path / "local" / "fake_1b" / "mm1.whole.1.transcript.json").read_text(encoding="utf-8"))
     assert transcript["tool_calls"][-1]["name"] == "run_model" and len(transcript["replies"]) == 2
 
     # A second repeat: an answer that is off, and a script that never stops crashing. The
@@ -152,9 +152,9 @@ def test_the_local_harness_grades_both_arms_and_resumes(tmp_path, capsys):
         assert _local(url, tmp_path, "--repeats", "2") == 0
     assert len(seen) == 4
     rows = _rows(tmp_path)
-    assert (rows["tools", 2]["valid"], rows["tools", 2]["runnable"], rows["tools", 2]["correct"]) == (True, True, False)
+    assert (rows["whole", 2]["valid"], rows["whole", 2]["runnable"], rows["whole", 2]["correct"]) == (True, True, False)
     assert (rows["simpy", 2]["valid"], rows["simpy", 2]["runnable"], rows["simpy", 2]["correct"]) == (True, False, False)
-    assert rows["simpy", 2]["note"] == "reply limit; exit 1" and rows["tools", 1]["correct"]
+    assert rows["simpy", 2]["note"] == "reply limit; exit 1" and rows["whole", 1]["correct"]
 
     with serve([]) as (url, seen):                          # everything is on file
         assert _local(url, tmp_path, "--repeats", "2") == 0
@@ -171,8 +171,8 @@ def test_a_turn_the_loop_undoes_leaves_no_model_and_an_unreachable_server_stops_
     task = TASKS["mm1"]
     calls = [(f"c{i}", name, json.dumps(arguments)) for i, (name, arguments) in enumerate(task.module.NAGA)]
     with serve([reply(calls=calls), reply("")]) as (url, _seen):        # an empty reply fails the turn
-        assert _local(url, tmp_path, "--arms", "tools") == 0
-    row = _rows(tmp_path)["tools", 1]
+        assert _local(url, tmp_path, "--arms", "whole") == 0
+    row = _rows(tmp_path)["whole", 1]
     assert not row["valid"] and row["note"].startswith("turn undone (LLMError)")
     with serve([]) as (url, _seen):
         pass                                                           # the server is gone
@@ -223,7 +223,7 @@ def test_the_claude_harness_isolates_grades_and_stops_on_a_quota_error(tmp_path,
     out = tmp_path / "attempts"
     run = lambda *more: study.main(["claude", "--tasks", "mm1", "--out", str(out), *more])
 
-    assert run("--arms", "tools") == 0
+    assert run("--arms", "whole") == 0
     log = json.loads((tmp_path / "log.json").read_text(encoding="utf-8"))
     assert log["ask"] == task.request + study.CLAUDE_TOOLS_ASK and "Python" not in study.CLAUDE_TOOLS_ASK
     assert log["cwd_empty"] and log["consent"] is None and log["key"] is None
@@ -244,27 +244,27 @@ def test_the_claude_harness_isolates_grades_and_stops_on_a_quota_error(tmp_path,
     assert Path(log["python"]).parent == Path(sys.executable).parent
 
     rows = _rows(out)
-    for arm in ("tools", "simpy"):
+    for arm in ("whole", "simpy"):
         row = rows[arm, 1]
         assert (row["valid"], row["runnable"], row["correct"]) == (True, True, True), row
         assert (row["turns"], row["tool_calls"], row["model_id"], row["budget"]) == (3, 1, "claude-stand-in-1", 50)
 
     monkeypatch.setenv("STAND_IN_ANSWER", "99")              # off: runnable, not correct
-    assert run("--arms", "tools", "--repeats", "2") == 0
-    row = _rows(out)["tools", 2]
+    assert run("--arms", "whole", "--repeats", "2") == 0
+    row = _rows(out)["whole", 2]
     assert (row["valid"], row["runnable"], row["correct"]) == (True, True, False)
 
     monkeypatch.setenv("STAND_IN_MODE", "quota")             # no result file: the run can resume
     with pytest.raises(SystemExit, match="usage limit reached"):
-        run("--arms", "tools", "--repeats", "3")
-    assert ("tools", 3) not in _rows(out)
+        run("--arms", "whole", "--repeats", "3")
+    assert ("whole", 3) not in _rows(out)
     capsys.readouterr()
 
 
 # ---------------------------------------------------------------- the published table
 def _full(model, comparison="local", repeats=study.FULL_REPEATS):
     return [{"comparison": comparison, "model": model, "task": task, "arm": arm, "repeat": repeat,
-             "valid": True, "runnable": arm == "tools" or repeat > 1, "correct": arm == "tools" and task != "tank",
+             "valid": True, "runnable": arm in study.TOOL_ARMS or repeat > 1, "correct": arm in study.TOOL_ARMS and task != "tank",
              "turns": 9, "tool_calls": 12, "seconds": 90.0, "budget": 25, "date": f"2026-01-0{repeat}",
              "versions": {"nagasim": "0", "simpy": "0", "python": "3"}}
             for task in study.TASK_IDS for arm in study.ARMS for repeat in range(1, repeats + 1)]
@@ -274,17 +274,18 @@ def test_a_model_that_reached_every_task_is_tabulated_and_one_stopped_short_says
     tasks = study.collect(STUDY / "no-such-folder")["tasks"]
     one = study.render({"tasks": tasks, "attempts": _full("m:1")})
     assert "from 2026-01-01 to 2026-01-03: 12 tasks, 3 attempts per task and arm, at most 25 model replies" in one
-    assert "| `m:1` | Naga tools | 36 | 36/36 (100%) | 36/36 (100%) | 33/36 (92%) | 9 | 12 | 1.5 |" in one
-    assert "| `m:1` | SimPy code | 36 | 36/36 (100%) | 24/36 (67%) | 0/36 (0%) | 9 | 12 | 1.5 |" in one
+    assert "| `m:1` | Naga tools, whole model | 36 | 36/36 (100%) | 36/36 (100%) | 33/36 (92%) | 9 | 12 |  |  |  | 1.5 |" in one
+    assert "| `m:1` | SimPy code | 36 | 36/36 (100%) | 24/36 (67%) | 0/36 (0%) | 9 | 12 |  |  |  | 1.5 |" in one
     assert "stopped after" not in one
     # a model stopped after one round is shown with its own counts and said to be short;
     # one that has not reached every task is a pilot and is not shown
     pilot = [row for row in _full("m:3", repeats=1) if row["task"] != "tank"]
-    shown = study.render({"tasks": tasks, "attempts": _full("m:1") + _full("m:2", repeats=1) + pilot})
+    before = [row for row in _full("m:2", repeats=1) if row["arm"] != "whole"]   # before D396
+    shown = study.render({"tasks": tasks, "attempts": _full("m:1") + before + pilot})
     assert "12 tasks, 1 to 3 attempts per task and arm" in shown
     assert "`m:2` was stopped after 24 of the 72 planned attempts (3 per task and arm)" in shown
-    assert "| `m:2` | Naga tools | 12 | 12/12 (100%) |" in shown and "| `tank`: " in shown
-    assert "m:3" not in shown
+    assert "| `m:2` | Naga tools, block by block | 12 | 12/12 (100%) |" in shown and "| `tank`: " in shown
+    assert "m:3" not in shown and "| `m:2` | Naga tools, whole model" not in shown
     assert shown.count("The full runs have not been made yet.") == 1        # the Claude comparison
 
 

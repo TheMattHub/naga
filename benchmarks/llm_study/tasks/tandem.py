@@ -24,23 +24,18 @@ ANSWER = sum(1 / (1 / mean - LAM) for mean in MEANS)
 TOLERANCE = None
 
 NAGA = [
-    ("upsert_record", {"section": "resources", "record": {"name": "Saw", "capacity": 1}}),
-    ("upsert_record", {"section": "resources", "record": {"name": "Drill", "capacity": 1}}),
-    ("add_block", {"type": "CREATE", "name": "arrive",
-                   "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}}),
-    ("add_block", {"type": "PROCESS", "name": "cut",
-                   "params": {"resource_name": "Saw", "distribution": "Exponential",
-                              "dist_params": {"rate": 1 / MEANS[0]}}}),
-    ("add_block", {"type": "PROCESS", "name": "drill",
-                   "params": {"resource_name": "Drill", "distribution": "Exponential",
-                              "dist_params": {"rate": 1 / MEANS[1]}}}),
-    ("add_block", {"type": "DISPOSE", "name": "leave"}),
-    ("connect", {"source": "arrive", "target": "cut"}),
-    ("connect", {"source": "cut", "target": "drill"}),
-    ("connect", {"source": "drill", "target": "leave"}),
-    ("set_simulation_settings", {"run_length": RUN, "warmup": WARMUP, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "resources": [{"name": "Saw", "capacity": 1}, {"name": "Drill", "capacity": 1}],
+        "blocks": [{"name": "arrive", "type": "CREATE", "params": {"distribution": "Exponential", "dist_params": {"rate": LAM}}},
+                   {"name": "cut", "type": "PROCESS",
+                    "params": {"resource_name": "Saw", "distribution": "Exponential", "dist_params": {"rate": 1 / MEANS[0]}}},
+                   {"name": "drill", "type": "PROCESS",
+                    "params": {"resource_name": "Drill", "distribution": "Exponential", "dist_params": {"rate": 1 / MEANS[1]}}},
+                   {"name": "leave", "type": "DISPOSE"}],
+        "links": [{"source": "arrive", "target": "cut"},
+               {"source": "cut", "target": "drill"},
+               {"source": "drill", "target": "leave"}],
+        "simulation": {"time_limit": RUN, "warmup": WARMUP, "replications": 1, "time_unit": "minutes"}}}),
     ("run_model", {}),
 ]
 

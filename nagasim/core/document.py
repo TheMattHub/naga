@@ -453,6 +453,15 @@ class ModelDocument:
             return  # the transaction already snapshotted the pre-transaction state
         self._commit_undo(self.to_layout(), label)
 
+    def replace_layout(self, layout: dict, label: str = "Replace model") -> None:
+        """Swap in a whole (migrated) layout as ONE undo step: an agent's `write_model`.
+        The caller builds a document from *layout* first, so a layout that cannot be read
+        fails there and never leaves this one half replaced."""
+        self._push_undo(label)
+        self._reset_from_layout(copy.deepcopy(layout))
+        self.dirty = True
+        self._notify("reset")
+
     def undo(self, steps: int = 1) -> str | None:
         """Undo up to *steps* steps (fewer if the stack is shallower). Returns
         the label of the LAST step undone, or None if nothing moved."""

@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 68 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 70 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -95,11 +95,18 @@ The 68 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | Tool | Reads | What it does |
 |---|---|---|
 | `list_block_types` | yes | List every block type this build can place in a model, with a one-line summary and its required parameters. |
-| `describe_block_type` | yes | Describe one block type in full: what it does and every parameter with its type, default and meaning. |
+| `describe_block_type` | yes | Describe one block type: what it does and every parameter with its type, default and meaning. |
 | `list_distributions` | yes | List the distribution names available for a duration or a random draw. |
 | `describe_distribution` | yes | Describe one distribution: when to use it and what each parameter means. |
 | `get_expression_help` | yes | Explain the expression language used by ASSIGN, DECIDE/HOLD conditions, RECORD, ranking expressions and expression-valued distribution parameters. |
 | `validate_model` | yes | Validate a model and return every problem with a stable code, a JSON-pointer path, and a hint saying how to fix it. |
+
+## wholemodel
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `get_model_format` | yes | What a model file holds, compactly: call it ONCE before write_model. |
+| `write_model` |  | Write a WHOLE model in one call: the complete model file as one JSON object. |
 
 ## debug
 

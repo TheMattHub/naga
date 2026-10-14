@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Added: `write_model` takes a whole model file in one call and answers with its problems and
+  their places; `get_model_format` describes the file from the engine's own registries. The
+  compact tool list of the assistant and `naga mcp --tools compact` serve that surface. In the
+  LLM case study this made Claude Code more often right through Naga than writing SimPy, at
+  under two thirds of the cost of building block by block.
+- Added: warnings for a DECIDE or balking condition that reads `AVAILABLE()` as if it were the
+  free units (`W_AVAILABLE_IS_CAPACITY`) and for a time series whose period is never used
+  (`W_SERIES_PERIOD_UNUSED`).
+- Fixed: a distribution parameter the distribution does not take is `E_DIST_PARAM_UNKNOWN`
+  instead of being ignored; a DECIDE given conditions in chance mode is told to set its mode;
+  a repeating time-series profile in another unit never returns the instant asked as its next
+  change.
 - Added: a state carries a line with finite buffers (the parts in each buffer, a machine
   holding its finished part, who waits for a place) and fleets and vehicles (where each
   vehicle is, its drive, loading or unloading under way, its load, the dispatch queue in its

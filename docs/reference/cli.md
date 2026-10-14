@@ -761,7 +761,8 @@ options:
 
 ```text
 usage: naga mcp [-h] [--root ROOT] [--allow-network] [--allow-private-network]
-                [--allow-host HOST] [--connections FILE] [--twin DIR]
+                [--allow-host HOST] [--connections FILE]
+                [--tools {all,compact}] [--twin DIR]
 
 Run the MCP server over stdio. File access is confined to --root, and network
 access is off unless you allow it here.
@@ -780,6 +781,11 @@ options:
   --connections FILE    the connections a live source (rest, mqtt, opcua) may
                         name: a JSON file of yours, never the model's; without
                         it every live source is refused
+  --tools {all,compact}
+                        all: every tool (default); compact: only what
+                        building, running and saving a model needs
+                        (get_model_format, write_model, run_model, ...), so a
+                        client pays for fewer tool descriptions
   --twin DIR            the result directory of a twin you started (naga twin
                         run --out DIR): two read-only tools then answer from
                         it. No tool can start a twin or choose this directory

@@ -129,11 +129,27 @@ def validate_graph_structured(layout: dict) -> list[Problem]:
                 f"nothing ever takes it", at, block=name,
                 hint="set balk_if or renege_after, or remove the second link"))
 
+        # The study's car park task: AVAILABLE() reads as "free units" but is the capacity in
+        # force, so a test of it against the occupancy never fires (no error, a wrong answer).
+        tests = [("balk_if", params.get("balk_if"))] + [
+            (f"conditions/{i}", c) for i, c in enumerate(params.get("conditions") or [])
+            if btype == "DECIDE"]
+        for key, text in tests:
+            if isinstance(text, str) and "AVAILABLE(" in text.replace(" ", "").upper():
+                problems.append(problem(
+                    "W_AVAILABLE_IS_CAPACITY",
+                    f"{name}: AVAILABLE() is the capacity in force, seized units not deducted",
+                    f"{at}/params/{key}", block=name,
+                    hint='for the free units use IDLE("name"); for the busy ones NR("name")'))
         if btype == "DECIDE":
             params = block.get("params", {})
             mode = params.get("mode", "Chance")
             if mode == "Chance":
                 probs = params.get("probs", [])
+                # #423: conditions in a Chance DECIDE are never read; the probs hints below
+                # would lead the author further from what they meant.
+                mode_hint = ('these are conditions: set "mode": "Condition"'
+                             if params.get("conditions") and not probs else None)
                 if len(probs) > len(outs):
                     problems.append(problem(
                         "E_DECIDE_BRANCHES",
@@ -151,8 +167,8 @@ def validate_graph_structured(layout: dict) -> list[Problem]:
                         "E_DECIDE_PROBS",
                         f"{name}: probs sum to {total} < 1, needs one more link than probs (the ELSE)",
                         f"{at}/params/probs", block=name,
-                        hint="add one more outgoing link for the remaining probability, or make "
-                             "the probs sum to 1"))
+                        hint=mode_hint or "add one more outgoing link for the remaining "
+                                          "probability, or make the probs sum to 1"))
             elif mode == "Condition":
                 conditions = params.get("conditions", [])
                 if len(conditions) > len(outs):

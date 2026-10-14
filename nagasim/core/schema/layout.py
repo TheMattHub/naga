@@ -24,7 +24,7 @@ from nagasim.core.orders import validate_orders_structured
 from nagasim.core.problems import Problem, problem
 from nagasim.core.resource_manager import validate_resources_structured
 from nagasim.core.schedules import validate_schedules_structured
-from nagasim.core.schema.common import (_check_deterministic_mean, _check_expression, _dist_hint,
+from nagasim.core.schema.common import (_check_deterministic_mean, _check_dist_param_keys, _check_expression, _dist_hint,
                                         _known_distributions, _link_pairs)
 from nagasim.core.schema.sections_validation import (_validate_assertions, _validate_dashboard,
                                                      _validate_reality_checks,
@@ -216,6 +216,7 @@ def _validate_link_delays(layout: dict, problems: list) -> None:
                                     f"{at}/distribution", hint=_dist_hint()))
         _check_deterministic_mean(problems, deterministic, dist, delay.get("dist_params", {}),
                                   label, f"{at}/dist_params")
+        _check_dist_param_keys(problems, dist, delay.get("dist_params"), label, f"{at}/dist_params")
 
 
 def _validate_failures(layout: dict, problems: list) -> None:
@@ -263,6 +264,8 @@ def _validate_failures(layout: dict, problems: list) -> None:
                                         f"{at}/{key}/distribution", hint=_dist_hint()))
             _check_deterministic_mean(problems, deterministic, dist, entry.get(key, {}).get("dist_params", {}),
                                       f"failure '{name}': {key}", f"{at}/{key}/dist_params")
+            _check_dist_param_keys(problems, dist, entry.get(key, {}).get("dist_params"),
+                                   f"failure '{name}': {key}", f"{at}/{key}/dist_params")
 
 
 def _validate_entities(layout: dict, problems: list) -> None:
@@ -993,6 +996,12 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
         if btype in _DURATION_BLOCK_TYPES and dist is not None:
             _check_deterministic_mean(problems, deterministic, dist, params.get("dist_params", {}),
                                       name, f"{at}/params/dist_params", block=name)
+        if "dist_params" in params:     # read with the block's default distribution when none is named
+            spec = BLOCK_REGISTRY.get(btype)
+            named = dist if dist is not None else next(
+                (p.default for p in (spec.params if spec else ()) if p.name == "distribution"), None)
+            _check_dist_param_keys(problems, named, params["dist_params"], name,
+                                   f"{at}/params/dist_params", block=name)
         if dist == "EmpiricalContinuous":
             dp = params.get("dist_params", {})
             values, probs = dp.get("values", []), dp.get("probs", [])

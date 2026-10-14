@@ -11,11 +11,17 @@
     "read_only": true
   },
   {
-    "description": "Describe one block type in full: what it does and every parameter with\nits type, default and meaning.\n\nUse this before `add_block`/`update_block` whenever you are unsure which\nparams a type takes -- passing an unknown key is an error, and the defaults\ntell you what you may safely leave out.\n\nReturns {\"type\", \"description\", \"multi_output\", \"params\": [{\"name\", \"type\",\n\"default\", \"required\", \"description\"}]}.",
+    "description": "Describe one block type: what it does and every parameter with its type,\ndefault and meaning.\n\nUse this before `add_block`/`update_block` whenever you are unsure which\nparams a type takes -- passing an unknown key is an error, and the defaults\ntell you what you may safely leave out. Each description is its first\nsentence unless `detail` is true.\n\nReturns {\"type\", \"description\", \"multi_output\", \"params\": [{\"name\", \"type\",\n\"default\", \"required\", \"description\"}]}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "detail": {
+          "default": false,
+          "description": "Every description in full; by default each is its first sentence.",
+          "type": "boolean"
+        },
         "type_name": {
+          "description": "Block type, e.g. \"PROCESS\".",
           "type": "string"
         }
       },
@@ -64,7 +70,7 @@
     "read_only": true
   },
   {
-    "description": "Explain the expression language used by ASSIGN, DECIDE/HOLD conditions,\nRECORD, ranking expressions and expression-valued distribution parameters.\n\nRead this before writing any expression: it is a restricted-Python subset\n(an AST allow-list, never eval), so anything not listed here is refused at\nvalidation time rather than at run time.\n\nReturns {\"names\", \"operators\", \"functions\": [{\"name\", \"arity\"}],\n\"reserved\", \"examples\"}.",
+    "description": "Explain the expression language used by ASSIGN, DECIDE/HOLD conditions,\nRECORD, ranking expressions and expression-valued distribution parameters.\n\nRead this before writing any expression: it is a restricted-Python subset\n(an AST allow-list, never eval), so anything not listed here is refused at\nvalidation time rather than at run time.\n\nReturns {\"names\", \"operators\", \"functions\": [{\"name\", \"arity\", \"note\"}],\n\"reserved\", \"examples\"}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {},
@@ -1125,7 +1131,7 @@
     "read_only": true
   },
   {
-    "description": "Run a model and return a COMPACT KPI digest -- never the raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications (see\n`run_to_precision`). One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it. Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\nReturns {\"model\", \"replications\", \"system\": {KPI: {mean, ci_half_width}},\n\"resources\": {name: {metric: {...}}}, \"user_stats\": {...},\n\"frames\": [names available to get_kpi_table]}.",
+    "description": "Run a model and return a COMPACT KPI digest -- never the raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications (see\n`run_to_precision`). One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it. Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\nReturns {\"model\", \"replications\", \"system\": {KPI: {mean, ci_half_width}},\n\"resources\": {name: {metric: {...}}}, \"user_stats\": {...},\n\"frames\": [names available to get_kpi_table]}, plus, only when the model has them,\n\"entities\" (per entity type, when there are several: Avg Time, Total Completed),\n\"levels\" (Average, Final, Time Empty %, Time Full %), \"queues\" (per block: Balked,\nReneged) and \"agents\" (per population/state: Avg Count), in the same {mean,\nci_half_width} form.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2157,5 +2163,54 @@
     },
     "name": "get_twin_recommendations",
     "read_only": true
+  },
+  {
+    "description": "What a model file holds, compactly: call it ONCE before write_model.\n\nWith no argument: a minimal example file, the top-level sections with their fields,\nevery block type with its parameters and defaults, every distribution with its\nparameter names and every expression function with what it reads. With `blocks` or\n`sections`: those in full, each field with its meaning. Generated from the registries\nand the JSON Schema (resource naga://reference/schema), so it is never out of date.\n\nReturns {\"format\": text}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "description": "Block types to describe in full (every parameter with its meaning); omit for the overview.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sections": {
+          "description": "Model file sections to describe field by field, e.g. [\"levels\", \"schedules\"]; omit for the overview.",
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_model_format",
+    "read_only": true
+  },
+  {
+    "description": "Write a WHOLE model in one call: the complete model file as one JSON object.\n\nThe fast way to build a model: call get_model_format once, write the file, fix what the\nanswer lists with one more write_model, then run_model and save_model. The layout is\nread and validated exactly as a model file on disk is; it replaces an open model of the\nsame name as one undo step. Blocks given no position are laid out automatically.\n\nReturns {\"ok\": true when nothing is an error, \"model\", \"blocks\", \"errors\", \"warnings\",\n\"requires_run_length\", \"problems\": [{\"code\", \"path\", \"message\", \"hint\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "description": "The complete model file as one JSON object (get_model_format shows its shape): blocks, links, resources, simulation, ...",
+          "type": "object"
+        },
+        "model": {
+          "description": "Workspace name for the model: a new one is created, an open one replaced.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "layout"
+      ],
+      "type": "object"
+    },
+    "name": "write_model",
+    "read_only": false
   }
 ]

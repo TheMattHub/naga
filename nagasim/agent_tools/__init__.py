@@ -48,6 +48,7 @@ themselves grouped as:
 * `data.py`      -- data bindings, the warm-start initial state and
                     distribution fitting
 * `reference.py` -- the reference tools and `validate_model`
+* `wholemodel.py` -- `get_model_format` and `write_model`: the whole model file in one call
 * `debug.py`     -- the run debugger: `debug_run` and `debug_inspect`
 
 Importing this package registers every tool, in the module order above, then
@@ -62,7 +63,7 @@ from nagasim.plugins import load_plugins
 
 from .core import (ToolError, ToolSpec, Workspace, TOOLS, call, drop_python_consent,
                    python_consent_dropped, tool, tool_schemas, use_workspace, workspace)
-from . import core, model, records, runs, data, reference, debug  # noqa: F401 -- import order is registration order
+from . import core, model, records, runs, data, reference, wholemodel, debug  # noqa: F401 -- import order is registration order
 # Re-exported on purpose: tests read these three directly.
 from .core import _ARG_DOCS
 from .data import _BINDABLE

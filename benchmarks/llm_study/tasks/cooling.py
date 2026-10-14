@@ -23,14 +23,12 @@ ANSWER = ROOM + (START - ROOM) * math.exp(-RATE * END)
 TOLERANCE = 0.5
 
 NAGA = [
-    ("upsert_record", {"section": "levels", "record": {"name": "Temperature", "initial": START}}),
-    ("upsert_record", {"section": "flows",
-                       "record": {"name": "cooling", "from": "Temperature",
-                                  "rate": f'{RATE} * (LEVEL("Temperature") - {ROOM})'}}),
-    ("set_sd_settings", {"dt": 0.05, "method": "rk4"}),
-    ("set_simulation_settings", {"run_length": END, "warmup": 0, "replications": 1,
-                                 "time_unit": "minutes"}),
-    ("validate_model", {}),
+    ("write_model", {"layout": {
+        "levels": [{"name": "Temperature", "initial": START}],
+        "flows": [{"name": "cooling", "from": "Temperature",
+                   "rate": f'{RATE} * (LEVEL("Temperature") - {ROOM})'}],
+        "simulation": {"time_limit": END, "warmup": 0, "replications": 1, "time_unit": "minutes",
+                       "sd": {"dt": 0.05, "method": "rk4"}}}}),
     ("run_model", {}),
     ("get_kpi_table", {"frame": "level_summary"}),
 ]

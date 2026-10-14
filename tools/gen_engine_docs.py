@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from nagasim.core.block_registry import BLOCK_REGISTRY  # noqa: E402
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY  # noqa: E402
-from nagasim.core.expressions import FUNCTIONS  # noqa: E402
+from nagasim.core.expressions import FUNCTION_NOTES, FUNCTIONS  # noqa: E402
 from nagasim.core import schema as schema_mod  # noqa: E402
 from nagasim.core import sections  # noqa: E402
 from nagasim.core.timeunits import UNIT_QUANTITIES, unit_choices  # noqa: E402
@@ -115,99 +115,7 @@ def gen_expressions(out: Path, product: bool = False) -> None:
              "| Calls | the functions below, positional arguments only |", "",
              "## Functions", "",
              "| Function | Arguments | Notes |", "|---|---|---|"]
-    notes = {
-        "min": "variadic, plain Python", "max": "variadic, plain Python",
-        "abs": "plain Python", "round": "1-2 args, plain Python",
-        "int": "plain Python", "float": "plain Python",
-        "sqrt": "math.sqrt", "exp": "math.exp", "log": "1-2 args, math.log",
-        "log10": "math.log10", "floor": "math.floor", "ceil": "math.ceil",
-        "RAND": "uniform [0, 1), sampled from the calling block's own rng",
-        "EXPO": "exponential(mean), sampled from the calling block's own rng",
-        "UNIF": "uniform(low, high), sampled from the calling block's own rng",
-        "NORM": "normal(mean, sd), sampled from the calling block's own rng",
-        "TRIA": "triangular(low, mode, high), sampled from the calling block's own rng",
-        "DISC": "value/prob pairs (>= 1 pair), probs must sum to 1",
-        "NQ": "entities waiting for resource/set NAME",
-        "NR": "entities/units currently in service at resource/set NAME",
-        "MR": "units currently scheduled at resource/set NAME (net of capacity-schedule/failure blockers)",
-        "NS": "items currently in store NAME (a Hold/Batch/Match store, by block or store name)",
-        "TABLE": "a value from the model's lookup table NAME, by 1 or 2 keys",
-        # System dynamics (PHASE5 SD-2, ARCHITECTURE 5.24).
-        "AUX": "auxiliary NAME, evaluated on read",
-        "DELAY": "output of delay NAME",
-        "IF": "IF(c, a, b): a when c else b; only the branch taken is evaluated",
-        "STEP": "STEP(h, t0): h from t0 on, else 0",
-        "PULSE": "PULSE(h, t0, w): h on [t0, t0 + w), else 0",
-        "RAMP": "RAMP(s, t0[, t1]): s * (TNOW - t0) after t0, held after t1",
-        "SMOOTH": "SMOOTH(x, tau[, init]): first-order information delay (init defaults to x at t0); "
-                 "needs simulation.sd",
-        "SMOOTH3": "SMOOTH3(x, tau[, init]): third-order information delay (init defaults to x at t0); "
-                 "needs simulation.sd",
-        "DELAY1": "DELAY1(x, tau[, init]): first-order material delay (init defaults to x at t0); "
-                 "needs simulation.sd",
-        "DELAY3": "DELAY3(x, tau[, init]): third-order material delay (init defaults to x at t0); "
-                 "needs simulation.sd",
-        "DELAYN": "DELAYN(x, tau, n[, init]): n-th order material delay, n a literal integer "
-                  "(init defaults to x at t0)",
-        "DELAYP": "DELAYP(x, tau[, init]): x exactly tau later (pipeline); no grid needed",
-        "SUM": "SUM(x): x summed over every element its \"[*]\" (or subrange \"[North*]\") "
-               "indexes run over (subscripts); "
-               "SUM(\"pop\", \"attr\"[, \"state\"]): an attribute summed over a population's agents "
-               "(in that state)",
-        "MEAN": "MEAN(x): SUM(x) divided by the element count (subscripts); MEAN(\"pop\", "
-                "\"attr\"[, \"state\"]): an attribute's mean over a population (in that state; 0 if none)",
-        # Agents (PHASE5 AB-1, ARCHITECTURE 5.25).
-        "COUNT": "COUNT(\"pop\"[, \"state\"][, \"attr\", \"value\"]): a population's live agents, "
-                 "those in a state (O(1)), or those whose categorical attribute holds that "
-                 "category",
-        "ALIVE": "ALIVE(ref): whether a stored agent reference (AGENT(...), entity.agent) still names "
-                 "its agent; using one whose agent was removed raises",
-        "AGENT": "AGENT(\"pop\", i): a reference to agent i (what entity.agent holds and a send takes); AGENT(\"pop\", i).attr reads its attribute",
-        "NEAR": "NEAR(\"pop\", r[, \"state\"]): how many of pop's agents are within r of self "
-                "(inclusive), self excluded when pop is self's own population",
-        "NEAREST": "NEAREST(\"pop\"[, \"state\"]): distance to the closest OTHER agent of pop "
-                   "(inf if there is none)",
-        # Neighbour aggregates (PHASE6 A3): the same neighbourhood as NEAR/a
-        # k-nearest search, reduced over an attribute.
-        "NEAR_SUM": "NEAR_SUM(\"pop\", \"attr\", r[, \"state\"]): attr summed over the agents NEAR "
-                    "counts; 0 if none",
-        "NEAR_MEAN": "NEAR_MEAN(\"pop\", \"attr\", r[, \"state\"]): attr's mean over the agents NEAR "
-                     "counts; 0 if none",
-        "NEAR_MIN": "NEAR_MIN(\"pop\", \"attr\", r[, \"state\"]): attr's minimum over the agents "
-                    "NEAR counts; NaN if none",
-        "NEAR_MAX": "NEAR_MAX(\"pop\", \"attr\", r[, \"state\"]): attr's maximum over the agents "
-                    "NEAR counts; NaN if none",
-        "KNN_SUM": "KNN_SUM(\"pop\", \"attr\", k[, \"state\"]): attr summed over the k nearest "
-                   "agents of pop to self (state-filtered first, ties by ascending index); 0 if none",
-        "KNN_MEAN": "KNN_MEAN(\"pop\", \"attr\", k[, \"state\"]): attr's mean over the k nearest "
-                    "agents of pop to self (state-filtered first, ties by ascending index); 0 if none",
-        # Grid space (PHASE6 A4): self's cell on a grid space.
-        "PATCH": "PATCH(\"name\"[, dx, dy]): the patch value at self's grid cell (or an offset "
-                 "from it); 0 off a bounded grid",
-        "NEIGHBOURS": "NEIGHBOURS(\"pop\"[, \"state\"]): pop's agents in the Moore/von Neumann "
-                      "cells around self's (own cell excluded)",
-        "NEIGHBOUR_SUM": "NEIGHBOUR_SUM(\"pop\", \"attr\"[, \"state\"]): attr summed over the "
-                         "agents NEIGHBOURS counts; 0 if none",
-        "NEIGHBOUR_MEAN": "NEIGHBOUR_MEAN(\"pop\", \"attr\"[, \"state\"]): attr's mean over the "
-                          "agents NEIGHBOURS counts; 0 if none",
-        "CELL_COUNT": "CELL_COUNT(\"pop\"[, dx, dy]): pop's agents in self's grid cell (or an "
-                      "offset from it), self included; 0 off a bounded grid",
-        # Links (PHASE6 A5): self's linked neighbours, all of its own population.
-        "LINKED": "LINKED(\"pop\"[, \"state\"]): how many agents self is linked to (pop is "
-                  "self's own population; directed: its out-links)",
-        "LINK_SUM": "LINK_SUM(\"attr\"[, \"state\"]): attr summed over self's linked "
-                    "neighbours; 0 if none",
-        "LINK_MEAN": "LINK_MEAN(\"attr\"[, \"state\"]): attr's mean over self's linked "
-                     "neighbours; 0 if none",
-        "IS_LINKED": "IS_LINKED(ref): whether self is linked to that agent (directed: self -> it)",
-        # Trigonometry (PHASE6 A9): radians, Python's math functions.
-        "SIN": "math.sin, radians", "COS": "math.cos, radians",
-        "TAN": "math.tan, radians", "ATAN2": "ATAN2(y, x): math.atan2, radians in (-pi, pi]",
-        "SQRT": "math.sqrt (the upper-case twin of sqrt)", "PI": "PI(): 3.14159...",
-        "DEG": "radians to degrees", "RAD": "degrees to radians: COS(RAD(self.heading))",
-        **{name: f"math.{name.lower()}, radians" for name in
-           ("ASIN", "ACOS", "ATAN", "SINH", "COSH", "TANH")},
-    }
+    notes = FUNCTION_NOTES
     for fname in sorted(FUNCTIONS):
         _, _, low, high = FUNCTIONS[fname]
         arity = str(low) if high == low else f"{low}..{'n' if high is None else high}"

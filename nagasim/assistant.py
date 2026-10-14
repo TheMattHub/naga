@@ -62,6 +62,7 @@ __all__ = [
 # either -- the session injects it into every user turn itself (item 3).
 # A product adds its own through `extra_tools`.
 CURATED_TOOL_NAMES = frozenset({
+    "get_model_format", "write_model",
     "list_block_types", "describe_block_type", "list_distributions",
     "describe_distribution", "get_expression_help",
     "add_block", "update_block", "remove_blocks", "connect", "disconnect",
@@ -77,11 +78,12 @@ CURATED_TOOL_NAMES = frozenset({
     "fit_distribution",
 })
 
-# What a small local model is offered (D179; tuned by the PHASE7 7.4c pilot).
+# What a small local model is offered (D179; reshaped after the LLM study, D396): the whole
+# model in one write instead of block by block, since every tool's description is re-read on
+# every turn and every round trip re-reads the conversation. update_block stays for a small
+# change to an open model.
 COMPACT_TOOL_NAMES = frozenset({
-    "list_block_types", "describe_block_type", "list_distributions", "add_block", "update_block",
-    "connect", "upsert_record", "set_simulation_settings", "validate_model", "run_model",
-    "get_kpi_table", "auto_layout"})
+    "get_model_format", "write_model", "update_block", "run_model", "get_kpi_table"})
 
 
 def offered_tools(kind: str, extra: tuple = ()) -> list[str]:
@@ -117,17 +119,18 @@ Building a model from a description:
 1. Read what ARRIVES (and how often), what HAPPENS to it, what it COMPETES for \
 (staff, machines, space), and what LEAVES. Ask ONE clarifying question if this \
 is ambiguous, rather than guessing.
-2. Call list_block_types and list_distributions once so you use real names.
-3. Add blocks: one CREATE, the processing blocks (PROCESS is seize-delay-release \
-in one block -- prefer it), DISPOSE at the end. upsert_record into "resources" for anything \
-competed for. connect them in flow order -- a DECIDE's outgoing links are its \
-branches in the order you add them.
-4. set_simulation_settings with a run length UNLESS the model drains on its own \
-(validate_model's requires_run_length tells you). Interarrival times are usually \
-Exponential; service times are rarely Normal (it can go negative) -- prefer \
-Lognormal, Gamma or BoundedNormal.
-5. validate_model after each batch of edits; fix errors using each problem's hint.
-6. auto_layout once you are done.
+2. Call get_model_format once: the model file's shape, every block type with its \
+parameters, the distributions' parameter names and the expression functions.
+3. write_model with the WHOLE model in one call: one CREATE, the processing blocks \
+(PROCESS is seize-delay-release in one block -- prefer it), DISPOSE at the end, the \
+links in flow order (a DECIDE's links are its branches in order), a resource for \
+anything competed for, and simulation.time_limit unless the model drains on its own.
+4. The answer lists every problem with its path and a hint: fix them all in ONE more \
+write_model. Interarrival times are usually Exponential (a rate, 1 / the mean); \
+service times are rarely Normal (it can go negative) -- prefer Lognormal, Gamma or \
+BoundedNormal.
+5. run_model; its digest carries the KPIs. For a small change to an open model, \
+update_block is enough.
 
 Reading results honestly:
 - Every KPI comes back with `ci_half_width`, the half-width of its 95% CI over \

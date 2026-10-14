@@ -61,7 +61,7 @@ not a program, the same file gives the same answer through each of them.
   semantic diff and three-way merge, assertions (`naga check`) with a CI template.
 - **Outputs**: pandas frames, Excel, CSV, JSON, a self-contained HTML report, a recorded run to
   replay, and a viewer in which the engine itself runs in a browser.
-- **Agent tools**: 68 tools over MCP to build, validate, run, debug and analyse a model.
+- **Agent tools**: 70 tools over MCP to build, validate, run, debug and analyse a model.
 
 ## Quick start
 
@@ -118,7 +118,7 @@ runs the submodels, the product's artwork is not included here.
 
 ## Use with an agent
 
-The engine ships 68 tools an agent can call to build, validate, run, debug and analyse a model, and two
+The engine ships 70 tools an agent can call to build, validate, run, debug and analyse a model, and two
 ways to offer them:
 
 <!-- no-run: a server that waits for its client, and a request to a language model -->

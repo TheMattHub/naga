@@ -47,7 +47,11 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
 
     Returns {"model", "replications", "system": {KPI: {mean, ci_half_width}},
     "resources": {name: {metric: {...}}}, "user_stats": {...},
-    "frames": [names available to get_kpi_table]}.
+    "frames": [names available to get_kpi_table]}, plus, only when the model has them,
+    "entities" (per entity type, when there are several: Avg Time, Total Completed),
+    "levels" (Average, Final, Time Empty %, Time Full %), "queues" (per block: Balked,
+    Reneged) and "agents" (per population/state: Avg Count), in the same {mean,
+    ci_half_width} form.
     """
     ws = workspace()
     doc = ws.document(model)

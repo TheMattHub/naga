@@ -16,11 +16,17 @@ tank with rates. A task's file under `benchmarks/llm_study/tasks/` holds the req
 derivation of the answer and of its tolerance, and a reference solution for each arm; the tests
 run both and check that they land inside the tolerance.
 
-Two arms get the same request and the same number of model replies:
+The arms get the same request and the same number of model replies:
 
-- **Naga tools.** The model adds blocks and records, validates, runs and reads the results
-  through the tools, and says the answer. An edit answers with the problems it introduced, each
-  with a code and a hint, and the model may correct itself. A model's own Python never runs.
+- **Naga tools, block by block.** The first round of the study: the model adds blocks and
+  records one call at a time, validates, runs and reads the results through the tools, and says
+  the answer. An edit answers with the problems it introduced, each with a code and a hint, and
+  the model may correct itself. A model's own Python never runs. These attempts are kept as
+  they were made; the tools have changed since, so this arm is not run again.
+- **Naga tools, whole model.** The tools as reshaped after that round: `get_model_format`
+  describes the model file once, `write_model` takes the whole file in one call and answers with
+  its problems, then the model runs it. The local loop offers the compact tool list, Claude Code
+  `naga mcp --tools compact`.
 - **SimPy code.** The model writes a Python script that uses SimPy. The script is run, and when
   it fails the model is given what it printed and may send a corrected one.
 
@@ -48,9 +54,9 @@ tolerance derived from its edge effects or its integration step.
 ## Results
 
 <!-- LLM STUDY: benchmarks/llm_study/results.md is written by `study.py report` from the attempt
-     files. Nothing in it is typed. A model appears once every task has at least one attempt in
-     both arms, each cell with its own count; a pilot that has not reached every task is not
-     shown. -->
+     files. Nothing in it is typed. An arm of a model appears once every task has at least one
+     attempt in it, and a model once its code arm and a tools arm have; attempts in an arm not
+     shown are a pilot, counted and not tabulated. -->
 
 --8<-- "benchmarks/llm_study/results.md"
 
@@ -65,19 +71,28 @@ could not have reversed that. Its tables count only the attempts that were made.
 
 ### What came out
 
-The claim this page set out to check does not hold on these tasks. With both local models and
-with Claude Code, writing SimPy code gave a correct answer more often than building the model
-through the tools, and in fewer turns. The small local models rarely finished a model at all:
-they placed blocks with wrong parameters, left them unconnected and ran out of replies, and the
-longest conversations outgrew a 16k context. Claude Code built a correct model through the tools
-on most tasks, but still less often than it wrote correct SimPy. What the tools give that the
-code does not, a model that is validated, can be opened, diffed and run again by someone else,
-is not measured here.
+The study ran twice. The first time the tools built a model block by block, and the claim did
+not hold: with both local models and with Claude Code, writing SimPy code gave a correct answer
+more often, in fewer turns and for less. The small local models rarely finished a model at all:
+they placed blocks with wrong parameters, left them unconnected and ran out of replies. The cost
+came from the number of round trips, each of which reads the whole conversation again, not from
+what the model wrote.
 
-The pilot of this study found four defects in how the tools answer a model's mistakes (an
-argument sent as text, a required argument put inside another one, a malformed distribution,
-a misleading description), all fixed before the runs above. The tasks where the tools arm fell
-short are where the next such work is.
+So the tools changed shape. A model now writes the whole model file in one call, with
+`write_model`, after one call to `get_model_format` that describes the file; the answer is "ok"
+or the problems with their places in the file, and a run and a table of results follow. The
+second run, the rows "whole model" above, measures that: Claude Code built a correct model
+through the tools on more tasks than it wrote correct SimPy, in a few calls, reading far less
+than before though still more than the code arm, and the smaller local model, which had built no
+correct model block by block, now built some. Three of the whole-model Claude attempts (the
+first round of `tank` and `carpark`) were made again after fixes that round found; the earlier
+attempts are not counted.
+
+What the tools give that the code does not, a model that is validated, can be opened in an
+editor, diffed and run again by someone else, or followed as a twin, is not measured here. The
+fixes the two runs found (an argument sent as text, a required argument put inside another, a
+distribution's unknown parameter, a condition reading a capacity, a timer profile's period) are
+in the changelog.
 
 ## What this does not show
 
@@ -111,6 +126,6 @@ $ python benchmarks/llm_study/study.py claude --model haiku --repeats 3
 $ python benchmarks/llm_study/study.py report
 ```
 
-`--tasks` limits a run to some tasks and `--arms` to one arm. The Claude Code run takes
+`--tasks` limits a run to some tasks and `--arms` to one arm (`whole` or `simpy`; the block-by-block arm is a record and is not run again). The Claude Code run takes
 `--max-turns`, and starts the agent with only the permissions the arm needs: the tool server's
 tools for one, reading and writing in its folder and running its own script for the other.
