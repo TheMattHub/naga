@@ -48,10 +48,36 @@ tolerance derived from its edge effects or its integration step.
 ## Results
 
 <!-- LLM STUDY: benchmarks/llm_study/results.md is written by `study.py report` from the attempt
-     files. Nothing in it is typed, and a comparison appears only once every task has at least
-     three attempts in both arms: a pilot is not shown. -->
+     files. Nothing in it is typed. A model appears once every task has at least one attempt in
+     both arms, each cell with its own count; a pilot that has not reached every task is not
+     shown. -->
 
 --8<-- "benchmarks/llm_study/results.md"
+
+### Why the larger local model was stopped short
+
+Three attempts per task and arm were planned for each local model. The smaller model's run was
+completed. The larger model's run was stopped once it had attempted every task in both arms,
+about three fifths of the way through, because it was already showing the smaller model's
+pattern: its tools arm almost never ended with a correct model while its code arm was right
+more often than not, and the remaining rounds, at several minutes per attempt on a laptop,
+could not have reversed that. Its tables count only the attempts that were made.
+
+### What came out
+
+The claim this page set out to check does not hold on these tasks. With both local models and
+with Claude Code, writing SimPy code gave a correct answer more often than building the model
+through the tools, and in fewer turns. The small local models rarely finished a model at all:
+they placed blocks with wrong parameters, left them unconnected and ran out of replies, and the
+longest conversations outgrew a 16k context. Claude Code built a correct model through the tools
+on most tasks, but still less often than it wrote correct SimPy. What the tools give that the
+code does not, a model that is validated, can be opened, diffed and run again by someone else,
+is not measured here.
+
+The pilot of this study found four defects in how the tools answer a model's mistakes (an
+argument sent as text, a required argument put inside another one, a malformed distribution,
+a misleading description), all fixed before the runs above. The tasks where the tools arm fell
+short are where the next such work is.
 
 ## What this does not show
 

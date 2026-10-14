@@ -54,7 +54,7 @@ TASK_IDS = ("mm1", "mmc", "md1", "tandem", "rework", "priority", "batch", "carpa
             "cooling", "repair", "tank")
 ARMS = {"tools": "Naga tools", "simpy": "SimPy code"}
 SIGMAS, SEEDS = 5, 20           # a statistical tolerance: SIGMAS standard deviations over SEEDS runs
-FULL_REPEATS = 3                # fewer repeats per task and arm is a pilot, and is not shown
+FULL_REPEATS = 3                # planned attempts per task and arm; a run stopped short says so
 RUN_TOOLS = {"run_model", "run_to_precision", "run_scenarios"}
 OTHER_LIBRARIES = {"nagasim", "salabim", "ciw"}     # what a SimPy script may not lean on
 CLAUDE = None                   # the command that starts Claude Code; a test puts a script here
@@ -453,10 +453,18 @@ def _median(rows, field, scale=1.0) -> str:
     return f"{statistics.median(values) / scale:.3g}" if values else ""
 
 
+def _span(shown, tasks) -> str:
+    counts = [sum(r["task"] == task and r["arm"] == arm for r in mine)
+              for mine in shown.values() for task in tasks for arm in ARMS]
+    low, high = min(counts), max(counts)
+    return f"{low} attempt{'s' if low > 1 else ''}" if low == high else f"{low} to {high} attempts"
+
+
 def render(results: dict) -> str:
     """The Markdown the docs page includes, from a results file's content alone. A model is
-    shown once every task has FULL_REPEATS attempts or more in both arms, the same number in
-    each: a pilot is counted and named, never tabulated."""
+    shown once every task has at least one attempt in both arms, each cell with its own count;
+    a model with fewer than FULL_REPEATS in some cell is said to have been stopped short. A
+    model that has not reached every task is a pilot: counted and named, never tabulated."""
     tasks = results["tasks"]
     parts = ["### The tasks", "", "| Task | What is asked | Answer | Accepted within |", "|---|---|---|---|"]
     parts += [f"| `{name}` | {entry['title']} | {entry['answer']:.4g} | {entry['tolerance']:.2g} |"
@@ -471,7 +479,7 @@ def render(results: dict) -> str:
             mine = [row for row in rows if row["model"] == model]
             counts = {(task, arm): sum(r["task"] == task and r["arm"] == arm for r in mine)
                       for task in tasks for arm in ARMS}
-            if min(counts.values()) >= FULL_REPEATS and len(set(counts.values())) == 1:
+            if min(counts.values()) >= 1:
                 shown[model] = mine
             else:
                 pilots += len(mine)
@@ -485,13 +493,18 @@ def render(results: dict) -> str:
         ids = sorted({row["model_id"] for row in every if row.get("model_id")})
         parts += [
             f"Attempts made from {min(r['date'] for r in every)} to {max(r['date'] for r in every)}: "
-            f"{len(tasks)} tasks, {len(every) // (len(tasks) * len(ARMS) * len(shown))} attempts per "
-            f"task and arm, at most {every[0]['budget']} "
+            f"{len(tasks)} tasks, {_span(shown, tasks)} per task and arm, at most {every[0]['budget']} "
             f"{'model replies' if comparison == 'local' else 'agent turns'} per attempt. "
             f"Naga {versions['nagasim']}, SimPy {versions['simpy']}, Python {versions['python']}."
             + (f" Model ids as reported by Claude Code: {', '.join(ids)}." if ids else ""), "",
             "| Model | Arm | Attempts | Valid | Runnable | Correct | Median replies | "
             "Median tool calls | Median minutes |", "|---|---|---|---|---|---|---|---|---|"]
+        planned = len(tasks) * len(ARMS) * FULL_REPEATS
+        header = parts.index("| Model | Arm | Attempts | Valid | Runnable | Correct | Median replies | "
+                             "Median tool calls | Median minutes |", len(parts) - 2)
+        parts[header:header] = [f"`{model}` was stopped after {len(mine)} of the {planned} planned attempts "
+                                f"({FULL_REPEATS} per task and arm); its cells count what was made.\n"
+                                for model, mine in shown.items() if len(mine) < planned]
         for model, mine in shown.items():
             for arm, label in ARMS.items():
                 group = [row for row in mine if row["arm"] == arm]

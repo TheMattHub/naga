@@ -270,13 +270,21 @@ def _full(model, comparison="local", repeats=study.FULL_REPEATS):
             for task in study.TASK_IDS for arm in study.ARMS for repeat in range(1, repeats + 1)]
 
 
-def test_a_full_result_set_is_tabulated_and_a_partial_one_is_not():
+def test_a_model_that_reached_every_task_is_tabulated_and_one_stopped_short_says_so():
     tasks = study.collect(STUDY / "no-such-folder")["tasks"]
-    shown = study.render({"tasks": tasks, "attempts": _full("m:1") + _full("m:2", repeats=1)})
-    assert "from 2026-01-01 to 2026-01-03: 12 tasks, 3 attempts per task and arm, at most 25 model replies" in shown
-    assert "| `m:1` | Naga tools | 36 | 36/36 (100%) | 36/36 (100%) | 33/36 (92%) | 9 | 12 | 1.5 |" in shown
-    assert "| `m:1` | SimPy code | 36 | 36/36 (100%) | 24/36 (67%) | 0/36 (0%) | 9 | 12 | 1.5 |" in shown
-    assert "| `tank`: " in shown and "m:2" not in shown
+    one = study.render({"tasks": tasks, "attempts": _full("m:1")})
+    assert "from 2026-01-01 to 2026-01-03: 12 tasks, 3 attempts per task and arm, at most 25 model replies" in one
+    assert "| `m:1` | Naga tools | 36 | 36/36 (100%) | 36/36 (100%) | 33/36 (92%) | 9 | 12 | 1.5 |" in one
+    assert "| `m:1` | SimPy code | 36 | 36/36 (100%) | 24/36 (67%) | 0/36 (0%) | 9 | 12 | 1.5 |" in one
+    assert "stopped after" not in one
+    # a model stopped after one round is shown with its own counts and said to be short;
+    # one that has not reached every task is a pilot and is not shown
+    pilot = [row for row in _full("m:3", repeats=1) if row["task"] != "tank"]
+    shown = study.render({"tasks": tasks, "attempts": _full("m:1") + _full("m:2", repeats=1) + pilot})
+    assert "12 tasks, 1 to 3 attempts per task and arm" in shown
+    assert "`m:2` was stopped after 24 of the 72 planned attempts (3 per task and arm)" in shown
+    assert "| `m:2` | Naga tools | 12 | 12/12 (100%) |" in shown and "| `tank`: " in shown
+    assert "m:3" not in shown
     assert shown.count("The full runs have not been made yet.") == 1        # the Claude comparison
 
 
