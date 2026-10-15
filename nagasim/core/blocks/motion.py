@@ -8,7 +8,8 @@ class overrides only `Process._serve`. Timed segments are drawn at the cycle's
 start in segment order on the block's own stream (common random numbers,
 exactly as PROCESS); a move is timed when it STARTS, because the separation
 mode (D158) looks at where the workers are at that instant, and a move in
-progress is never re-timed.
+progress is never re-timed. A state carries a cycle mid-way as its `cycle`
+(D444): the segment in progress, when it ends, and the times.
 """
 import simpy
 
@@ -18,6 +19,7 @@ from nagasim.core.blocks.process import SPEC as _PROCESS_SPEC, Process
 from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.seizing import acquire, preempt_release
 from nagasim.core.timeunits import base_factor
+from nagasim.core.utils import timeout_at
 
 __all__ = ["Motion", "SPEC"]
 
@@ -52,12 +54,26 @@ class Motion(Process):
         self.collaborative_moves = 0
 
     def _serve(self, entity):
-        times = self._draw_times(entity)
-        done, left, record = 0, None, []     # segments finished, left of the current one
+        yield from self._run(entity, self._draw_times(entity), 0, [])
+
+    def resume(self, entity, cycle: dict):
+        """Generator: the cycle a state found mid-way (D444), from its segment in progress,
+        which ends at `until`; the segments before it are in the record as they ran, the
+        timed ones after it were drawn at the cycle's start, a move is timed when it starts."""
+        stage, times, slow = cycle["stage"], cycle["times"], set(cycle.get("slow") or ())
+        record = [(s.get("kind"), float(times[i]), i in slow)
+                  for i, s in enumerate(self.segments[:stage + 1])]
+        drawn = [None if s.get("kind") == "move" else times[i] for i, s in enumerate(self.segments)]
+        yield from self._run(entity, drawn, stage, record, float(cycle["until"]))
+
+    def _run(self, entity, times, done, record, until=None):
+        """The cycle from segment *done* on, inside PROCESS's preemption loop. *until*: the
+        segment in progress ends then (a state's, D444), with no changeover before it."""
+        left = None if until is None else until - self.env.now      # of the current segment
         while True:
             started = None
             try:
-                if (self.setup or self.setup_cost) and self.seizes:
+                if (self.setup or self.setup_cost) and self.seizes and until is None:
                     yield from self._changeover(entity)
                 while done < len(self.segments):
                     segment = self.segments[done]
@@ -73,10 +89,15 @@ class Motion(Process):
                         self.emit("cycle_phase", entity=entity, state=segment.get("kind"),
                                   value=float(done), duration=left)
                     started = self.env.now
-                    yield self.env.timeout(left)
-                    done, left, started = done + 1, None, None
+                    # D383: what a state reads; a state's segment lands on its own end
+                    entity._cycle = (done, started + left if until is None else until,
+                                     times, record)
+                    yield self.env.timeout(left) if until is None else timeout_at(self.env,
+                                                                                  until)
+                    done, left, started, until = done + 1, None, None, None
                 break
             except simpy.Interrupt:
+                entity._cycle = until = None
                 # PROCESS's rule per segment: "resume" finishes the segment in
                 # progress (not re-timed, not re-traced); "restart" runs the whole
                 # cycle again -- the same timed draws, or fresh ones with
@@ -91,6 +112,7 @@ class Motion(Process):
                 preempt_release(self, entity, self.resource_name)
                 yield from acquire(self, entity, self.resource_name, self.quantity,
                                    self.priority, preempt=self.preempt, resumed=True)
+        entity._cycle = None
         self._commit(record)
 
     def _draw_times(self, entity) -> list:

@@ -546,6 +546,9 @@ PROBLEM_CODES: dict[str, str] = {
     "E_INITIAL_BATCH": "A formed batch in initial_state does not fit the model: an entry that "
                        "meets a SEPARATE has no members, or its members are not records of one "
                        "batch the model can form.",
+    "E_INITIAL_CYCLE": "A MOTION job mid-cycle in initial_state does not fit the model: a cycle "
+                       "not at a MOTION job in service, a segment it does not have, a time that "
+                       "is no duration of it, or an end beyond the segment in progress.",
     "E_INITIAL_AGE": "An initial-state entry's age is negative or not a number.",
     "E_INITIAL_RESOURCE": "initial_state.resources, or an entity's holds, names a resource the "
                           "model does not declare, or a hold it cannot be.",

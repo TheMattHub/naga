@@ -101,16 +101,23 @@ def _cycle(block, entity, fleet, mover, station, which: str):
     if bus.has_subscribers:
         bus.emit("tend", block=block, entity=entity, t=block.env.now, fleet=fleet.name,
                  unit=mover.unit, resource=station.station_name, state=which, duration=seconds)
+    # D383: a state reads the pick as the trip's load, the place as its unload (D446, D447)
+    mover.task = ("load" if which == "pick" else "unload", mover.task[1], seconds)
     yield from fleet.handle(mover, seconds)
     return seconds
 
 
-def pick(block, entity, fleet, mover, station, waiting_since: float):
+def pick(block, entity, fleet, mover, station, waiting_since: float, until=None):
     """Generator: the cobot, at the station, takes *entity* out of it. The
-    machine holding the part is free when the cycle ends (D169)."""
+    machine holding the part is free when the cycle ends (D169). *until*: a
+    state's pick in progress ends then (D446); its wait was counted before."""
     stats = _stats(block.ctx, station, fleet)
-    stats.waited(stats.blocked_for_pick, waiting_since, block.env.now)
-    seconds = yield from _cycle(block, entity, fleet, mover, station, "pick")
+    if until is None:
+        stats.waited(stats.blocked_for_pick, waiting_since, block.env.now)
+        seconds = yield from _cycle(block, entity, fleet, mover, station, "pick")
+    else:
+        seconds = mover.task[2]
+        yield from fleet.handle(mover, 0.0, until)
     stats.picks += 1
     stats.pick_time.add(seconds)
     stats.picked_at = block.env.now
@@ -161,10 +168,23 @@ def place(block, entity, fleet, mover, station):
         stats.loaded.remove(entity)
     stats.waited(stats.loaded_wait, arrived, env.now)
     seconds = yield from _cycle(block, entity, fleet, mover, station, "place")
+    _placed(stats, seconds, gate)
+    return job
+
+
+def placing(block, fleet, mover, station, gate, until):
+    """Generator: a state's place in progress (D447): the cycle ends at *until*, its
+    duration is the mover's task's, and the machine, which already holds the part,
+    starts on it through *gate*."""
+    seconds = mover.task[2]
+    yield from fleet.handle(mover, 0.0, until)
+    _placed(_stats(block.ctx, station, fleet), seconds, gate)
+
+
+def _placed(stats, seconds, gate) -> None:
     stats.places += 1
     stats.place_time.add(seconds)
     gate.succeed()
-    return job
 
 
 def _queued_part(fleet, station):
@@ -228,6 +248,15 @@ def _first(proc) -> list:
         return getattr(getattr(p, "block", None), "block_type", "") in blocking.TRANSPARENT_TYPES
     return blocking.stops(proc, lambda p: getattr(p, "next_process", None) or [],
                           lambda p: not crossed(p), crossed)
+
+
+def machine_of(station):
+    """The one block after *station* whose job a part a cobot places there starts: the
+    first block that is not transparent (a state's place in progress, D447; validation
+    makes it one PROCESS or MOTION). None when that is not one block: nothing after the
+    station, or several (a DECIDE after it)."""
+    found = _first(station)
+    return found[0] if len(found) == 1 else None
 
 
 def _held_for_good(env, fleet, station: str) -> bool:

@@ -183,7 +183,7 @@ def preempt_release(block, entity, target_name) -> None:
 
 
 def acquire(block, entity, target_name, quantity=1, priority=0, *,
-            patience=None, preempt=False, resumed=False, member=None):
+            patience=None, preempt=False, resumed=False, member=None, held_since=None):
     """Generator: hold *quantity* units of the resource or set *target_name*.
 
     Records what the entity actually holds under *target_name*, so a Release
@@ -195,6 +195,9 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
     asking the set's rule. *preempt* lets the
     request interrupt a lower-priority job in service; *resumed* marks the
     re-request of a job that was itself preempted, which is not a new seize.
+    *held_since*: a warm-started job in service holds its units as of then (#362), from
+    the moment its requests are made: a preempting request made in the same instant must
+    not pick it as its victim (#468).
     """
     target = block.ctx.resource_manager.resolve(target_name)
     if target is None:
@@ -240,7 +243,8 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
         entity._asked = block.env.now if since is None else since   # a place may come first)
     if isinstance(target, ResourceSet):
         member, requests = yield from _acquire_from_set(block, target, quantity, priority, scope,
-                                                        patience, since, member, until)
+                                                        patience, since, member, until,
+                                                        held_since)
         granted = member is not None
     else:
         member = target
@@ -248,6 +252,7 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
                                    preempt=preempt, charged=not resumed, scope=scope,
                                    since=since)
                     for _ in range(quantity)]
+        _as_of(target, requests, since if held_since is None else held_since)
         if patience is None:
             # Waited for here, not in `_wait`: the usual seize has no patience
             # and does not need a second generator to yield through.
@@ -286,6 +291,22 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
         # finishes its cycle before the job starts.
         yield from blocking.placed(entity)
     return True
+
+
+def _as_of(resource, requests, since) -> None:
+    """#362, #468: the requests of a warm-started entity keep, as their key's time, when it
+    seized (a job in service) or asked (a waiting one), not the clock: a preempting request
+    made in the same instant neither picks a job in service as its victim nor goes ahead of
+    the waiting ones that asked before it, which SimPy's key would order by the preempt flag."""
+    if since is None:
+        return
+    queue = resource._core.put_queue
+    for request in requests:
+        request.time = since
+        request.key = (request.priority, since, not request.preempt)
+        if request in queue:        # still waiting: back in its place by the new key
+            queue.remove(request)
+            queue.append(request)
 
 
 def _plans(target) -> bool:
@@ -376,7 +397,7 @@ def _granted(requests) -> bool:
 
 
 def _acquire_from_set(block, rset, quantity, priority, scope, patience=None, since=None,
-                      forced=None, until=None):
+                      forced=None, until=None, held_since=None):
     """Pick a member with enough free units; if there is none, queue on ALL of
     them and take the first that comes through.
 
@@ -405,6 +426,7 @@ def _acquire_from_set(block, rset, quantity, priority, scope, patience=None, sin
                                    counted=False,
                                    scope=scope)
                     for _ in range(quantity)]
+        _as_of(member, requests, held_since)
         for request in requests:
             yield request
     else:

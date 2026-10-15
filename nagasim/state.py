@@ -34,7 +34,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim.core import blocking, initial_state, schema
+from nagasim.core import blocking, initial_state, schema, tending
 from nagasim.core.block_registry import queueing_types
 from nagasim.core.problems import Problem, problem
 from nagasim.core.session import SimSession
@@ -168,7 +168,8 @@ def _refuse_kinds(session) -> None:
         for kind, found in (("a worker fleet", fleet.kind == "worker"),
                             ("a gantry", fleet.motion == "gantry"),
                             ("segment capacities", fleet.traffic is not None),
-                            ("a mobile cobot that tends", bool(fleet.arm) and tended),
+                            ("a cobot fleet that exchanges parts",      # D449
+                             bool(fleet.arm) and fleet.exchange and tended),
                             ("scheduled charging", fleet.charge_schedule is not None)):
             if found:
                 raise _unsupported(kind, f"fleet '{name}'")
@@ -193,8 +194,12 @@ def refused_kind(layout) -> str | None:
     None: asked before a start is made from a plant, which says nothing about a fleet and
     would otherwise start it as declared (D270). The model is built, not run."""
     session = SimSession(layout, 0)
-    if session.ctx.conveyors:       # D434: no signal says where a part is on a belt
+    ctx = session.ctx
+    if ctx.conveyors:       # D434: no signal says where a part is on a belt
         return "conveyors"
+    if any(fleet.arm for fleet in ctx.fleets.values()) \
+            and any(station.tending for station in ctx.stations.values()):
+        return "a mobile cobot that tends"      # D449: no signal says a cycle's stage
     try:
         _refuse_kinds(session)
     except StateError as exc:
@@ -283,6 +288,9 @@ def _fleets(session) -> tuple:
     def trip_of(job) -> dict:
         return {"origin": job[2], "destination": job[3], "target": job[4].name}
 
+    for entity in ctx.live_entities._items.values():    # D449: a second hold of the cobot
+        if getattr(entity, tending._COBOT, None) is not None:
+            raise _unsupported("a cobot that stays with its part", f"entity {entity.id}")
     for name, fleet in ctx.fleets.items():
         resource = fleet.resource
         if resource._blockers or fleet._down:
@@ -321,10 +329,14 @@ def _fleets(session) -> tuple:
                 trip = {**trip_of(job), "unit": mover.unit, "stage": stage}
                 if stage == "carry":
                     trip["unload"] = float(unload)
+                elif unload is not None:        # a cobot's pick or place: its cycle (D446)
+                    trip["cycle"] = float(unload)
                 if stage in ("load", "unload"):
                     record["until"] = due(mover.until)
                 elif drive is None:
-                    raise _unsupported("a vehicle between two tasks", f"{mover.name}")
+                    raise _unsupported("a cobot waiting loaded for its machine"     # D449
+                                       if stage == "carry" and tending.applies(fleet, job[4])
+                                       else "a vehicle between two tasks", f"{mover.name}")
                 trips[id(job[1])] = (job[0].name, trip, None)
             elif not free and charge is None or (free and mover.homing is not None
                                                  and drive is None and mover.session is None):
@@ -406,6 +418,20 @@ def _members(entity, now) -> dict:
     return {"members": out} if out else {}
 
 
+def _cycle(cycle) -> dict:
+    """The `cycle` of a MOTION job mid-way (D444): the segment in progress (`stage`), when it
+    ends, the time of every segment started and of every timed one after it (drawn at the
+    cycle's start; a move is timed when it starts), and the moves timed slowed (`slow`)."""
+    stage, until, times, record = cycle
+    out = {"stage": stage, "until": float(until),
+           "times": [float(duration) for _kind, duration, _slow in record]
+           + [None if t is None else float(t) for t in times[stage + 1:]]}
+    slow = [i for i, (_kind, _duration, slowed) in enumerate(record) if slowed]
+    if slow:
+        out["slow"] = slow
+    return out
+
+
 def _on_belt(belt, entity, entry: dict, asking: dict) -> tuple:
     """(its place in the list, the entry) of a part on an accumulating *belt* (D429): a part
     waiting for a cell in the order of the belt's queue, any other by when it entered."""
@@ -463,7 +489,19 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
         _uncharge(entity, entry)
         if id(entity) in trips:
             where, trip, asked = trips[id(entity)]
-            entry.update(block=where, trip=trip, **_holds(entity, held))
+            if trip.get("stage") == "unload" and "cycle" in trip:
+                # placed by its cobot: the machine's unit is the trip's (D447)
+                machine = tending.machine_of(model.blocks[trip["target"]])
+                # #470: a finite input queue (or a reserved place after it) takes the part
+                # before its unit, so the part holds none while it is placed. None: not one
+                # block after the station
+                if machine is None or machine.block.block_type not in blocking.PROCESS_TYPES \
+                        or not (machine.seizes and machine.releases) or machine.worker_fleet \
+                        or machine.space is not None or machine.hold_until_space:
+                    raise _unsupported("a cobot placing a part where no machine seizes it",
+                                       f"entity {entity.id} at '{trip['target']}'")
+                held.discard(initial_state._target_name(machine))
+            entry.update(block=where, trip=trip, **holder, **_holds(entity, held))
             if asked is not None:
                 entry["since"] = asked
             riding[id(entity)] = entry
@@ -478,14 +516,21 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
             target = initial_state._target_name(block)
             seized = {target} if getattr(block, "seizes", False) or kind == "SEIZE" else set()
             if seized - held:           # it gave its unit up and waits to resume
-                raise _unsupported("a job preempted, changing over or mid-cycle",
+                raise _unsupported("a job preempted or changing over",
                                    f"entity {entity.id} in '{block_name}'")
             entry.update(_holds(entity, held - seized))     # from an earlier block (D432)
             held = seized
-            if ends is None or ends < now:
-                raise _unsupported("a job preempted, changing over or mid-cycle",
+            if kind == "MOTION":        # its `_ends` is an earlier block's: the cycle (D444)
+                cycle = getattr(entity, "_cycle", None)
+                if cycle is None:
+                    raise _unsupported("a job preempted or changing over",
+                                       f"entity {entity.id} in '{block_name}'")
+                entry.update(in_service=1, cycle=_cycle(cycle))
+            elif ends is None or ends < now:
+                raise _unsupported("a job preempted or changing over",
                                    f"entity {entity.id} in '{block_name}'")
-            entry.update(in_service=1, ends=[float(ends)])
+            else:
+                entry.update(in_service=1, ends=[float(ends)])
             if held:                # when it seized: its busy cost runs from then
                 entry["since"] = float(entity.req_params[target]["seized_at"])
                 if entity.req_params[target]["set"] is not None:    # and on which member
@@ -580,6 +625,8 @@ def _refuse_due(session, tap: Tap) -> None:
     due += [f"entity {i} on the belt '{b}'" for i, (b, _a, _s) in tap.where.items()
             if i in live and b in ctx.conveyors and (getattr(live[i], "_belt", None)
                                                      or (None, None))[1] == now]
+    due += [f"a segment of entity {i}'s cycle" for i in tap.where
+            if i in live and (getattr(live[i], "_cycle", None) or (None, None))[1] == now]
     due += [f"the maximum wait of '{name}'" for name, block in session.model.blocks.items()
             if block.block.block_type == "BATCH" and block._timer is not None
             and block._due == now]
@@ -634,6 +681,8 @@ def _read(session, tap: Tap) -> dict:
     used += [store.name for store in ctx.store_manager.all() if store.log_events]
     if used:
         state["used"] = sorted(used)
+    if ctx.tending:         # D448: a (station, fleet) pair's row is earned before the clock
+        state["tended"] = sorted([station, fleet] for station, fleet in ctx.tending)
     cursors = {name: {"cursor": rset._cursor}
                for name, rset in ctx.resource_manager.sets.items() if rset.rule == "Cyclical"}
     if cursors:

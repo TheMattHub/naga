@@ -173,15 +173,19 @@ class Transport(BaseProcess):
         while job is not None:
             job = yield from job[0]._deliver(fleet, request, mover, *job[1:])
 
-    def resume(self, entity, trip: dict, record: dict | None, since=None):
+    def resume(self, entity, trip: dict, record: dict | None, since=None, gate=None):
         """Generator: a trip a state found waiting for a vehicle or under way (D385),
         entered at its stage. A stage with its time (`drive.started`, `until`) ends when
         it was due; one without (a plant says where a vehicle is, not since when) starts
-        now from the vehicle's node."""
+        now from the vehicle's node. At a tending station the load is the cobot's pick
+        (D446) and the unload its place, whose part the machine already holds: *gate* is
+        what the machine waits on (D447)."""
         fleet, env = self.ctx.fleets[self.fleet_name], self.env
         origin, destination = trip["origin"], trip["destination"]
         target = self.ctx.stations[trip["target"]]
         job = (self, entity, origin, destination, target)
+        here = self.ctx.stations.get(getattr(entity, "station", "") or "")
+        picks, begun = tending.applies(fleet, here), env.now  # its wait before was counted there
         if trip.get("unit") is None:
             got = yield from self._dispatch(fleet, job, since)
             if got is None:
@@ -202,11 +206,13 @@ class Transport(BaseProcess):
                 yield from fleet.drive(mover, origin, loaded=False, block=self, started=started)
             else:
                 until = record.get("until")        # a load under way ends when it was due
-            mover.task = ("load", job, None)
-            if until is None:
-                yield from fleet.handle(mover, fleet.duration(self, entity, fleet.load_time))
+            if picks:
+                mover.task = ("load", job, trip.get("cycle"))
+                yield from tending.pick(self, entity, fleet, mover, here, begun, until)
             else:
-                yield from fleet.handle(mover, 0.0, until)
+                mover.task = ("load", job, None)
+                yield from fleet.handle(mover, fleet.duration(self, entity, fleet.load_time)
+                                        if until is None else 0.0, until)
             yield from self._deliveries(fleet, request, mover, job)
             return
         if stage == "carry" and started is None:
@@ -222,15 +228,21 @@ class Transport(BaseProcess):
                       duration=max(started + travel + unload - env.now, 0.0), path=tuple(path),
                       travel=max(started + travel - env.now, 0.0))
             yield from fleet.drive(mover, destination, loaded=True, block=self, started=started)
-            mover.task = ("unload", job, None)
-            yield from fleet.handle(mover, unload)
-        else:
-            mover.task = ("unload", job, None)
-            self.emit("entity_moved", entity=entity, next_index=0, target=target.name,
-                      duration=max((record.get("until") or env.now) - env.now, 0.0),
-                      path=(destination,), travel=0.0)
-            yield from fleet.handle(mover, fleet.duration(self, entity, fleet.unload_time)
-                                    if record.get("until") is None else 0.0, record.get("until"))
+            job = yield from self._arrive(fleet, request, mover, entity, target, unload)
+            yield from self._deliveries(fleet, request, mover, job)
+            return
+        if gate is not None:        # a cobot placing the part in its machine (D447)
+            mover.task = ("unload", job, trip.get("cycle"))
+            job = yield from self._arrive(fleet, request, mover, entity, target, 0.0,
+                                          (gate, record["until"]))
+            yield from self._deliveries(fleet, request, mover, job)
+            return
+        mover.task = ("unload", job, None)
+        self.emit("entity_moved", entity=entity, next_index=0, target=target.name,
+                  duration=max((record.get("until") or env.now) - env.now, 0.0),
+                  path=(destination,), travel=0.0)
+        yield from fleet.handle(mover, fleet.duration(self, entity, fleet.unload_time)
+                                if record.get("until") is None else 0.0, record.get("until"))
         self.trip_count += 1
         self._drop(fleet, request, mover, entity, target)
 
@@ -259,8 +271,17 @@ class Transport(BaseProcess):
 
         mover.task = ("carry", (self, entity, origin, destination, target), unload)
         yield from fleet.drive(mover, destination, loaded=True, block=self)
+        return (yield from self._arrive(fleet, request, mover, entity, target, unload))
+
+    def _arrive(self, fleet, request, mover, entity, target, unload, placing=None):
+        """Generator: the loaded vehicle is at *target*: it unloads, or a cobot places the
+        part, then hands it over and is freed. *placing*: (gate, until) of a state's place
+        in progress (D447). Returns `_deliver`'s exchanged job."""
+        places = tending.applies(fleet, target)
         swapped = None
-        if places:
+        if placing is not None:
+            yield from tending.placing(self, fleet, mover, target, *placing)
+        elif places:
             # The cobot waits loaded until the machine accepts the part, then
             # places it; the part entered the station inside `place`.
             swapped = yield from tending.place(self, entity, fleet, mover, target)

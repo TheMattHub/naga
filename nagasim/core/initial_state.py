@@ -97,14 +97,15 @@ import math
 
 from nagasim.core import calendar as cal
 from nagasim.core.block_registry import holding_types, queueing_types, service_types
-from nagasim.core.network import build_network
-from nagasim.core.timeunits import units_of
+from nagasim.core.network import block_nodes, build_network
+from nagasim.core import motion as timing
+from nagasim.core.timeunits import base_factor, units_of
 from nagasim.core.problems import Problem, problem
 from nagasim.core.quantities import SECTION_FIELDS, field_factor, param, scaled
 from nagasim.core.utils import is_number, timeout_at
 import simpy
 
-from nagasim.core import blocking, movers
+from nagasim.core import blocking, movers, tending
 from nagasim.core.seizing import acquire, preempt_release, release
 from nagasim.core.sim_classes import Entity, spawn_entity
 
@@ -374,6 +375,16 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 f"parts waiting there) or next_entry (a CONVEYOR)", f"/{SECTION}/blocks/{name}",
                 hint="setup is the key the station's last job left; due and next_entry are "
                      "absolute times, due at or after the clock"))
+    places, follow, ahead = block_nodes(layout), _successors(layout, blocks, jumps=False), {}
+
+    def transported(name) -> bool:
+        """A TRANSPORT reached from *name* before any STATION: it reads `entity.station`."""
+        if name not in ahead:
+            ahead[name] = bool(blocking.stops(
+                name, follow, lambda n: _kind(blocks.get(n) or {}) == "TRANSPORT",
+                lambda n: _kind(blocks.get(n) or {}) != "STATION"))
+        return ahead[name]
+
     serving: dict = {}      # resource -> units the in-service entities hold
     waiting: dict = {}      # block -> entities queued in it
     flagged = set()         # resources an entry of its own already exceeds
@@ -420,6 +431,13 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 f"number", f"{at}/attributes", block=name,
                 hint="for example {\"priority\": 2}; not id, e_type, creation_time, req_params "
                      "or a name starting with _"))
+        elif not riding and btype != "STATION" and transported(name) \
+                and str((entry.get("attributes") or {}).get("station")) not in places:
+            problems.append(problem(        # else the run fails when it gets there
+                "E_INITIAL_BLOCK", f"initial_state: block '{name}': a TRANSPORT ahead leaves "
+                f"from the station the entity is at, which attributes.station must name",
+                f"{at}/attributes", block=name,
+                hint="the STATION (or its station alias) the entity last went through"))
 
         count = entry.get("count", 0)
         if not isinstance(count, int) or isinstance(count, bool) or count < 0:
@@ -487,6 +505,14 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 f"{at}/transfer", block=name,
                 hint="{\"amount\": 3.0}, a number > 0, as the TRANSFER evaluated it; one above "
                      "the level's capacity less its minimum would wait for ever"))
+
+        if btype == "MOTION" and in_service:
+            _validate_cycle(layout, entry, block, start, at, problems)
+        elif entry.get("cycle") is not None:
+            problems.append(problem(
+                "E_INITIAL_CYCLE", f"initial_state: block '{name}': a cycle is the job in service "
+                f"at a MOTION block", f"{at}/cycle", block=name,
+                hint="one entity with in_service 1 at a MOTION"))
 
         member = entry.get("member")
         if member is not None and entry.get("held_by") is None and member not in sets.get(
@@ -575,7 +601,7 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 hint="the absolute time an entity on a link reaches the block"))
 
     _validate_places(layout, state, blocks, sets, serving, waiting, start, problems)
-    _validate_fleets(layout, state, blocks, start, problems)
+    _validate_fleets(layout, state, blocks, start, problems, serving)
     _validate_belts(layout, state, blocks, start, problems)
 
     # Consistency over the whole state: a plant is where it goes wrong, and the engine does
@@ -835,6 +861,110 @@ def _validate_members(layout, entry, blocks, sets, start, serving, at, problems,
                 hint="a member holds what it took before it was batched: say so in its holds"))
 
 
+def _same(value, expected) -> bool:
+    return abs(value - expected) <= 1e-9 * max(1.0, abs(expected))
+
+
+def _fixed_seconds(layout, segment: dict, profile, slow: bool, time_unit) -> float | None:
+    """The time, in model units, a MOTION or tending segment takes whatever is drawn: a move
+    at *profile*'s speed (slowed when *slow*), a plain-number `time` in *time_unit* (as
+    `sample_duration`). None when the model does not fix it: an expression (its draw is the
+    state's, D444), or a move with no usable profile (the motion section's own problem)."""
+    units = units_of(layout.get("simulation"))
+    if segment.get("kind") == "move":
+        try:
+            return timing.move_seconds(profile, segment, slow) * base_factor("time", "seconds",
+                                                                              units)
+        except (AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError):
+            return None
+    literal = segment.get("time")
+    try:
+        literal = None if isinstance(literal, bool) else float(literal)
+    except (TypeError, ValueError):
+        return None
+    unit = str(time_unit or "seconds")
+    scale = 1.0 if unit in ("base", units.time) else base_factor("time", unit, units)
+    return max(literal * scale, 0.0)
+
+
+def _tending_seconds(layout, station: dict, which: str, arm) -> tuple:
+    """#469: the durations a tending `pick` or `place` cycle (*which*) of *station* can take
+    with the fleet's *arm* profile, as `tending.cycle_seconds` times it: moves slowed under
+    hrc collaborative, either way under separation (the zone decides at the cycle's start).
+    Empty when the model does not fix it: no such cycle (the fleet's flat time), or a
+    segment that is an expression."""
+    group = (station.get("params") or {}).get("tending") or {}
+    segments = group.get(which) if isinstance(group, dict) else None
+    if not isinstance(segments, list) or not segments \
+            or not all(isinstance(s, dict) for s in segments):
+        return ()
+    profile = timing.build_motion_profiles(layout).get(str(arm or ""))
+    hrc = group.get("hrc", "none")
+    out = []
+    for slow in {"none": (False,), "collaborative": (True,)}.get(hrc, (False, True)):
+        parts = [_fixed_seconds(layout, s, profile, slow, group.get("time_unit"))
+                 for s in segments]
+        if None in parts:
+            return ()
+        out.append(sum(parts))
+    return tuple(out)
+
+
+def _validate_cycle(layout, entry, block, start, at, problems) -> None:
+    """D444: a MOTION job in service. With no `cycle` (a plant's) it runs a whole cycle drawn
+    afresh (#461), so `ends` and `remaining`, which would cut it short, are refused. A `cycle`
+    is one job's: the segment in progress (`stage`) ends at `until`, after the clock and
+    within that segment's time of it; `times` has one duration per segment, each started one
+    and each timed one after it (a move after it is null: it is timed when it starts); a move
+    took what the profile gives it, slowed (`slow`) as the block's hrc allows; and the cycle
+    began after the job was made."""
+    params, cycle = block.get("params") or {}, entry.get("cycle")
+    segments = [s for s in params.get("segments") or [] if isinstance(s, dict)]
+    mode = params.get("hrc", "none")
+
+    def move(i) -> bool:
+        return segments[i].get("kind") == "move"
+
+    ok = entry.get("ends") is None and entry.get("remaining") is None
+    if ok and cycle is not None:
+        ok = (isinstance(cycle, dict) and set(cycle) <= {"stage", "until", "times", "slow"}
+              and entry.get("count") == 1 and entry.get("in_service") == 1)
+        stage, until, times, slow = (cycle.get(k) for k in ("stage", "until", "times", "slow")) \
+            if ok else (None, None, None, None)
+        slow = [] if slow is None else slow
+        ok = (ok and isinstance(stage, int) and not isinstance(stage, bool)
+              and 0 <= stage < len(segments) and isinstance(times, list)
+              and len(times) == len(segments) and all(
+                  (_number(t) and t >= 0) if i <= stage or not move(i) else t is None
+                  for i, t in enumerate(times))
+              and isinstance(slow, list) and len(set(map(str, slow))) == len(slow)
+              and all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i <= stage
+                      and move(i) for i in slow))
+        moved = [i for i in range(stage + 1) if move(i)] if ok else []
+        ok = ok and (mode == "separation" or set(slow) == (set(moved) if mode == "collaborative"
+                                                           else set()))
+        eps = 1e-9 * max(1.0, abs(start))
+        age = entry.get("age", 0)
+        made = start - (age if _number(age) else 0.0)
+        ok = (ok and _number(until) and start <= until <= start + times[stage] + eps
+              and until - sum(times[:stage + 1]) >= made - eps)
+        profile = timing.build_motion_profiles(layout).get(str(params.get("profile") or ""))
+        for i, segment in enumerate(segments if ok else ()):
+            if times[i] is not None:
+                fixed = _fixed_seconds(layout, segment, profile, i in slow, params.get("time_unit"))
+                ok = ok and (fixed is None or _same(times[i], fixed))
+    if not ok:
+        problems.append(problem(
+            "E_INITIAL_CYCLE", f"initial_state: block '{entry.get('block')}': a MOTION job in "
+            f"service carries its cycle, not ends or remaining: one entity, the segment in "
+            f"progress (stage) ending at until, and the time of each segment", f"{at}/cycle",
+            hint="until is at or after the clock and no further than that segment's time; times "
+                 "has one value per segment (null for a move not started), a move's the "
+                 "profile's; slow lists the moves timed slowed; the job's age covers the "
+                 "segments up to until (the cycle began after it was made); with no cycle "
+                 "the job runs a whole cycle drawn afresh"))
+
+
 def _room(layout, level) -> float:
     """#458: the most a level can ever hold above its minimum: its capacity less its `min`
     when both are numbers, else no bound (a `min` of None is none below)."""
@@ -907,6 +1037,8 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                                           lambda n: not through(n), through)
         return target in ends[holder]
 
+    picked = _picked(layout, blocks)    # a machine a cobot picks from blocks too (D446)
+
     for index, entry in enumerate(state.get("entities") or []):
         if not isinstance(entry.get("block"), str) or entry["block"] not in blocks:
             continue
@@ -927,7 +1059,8 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
         buffer = known and kind[holder] == "BUFFER" and _places(blocks[holder]) > 0
         station = (known and kind[holder] in blocking.PROCESS_TYPES
                    and params.get("action", "Seize Delay Release") == "Seize Delay Release"
-                   and bool(params.get("resource_name")) and holder in blockers)
+                   and bool(params.get("resource_name"))
+                   and (holder in blockers or (reaches(holder, name) and name in picked)))
         # a belt whose end hands its parts to another belt (D430)
         belt = known and kind[holder] == "CONVEYOR" and params.get("accumulating", True) \
             is not False and any(kind.get(t) == "CONVEYOR" for t in blockers.get(holder, ()))
@@ -954,11 +1087,13 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                     f"the time the part entered the belt in held_by, at or before the clock",
                     f"{at}/held_since", block=name, hint="a belt's part has no member"))
             continue
-        if since is not None and not (_number(since) and since <= start):
-            problems.append(problem(
+        age = entry.get("age", 0)
+        made = start - (age if _number(age) else 0.0) - 1e-9 * max(1.0, abs(start))
+        if since is not None and not (_number(since) and made <= since <= start):
+            problems.append(problem(      # not before the part was made either (#460's class)
                 "E_INITIAL_REMAINING", f"initial_state: block '{name}': held_since must be a "
-                f"time at or before the clock", f"{at}/held_since", block=name,
-                hint="the absolute time the station in held_by seized its unit"))
+                f"time at or before the clock, and after the part was made", f"{at}/held_since",
+                block=name, hint="the absolute time the station in held_by seized its unit"))
         if member is not None and member not in sets.get(params.get("resource_name"), ()):
             problems.append(problem(
                 "E_INITIAL_SET", f"initial_state: block '{name}': member '{member}' is not a "
@@ -971,22 +1106,129 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                                                         else 1)
 
 
+def _arms(layout) -> set:
+    """The fleets with an arm, in a model with a tending station (else none tends, D169)."""
+    tends = any(_kind(b) == "STATION" and isinstance((b.get("params") or {}).get("tending"), dict)
+                and (b.get("params") or {}).get("tending") for b in layout.get("blocks") or [])
+    return {f.get("name") for f in layout.get("fleets") or [] if isinstance(f, dict)
+            and str(f.get("arm") or "").strip()} if tends else set()
+
+
+def _picked(layout, blocks) -> set:
+    """The TRANSPORT blocks of an arm fleet: a part's machine holds it until the cobot
+    picks it, when its station tends (D169, D446)."""
+    arms = _arms(layout)
+    return {n for n, b in blocks.items() if _kind(b) == "TRANSPORT"
+            and (b.get("params") or {}).get("fleet") in arms}
+
+
+def _tended(blocks) -> dict:
+    """{station name (its alias, as `entity.station` has it): block name} of the STATIONs
+    that declare tending."""
+    out = {}
+    for name, block in blocks.items():
+        params = block.get("params") or {}
+        if _kind(block) == "STATION" and isinstance(params.get("tending"), dict) \
+                and params["tending"]:
+            out[str(params.get("station") or name)] = name
+    return out
+
+
+def _machine(blocks, layout, station: str):
+    """The one PROCESS or MOTION a part placed at *station* (a block name) is worked by:
+    the first block after it that is not transparent (`tending.machine_of`); None when
+    that is not one block that seizes a resource with no worker."""
+    links: dict = {}
+    for link in layout.get("links") or []:
+        if isinstance(link, dict):
+            links.setdefault(link.get("source"), []).append(link.get("target"))
+    found = blocking.stops(station, lambda n: links.get(n, []),
+                           lambda n: _kind(blocks.get(n) or {}) not in blocking.TRANSPARENT_TYPES,
+                           lambda n: _kind(blocks.get(n) or {}) in blocking.TRANSPARENT_TYPES)
+    block = blocks.get(found[0]) if len(found) == 1 else None
+    params = (block or {}).get("params") or {}
+    # #470: a finite input queue takes the placed part before its unit: it holds none
+    return block if (block is not None and _seized(block) and _released(block) is None
+                     and str(params.get("action", "Seize Delay Release")).endswith("Release")
+                     and _kind(block) in blocking.PROCESS_TYPES
+                     and not params.get("worker_fleet") and not _places(block)
+                     and not params.get("hold_until_space")) else None
+
+
+def _tends_fits(entry, trip, record, blocks, layout, start, arm, tended, serving) -> bool:
+    """D446, D447: what a cobot's trip carries at a tending station, and none of it
+    elsewhere. Picked from one (its `station` tends), the part is held_by that station's
+    machine until the pick ends; the pick (`load`) and the place (`unload`) in progress carry
+    their `cycle`, which the vehicle's `until` ends within of the clock and which is the
+    group's time when the model fixes it (#469); a part carried to one unloads nothing (the
+    place is the cobot's). A placed part has entered the station and holds a unit of its
+    machine, counted into *serving*. *arm*: the fleet's arm profile, falsy for no arm."""
+    attributes = entry.get("attributes") if isinstance(entry.get("attributes"), dict) else {}
+    here = attributes.get("station") if isinstance(attributes.get("station"), str) else None
+    picking = arm and here in tended
+    placing = arm and trip["target"] in tended.values()
+    stage = trip.get("stage") if trip.get("unit") is not None else None
+    cycle, until = trip.get("cycle"), record.get("until")
+    holder = entry.get("held_by")
+    if picking and stage in (None, "pickup", "load"):
+        # the machine after its station (`_validate_places` checks it blocks there)
+        if not isinstance(holder, str) or not blocking.stops(
+                tended[here], _successors(layout, blocks, jumps=False),
+                lambda n: n == holder, lambda n: True):
+            return False
+    elif holder is not None:
+        return False
+    if not ((stage == "load" and picking) or (stage == "unload" and placing)):
+        return cycle is None and not (placing and stage == "carry" and trip.get("unload"))
+    eps = 1e-9 * max(1.0, abs(start))
+    age = entry.get("age", 0)
+    if not (_number(cycle) and cycle >= 0 and _number(until) and until <= start + cycle + eps
+            and until - cycle >= start - (age if _number(age) else 0.0) - eps):
+        return False        # it ends within its cycle of the clock, begun after the part was made
+    station = blocks[tended[here]] if stage == "load" else blocks[trip["target"]]
+    fixed = _tending_seconds(layout, station, "pick" if stage == "load" else "place", arm)
+    if fixed and not any(_same(cycle, x) for x in fixed):
+        return False        # #469: a cycle the model fixes is that time (as D444's segments)
+    if stage == "load":
+        return True
+    machine = _machine(blocks, layout, trip["target"])
+    if machine is None or tended.get(here) != trip["target"]:
+        return False
+    params = machine.get("params") or {}
+    quantity = params.get("quantity", 1)
+    serving[params["resource_name"]] = serving.get(params["resource_name"], 0) + (
+        quantity if isinstance(quantity, int) and not isinstance(quantity, bool) else 1)
+    return True
+
+
 _STAGES = ("pickup", "load", "carry", "unload")
 
 
-def _validate_fleets(layout, state, blocks, start, problems) -> None:
+def _validate_fleets(layout, state, blocks, start, problems, serving) -> None:
     """Fleets and vehicles (D384, D385): `initial_state.fleets` and the `trip` of each load.
     Everything `MoverFleet.restore` and `Transport.resume` read is checked here, so neither
-    can meet a name the model does not have or a path the network does not."""
+    can meet a name the model does not have or a path the network does not. A cobot's
+    pick and place (D446, D447) and the tending rows (D448) too; a placed part's unit of
+    its machine counts into *serving*."""
     said = state.get("fleets")
     trips = [(i, e) for i, e in enumerate(state.get("entities") or [])
              if isinstance(e, dict) and e.get("trip") is not None]
-    if said is None and not trips:
-        return
+    arms, tended = _arms(layout), _tended(blocks)
 
     def bad(text, at, hint="see the state page of the documentation: fleets and vehicles"):
         problems.append(problem("E_INITIAL_FLEET", f"initial_state: {text}",
                                 f"/{SECTION}/{at}", hint=hint))
+
+    rows = state.get("tended")
+    if rows is not None and not (isinstance(rows, list) and all(
+            isinstance(r, list) and len(r) == 2 and all(isinstance(n, str) for n in r)
+            and r[0] in tended and r[1] in arms for r in rows)
+            and len({tuple(r) for r in rows}) == len(rows)):
+        bad("tended must list [station, fleet] pairs, each once: a STATION that declares "
+            "tending and a fleet with an arm", "tended",
+            hint="the pairs a cobot tended before the clock")
+    if said is None and not trips:
+        return
 
     def time(value, past: bool) -> bool:
         return _number(value) and (value <= start if past else value >= start)
@@ -1034,6 +1276,7 @@ def _validate_fleets(layout, state, blocks, start, problems) -> None:
         battery = fleet.get("battery") if isinstance(fleet.get("battery"), dict) else {}
         kind = ("a gantry" if fleet.get("motion") == "gantry"
                 else "a worker fleet" if fleet.get("kind") == "worker"
+                else "a cobot fleet that exchanges parts" if name in arms and fleet.get("exchange")
                 else "scheduled charging" if battery.get("strategy") == "scheduled"
                 else "a drive under way on a network with segment capacities"
                 if zoned and any(v.get("drive") is not None for v in vehicles) else None)
@@ -1093,8 +1336,7 @@ def _validate_fleets(layout, state, blocks, start, problems) -> None:
         block = block or {}
         ok = (str(block.get("type", "")).upper() == "TRANSPORT" and isinstance(trip, dict)
               and entry.get("count") == 1 and not entry.get("in_service")
-              and entry.get("arrives") is None and entry.get("held_by") is None
-              and fleet in said)
+              and entry.get("arrives") is None and fleet in said)
         ok = ok and all(isinstance(trip.get(k), str) and network.has(trip[k])
                         for k in ("origin", "destination"))
         ok = ok and path(trip["origin"], trip["destination"])
@@ -1118,6 +1360,15 @@ def _validate_fleets(layout, state, blocks, start, problems) -> None:
                   and path(record["node"], goal)
                   and (stage in ("pickup", "carry") or record["node"] == goal))
             taken[(fleet, unit)] = stage
+        arm = fleet in arms and str(declared[fleet]["arm"]).strip()
+        if ok and not _tends_fits(entry, trip, record if unit is not None else {}, blocks,
+                                  layout, start, arm, tended, serving):
+            bad(f"block '{name}': a cobot's trip at a tending station: picked, the part is "
+                f"held_by its machine until the pick ends; the pick (load) and the place "
+                f"(unload) in progress carry their cycle; a part carried there unloads nothing",
+                at, hint="the vehicle's until ends the cycle, at most cycle after the clock; "
+                         "the station's machine is one PROCESS or MOTION with a free unit")
+            continue
         if not ok:
             bad(f"block '{name}': a trip is at a TRANSPORT block whose fleet the state lists, "
                 f"for one entity, with an origin and a destination node joined by a path, a "
@@ -1299,7 +1550,8 @@ def _target_name(block) -> str:
     return getattr(resource, "name", "")
 
 
-def _in_service_process(block, entity, remaining, end=None, since=None, member=None):
+def _in_service_process(block, entity, remaining, end=None, since=None, member=None,
+                        cycle=None, gate=None):
     """The block's own body with a FIXED service time: seize (if it seizes),
     hold *remaining*, release (if it releases), forward. Kept here rather than
     threaded through PROCESS/SEIZE/DELAY as an extra parameter, so the warm
@@ -1313,8 +1565,13 @@ def _in_service_process(block, entity, remaining, end=None, since=None, member=N
     if seizes:
         yield from _seize(block, entity, since, member)
     block.ctx.settling -= 1         # it holds its unit: the controllers may act (#346)
+    if gate is not None:            # a cobot still places it; then its job starts (D447)
+        yield gate
     block.active_entity = entity
-    while True:
+    if cycle is not None:           # a MOTION job: its own preemption loop
+        # mid-cycle (D444), or with nothing said a whole cycle drawn afresh (#461)
+        yield from block.resume(entity, cycle) if cycle else block._serve(entity)
+    while cycle is None:
         started = block.env.now
         try:
             if end is not None:         # the very instant it was due (D232)
@@ -1346,20 +1603,17 @@ def _seize(block, entity, since, member):
     cost, auto = entity.cost, entity._auto_cost
     yield from acquire(block, entity, _target_name(block),
                        getattr(block, "quantity", 1), getattr(block, "priority", 0),
-                       member=member)
+                       member=member, held_since=since)
+    # #362, #468: `held_since` makes the requests hold their unit as of *since* when they
+    # are made. Seized again at the clock, every warm-started job had one request time, and
+    # a preempting request picked its victim among equals instead of the one that came
+    # last, or a queued one put back in this instant preempted it. (The time it seized
+    # stands in for the time it asked: on a FIFO resource the two order alike.)
     # #417: this use was charged before the state, where the uninterrupted run's warm-up
     # clips it; seized again at the clock it would be charged inside the window.
     entity.cost, entity._auto_cost = cost, auto
     if since is not None:       # busy cost runs from when it really seized
-        held = entity.req_params[_target_name(block)]
-        held["seized_at"] = since
-        # #362: and it holds its unit as of then. Seized again at the clock, every
-        # warm-started job had one request time, and a preempting request picked its
-        # victim among equals instead of the one that came last. (The time it seized
-        # stands in for the time it asked: on a FIFO resource the two order alike.)
-        for request in held["requests"]:
-            request.time = since
-            request.key = (request.priority, since, not request.preempt)
+        entity.req_params[_target_name(block)]["seized_at"] = since
 
 
 def _hold(block, entity, holds: dict) -> None:
@@ -1533,6 +1787,8 @@ def apply(env, model, state: dict) -> int:
         found = ctx.resource_manager.all().get(name) or ctx.store_manager.get(name)
         if found is not None:
             found.log_events = max(found.log_events, 1)
+    for station, fleet in state.get("tended") or ():    # and a tending row (D448)
+        ctx.tending.setdefault((station, fleet), tending.TendingStats())
 
     for name, spec in (state.get("resource_sets") or {}).items():
         rset = ctx.resource_manager.sets.get(name)
@@ -1584,11 +1840,26 @@ def apply(env, model, state: dict) -> int:
             trip = entry.get("trip")
             if trip is not None:        # a load: its TRANSPORT carries on at its stage (D385)
                 block.emit("entity_created", entity=entity)
-                record = None
+                holder = model.blocks.get(entry.get("held_by"))
+                if holder is not None:      # its machine holds it until the cobot picks (D446)
+                    ctx.settling += 1
+                    blocked = True
+                    env.process(_blocked_process(holder, entity, entry.get("held_since"),
+                                                 entry.get("member")))
+                record, gate = None, None
                 if trip.get("unit") is not None:
                     ctx.settling += 1
                     record = fleets[block.fleet_name]["vehicles"][trip["unit"]]
-                    env.process(block.resume(entity, trip, record))
+                    if trip.get("stage") == "unload" and trip.get("cycle") is not None:
+                        # a cobot places it: its machine holds it and starts on it after
+                        # (D447), seized when the place began (the machine let it in then)
+                        gate = env.event()
+                        ctx.settling += 1
+                        env.process(_in_service_process(
+                            tending.machine_of(model.blocks[trip["target"]]), entity, 0.0,
+                            since=float(record["until"]) - float(trip["cycle"]), cycle={},
+                            gate=gate))
+                    env.process(block.resume(entity, trip, record, gate=gate))
                 else:
                     waiting.append((block, entity, trip, entry.get("since")))
                 continue
@@ -1604,6 +1875,10 @@ def apply(env, model, state: dict) -> int:
             if index < in_service:
                 ctx.settling += 1
                 since, member = entry.get("since"), entry.get("member")
+                if block.block.block_type == "MOTION":     # its cycle (D444, #461)
+                    env.process(_in_service_process(block, entity, 0.0, None, since, member,
+                                                    entry.get("cycle") or {}))
+                    continue
                 if index < len(ends):
                     env.process(_in_service_process(block, entity, 0.0, float(ends[index]),
                                                     since, member))

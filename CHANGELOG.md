@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- State: a MOTION job mid-cycle and a mobile cobot tending a machine (a pick held by its
+  machine, a place in progress, each cycle's time) are carried; `automation_cell` and
+  `automation_floor` are reproduced from a state taken at any time tried. Tending from a
+  plant stays refused by name.
+- Fixed: a run started from a state with a job in service beside a waiting preempting request
+  no longer crashes or lets it overtake earlier waiters; a MOTION job put in service without a
+  cycle takes a whole one; a cobot trip at a tending station is put back with its place cycle;
+  a tending cycle time, a place into a machine with a queue, and an entry a TRANSPORT takes on
+  with no station are checked on load.
+
 ## 0.7.2 (2026-10-15)
 
 A state now carries a batch that has already formed, with its members, and an entity waiting

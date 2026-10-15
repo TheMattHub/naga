@@ -128,13 +128,15 @@ naga state observe model.json --out state.json
   | A job holding a resource it seized in an earlier block (a SEIZE ... RELEASE, a belt's end stop carried to a "Delay Release") | carried (`holds`) |
   | A formed batch (of a BATCH or a MATCH), wherever it is: the batch entity with its members inside, each with its age, attributes and holds | carried (`members`) |
   | An entity at a TRANSFER waiting for its level (for room or for stock), in the level's queue order | carried (`transfer`) |
+  | A MOTION job mid-cycle: the segment in progress and when it ends, each segment's time (a move after the clock is timed when it starts); the cycle counts whole. From a plant, a MOTION job in service runs a whole cycle drawn afresh | carried (`cycle`) |
   | A preempted job; a batch inside a batch; in a state from a plant, a formed batch (no signal names its members) or an entity waiting at a TRANSFER (no signal says its amount) | refused |
   | A ranked queue whose `ranking_expr` reads more than the entity (a variable, the clock) and does not `rerank` | refused |
   | Blocking after service and finite buffers (a BUFFER, a `queue_capacity`): the parts in a buffer, the machine holding its finished part, who waits for a place | carried (`held_by`, `place`) |
   | Blocking before service (`hold_until_space`); a finite queue that balks or reneges while an entity waits for a place | refused |
   | Fleets and vehicles: where each one is, its drive, loading or unloading under way, its load, the dispatch queue in its order, a return home | carried (`fleets`, `trip`) |
   | A battery's charge; a vehicle driving to a charger, waiting for a point or charging | carried (`soc`, `charge`) |
-  | A tour under way (`loads` above 1); a vehicle called back from its way home, or out of service; segment capacities; a gantry; a worker fleet; a mobile cobot that tends; a swap station; scheduled charging | refused |
+  | A mobile cobot tending a station: a finished part waiting for a cobot, held by its machine, the cobot driving to pick it or picking it; a part carried to the station, or placed (the machine holds it and starts on it when the place ends); each pick's and place's time; the tending rows earned before | carried (`trip.cycle`, `held_by`, `tended`) |
+  | A tour under way (`loads` above 1); a vehicle called back from its way home, or out of service; segment capacities; a gantry; a worker fleet; a cobot waiting loaded for its machine, placing into a buffer or a machine with a finite queue, or staying with its part; a cobot fleet that exchanges parts; tending in a state from a plant; a swap station; scheduled charging | refused |
   | An accumulating conveyor: each part waiting for a cell or its entry slot, riding, packed at the end, moving up, at the end stop, or handed to the next belt; the next entry slot | carried (`belt`, `held_by`, `blocks.<belt>.next_entry`) |
   | A non-accumulating conveyor with parts on it; an end stop that other jobs queue for; a conveyor in a state from a plant | refused |
   | Agent populations | refused |

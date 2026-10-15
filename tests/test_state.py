@@ -731,7 +731,6 @@ def test_a_bundled_library_model_with_stores_is_reproduced_exactly():
 
 
 @pytest.mark.parametrize("name, at, kind", [
-    ("automation_floor", 50.3, "a mobile cobot that tends"), ("automation_cell", 50.3, "mid-cycle"),
     ("biogas_plant_library", 50.3, "a conveyor or a blended level")])
 def test_what_the_second_round_still_refuses_is_named(name, at, kind):
     assert kind in _refusal(_bundled(name), at)
