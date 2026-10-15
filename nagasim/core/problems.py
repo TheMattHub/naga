@@ -540,8 +540,12 @@ PROBLEM_CODES: dict[str, str] = {
     "E_INITIAL_QUEUE_CAPACITY": "More entities wait at a block, or sit in a BUFFER, than it has places.",
     "E_INITIAL_FLEET": "initial_state.fleets or an entity's trip does not fit the model: a fleet, a "
                        "vehicle record, a node, a charger or a stage it does not have.",
+    "E_INITIAL_BELT": "A part on a belt in initial_state does not fit the model: not one entity at an "
+                      "accumulating CONVEYOR, a stage it does not have, a time on the wrong side "
+                      "of the clock, or more than one part at the belt's end.",
     "E_INITIAL_AGE": "An initial-state entry's age is negative or not a number.",
-    "E_INITIAL_RESOURCE": "initial_state.resources names a resource the model does not declare.",
+    "E_INITIAL_RESOURCE": "initial_state.resources, or an entity's holds, names a resource the "
+                          "model does not declare, or a hold it cannot be.",
     "E_INITIAL_VARIABLE": "initial_state.variables names a variable the model does not declare.",
     "E_INITIAL_CLOCK": "initial_state.clock is not a number >= 0 and before the end of the run.",
     "E_INITIAL_SCHEDULE_OFFSET": "initial_state.schedule_offset is not a number >= 0.",

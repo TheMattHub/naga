@@ -256,17 +256,6 @@ def _refusal(model, at, **kw):
     return caught.value.message
 
 
-def test_a_job_that_holds_a_resource_between_blocks_is_refused():
-    c, d = create("c", dist_params={"value": 2.0}), dispose("d")
-    p = process("p", value=0.5, action="Seize Delay")
-    w = delay("w", 1.0)
-    r = {"name": "r", "description": "r", "type": "RELEASE", "position": [3, 0],
-         "params": {"resource_name": "Server"}}
-    model = layout([c, p, w, r, d], chain(c, p, w, r, d), resources=SERVER,
-                   simulation={"time_limit": 20, "warmup": 0, "replications": 1})
-    assert "holds" in _refusal(model, 8.75)
-
-
 def test_a_state_between_two_states_is_taken_again():
     """A run started from a state gives a state: the marks are set by the warm start too."""
     model = _line(failures=FAILURE)
@@ -361,7 +350,7 @@ def test_discrete_event_a_stochastic_run_is_reproduced_in_distribution():
 
 @pytest.mark.parametrize("name, at, kind", [("agents_sir_agents", 5.0, "agent populations"),
                                             ("abm_wolf_sheep", 5.0, "agent populations"),
-                                            ("warehouse_forklifts", 50.0, "conveyors")])
+                                            ("warehouse_library", 50.0, "a formed batch")])
 def test_what_a_state_cannot_carry_is_refused_by_name(name, at, kind):
     assert kind in _refusal(_bundled(name), at)
 
@@ -479,7 +468,7 @@ def test_the_commands_take_check_and_start_from_a_state(tmp_path, capsys):
 
 
 def test_the_take_command_says_what_it_cannot_carry(tmp_path, capsys):
-    assert state.main(["take", str(MODELS / "warehouse_forklifts.json"), "--at", "50"]) == 1
+    assert state.main(["take", str(MODELS / "agents_sir_agents.json"), "--at", "5"]) == 1
     assert "E_STATE_UNSUPPORTED" in capsys.readouterr().out
 
 
@@ -642,10 +631,6 @@ def test_a_match_that_maps_no_types_is_refused():
     assert "type_store_map" in _refusal(_match_line(stores={}), 10.5)
 
 
-def test_a_batch_whose_maximum_wait_is_running_is_refused():
-    assert "maximum wait" in _refusal(_batch_line(max_wait="2.5"), 9.5)
-
-
 def test_a_hold_on_a_polled_condition_is_refused():
     c, d = create("c"), dispose("d")
     h = _block("h", "HOLD", mode="Condition", conditions=["TNOW > 30"])
@@ -747,10 +732,8 @@ def test_a_bundled_library_model_with_stores_is_reproduced_exactly():
 
 
 @pytest.mark.parametrize("name, at, kind", [
-    ("automation_floor", 50.3, "a mobile cobot that tends"), ("warehouse_library", 20.3, "conveyors"),
-    ("automation_cell", 50.3, "mid-cycle"),
-    ("mfg_line_library", 50.3, "holds a resource between blocks"),
-    ("clinic_library", 60.3, "holds a resource between blocks"),
+    ("automation_floor", 50.3, "a mobile cobot that tends"), ("warehouse_library", 20.3, "a formed batch"),
+    ("automation_cell", 50.3, "mid-cycle"), ("mfg_line_library", 50.3, "a formed batch"),
     ("biogas_plant_library", 50.3, "conveyor, a blended level")])
 def test_what_the_second_round_still_refuses_is_named(name, at, kind):
     assert kind in _refusal(_bundled(name), at)

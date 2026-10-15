@@ -675,7 +675,8 @@ def test_a_state_from_a_plant_names_the_blocks_inside_an_asset_and_what_it_does_
     fleets = api.load_layout(MODELS / "warehouse_forklifts.json")
     _doc, problems = state.from_plant(fleets, {"at": 5.0})
     assert any("fleets and vehicles" in p.message for p in problems)
-    assert {p.code for p in problems} == {"W_STATE_NOT_COVERED"}
+    # and its belt is refused by name (D434, #450)
+    assert {p.code for p in problems} == {"W_STATE_NOT_COVERED", "E_STATE_UNSUPPORTED"}
 
 
 # ---------------------------------------------------------------- commands and the tool (D259)

@@ -2098,11 +2098,14 @@ def _defs() -> dict:
                         "additionalProperties": False}},
                 "blocks": {
                     "type": "object",
-                    "description": "Per block with a changeover: the setup key its last job "
-                                   "left, so the next job pays a changeover or does not.",
+                    "description": "Per block, what it carries: a changeover's setup key its "
+                                   "last job left; a BATCH's running maximum wait, the time it "
+                                   "falls due; a CONVEYOR's next free entry slot.",
                     "additionalProperties": {
                         "type": "object",
-                        "properties": {"setup": {"type": ["string", "number"]}},
+                        "properties": {"setup": {"type": ["string", "number"]},
+                                       "due": {"type": "number"},
+                                       "next_entry": {"type": "number"}},
                         "additionalProperties": False}},
                 "variables": {"type": "object",
                               "description": "Model variable values to start from."},
@@ -2146,6 +2149,9 @@ def _defs() -> dict:
                 "levels": {"type": "object", "additionalProperties": {"type": "number"},
                            "description": "Level values to start from: the state of "
                                           "charge of a battery, the stock on hand in a warehouse."},
+                "used": {"type": "array", "items": {"type": "string"},
+                         "description": "The resources, sets and stores something happened to "
+                                        "before the clock: they keep their report row."},
                 "entities": {
                     "type": "array",
                     "items": {
@@ -2190,10 +2196,40 @@ def _defs() -> dict:
                                                        "entity: the BUFFER whose place it has, or "
                                                        "the station blocked after service that "
                                                        "keeps its unit until the entity is "
-                                                       "accepted (count 1)."},
+                                                       "accepted, or the CONVEYOR whose end "
+                                                       "keeps it until the next belt takes it "
+                                                       "(count 1)."},
                             "held_since": {"type": "number",
                                            "description": "The absolute time the station in "
-                                                          "held_by seized its unit."},
+                                                          "held_by seized its unit, or the "
+                                                          "entity entered the belt in held_by."},
+                            "holds": {"type": "object",
+                                      "description": "Resources the entity holds from an earlier "
+                                                     "block, seized again for it before anything "
+                                                     "else: per resource or set, since when, "
+                                                     "how many units (default 1) and of a set "
+                                                     "which member.",
+                                      "additionalProperties": {
+                                          "type": "object",
+                                          "properties": {"since": {"type": "number"},
+                                                         "units": {"type": "integer",
+                                                                   "minimum": 1},
+                                                         "member": {"type": "string"}},
+                                          "additionalProperties": False}},
+                            "belt": {"type": "object",
+                                     "description": "An entity on an accumulating CONVEYOR: its "
+                                                    "stage (cell: waits for a cell; slot: boards "
+                                                    "at until; ride: at the end at until; packed: "
+                                                    "behind the part ahead; move: moving up, "
+                                                    "there at until; stop: waits for the end "
+                                                    "stop), until, and when it entered the belt.",
+                                     "properties": {
+                                         "stage": {"enum": ["cell", "slot", "ride", "packed",
+                                                            "move", "stop"]},
+                                         "until": {"type": "number"},
+                                         "entered": {"type": "number"}},
+                                     "required": ["stage"],
+                                     "additionalProperties": False},
                             "place": {"type": "boolean",
                                       "description": "false: the entity waits for a place of the "
                                                      "block (a BUFFER, a queue_capacity) and has "

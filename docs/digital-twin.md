@@ -123,15 +123,18 @@ naga state observe model.json --out state.json
   | Resource sets (member per job, a Cyclical set's turn) | carried |
   | Arrivals, failures, schedules and calendars | carried |
   | What a station is set up for | carried; a changeover under way is refused |
-  | A batch whose maximum wait is running; a HOLD on a condition that is scanned on a clock; a MATCH with no `type_store_map` | refused |
-  | A preempted job; a job holding a resource between two blocks; a formed batch | refused |
+  | A batch whose maximum wait is running | carried (`blocks.<batch>.due`) |
+  | A HOLD on a condition that is scanned on a clock; a MATCH with no `type_store_map` | refused |
+  | A job holding a resource it seized in an earlier block (a SEIZE ... RELEASE, a belt's end stop carried to a "Delay Release") | carried (`holds`) |
+  | A preempted job; a formed batch | refused |
   | A ranked queue whose `ranking_expr` reads more than the entity (a variable, the clock) and does not `rerank` | refused |
   | Blocking after service and finite buffers (a BUFFER, a `queue_capacity`): the parts in a buffer, the machine holding its finished part, who waits for a place | carried (`held_by`, `place`) |
   | Blocking before service (`hold_until_space`); a finite queue that balks or reneges while an entity waits for a place | refused |
   | Fleets and vehicles: where each one is, its drive, loading or unloading under way, its load, the dispatch queue in its order, a return home | carried (`fleets`, `trip`) |
   | A battery's charge; a vehicle driving to a charger, waiting for a point or charging | carried (`soc`, `charge`) |
   | A tour under way (`loads` above 1); a vehicle called back from its way home, or out of service; segment capacities; a gantry; a worker fleet; a mobile cobot that tends; a swap station; scheduled charging | refused |
-  | Conveyors | refused |
+  | An accumulating conveyor: each part waiting for a cell or its entry slot, riding, packed at the end, moving up, at the end stop, or handed to the next belt; the next entry slot | carried (`belt`, `held_by`, `blocks.<belt>.next_entry`) |
+  | A non-accumulating conveyor with parts on it; an end stop that other jobs queue for; a conveyor in a state from a plant | refused |
   | Agent populations | refused |
 
 - **What it reproduces.** A run started from a state taken at t gives the results of the
@@ -143,10 +146,9 @@ naga state observe model.json --out state.json
   only. Time-series samples are taken on a grid that starts at the clock: their instants are the
   uninterrupted run's only when the clock is on that grid.
 - **What it refuses.** `naga state take` writes a whole state or none. Agent populations,
-  conveyors, what the table above lists as refused, a changeover under way, a
+  what the table above lists as refused, a changeover under way, a
   store's content that is not entities waiting at a HOLD, a BATCH or a MATCH, a pending
-  decision, a pipeline delay and a job that
-  holds a resource between two blocks are refused with `E_STATE_UNSUPPORTED`, which names the one
+  decision and a pipeline delay are refused with `E_STATE_UNSUPPORTED`, which names the one
   found. So is a time at which a model event is due (a service ending, an arrival, a failure, a
   shift change: take the state between two events) and a time at or after the end of the run.
 - **From a plant.** A data binding may target `initial_state.variables.<name>`,

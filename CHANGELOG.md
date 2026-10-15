@@ -8,6 +8,14 @@
   `NAGA_REALSERVER=1`).
 - Fixed: a negative Sparkplug Int8 or Int16 sent as Tahu's Python library sends it reads as
   the number it is; a Sparkplug node's death takes its devices offline.
+- State: parts on an accumulating conveyor (every stage, and the hand-over to the next belt), a
+  job that holds a resource seized in an earlier block, and a batch's running maximum wait are
+  carried; `warehouse_forklifts` is reproduced exactly from a state taken at any time tried.
+  A conveyor in a state from a plant is refused by name.
+- Fixed: a state from a plant puts a job back with the unit it holds; a resource used only
+  before a taken state keeps its report row; hand-written states with a batch timer and nothing
+  waiting, a unit held twice, a hold nothing releases, or a conveyor from a plant are refused by
+  name.
 
 ## 0.7.0 (2026-10-15)
 

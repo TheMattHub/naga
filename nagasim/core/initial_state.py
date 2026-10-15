@@ -321,6 +321,17 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                      f"{', '.join(sorted(str(r) for r in declared_res)) or '(none)'}"))
 
     sets = {s.get("name"): list(s.get("members") or []) for s in layout.get("resource_sets", [])}
+    used = state.get("used")
+    # #446: what had a report row before the clock; a store is named after its block
+    stores = tuple(f"{b}_" for b, spec in blocks.items()
+                   if str(spec.get("type", "")).upper() in ("HOLD", "BATCH", "MATCH"))
+    if used is not None and not (isinstance(used, list) and all(
+            isinstance(n, str) and (n in declared_res or n in sets or n.startswith(stores))
+            for n in used)):
+        problems.append(problem(
+            "E_INITIAL_RESOURCE", "initial_state: used must list resources, sets and stores of "
+            "the model", f"/{SECTION}/used",
+            hint="the ones that had anything happen to them before the clock"))
     for name, spec in (state.get("resource_sets") or {}).items():
         cursor = spec.get("cursor") if isinstance(spec, dict) else None
         if name not in sets or not isinstance(cursor, int) or isinstance(cursor, bool) \
@@ -330,16 +341,28 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 f"set with a cursor from -1 to its last member's index",
                 f"/{SECTION}/resource_sets/{name}",
                 hint="cursor is the index of the member a Cyclical set picked last"))
+    # #447: a batch's timer runs only while parts wait there
+    listed = state.get("entities") if isinstance(state.get("entities"), list) else []
+    holding = {e["block"] for e in listed if isinstance(e, dict) and e.get("count")
+               and isinstance(e.get("block"), str)}
     for name, spec in (state.get("blocks") or {}).items():
-        params = (blocks.get(name) or {}).get("params") or {}
-        setup = spec.get("setup") if isinstance(spec, dict) else None
-        if not (params.get("setup") or params.get("setup_cost")) \
-            or not isinstance(setup, (str, int, float)) or isinstance(setup, bool):
+        block = blocks.get(name) or {}
+        params, kind = block.get("params") or {}, str(block.get("type", "")).upper()
+        fits = {}       # what each kind of block carries: its check
+        if params.get("setup") or params.get("setup_cost"):         # D263
+            fits["setup"] = lambda v: isinstance(v, (str, int, float)) and not isinstance(v, bool)
+        if kind == "BATCH" and _waits(params.get("max_wait")) and name in holding:     # D433
+            fits["due"] = lambda v: _number(v) and v >= start
+        if kind == "CONVEYOR":                                      # D430
+            fits["next_entry"] = _number
+        if not (isinstance(spec, dict) and spec and set(spec) <= set(fits)
+                and all(fits[key](value) for key, value in spec.items())):
             problems.append(problem(
-                "E_INITIAL_BLOCK", f"initial_state: blocks.{name}.setup must be a text or a "
-                f"number, for a block of this model that has a changeover",
-                f"/{SECTION}/blocks/{name}",
-                hint="the setup key the station's last job left, e.g. its entity type"))
+                "E_INITIAL_BLOCK", f"initial_state: blocks.{name} must be a block of this model "
+                f"with what it carries: setup (a changeover), due (a BATCH's maximum wait, with "
+                f"parts waiting there) or next_entry (a CONVEYOR)", f"/{SECTION}/blocks/{name}",
+                hint="setup is the key the station's last job left; due and next_entry are "
+                     "absolute times, due at or after the clock"))
     serving: dict = {}      # resource -> units the in-service entities hold
     waiting: dict = {}      # block -> entities queued in it
     flagged = set()         # resources an entry of its own already exceeds
@@ -365,7 +388,8 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
         # An entity on a link ARRIVES like any other: only one put inside needs a holder.
         # A load on its trip is at its TRANSPORT (`_validate_fleets`); every other check of
         # an entry holds for it too.
-        riding = btype == "TRANSPORT" and entry.get("trip") is not None
+        riding = (btype == "TRANSPORT" and entry.get("trip") is not None) \
+            or (btype == "CONVEYOR" and entry.get("belt") is not None)     # `_validate_belts`
         if btype not in HOLDING_TYPES and not riding \
             and (entry.get("arrives") is None or btype == "CREATE"):
             problems.append(problem(
@@ -421,7 +445,10 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
             resource = (block.get("params") or {}).get("resource_name")
             if entry.get("member") is not None:     # of a set: the member holds the units
                 resource = entry["member"]
-            serving[resource] = serving.get(resource, 0) + in_service * quantity
+            # a "Delay Release" job holds its unit from an earlier block: its `holds` (D432)
+            if btype not in blocking.PROCESS_TYPES or str((block.get("params") or {}).get(
+                    "action", "Seize Delay Release")).startswith("Seize"):
+                serving[resource] = serving.get(resource, 0) + in_service * quantity
             if entry.get("arrives") is None and entry.get("place") is not False:
                 waiting[name] = waiting.get(name, 0) + count - in_service
             if capacity is not None and in_service * quantity > capacity:
@@ -440,6 +467,16 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                 "E_INITIAL_SET", f"initial_state: block '{name}': member '{member}' is not a "
                 f"member of the resource set the block seizes", f"{at}/member", block=name,
                 hint="member names which resource of the set serves the jobs in service"))
+
+        if entry.get("holds") is not None:
+            _validate_holds(layout, entry, block, blocks, sets, start, serving, at, problems)
+        released = _released(block)
+        if released and count and released not in (entry.get("holds") or {}):     # #449
+            problems.append(problem(
+                "E_INITIAL_RESOURCE", f"initial_state: block '{name}' releases '{released}', "
+                f"which the entry does not hold", f"{at}/holds", block=name,
+                hint="a job at a block that releases a resource holds it from an earlier "
+                     "block: say so in holds"))
 
         remaining = entry.get("remaining")
         if remaining is not None:
@@ -492,6 +529,7 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
 
     _validate_places(layout, state, blocks, sets, serving, waiting, start, problems)
     _validate_fleets(layout, state, blocks, start, problems)
+    _validate_belts(layout, state, blocks, start, problems)
 
     # Consistency over the whole state: a plant is where it goes wrong, and the engine does
     # not choose which observed entity to drop (D236).
@@ -530,6 +568,88 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
             "/simulation/warmup",
             hint="set simulation.warmup to 0 for a warm-started model"))
     return problems
+
+
+def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, problems) -> None:
+    """D432: `holds`, the resources one entity holds from an earlier block. Its units count
+    into *serving*, so the capacity and `busy` checks of the caller see them."""
+    holds = entry["holds"]
+    resources = {r.get("name") for r in layout.get("resources", []) if isinstance(r, dict)}
+    # What its own block, or the station that still holds it, seizes for it is not a hold.
+    own = {_seized(block)}
+    if isinstance(entry.get("held_by"), str):
+        own.add(((blocks.get(entry["held_by"]) or {}).get("params") or {}).get("resource_name"))
+
+    def fits(name, spec) -> bool:
+        if not (isinstance(spec, dict) and set(spec) <= {"since", "units", "member"}
+                and name not in own):
+            return False
+        member, units, since = spec.get("member"), spec.get("units", 1), spec.get("since")
+        return ((name in resources if member is None else member in sets.get(name, ()))
+                and isinstance(units, int) and not isinstance(units, bool) and units >= 1
+                and (since is None or (_number(since) and since <= start)))
+
+    if not (isinstance(holds, dict) and holds and entry.get("count") == 1
+            and all(fits(name, spec) for name, spec in holds.items())):
+        problems.append(problem(
+            "E_INITIAL_RESOURCE", f"initial_state: block '{entry.get('block')}': holds must name "
+            f"resources of the model the entity holds from an earlier block, each with an "
+            f"optional since, units and, of a set, its member", f"{at}/holds",
+            hint="one entity per entry; since is at or before the clock; not the resource its "
+                 "own block or the station in held_by seizes"))
+        return
+    for name, spec in holds.items():
+        unit = spec.get("member") or name       # #448: two holds of one unit count twice
+        serving[unit] = serving.get(unit, 0) + spec.get("units", 1)
+
+    # #449: each hold is given back further on, by its own block or one the entity reaches
+    links: dict = {}
+    for link in layout.get("links") or []:
+        if isinstance(link, dict):
+            links.setdefault(link.get("source"), []).append(link.get("target"))
+    stations = [n for n, b in blocks.items() if str(b.get("type", "")).upper() == "STATION"]
+
+    def after(n) -> list:       # a ROUTE or a TRANSPORT reaches its station by name, not link
+        jumps = str((blocks.get(n) or {}).get("type", "")).upper() in ("ROUTE", "TRANSPORT")
+        return links.get(n, []) + (stations if jumps else [])
+
+    for name in holds:
+        if _released(block) != name and not blocking.stops(
+                entry["block"], after, lambda n: _released(blocks.get(n) or {}) == name,
+                lambda n: True):
+            problems.append(problem(
+                "E_INITIAL_RESOURCE", f"initial_state: block '{entry['block']}': the entry "
+                f"holds '{name}', which no block after it releases", f"{at}/holds/{name}",
+                hint="a hold is given back by a RELEASE or a \"Delay Release\" further on"))
+
+
+def _released(block: dict) -> str | None:
+    """The resource *block* gives back from what an entity holds: a RELEASE's, or a PROCESS's
+    that releases without seizing ("Delay Release"); None for any other block."""
+    params, kind = block.get("params") or {}, str(block.get("type", "")).upper()
+    action = str(params.get("action", "Seize Delay Release"))
+    if kind == "RELEASE" or (kind in blocking.PROCESS_TYPES and action.endswith("Release")
+                             and not action.startswith("Seize")):
+        return params.get("resource_name") or None
+    return None
+
+
+def _seized(block: dict) -> str | None:
+    """The resource *block* seizes for an entity: a SEIZE's, or a PROCESS's whose action
+    seizes; None for any other block."""
+    params, kind = block.get("params") or {}, str(block.get("type", "")).upper()
+    if kind == "SEIZE" or (kind in blocking.PROCESS_TYPES and str(
+            params.get("action", "Seize Delay Release")).startswith("Seize")):
+        return params.get("resource_name") or None
+    return None
+
+
+def _waits(max_wait) -> bool:
+    """A BATCH's maximum wait that can run (D433): a number > 0, or an expression."""
+    try:
+        return float(max_wait) > 0
+    except (TypeError, ValueError):
+        return bool(str(max_wait or "").strip())
 
 
 def _places(block: dict) -> int:
@@ -587,9 +707,12 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
         station = (known and kind[holder] in blocking.PROCESS_TYPES
                    and params.get("action", "Seize Delay Release") == "Seize Delay Release"
                    and bool(params.get("resource_name")) and holder in blockers)
+        # a belt whose end hands its parts to another belt (D430)
+        belt = known and kind[holder] == "CONVEYOR" and params.get("accumulating", True) \
+            is not False and any(kind.get(t) == "CONVEYOR" for t in blockers.get(holder, ()))
         # A part that has a place of the block it waits at was accepted there: nothing
         # holds it any more.
-        if not (buffer or station) or entry.get("count") != 1 or entry.get("in_service") \
+        if not (buffer or station or belt) or entry.get("count") != 1 or entry.get("in_service") \
                 or entry.get("arrives") is not None or not reaches(holder, name) \
                 or (_places(blocks[name]) and place is not False):
             problems.append(problem(
@@ -603,6 +726,13 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
             waiting[holder] = waiting.get(holder, 0) + 1
             continue
         since, member = entry.get("held_since"), entry.get("member")
+        if belt:            # its cell is counted with the belt's (`_validate_belts`)
+            if not (_number(since) and since <= start) or member is not None:
+                problems.append(problem(
+                    "E_INITIAL_REMAINING", f"initial_state: block '{name}': held_since must be "
+                    f"the time the part entered the belt in held_by, at or before the clock",
+                    f"{at}/held_since", block=name, hint="a belt's part has no member"))
+            continue
         if since is not None and not (_number(since) and since <= start):
             problems.append(problem(
                 "E_INITIAL_REMAINING", f"initial_state: block '{name}': held_since must be a "
@@ -796,6 +926,148 @@ def _validate_fleets(layout, state, blocks, start, problems) -> None:
                          "is a vehicle at that node")
 
 
+_BELT_STAGES = ("cell", "slot", "ride", "packed", "move", "stop")
+_AT_THE_END = ("move", "stop", "handover")
+
+
+def _validate_belts(layout, state, blocks, start, problems) -> None:
+    """Conveyors (D429 to D431): the `belt` of each part on one, and what each belt holds.
+    Everything `Conveyor.restore` reads is checked here: a part's cell it takes at once, so
+    the parts that have one fit the belt's cells, and the chain it rebuilds by entry time is
+    one part at the end and the ones packed behind it."""
+    def kind(name) -> str:
+        return str((blocks.get(name) or {}).get("type", "")).upper() if isinstance(name, str) \
+            else ""
+
+    on = {}                 # belt -> [(entered, stage, until)] of the parts with a cell
+    queued: dict = {}       # end stop -> parts at it, and jobs waiting to seize it (D431)
+    stops = []              # (belt, end stop) of each part at one
+    for entry in state.get("entities") or []:
+        block = blocks.get(entry.get("block")) if isinstance(entry, dict) \
+            and isinstance(entry.get("block"), str) else None
+        waits = block and entry.get("arrives") is None and entry.get("held_by") is None \
+            and isinstance(entry.get("count"), int) and isinstance(entry.get("in_service", 0), int)
+        if waits and _seized(block):
+            queued[_seized(block)] = queued.get(_seized(block), 0) \
+                + entry["count"] - entry.get("in_service", 0)
+    for index, entry in enumerate(state.get("entities") or []):
+        if not isinstance(entry, dict):
+            continue
+        name, belt, holder = entry.get("block"), entry.get("belt"), entry.get("held_by")
+        if kind(holder) == "CONVEYOR":      # handed over by its end (`_validate_places`)
+            on.setdefault(holder, []).append((entry.get("held_since"), "handover", None))
+        if belt is None and kind(name) != "CONVEYOR":
+            continue
+        params = (blocks.get(name) or {}).get("params") or {}
+        stage = belt.get("stage") if isinstance(belt, dict) else None
+        until = belt.get("until") if isinstance(belt, dict) else None
+        entered = belt.get("entered") if isinstance(belt, dict) else None
+        timed, ridden = stage in ("slot", "ride", "move"), stage in ("ride", "packed", "move", "stop")
+        ok = (kind(name) == "CONVEYOR" and params.get("accumulating", True) is not False
+              and isinstance(belt, dict) and set(belt) <= {"stage", "until", "entered"}
+              and stage in _BELT_STAGES and entry.get("count") == 1
+              and not entry.get("in_service") and entry.get("arrives") is None
+              and entry.get("trip") is None and entry.get("place") is None
+              and ((_number(until) and until >= start) if timed else until is None)
+              and ((_number(entered) and entered <= start) if ridden else entered is None)
+              and (stage != "stop" or bool(str(params.get("exit_resource") or "").strip()))
+              and (holder is None or stage in ("cell", "slot")))
+        if not ok:
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: block '{str(name)[:80]}': a part on a belt is "
+                f"one entity at an accumulating CONVEYOR with its belt stage, until for slot, "
+                f"ride and move, and entered for ride and after", f"/{SECTION}/entities/{index}",
+                hint=f"stage is one of: {', '.join(_BELT_STAGES)}; until is at or after the "
+                     f"clock, entered at or before it; stop needs the belt's exit_resource"))
+        elif stage != "cell":
+            on.setdefault(name, []).append((entered, stage, until))
+            if stage == "stop":
+                stop = str(params["exit_resource"]).strip()
+                queued[stop] = queued.get(stop, 0) + 1
+                stops.append((name, stop))
+    for name, stop in stops:
+        if queued[stop] > 1:
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}': a part at its end stop "
+                f"'{stop}', which other jobs queue for, is not carried (D431)",
+                f"/{SECTION}/entities", block=name,
+                hint="take the state at another time"))
+    if not on:
+        return
+    units = units_of(layout.get("simulation"))
+    try:
+        network = build_network(layout.get("network"), units)
+    except Exception:       # a broken network is the network section's own problem
+        network = None
+    for name, parts in on.items():
+        at = f"/{SECTION}/entities"
+        if kind(name) != "CONVEYOR":
+            continue
+        chain = sorted((p for p in parts if p[1] not in ("slot", "ride")),
+                       key=lambda p: p[0] if _number(p[0]) else math.inf)
+        if any(p[1] in _AT_THE_END for p in chain[1:]) or (chain and chain[0][1] == "packed"):
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}': one part is at its end and "
+                f"the others past the ride are packed behind it, in the order they entered",
+                at, block=name, hint="move, stop and a part handed over are at the end"))
+        geometry = _geometry((blocks.get(name) or {}).get("params") or {}, units, network)
+        if geometry is None:
+            continue
+        cells, gap, travel = geometry
+        if len(parts) > cells:
+            problems.append(problem(
+                "E_INITIAL_QUEUE_CAPACITY", f"initial_state: {len(parts)} parts have a cell of "
+                f"belt '{name}', which has {cells}", at, block=name,
+                hint="the parts from slot on, and the one its end hands over, each have a cell"))
+        spec = (state.get("blocks") or {}).get(name)
+        if not _times_fit(parts, spec.get("next_entry") if isinstance(spec, dict) else None,
+                          start, cells, gap, travel):
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}': its times do not fit it: a "
+                f"ride lasts {travel:g}, the parts entered and board at least {gap:g} apart, "
+                f"and next_entry follows the last slot", at, block=name,
+                hint="ride ends at entered + the ride; a part past the ride entered at least "
+                     "the ride before the clock; move ends within one spacing of it"))
+
+
+def _geometry(params: dict, units, network) -> tuple | None:
+    """(cells, entry gap, ride) of a belt from its layout, as `Conveyor.capacity`,
+    `spacing / speed` and `travel_time` count them; None when its length cannot be known
+    here (its own validation says why)."""
+    from nagasim.core.blocks.conveyor import SPEC
+
+    def value(key, default):
+        return scaled(float(params.get(key, default) or default),
+                      field_factor(param(SPEC, key), params, units, SPEC.params))
+
+    try:
+        length, spacing, speed = value("length", 0.0), value("spacing", 1.0), value("speed", 1.0)
+        if not length > 0:
+            length = network.distance(params["from_node"], params["to_node"])
+        return max(int(length // spacing), 1), spacing / speed, length / speed
+    except Exception:       # no network, no path, a unit it does not know
+        return None
+
+
+def _times_fit(parts, next_entry, start, cells, gap, travel) -> bool:
+    """D234 for a belt's times, [(entered, stage, until)] of its parts with a cell: each
+    ride lasts the ride, a part past it entered a ride before the clock, entries (those made,
+    the slots, the next) are a gap apart, and nothing waits beyond the belt's own time."""
+    entered = sorted(p[0] for p in parts if p[0] is not None)
+    slots = sorted(p[2] for p in parts if p[1] == "slot")
+    times = entered + slots + ([next_entry] if next_entry is not None else [])
+    if not all(_number(t) for t in times):
+        return True         # refused by the check of its own key
+    eps = 1e-9 * max(1.0, abs(start) + travel)
+    return (all(t >= 0 for t in entered)
+            and all(b - a >= gap - eps for a, b in zip(times, times[1:]))
+            and all(t <= start + (cells + 1) * gap + eps for t in times)
+            and (next_entry is not None or not slots)
+            and all(abs(e + travel - u) <= eps if s == "ride" else e + travel <= start + eps
+                    for e, s, u in parts if e is not None)
+            and all(u <= start + gap + eps for e, s, u in parts if s == "move"))
+
+
 # ---------------------------------------------------------------- injection
 def _target_name(block) -> str:
     """The resource or set a PROCESS/SEIZE block seizes."""
@@ -869,6 +1141,38 @@ def _seize(block, entity, since, member):
             request.key = (request.priority, since, not request.preempt)
 
 
+def _hold(block, entity, holds: dict) -> None:
+    """D432: *entity* holds what it seized in an earlier block, taken for it at once, before
+    anything of the state asks for a unit (validation keeps them within capacity). Not
+    `acquire`: that would take the entity's own wait (`_since`) and accept a part a belt or a
+    station still holds."""
+    manager, now = block.ctx.resource_manager, block.env.now
+    for name, spec in holds.items():
+        target, since = manager.resolve(name), float(spec.get("since", now))
+        units = int(spec.get("units", 1))
+        rset = target if spec.get("member") is not None else None
+        member = manager.resolve(spec["member"]) if rset is not None else target
+        requests = [member.request(counted=rset is None, since=since) for _ in range(units)]
+        if rset is not None:
+            rset.granted(rset.enqueue(since), units)
+        for request in requests:        # as `_seize`: it holds its units as of then (#362)
+            request.time = since
+            request.key = (request.priority, since, not request.preempt)
+        if not hasattr(entity, "req_params"):
+            entity.req_params = {}
+        entity.req_params[name] = {"resource": member, "requests": requests, "set": rset,
+                                   "seized_at": since}
+        block.emit("entity_seized", entity=entity, resource=member.name)
+        # The grants are counted when SimPy processes them: before the statistics restart.
+        block.ctx.settling += 1
+        block.env.process(_granted(block.ctx, requests))
+
+
+def _granted(ctx, requests):
+    yield ctx.env.all_of(requests)
+    ctx.settling -= 1
+
+
 def _blocked_process(block, entity, since, member):
     """A finished part its station still holds (D381): the station seizes with the jobs in
     service, then keeps its unit until the part is accepted where it was put back. The
@@ -936,7 +1240,11 @@ def _down_until(resource, until: float):
 def put_back(env, waiting: list) -> None:
     """The waiting entities join where they waited, in the order of the state: each
     arrives at its block, a load asks its fleet for a vehicle again."""
-    for block, entity, *trip in waiting:
+    for item in waiting:
+        if not isinstance(item, tuple):     # a part at a belt's end stop (D429)
+            env.process(item)
+            continue
+        block, entity, *trip = item
         if trip:
             env.process(block.resume(entity, trip[0], None, trip[1]))
         else:
@@ -986,6 +1294,11 @@ def apply(env, model, state: dict) -> int:
             resource.has_controller = True     # it earns a summary row even if nothing seizes it
             env.process(_down_until(resource, float(until)))
 
+    for name in state.get("used") or ():       # it keeps its report row (#446)
+        found = ctx.resource_manager.all().get(name) or ctx.store_manager.get(name)
+        if found is not None:
+            found.log_events = max(found.log_events, 1)
+
     for name, spec in (state.get("resource_sets") or {}).items():
         rset = ctx.resource_manager.sets.get(name)
         if rset is not None and (spec or {}).get("cursor") is not None:
@@ -993,8 +1306,14 @@ def apply(env, model, state: dict) -> int:
 
     for name, spec in (state.get("blocks") or {}).items():
         block = model.blocks.get(name)
-        if block is not None and (spec or {}).get("setup") is not None:
+        if block is None:
+            continue
+        if spec.get("setup") is not None:
             block._previous_key = spec["setup"]     # what the station is set up for (D263)
+        if spec.get("due") is not None:
+            block.resume_timer(float(spec["due"]))  # before its parts arrive again (D433)
+        if spec.get("next_entry") is not None:
+            block._next_entry = float(spec["next_entry"])   # the belt's next slot (D430)
 
     fleets = state.get("fleets") or {}
     for name, spec in fleets.items():           # before any load: where each vehicle is
@@ -1005,6 +1324,7 @@ def apply(env, model, state: dict) -> int:
                                  and model.blocks[e["block"]].fleet_name == name})
 
     injected, waiting, blocked = 0, [], False
+    belts: dict = {}                # conveyor -> the parts on it (D429, D430)
     for entry in state.get("entities") or []:
         block = model.blocks.get(entry.get("block"))
         if block is None:
@@ -1016,6 +1336,8 @@ def apply(env, model, state: dict) -> int:
         for index in range(count):
             entity = _make_entity(ctx, entry)
             injected += 1
+            if entry.get("holds"):
+                _hold(block, entity, entry["holds"])
             # #338: it is in the model from t = 0, so a listener hears of it as of any
             # other entity. Without this a trace showed its block empty, and a work in
             # progress that went negative when it left.
@@ -1034,7 +1356,8 @@ def apply(env, model, state: dict) -> int:
                     waiting.append((block, entity, trip, entry.get("since")))
                 continue
             waits = (index >= in_service and entry.get("since") is not None
-                     and block.block.block_type in _QUEUEING)
+                     and (block.block.block_type in _QUEUEING     # or at a belt's end stop
+                          or (entry.get("belt") or {}).get("stage") == "stop"))
             if waits:       # before the listeners hear of it: a state reads it back (#348)
                 entity._since = float(entry["since"])
             if index >= in_service and entry.get("deadline") is not None:
@@ -1053,17 +1376,32 @@ def apply(env, model, state: dict) -> int:
                                                 member))
             else:
                 holder = model.blocks.get(entry.get("held_by"))
+                belt = entry.get("belt") or {}
                 if holder is not None and holder.block.block_type == "BUFFER":
                     holder.hold(entity)             # it has a place there (D381)
+                elif holder is not None and holder.block.block_type == "CONVEYOR":
+                    belts.setdefault(holder, []).append(        # its end hands it over (D430)
+                        (entity, {"stage": "handover", "entered": entry.get("held_since")}))
                 elif holder is not None:
                     ctx.settling += 1
                     blocked = True
                     env.process(_blocked_process(holder, entity, entry.get("held_since"),
                                                  entry.get("member")))
-                elif block.space is not None and block.space.capacity \
-                        and entry.get("place") is not False:
+                if belt.get("stage", "cell") != "cell":     # on the belt, past its cell (D429)
+                    belts.setdefault(block, []).append((entity, belt))
+                    continue
+                if block.block.block_type != "CONVEYOR" and block.space is not None \
+                        and block.space.capacity and entry.get("place") is not False:
                     block.space.occupy(entity)      # the place it had, before any other (D382)
                 waiting.append((block, entity))
+    # Every cell is taken before a part waiting for one asks; the part at an end stop joins
+    # that queue with the other waiting ones.
+    for belt in sorted(belts, key=lambda b: b.name):
+        for process, queues in belt.restore(belts[belt]):
+            if queues:
+                waiting.append(process)
+            else:
+                env.process(process)
     # #350: with jobs in service the controllers wait for them to seize, so an entity
     # put back now would find a unit free that is down or off shift. `setup_run` puts
     # them back once the controllers have acted. With none in service the controllers

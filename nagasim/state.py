@@ -159,7 +159,6 @@ def _refuse_kinds(session) -> None:
     """The element kinds with no vocabulary: refused whole, by name."""
     ctx = session.ctx
     for kind, found in (("agent populations", ctx.agent_system is not None),
-                        ("conveyors", ctx.conveyors),
                         ("a dispatch plan", ctx.plan_gates is not None)):
         if found:
             raise _unsupported(kind, "the model has some")
@@ -181,9 +180,7 @@ def _refuse_kinds(session) -> None:
         if block.hold_until_space:      # a place reserved before the job starts (D386)
             raise _unsupported("blocking before service", f"'{block.name}' holds until space")
         # A store's entities are carried by arriving again (D260); what runs beside them
-        # on a clock of its own is not.
-        if kind == "BATCH" and block._timer is not None:
-            raise _unsupported("a batch's maximum wait", f"'{block.name}' has one running")
+        # on a clock of its own is not, but for a batch's maximum wait (D433).
         if kind == "HOLD" and block.mode == "Condition" and block.waiting_entities \
                 and block._wake_keys()[1]:
             raise _unsupported("a polled condition", f"HOLD '{block.name}' scans on a clock")
@@ -195,8 +192,11 @@ def refused_kind(layout) -> str | None:
     """The first thing about the model *layout* that no state can carry (D234, D264), or
     None: asked before a start is made from a plant, which says nothing about a fleet and
     would otherwise start it as declared (D270). The model is built, not run."""
+    session = SimSession(layout, 0)
+    if session.ctx.conveyors:       # D434: no signal says where a part is on a belt
+        return "conveyors"
     try:
-        _refuse_kinds(SimSession(layout, 0))
+        _refuse_kinds(session)
     except StateError as exc:
         return exc.kind
     return None
@@ -360,6 +360,11 @@ def _holder(entity, held: set) -> dict:
     kind = holder.block.block_type
     if kind == "BUFFER":
         return {"held_by": holder.name}
+    if kind == "CONVEYOR":          # its end hands the part over (D430)
+        if not holder.accumulating:
+            raise _unsupported("a non-accumulating belt with parts on it", f"'{holder.name}'")
+        return {"held_by": holder.name,
+                "held_since": float(getattr(entity, blocking._TOKEN).entered)}
     target = initial_state._target_name(holder)
     if kind not in blocking.PROCESS_TYPES or not (holder.seizes and holder.releases) \
             or target not in held:
@@ -372,6 +377,46 @@ def _holder(entity, held: set) -> dict:
     return out
 
 
+def _holds(entity, names) -> dict:
+    """{"holds": ...} for the resources *entity* holds from an earlier block (D432), or {}."""
+    out = {}
+    for name in sorted(names):
+        info = entity.req_params[name]
+        if info.get("mover") is not None:
+            raise _unsupported("a worker fleet in use", f"entity {entity.id} holds '{name}'")
+        spec = {"since": float(info["seized_at"])}
+        if len(info["requests"]) != 1:
+            spec["units"] = len(info["requests"])
+        if info["set"] is not None:
+            spec["member"] = info["resource"].name
+        out[name] = spec
+    return {"holds": out} if out else {}
+
+
+def _on_belt(belt, entity, entry: dict, asking: dict) -> tuple:
+    """(its place in the list, the entry) of a part on an accumulating *belt* (D429): a part
+    waiting for a cell in the order of the belt's queue, any other by when it entered."""
+    if not belt.accumulating:
+        raise _unsupported("a non-accumulating belt with parts on it", f"'{belt.name}'")
+    stage, until, entered = getattr(entity, "_belt", None) or ("cell", None, None)
+    if stage == "cell":
+        if id(entity) not in asking:
+            raise _unsupported("a part between two stages of a belt", f"entity {entity.id}")
+        return (1, asking[id(entity)]), {**entry, "belt": {"stage": "cell"}}
+    if stage == "stop":
+        target = belt.ctx.resource_manager.resolve(belt.exit_resource)
+        if belt.blocked.level != 1.0 or target.queue_len.level > 1:
+            raise _unsupported("an end stop other jobs queue for, or that had a unit free",
+                               f"'{belt.name}'")
+        entry = {**entry, "since": float(entity._asked)}       # when it asked (D383)
+    record = {"stage": stage}
+    if until is not None:
+        record["until"] = float(until)
+    if entered is not None:
+        record["entered"] = float(entered)
+    return (0, (entered if entered is not None else until, 0)), {**entry, "belt": record}
+
+
 def _entities(session, tap: Tap, trips: dict | None = None) -> list:
     ctx, model, now = session.ctx, session.model, session.now
     trips = trips or {}
@@ -379,6 +424,7 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
     serving, others = [], []        # in service first: each must seize before a queue forms
     queued, kept, stored = [], [], 0    # waiting for a resource; waiting in a store
     outside = []                    # waiting for a place of a finite space (D382)
+    belts = []                      # on a belt (D429)
     asking = {id(request.entity): (order, place) for order, node in enumerate(
                   ctx.blocking_nodes.values()) if node.space is not None and node.space.capacity
               for place, request in enumerate(node.space._pool.queue)}
@@ -397,31 +443,26 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
         holder = _holder(entity, held)
         _uncharge(entity, entry)
         if id(entity) in trips:
-            if held:
-                raise _unsupported("a job that holds a resource between blocks",
-                                   f"entity {entity.id} on a vehicle")
             where, trip, asked = trips[id(entity)]
-            entry.update(block=where, trip=trip)
+            entry.update(block=where, trip=trip, **_holds(entity, held))
             if asked is not None:
                 entry["since"] = asked
             riding[id(entity)] = entry
             continue
         if arrives is not None and arrives >= now:
-            if held:
-                raise _unsupported("a job that holds a resource between blocks",
-                                   f"entity {entity.id} on its way to '{block_name}'")
-            others.append({**entry, "arrives": float(arrives)})
+            others.append({**entry, "arrives": float(arrives), **_holds(entity, held)})
+        elif kind == "CONVEYOR":
+            belts.append(_on_belt(block, entity, {**entry, **holder, **_holds(entity, held)},
+                                  asking))
         elif entity in block.active_entity and kind in initial_state.SERVICE_TYPES:
             ends = entity._ends
             target = initial_state._target_name(block)
             seized = {target} if getattr(block, "seizes", False) or kind == "SEIZE" else set()
-            if seized and not held:     # it gave its unit up and waits to resume
+            if seized - held:           # it gave its unit up and waits to resume
                 raise _unsupported("a job preempted, changing over or mid-cycle",
                                    f"entity {entity.id} in '{block_name}'")
-            if held != seized:
-                raise _unsupported("a job that holds a resource between blocks",
-                                   f"entity {entity.id} in '{block_name}' holds "
-                                   f"{', '.join(sorted(held)) or 'nothing'}")
+            entry.update(_holds(entity, held - seized))     # from an earlier block (D432)
+            held = seized
             if ends is None or ends < now:
                 raise _unsupported("a job preempted, changing over or mid-cycle",
                                    f"entity {entity.id} in '{block_name}'")
@@ -431,13 +472,14 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
                 if entity.req_params[target]["set"] is not None:    # and on which member
                     entry["member"] = entity.req_params[target]["resource"].name
             serving.append(entry)
-        elif id(entity) in asking and not held:
+        elif id(entity) in asking:
             if getattr(block, "balk_if", "") or getattr(block, "renege_after", ""):
                 raise _unsupported("a finite queue that balks or reneges, with an entity "
                                    "waiting for a place", f"'{block_name}'")
-            outside.append((asking[id(entity)], {**entry, **holder, "place": False}))
-        elif kind in _QUEUEING and not held:
-            entry.update(holder)
+            outside.append((asking[id(entity)], {**entry, **holder, "place": False,
+                                                 **_holds(entity, held)}))
+        elif kind in _QUEUEING:
+            entry.update(holder, **_holds(entity, held))
             since = float(getattr(entity, "_asked", since))     # a place may have come first (D383)
             if _rank_can_drift(session, initial_state._target_name(block)):
                 raise _unsupported("a ranked queue whose ranks were fixed when each entity "
@@ -447,17 +489,17 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
             if getattr(block, "renege_after", ""):
                 entry["deadline"] = float(entity._deadline)     # D261: none is drawn twice
             queued.append((getattr(entity, "_queued", -1), len(queued), entry))
-        elif kind in _STORED and not held:
+        elif kind in _STORED:
             if kind == "MATCH" and entity.e_type not in block.type_store_map:
                 # Unmapped, a type goes to the first empty store: where it sits is history.
                 raise _unsupported("a MATCH with no type_store_map",
                                    f"'{block_name}' holds a {entity.e_type}; map its types")
             stored += 1
-            kept.append((block_name, _place(block, entity), len(kept), {**entry, "since": since}))
+            kept.append((block_name, _place(block, entity), len(kept),
+                         {**entry, "since": since, **_holds(entity, held)}))
         else:
             raise _unsupported(
-                "an entity where it is", f"entity {entity.id} in the {kind} '{block_name}'"
-                + (f" holds {', '.join(sorted(held))}" if held else ""))
+                "an entity where it is", f"entity {entity.id} in the {kind} '{block_name}'")
     held_in_stores = sum(len(store.items) for store in ctx.store_manager.all())
     if held_in_stores != stored:
         raise _unsupported("a store's content", f"{held_in_stores - stored} items are not "
@@ -478,6 +520,7 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
     others.sort(key=lambda e: e["arrives"])
     others = [e for *_key, e in sorted(queued, key=lambda q: q[:2])] \
         + [riding[key] for key in trips if key in riding] \
+        + [e for _key, e in sorted(belts, key=lambda b: b[0])] \
         + [e for _key, e in sorted(outside, key=lambda o: o[0])] \
         + [e for *_key, e in sorted(kept, key=lambda k: k[:3])] + others
     if len(live) != len(serving) + len(others):
@@ -509,6 +552,12 @@ def _refuse_due(session, tap: Tap) -> None:
             if getattr(e, "_arrives", None) and e._arrives[1] == now]
     due += [f"an arrival at '{name}'" for name, block in session.model.blocks.items()
             if getattr(block, "next_at", None) == now]
+    due += [f"entity {i} on the belt '{b}'" for i, (b, _a, _s) in tap.where.items()
+            if i in live and b in ctx.conveyors and (getattr(live[i], "_belt", None)
+                                                     or (None, None))[1] == now]
+    due += [f"the maximum wait of '{name}'" for name, block in session.model.blocks.items()
+            if block.block.block_type == "BATCH" and block._timer is not None
+            and block._due == now]
     due += [f"failure '{f}' of '{name}'" for name, r in ctx.resource_manager.resources.items()
             for f, (_phase, t) in r.failure_clock.items() if t == now]
     before = math.nextafter(now, -math.inf)
@@ -553,6 +602,13 @@ def _read(session, tap: Tap) -> dict:
             raise _unsupported("a resource taken down by an earlier state", f"'{name}'")
     if resources:
         state["resources"] = resources
+    # #446: a resource or a store earns a report row once anything happened to it; one
+    # used only before the clock still has its row in the uninterrupted run.
+    used = [name for name, r in ctx.resource_manager.all().items()
+            if r.log_events and not getattr(r, "has_controller", False)]
+    used += [store.name for store in ctx.store_manager.all() if store.log_events]
+    if used:
+        state["used"] = sorted(used)
     cursors = {name: {"cursor": rset._cursor}
                for name, rset in ctx.resource_manager.sets.items() if rset.rule == "Cyclical"}
     if cursors:
@@ -565,6 +621,11 @@ def _read(session, tap: Tap) -> dict:
         if isinstance(spec["setup"], bool) or not isinstance(spec["setup"], (str, int, float)):
             raise _unsupported(f"the setup of station '{name}'",
                                "its setup key is neither a text nor a number")
+    for name, block in session.model.blocks.items():
+        if block.block.block_type == "BATCH" and block._timer is not None:
+            setups.setdefault(name, {})["due"] = float(block._due)     # D433
+        if block.block.block_type == "CONVEYOR" and block._next_entry > now:
+            setups.setdefault(name, {})["next_entry"] = float(block._next_entry)   # D430
     if setups:              # D263: what each station is set up for; a changeover under
         state["blocks"] = setups        # way is refused with the job that is in it
     fleets, trips = _fleets(session)
@@ -723,6 +784,20 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
         if entity["behind"] is not None:
             inside[entity["behind"]] = inside.get(entity["behind"], 0) + 1
 
+    # The resources a job carries on to a later block: a SEIZE's, a PROCESS's that seizes and
+    # does not release, a belt's end stop. Any other a part holds elsewhere is the plant
+    # contradicting itself, which `start` refuses (E_INITIAL_BUSY).
+    carried = set()
+    for block in blocks.values():
+        params, kind = block.get("params") or {}, str(block.get("type", "")).upper()
+        action = str(params.get("action", "Seize Delay Release"))
+        if kind == "SEIZE" or (kind in blocking.PROCESS_TYPES and action.startswith("Seize")
+                               and not action.endswith("Release")):
+            carried.add(params.get("resource_name"))
+        if kind == "CONVEYOR":
+            carried.add(params.get("exit_resource"))
+    carried &= declared
+
     def entry(entity):
         name, kind, places = entity["block"], entity["kind"], entity["places"]
         out = {"block": name, "count": 1}
@@ -740,6 +815,15 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
             if places:
                 out["place"] = False
             return out
+        # #445: what it holds that its own block does not seize for it, it holds from an
+        # earlier block (D432); put back without it, its RELEASE downstream would raise.
+        params = blocks.get(name, {}).get("params") or {}
+        own = params.get("resource_name") if entity["serving"] and (kind == "SEIZE" or (
+            kind in blocking.PROCESS_TYPES and str(params.get("action", "Seize Delay Release"))
+            .startswith("Seize"))) else None
+        extra = {r: {} for r in entity["holds"] if r != own and r in carried}
+        if extra:
+            out["holds"] = extra
         if entity["serving"]:
             out["in_service"] = 1
             return out
@@ -780,6 +864,17 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                        ("levels", reported)):
         if value:
             state[key] = value
+    try:
+        # ponytail: builds the model once more per call; cache by model hash if a twin step
+        # ever feels it
+        refused = refused_kind(model)
+    except schema.ModelValidationError:     # a model that cannot be built: `start` says why
+        refused = None
+    if refused:         # #450: refused by name here too, not only by the twin (D434)
+        problems.append(problem(
+            "E_STATE_UNSUPPORTED", f"a state from a plant cannot carry {refused}",
+            f"/{initial_state.SECTION}",
+            hint="see the coverage table of the state documentation"))
     for kind, has, key in _KINDS:
         if has(model) and (key is None or not state.get(key)):
             problems.append(problem(

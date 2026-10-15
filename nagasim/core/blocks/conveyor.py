@@ -51,6 +51,7 @@ from nagasim.core.quantities import field_factor, param, scaled
 from nagasim.core.blocking import Space, accept, arm, check_deadlock
 from nagasim.core.seizing import acquire
 from nagasim.core.stats import Tally, TimeWeighted
+from nagasim.core.utils import timeout_at
 
 log = logging.getLogger(__name__)
 
@@ -180,8 +181,11 @@ class Conveyor(BaseProcess):
             remaining -= self.env.now - started
 
     # -- the ride ------------------------------------------------------------
+    # Each stage writes where the part is on the belt as `entity._belt` = (stage, the time
+    # it ends or None, when it entered or None), for a state (D429, the D383 pattern).
     def self_process(self, entity):
         spacing_time = self.spacing / self.speed
+        entity._belt = ("cell", None, None)
         # A free cell on the belt. The upstream machine is NOT released yet:
         # the part is only off it once it is physically on the belt, which is
         # after the stopped-belt wait and the entry rhythm below (PHASE4 T7).
@@ -194,29 +198,54 @@ class Conveyor(BaseProcess):
         slot = max(self._next_entry, self.env.now)
         self._next_entry = slot + spacing_time
         if slot - self.env.now > _EPS:
+            # not `slot`: the float the timeout lands on (a state taken again matches)
+            entity._belt = ("slot", self.env.now + (slot - self.env.now), None)
             yield self.env.timeout(slot - self.env.now)
+        yield from self._board(entity, cell)
+
+    def _board(self, entity, cell):
         accept(entity)                              # on the belt: the machine is free
         entered_at = self.env.now
         self.entered += 1
         self.occupancy.add(1, entered_at)
+        yield from self._carry(entity, cell, entered_at)
 
-        yield from self._ride(self.travel_time)
-
+    def _carry(self, entity, cell, entered_at, end=None):
+        """The ride to the end (until *end*, put back by a state), then the way off."""
+        if end is None:
+            entity._belt = ("ride", self.env.now + self.travel_time, entered_at)
+            yield from self._ride(self.travel_time)
+        else:
+            entity._belt = ("ride", end, entered_at)
+            yield timeout_at(self.env, end)
         ahead = self._prev_clear
         clear = self.env.event()
         self._prev_clear = clear
-        if ahead is not None and not ahead.triggered:
+        yield from self._leave(entity, cell, entered_at, ahead, clear)
+
+    def _leave(self, entity, cell, entered_at, ahead, clear, stage=None, until=None):
+        """From the end of the ride off the belt. *stage* is where a state put the part back
+        (D429): moving up until *until*, at the end stop, or handed over (D430)."""
+        if stage == "move":
+            entity._belt = ("move", until, entered_at)
+            yield timeout_at(self.env, until)
+        elif ahead is not None and not ahead.triggered:
             # Packed against the entity in front: move up as it leaves.
+            entity._belt = ("packed", None, entered_at)
             if not self.accumulating:
                 self._stop_belt()
             yield ahead
             if not self.accumulating:
                 self._start_belt()
-            yield from self._ride(spacing_time)
+            entity._belt = ("move", self.env.now + self.spacing / self.speed, entered_at)
+            yield from self._ride(self.spacing / self.speed)
 
-        if self.exit_resource:
+        if self.exit_resource and stage != "handover":
             blocking = self.ctx.resource_manager.resolve(self.exit_resource)
-            free_now = blocking is not None and getattr(blocking, "free", 0) >= 1
+            # put back at the stop, it found none free (a state refuses any other case)
+            free_now = stage != "stop" and blocking is not None \
+                and getattr(blocking, "free", 0) >= 1
+            entity._belt = ("stop", None, entered_at)
             if not free_now:
                 self._end_blocked(True)
             yield from acquire(self, entity, self.exit_resource)
@@ -226,7 +255,7 @@ class Conveyor(BaseProcess):
         if self.block_after_service:
             # Back-pressure (PHASE6 W3 M6, D115), AFTER the end stop: the part
             # holds its exit unit and its cell until the next belt takes it.
-            yield from self._hand_over(entity)
+            yield from self._hand_over(entity, entered_at, forward=stage != "handover")
         clear.succeed()
         t = self.env.now
         self.exited += 1
@@ -238,13 +267,16 @@ class Conveyor(BaseProcess):
         if not self.block_after_service:
             self.forward(entity, 0)
 
-    def _hand_over(self, entity):
+    def _hand_over(self, entity, entered_at, forward=True):
         """Generator: forward *entity* and keep it on the belt -- its cell,
         its place at the end -- until the downstream belt accepts it (the D78
         token). A DECIDE in between is transparent, so a full CHOSEN branch
-        blocks the belt; belts merging on one entry queue FIFO on its cells."""
+        blocks the belt; belts merging on one entry queue FIFO on its cells.
+        *forward* False: a state put the part back where it waits (D430)."""
         token = arm(self, entity)
-        self.forward(entity, 0)
+        token.entered = entered_at          # D430: when it entered this belt, for a state
+        if forward:
+            self.forward(entity, 0)
         if token.triggered:
             return
         self.held_downstream = True
@@ -256,6 +288,37 @@ class Conveyor(BaseProcess):
 
     def self_run(self, entity):
         self.env.process(self.self_process(entity))
+
+    # -- put back by a state (D429, D430) ------------------------------------
+    def restore(self, parts) -> list:
+        """The parts a state puts back on this belt, [(entity, {stage, until, entered})]; the
+        one its end still hands over has stage "handover". Each takes its cell at once and
+        the chain of the parts past the ride is rebuilt in the order they entered (the order
+        of an accumulating belt). Returns [(generator, joins a queue)]: the part at the end
+        stop asks for a unit, so the caller puts it back with the waiting ones."""
+        out = []
+        for entity, belt in sorted(parts, key=lambda p: (p[1].get("entered") is None,
+                                                         p[1].get("entered") or 0.0)):
+            stage, cell = belt["stage"], self.space.claim()
+            ahead = clear = None
+            if stage in ("packed", "move", "stop", "handover"):
+                ahead, clear = self._prev_clear, self.env.event()
+                self._prev_clear = clear
+            out.append((self._resume(entity, belt, cell, ahead, clear), stage == "stop"))
+        return out
+
+    def _resume(self, entity, belt, cell, ahead, clear):
+        stage, until, entered = belt["stage"], belt.get("until"), belt.get("entered")
+        if stage == "slot":
+            entity._belt = ("slot", until, None)
+            yield timeout_at(self.env, until)
+            yield from self._board(entity, cell)
+            return
+        self.occupancy.add(1, self.env.now)
+        if stage == "ride":
+            yield from self._carry(entity, cell, entered, until)
+        else:
+            yield from self._leave(entity, cell, entered, ahead, clear, stage, until)
 
     def reset_stats(self, t: float) -> None:
         """Warm-up hook, called from `sim_runner.reset_statistics`."""

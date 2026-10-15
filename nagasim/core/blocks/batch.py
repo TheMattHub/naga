@@ -6,6 +6,7 @@ from nagasim.core.block_spec import BlockSpec, ParamSpec
 from nagasim.core.blocks._common import make_batch_entity
 from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.quantities import field_factor, param, scaled
+from nagasim.core.utils import timeout_at
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class Batch(BaseProcess):
         # Identity of the group the armed timer belongs to; None means no timer
         # is waiting for anything (see the tie rule above).
         self._timer = None
+        self._due = None        # D433: when the armed timer falls due, for a state
 
     def self_process(self, entity):
         if self.ctx.debug:
@@ -60,6 +62,7 @@ class Batch(BaseProcess):
                 # mean a batch of one, which is never what a BATCH is for.
                 if patience > 0:
                     self._timer = object()
+                    self._due = self.env.now + patience
                     self.env.process(self._release_partial(self._timer, patience))
             return
 
@@ -79,8 +82,14 @@ class Batch(BaseProcess):
             raise ExpressionError(f"Block '{self.name}': max_wait: {exc}") from None
         return max(scaled(value, self._wait_factor), 0.0)
 
-    def _release_partial(self, token, patience):
-        yield self.env.timeout(patience)
+    def resume_timer(self, due: float) -> None:
+        """A state put back a running maximum wait (D433): it falls due at *due*, and the
+        parts arriving again find it armed and arm none."""
+        self._timer, self._due = object(), due
+        self.env.process(self._release_partial(self._timer, None, due))
+
+    def _release_partial(self, token, patience, due=None):
+        yield self.env.timeout(patience) if due is None else timeout_at(self.env, due)
         yield self.env.timeout(0)       # tie rule: a batch filled in this instant wins
         if self._timer is not token or not self.store.items:
             return
