@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 (2026-10-15)
+
+The twin's live-data side is now tested against software we did not write: Mosquitto, an
+independent Sparkplug B edge node and an asyncua OPC UA server, with two Sparkplug fixes found
+that way. A state now carries parts on a conveyor and a job holding a resource between blocks,
+so the bundled `warehouse_forklifts` model restarts exactly from a state taken at any time (from
+a plant, a conveyor is still refused: no plant signal says where a part is on the belt). A state document that
+was quietly wrong (a batch timer with nothing waiting, a unit held twice, a hold nothing
+releases) is now refused by name.
 
 - Tested: the MQTT reader, the MQTT outbox and Sparkplug B against Mosquitto 2.1.2 and an
   independent Sparkplug B edge node (protobuf, Tahu's encoding), the OPC UA reader against an
