@@ -11,6 +11,18 @@
   cycle takes a whole one; a cobot trip at a tending station is put back with its place cycle;
   a tending cycle time, a place into a machine with a queue, and an entry a TRANSPORT takes on
   with no station are checked on load.
+- State: every bundled model that a state carries is now reproduced exactly from it: an order's
+  counters, the order of arrivals due at one instant, and a schedule's offset are carried.
+- Changed: in deterministic mode a Schedule arrival comes without a random draw: arrival k comes
+  when the schedule's integrated rate reaches k, so results no longer depend on the seed.
+- Changed results: the time-series sampler, its auxiliaries and dashboard widgets no longer
+  change the level accounting; six bundled models move in the last bits (at most
+  2.5e-14 relative), no value rounded to 4 decimals. A flow's Peak Rate no longer counts a rate
+  held for float noise after a warm-up: `sd_population`, deterministic, warm-up 32.8,
+  reports 21.403 instead of 21.728.
+- Fixed: a deterministic Schedule arrival no longer hangs the run on a tiny rate or a repeating
+  schedule whose bounds are not exact floats; a state document with arrival keys on
+  a Schedule CREATE, a huge integer, or an order counter below zero is refused by name.
 
 ## 0.7.2 (2026-10-15)
 

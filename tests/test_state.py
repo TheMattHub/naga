@@ -186,7 +186,7 @@ def test_a_state_taken_from_a_run_names_what_was_there():
     assert doc["taken"] == {"source": "run", "at": 8.5, "seed": 3, "engine": nagasim.__version__}
     assert doc["state"] == {
         "clock": 8.5,
-        "arrivals": {"c": {"count": 5, "next": 10.0}},
+        "arrivals": {"c": {"count": 5, "next": 10.0, "scheduled": 8.0}},
         "resources": {"Server": {"failures": {"F": {"next": 100.0}}}},
         "entities": [{"block": "p", "count": 1, "e_type": "DEFAULT", "age": 0.5,
                       "attributes": {"cost": 0.0}, "in_service": 1, "ends": [9.5],
@@ -261,7 +261,8 @@ def test_a_state_between_two_states_is_taken_again():
     model = _line(failures=FAILURE)
     first, _ = state.start(model, state.take(model, 8.5))
     again = state.take(first, 9.0)["state"]
-    assert again["entities"][0]["ends"] == [9.5] and again["arrivals"]["c"] == {"count": 5, "next": 10.0}
+    assert again["entities"][0]["ends"] == [9.5]
+    assert again["arrivals"]["c"] == {"count": 5, "next": 10.0, "scheduled": 8.0}
 
 
 # ---------------------------------------------------------------- the exit check (D233)

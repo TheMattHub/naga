@@ -980,8 +980,12 @@ class LevelSystem:
             flow.impact += flow.impact_factor * quantity
             # The peak counts a rate that was actually HELD for some time, so a
             # rate written and superseded at the same instant never sets it --
-            # which is what makes it a demand charge's peak power.
-            flow.peak = max(flow.peak, flow.actual)
+            # which is what makes it a demand charge's peak power. "Some time" is
+            # more than EPS, the engine's own instant (#465): a warm-up 7e-15 before
+            # a grid point (32.8 against 328 * 0.1) held the step before it. Past
+            # t = 2**21 (~2.1e6) four ulps of t exceed EPS: the sliver is then that wide.
+            if dt > max(EPS, 4 * math.ulp(t)):
+                flow.peak = max(flow.peak, flow.actual)
             if flow.actual < flow.desired - EPS:
                 flow.limited_time += dt
         for level in self.levels.values():

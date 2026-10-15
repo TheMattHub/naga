@@ -134,7 +134,10 @@ _QUEUEING = frozenset(queueing_types()) | {"HOLD", "BATCH", "MATCH"}   # ... or 
 def _number(value) -> bool:
     """A finite number. A state inside a model file is as untrusted as a state document,
     which `state.check` holds to the same: no time or count is Infinity or NaN."""
-    return is_number(value) and math.isfinite(value)
+    try:
+        return is_number(value) and math.isfinite(value)
+    except OverflowError:           # an int too large for a float, 10**400 (#479)
+        return False
 
 
 def has_initial_state(layout: dict) -> bool:
@@ -270,19 +273,67 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
 
     start = clock if _number(clock) and clock > 0 else 0.0
     arrivals = state.get("arrivals") or {}
+    ties: dict = {}         # (next, scheduled) -> [(name, rank or None)]: #474, ranked per group
     for name, spec in (arrivals.items() if isinstance(arrivals, dict) else [("", None)]):
         block = blocks.get(name)
         count = spec.get("count", 0) if isinstance(spec, dict) else None
         due = spec.get("next") if isinstance(spec, dict) else None
-        if block is None or block.get("type", "").upper() != "CREATE" \
+        drawn = spec.get("scheduled") if isinstance(spec, dict) else None
+        rank = spec.get("rank") if isinstance(spec, dict) else None
+        ranked = isinstance(spec, dict) and "rank" in spec
+        bad_rank = ranked and (drawn is None or not isinstance(rank, int)
+                               or isinstance(rank, bool) or rank < 0)
+        # Only a drawn gap has a next time (what `_read` writes, #478): on a Schedule or
+        # Orders CREATE `next` would overload its start_time.
+        timed = due is not None or drawn is not None or ranked
+        mode = ((block or {}).get("params") or {}).get("arrival_mode", "Interarrival")
+        if bad_rank or block is None or block.get("type", "").upper() != "CREATE" \
+                or (timed and mode != "Interarrival") \
                 or not isinstance(count, int) or isinstance(count, bool) or count < 0 \
-                or (due is not None and (not _number(due) or due < start)):
+                or count > 2 ** 53 \
+                or (due is not None and (not _number(due) or due < start)) \
+                or (drawn is not None and (due is None or not _number(drawn)
+                                           or not 0 <= drawn <= start)):
             problems.append(problem(
                 "E_INITIAL_ARRIVALS", f"initial_state: arrivals of '{name}' must be a count >= 0 "
-                f"and, optionally, a next time at or after the clock, for a CREATE block",
-                f"/{SECTION}/arrivals/{name}",
-                hint="count is the arrivals already made; next is the absolute time of the "
-                     "next one"))
+                f"and, for an Interarrival CREATE, optionally a next time at or after the "
+                f"clock and when it was scheduled, at or before it", f"/{SECTION}/arrivals/{name}",
+                hint="count is the arrivals already made, at most 2**53 (#475: an exact float, "
+                     "what a deterministic schedule's walk counts in); next is the absolute "
+                     "time of the next one; scheduled is the time it was drawn at; rank, a "
+                     "whole number, orders the ones drawn for one instant at one instant"))
+        elif drawn is not None:
+            ties.setdefault((due, drawn), []).append((name, rank))
+    for tied in ties.values():
+        ranks = [rank for _name, rank in tied if rank is not None]
+        # A rank on all of two or more, each its own, or on none (an older document: block
+        # order). Partial ranks would read as an order they do not give (an unranked one first).
+        if ranks and (len(tied) < 2 or len(ranks) < len(tied) or len(set(ranks)) < len(ranks)):
+            for name, _rank in tied:
+                problems.append(problem(
+                    "E_INITIAL_ARRIVALS", f"initial_state: arrivals of '{name}' tie with "
+                    f"{len(tied) - 1} other(s) at one next and scheduled time; their ranks must "
+                    f"be on all of them and different", f"/{SECTION}/arrivals/{name}/rank",
+                    hint="rank orders two or more drawn for one instant at one instant: "
+                         "0, 1, ... within that group, or no rank on any of them"))
+
+    ids = {str(o.get("id", "")) for o in layout.get("orders") or [] if isinstance(o, dict)}
+    orders = state.get("orders") or {}
+    for name, spec in (orders.items() if isinstance(orders, dict) else [("", None)]):
+        made, done, at = ((spec.get(k) for k in ("created", "completed", "completed_at"))
+                          if isinstance(spec, dict) else (None, None, None))
+        counts = all(isinstance(n, int) and not isinstance(n, bool) for n in (made, done))
+        if name not in ids or not isinstance(spec, dict) \
+                or not set(spec) <= {"created", "completed", "completed_at"} \
+                or not counts or made < 0 or done < 0 \
+                or (at is None) != (done == 0) \
+                or (at is not None and not (_number(at) and 0 <= at < start)):
+            problems.append(problem(
+                "E_INITIAL_ORDERS", f"initial_state: order '{name}' must be a declared order "
+                f"with created and completed >= 0 and, once one is completed, completed_at "
+                f"before the clock", f"/{SECTION}/orders/{name}",
+                hint="the counters of its release and completion before the clock; a "
+                     "DUPLICATE's copies are completed for the order, never created by it"))
 
     failing: dict = {}
     for entry in layout.get("failures", []) or []:
@@ -1771,6 +1822,9 @@ def apply(env, model, state: dict) -> int:
             if spec.get("next") is not None:
                 # CREATE's own switch-on time: it waits for it, then arrives without a draw.
                 block.start_time = block.next_at = float(spec["next"])
+            if spec.get("scheduled") is not None:     # orders the starts (#467)
+                block.scheduled_at = float(spec["scheduled"])
+            block.rank = spec.get("rank")             # and breaks a tie on it (#472)
 
     for name, spec in (state.get("resources") or {}).items():
         resource = ctx.resource_manager.get(name)
@@ -1923,6 +1977,14 @@ def apply(env, model, state: dict) -> int:
     # them back once the controllers have acted. With none in service the controllers
     # act first anyway, and with no controller at all nothing can be taken: the old order
     # stands, so a warm start that needs none of this runs event for event as before.
+    # #463: a carried order's counters are the state's, which count its jobs on the floor
+    # too: set after them, so `_make_entity`'s count for a job of an order is replaced.
+    for name, spec in (state.get("orders") or {}).items():
+        order = ctx.orders.get(name)
+        if order is not None:
+            order.created, order.completed = int(spec["created"]), int(spec["completed"])
+            done_at = spec.get("completed_at")
+            order.last_completion = None if done_at is None else float(done_at)
     if ctx.settling and (blocked or any(r.has_controller
                                         for r in ctx.resource_manager.resources.values())):
         ctx.put_back = waiting

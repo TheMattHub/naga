@@ -646,6 +646,8 @@ def _read(session, tap: Tap) -> dict:
     _refuse_due(session, tap)
     ctx, now = session.ctx, session.now
     state: dict = {"clock": float(now)}
+    if ctx.schedule_offset:     # #480: the calendar's phase, which the section replaces
+        state["schedule_offset"] = float(ctx.schedule_offset)
     if ctx.variables:
         state["variables"] = {name: _plain(value) for name, value in ctx.variables.items()}
     levels = _levels(session)
@@ -661,8 +663,34 @@ def _read(session, tap: Tap) -> dict:
         if block.arrival_mode == "Interarrival" and block.next_at is not None \
                 and block.next_at >= now:
             arrivals[name]["next"] = float(block.next_at)
+            if block.scheduled_at is not None:      # #467; None: an older document's
+                arrivals[name]["scheduled"] = float(block.scheduled_at)
+    # #472: two drawn in one instant for one instant come in their events' queue order,
+    # which `rank` carries (only on such a tie); put back and not yet run, their own rank.
+    eids = {id(event): eid for _t, _p, eid, event in session.env._queue}
+    blocks = session.model.blocks
+    ranked = sorted((n for n, spec in arrivals.items() if "scheduled" in spec),
+                    key=lambda n: (eids.get(id(blocks[n].pending), math.inf),
+                                   -1 if blocks[n].rank is None else blocks[n].rank))
+    ties: dict = {}
+    for name in ranked:
+        ties.setdefault((arrivals[name]["next"], arrivals[name]["scheduled"]), []).append(name)
+    for tied in ties.values():
+        if len(tied) > 1:
+            for place, name in enumerate(tied):     # #474: ranked within its own group
+                arrivals[name]["rank"] = place
     if arrivals:
         state["arrivals"] = arrivals
+    # #463: the order summary is not windowed, so an order released (or done) before the
+    # clock keeps its counters; they already count its jobs on the floor.
+    orders = {}
+    for order in (ctx.orders or {}).values():
+        if order.created:
+            orders[order.id] = {"created": order.created, "completed": order.completed}
+            if order.last_completion is not None:
+                orders[order.id]["completed_at"] = float(order.last_completion)
+    if orders:
+        state["orders"] = orders
     resources = {}
     for name, resource in ctx.resource_manager.resources.items():
         failures = {fname: ({"next": float(t)} if phase == "up"

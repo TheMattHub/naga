@@ -533,6 +533,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_INITIAL_REMAINING": "remaining is not a list of non-negative numbers, or is longer than in_service; "
                            "or ends, arrives or since is not an absolute time the entry can carry.",
     "E_INITIAL_ARRIVALS": "initial_state.arrivals does not give a CREATE block a count and a next time.",
+    "E_INITIAL_ORDERS": "initial_state.orders names an order the model does not declare, or gives "
+                        "it counters or a completion time that cannot be.",
     "E_INITIAL_FAILURE": "initial_state.resources.<name>.failures names a failure the resource does "
                          "not have, or gives it no next or down_until time.",
     "E_INITIAL_SET": "initial_state names a resource set, a cursor or a member the model does not have.",

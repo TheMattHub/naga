@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import math
 
 from nagasim.core.agents import AgentRef
 from nagasim.core.base_process import BaseProcess
@@ -58,6 +59,13 @@ class Create(BaseProcess):
         self.counter_arrivals = 0
         self.created_entities = 0
         self.next_at = None     # D235: the time of the next arrival, once one is drawn
+        # #467: when it was drawn, which orders two arrivals due at one instant (SimPy
+        # serves equal times in the order they were scheduled); a state carries it.
+        self.scheduled_at = None
+        # #472: that arrival's event; its place in SimPy's queue breaks a tie on
+        # scheduled_at (two drawn in one instant), and `rank` carries it
+        self.pending, self.rank = None, None
+        self._walk = None       # D455: deterministic thinning's place on the schedule
 
     def self_process(self):
         if self.arrival_mode == ORDERS_MODE:
@@ -67,8 +75,11 @@ class Create(BaseProcess):
                 # wait until first creation time
         if self.env.now < self.start_time:
             self.next_at = self.start_time
+            if self.scheduled_at is None:       # not put back by a state
+                self.scheduled_at = self.env.now
             # Absolute: a state hands back the very instant an arrival was due (D232).
-            yield timeout_at(self.env, self.start_time)
+            self.pending = timeout_at(self.env, self.start_time)
+            yield self.pending
 
         while self.counter_arrivals < self.max_arrivals or self.max_arrivals == 0:
 
@@ -82,12 +93,14 @@ class Create(BaseProcess):
                                                                      scope=self.expression_scope())
                     if next_time is None:
                         break  # no more arrivals
-                    self.next_at = next_time
-                    yield self.env.timeout(next_time - self.env.now)
+                    self.next_at, self.scheduled_at = next_time, self.env.now
+                    self.pending = self.env.timeout(next_time - self.env.now)
+                    yield self.pending
                 else:
                     iat = self.sample_duration(self.time_between_arrivals)  # inter-arrival time
-                    self.next_at = self.env.now + iat
-                    yield self.env.timeout(iat)
+                    self.next_at, self.scheduled_at = self.env.now + iat, self.env.now
+                    self.pending = self.env.timeout(iat)
+                    yield self.pending
 
             self._spawn_batch()
             self.counter_arrivals += 1 # An arrival can be a batch of entities
@@ -119,6 +132,8 @@ class Create(BaseProcess):
         max_rate = schedule.max_value
         if max_rate <= 0:
             return False
+        if self.ctx.deterministic:
+            return (yield from self._fluid_arrival(schedule))
         t = self.env.now
         rejected = 0
         while True:
@@ -129,6 +144,40 @@ class Create(BaseProcess):
             rejected += 1
             if rejected % _THINNING_YIELD == 0:
                 yield timeout_at(self.env, t)
+
+    def _fluid_arrival(self, schedule):
+        """Deterministic mode (D119, D455): arrival k comes when the schedule's
+        integrated rate, from `start_time`, reaches k. No draw, so a run started
+        from a state's arrival count walks the same segments to the same times.
+        `_walk` keeps (segment start, area there) between arrivals.
+
+        The walk hands the clock back as the stochastic path does (#475): past the run's
+        horizon (the run ends before that event is served) and every `_THINNING_YIELD`
+        segments, so a tiny rate cannot spin it. Its locals survive the yield, and a state
+        taken then carries the count only, from which a started run walks the same segments.
+        """
+        target = self.counter_arrivals + 1
+        t, area = self._walk or (float(self.start_time), 0.0)
+        horizon, segments = self.ctx.sim_horizon or math.inf, 0
+        while True:
+            end = schedule.next_change_after(t)
+            # The rate over (t, end), read inside it: a folded bound one ulp off t (#476)
+            # gives t the value of the segment before.
+            rate = schedule.value_at(t if math.isinf(end) else t + (end - t) / 2)
+            if rate > 0 and area + rate * (end - t) >= target:
+                break
+            if math.isinf(end):
+                return False                    # the rate is 0 for ever
+            area += rate * (end - t)
+            t = end
+            segments += 1
+            if t > horizon or segments % _THINNING_YIELD == 0:
+                yield timeout_at(self.env, t)
+                horizon = self.ctx.sim_horizon or math.inf
+        self._walk = (t, area)
+        self.next_at, self.scheduled_at = t + (target - area) / rate, self.env.now
+        yield timeout_at(self.env, self.next_at)
+        return True
 
     def _release_orders(self):
         """Arrival mode "Orders" (PHASE4 A3): one release per order this block

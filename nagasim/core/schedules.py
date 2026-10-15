@@ -109,7 +109,18 @@ class Schedule:
         "May": a repeating pattern whose last and first values are equal still
         reports its wrap as a boundary. A caller that wakes there simply finds
         nothing to do.
+
+        "Strictly" holds for folded bounds that are not exact floats too (#476): 8.7 in
+        [[0.7, ...], [0.3, ...]] folds one ulp below the bound 0.7 and gave 8.7 back, so a
+        caller looping on it made no progress. Then the change after the next float is it.
         """
+        end, probe = self._next_change(t), t
+        while end <= t:
+            probe = math.nextafter(probe, math.inf)
+            end = self._next_change(probe)
+        return end
+
+    def _next_change(self, t: float) -> float:
         shifted = t + self.offset
         if self.repeat:
             cycles, into = divmod(shifted, self.cycle_length)

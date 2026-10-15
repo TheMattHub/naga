@@ -14,12 +14,27 @@ from __future__ import annotations
 
 import logging
 import math
+from contextlib import contextmanager
 
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 
 __all__ = ["sample_interval", "Sampler", "build_dashboard_widgets", "count_departures"]
 
 log = logging.getLogger(__name__)
+
+
+@contextmanager
+def peeking(ctx):
+    """While reading, LEVEL() and FRACTION() peek, never integrate (#229, #477): a read
+    that synced the levels would split the flows' accruals where it read."""
+    system = ctx.level_system
+    if system is not None:
+        system.peeking = True
+    try:
+        yield
+    finally:
+        if system is not None:
+            system.peeking = False
 
 
 def sample_interval(run_len: float, points: int, interval_setting: float | None) -> float:
@@ -70,15 +85,14 @@ def _take_sample(ctx, t: float, warmup: float) -> list[tuple]:
         if stat.kind == "time_persistent":
             rows.append((t, f"user/{name}", float(stat.collector.level), warm))
 
-    # Level trajectories (PHASE4 D1): the sampler asks the level system to
-    # integrate up to `t` first, so the curve is the real one rather than the
-    # value as of the last engine event. `sync` is idempotent and draws no
-    # random numbers, so this still cannot change any other block's results.
+    # Level trajectories (PHASE4 D1): each level as of `t` (`peek`), so the curve
+    # is the real one rather than the value as of the last engine event. Read
+    # only: a `sync` here split the flows' accruals at the ticks, and a run
+    # sampled on another grid (a started one, D233) summed them apart (#466).
     if ctx.level_system is not None:
-        ctx.level_system.sync(t)
         for name, level in ctx.level_system.levels.items():
             if not level.hidden:        # a delay stage (PHASE5 SD-2)
-                rows.append((t, f"level/{name}", float(level.level), warm))
+                rows.append((t, f"level/{name}", float(ctx.level_system.peek(level)), warm))
         # Flow trajectories (PHASE6 S8): the realised rate, same hidden-stage
         # filter as levels -- a reality check's FLOW() constraint needs a
         # sampled series to check exactly like LEVEL()/AUX() already have.
@@ -176,9 +190,12 @@ class Sampler:
         env, t = self.env, self.next_tick
         ctx = env.ctx
         env._now = t
-        ctx.timeseries.extend(_take_sample(ctx, t, self.warmup))
-        if ctx.dashboard_widgets:
-            ctx.dashboard.extend(_take_dashboard_sample(ctx, t, self.warmup))
+        # An auxiliary or a widget that reads LEVEL()/FRACTION() peeks too (#477): a sync
+        # here would split the accruals at ticks a started run does not share (#466).
+        with peeking(ctx):
+            ctx.timeseries.extend(_take_sample(ctx, t, self.warmup))
+            if ctx.dashboard_widgets:
+                ctx.dashboard.extend(_take_dashboard_sample(ctx, t, self.warmup))
         self.k += 1
         self.next_tick = self.start + self.k * self.interval
         return self.next_tick

@@ -53,7 +53,7 @@ def test_one_machine_blocked_by_a_buffer_of_one_by_hand():
         {"block": "m2", "held_by": "buf", "since": pytest.approx(6.3)},
         {"block": "buf", "held_by": "m1", "held_since": 6.5, "place": False}]
     assert len(entities) == 4 and all(e in entities for e in expected)     # in any order
-    assert doc["state"]["arrivals"] == {"c": {"count": 5, "next": 10.5}}
+    assert doc["state"]["arrivals"] == {"c": {"count": 5, "next": 10.5, "scheduled": 8.5}}
     started, problems = state.start(model, doc)
     assert problems == []
     kpis = api.run_model(started)

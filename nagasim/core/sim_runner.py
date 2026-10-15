@@ -245,7 +245,12 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
         env.ctx.level_system.start(run_len)
     if env.ctx.agent_system is not None:            # PHASE5 AB-1
         env.ctx.agent_system.start(run_len)
-    for start in model.start_blocks():
+    # #467: put back, the CREATEs start in the order their next arrivals were drawn, so
+    # two due at one instant come in the run's order; two drawn in one instant, by their
+    # rank (#472). Stable: a run from 0 or an older document keeps block order.
+    for start in sorted(model.start_blocks(), key=lambda b: (
+            -math.inf if b.scheduled_at is None else b.scheduled_at,
+            -1 if b.rank is None else b.rank)):
         start.self_run()
     # ROADMAP 1.7: the sampler schedules nothing and draws nothing, so it never
     # changes another block's schedule or draws -- KPIs with sampling on are

@@ -8,13 +8,12 @@ bit-identical to a plain one. Whoever owns the session calls these, on its threa
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 from nagasim.core.expressions import (FUNCTIONS, SD_MACROS, SD_VALUE_MACROS, Expression,
                                       ExpressionError, ExpressionScope, compile_expression,
                                       functions_with, name_sections)
 from nagasim.core.sim_classes import Entity
 from nagasim.core.submodels import SubmodelError, flatten
+from nagasim.core.timeseries import peeking as _peeking
 
 __all__ = ["Stops", "entity_view", "readonly_expression", "watch_functions", "watch_names",
            "watch_values"]
@@ -79,19 +78,6 @@ def watch_names(layout: dict, function: str | None = None) -> list:
             if isinstance(name, str) and name:
                 out.append((name, section))
     return out
-
-
-@contextmanager
-def _peeking(ctx):
-    """`SimSession.snapshot`'s guard: LEVEL() and FRACTION() peek, never integrate (#229)."""
-    system = ctx.level_system
-    if system is not None:
-        system.peeking = True
-    try:
-        yield
-    finally:
-        if system is not None:
-            system.peeking = False
 
 
 def _plain(value):

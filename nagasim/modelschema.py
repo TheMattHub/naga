@@ -2086,7 +2086,25 @@ def _defs() -> dict:
                     "additionalProperties": {
                         "type": "object",
                         "properties": {"count": {"type": "integer", "minimum": 0},
-                                       "next": {"type": "number"}},
+                                       "next": {"type": "number"},
+                                       "scheduled": {"type": "number", "minimum": 0,
+                                                     "description": "When the next arrival "
+                                                                    "was drawn."},
+                                       "rank": {"type": "integer", "minimum": 0,
+                                                "description": "Its place among arrivals "
+                                                               "drawn at one instant for one "
+                                                               "instant."}},
+                        "additionalProperties": False}},
+                "orders": {
+                    "type": "object",
+                    "description": "Per declared order released before the clock: the "
+                                   "entities it released and completed, and when the last one "
+                                   "completed.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {"created": {"type": "integer", "minimum": 0},
+                                       "completed": {"type": "integer", "minimum": 0},
+                                       "completed_at": {"type": "number", "minimum": 0}},
                         "additionalProperties": False}},
                 "resource_sets": {
                     "type": "object",

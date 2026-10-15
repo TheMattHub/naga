@@ -48,7 +48,7 @@ from nagasim.core.outputs import calc_kpis, summarize_game_log
 from nagasim.core.schema import (ModelValidationError, requires_run_length,
                                  prepare, fatal_problems, format_problems)
 from nagasim.core.sim_runner import setup_run, step_until
-from nagasim.core.timeseries import _take_dashboard_sample
+from nagasim.core.timeseries import _take_dashboard_sample, peeking
 
 __all__ = ["SimSession"]
 
@@ -227,14 +227,8 @@ class SimSession:
         """{"t", "widgets": {name: value | {label: value}}}: the dashboard now,
         with the sampler's own evaluation (no rng, a failed read is NaN).
         Read-only: the levels are peeked, never integrated (DEVLOG #229)."""
-        system = self.ctx.level_system
-        if system is not None:
-            system.peeking = True
-        try:
+        with peeking(self.ctx):
             rows = _take_dashboard_sample(self.ctx, self.now, self.warmup)
-        finally:
-            if system is not None:
-                system.peeking = False
         widgets = {}
         for _t, name, label, value, _warm in rows:
             if label == "":
