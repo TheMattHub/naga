@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-10-15)
+
+An agent now writes a whole model in one call, and in the LLM case study that made Claude Code
+more often right through Naga than writing SimPy. A twin starts from the state of lines with
+finite buffers and of fleets of vehicles, recommends a new action, `reroute`, and can publish
+its advice to an MQTT topic of yours. A minor version, because validation is stricter: a model
+that validated under 0.6.1 may now be refused where it was wrong all along, for example a
+PROCESS that seizes with no resource named, or a distribution parameter the distribution does
+not take.
 
 - Added: the recommendation verb `reroute` (a DECIDE of the model, to the block one of its
   links leads to); `naga twin --outbox mqtt:<connection>` publishes each record at QoS 1, not
