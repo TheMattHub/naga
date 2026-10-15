@@ -13,8 +13,8 @@ encoder, so no command (a rebirth request included) can be built.
              16 bytes, 17 dataset, 18 template, 19 extension: not read (the metric is
              returned with `skipped` set and no value)
 
-Signed integers travel as unsigned ones: an Int8, Int16 or Int32 is the two's complement
-of a 32-bit value and an Int64 of a 64-bit one, by `datatype` (1 to 4).
+Signed integers travel as unsigned ones and are read at their datatype's width (1 to 4: Int8,
+Int16, Int32, Int64), so a sign-extended and a narrow two's complement read the same.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from nagasim.sources import ReadError
 __all__ = ["Metric", "decode", "signed", "MAX_METRICS"]
 
 MAX_METRICS = 10_000        # per payload; more is a malformed payload
-_SIGNED_32, _SIGNED_64 = (1, 2, 3), (4,)
+_WIDTH = {1: 8, 2: 16, 3: 32, 4: 64}      # Int8, Int16, Int32, Int64: bits
 
 
 @dataclass(frozen=True)
@@ -82,14 +82,14 @@ def _fields(data: bytes):
 
 
 def signed(value, datatype: int | None):
-    """*value* as the signed number its datatype says it is."""
-    if isinstance(value, bool) or not isinstance(value, int):
+    """*value* as the signed number its datatype says it is, read at the datatype's own width
+    (as Tahu's decoders do): Tahu's Python edge library sends a negative Int8 as value + 2**8,
+    its Java one sign-extends it to 32 bits, and both are -1 for 255 (#442)."""
+    bits = _WIDTH.get(datatype)
+    if bits is None or isinstance(value, bool) or not isinstance(value, int):
         return value
-    if datatype in _SIGNED_32 and value >= 1 << 31:
-        return (value & 0xFFFF_FFFF) - (1 << 32)
-    if datatype in _SIGNED_64 and value >= 1 << 63:
-        return value - (1 << 64)
-    return value
+    value &= (1 << bits) - 1
+    return value - (1 << bits) if value >> (bits - 1) else value
 
 
 def _metric(data: bytes) -> Metric:

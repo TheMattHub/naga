@@ -12,9 +12,9 @@
 * `text`: the payload as text;
 * `sparkplug_b`: Sparkplug B births, data and deaths with scalar metrics. A key is
   `<group>/<node>[/<device>]/<metric>`; a birth sets `<group>/<node>[/<device>]` to True
-  and a death to False. A metric sent by alias before its birth was seen is dropped and
-  counted (`unresolved`) until the node's next birth: asking for a rebirth would be a
-  command to the plant, and it is never sent.
+  and a death to False (a node's death its devices too). A metric sent by alias before its
+  birth was seen is dropped and counted (`unresolved`) until the node's next birth: asking
+  for a rebirth would be a command to the plant, and it is never sent.
 
 Why not a library: one would resolve the broker's name itself, read a packet of any
 declared size whole, and carry a publish call. Here the socket is the one
@@ -311,6 +311,8 @@ def _sparkplug(topic: str, payload: bytes, sink, state: dict) -> None:
             for known in [key for key in state["aliases"] if key == node
                           or key.startswith(node + "/")]:
                 del state["aliases"][known]
+                if known != node:       # Sparkplug 3.0: a node's death takes its devices offline (#443)
+                    sink.accept(known, False, moment)
             state["seq"].pop(node, None)
         else:
             state["aliases"].pop(owner, None)
@@ -326,7 +328,7 @@ def _sparkplug(topic: str, payload: bytes, sink, state: dict) -> None:
         if len(born) > room:
             sink.count("keys", len(born) - room)        # over the limit: counted, not kept
             born = dict(list(born.items())[:room])
-        if born:
+        if born or len(state["aliases"]) < limit:   # kept with none too, for its node's death
             state["aliases"][owner] = born
         sink.accept(owner, True, moment)
     known = state["aliases"].get(owner, {})

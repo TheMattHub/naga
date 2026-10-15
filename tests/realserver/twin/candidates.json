@@ -1,0 +1,3 @@
+{"format": 1, "kind": "naga-candidates", "kpi": "timeseries/block/p/out/max",
+ "better": "higher", "expires": "30m",
+ "candidates": [{"verb": "set_capacity", "target": "Server", "value": 2}]}

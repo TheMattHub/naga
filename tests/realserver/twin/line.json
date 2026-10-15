@@ -1,0 +1,105 @@
+{
+  "schema_version": 9,
+  "blocks": [
+    {
+      "name": "c",
+      "description": "c",
+      "type": "CREATE",
+      "position": [
+        100,
+        200
+      ],
+      "params": {
+        "e_type": "DEFAULT",
+        "arrival_mode": "Interarrival",
+        "schedule_name": "",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.1
+        },
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 0
+      }
+    },
+    {
+      "name": "p",
+      "description": "p",
+      "type": "PROCESS",
+      "position": [
+        300,
+        200
+      ],
+      "params": {
+        "action": "Seize Delay Release",
+        "distribution": "Exponential",
+        "dist_params": {
+          "rate": 0.08333333333333333
+        },
+        "priority": 0,
+        "quantity": 1,
+        "resource_name": "Server"
+      }
+    },
+    {
+      "name": "d",
+      "description": "d",
+      "type": "DISPOSE",
+      "position": [
+        500,
+        200
+      ],
+      "params": {
+        "distribution": "Constant",
+        "dist_params": {
+          "value": 0.0
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "source": "c",
+      "target": "p"
+    },
+    {
+      "source": "p",
+      "target": "d"
+    }
+  ],
+  "resources": [
+    {
+      "name": "Server",
+      "capacity": 1
+    }
+  ],
+  "resource_sets": [],
+  "entities": [],
+  "variables": [],
+  "schedules": [],
+  "failures": [],
+  "simulation": {
+    "time_limit": 3600,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "seconds",
+    "timeseries_counts": [
+      "p"
+    ]
+  },
+  "data_sources": [
+    {
+      "name": "plant",
+      "kind": "mqtt",
+      "connection": "broker",
+      "location": "spBv1.0/Plant1/#",
+      "options": {
+        "payload": "sparkplug_b",
+        "qos": 1
+      }
+    }
+  ],
+  "info": {
+    "title": "Single-server line fed by a Sparkplug B edge node"
+  }
+}

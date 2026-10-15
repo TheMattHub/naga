@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Tested: the MQTT reader, the MQTT outbox and Sparkplug B against Mosquitto 2.1.2 and an
+  independent Sparkplug B edge node (protobuf, Tahu's encoding), the OPC UA reader against an
+  asyncua 2.1.0 server, and `naga twin run` end to end over them (opt-in,
+  `NAGA_REALSERVER=1`).
+- Fixed: a negative Sparkplug Int8 or Int16 sent as Tahu's Python library sends it reads as
+  the number it is; a Sparkplug node's death takes its devices offline.
+
 ## 0.7.0 (2026-10-15)
 
 An agent now writes a whole model in one call, and in the LLM case study that made Claude Code

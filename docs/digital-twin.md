@@ -224,7 +224,9 @@ naga twin run line.json --map line.plantmap.json --log plant.jsonl --out twin_ou
 
 `--log` plays the recorded log at `--speed` seconds of the log per second. Against a real plant,
 replace it with `--connections FILE`, your [connections file](live-data.md): the model's live
-sources are read over the connections it defines, and over nothing else.
+sources are read over the connections it defines, and over nothing else. What has been run
+against third-party servers, and what has not, is under
+[Tested against](live-data.md#tested-against).
 
 | Command | Does |
 |---|---|

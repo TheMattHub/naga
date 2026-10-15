@@ -1,0 +1,6 @@
+{"format": 1, "connections": {
+  "broker": {"kind": "mqtt", "url": "mqtt://127.0.0.1:18830", "private": true,
+             "root": "spBv1.0/Plant1/#"},
+  "outbox": {"kind": "mqtt", "url": "mqtt://127.0.0.1:18830", "private": true,
+             "use": "outbox", "root": "naga/line1"}
+}}

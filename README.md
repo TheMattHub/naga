@@ -143,8 +143,10 @@ configured. A model's own Python behaviour never runs through either.
 
 ## Limits to know
 
-- No test has run against a real broker, OPC UA server, MES or plant counter: the readers and
-  the twin are tested on in-process stand-ins and recorded logs.
+- The readers, the MQTT outbox and the twin have run against Mosquitto 2.1.2, an asyncua 2.1.0
+  OPC UA server and a Sparkplug B edge node built on the official schema, all on one machine
+  (docs: Live data, "Tested against"). Nothing has run against a real plant, an MES, a plant
+  counter, another broker or OPC UA server, or a commercial edge node.
 - A twin starts from the state of a line with finite buffers, and of a fleet whose vehicles each
   report where they are and what they carry. It cannot yet start from a model with conveyors,
   mobile cobots that tend, tours, gantries or segment capacities: such a model is monitored and

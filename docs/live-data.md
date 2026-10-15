@@ -78,9 +78,11 @@ texts only into an order book (the `orders` transform); a text is never written 
 field. `${NAME}` is not expanded in a live source.
 
 With Sparkplug B, a key is `<group>/<node>[/<device>]/<metric>`; a birth sets
-`<group>/<node>[/<device>]` to true and a death to false. A metric that arrives by alias before
+`<group>/<node>[/<device>]` to true and a death to false; a node's death sets its devices to false
+too. A metric that arrives by alias before
 its birth was seen is counted and dropped until the node's next birth: asking for a rebirth would
-be a command to the plant, and it is never sent. The aliases remembered for a connection are
+be a command to the plant, and it is never sent. So start the twin before the edge node, or
+restart the edge node once the twin listens. The aliases remembered for a connection are
 bounded by its `keys` limit, and one node or device keeps at most a sixteenth of it (625 by
 default), so a single device cannot leave the others with none.
 
@@ -117,6 +119,21 @@ has this value"), never an increment, so reading one twice is harmless. `changes
 `lost` (events dropped before you read them, an exact count), `gap` (the connection broke: an
 unknown number is missing), `state` (`live` or `down`), `age` and the problems of the answer.
 `api.run_model(..., bind_data=True, feed=feed)` binds from an open feed.
+
+## Tested against
+
+Beside the in-process stand-ins of the normal tests, opt-in tests (`NAGA_REALSERVER=1`,
+`tests/test_realserver.py`) run the readers against servers written by others, on this machine:
+
+| Server | Proven |
+|---|---|
+| Mosquitto 2.1.2 | the MQTT reader: retained messages, QoS 0, 1 and 2 (delivered at 1), reconnecting after the broker restarts (the outage reported as a gap), TLS with a private CA; the MQTT outbox: a record published and heard by `mosquitto_sub`, replies sent by `mosquitto_pub` (retained too) read back |
+| A Sparkplug B edge node built on `protobuf` 6.33 from the official schema, with Eclipse Tahu's encoding of values | births, data by alias and deaths over Mosquitto; signed integers of every width; bytes counted and not read |
+| asyncua 2.1.0's OPC UA server | data changes of doubles, integers, true/false values and texts with their stamps; a Bad status as no value; a server that goes away as a gap |
+| `naga twin run --monitor` | against the edge node over Mosquitto for an hour (`tests/realserver/twin/run.sh`): 721 cycles with no gap, 30 forecasts scored, a recommendation delivered to the MQTT outbox and its reply read back |
+
+Not proven: a real plant, an MES, a plant counter, another broker (HiveMQ, EMQX) or OPC UA
+server (open62541, a PLC's own), and a commercial edge node (Ignition).
 
 ## Bounds
 

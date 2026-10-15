@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "time": {
+    "epoch": "1970-01-01T00:00:00+00:00",
+    "unit": "seconds"
+  },
+  "signals": [
+    {
+      "key": "Plant1/Edge1/Line1/resource/Server/down",
+      "as": "state",
+      "resource": "Server",
+      "states": {
+        "true": "down",
+        "false": "up"
+      }
+    },
+    {
+      "key": "Plant1/Edge1/Line1/resource/Server/capacity",
+      "as": "capacity",
+      "resource": "Server"
+    },
+    {
+      "key": "Plant1/Edge1/Line1/resource/Server/blocked",
+      "as": "blocked",
+      "resource": "Server"
+    },
+    {
+      "key": "Plant1/Edge1/Line1/resource/Server/busy",
+      "as": "busy",
+      "resource": "Server"
+    },
+    {
+      "key": "Plant1/Edge1/Line1/block/c/count",
+      "as": "queue",
+      "block": "c"
+    },
+    {
+      "key": "Plant1/Edge1/Line1/block/p/count",
+      "as": "queue",
+      "block": "p"
+    },
+    {
+      "key": "Plant1/Edge1/Line1/block/d/count",
+      "as": "queue",
+      "block": "d"
+    },
+    {
+      "key": "Plant1/Edge1/Line1/block/p/out",
+      "as": "counter",
+      "block": "p"
+    }
+  ]
+}
