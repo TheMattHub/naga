@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.7.2 (2026-10-15)
+
+A state now carries a batch that has already formed, with its members, and an entity waiting
+at a TRANSFER, so the bundled `warehouse_library` and `mfg_line_library` models restart exactly
+from a state taken at any time. From a plant both are still refused: no plant signal names a
+batch's members or a transfer's amount. One result changes: a level's Min and Max now count the
+value a TRANSFER leaves, which raises the Max of `biogas_plant_library`'s feed stores slightly.
 
 - State: a formed batch (a truck at the dock, a truckload, an oven load; of a BATCH or a MATCH)
   is carried with its members, and an entity waiting at a TRANSFER for room or stock is carried
