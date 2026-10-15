@@ -214,8 +214,8 @@ def _levels(session) -> dict:
     system.sync(now)
     out = {}
     for name, level in system.levels.items():
-        if level.conveyor is not None or level.components or level.pending:
-            raise _unsupported("a conveyor, a blended level or a waiting transfer", f"'{name}'")
+        if level.conveyor is not None or level.components:
+            raise _unsupported("a conveyor or a blended level", f"'{name}'")
         out[name] = level.level
     return out
 
@@ -393,6 +393,19 @@ def _holds(entity, names) -> dict:
     return {"holds": out} if out else {}
 
 
+def _members(entity, now) -> dict:
+    """{"members": ...} of a formed batch (D437), in the batch's own order, or {}."""
+    out = []
+    for member in entity.batch_elems:
+        if member.batch_elems:
+            raise _unsupported("a batch inside a batch", f"entity {entity.id}")
+        record = {"e_type": member.e_type, "age": float(now - member.creation_time),
+                  "attributes": _attributes(member)}
+        _uncharge(member, record)
+        out.append({**record, **_holds(member, set(getattr(member, "req_params", None) or ()))})
+    return {"members": out} if out else {}
+
+
 def _on_belt(belt, entity, entry: dict, asking: dict) -> tuple:
     """(its place in the list, the entry) of a part on an accumulating *belt* (D429): a part
     waiting for a cell in the order of the belt's queue, any other by when it entered."""
@@ -425,6 +438,11 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
     queued, kept, stored = [], [], 0    # waiting for a resource; waiting in a store
     outside = []                    # waiting for a place of a finite space (D382)
     belts = []                      # on a belt (D429)
+    transfers = []                  # waiting for a level, in each level's queue order (D439)
+    system = ctx.level_system
+    waits = {id(event): ((index, place), amount)
+             for index, level in enumerate(system.levels.values() if system else ())
+             for place, (amount, _mode, event) in enumerate(level.pending)}
     asking = {id(request.entity): (order, place) for order, node in enumerate(
                   ctx.blocking_nodes.values()) if node.space is not None and node.space.capacity
               for place, request in enumerate(node.space._pool.queue)}
@@ -434,12 +452,13 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
         if entity is None:
             continue                # inside a formed batch: found through the batch entity
         block = model.blocks.get(block_name)
-        if entity.batch_elems or block is None:
-            raise _unsupported("a formed batch", f"entity {entity.id}")
+        if block is None:
+            raise _unsupported("an entity where it is", f"entity {entity.id} in '{block_name}'")
         kind = block.block.block_type
         held = set(getattr(entity, "req_params", None) or ())
         entry = {"block": block_name, "count": 1, "e_type": entity.e_type,
-                 "age": float(now - entity.creation_time), "attributes": _attributes(entity)}
+                 "age": float(now - entity.creation_time), "attributes": _attributes(entity),
+                 **_members(entity, now)}
         holder = _holder(entity, held)
         _uncharge(entity, entry)
         if id(entity) in trips:
@@ -489,6 +508,10 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
             if getattr(block, "renege_after", ""):
                 entry["deadline"] = float(entity._deadline)     # D261: none is drawn twice
             queued.append((getattr(entity, "_queued", -1), len(queued), entry))
+        elif id(getattr(entity, "_pending", None)) in waits:
+            place, amount = waits[id(entity._pending)]
+            transfers.append((place, {**entry, **holder, "transfer": {"amount": float(amount)},
+                                      "since": since, **_holds(entity, held)}))
         elif kind in _STORED:
             if kind == "MATCH" and entity.e_type not in block.type_store_map:
                 # Unmapped, a type goes to the first empty store: where it sits is history.
@@ -510,7 +533,8 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
             block_name, arrives = entity._arrives
             entry = {"block": block_name, "count": 1, "e_type": entity.e_type,
                      "age": float(now - entity.creation_time),
-                     "attributes": _attributes(entity), "arrives": float(arrives)}
+                     "attributes": _attributes(entity), "arrives": float(arrives),
+                     **_members(entity, now)}
             _uncharge(entity, entry)
             others.append(entry)
     # #349: in the order of the queue or the store ITSELF, not the order each was heard
@@ -522,7 +546,8 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
         + [riding[key] for key in trips if key in riding] \
         + [e for _key, e in sorted(belts, key=lambda b: b[0])] \
         + [e for _key, e in sorted(outside, key=lambda o: o[0])] \
-        + [e for *_key, e in sorted(kept, key=lambda k: k[:3])] + others
+        + [e for *_key, e in sorted(kept, key=lambda k: k[:3])] \
+        + [e for _key, e in sorted(transfers, key=lambda t: t[0])] + others
     if len(live) != len(serving) + len(others):
         raise _unsupported("an entity with no known place", "one was made outside a block")
     return serving + others
@@ -962,6 +987,8 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
                        "numbers must be finite; no value may nest without end")
     counts = [e.get("count", 0) for e in entities if isinstance(e, dict)] \
         if isinstance(entities, list) else []
+    counts += [len(e["members"]) for e in (entities if isinstance(entities, list) else [])
+               if isinstance(e, dict) and isinstance(e.get("members"), list)]     # D437
     if len(text) > MAX_BYTES or len(counts) > MAX_ENTITIES \
             or sum(c for c in counts if isinstance(c, int) and c > 0) > MAX_ENTITIES:
         return refused("E_STATE_SIZE", f"the state is over the bound of {MAX_BYTES} bytes or "

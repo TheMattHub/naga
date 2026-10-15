@@ -273,8 +273,10 @@ class Level:
         the trapezoid -- a piecewise-constant accumulator would be wrong here,
         which is why levels do not reuse `stats.TimeWeighted`."""
         self._area += 0.5 * (self.level + new_level) * dt
-        self._min = min(self._min, new_level)
-        self._max = max(self._max, new_level)
+        # Both ends (#454): the start is the value a TRANSFER's lump left, which no interval
+        # ends at; the interval is linear, so its ends are its extremes.
+        self._min = min(self._min, self.level, new_level)
+        self._max = max(self._max, self.level, new_level)
         at_min = self.level <= self.minimum + EPS and new_level <= self.minimum + EPS
         if at_min:
             self._empty_time += dt

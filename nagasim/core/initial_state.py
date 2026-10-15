@@ -321,6 +321,17 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                      f"{', '.join(sorted(str(r) for r in declared_res)) or '(none)'}"))
 
     sets = {s.get("name"): list(s.get("members") or []) for s in layout.get("resource_sets", [])}
+    # ponytail: #451, #455 follow links and a TRANSPORT's named destination (#459) only. A
+    # ROUTE, or a TRANSPORT with none, reaches a station by an attribute, so every station
+    # would refuse every load (the warehouse's pallets); a lone entity a ROUTE sends to a
+    # station before a SEPARATE still raises there.
+    linked = _successors(layout, blocks, jumps=False)
+    # walked back, every jump counts: a batch entity can be wherever any of them lands
+    before = _predecessors(blocks, _successors(layout, blocks))
+    created = {str((b.get("params") or {}).get("e_type") or "").upper()
+               for b in blocks.values() if _kind(b) == "CREATE"}
+    needs: dict = {}        # (block, a batch entity?) -> what an entity there must hold
+    batches: dict = {}      # block -> the types only a batch entity has there (D440)
     used = state.get("used")
     # #446: what had a report row before the clock; a store is named after its block
     stores = tuple(f"{b}_" for b, spec in blocks.items()
@@ -389,23 +400,26 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
         # A load on its trip is at its TRANSPORT (`_validate_fleets`); every other check of
         # an entry holds for it too.
         riding = (btype == "TRANSPORT" and entry.get("trip") is not None) \
-            or (btype == "CONVEYOR" and entry.get("belt") is not None)     # `_validate_belts`
+            or (btype == "CONVEYOR" and entry.get("belt") is not None) \
+            or (btype == "TRANSFER" and entry.get("transfer") is not None)     # D439, below
         if btype not in HOLDING_TYPES and not riding \
             and (entry.get("arrives") is None or btype == "CREATE"):
             problems.append(problem(
                 "E_INITIAL_BLOCK_TYPE",
                 f"initial_state: block '{name}' is a {btype}, which cannot hold entities",
                 f"{at}/block", block=name,
-                hint=f"inject into one of: {', '.join(HOLDING_TYPES)}"))
+                hint="an entity waiting at a TRANSFER for its level carries transfer.amount, "
+                     "which a plant does not say" if btype == "TRANSFER"
+                else f"inject into one of: {', '.join(HOLDING_TYPES)}"))
             continue
 
-        attributes = entry.get("attributes")
-        if attributes is not None and not (isinstance(attributes, dict)
-                                           and all(isinstance(k, str) for k in attributes)):
-            problems.append(problem(        # #419: each is set on the entity by its name
-                "E_INITIAL_BLOCK", f"initial_state: block '{name}': attributes must be an "
-                f"object of named values", f"{at}/attributes", block=name,
-                hint="for example {\"priority\": 2}"))
+        if not _plain_entity(entry):        # #419, #452, #453: each is set on the entity
+            problems.append(problem(
+                "E_INITIAL_BLOCK", f"initial_state: block '{name}': e_type must be a text and "
+                f"attributes an object of named values, none the engine's own and a cost a "
+                f"number", f"{at}/attributes", block=name,
+                hint="for example {\"priority\": 2}; not id, e_type, creation_time, req_params "
+                     "or a name starting with _"))
 
         count = entry.get("count", 0)
         if not isinstance(count, int) or isinstance(count, bool) or count < 0:
@@ -460,6 +474,20 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                     f"{at}/in_service", block=name,
                     hint="lower in_service, or raise the resource's capacity"))
 
+        transfer = entry.get("transfer")
+        if transfer is not None and not (
+                btype == "TRANSFER" and bool((block.get("params") or {}).get("wait"))
+                and isinstance(transfer, dict) and set(transfer) == {"amount"}
+                and _number(transfer["amount"]) and 0 < transfer["amount"] <= _room(
+                    layout, (block.get("params") or {}).get("level")) and count == 1
+                and not in_service and entry.get("arrives") is None):
+            problems.append(problem(        # D439
+                "E_INITIAL_BLOCK", f"initial_state: block '{name}': transfer is the amount one "
+                f"entity waits for at a TRANSFER with wait, no more than its level can hold",
+                f"{at}/transfer", block=name,
+                hint="{\"amount\": 3.0}, a number > 0, as the TRANSFER evaluated it; one above "
+                     "the level's capacity less its minimum would wait for ever"))
+
         member = entry.get("member")
         if member is not None and entry.get("held_by") is None and member not in sets.get(
                 (block.get("params") or {}).get("resource_name"), ()):
@@ -470,12 +498,31 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
 
         if entry.get("holds") is not None:
             _validate_holds(layout, entry, block, blocks, sets, start, serving, at, problems)
-        released = _released(block)
-        if released and count and released not in (entry.get("holds") or {}):     # #449
+        if entry.get("members") is not None:
+            _validate_members(layout, entry, blocks, sets, start, serving, at, problems,
+                              linked, before)
+        elif count and name not in batches:     # one walk per block; None: a SEPARATE ahead
+            batches[name] = None if _splits(name, blocks, linked) else \
+                _batch_types(name, blocks, before, created)
+        if entry.get("members") is None and count and (
+                batches[name] is None or str(entry.get("e_type") or "").upper() in batches[name]):
             problems.append(problem(
-                "E_INITIAL_RESOURCE", f"initial_state: block '{name}' releases '{released}', "
-                f"which the entry does not hold", f"{at}/holds", block=name,
-                hint="a job at a block that releases a resource holds it from an earlier "
+                "E_INITIAL_BATCH", f"initial_state: block '{name}': the entry meets a SEPARATE "
+                f"before any BATCH or MATCH, or has the type the BATCH before it gives its "
+                f"batches, so it is a formed batch and needs its members",
+                f"{at}/members", block=name,
+                hint="one record per member (e_type, age, attributes, holds); a plant names no "
+                     "batch's members, so a state from one cannot carry a formed batch"))
+        key = (name, entry.get("members") is not None)
+        if count and key not in needs:      # one walk per block
+            needs[key] = _needs(name, blocks, linked, batch=key[1])
+        held = set(entry["holds"]) if isinstance(entry.get("holds"), dict) else set()
+        for released in sorted(needs[key] - held) if count else ():     # #449, #455
+            problems.append(problem(
+                "E_INITIAL_RESOURCE", f"initial_state: block '{name}': the entry gives "
+                f"'{released}' back at a block it reaches before any seizes it, and does not "
+                f"hold it", f"{at}/holds", block=name,
+                hint="a job before a block that releases a resource holds it from an earlier "
                      "block: say so in holds"))
 
         remaining = entry.get("remaining")
@@ -579,6 +626,8 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
     own = {_seized(block)}
     if isinstance(entry.get("held_by"), str):
         own.add(((blocks.get(entry["held_by"]) or {}).get("params") or {}).get("resource_name"))
+    age = entry.get("age", 0)       # #460: not held before the entity was made
+    made = start - age - 1e-9 * max(1.0, abs(start)) if _number(age) else -math.inf
 
     def fits(name, spec) -> bool:
         if not (isinstance(spec, dict) and set(spec) <= {"since", "units", "member"}
@@ -587,7 +636,7 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
         member, units, since = spec.get("member"), spec.get("units", 1), spec.get("since")
         return ((name in resources if member is None else member in sets.get(name, ()))
                 and isinstance(units, int) and not isinstance(units, bool) and units >= 1
-                and (since is None or (_number(since) and since <= start)))
+                and (since is None or (_number(since) and made <= since <= start)))
 
     if not (isinstance(holds, dict) and holds and entry.get("count") == 1
             and all(fits(name, spec) for name, spec in holds.items())):
@@ -595,24 +644,16 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
             "E_INITIAL_RESOURCE", f"initial_state: block '{entry.get('block')}': holds must name "
             f"resources of the model the entity holds from an earlier block, each with an "
             f"optional since, units and, of a set, its member", f"{at}/holds",
-            hint="one entity per entry; since is at or before the clock; not the resource its "
-                 "own block or the station in held_by seizes"))
+            hint="one entity per entry; since is at or before the clock and not before the "
+                 "entity was made (the clock less its age); not the resource its own block or "
+                 "the station in held_by seizes"))
         return
     for name, spec in holds.items():
         unit = spec.get("member") or name       # #448: two holds of one unit count twice
         serving[unit] = serving.get(unit, 0) + spec.get("units", 1)
 
     # #449: each hold is given back further on, by its own block or one the entity reaches
-    links: dict = {}
-    for link in layout.get("links") or []:
-        if isinstance(link, dict):
-            links.setdefault(link.get("source"), []).append(link.get("target"))
-    stations = [n for n, b in blocks.items() if str(b.get("type", "")).upper() == "STATION"]
-
-    def after(n) -> list:       # a ROUTE or a TRANSPORT reaches its station by name, not link
-        jumps = str((blocks.get(n) or {}).get("type", "")).upper() in ("ROUTE", "TRANSPORT")
-        return links.get(n, []) + (stations if jumps else [])
-
+    after = _successors(layout, blocks)
     for name in holds:
         if _released(block) != name and not blocking.stops(
                 entry["block"], after, lambda n: _released(blocks.get(n) or {}) == name,
@@ -621,6 +662,186 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
                 "E_INITIAL_RESOURCE", f"initial_state: block '{entry['block']}': the entry "
                 f"holds '{name}', which no block after it releases", f"{at}/holds/{name}",
                 hint="a hold is given back by a RELEASE or a \"Delay Release\" further on"))
+
+
+def _successors(layout, blocks, jumps=True):
+    """The function giving the blocks an entity leaving a block reaches next: its links, the
+    STATION a TRANSPORT names in its `destination` (#459) and, with *jumps*, every STATION
+    from a ROUTE or a TRANSPORT with none, which reach theirs by an attribute."""
+    links: dict = {}
+    for link in layout.get("links") or []:
+        if isinstance(link, dict):
+            links.setdefault(link.get("source"), []).append(link.get("target"))
+    named = {}      # a station is found by its block name or its `station` alias
+    for n, b in blocks.items():
+        if _kind(b) == "STATION":
+            named[n] = named[str((b.get("params") or {}).get("station") or n)] = n
+    stations = sorted(set(named.values())) if jumps else []
+
+    def after(n):
+        block = blocks.get(n) or {}
+        if _kind(block) not in ("ROUTE", "TRANSPORT"):
+            return links.get(n, [])
+        destination = named.get(str((block.get("params") or {}).get("destination") or ""))
+        return links.get(n, []) + ([destination] if destination and _kind(block) == "TRANSPORT"
+                                   else stations)
+    return after
+
+
+def _predecessors(blocks, after) -> dict:
+    """{block: the blocks whose *after* reaches it}: the walk of *after*, backwards."""
+    before: dict = {}
+    for n in blocks:
+        for m in after(n):
+            before.setdefault(m, []).append(n)
+    return before
+
+
+def _kind(block: dict) -> str:
+    return str(block.get("type", "")).upper()
+
+
+# What the engine keeps on an entity under a public name, its methods and properties too: an
+# attribute may not be one (#453, #457). `cost` is the one a model sets; the last three are
+# set on an entity later in a run.
+_OWN = frozenset((set(dir(Entity)) | set(vars(Entity(0))) | {"req_params", "initial", "agent"})
+                 - {"cost"})
+
+
+def _plain_entity(entry: dict) -> bool:
+    """An entry's or a member's `e_type` and `attributes` can be set on an entity as given."""
+    attributes = entry.get("attributes")
+    if attributes is None:
+        attributes = {}
+    return (isinstance(entry.get("e_type", ""), (str, type(None))) and isinstance(attributes, dict)
+            and all(isinstance(k, str) and not k.startswith("_") and k not in _OWN
+                    for k in attributes)
+            and ("cost" not in attributes or _number(attributes["cost"])))
+
+
+def _forms(block: dict) -> bool:
+    """A block that makes a batch entity of the entities it gathers: a BATCH, or a MATCH with
+    `batch_option` (one without sends each matched entity on alone)."""
+    return _kind(block) == "BATCH" or (
+        _kind(block) == "MATCH" and bool((block.get("params") or {}).get("batch_option")))
+
+
+def _splits(name, blocks, after) -> bool:
+    """#451: an entity at *name* meets a SEPARATE before any BATCH or MATCH, so only a
+    formed batch can be there."""
+    def kind(n) -> str:
+        return _kind(blocks.get(n) or {})
+
+    if _forms(blocks.get(name) or {}):
+        return False
+    return kind(name) == "SEPARATE" or "SEPARATE" in map(kind, blocking.stops(
+        name, after, lambda n: kind(n) == "SEPARATE" or _forms(blocks.get(n) or {}),
+        lambda n: True))
+
+
+def _formed_by(name, blocks, before) -> list:
+    """#456: the BATCHes and batching MATCHes whose batch entity can be at *name*: those
+    reached walking back from it before any SEPARATE."""
+    return [n for n in blocking.stops(
+        name, lambda n: before.get(n, []),
+        lambda n: _kind(blocks.get(n) or {}) == "SEPARATE" or _forms(blocks.get(n) or {}),
+        lambda n: True) if _forms(blocks.get(n) or {})]
+
+
+def _batch_types(name, blocks, before, created) -> set:
+    """D440 where no SEPARATE follows: the types the BATCHes before *name* give their batch
+    entities, which no CREATE also makes; an entity of one there is a formed batch."""
+    types = {str((blocks[b].get("params") or {}).get("batched_entity_type") or "").upper()
+             for b in _formed_by(name, blocks, before)}
+    return types - created - {""}
+
+
+def _group(block: dict):
+    """The number of entities *block* (a BATCH or MATCH) gathers into one batch, or None when
+    it is no constant."""
+    params = block.get("params") or {}
+    size = params.get("batch_size") if _kind(block) == "BATCH" else \
+        params.get("number_to_match", 2)
+    return size if isinstance(size, int) and not isinstance(size, bool) else None
+
+
+def _needs(name, blocks, after, *, batch=False) -> set:
+    """#455: what an entity at *name* gives back, at a RELEASE or a "Delay Release" its own
+    block is or that it reaches, before any block seizes it for it: what it must hold. A
+    batch entity (*batch*) goes no further than a SEPARATE, where its members go on."""
+    def takes(block) -> set:        # a belt seizes its end stop for the part (D431)
+        return {_seized(block), _kind(block) == "CONVEYOR" and str(
+            (block.get("params") or {}).get("exit_resource") or "").strip() or None}
+
+    def stop(x):
+        return lambda n: (x == _released(blocks.get(n) or {}) or x in takes(blocks.get(n) or {})
+                          or (batch and _kind(blocks.get(n) or {}) == "SEPARATE"))
+
+    own = blocks.get(name) or {}
+    found = {_released(own)} - {None}
+    for x in {_released(b) for b in blocks.values()} - {None} - found - takes(own):
+        if any(_released(blocks.get(n) or {}) == x for n in blocking.stops(
+                name, after, stop(x), lambda n: True)):
+            found.add(x)
+    return found
+
+
+_MEMBER_KEYS = frozenset({"e_type", "age", "attributes", "holds"})
+
+
+def _validate_members(layout, entry, blocks, sets, start, serving, at, problems,
+                      after, before) -> None:
+    """D437, D438: a formed batch's members, all in one entity's entry, at a block a BATCH or
+    MATCH before it reaches with no BATCH or MATCH ahead of it (#456). Each is at least as old
+    as the batch; they are no more than the largest group those BATCHes form; their holds are
+    an entity's (D432), count into *serving*, and hold what the members give back once the
+    batch splits (#455)."""
+    members, age, name = entry["members"], entry.get("age", 0), entry["block"]
+    age = age if _number(age) and age > 0 else 0.0
+    formed = _formed_by(name, blocks, before)
+    nested = _forms(blocks[name]) or any(_forms(blocks.get(n) or {}) for n in blocking.stops(
+        name, after, lambda n: _kind(blocks.get(n) or {}) == "SEPARATE"
+        or _forms(blocks.get(n) or {}), lambda n: True))
+    largest = 0 if nested else max(
+        [n for n in (_group(blocks[b]) for b in formed) if n], default=0)
+
+    def fits(spec) -> bool:
+        return (isinstance(spec, dict) and set(spec) <= _MEMBER_KEYS and _plain_entity(spec)
+                and _number(spec.get("age", 0)) and spec.get("age", 0) >= age)
+
+    if not (isinstance(members, list) and 1 <= len(members) <= largest and entry.get("count") == 1
+            and all(fits(spec) for spec in members)):
+        problems.append(problem(
+            "E_INITIAL_BATCH", f"initial_state: block '{name}': members are the records of one "
+            f"batch entity, at a block a BATCH or MATCH reaches with none ahead, from 1 to the "
+            f"group it forms ({largest}), each with an optional e_type, age, attributes and "
+            f"holds", f"{at}/members",
+            hint="a member is at least as old as its batch; a batch inside a batch is not "
+                 "carried"))
+        return
+    splits = [n for n in blocking.stops(name, after, lambda n: _kind(
+        blocks.get(n) or {}) == "SEPARATE", lambda n: True)]
+    needs = set().union(*(_needs(s, blocks, after) for s in splits))
+    for index, spec in enumerate(members):
+        if spec.get("holds") is not None:       # given back after the batch splits
+            _validate_holds(layout, {"block": name, "count": 1, "holds": spec["holds"],
+                                     "age": spec.get("age", 0)},
+                            {}, blocks, sets, start, serving, f"{at}/members/{index}", problems)
+        for x in sorted(needs - set(spec.get("holds") or {})):
+            problems.append(problem(
+                "E_INITIAL_RESOURCE", f"initial_state: block '{name}': member {index} gives "
+                f"'{x}' back after the batch splits, and does not hold it",
+                f"{at}/members/{index}/holds", block=name,
+                hint="a member holds what it took before it was batched: say so in its holds"))
+
+
+def _room(layout, level) -> float:
+    """#458: the most a level can ever hold above its minimum: its capacity less its `min`
+    when both are numbers, else no bound (a `min` of None is none below)."""
+    spec = next((l for l in layout.get("levels") or [] if isinstance(l, dict)
+                 and l.get("name") == level), {})
+    capacity, minimum = spec.get("capacity"), spec.get("min", 0.0)
+    return capacity - minimum if _number(capacity) and _number(minimum) else math.inf
 
 
 def _released(block: dict) -> str | None:
@@ -1168,6 +1389,20 @@ def _hold(block, entity, holds: dict) -> None:
         block.env.process(_granted(block.ctx, requests))
 
 
+def _absorb(block, batch, members: list) -> None:
+    """D437: the members of a formed batch, made as they were and absorbed into *batch* as
+    `make_batch_entity` absorbs them (out of WIP, `in_batch` set). No BATCH runs, and no
+    listener hears of a member: it was absorbed before the clock."""
+    ctx = block.ctx
+    for spec in members:
+        member = _make_entity(ctx, spec)
+        if spec.get("holds"):
+            _hold(block, member, spec["holds"])
+        member.in_batch = batch.id
+        ctx.live_entities.remove(member)
+        batch.batch_elems.append(member)
+
+
 def _granted(ctx, requests):
     yield ctx.env.all_of(requests)
     ctx.settling -= 1
@@ -1241,7 +1476,7 @@ def put_back(env, waiting: list) -> None:
     """The waiting entities join where they waited, in the order of the state: each
     arrives at its block, a load asks its fleet for a vehicle again."""
     for item in waiting:
-        if not isinstance(item, tuple):     # a part at a belt's end stop (D429)
+        if not isinstance(item, tuple):     # at a belt's end stop (D429), a transfer (D439)
             env.process(item)
             continue
         block, entity, *trip = item
@@ -1336,6 +1571,8 @@ def apply(env, model, state: dict) -> int:
         for index in range(count):
             entity = _make_entity(ctx, entry)
             injected += 1
+            if entry.get("members"):
+                _absorb(block, entity, entry["members"])
             if entry.get("holds"):
                 _hold(block, entity, entry["holds"])
             # #338: it is in the model from t = 0, so a listener hears of it as of any
@@ -1357,7 +1594,8 @@ def apply(env, model, state: dict) -> int:
                 continue
             waits = (index >= in_service and entry.get("since") is not None
                      and (block.block.block_type in _QUEUEING     # or at a belt's end stop
-                          or (entry.get("belt") or {}).get("stage") == "stop"))
+                          or (entry.get("belt") or {}).get("stage") == "stop"
+                          or entry.get("transfer")))              # or for its level (D439)
             if waits:       # before the listeners hear of it: a state reads it back (#348)
                 entity._since = float(entry["since"])
             if index >= in_service and entry.get("deadline") is not None:
@@ -1389,6 +1627,9 @@ def apply(env, model, state: dict) -> int:
                                                  entry.get("member")))
                 if belt.get("stage", "cell") != "cell":     # on the belt, past its cell (D429)
                     belts.setdefault(block, []).append((entity, belt))
+                    continue
+                if entry.get("transfer"):       # joins its level's queue as it was (D439)
+                    waiting.append(block.resume(entity, float(entry["transfer"]["amount"])))
                     continue
                 if block.block.block_type != "CONVEYOR" and block.space is not None \
                         and block.space.capacity and entry.get("place") is not False:

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- State: a formed batch (a truck at the dock, a truckload, an oven load; of a BATCH or a MATCH)
+  is carried with its members, and an entity waiting at a TRANSFER for room or stock is carried
+  in its level's queue order; `warehouse_library` and `mfg_line_library` are reproduced from a
+  state taken at any time tried. From a plant both stay refused by name.
+- Fixed: hand-written states that put a batch's members where no batch can be, leave out a hold
+  a later RELEASE needs, name an attribute after the engine's own, ask a transfer for more than
+  its level holds, or date a hold before its entity are refused by name.
+- Changed results: a level's Min and Max count the value a TRANSFER lump leaves; in
+  `biogas_plant_library` the feed stores report a slightly higher Max (10154.59 to 10155.70 at seed 0).
+
 ## 0.7.1 (2026-10-15)
 
 The twin's live-data side is now tested against software we did not write: Mosquitto, an

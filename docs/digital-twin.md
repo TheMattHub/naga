@@ -126,7 +126,9 @@ naga state observe model.json --out state.json
   | A batch whose maximum wait is running | carried (`blocks.<batch>.due`) |
   | A HOLD on a condition that is scanned on a clock; a MATCH with no `type_store_map` | refused |
   | A job holding a resource it seized in an earlier block (a SEIZE ... RELEASE, a belt's end stop carried to a "Delay Release") | carried (`holds`) |
-  | A preempted job; a formed batch | refused |
+  | A formed batch (of a BATCH or a MATCH), wherever it is: the batch entity with its members inside, each with its age, attributes and holds | carried (`members`) |
+  | An entity at a TRANSFER waiting for its level (for room or for stock), in the level's queue order | carried (`transfer`) |
+  | A preempted job; a batch inside a batch; in a state from a plant, a formed batch (no signal names its members) or an entity waiting at a TRANSFER (no signal says its amount) | refused |
   | A ranked queue whose `ranking_expr` reads more than the entity (a variable, the clock) and does not `rerank` | refused |
   | Blocking after service and finite buffers (a BUFFER, a `queue_capacity`): the parts in a buffer, the machine holding its finished part, who waits for a place | carried (`held_by`, `place`) |
   | Blocking before service (`hold_until_space`); a finite queue that balks or reneges while an entity waits for a place | refused |

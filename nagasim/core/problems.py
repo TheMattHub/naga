@@ -543,6 +543,9 @@ PROBLEM_CODES: dict[str, str] = {
     "E_INITIAL_BELT": "A part on a belt in initial_state does not fit the model: not one entity at an "
                       "accumulating CONVEYOR, a stage it does not have, a time on the wrong side "
                       "of the clock, or more than one part at the belt's end.",
+    "E_INITIAL_BATCH": "A formed batch in initial_state does not fit the model: an entry that "
+                       "meets a SEPARATE has no members, or its members are not records of one "
+                       "batch the model can form.",
     "E_INITIAL_AGE": "An initial-state entry's age is negative or not a number.",
     "E_INITIAL_RESOURCE": "initial_state.resources, or an entity's holds, names a resource the "
                           "model does not declare, or a hold it cannot be.",

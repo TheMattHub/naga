@@ -117,10 +117,9 @@ def test_the_bundled_warehouse_with_forklifts_is_taken_again_the_same(at):
 
 
 @pytest.mark.parametrize("at", [95.1, 205.5])
-def test_the_bundled_warehouse_library_is_carried_where_it_has_no_formed_batch(at):
-    """Its belt, its pickers blocked by the belt, the shipping batch's maximum wait. Most
-    times it is still refused: a truck or a truckload is a formed batch, and a putaway to a
-    full zone is a waiting transfer (each a vocabulary of its own)."""
+def test_the_bundled_warehouse_library_is_carried_with_its_belt(at):
+    """Its belt, its pickers blocked by the belt, the shipping batch's maximum wait. Its
+    trucks and truckloads: `test_state_batches.py`."""
     taken = _carried(_bundled("warehouse_library", deterministic=True), at)
     assert taken["blocks"]["shipping/consolidate"]["due"] > at
 

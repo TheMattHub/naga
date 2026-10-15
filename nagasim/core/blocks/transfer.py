@@ -58,13 +58,25 @@ class Transfer(BaseProcess):
         if amount <= available + EPS:
             system.move(self.level_name, amount, self.mode)
         elif self.wait:
-            event = self.env.event()
-            level.pending.append([amount, self.mode, event])
-            system.trigger()                # the engine must schedule this demand's instant
-            yield event
-            system.after_discrete_change()
+            yield from self._wait(system, level, entity, amount)
         else:                               # partial move; the rest is unmet/spilled
             system.move(self.level_name, amount, self.mode)
+        self.forward(entity, 0)
+
+    def _wait(self, system, level, entity, amount):
+        event = self.env.event()
+        level.pending.append([amount, self.mode, event])
+        entity._pending = event             # D439: a state finds it in its level's queue
+        system.trigger()                    # the engine must schedule this demand's instant
+        yield event
+        system.after_discrete_change()
+
+    def resume(self, entity, amount: float):
+        """D439: a state put back an entity waiting here: it joins its level's queue at the
+        clock with the amount it waited for, which is not evaluated again."""
+        system, level = self._level()
+        yield from self._wait(system, level, entity, amount)
+        entity._since = None        # its wait here, which a seize further on must not take
         self.forward(entity, 0)
 
     def self_run(self, entity):

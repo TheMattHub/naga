@@ -349,8 +349,7 @@ def test_discrete_event_a_stochastic_run_is_reproduced_in_distribution():
 
 
 @pytest.mark.parametrize("name, at, kind", [("agents_sir_agents", 5.0, "agent populations"),
-                                            ("abm_wolf_sheep", 5.0, "agent populations"),
-                                            ("warehouse_library", 50.0, "a formed batch")])
+                                            ("abm_wolf_sheep", 5.0, "agent populations")])
 def test_what_a_state_cannot_carry_is_refused_by_name(name, at, kind):
     assert kind in _refusal(_bundled(name), at)
 
@@ -732,9 +731,8 @@ def test_a_bundled_library_model_with_stores_is_reproduced_exactly():
 
 
 @pytest.mark.parametrize("name, at, kind", [
-    ("automation_floor", 50.3, "a mobile cobot that tends"), ("warehouse_library", 20.3, "a formed batch"),
-    ("automation_cell", 50.3, "mid-cycle"), ("mfg_line_library", 50.3, "a formed batch"),
-    ("biogas_plant_library", 50.3, "conveyor, a blended level")])
+    ("automation_floor", 50.3, "a mobile cobot that tends"), ("automation_cell", 50.3, "mid-cycle"),
+    ("biogas_plant_library", 50.3, "a conveyor or a blended level")])
 def test_what_the_second_round_still_refuses_is_named(name, at, kind):
     assert kind in _refusal(_bundled(name), at)
 
