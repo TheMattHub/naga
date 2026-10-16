@@ -4,6 +4,7 @@ in their modules) and this package's -- then checks every block's params,
 expressions, distributions and time units, and the links' endpoints and delays."""
 from __future__ import annotations
 
+import dataclasses
 from importlib import import_module
 
 from nagasim.core import agents, blocking, sd, submodels, units
@@ -923,7 +924,14 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                                                          tables=table_dims, refs=refs))
     sequence_problems, sequence_steps = validate_sequences_structured(layout)
     problems.extend(sequence_problems)
-    problems.extend(validate_orders_structured(layout, sequence_steps, calendar))
+    state = layout.get("initial_state") if isinstance(layout.get("initial_state"), dict) else {}
+    if isinstance(state.get("order_book"), list):
+        # D484: a state's book is the run's orders, judged as the section is, at its own path.
+        problems.extend(dataclasses.replace(p, path=p.path.replace(
+            "/orders", "/initial_state/order_book", 1)) for p in validate_orders_structured(
+                {**layout, "orders": state["order_book"]}, sequence_steps, calendar))
+    else:
+        problems.extend(validate_orders_structured(layout, sequence_steps, calendar))
     problems.extend(validate_resources_structured(layout, schedule_kinds))
     _validate_entities(layout, problems)
     _validate_failures(layout, problems)

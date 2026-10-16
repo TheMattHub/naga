@@ -145,12 +145,26 @@ def test_a_variable_slider_becomes_an_input_with_its_own_range_and_title():
     assert [e["path"] for e in inputs] == ["variables.rate.initial", "variables.open.initial"]
 
 
-def test_scenarios_pages_follow_the_model_and_no_live_page_is_generated():
+def test_scenarios_and_live_pages_follow_the_model():
     names = lambda doc: [p["name"] for p in dashboard.default_dashboard(doc)["pages"]]
     assert names(_bundled("call_centre_day")) == ["What-if", "Scenarios", "Play"]
     live = {**_model(), "data_sources": [{"name": "plc", "kind": "opcua", "connection": "c"}]}
-    assert names(live) == ["What-if", "Play"]      # until the twin cycle defines it (7.12)
+    assert names(live) == ["What-if", "Play", "Live"]
+    kinds = lambda doc: [i["kind"] for i in dashboard.default_dashboard(doc)["pages"][-1]["items"]]
+    assert kinds(live) == ["status", "view"]       # no state to start from: monitored only
+    assert kinds({**live, "initial_state": {"entities": []}}) == [
+        "status", "view", "forecast", "recommendations"]
+    assert names({**_model(), "data_sources": [{"name": "f", "kind": "csv", "path": "f.csv"}]}) \
+        == ["What-if", "Play"]                     # a file is no plant
     assert names(schema.migrate({"blocks": [], "links": []})) == ["Play"]
+
+
+def test_a_live_page_takes_its_four_item_kinds_and_no_other():
+    page = lambda *kinds: _model(pages=[{"name": "L", "activity": "live",
+                                         "items": [{"kind": k} for k in kinds]}])
+    assert _codes(page("status", "view", "forecast", "recommendations")) == []
+    for kind in ("events", "input", "table", "decisions"):
+        assert _codes(page(kind)) == ["E_DASHBOARD_DEFINITION"], kind
 
 
 def test_generated_ranges_and_kinds():
@@ -214,6 +228,20 @@ def test_regenerate_only_adds_and_remembers_what_was_hidden():
     assert merged["pages"][0]["items"][-1] == {"kind": "input",
                                                "ref": generated["inputs"][-1]["path"]}
     assert stored["inputs"][0]["label"] == "Mine" and len(stored["inputs"]) == 1    # pure
+
+
+def test_generated_dashboard_ignores_what_the_author_stored_and_input_for_follows_the_rule():
+    inputs = [{"path": "variables.rate.initial", "label": "Rate", "kind": "number",
+               "min": 0, "max": 1}]
+    doc = _model(inputs=inputs, pages=[{"name": "Only", "activity": "play", "items": []}],
+                 hidden=["page:Play"])
+    assert dashboard.generated_dashboard(doc) == dashboard.default_dashboard(_model())
+    assert dashboard.input_for(doc, "resources.Server.capacity") == {
+        "path": "resources.Server.capacity", "label": "resources.Server.capacity",
+        "kind": "number", "min": 1, "max": 4, "step": 1}
+    assert dashboard.input_for(doc, "variables.open.initial")["kind"] == "switch"
+    assert dashboard.input_for(doc, "variables.nope.initial") is None
+    assert dashboard.input_for(doc, "blocks.p.params.distribution") is None     # text
 
 
 # -- a viewer's value is checked in the engine (D246) ---------------------------
@@ -326,7 +354,7 @@ _PAGE = {"name": "P", "activity": "what_if", "items": []}
     {"limits": {"replications": 2.5}},
     {"limits": [5]},
     {"pages": [{**_PAGE, "activity": "edit"}]},
-    {"pages": [{**_PAGE, "activity": "live"}]},                        # not defined yet (7.12)
+    {"pages": [{"name": "L", "activity": "live", "items": [{"kind": "events"}]}]},  # D279
     {"pages": [{"name": "P", "activity": "play", "items": [{"kind": "forecast"}]}]},
     {"pages": [{**_PAGE, "items": [{"kind": "input", "ref": "variables.rate.initial"}]}]},
     {"pages": [{**_PAGE, "items": [{"kind": "status"}]}]},            # a live item on a what-if

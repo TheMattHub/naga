@@ -77,7 +77,7 @@ A `signals` entry:
 | Key | Meaning |
 |---|---|
 | `source` | Only observations of this data source. |
-| `key` | The observation's key. An "at" key holds one {id}; a "job" key may hold one *. |
+| `key` | The observation's key. An "at" or "order" key holds one {id}; a "job" key may hold one *. |
 | `field` | The cell to read when the value is a row. |
 | `as` | What the key asserts. |
 | `resource` | A resource or a fleet of the model. |
@@ -96,6 +96,10 @@ A `signals` entry:
 | `attributes` | "at": cell of a row -> the entity attribute its number sets. |
 | `batch_field` | "at": the cell of a merged member's row that holds the id of its batch. |
 | `types` | Product -> entity type. |
+| `order_field` | "at": the cell of a row that holds the id of the item's order. |
+| `fields` | "order": type, quantity, done, due, priority, release, status -> the cell of the order's row that holds it (status always). |
+| `sequences` | "order": product -> a sequence of the model. |
+| `statuses` | "order": plant status -> waiting, held, released, done, gone. |
 | `leaves` | "seen": the entity has left. |
 | `scale` | "level": model value = value * scale. |
 | `rollover` | "counter": the value the plant's counter returns to 0 at. |

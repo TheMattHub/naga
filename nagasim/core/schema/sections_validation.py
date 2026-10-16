@@ -242,13 +242,17 @@ DASHBOARD_LIMITS = {"widgets": 64, "controls": 64, "inputs": 32, "results": 32, 
                     "grid": 100}
 DASHBOARD_INPUT_KINDS = ("number", "switch", "choice")
 DASHBOARD_VIEW_MODES = ("schematic", "layout", "3d")
-# activity -> the item kinds a page of it may hold. No "live" activity yet: it is
-# added when the twin cycle (7.12) defines what such a page carries; adding to a
-# published schema is free, removing is a break.
+# activity -> the item kinds a page of it may hold. "live" (2026-10-16) reads what a
+# separately started twin wrote (`twin.json`, D249): its state and sources, the plant
+# on the view, the forecast with its accuracy, the recommendations. No "events": a
+# twin read from another process hands over none (D279). An addition to v29, not a
+# new version: every v29 file means what it meant, and an older build refuses a live
+# page by name rather than misreading it.
 DASHBOARD_ACTIVITIES = {
     "what_if": ("input", "result", "widget", "table", "view"),
     "scenarios": ("scenarios", "result", "widget", "table", "view"),
     "play": ("view", "decisions", "control", "widget", "result", "table"),
+    "live": ("status", "view", "forecast", "recommendations"),
 }
 # The run settings a viewer's results are labelled with (D248): never inputs.
 _DASHBOARD_FORBIDDEN_INPUTS = ("simulation.seed", "simulation.replications")

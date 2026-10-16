@@ -19,7 +19,9 @@ rule 13) reduces them, so every view of a run shows the plant with no view code 
 * A contradiction or a hole is a counted, coded Problem with a stated rule (D256), never a
   repair. Every bound has a ceiling in `LIMITS`; what is over one is dropped and counted.
 * Nothing from a log is text in an output: an id becomes an integer of the mapper's own, and
-  every name comes from the mapping, checked against the model.
+  every name comes from the mapping, checked against the model. The one exception is an
+  order's id (D482), which the plant, a record and the KPI frame all name the order by: it
+  is kept only when it is a plain id.
 
 A mapping and a log are data: they name no file, host or connection and select no code.
 Stdlib and `nagasim.core` only.
@@ -45,7 +47,8 @@ from nagasim.core.trace import DEFAULT_MAX_EVENTS, TraceEvent, TraceRecorder
 from nagasim import readers
 from nagasim.live import MAX_TEXT, SKEW_SECONDS, Feed, stamp
 
-__all__ = ["FORMAT", "LIMITS", "KINDS", "STATES", "PlantError", "load", "check", "schema",
+__all__ = ["FORMAT", "LIMITS", "KINDS", "STATES", "ORDER_FIELDS", "ORDER_STATES", "PlantError",
+           "load", "check", "schema",
            "scaffold", "Mapper", "UNTYPED",
            "read_log", "write_log", "in_order", "replay", "Watch", "Recorder", "log_of", "main"]
 
@@ -64,6 +67,7 @@ LIMITS = {
     "count": 10_000,                # a queue length or a unit count
     "seconds": 100 * 365 * 86400,   # model time, from the epoch
     "attributes": 256,              # attributes an "at" signal reads (D459)
+    "orders": 100_000,              # orders known at once (D481)
 }
 # as -> (the field naming what it speaks of, the other fields it may carry)
 KINDS = {
@@ -74,7 +78,10 @@ KINDS = {
     "job": ("resource", ()),
     "queue": ("block", ("type",)),
     "at": ("blocks", ("gone", "merged", "type", "type_field", "types", "attributes",
-                      "batch_field")),
+                      "batch_field", "order_field")),
+    # An order of the plant's book, one row a key (D481): no name of the model, so its
+    # "target" is the table of the cells it reads.
+    "order": ("fields", ("types", "sequences", "statuses")),
     "seen": ("block", ("leaves", "type")),
     "level": ("level", ("scale",)),
     "counter": ("block", ("rollover",)),
@@ -87,6 +94,11 @@ KINDS = {
     "step": ("block", ()),
 }
 CYCLES = ("pick", "place", "idle")
+# D481: what an order row says, and what its status may mean.
+ORDER_FIELDS = ("type", "quantity", "done", "due", "priority", "release", "status")
+ORDER_STATES = ("waiting", "held", "released", "done", "gone")
+# D482: an order's id is the one plant text kept as text, so it must be a plain id.
+_ORDER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,63}")
 STATES = ("busy", "idle", "blocked", "down", "up")
 _UNITS_STATES = frozenset({"busy", "idle", "blocked"})     # the ones that hold or free a unit
 UNTYPED = "Unknown"             # the type of an entity nothing gives one (as a trace writes it)
@@ -143,7 +155,8 @@ def _names(layout) -> dict:
                                             if isinstance(n, dict) and n.get("name")],
             "units": {str(f["name"]): len(f.get("units") or []) or _whole(f.get("count", 1))
                       for f in flat.get("fleets") or [] if f.get("name")},
-            "level": of("levels"), "types": sorted(types), "unit": units_of(flat.get("simulation")).time}
+            "level": of("levels"), "sequence": of("sequences"), "types": sorted(types),
+            "unit": units_of(flat.get("simulation")).time}
 
 
 # ---------------------------------------------------------------- the mapping file
@@ -235,19 +248,21 @@ def check(mapping, layout=None) -> list[Problem]:
         if len(key.encode("utf-8", "replace")) > MAX_TEXT:
             bad(f"signal {index}: key is over {MAX_TEXT} bytes", f"{at}/key", "E_PLANTMAP_SIZE")
             continue
-        if key.count("{id}") != (kind == "at") or key.count("*") > (kind == "job"):
-            bad(f"signal {index}: an \"at\" key holds one {{id}}, a \"job\" key may hold one "
-                f"*, and no other key holds either", f"{at}/key")
-        for name in ("source", "field", "type", "type_field", "batch_field"):
+        if key.count("{id}") != (kind in ("at", "order")) or key.count("*") > (kind == "job"):
+            bad(f"signal {index}: an \"at\" or \"order\" key holds one {{id}}, a \"job\" key "
+                f"may hold one *, and no other key holds either", f"{at}/key")
+        for name in ("source", "field", "type", "type_field", "batch_field", "order_field"):
             if name in signal and not (isinstance(signal[name], str) and signal[name]
                                        and len(signal[name]) <= 200):
                 bad(f"signal {index}: {name} must be a text of at most 200 characters",
                     f"{at}/{name}")
         tables = {"states": STATES, "blocks": None, "types": None, "nodes": None,
-                  "attributes": None, "cycles": CYCLES}
+                  "attributes": None, "cycles": CYCLES, "fields": None, "sequences": None,
+                  "statuses": ORDER_STATES}
         for name, allowed in tables.items():
             if name in signal or (name, kind) in (("states", "state"), ("blocks", "at"),
-                                                  ("nodes", "vehicle"), ("cycles", "tend")):
+                                                  ("nodes", "vehicle"), ("cycles", "tend"),
+                                                  ("fields", "order"), ("statuses", "order")):
                 reason = _table(signal.get(name), allowed)
                 bound = LIMITS["attributes" if name == "attributes" else "entries"]
                 if reason:
@@ -261,6 +276,10 @@ def check(mapping, layout=None) -> list[Problem]:
                     bad(f"signal {index}: attributes names an attribute that is not a name "
                         f"of at most 64 letters, digits and _, or that the engine owns",
                         f"{at}/attributes")
+                elif name == "fields" and not (set(signal[name]) <= set(ORDER_FIELDS)
+                                               and "status" in signal[name]):
+                    bad(f"signal {index}: fields names the cell of each of "
+                        f"{', '.join(ORDER_FIELDS)}, status always", f"{at}/fields")
         for name in ("gone", "merged"):
             codes = signal.get(name, [])
             if not isinstance(codes, list) or len(codes) > LIMITS["entries"] or not all(
@@ -280,6 +299,16 @@ def check(mapping, layout=None) -> list[Problem]:
                                  or not 0 <= unit < LIMITS["count"]):
             bad(f"signal {index}: unit must be the index of a vehicle of the fleet, from 0",
                 f"{at}/unit")
+            continue
+        if kind == "order":         # D481: the book; it names no block, only routings
+            told["\"order\" book"] = told.get("\"order\" book", 0) + 1
+            for sequence in (signal["sequences"].values()
+                             if names is not None and isinstance(signal.get("sequences"), dict)
+                             else ()):
+                if sequence not in names["sequence"]:
+                    bad(f"signal {index}: the model has no sequence '{sequence[:80]}'",
+                        f"{at}/sequences", "E_PLANTMAP_NAME", "its sequences: "
+                        f"{', '.join(sorted(names['sequence'])[:20]) or '(none)'}")
             continue
         # What it speaks of: one name, a table of them, or (seen) a way out.
         if kind == "at":
@@ -366,8 +395,8 @@ def schema() -> dict:
                     "type": "object", "additionalProperties": False, "required": ["key", "as"],
                     "properties": {
                         "source": {**text, "description": "Only observations of this data source."},
-                        "key": {**text, "description": "The observation's key. An \"at\" key "
-                                "holds one {id}; a \"job\" key may hold one *."},
+                        "key": {**text, "description": "The observation's key. An \"at\" or "
+                                "\"order\" key holds one {id}; a \"job\" key may hold one *."},
                         "field": {**text, "description": "The cell to read when the value is a row."},
                         "as": {"enum": list(KINDS), "description": "What the key asserts."},
                         "resource": {**text, "description": "A resource or a fleet of the model."},
@@ -397,6 +426,15 @@ def schema() -> dict:
                         "batch_field": {**text, "description": "\"at\": the cell of a merged "
                                         "member's row that holds the id of its batch."},
                         "types": {**table, "description": "Product -> entity type."},
+                        "order_field": {**text, "description": "\"at\": the cell of a row that "
+                                        "holds the id of the item's order."},
+                        "fields": {**table, "description": "\"order\": "
+                                   + ", ".join(ORDER_FIELDS) + " -> the cell of the order's "
+                                   "row that holds it (status always)."},
+                        "sequences": {**table, "description": "\"order\": product -> a "
+                                      "sequence of the model."},
+                        "statuses": {**table, "description": "\"order\": plant status -> "
+                                     + ", ".join(ORDER_STATES) + "."},
                         "leaves": {"type": "boolean", "description": "\"seen\": the entity has left."},
                         "scale": {"type": "number", "description": "\"level\": model value = value * scale."},
                         "rollover": {"type": "integer", "minimum": 2, "description": "\"counter\": "
@@ -501,12 +539,12 @@ class _Entity:
     """A named entity: where it is, whether it is there or inside a batch, since when, and
     the block it was seen in before (`came`, D457)."""
     __slots__ = ("id", "block", "present", "e_type", "since", "order", "came", "entered",
-                 "attributes", "batch")
+                 "attributes", "batch", "order_id")
 
     def __init__(self, ident, block, e_type, since, order):
         self.id, self.block, self.present, self.e_type = ident, block, True, e_type
         self.since, self.order, self.came, self.entered = since, order, None, None
-        self.attributes = self.batch = None
+        self.attributes = self.batch = self.order_id = None
 
 
 # code -> the reasons it reports, with how each reads
@@ -516,7 +554,8 @@ _REPORTED = {
         "type": "a key or a value that is not data", "oversize": "a text over 1024 bytes",
         "stale": "older than what its key already said", "time_range": "a time before the epoch "
         "or past the bound", "no_time": "no usable time", "keys": "over the bound of keys",
-        "entities": "over the bound of entities", "ceiling": "after the event ceiling",
+        "entities": "over the bound of entities", "orders": "over the bound of orders",
+        "ceiling": "after the event ceiling",
         "forgotten": "the key longest silent was forgotten to make room (an old value of it "
         "would now read as new)"},
     "W_PLANT_TIME": {
@@ -625,6 +664,9 @@ class Mapper:
         self._vehicles: dict[tuple, list] = {}      # (fleet, unit) -> [node, the entity it carries]
         self._cycles: dict[tuple, tuple] = {}       # (fleet, unit) -> (pick or place, since)
         self._steps: dict[str, tuple] = {}          # MOTION block -> (segment, since)
+        # D481: order id -> what its row last said, first seen first; None: no order signal
+        self._orders: dict[str, dict] | None = {} if any(
+            s.get("as") == "order" for s in mapping.get("signals", [])) else None
         self._levels: dict[str, tuple] = {}         # level -> (time, value) last said
         # block -> [last value, total, since, resets, when it last spoke]
         self._counters: dict[str, list] = {}
@@ -744,8 +786,8 @@ class Mapper:
             t = self.now
         self.now = t
         for signal, ident in signals:
-            if value is None or not ("field" in signal or row):
-                cell = value
+            if value is None or signal["as"] == "order" or not ("field" in signal or row):
+                cell = value                # an order reads its whole row (D481)
             elif row and signal.get("field") in value:
                 cell = value[signal["field"]]
             else:
@@ -890,7 +932,15 @@ class Mapper:
         product = row.get(signal.get("type_field")) if isinstance(row, dict) else None
         e_type = signal.get("types", {}).get(_text(product)) if product is not None else None
         self._place(ident, block, e_type or signal.get("type"), t, out)
-        self._attributes(signal, self._entities.get(self.ids.get(ident, 0)), row)
+        entity = self._entities.get(self.ids.get(ident, 0))
+        self._attributes(signal, entity, row)
+        if entity is not None and isinstance(row, dict) and signal.get("order_field") in row:
+            # D483: the order it is a job of, by the order's own id (D482)
+            of = row[signal["order_field"]]
+            if isinstance(of, str) and _ORDER_ID.fullmatch(of):
+                entity.order_id = of
+            elif of not in (None, ""):
+                self._drop("value")
 
     def _attributes(self, signal, entity, row) -> None:
         """D459: the numbers a row gives the attributes its signal names; anything else in
@@ -1042,6 +1092,58 @@ class Mapper:
             self._steps[signal["block"]] = (step, t)
 
     # ------------------------------------------------------------ levels
+    # ------------------------------------------------------------ orders (D481)
+    def _as_order(self, signal, _key, ident, row, _row, t, _out) -> None:
+        """An order of the plant's book, as its row says now: the whole row is read, or the
+        order is not (an order is never half read). A row gone, or a status that means
+        gone, forgets it. No event: an order is no item; its jobs are (D483)."""
+        if row is None:
+            self._orders.pop(ident, None)
+            return None
+        fields = signal["fields"]
+
+        def cell(name):
+            value = row.get(fields[name]) if name in fields else None
+            return None if value == "" else value
+        status = signal["statuses"].get(_text(cell("status"))) if isinstance(row, dict) else None
+        if status is None or not isinstance(ident, str) or not _ORDER_ID.fullmatch(ident):
+            return self._drop("value")
+        if status == "gone":
+            self._orders.pop(ident, None)
+            return None
+        said = {"status": status, "quantity": 1, "done": 0}
+        for name, least in (("quantity", 1), ("done", 0)):
+            if cell(name) is not None:
+                said[name] = _count(cell(name))
+                if said[name] is None or said[name] < least:
+                    return self._drop("value")
+        for name in ("due", "release"):
+            if cell(name) is not None:
+                seconds = _instant(cell(name))
+                moment = None if seconds is None else self.at(seconds)
+                if moment is None or not 0 <= moment <= LIMITS["seconds"] / self._unit:
+                    return self._drop("value")
+                said[name] = moment
+        if cell("priority") is not None:
+            if not _number(cell("priority")):
+                return self._drop("value")
+            said["priority"] = cell("priority")
+        product = cell("type")
+        if product is not None:
+            said["e_type"] = signal.get("types", {}).get(_text(product))
+            said["sequence"] = signal.get("sequences", {}).get(_text(product))
+            if "types" in signal and said["e_type"] is None:
+                return self._drop("value")
+        before = self._orders.get(ident)
+        if before is None and len(self._orders) >= LIMITS["orders"]:
+            return self._drop("orders")
+        # since when it has had this status, and when the plant last said more were done
+        said["since"] = before["since"] if before and before["status"] == status else t
+        said["done_at"] = (before["done_at"] if before and before["done"] >= said["done"]
+                           else t) if said["done"] else None
+        self._orders[ident] = said
+        return None
+
     def _as_level(self, signal, _key, _ident, cell, _row, t, out) -> None:
         if not _number(cell):
             return self._drop("value")
@@ -1135,7 +1237,8 @@ class Mapper:
                      **({"on": riding[e.id]} if e.id in riding else {}),
                      **({"entered": e.entered} if e.entered is not None else {}),
                      **({"attributes": dict(e.attributes)} if e.attributes else {}),
-                     **({"members": members[e.id]} if e.id in members else {})}
+                     **({"members": members[e.id]} if e.id in members else {}),
+                     **({"order": e.order_id} if e.order_id is not None else {})}
                     for e in present]
         vehicles: dict = {}
         for fleet, unit in sorted({*self._vehicles, *self._cycles}):
@@ -1158,7 +1261,10 @@ class Mapper:
                 "levels": {name: said[1] for name, said in self._levels.items()},
                 "vehicles": vehicles, "exits": dict(self._exits),
                 "steps": {block: list(said) for block, said in self._steps.items()},
-                "counters": self.counters()}
+                "counters": self.counters(),
+                # D481: the book, first seen first; None when the mapping reads no orders
+                "orders": None if self._orders is None else [
+                    {"id": ident, **said} for ident, said in self._orders.items()]}
 
     def stamp(self) -> str | None:
         """The instant `now` stands for, ISO 8601 in UTC; None when no clock can name it
@@ -1350,7 +1456,7 @@ def log_of(events, mapping, source: str = "plant", attributes=None) -> list[dict
             by.setdefault((kind, signal["fleet"], signal.get("unit", 0)), signal)
         elif kind == "step":
             by.setdefault(("step", signal["block"], None), signal)
-        elif kind != "seen":
+        elif kind not in ("seen", "order"):     # #505: no run event is an order's row
             by.setdefault((kind, signal[KINDS[kind][0]]), signal)
     lines: list = []
     where: dict[int, str] = {}                      # entity -> the block it is in

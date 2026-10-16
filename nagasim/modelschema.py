@@ -2452,6 +2452,19 @@ def build_json_schema() -> dict:
     """
     record_kinds = ", ".join(RECORD_KINDS)
     defs = _defs()
+    # D484: a state's order book, the section's orders with one more field (D489: v29 widens).
+    order = defs["order"]
+    defs["initial_state"]["properties"]["order_book"] = {
+        "type": "array", "description": "The orders the run releases instead of the model's "
+        "\"orders\" section: the plant's book, by id. A state from a plant writes it.",
+        "items": {**order, "properties": {**order["properties"], "held": {
+            "type": "boolean", "default": False,
+            "description": "Not released until a person releases it."}}}}
+    # D448: `state.take` writes the stations a fleet tends; v29 widens to say so (#509).
+    defs["initial_state"]["properties"]["tended"] = {
+        "type": "array", "description": "The tending stations at the take: [station, fleet] "
+        "pairs. A taken state writes it.",
+        "items": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2}}
     _annotate_sections(defs)
     arrival_modes = ", ".join(ARRIVAL_MODES)
     # Top-level properties from the section table (core/sections.py): a list of

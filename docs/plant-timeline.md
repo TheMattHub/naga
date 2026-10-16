@@ -57,6 +57,7 @@ what each key asserts about the model. It is data: no path, no address, no code,
 | `load` | which item vehicle `unit` of `fleet` carries, or none | nothing by itself: the state of now puts the item on that vehicle |
 | `level` | what a level holds, times `scale` | the level, linear between two values |
 | `counter` | the plant's running total of items that left `block` (parts made at a station, parts scrapped at an exit) | nothing: a count is not an item. The twin shows it and compares forecasts with it |
+| `order` | order `{id}` of the plant's book, one row: `fields` names its cells, `statuses` maps its status | nothing: an order is not an item. The state of now carries the book (see "Orders") |
 
 - `time.epoch` is the instant model time 0 stands for; `unit` defaults to the model's time unit.
   The time of a value is its source's own stamp; `"stamp": "received"` uses the receipt time.
@@ -69,6 +70,29 @@ what each key asserts about the model. It is data: no path, no address, no code,
 **Not mappable now:** a vehicle's progress along a segment, its battery and what it is on its way
 to; chargers, conveyors, cycle phases and agents; an item on a timed link (it stays in the block it left until it is seen at the next);
 attributes; a job's remaining time; a counter of a resource or of one item type.
+
+**Orders.** A twin can follow the plant's order book, read from whatever your MES or ERP
+publishes, so its forecast releases your orders and not the model file's. An `order` signal reads
+one row per order. `fields` names the row's cells for `type` (the product, mapped by `types` to
+an entity type and by `sequences` to one of the model's routings), `quantity`, `done` (jobs
+finished), `due`, `release` (instants, as stamps are), `priority` and `status`. `statuses` maps
+each of your statuses to `waiting`, `held`, `released`, `done` or `gone`:
+
+```json
+{"source": "work_orders", "key": "{id}", "as": "order",
+ "fields": {"type": "product", "quantity": "quantity", "done": "quantity_done",
+            "due": "due", "priority": "priority", "release": "release", "status": "status"},
+ "types": {"WIDGET": "WIDGET"}, "sequences": {"WIDGET": "Widget"},
+ "statuses": {"planned": "waiting", "in progress": "released", "complete": "done",
+              "held": "held"}}
+```
+
+An order's jobs are items: an `at` signal names them, and its `order_field` names the cell
+holding each item's order. A job then carries its order's id, due date and priority, and its
+routing follows the order's sequence. A row that cannot be read is dropped whole, and an
+order's id is kept only when it is a plain id (a letter or digit, then up to 63 letters,
+digits and `_ . : / -`). With this, the twin can also recommend `hold`, `release`, `expedite`
+and `resequence` (see Digital twin, "Recommendations").
 
 **Counters.** Many plants give no item ids, only totals. A `counter` is counted from where the
 twin first sees it: a first value of 120 000 is a starting point, not 120 000 parts. Each
@@ -138,10 +162,18 @@ destination and a load waiting for a vehicle are said (`W_STATE_NOT_COVERED`), a
 refuses the forecast by name. Agents, variables and arrival clocks start as the model declares
 them (`W_STATE_NOT_COVERED`).
 
+With an `order` signal the state carries the plant's book (`order_book`) in place of the model's
+orders. The released ones count as released, so nothing is released twice, and the others are
+released at their own times; a held one waits until it is released. An order with a job on the
+floor counts as released, whatever its status said (`W_PLANT_CONTRADICTION`). A done order is
+left out, since the forecast looks ahead.
+
 ## Bounds
 
 A mapping holds at most 1 MiB, 2000 signals and 10 000 entries a table. A log holds at most
 256 MiB and a million lines of 64 KiB. A recording maps at most 250 000 events; 100 000 entities
 are known at once (a part inside a batch makes room first); a count or a capacity is at most 10 000; a key, an id or a text is at most 1024 bytes.
 Nothing from a log is ever text in a player file: an item's id becomes a number, and every name
-comes from the mapping and the model.
+comes from the mapping and the model. The one exception is an order's id, a plain id, which a
+state, a recommendation and the order results name the order by. At most 100 000 orders are
+known at once.

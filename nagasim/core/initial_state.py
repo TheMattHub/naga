@@ -98,6 +98,7 @@ import math
 from nagasim.core import calendar as cal
 from nagasim.core.block_registry import holding_types, queueing_types, service_types
 from nagasim.core.network import block_nodes, build_network
+from nagasim.core.orders import book_of as orders_book_of
 from nagasim.core import motion as timing
 from nagasim.core.timeunits import base_factor, units_of
 from nagasim.core.problems import Problem, problem
@@ -115,6 +116,11 @@ __all__ = ["SECTION", "HOLDING_TYPES", "SERVICE_TYPES", "has_initial_state", "cl
            "validate_initial_state_structured", "apply", "default_warmup", "schedule_offset"]
 
 SECTION = "initial_state"
+# Every key the section may have (#504): the JSON Schema's properties (`tended` among them,
+# #509). A test keeps this and the schema in step.
+KEYS = frozenset({"time", "time_unit", "clock", "schedule_offset", "arrivals", "orders",
+                  "order_book", "variables", "levels", "resources", "used", "tended",
+                  "resource_sets", "blocks", "fleets", "entities"})
 
 # Block types that can hold an entity handed to them out of nowhere. Everything
 # else either creates entities (CREATE), ends them (DISPOSE), routes them
@@ -207,6 +213,13 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
     if not isinstance(state, dict):
         return [problem("E_INITIAL_BLOCK", "initial_state: must be an object", f"/{SECTION}",
                         hint="use {} for no initial state")]
+    # #504: a key this engine does not know is refused, not ignored, so a state written by a
+    # newer engine never runs here as if it said less (0.8.0 ignored `order_book`).
+    for key in sorted(set(state) - KEYS, key=str):
+        problems.append(problem(
+            "E_INITIAL_KEY", f"initial_state: unknown key '{str(key)[:40]}'",
+            f"/{SECTION}/{str(key)[:40]}",
+            hint=f"a newer engine may have written it; known: {', '.join(sorted(KEYS))}"))
 
     blocks = {b.get("name"): b for b in layout.get("blocks", [])}
     declared_vars = {v.get("name") for v in layout.get("variables", [])}
@@ -317,7 +330,16 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
                     hint="rank orders two or more drawn for one instant at one instant: "
                          "0, 1, ... within that group, or no rank on any of them"))
 
-    ids = {str(o.get("id", "")) for o in layout.get("orders") or [] if isinstance(o, dict)}
+    # D484: a book replaces the model's orders; its entries are judged as that section's
+    # (`core/schema/layout.py`), and here only what the section has no word for.
+    book = state.get("order_book")
+    if book is not None and not (isinstance(book, list) and all(
+            isinstance(o, dict) and isinstance(o.get("held", False), bool) for o in book)):
+        problems.append(problem(
+            "E_INITIAL_ORDERS", "initial_state: order_book must be a list of orders, each "
+            "\"held\" true or false", f"/{SECTION}/order_book",
+            hint="the orders section's shape, plus \"held\": true for an order held back"))
+    ids = {str(o.get("id", "")) for o in orders_book_of(layout) if isinstance(o, dict)}
     orders = state.get("orders") or {}
     for name, spec in (orders.items() if isinstance(orders, dict) else [("", None)]):
         made, done, at = ((spec.get(k) for k in ("created", "completed", "completed_at"))
@@ -1825,6 +1847,10 @@ def apply(env, model, state: dict) -> int:
             level.level = float(value)
             level.reset_stats(env.now)          # the statistics start from the injected value
             system._before[level] = level.level
+
+    if "orders" in state or "order_book" in state:      # D485: released by identity
+        ctx.released_orders = {name for name, spec in (state.get("orders") or {}).items()
+                               if (spec or {}).get("created", 0) > 0}
 
     for name, spec in (state.get("arrivals") or {}).items():
         block = model.blocks.get(name)

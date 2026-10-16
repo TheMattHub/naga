@@ -75,11 +75,12 @@ def test_a_candidates_file_is_closed(tmp_path):
     for key in ("sink", "outbox", "note", "path"):
         assert refused(**{key: "file:C:/x"})[0] == "E_CANDIDATES"
         assert refused({**MORE, key: "x"})[0] == "E_CANDIDATES"
-    # The verbs listed and not built are refused by name, with why.
-    for verb in ("expedite", "resequence", "hold", "release"):
-        code, message = refused({"verb": verb, "target": "Server", "value": 1})
-        assert code == "E_CANDIDATE_VERB" and verb in message and "not built" in message
-    assert "no verb" in refused({"verb": "run", "target": "Server", "value": 1})[1]
+    # The order verbs are built (D486), and refused by name where nothing releases orders.
+    for verb, value in (("expedite", 1), ("resequence", "B"), ("hold", True), ("release", True)):
+        code, message = refused({"verb": verb, "target": "Server", "value": value})
+        assert code == "E_CANDIDATES" and verb in message and "releases no orders" in message
+    code, message = refused({"verb": "run", "target": "Server", "value": 1})
+    assert code == "E_CANDIDATE_VERB" and "no verb" in message
     for action in ({**MORE, "target": "Nobody"}, {**MORE, "value": 0}, {**MORE, "value": True},
                    {**MORE, "value": 2.5}, {**MORE, "value": 10_001}, {**MORE, "target": 3}):
         assert refused(action)[0] == "E_CANDIDATES"
@@ -468,7 +469,9 @@ def test_only_the_callers_flag_names_a_sink(tmp_path, capsys, monkeypatch):
     callers = {path.relative_to(root).as_posix() for folder in ("nagasim", "product")
                for path in (root / folder).rglob("*.py")
                if "open_sink(" in path.read_text(encoding="utf-8")}
-    assert callers <= {"nagasim/outbox.py", "nagasim/twin.py", "product/ui/monitor.py"}
+    # The Presenter opens the sink of its own `--outbox` flag (D250).
+    assert callers <= {"nagasim/outbox.py", "nagasim/twin.py", "product/ui/monitor.py",
+                       "product/ui/presenter.py"}
     evil = tmp_path / "evil.jsonl"
     model = counted(slow_line())
     _source, _clock, _events, mapping, log = playing(model, counters=True)
@@ -1100,7 +1103,7 @@ def test_a_reroute_is_recorded_taken_stands_and_reproduces(tmp_path):
     clock.mono = 11.0
     said = cycle.step()["recommend"]
     assert [s["action"] for s in said["standing"]] == [FAST]
-    assert monitor._action(FAST) == "reroute split = fast"     # a name, not a number
+    assert monitor.action_text(FAST) == "reroute split = fast"     # a name, not a number
     clock.mono = 14.5
     doc = cycle.step()
     assert doc["forecast"]["actions"] == [won["id"]]

@@ -4,9 +4,26 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.8: write a model without an editor
+## 0.9: a twin that follows the plant's orders
 
 <!-- --8<-- [start:latest] -->
+- **The plant's orders in a forecast.** A plant mapping's `order` signal reads one row per order
+  (product, quantity, due date, priority, release, status) from any MES or ERP, and links each job
+  on the floor to its order. A forecast then releases the plant's own orders, each once, and never
+  one that is held. See [Plant timeline](plant-timeline.md).
+- **Advice on orders.** A twin compares `hold`, `release`, `expedite` and `resequence` on the
+  forecast, as it does `reroute`, and refuses by name a verb the model cannot answer, for example
+  `expedite` where nothing in the model reads a job's priority.
+- **Live dashboards.** A model's `dashboard` section can describe a Live page (status, the
+  plant's view, the forecast with its accuracy, and the recommendations) for a viewer that reads
+  the results of a separately started twin.
+- **Before you upgrade:** a state now refuses a key the engine does not know, instead of ignoring
+  it. A model file that stores a Live page, or a state that carries an order book, needs 0.9:
+  0.8 refuses the first and silently ignores the book in the second.
+<!-- --8<-- [end:latest] -->
+
+## 0.8: write a model without an editor
+
 - **Build a model in Python.** `nagasim.build` has one method per block and one constructor per
   distribution, and your editor completes every built-in parameter and unit and flags a
   misspelt one before the model runs:
@@ -35,7 +52,6 @@ print(m.run().kpis().head())
 - **Before you upgrade:** a block parameter left out of a model file now takes its published
   default, and a deterministic Schedule arrival no longer depends on the seed. A file that left
   parameters out may give other results, and a state saved for it must be taken again.
-<!-- --8<-- [end:latest] -->
 
 ## 0.7: a twin that starts where the plant is
 

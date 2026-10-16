@@ -356,8 +356,15 @@ naga twin run line.json --map line.plantmap.json --connections conn.json --out t
   its own) and `reroute` (`{"verb": "reroute", "target": "<a DECIDE>", "value": "<the block
   one of its links leads to>"}`: every item that reaches that branch from now on goes down
   that link; a DECIDE of the model itself, and one link to that block).
-  `expedite`, `resequence`, `hold` and `release` are reserved and refused by name: the
-  plant's state names no order, so they would act on your file's order list, not the plant's.
+  The order verbs act on the plant's order book, which a mapping's `order` signal reads (see
+  [A plant as a timeline](plant-timeline.md), "Orders"): `hold` (`"value": true`: not
+  released until you release it), `release` (`true`: released now), `expedite` (`"value":
+  <priority>`: on the order and on each of its jobs on the floor) and `resequence` (`"value":
+  "<another order>"`: the two swap release times). Each targets an order by its id. They are
+  refused by name where the forecast could not answer: a model that releases no orders,
+  `expedite` where nothing reads `entity.priority` (a FIFO shop), and, at each forecast, an
+  order the plant does not report, `hold`, `release` and `resequence` of one already
+  released (its jobs are on the floor), and `expedite` of one already completed.
   A candidate is tried as an override on the forecast; your model file is never changed.
 - **What you get.** For each candidate, on the one KPI you named: the effect (the mean
   difference against doing nothing) with its 95% interval, and `confidence`, the share of

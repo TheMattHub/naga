@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
 
+import collections
 import copy
 import hashlib
 import json
@@ -34,7 +35,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim.core import blocking, initial_state, schema, tending
+from nagasim.core import blocking, initial_state, orders, schema, tending
 from nagasim.core.block_registry import queueing_types
 from nagasim.core.problems import Problem, problem
 from nagasim.core.session import SimSession
@@ -147,8 +148,12 @@ def take(layout, at: float, seed: int = 0, *, name: str | None = None) -> dict:
     if reached == "horizon" or session.now != float(at):
         raise _unsupported("the end of the run", f"the run ends at t = {session.now:g}; "
                            f"take the state before it")
-    return document(layout, _read(session, tap), name=name, source="run", at=float(at),
-                    seed=int(seed))
+    taken = _read(session, tap)
+    # D484: a run started from a book has the book's orders, which no run changes.
+    book = (_model(layout).get(initial_state.SECTION) or {}).get("order_book")
+    if book is not None:
+        taken["order_book"] = copy.deepcopy(book)
+    return document(layout, taken, name=name, source="run", at=float(at), seed=int(seed))
 
 
 def _plain(value):
@@ -816,6 +821,7 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
             seizes.setdefault(target, []).append(block_name)
     clock, problems = float(seen.get("at") or 0.0), []
     entities = [dict(entity) for entity in seen.get("entities") or []]
+    book, counters = _plant_orders(flat, seen, entities, clock, problems)
     for entity in entities:
         target = (blocks.get(entity["block"], {}).get("params") or {}).get("resource_name")
         entity["serving"] = bool(target) and target in entity["holds"]
@@ -913,8 +919,9 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
         if entity.get("members"):           # D461: the manifest, in the order merged
             out["members"] = [_member(member, name, routes, declared)
                               for member in entity["members"]]
-        # D459: the numbers the plant gives; the routing is the model's (D458)
-        attributes = {**(entity.get("attributes") or {}), **routes.attributes(entity)}
+        # D459: the numbers the plant gives; its order's (D483); the routing is the model's
+        attributes = {**(entity.get("attributes") or {}), **entity.get("of_order", {}),
+                      **routes.attributes(entity)}
         if id(entity) in loads:
             out.update(loads[id(entity)])
             attributes.update(out.get("attributes") or {})
@@ -1009,9 +1016,11 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
     if entries:
         state["blocks"] = {belt: {"next_entry": at} for belt, at in entries.items()}
     for key, value in (("entities", listed), ("resources", resources), ("fleets", fleets),
-                       ("levels", reported)):
+                       ("levels", reported), ("orders", counters)):
         if value:
             state[key] = value
+    if book is not None:
+        state["order_book"] = book
     try:
         # ponytail: builds the model once more per call; cache by model hash if a twin step
         # ever feels it
@@ -1024,6 +1033,10 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
             f"/{initial_state.SECTION}",
             hint="see the coverage table of the state documentation"))
     for kind, has, key in _KINDS:
+        if key == "arrivals" and book is not None and all(
+                (b.get("params") or {}).get("arrival_mode") == orders.ORDERS_MODE
+                for b in blocks.values() if _kind(b) == "CREATE"):
+            continue                # D484: the book is every arrival there is
         if has(model) and (key is None or not state.get(key)):
             problems.append(problem(
                 "W_STATE_NOT_COVERED", f"the observed timeline says nothing about {kind}: "
@@ -1031,6 +1044,80 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                 hint="map a signal for it, or accept the model's start"))
     return document(model, state, name=name, source="observed", at=clock,
                     stamp=seen.get("stamp")), problems
+
+
+def _plant_orders(flat, seen, entities, clock, problems) -> tuple:
+    """(the `order_book`, the `orders` counters) of the plant's orders (D484), or (None, {})
+    when the mapping reads none or nothing in the model releases orders. Each job on the
+    floor is linked to its order (D483): it takes the order's id, due date, priority, type
+    and routing, and its order counts as released whatever its status said."""
+    said = seen.get("orders")
+    if said is None or not orders.orders_mode_creates(flat):
+        return None, {}
+    known = {o["id"]: o for o in said}
+    floor, unknown = collections.Counter(), 0      # order id -> its jobs on the floor
+    for entity in entities:
+        of = known.get(entity.get("order"))
+        if entity.get("order") and of is None:
+            unknown += 1
+        if of is None:
+            continue
+        floor[of["id"]] += 1
+        entity["e_type"] = entity.get("e_type") or of.get("e_type")
+        if of.get("sequence"):
+            entity["sequence"] = of["sequence"]
+        entity["of_order"] = {"order_id": of["id"], **(
+            {"due_date": of["due"]} if of.get("due") is not None else {}), **(
+            {"priority": of["priority"]} if of.get("priority") is not None else {})}
+    book, counters, contradicted, untimed, short = [], {}, 0, 0, 0
+    before = math.nextafter(clock, -math.inf)
+    for of in said:
+        status = of["status"]
+        if of["id"] in floor and status != "released":
+            status, contradicted = "released", contradicted + 1
+        if status == "done":
+            continue        # the forecast is what is ahead; its completion time is not observed
+        entry = {"id": of["id"], "quantity": of["quantity"]}
+        for key, name in (("e_type", "entity_type"), ("sequence", "sequence"), ("due", "due"),
+                          ("priority", "priority")):
+            if of.get(key) is not None:
+                entry[name] = of[key]
+        release = of.get("release")
+        if status == "released":
+            release = min(of["since"] if release is None else release, clock)
+            done = min(of["done"], of["quantity"])
+            # #507: a released order's jobs are those done and those on the floor. The
+            # forecast creates none of it again, so a count above them could never complete.
+            made = min(of["quantity"], done + floor[of["id"]])
+            short += made < of["quantity"]
+            counters[of["id"]] = {"created": made, "completed": done}
+            if done:        # reported at the clock: it happened before the read (D485)
+                counters[of["id"]]["completed_at"] = min(of["done_at"], before)
+        elif release is None:
+            release, untimed = clock, untimed + 1
+        entry["release"] = release
+        if status == "held":
+            entry["held"] = True
+        book.append(entry)
+    if contradicted or unknown:
+        problems.append(problem(
+            "W_PLANT_CONTRADICTION", f"the plant reports jobs on the floor of {contradicted} "
+            f"orders not released (taken as released) and of {unknown} orders it does not "
+            f"report (no order is linked)", f"/{initial_state.SECTION}/order_book",
+            hint="an order's status and its jobs come from two signals that do not agree"))
+    if short:
+        problems.append(problem(
+            "W_PLANT_CONTRADICTION", f"{short} released orders have fewer jobs done and on "
+            f"the floor than their quantity: each counts only the jobs the plant shows and "
+            f"completes when they do (one with none is released again at the clock)",
+            f"/{initial_state.SECTION}/orders",
+            hint="map every job of a released order (its WIP rows), or its quantity done"))
+    if untimed:
+        problems.append(problem(
+            "W_STATE_NOT_COVERED", f"{untimed} orders not released have no release time: "
+            f"they are released at the clock", f"/{initial_state.SECTION}/order_book",
+            hint="map the order's release cell (\"fields\": {\"release\": ...})"))
+    return book, counters
 
 
 def _plant_fleets(flat, blocks, seen, entities, problems, routes, clock) -> tuple:
@@ -1302,19 +1389,22 @@ class _Routes:
         name = self.tended.get(alias) if isinstance(alias, str) else None
         return initial_state._machine(self.blocks, self.flat, name) if name else None
 
-    def _steps(self, e_type):
-        made = self.made.get(str(e_type or "").upper(), set())
+    def _steps(self, e_type, sequence=None):
+        """(the routing, its stations): the job's order's (D483), else the one sequence
+        CREATEs make its type with."""
+        made = {sequence} if sequence in self.sequences \
+            else self.made.get(str(e_type or "").upper(), set())
         if len(made) != 1:
             return None, []
         name = next(iter(made))
         steps = self.sequences.get(name) or []
         return name, [s.get("station") if isinstance(s, dict) else None for s in steps]
 
-    def route(self, e_type, station, target=None) -> dict:
+    def route(self, e_type, station, target=None, sequence=None) -> dict:
         """{sequence, step, and the values of the steps passed} of an item of type *e_type*
-        at *station*, or carried to *target*: the step after it (0 before the routing);
-        {} when its type has no one sequence or its place in it is not one."""
-        name, stations = self._steps(e_type)
+        (of an order on *sequence*) at *station*, or carried to *target*: the step after it
+        (0 before the routing); {} when it has no one sequence or its place in it is not one."""
+        name, stations = self._steps(e_type, sequence)
         where = target if target is not None else station
         if name is None or stations.count(where) > 1 or (target is not None
                                                          and where not in stations):
@@ -1343,17 +1433,16 @@ class _Routes:
         return found
 
     def attributes(self, entity) -> dict:
-        """The routing attributes an item needs ahead of it: `station` where a TRANSPORT is
-        reached before a STATION (D451), `sequence` and `step` where a ROUTE or a TRANSPORT
-        with no destination is reached."""
+        """The routing attributes an item needs ahead of it: `station`, the STATION it came
+        through (which a TRANSPORT leaves from, D451, and a PROCESS may read, #503),
+        `sequence` and `step` where a ROUTE or a TRANSPORT with no destination is reached."""
         name, out = entity["block"], {}
         here = self.station(name) or (self.station(entity.get("came")) if entity.get("came")
                                       else None)
-        before = self._ahead(name, lambda b: _kind(b) == "STATION")
-        if here and any(kind == "TRANSPORT" for kind, _ in before):
+        if here:            # #503: a STATION stamps every part that passes it (D451, D458)
             out["station"] = here
         if {("ROUTE", False), ("TRANSPORT", False)} & self._ahead(name, lambda b: False):
-            out.update(self.route(entity.get("e_type"), here))
+            out.update(self.route(entity.get("e_type"), here, sequence=entity.get("sequence")))
         return out
 
     def trip(self, entity, via):
@@ -1365,12 +1454,13 @@ class _Routes:
         attributes = {"station": here} if here else {}
         target = params.get("destination") or None
         if not target:
-            name, stations = self._steps(entity.get("e_type"))
-            step = self.route(entity.get("e_type"), here).get("step")
+            e_type, sequence = entity.get("e_type"), entity.get("sequence")
+            name, stations = self._steps(e_type, sequence)
+            step = self.route(e_type, here, sequence=sequence).get("step")
             if name is None or step is None or step >= len(stations):
                 return None
             target = stations[step]
-            attributes.update(self.route(entity.get("e_type"), here, target))
+            attributes.update(self.route(e_type, here, target, sequence))
         station = self.stations.get(target)
         if station is None or not station[1]:
             return None
@@ -1470,8 +1560,12 @@ def start(layout, doc, *, max_age: float | None = None, now: float | None = None
     if until is not None:
         model["simulation"] = dict(model.get("simulation") or {}, time_limit=float(until))
     # The state already holds what these observed: a later bind must not write over it.
-    model["data_bindings"] = [b for b in model.get("data_bindings") or []
-                              if not str(b.get("target", "")).startswith("initial_state.")]
+    # #508: nor the model's `orders`, which a state's book replaces (D484).
+    booked = "order_book" in doc["state"]
+    model["data_bindings"] = [
+        b for b in model.get("data_bindings") or []
+        if not (str(b.get("target", "")).startswith("initial_state.")
+                or booked and str(b.get("target", "")).partition(".")[0] == "orders")]
     # A plant is where a state goes wrong: what the model cannot hold is refused here,
     # with the section's own code, before anything runs.
     _flat, found = schema.prepare(model)

@@ -250,7 +250,8 @@ def test_build_context_fields():
         "record_logs", "controllers", "watched", "stage_offset", "auxiliaries", "aux_memo",
         "agent_system", "link_flow_counts", "counted_blocks", "block_out_counts",
         "bottleneck_tracker", "deterministic", "schedule_log",
-        "plan_gates", "dashboard_widgets", "dashboard", "dashboard_failed"}
+        "plan_gates", "dashboard_widgets", "dashboard", "dashboard_failed",
+        "released_orders"}
     assert ctx.seed == 7
     assert (ctx.all_entities, ctx.live_entities, ctx.process_list) == ([], [], [])
     assert (ctx.signals, ctx.name_counter, ctx.seize_blocks) == ({}, {}, [])

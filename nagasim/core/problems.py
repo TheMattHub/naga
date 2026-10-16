@@ -557,6 +557,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_INITIAL_VARIABLE": "initial_state.variables names a variable the model does not declare.",
     "E_INITIAL_CLOCK": "initial_state.clock is not a number >= 0 and before the end of the run.",
     "E_INITIAL_SCHEDULE_OFFSET": "initial_state.schedule_offset is not a number >= 0.",
+    "E_INITIAL_KEY": "initial_state has a key this engine does not know (a newer engine may "
+                     "have written it): refused rather than ignored.",
     # -- a state as a document (PHASE7 7.10, D231-D238) -------------------------
     "E_STATE_FORMAT": "The file is not a state document of format 1, or holds a value that is not plain data.",
     "E_STATE_HASH": "A state document does not match its own hash: it was edited after it was written.",

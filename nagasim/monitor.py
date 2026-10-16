@@ -35,7 +35,7 @@ from nagasim.live import stamp
 
 __all__ = ["KEPT", "PER_STEP", "PAGE_FILE", "APPROXIMATE", "IN_DISTRIBUTION", "COUNTED", "SCORED",
            "SAME_SEED", "NO_SCORE", "MISSED", "ADVICE", "ASSUMES", "NO_ADVICE", "Log", "Page", "summary",
-           "state"]
+           "state", "action_text"]
 
 KEPT = 200              # event lines of one twin
 PER_STEP = 100          # of one step; the rest is counted
@@ -151,11 +151,17 @@ def _scores(doc: dict, unit: str) -> dict:
                      for r in rows[:_SCORES]]}
 
 
-def _action(value) -> str:
+def action_text(value) -> str:
+    """An action as a person reads it: `hold WO-1`, `resequence A before B`, `reroute s = f`."""
     said = _table(value)
-    value = said.get("value")       # a capacity, or the block a reroute names (D406)
+    value = said.get("value")       # a capacity, a priority, a block or an order (D406, D486)
+    head = f"{_text(said.get('verb'))} {_text(said.get('target'))[:80]}"
+    if value is True:               # hold, release: the order is all there is to say
+        return head
+    if said.get("verb") == "resequence":
+        return f"{head} before {_text(value)[:80]}"
     shown = _text(value)[:80] if isinstance(value, str) else _g(value)
-    return f"{_text(said.get('verb'))} {_text(said.get('target'))[:80]} = {shown}"
+    return f"{head} = {shown}"
 
 
 def _recommend(doc: dict) -> dict | None:
@@ -171,9 +177,9 @@ def _recommend(doc: dict) -> dict | None:
     lead = []
     for standing in _rows(said.get("standing"))[:_ADVICE]:
         lead.append(f"Taken and standing in every forecast since {_text(standing.get('since'))}: "
-                    f"{_action(standing.get('action'))}.")
+                    f"{action_text(standing.get('action'))}.")
     for ended in _rows(said.get("ended"))[:_ADVICE]:
-        lead.append(f"Ended {_text(ended.get('ended'))}: {_action(ended.get('action'))} (taken "
+        lead.append(f"Ended {_text(ended.get('ended'))}: {action_text(ended.get('action'))} (taken "
                     f"{_text(ended.get('since'))}); later forecasts no longer assume it.")
     if said.get("status") != "ok":
         reason = _text(said.get("reason"))
@@ -184,7 +190,7 @@ def _recommend(doc: dict) -> dict | None:
         if better:
             top = better[0]
             lead.append(
-                f"Recommended: {_action(top.get('action'))}, effect {_g(top.get('effect'))} "
+                f"Recommended: {action_text(top.get('action'))}, effect {_g(top.get('effect'))} "
                 f"(95% interval {_g(top.get('low'))} to {_g(top.get('high'))})"
                 + (f"; {len(better) - 1} more in the table" if len(better) > 1 else "") + ".")
     if said.get("reproducible") is False:
@@ -213,7 +219,7 @@ def _recommend(doc: dict) -> dict | None:
             ADVICE]
     for effect in _rows(said.get("effects"))[:_ADVICE]:
         status = _text(effect.get("status"))
-        line = f"Effect of {_action(effect.get('action'))}: {_EFFECT.get(status, status)}"
+        line = f"Effect of {action_text(effect.get('action'))}: {_EFFECT.get(status, status)}"
         if status == "measured":
             line += (f", {_g(effect.get('observed'))} observed against a band of "
                      f"{_g(effect.get('q05'))} to {_g(effect.get('q95'))} ("
@@ -223,7 +229,7 @@ def _recommend(doc: dict) -> dict | None:
         fold.append("The effect of an action taken cannot be measured on this KPI: a plant "
                     "shows only what a counted block let out.")
     return {"lead": lead, "fold": fold, "more": max(len(items) - _ADVICE, 0),
-            "rows": [[_number(i.get("rank")), _action(i.get("action")), _number(i.get("effect")),
+            "rows": [[_number(i.get("rank")), action_text(i.get("action")), _number(i.get("effect")),
                       _number(i.get("low")), _number(i.get("high")), _number(i.get("confidence")),
                       _VERDICT.get(_text(i.get("verdict")), _text(i.get("verdict"))[:20]),
                       _text(i.get("status"))[:20], _text(i.get("id"))[:12]]

@@ -43,7 +43,7 @@ from nagasim.core.sequences import station_blocks
 from nagasim.core.timeunits import units_of
 from nagasim.core.utils import is_number as _is_number
 
-__all__ = ["ORDERS_MODE", "Order", "OrderError", "build_orders", "orders_mode_creates",
+__all__ = ["ORDERS_MODE", "Order", "OrderError", "book_of", "build_orders", "orders_mode_creates",
            "orders_csv", "orders_from_csv", "validate_orders_structured"]
 
 # CREATE's third arrival mode (`core/blocks/create.py`'s ARRIVAL_MODES).
@@ -81,6 +81,8 @@ class Order:
     # {station: planned start} from a proposal (PHASE6 W4 P4, D122), carried
     # as `entity.plan` and read by the "Plan" queue discipline.
     plan: dict = field(default_factory=dict)
+    # D484: a state's book may hold an order back until a person releases it.
+    held: bool = False
     block: str = ""
     created: int = 0
     completed: int = 0
@@ -101,8 +103,16 @@ def orders_mode_creates(layout: dict) -> list[str]:
             and (b.get("params") or {}).get("arrival_mode") == ORDERS_MODE]
 
 
+def book_of(layout: dict) -> list:
+    """The run's order entries: a state's `order_book` when it carries one (D484: the
+    plant's book, not the model file's), else the "orders" section."""
+    state = layout.get("initial_state")
+    book = state.get("order_book") if isinstance(state, dict) else None
+    return book if isinstance(book, list) else layout.get("orders", []) or []
+
+
 def build_orders(layout: dict, calendar=None) -> dict[str, Order]:
-    """{id: Order} for the layout's "orders" section, built once per
+    """{id: Order} for the run's orders (`book_of`), built once per
     replication, each already assigned to the CREATE that will release it.
     Shape faults are validation's job; this only normalises.
 
@@ -114,7 +124,7 @@ def build_orders(layout: dict, calendar=None) -> dict[str, Order]:
     default = creates[0] if creates else ""
     out: dict[str, Order] = {}
     units, fields = units_of(layout.get("simulation")), SECTION_FIELDS["orders"]
-    for entry in layout.get("orders", []) or []:
+    for entry in book_of(layout):
         if not isinstance(entry, dict):
             continue
         source = str(entry.get("source") or "")
@@ -134,6 +144,7 @@ def build_orders(layout: dict, calendar=None) -> dict[str, Order]:
             priority=None if entry.get("priority") is None else _float(entry.get("priority"), 0.0),
             attributes=dict(entry.get("attributes") or {}),
             plan=dict(entry.get("plan") or {}),
+            held=entry.get("held") is True,
             block=source if source in creates else ("" if source else default),
         )
         out[order.id] = order

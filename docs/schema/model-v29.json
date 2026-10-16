@@ -10423,7 +10423,7 @@
     },
     "dashboard_page": {
       "type": "object",
-      "description": "Present mode: one page of the Presenter. The item kinds a page takes depend on its activity: what_if: input, result, widget, table, view; scenarios: scenarios, result, widget, table, view; play: view, decisions, control, widget, result, table. Positions are hints.",
+      "description": "Present mode: one page of the Presenter. The item kinds a page takes depend on its activity: what_if: input, result, widget, table, view; scenarios: scenarios, result, widget, table, view; play: view, decisions, control, widget, result, table; live: status, view, forecast, recommendations. Positions are hints.",
       "properties": {
         "name": {
           "type": "string",
@@ -10435,7 +10435,8 @@
           "enum": [
             "what_if",
             "scenarios",
-            "play"
+            "play",
+            "live"
           ]
         },
         "items": {
@@ -10449,9 +10450,12 @@
                 "enum": [
                   "control",
                   "decisions",
+                  "forecast",
                   "input",
+                  "recommendations",
                   "result",
                   "scenarios",
+                  "status",
                   "table",
                   "view",
                   "widget"
@@ -11347,6 +11351,122 @@
               }
             },
             "additionalProperties": false
+          }
+        },
+        "order_book": {
+          "type": "array",
+          "description": "The orders the run releases instead of the model's \"orders\" section: the plant's book, by id. A state from a plant writes it.",
+          "items": {
+            "type": "object",
+            "description": "A released job: what a CREATE block in \"Orders\" arrival mode emits at `release`, carrying a due date the run reports lateness and tardiness against. Times are in the model's BASE unit.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Unique; the KPI frames report the order under it."
+              },
+              "description": {
+                "type": "string"
+              },
+              "release": {
+                "type": [
+                  "number",
+                  "string"
+                ],
+                "default": 0,
+                "description": "When the order is released into the model. An ISO timestamp instead of a number needs a calendar.",
+                "x-quantity": "time",
+                "x-unit-key": "time_unit",
+                "minimum": 0
+              },
+              "due": {
+                "type": [
+                  "number",
+                  "string",
+                  "null"
+                ],
+                "description": "Absolute due time, not a lead time; null = no due date. May be an ISO timestamp.",
+                "x-quantity": "time",
+                "x-unit-key": "time_unit"
+              },
+              "time_unit": {
+                "type": "string",
+                "enum": [
+                  "base",
+                  "milliseconds",
+                  "seconds",
+                  "minutes",
+                  "hours",
+                  "days",
+                  "weeks",
+                  "months",
+                  "years"
+                ],
+                "default": "base",
+                "description": "Unit `release` and `due` are in (a dated value ignores it)."
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 1,
+                "description": "Entities this order releases."
+              },
+              "entity_type": {
+                "type": "string",
+                "description": "Overrides the CREATE block's own e_type."
+              },
+              "sequence": {
+                "type": "string",
+                "description": "Name of a declared routing the entities follow."
+              },
+              "priority": {
+                "type": "number",
+                "description": "Carried as entity.priority."
+              },
+              "source": {
+                "type": "string",
+                "description": "CREATE block that releases it; omit for the first CREATE in \"Orders\" mode."
+              },
+              "attributes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": [
+                    "number",
+                    "string",
+                    "boolean"
+                  ]
+                },
+                "description": "Further attributes assigned onto every entity of this order."
+              },
+              "plan": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "description": "{station: planned start}, carried as entity.plan and read by the \"Plan\" queue discipline (cpsat.propose writes it)."
+              },
+              "held": {
+                "type": "boolean",
+                "default": false,
+                "description": "Not released until a person releases it."
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "tended": {
+          "type": "array",
+          "description": "The tending stations at the take: [station, fleet] pairs. A taken state writes it.",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 2
           }
         }
       },

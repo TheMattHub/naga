@@ -169,6 +169,8 @@ class SimulationContext:
     # `due_date_stats` is {e_type: stats.DueDateStats}, filled at Dispose for
     # every entity with a `due_date` -- from an order or from an ASSIGN.
     orders: dict = field(default_factory=dict)
+    # D485: the ids a state says were released before the clock; None: by count.
+    released_orders: set | None = None
     due_date_stats: dict = field(default_factory=dict)
     name_counter: dict = field(default_factory=dict)
     seize_blocks: list = field(default_factory=list)

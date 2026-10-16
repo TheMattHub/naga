@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.0 (2026-10-16)
+
+A twin now follows the plant's orders. A plant mapping reads one row per order from any MES or
+ERP, the state carries the plant's order book, and the twin compares `hold`, `release`,
+`expedite` and `resequence` on the forecast. A model's dashboard can hold a Live page read from
+a separately started twin. A minor version, because a state now refuses a key the engine does
+not know, and 0.8.0 refuses a file with a Live page and ignores an order book.
+
+- The dashboard section gains the `live` activity (status, view, forecast, recommendations),
+  read by the product's Present mode; schema v29, no bump. A model file that stores a Live page
+  needs this version: 0.8.0 refuses the whole file. `nagasim.dashboard.generated_dashboard` and
+  `input_for` are new.
+- Fixed: the twin result reader takes regular files only and refuses a UNC path; the bundled
+  models ship in `naga fmt`'s form (0.8.0's wheel had them in the long form; they ran the same).
+- Twin: a twin follows the plant's orders. A plant mapping's `order` signal reads one row per
+  order from any MES or ERP, an `at` signal's `order_field` links each job to its order, and the
+  state carries the plant's order book, so a forecast releases the plant's orders, each once,
+  and never a held one. The order verbs `hold`, `release`, `expedite` and `resequence` are built
+  and compared on the forecast like `reroute`, refused by name where the forecast cannot answer.
+- Changed: a state refuses an `initial_state` key the engine does not know (`E_INITIAL_KEY`);
+  0.8.0 ignores an order book silently.
+- Fixed: a part past a STATION keeps its `station` in a state from a plant; `naga plant
+  mock` with an order signal; `held` must be true or false; a released order from a
+  plant completes in the forecast; a book drops `orders` bindings; the schema lists
+  `initial_state.tended`.
+
 ## 0.8.0 (2026-10-16)
 
 A model can now be written without an editor: `nagasim.build` builds one in Python, with an

@@ -39,6 +39,7 @@ import logging
 import math
 import os
 import re
+import stat
 import sys
 import threading
 import time
@@ -146,9 +147,15 @@ def write_text(path, text: str, *, level: int = logging.WARNING) -> None:
 def _read(path, kind: str, ceiling: int):
     """The document in *path* when it is one of ours and under its bound, else None."""
     try:
-        if Path(path).stat().st_size > ceiling:
-            return None
-        doc = json.loads(Path(path).read_bytes())
+        # Opened first, checked on the descriptor: a link to a FIFO or a device is not read (a
+        # FIFO would block the reader for good) and the size bound is that of the bytes read
+        # (#522). O_NONBLOCK lets the open of a FIFO return so the check can refuse it.
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > ceiling:
+                return None
+            doc = json.loads(handle.read(ceiling + 1))
     except (OSError, ValueError, RecursionError):
         return None
     return doc if isinstance(doc, dict) and doc.get("format") == FORMAT \
@@ -159,7 +166,8 @@ def read_result(directory) -> tuple:
     """(the latest result a twin wrote into *directory*, []) or (None, the problem). The
     one reader, for a second process: bounded before it is parsed, whole because the writer
     replaces the file, and trusted for nothing beyond its `format`."""
-    doc = _read(Path(directory) / RESULT_FILE, KIND, LIMITS["result_bytes"])
+    # A network path is a connection (`FileSink` refuses it the same way, #523).
+    doc = None if netguard.is_unc_path(str(directory)) else         _read(Path(directory) / RESULT_FILE, KIND, LIMITS["result_bytes"])
     if doc is None:
         return None, [problem("E_TWIN_RESULT", "no twin result of format 1 can be read there "
                               "(none yet, over the size bound, or another file)", "/",

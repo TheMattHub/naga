@@ -22,6 +22,7 @@ Pandas and numpy are loaded only when a comparison runs.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -34,21 +35,19 @@ from pathlib import Path
 from nagasim import outbox
 from nagasim.core.problems import Problem, problem
 
-__all__ = ["FORMAT", "KIND", "VERBS", "BUILT", "LEVEL", "LIMITS", "REASONS", "Refused", "load",
-           "check_action", "override_of", "effects", "RECORD_KIND", "LEDGER_FILE", "LEDGER_KIND",
-           "STATES", "STATUSES", "identity", "lifetime", "record_id", "check", "Advisor", "reproduce"]
+__all__ = ["FORMAT", "KIND", "VERBS", "BUILT", "ORDER_VERBS", "LEVEL", "LIMITS", "REASONS",
+           "Refused", "load", "check_action", "override_of", "applied", "effects", "RECORD_KIND",
+           "LEDGER_FILE", "LEDGER_KIND", "STATES", "STATUSES", "identity", "lifetime", "record_id",
+           "check", "Advisor", "reproduce"]
 
 FORMAT = 1
 KIND = "naga-candidates"
-# Vocabulary 1 (D228). A verb is built by a decision, with its scoring rule (D299).
+# Vocabulary 1 (D228). A verb is built by a decision, with its scoring rule (D299). The
+# order verbs since the state carries the plant's order book (D486; D407 lifted).
 VERBS = ("set_capacity", "resequence", "expedite", "hold", "release", "reroute")
-BUILT = ("set_capacity", "reroute")
-# D407: the plant's state names no order (a mapping has no order signal, and the state of an
-# observed timeline says nothing about arrivals), so an order verb would act on the model
-# file's order list, not on the plant's.
-_NOT_BUILT = dict.fromkeys(("resequence", "expedite", "hold", "release"),
-                           "the plant's state names no order, so the comparison would act on "
-                           "the model file's order list, not on the orders in the plant")
+BUILT = VERBS
+ORDER_VERBS = ("resequence", "expedite", "hold", "release")
+_PRIORITY = re.compile(r"\bentity\.priority\b")
 LEVEL = 0.95                    # of the interval on an effect
 BETTER = ("higher", "lower")
 REASONS = ("no_forecast", "none_better", "kpi", "replications", "failed")
@@ -58,7 +57,8 @@ LIMITS = {
     "file_bytes": 2 ** 20,      # a candidates file
     "kpi": 200,                 # characters of the KPI's name
     "value": 10_000,            # units of a capacity
-    "name": 200,                # characters of a block a reroute names
+    "name": 200,                # characters of a block a reroute names, or of an order's id
+    "priority": 1e9,            # the size of a priority an expedite gives
     "expires": 86400.0,         # seconds a record may live
     "entries": 200,             # records of the ledger, the newest
     "states": 20,               # state documents kept for reproduction, the newest
@@ -107,9 +107,14 @@ def _whole(value) -> bool:
 
 
 def _value_ok(verb, value) -> bool:
-    """Whether *value* is of the kind *verb* takes: a capacity, or a block's name."""
-    if verb == "reroute":
+    """Whether *value* is of the kind *verb* takes: a capacity, a block's or an order's name,
+    a priority, or true (hold and release take nothing more than the order)."""
+    if verb in ("reroute", "resequence"):
         return isinstance(value, str) and 0 < len(value) <= LIMITS["name"] and value.isprintable()
+    if verb == "expedite":
+        return _number(value) and abs(value) <= LIMITS["priority"]
+    if verb in ("hold", "release"):
+        return value is True
     return verb == "set_capacity" and _whole(value) and 1 <= value <= LIMITS["value"]
 
 
@@ -126,29 +131,155 @@ def check_action(action, model: dict) -> dict:
                      "texts", "no other key is read, and none is kept")
     verb, target, value = action["verb"], action["target"], action["value"]
     if verb not in BUILT:
-        why = _NOT_BUILT.get(verb)
-        raise Refused("E_CANDIDATE_VERB", f"the verb '{verb[:40]}' is "
-                      + (f"not built in this version: {why}" if why else "no verb"),
+        raise Refused("E_CANDIDATE_VERB", f"the verb '{verb[:40]}' is no verb",
                       f"built: {', '.join(BUILT)}")
     if not _value_ok(verb, value):
-        raise refuse(f"reroute: the value for '{target[:80]}' is the name of a block"
-                     if verb == "reroute" else
-                     f"set_capacity: the value for '{target[:80]}' must be a whole number "
-                     f"from 1 to {LIMITS['value']}")
-    if len(target) > LIMITS["name"]:
-        raise refuse(f"the target '{target[:80]}' is over {LIMITS['name']} characters",
-                     "a record holds no longer name; rename the block")
+        short = target[:80]
+        raise refuse({
+            "reroute": f"reroute: the value for '{short}' is the name of a block",
+            "resequence": f"resequence: the value for '{short}' is the id of the order it "
+                          f"goes before",
+            "expedite": f"expedite: the value for '{short}' is the priority it gets, a number "
+                        f"of at most {LIMITS['priority']:g} either way",
+            "hold": "hold: the value is true", "release": "release: the value is true",
+        }.get(verb, f"set_capacity: the value for '{short}' must be a whole number from 1 to "
+                    f"{LIMITS['value']}"))
+    if len(target) > LIMITS["name"] or not target.isprintable():
+        raise refuse(f"the target '{target[:80]}' is over {LIMITS['name']} characters or "
+                     f"not plain text", "a record holds no longer name; rename the block")
     action = {"verb": verb, "target": target, "value": value}
-    override_of(action, model)          # the model can answer it, or `Refused` says why not
+    if verb in ORDER_VERBS:
+        _orders_answerable(action, model)   # the order itself is the state's (D487)
+    else:
+        override_of(action, model)      # the model can answer it, or `Refused` says why not
     return action
 
 
 def override_of(action: dict, model: dict) -> dict:
-    """The one override of the grammar (`experiments.apply_overrides`) an action is on the
-    migrated *model*, or `Refused` (D298)."""
+    """The one override an action is on the migrated (started) *model*, or `Refused` (D298):
+    a path of the grammar (`experiments.apply_overrides`), or, for an order verb, the whole
+    state with the action applied (path `initial_state`, D486; see `applied`)."""
+    if action["verb"] in ORDER_VERBS:
+        return _order_verb(action, model)
     if action["verb"] == "reroute":
         return _reroute(action, model)
     return _capacity(action, model)
+
+
+def applied(model: dict, action: dict) -> dict:
+    """A new *model* with *action* applied. An order verb's state replaces the model's
+    here and nowhere else: the shared grammar has no whole-state path, so no binding or
+    scenario can write one (D486)."""
+    from nagasim import experiments
+
+    override = override_of(action, model)
+    if override["path"] != "initial_state":
+        return experiments.apply_overrides(model, [override])
+    new = copy.deepcopy(model)
+    new["initial_state"] = override["value"]
+    return new
+
+
+def _flat(model: dict) -> dict:
+    """The model as a run sees it: migrated, every asset instance expanded."""
+    from nagasim.core import schema, submodels
+
+    model = schema.migrate(schema.read_layout(model))
+    return submodels.flatten(model) if submodels.has_submodels(model) else model
+
+
+def _orders_answerable(action: dict, model: dict, flat: dict | None = None) -> None:
+    """D487, what the model says: an order verb needs a CREATE that releases orders, and
+    `expedite` something that reads a job's priority (a ranked queue, a condition), or the
+    forecast could not see it. *flat*: the model's `_flat`, when the caller has it."""
+    from nagasim.core import orders
+
+    verb, flat = action["verb"], _flat(model) if flat is None else flat
+    if not orders.orders_mode_creates(flat):
+        raise Refused("E_CANDIDATES", f"{verb}: the model releases no orders (no CREATE in "
+                      f"\"Orders\" mode)", "an order verb acts on the orders a model releases")
+    if verb == "expedite" and not _PRIORITY.search(json.dumps(
+            [b.get("params") for b in flat.get("blocks") or [] if isinstance(b, dict)]
+            + [r for r in flat.get("resources") or [] if isinstance(r, dict)], default=str)):
+        raise Refused("E_CANDIDATES", "expedite: nothing in the model reads entity.priority, "
+                      "so the forecast could not see a new priority",
+                      "rank a queue on entity.priority (LowestValueFirst or HighestValueFirst)")
+
+
+def _order_verb(action: dict, model: dict) -> dict:
+    """D486: the started *model*'s state with the order verb applied, from the state's own
+    values and the action's constant. The book is the state's, else the model's orders read
+    to model time (which by itself changes nothing). D488: an effect the state already shows
+    is no change."""
+    from nagasim.core import calendar as cal, orders
+
+    verb, target, value = action["verb"], action["target"], action["value"]
+    short = target[:80]
+
+    def refuse(text, hint=None):
+        return Refused("E_CANDIDATES", f"{verb}: {text}", hint)
+
+    flat = _flat(model)     # once: migrating and flattening is what a candidate costs
+    _orders_answerable(action, model, flat)
+    state = copy.deepcopy(model.get("initial_state") or {})
+    clock = float(state.get("clock") or 0.0)
+    counted = state.get("orders") or {}
+    if not counted and "order_book" not in state and any(
+            (state.get("arrivals") or {}).get(name, {}).get("count")
+            for name in orders.orders_mode_creates(flat)):
+        raise refuse("the state counts released orders but does not name them",
+                     "take the state again: a state names its released orders (D452)")
+    raw = state.get("order_book") if isinstance(state.get("order_book"), list) \
+        else model.get("orders") or []
+    try:
+        calendar = cal.model_calendar(model)
+    except cal.CalendarError:
+        calendar = None
+    built = orders.build_orders({**model, "orders": raw, "initial_state": {}}, calendar)
+    book = []
+    for entry in raw:
+        entry = {k: v for k, v in entry.items() if k != "time_unit"}   # now in model time
+        made = built.get(str(entry.get("id", "")))
+        if made is not None:
+            entry["release"] = made.release
+            if made.due is not None:
+                entry["due"] = made.due
+        book.append(entry)
+    by_id = {str(o.get("id")): o for o in book}
+    released = {name for name, spec in counted.items() if (spec or {}).get("created", 0) > 0}
+    order = by_id.get(target)
+    if order is None:
+        raise refuse(f"the state holds no order '{short}'", "an order of the plant's book now")
+    if verb in ("hold", "release", "resequence") and target in released:
+        raise refuse(f"order '{short}' is released: its jobs are in the plant, and the model "
+                     f"does not take them off the floor")
+    if verb == "hold":
+        order["held"] = True
+    elif verb == "release":
+        order.pop("held", None)
+        order["release"] = min(order["release"], clock)
+    elif verb == "expedite":
+        done = counted.get(target) or {}
+        if target in released and done.get("completed", 0) >= done.get("created", 0):
+            raise refuse(f"order '{short}' is complete")
+        order["priority"] = value
+        for entity in state.get("entities") or []:
+            attributes = entity.get("attributes") or {}
+            if attributes.get("order_id") == target:
+                attributes["priority"] = value
+    else:
+        other = by_id.get(value)
+        if other is None or value in released:
+            raise refuse(f"the state holds no order '{value[:80]}' not yet released")
+        if order.get("held") or other.get("held"):
+            raise refuse("a held order is not in the release sequence", "release it first")
+        if order["release"] == other["release"] and target > value:
+            raise refuse(f"'{short}' and '{value[:80]}' are released at one time, in order of "
+                         f"their ids, which no verb changes")
+        if order["release"] > other["release"]:
+            order["release"], other["release"] = other["release"], order["release"]
+    state["order_book"] = book
+    return {"path": "initial_state", "value": state}
 
 
 def _reroute(action: dict, model: dict) -> dict:
@@ -328,7 +459,7 @@ def effects(model, actions, *, kpi: str, better: str, horizon: float, replicatio
     on the started *model* against the baseline, on the SAME seed (D301). *baseline* is a
     forecast of *model* already run on that seed, or None to run it here. A `better` row
     has its `rank`, from 1. None when *should_stop* said so in between."""
-    from nagasim import experiments, twin
+    from nagasim import twin
 
     run = runner or twin.forecast_from_state
     asked = dict(horizon=horizon, replications=replications, seed=seed, workers=workers,
@@ -343,7 +474,7 @@ def effects(model, actions, *, kpi: str, better: str, horizon: float, replicatio
         if should_stop is not None and should_stop():
             return None, None
         try:
-            candidate = experiments.apply_overrides(model, [override_of(action, model)])
+            candidate = applied(model, action)
             rows.append(_row(action, base, _values(run(candidate, **asked), kpi), better))
         except Exception as exc:        # the class only: the text may be a model's
             rows.append({"action": action, "verdict": "failed", "why": type(exc).__name__})
@@ -605,20 +736,18 @@ class Advisor:
     def apply(self, model) -> tuple:
         """(the started *model* with the actions that stand applied, those actions): what
         was taken is in the plant, and the model must be told (D307)."""
-        from nagasim import experiments
-
-        applied = []
+        stand = []
         for standing in self._standing():
             try:
-                model = experiments.apply_overrides(model, [override_of(standing["action"], model)])
+                model = applied(model, standing["action"])
             except Exception as exc:        # the model's own refusal: the class only
                 self._entry(standing["id"])["stands"], self._unsaved = False, True
                 self._warn(f"the action taken on '{standing['action']['target'][:80]}' no "
                            f"longer applies to the model ({type(exc).__name__}): it stands "
                            f"no more")
             else:
-                applied.append(standing)
-        return model, applied
+                stand.append(standing)
+        return model, stand
 
     def compare(self, model, pending: dict, baseline, *, runner, should_stop, workers,
                 standing=()) -> dict | None:
@@ -969,7 +1098,7 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
     The same engine on the same numbers gives the same replications: a number differs
     when it is not equal to nine digits. A record of another engine version is still
     compared, and the version is said."""
-    from nagasim import experiments, state, twin
+    from nagasim import state, twin
     from nagasim.score import _same
 
     directory = Path(directory)
@@ -1033,7 +1162,7 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
             started["simulation"]["timeseries_counts"] = list(group[0]["counts"])
         try:
             for action in group[0]["standing"]:
-                started = experiments.apply_overrides(started, [override_of(action, started)])
+                started = applied(started, action)
             rows, _reason = effects(
                 started, [e["record"]["action"] for e in group], kpi=first["expected"]["kpi"],
                 better=first["expected"]["better"], horizon=first["horizon"],

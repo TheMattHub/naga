@@ -189,8 +189,12 @@ class Create(BaseProcess):
         """
         mine = sorted((o for o in self.ctx.orders.values() if o.block == self.name),
                       key=lambda o: (o.release, o.id))
-        # A state says how many were already released (`initial_state.arrivals`); 0 otherwise.
-        for order in mine[self.counter_arrivals:]:
+        # D485: a state with order counters says WHICH were released (a plant releases out
+        # of order); an older one only how many (`initial_state.arrivals`); 0 otherwise.
+        released = self.ctx.released_orders
+        todo = mine[self.counter_arrivals:] if released is None \
+            else [o for o in mine if o.id not in released]
+        for order in (o for o in todo if not o.held):
             at = max(float(order.release), float(self.start_time))
             if at > self.env.now:
                 self.next_at = at       # D235: a state is not taken on a release

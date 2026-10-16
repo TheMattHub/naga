@@ -22,11 +22,11 @@ from nagasim import experiments
 from nagasim.core import sections
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema import ModelValidationError
-from nagasim.core.schema.sections_validation import (DASHBOARD_LIMITS,
+from nagasim.core.schema.sections_validation import (CONNECTION_SOURCE_KINDS, DASHBOARD_LIMITS,
                                                      validate_dashboard_definition)
 
-__all__ = ["default_dashboard", "resolve_dashboard", "merge_generated", "input_overrides",
-           "check_inputs", "MAX_GENERATED_INPUTS"]
+__all__ = ["default_dashboard", "generated_dashboard", "resolve_dashboard", "merge_generated",
+           "input_overrides", "input_for", "check_inputs", "MAX_GENERATED_INPUTS"]
 
 # The generation rule's numbers (the spec's section 3), one constant each.
 MAX_GENERATED_INPUTS = 12
@@ -93,6 +93,27 @@ def _number_input(path: str, label: str, value, capacity: bool = False) -> dict 
     return {"path": path, "label": label, "kind": "number", "min": low, "max": high, "step": step}
 
 
+def _entry(path: str, label: str, value, capacity: bool = False) -> dict | None:
+    """The input the generation rule makes of a leaf: a switch for true/false, a
+    number with its generated range for a number, None for anything else."""
+    if isinstance(value, bool):
+        return {"path": path, "label": label, "kind": "switch"}
+    number = _as_number(value)
+    return None if number is None else _number_input(path, label, number, capacity)
+
+
+def input_for(layout: dict, path: str) -> dict | None:
+    """The input the generation rule would make of *path*, labelled with the
+    path: what the designer adds when the author picks a parameter. None when the
+    path addresses nothing, or no number or true/false value."""
+    try:
+        leaf = experiments.value_at(layout, path)
+    except (ModelValidationError, KeyError):
+        return None
+    label = path[:DASHBOARD_LIMITS["label"]] if path.isprintable() else ""
+    return _entry(path, label, leaf, path.startswith("resources.") and path.endswith(".capacity"))
+
+
 def _templates(layout: dict) -> dict[str, set]:
     """{section: names} of the records a submodel definition clones per instance
     (`scoped`, or `info.owns` for a placed asset). The run reads the clones, which
@@ -124,12 +145,9 @@ def _generated_inputs(layout: dict, controls: list) -> list[dict]:
         if len(path) > DASHBOARD_LIMITS["text"] or not path.isprintable() or path in found:
             return
         label = label[:DASHBOARD_LIMITS["label"]] if label.isprintable() else ""
-        if isinstance(value, bool):
-            found[path] = {"path": path, "label": label, "kind": "switch"}
-        elif _as_number(value) is not None:
-            entry = _number_input(path, label, _as_number(value), capacity)
-            if entry is not None:
-                found[path] = entry
+        entry = _entry(path, label, value, capacity)
+        if entry is not None:
+            found[path] = entry
 
     # A capacity slider caps a resource within its declared capacity during a
     # run, and validation holds its range inside that capacity: an input that
@@ -203,8 +221,24 @@ def default_dashboard(layout: dict) -> dict:
         {"kind": "view", "mode": "schematic"}, {"kind": "decisions"},
         *({"kind": "control", "ref": c["name"]} for c in controls),
         *({"kind": "widget", "ref": w["name"]} for w in widgets)][:DASHBOARD_LIMITS["items"]]})
+    # A model a twin can watch: what a separately started one wrote (D249). A forecast,
+    # and the advice made from it, only for a model that can start from a state.
+    if any(isinstance(s, dict) and s.get("kind") in CONNECTION_SOURCE_KINDS
+           for s in layout.get("data_sources") or []):
+        items = [{"kind": "status"}, {"kind": "view", "mode": "schematic"}]
+        if layout.get("data_bindings") or layout.get("initial_state"):
+            items += [{"kind": "forecast"}, {"kind": "recommendations"}]
+        pages.append({"name": "Live", "activity": "live", "items": items})
     return {"widgets": widgets, "controls": controls, "inputs": inputs, "results": results,
             "limits": limits, "pages": pages}
+
+
+def generated_dashboard(layout: dict) -> dict:
+    """What the model alone generates, whatever the author stored besides its
+    widgets and controls: the side Regenerate merges in and Reset returns to."""
+    stored = layout.get("dashboard") or {}
+    own = {key: stored[key] for key in ("widgets", "controls") if key in stored}
+    return default_dashboard({**layout, "dashboard": own})
 
 
 def resolve_dashboard(layout: dict) -> dict:
