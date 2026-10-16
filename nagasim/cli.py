@@ -48,6 +48,8 @@ COMMANDS = {
     "ci-template": ("modelcheck", "main",
                     "print a GitHub Actions workflow running 'naga check'"),
     "generate": ("tablegen", "main", "build a model from Stations/Products/Routings tables"),
+    "discover": ("discover", "main",
+                 "draft a model from an event log (CSV or XES), with a report of what it assumed"),
     "sdimport": ("sdimport", "main", "translate an XMILE/Vensim file into a model JSON"),
     "viewer": ("viewer", "main",
                "one HTML file in which the engine re-runs a model in a browser"),

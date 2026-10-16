@@ -99,6 +99,8 @@ nav:
       - Model assertions and CI: model-assertions.md
       - Semantic diff and merge: semantic-diff.md
       - Sharing a model (the browser viewer): sharing-a-model.md
+      - Event log to model: event-log-to-model.md
+      - "Tutorial: a log to a model in five minutes": event-log-tutorial.md
   - Digital twin:
       - Digital twin: digital-twin.md
       - A plant as a timeline: plant-timeline.md

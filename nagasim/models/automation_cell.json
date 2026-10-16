@@ -56,6 +56,7 @@
   "scenarios": [
     {
       "name": "Robot cell",
+      "goal": "Does a robot arm pay back its capex within five years?",
       "overrides": [
         {"path": "blocks.assemble.params.profile", "value": "Robot arm"},
         {

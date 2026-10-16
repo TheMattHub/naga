@@ -45,6 +45,21 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=10_000, warmup=0, replications=1)
+m.add_schedule(name="Rhythm", kind="capacity", repeat=True, points=[[65, 1], [35, 0]])
+m.add_resource(name="Robot", capacity_schedule="Rhythm")
+parcels = m.create(distribution=nb.Constant(value=10.0))
+pack = m.process(resource_name="Robot", distribution=nb.Constant(value=4.0))
+parcels >> pack >> m.dispose()
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['system/Avg Throughput Time']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["system"]["Avg Throughput Time"]["mean"]
 

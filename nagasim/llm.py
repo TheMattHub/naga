@@ -29,20 +29,23 @@ __all__ = ["Usage", "ToolCall", "Reply", "Config", "LLMError", "LOCAL_DEFAULT", 
            "DEFAULT_ANTHROPIC_MODEL", "estimate_cost"]
 
 LOCAL_DEFAULT = "http://localhost:11434/v1"
+MODELS_TIMEOUT_S, MODELS_MAX_BYTES = 15, 2_000_000     # a model list is small and quick
 LOCAL_TIMEOUT_S, HOSTED_TIMEOUT_S = 1800, 600     # a local model may still be loading
 # The claude-api skill: "For streaming requests, default to ~64000 ... don't lowball max_tokens".
 # Every model in ANTHROPIC_MODELS allows at least this much output (Haiku 4.5: 64K).
 MAX_TOKENS = 64000
 
-# Prices are $/1M tokens, from the claude-api skill's model table (cached 2026-09-25).
-# Never hard-code a model id anywhere else in the app -- read ANTHROPIC_MODELS.
+# Prices are $/1M tokens, from the claude-api skill's model table (cached 2026-09-25). A model
+# without prices has none we know: estimate_cost returns None for it (never guess a price).
+# This is the offline fallback, newest first; the app asks the provider for its live list
+# (`list_models`, D585). Never hard-code a model id anywhere else in the app.
 ANTHROPIC_MODELS = {
+    "claude-fable-5-1": {"label": "Claude Fable 5.1 (newest)"},
     "claude-opus-5-5": {"label": "Claude Opus 5.5 (default)",
                         "input_per_mtok": 4.00, "output_per_mtok": 20.00},
     "claude-sonnet-5-5": {"label": "Claude Sonnet 5.5 (cheaper)",
                           "input_per_mtok": 2.00, "output_per_mtok": 10.00},
-    "claude-haiku-4-5": {"label": "Claude Haiku 4.5 (fastest, cheapest)",
-                         "input_per_mtok": 1.00, "output_per_mtok": 5.00},
+    "claude-haiku-5-5": {"label": "Claude Haiku 5.5 (fastest, cheapest)"},
 }
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5"
 
@@ -70,7 +73,7 @@ def estimate_cost(usage: Usage, model: str) -> float | None:
     (never guess a price). Anthropic's `input_tokens` excludes the cache tokens: a cache read
     costs 0.1x the input price and a cache write 1.25x."""
     prices = ANTHROPIC_MODELS.get(model)
-    if prices is None:
+    if prices is None or "input_per_mtok" not in prices:
         return None
     return (usage.input_tokens * prices["input_per_mtok"]
             + usage.cache_read_input_tokens * prices["input_per_mtok"] * 0.1
@@ -326,6 +329,30 @@ class _OpenAICompat:
             on_text(reply.text)
         return reply
 
+    def list_models(self) -> list[str]:
+        """`GET {base_url}/models` on the configured address alone (same checks, no redirect,
+        no proxy for a local server). LLMError when it cannot be read; the message holds
+        neither the key nor the server's body."""
+        headers = {"Authorization": f"Bearer {self.cfg.api_key}"} if self.cfg.api_key else {}
+        where = self.cfg.base_url
+        try:
+            request = urllib.request.Request(where + "/models", headers=headers)
+            with self._opener.open(request, timeout=MODELS_TIMEOUT_S) as response:
+                return _model_ids(json.loads(response.read(MODELS_MAX_BYTES)))
+        except urllib.error.HTTPError as exc:
+            raise LLMError(f"{where} answered HTTP {exc.code} to the model list") from None
+        except (ValueError, RecursionError, http.client.HTTPException, OSError):
+            raise LLMError(f"cannot read the model list from {where}") from None
+
+
+def _model_ids(data) -> list[str]:
+    """Model ids from a `{"data": [{"id": ...}]}` list, in the order sent; ValueError (which
+    `list_models` turns into LLMError) when the body is not that shape."""
+    items = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise ValueError("no model list")
+    return [m["id"] for m in items if isinstance(m, dict) and isinstance(m.get("id"), str)]
+
 
 def _openai_call(call: dict, fallback_id: str) -> ToolCall:
     """One tool call. A missing or non-text id gets *fallback_id* (some local servers send none);
@@ -399,6 +426,14 @@ class _Anthropic:
                                'pip install "nagasim[assistant]"') from None
             client = anthropic.Anthropic(api_key=cfg.api_key)
         self.client = client
+
+    def list_models(self) -> list[str]:
+        """The account's models, newest first (the SDK's call to the one Anthropic host).
+        LLMError when it cannot be read; only the error's class is quoted, never its text."""
+        try:
+            return [m.id for m in self.client.models.list(limit=100, timeout=MODELS_TIMEOUT_S).data]
+        except Exception as exc:
+            raise LLMError(f"cannot read the Anthropic model list ({type(exc).__name__})") from None
 
     def complete(self, system, tools, history, on_text=None) -> Reply:
         defs = [dict(t) for t in tools]

@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 70 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 71 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -13,6 +13,7 @@ The 70 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `open_model` |  | Load a model file from the workspace root into the workspace. |
 | `import_xmile` |  | Translate an XMILE (Stella/iThink) system-dynamics file into a new model. |
 | `import_mdl` |  | Translate a Vensim system-dynamics file into a new model. |
+| `import_event_log` |  | Draft a model from an event log: what happened to each case, activity by activity. |
 | `save_model` |  | Write a model in the workspace to disk as JSON. |
 | `list_models` | yes | List the models currently open in the workspace, and the model files available under the workspace root. |
 | `get_model_summary` | yes | A compact picture of a model: its blocks with their key parameters, its links in branch order, its resources, and how many problems it has. |

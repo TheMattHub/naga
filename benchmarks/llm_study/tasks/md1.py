@@ -37,6 +37,20 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=100_000, warmup=2_000, replications=1)
+m.add_resource(name="Labeller")
+arrive = m.create(distribution=nb.Exponential(rate=1 / 5))
+label = m.process(resource_name="Labeller", distribution=nb.Constant(value=3.0))
+arrive >> label >> m.dispose()
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['resource/Labeller/Time in Queue Avg']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["resources"]["Labeller"]["Time in Queue Avg"]["mean"]
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-__all__ = ["Section", "SECTIONS", "MISSING", "RECORD_SECTIONS", "CLONABLE_SECTIONS",
+__all__ = ["Section", "SECTIONS", "FAMILIES", "MISSING", "RECORD_SECTIONS", "CLONABLE_SECTIONS",
            "CONTINUOUS_SECTIONS", "DOCUMENT_LISTS", "KEY", "CAPABILITIES", "capabilities"]
 
 MISSING = object()      # "migrate adds nothing for this section"
@@ -64,10 +64,10 @@ class Section(NamedTuple):
     # (structure, run settings, view state). Only the name lives here; the
     # order of headings and what draws one are the client's (D202).
     tab: str | None = None
-    # The family `tab` belongs to, for a client that folds many headings into
-    # a few. One family today, so such a client still shows one list (D205);
-    # it means something only where `tab` is set.
-    group: str = "Model data"
+    # The family `tab` belongs to (one of `FAMILIES`, set from `_FAMILY_OF_TAB`
+    # below), for a client that orders or folds headings by family (C13); ""
+    # where `tab` is not set.
+    group: str = ""
 
 
 def _record(name, item, doc, **flags) -> Section:
@@ -213,6 +213,21 @@ SECTIONS: tuple[Section, ...] = (
     Section("view", doc="Editor view state: the canvas tab in front, layout/3D, "
                         "zoom and centre per tab; written on save, ignored by the engine."),
 )
+
+# The family of each heading (C13, Matteo 2026-10-16): Flow, Data, Logistics,
+# Dynamics, Money. Kept per heading, not per row, so sections sharing a heading
+# can never disagree; the order and colour of the families are the client's.
+FAMILIES = ("Flow", "Data", "Logistics", "Dynamics", "Money")
+_FAMILY_OF_TAB = {
+    "Resources": "Flow", "Resource sets": "Flow", "Entities": "Flow", "Schedules": "Flow",
+    "Failures": "Flow", "Sequences": "Flow", "Orders": "Flow",
+    "Variables": "Data", "Lookup tables": "Data", "Time series": "Data",
+    "Data sources": "Data", "Bindings": "Data", "Initial state": "Data", "Dashboard": "Data",
+    "Fleets": "Logistics", "Chargers": "Logistics", "Motion profiles": "Logistics",
+    "Stocks": "Dynamics", "Conversions": "Dynamics", "Agents": "Dynamics",
+    "Costs": "Money", "Investment": "Money",
+}
+SECTIONS = tuple(s._replace(group=_FAMILY_OF_TAB[s.tab]) if s.tab else s for s in SECTIONS)
 
 KEY = {s.name: s.key for s in SECTIONS if s.key}
 RECORD_SECTIONS = tuple(s.name for s in SECTIONS if s.record)

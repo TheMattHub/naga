@@ -191,6 +191,7 @@ curve. The [schema reference](reference/schema.md) has the field list.
 
 ```jsonc
 {"name": "Extra Assembly server",
+ "goal": "Does a third server cut the wait?",   // optional, up to 500 characters; not run
  "overrides": [{"path": "resources.Assembly.capacity", "value": 3}]}
 ```
 

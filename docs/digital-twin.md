@@ -365,7 +365,9 @@ naga twin run line.json --map line.plantmap.json --connections conn.json --out t
   refused by name where the forecast could not answer: a model that releases no orders,
   `expedite` where nothing reads `entity.priority` (a FIFO shop), and, at each forecast, an
   order the plant does not report, `hold`, `release` and `resequence` of one already
-  released (its jobs are on the floor), and `expedite` of one already completed.
+  released (its jobs are on the floor), and `expedite` of one already completed. To try
+  `expedite`, use the bundled `order_priority_shop`: its Cutter serves the lowest priority
+  number first, so expediting an order moves its completion.
   A candidate is tried as an override on the forecast; your model file is never changed.
 - **What you get.** For each candidate, on the one KPI you named: the effect (the mean
   difference against doing nothing) with its 95% interval, and `confidence`, the share of

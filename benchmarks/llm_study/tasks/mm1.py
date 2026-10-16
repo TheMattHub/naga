@@ -37,6 +37,20 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=120_000, warmup=2_000, replications=1)
+m.add_resource(name="Clerk")
+arrive = m.create(distribution=nb.Exponential(rate=1 / 6))
+serve = m.process(resource_name="Clerk", distribution=nb.Exponential(rate=1 / 4))
+arrive >> serve >> m.dispose()
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['system/Avg Throughput Time']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["system"]["Avg Throughput Time"]["mean"]
 

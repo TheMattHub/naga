@@ -9,6 +9,7 @@ output, only how it displays in a notebook.
     results = run_model("models/single_server.json", replications=5)
     results                    # _repr_html_ in Jupyter: the KPI summary table
     results.kpis()             # tidy DataFrame: metric, mean, std, ci95
+    results.kpi("system/Avg Queue Length")   # one KPI's mean
     results.frame("system")    # alias for results["system"]
     results.plot("system/Avg Queue Length")   # lazy matplotlib
     results.to_excel("out.xlsx")
@@ -52,6 +53,16 @@ class Results(dict):
             rows.append({"metric": metric, "mean": st["mean"], "std": st["sd"],
                         "ci95": half})
         return pd.DataFrame(rows, columns=["metric", "mean", "std", "ci95"])
+
+    def kpi(self, key: str) -> float:
+        """The mean over runs of one KPI, by its "family/name" key
+        (`results.kpi("system/Avg Queue Length")`); `KeyError` naming the key if absent.
+        The spread is in `kpis()`."""
+        table = self.kpis()
+        hit = table.loc[table["metric"] == key, "mean"]
+        if hit.empty:
+            raise KeyError(f"{key!r} is not a KPI key in these results; see results.kpis()")
+        return float(hit.iloc[0])
 
     def _repr_html_(self) -> str:
         """Jupyter notebook display: the KPI table, Run-averaged, with a

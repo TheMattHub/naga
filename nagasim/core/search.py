@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from nagasim.core import sections
 from nagasim.core.document import ModelDocument
 from nagasim.core.outline import transition_label
 
@@ -46,9 +47,9 @@ def _flatten_params(params: dict, prefix: str = ""):
 
 def find_matches(doc: ModelDocument, text: str) -> list[Match]:
     """Every case-insensitive substring match of *text* in the model, in a
-    stable order (blocks in doc.blocks order, then annotations, resources,
-    resource sets, schedules, variables). Empty/whitespace-only text matches
-    nothing."""
+    stable order (blocks in doc.blocks order, then annotations, submodels, the
+    model-data records in section-table order, agent states and transitions, the
+    network). Empty/whitespace-only text matches nothing."""
     needle = text.strip().lower()
     if not needle:
         return []
@@ -88,28 +89,16 @@ def find_matches(doc: ModelDocument, text: str) -> list[Match]:
                 if _contains(value, needle):
                     matches.append(Match("submodel", path, f"param:{field}"))
 
-    for r in doc.resources:
-        if _contains(r.get("name", ""), needle):
-            matches.append(Match("resource", r.get("name", ""), "name"))
-    for s in doc.resource_sets:
-        if _contains(s.get("name", ""), needle):
-            matches.append(Match("resource_set", s.get("name", ""), "name"))
-    for s in doc.schedules:
-        if _contains(s.get("name", ""), needle):
-            matches.append(Match("schedule", s.get("name", ""), "name"))
-    for v in doc.variables:
-        if _contains(v.get("name", ""), needle):
-            matches.append(Match("variable", v.get("name", ""), "name"))
-    # The plain named-record sections (PHASE4 A1, D1/D2): one loop, since the
-    # only thing Find can match in them is the name the model refers to them by.
-    for section, kind in (("tables", "table"), ("timeseries_inputs", "timeseries_input"),
-                          ("levels", "level"), ("flows", "flow"),
-                          ("conversions", "conversion"), ("failures", "failure"),
-                          ("auxiliaries", "auxiliary"), ("delays", "delay"),
-                          ("agent_types", "agent_type"), ("populations", "population")):
-        for entry in getattr(doc, section, []):
-            if _contains(entry.get("name", ""), needle):
-                matches.append(Match(kind, entry.get("name", ""), "name"))
+    # Every keyed section a client lists as model data (B7, UX review 2026-10-16):
+    # read off the section table, so a new section is found without a line here.
+    # What Find matches in a record is the key the model names it by.
+    for section in sections.SECTIONS:
+        if not (section.item and section.tab and section.key):
+            continue
+        for entry in getattr(doc, section.name, None) or []:
+            key = entry.get(section.key, "") if isinstance(entry, dict) else ""
+            if _contains(key, needle):
+                matches.append(Match(section.item, str(key), "name"))
 
     # 6D1 U6: what the Outline shows below an agent type, and the path
     # network, named the Outline's way ("Type/state", "Type/<index>", "a|b").

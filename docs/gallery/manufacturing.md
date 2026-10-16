@@ -3,7 +3,7 @@
 
 # Manufacturing
 
-11 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+12 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
 
 ## Robot cell against manual assembly
 
@@ -354,6 +354,40 @@ flowchart LR
 | `system/Avg Throughput Time` | 6.5 |  |
 | `system/Avg Queue Length` | 1.09 |  |
 | `system/Avg Resource Usage %` | 63.6 |  |
+
+## Order shop ranked by priority
+
+Five work orders through a two-station routed shop whose Cutter serves the lowest priority number first. Every time is a constant, so every completion is exact arithmetic; expediting an order (priority 0) moves its completion, which a FIFO shop cannot show.
+
+```console
+naga run order_priority_shop
+```
+
+```mermaid
+flowchart LR
+    b0["release_orders (CREATE)"]
+    b1["route_1 (ROUTE)"]
+    b2["Cut (STATION)"]
+    b3["Pack (STATION)"]
+    b4["process_cut (PROCESS)"]
+    b5["process_pack (PROCESS)"]
+    b6["dispose_1 (DISPOSE)"]
+    b0 --> b1
+    b1 --> b6
+    b2 --> b4
+    b4 --> b1
+    b3 --> b5
+    b5 --> b1
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 6 |  |
+| `system/Avg Throughput Time` | 6.83 |  |
+| `system/Avg Queue Length` | 1.5 |  |
+| `system/Avg Resource Usage %` | 71.4 |  |
 
 ## Priority jobs with rework
 

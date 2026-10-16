@@ -55,6 +55,11 @@ def _validate_scenarios(layout: dict, problems: list) -> None:
             problems.append(problem("E_DUPLICATE_SCENARIO", f"duplicate scenario name: {name}",
                                     f"{at}/name", hint="rename one of the two scenarios"))
         seen.add(name)
+        goal = entry.get("goal", "")       # D577/D578: optional, text only
+        if not isinstance(goal, str) or len(goal) > 500:
+            problems.append(problem(
+                "E_SCENARIO_GOAL", f"scenario '{name}': goal must be text of at most 500 characters",
+                f"{at}/goal", hint="write the question the scenario answers in one sentence"))
         for j, override in enumerate(entry.get("overrides", [])):
             where = f"{at}/overrides/{j}"
             if not override.get("path"):

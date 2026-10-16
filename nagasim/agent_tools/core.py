@@ -643,6 +643,86 @@ def import_mdl(path: str, name: str | None = None) -> dict:
             "problems": _problem_dicts(problems)}
 
 
+_document_args("import_event_log",
+               path="Event log (CSV, or .xes), relative to the workspace root.",
+               name="Workspace name to open the draft under; defaults to the file stem.",
+               routing="\"auto\" (a test on the log picks), \"markov\" (chances to the next "
+                       "activity) or \"variants\" (one routing per observed sequence).",
+               time_unit="The draft's time unit: seconds, minutes, hours or days. A numeric "
+                         "timestamp is taken as already in it.")
+
+
+@tool()
+def import_event_log(path: str, name: str | None = None, routing: str = "auto",
+                   time_unit: str = "minutes") -> dict:
+    """Draft a model from an event log: what happened to each case, activity by activity.
+
+    The log needs a case id, an activity and a timestamp per row (CSV), or XES traces;
+    lifecycle (schedule/start/complete) and resource columns make the draft better. The
+    draft has one CREATE fitted to the case arrivals, one block per activity with its fitted
+    time, routing from the observed transitions and resources from the resource column,
+    and opens in the workspace under *name* like `open_model`. Nothing is written to disk.
+
+    It is a first draft: read `assumptions` (what the log could not tell, such as shifts or
+    the wait before a case's first activity) and `dropped` before trusting its numbers.
+    The file must be under the workspace root; a log over a size ceiling, or an XES file
+    with a DOCTYPE, is refused outright, and there is no argument that changes either.
+
+    Returns {"ok", "model", "routing", "activities": [{"block", "original", "count",
+    "lifecycle", "distribution", "mean", "mean_wait", "resource"}], "resources",
+    "activities_total", "resources_total", "assumptions", "dropped", "check": {"verdict",
+    "findings": [{"level", "what", "means"}]} (is the log good enough, and what each gap
+    means for the draft), "next_steps": {"check", "never"} (what to check in the draft, and
+    what this log cannot tell), "observed", "errors", "warnings", "problems"}. The two lists are cut to fit one reply; the totals say how many
+    there are, and the open model has them all.
+    """
+    from nagasim import discover
+
+    full = _WORKSPACE.resolve(path, must_exist=True)
+    handle = name or full.stem
+    if handle in _WORKSPACE.models:
+        raise ToolError("E_MODEL_EXISTS", f"a model named '{handle}' is already open",
+                        "pick another name, or edit the existing one")
+    try:
+        layout, report = discover.discover(full, routing=routing, time_unit=time_unit)
+    except discover.LogError as exc:
+        raise ToolError("E_DISCOVER_LOG", str(exc),
+                        "fix the log (or name its columns) and try again") from None
+    doc = ModelDocument(layout)
+    _WORKSPACE.models[handle] = doc
+    problems = _problems(doc)
+    activities = []
+    for a in report["activities"]:
+        fit = a.get("service") or a.get("sojourn")
+        activities.append({"block": a["block"], "original": a["original"][:200],
+                           "count": a["count"], "lifecycle": a["lifecycle"],
+                           "distribution": fit["distribution"], "mean": _finite(fit["mean"]),
+                           "mean_wait": _finite(a["mean_wait"]), "resource": a["resource"]})
+    reply = {"ok": True, "model": handle,
+             "routing": {"mode": report["routing"]["mode"],
+                         "reason": report["routing"]["reason"]},
+             "activities": activities,
+             "resources": [{**r, "original": r["original"][:200]}
+                           for r in report["resources"][:MAX_ROWS]],
+             "activities_total": len(activities), "resources_total": len(report["resources"]),
+             "assumptions": report["assumptions"], "dropped": report["dropped"],
+             "check": {"verdict": report["check"]["verdict"],
+                       "findings": [{k: f[k] for k in ("level", "what", "means")}
+                                    for f in report["check"]["findings"]]},
+             "next_steps": report["next_steps"],
+             "observed": {k: report["observed"][k] for k in ("cases", "throughput",
+                                                              "cycle_time")},
+             "errors": sum(1 for p in problems if p.severity == "error"),
+             "warnings": sum(1 for p in problems if p.severity == "warning"),
+             "problems": _problem_dicts(problems)}
+    # Under the page's byte cap as `_rows` is (#568): the lists halve until the reply fits.
+    while len(json.dumps(reply)) > MAX_PAGE_BYTES and \
+            (len(reply["activities"]) > 1 or len(reply["resources"]) > 1):
+        for key in ("activities", "resources"):
+            reply[key] = reply[key][:max(1, len(reply[key]) // 2)]
+    return reply
+
+
 _document_args("save_model",
                model="Workspace name of the model to save.",
                path="Destination path under the workspace root; defaults to where it was opened.")

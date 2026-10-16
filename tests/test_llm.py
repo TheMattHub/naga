@@ -481,3 +481,96 @@ def test_usage_merge_and_cost():
     # 1M * $2 + 1M * $10 + 1M * $2 * 0.1 + 1M * $2 * 1.25 = 2.00 + 10.00 + 0.20 + 2.50 = $14.70
     assert llm.estimate_cost(llm.Usage(1_000_000, 1_000_000, 1_000_000, 1_000_000),
                              "claude-sonnet-5-5") == pytest.approx(14.70)
+
+
+# ---------------------------------------------------------------- model list (D585)
+@contextmanager
+def serve_models(answer):
+    """A loopback server whose GET answers *answer* (a dict, or (status, text)); yields
+    (base_url, seen GET requests)."""
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append({"path": self.path, "headers": dict(self.headers)})
+            status, text = answer if isinstance(answer, tuple) else (200, json.dumps(answer))
+            data = text.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1", seen
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_the_built_in_models_are_current_and_newest_first():
+    assert list(llm.ANTHROPIC_MODELS) == ["claude-fable-5-1", "claude-opus-5-5",
+                                          "claude-sonnet-5-5", "claude-haiku-5-5"]
+    assert llm.DEFAULT_ANTHROPIC_MODEL in llm.ANTHROPIC_MODELS
+    assert llm.estimate_cost(llm.Usage(1, 1), "claude-haiku-5-5") is None   # no known price: no guess
+
+
+def test_openai_list_models_asks_only_the_configured_address_and_reads_the_ids():
+    with serve_models({"data": [{"id": "qwen3:8b"}, {"id": "gemma4:12b"}, {"nope": 1}]}) as (url, seen):
+        provider = llm.build_provider(llm.Config("openai", url, "m", "k", "omit"))
+        assert provider.list_models() == ["qwen3:8b", "gemma4:12b"]
+    assert [r["path"] for r in seen] == ["/v1/models"]
+    assert seen[0]["headers"]["Authorization"] == "Bearer k"
+
+
+@pytest.mark.parametrize("answer", [(500, "boom k-secret"), (200, "not json k-secret"),
+                                    (302, "moved")])
+def test_a_failing_model_list_is_an_llm_error_without_the_body_or_the_key(answer):
+    with serve_models(answer) as (url, _seen):
+        provider = llm.build_provider(llm.Config("openai", url, "m", "k-secret", "omit"))
+        with pytest.raises(llm.LLMError) as caught:
+            provider.list_models()
+    assert "k-secret" not in str(caught.value) and "boom" not in str(caught.value)
+
+
+def test_a_dead_address_is_an_llm_error_for_the_model_list():
+    provider = llm.build_provider(llm.Config("openai", "http://127.0.0.1:9/v1", "m", None, "omit"))
+    with pytest.raises(llm.LLMError, match="cannot read the model list"):
+        provider.list_models()
+
+
+def test_anthropic_list_models_uses_the_client_and_never_quotes_its_error():
+    ok = SimpleNamespace(models=SimpleNamespace(list=lambda limit, timeout: SimpleNamespace(
+        data=[SimpleNamespace(id="claude-opus-9"), SimpleNamespace(id="claude-haiku-9")])))
+    cfg = llm.Config("anthropic", "", "m", "k", "omit")
+    assert llm.build_provider(cfg, client=ok).list_models() == ["claude-opus-9", "claude-haiku-9"]
+
+    def boom(limit, timeout):
+        raise RuntimeError("x-api-key k-secret rejected")
+    bad = SimpleNamespace(models=SimpleNamespace(list=boom))
+    with pytest.raises(llm.LLMError) as caught:
+        llm.build_provider(cfg, client=bad).list_models()
+    assert "k-secret" not in str(caught.value) and "RuntimeError" in str(caught.value)
+
+
+@pytest.mark.parametrize("body", [{"data": 7}, {"data": {"a": 1}}, {"data": None}, [], {}])
+def test_a_model_list_of_the_wrong_shape_is_an_llm_error(body):
+    with serve_models(body) as (url, _seen):
+        provider = llm.build_provider(llm.Config("openai", url, "m", None, "omit"))
+        with pytest.raises(llm.LLMError, match="cannot read the model list"):
+            provider.list_models()
+
+
+def test_the_anthropic_model_list_has_a_short_timeout():
+    seen = {}
+
+    def lister(limit, timeout):
+        seen["timeout"] = timeout
+        return SimpleNamespace(data=[])
+    client = SimpleNamespace(models=SimpleNamespace(list=lister))
+    llm.build_provider(llm.Config("anthropic", "", "m", "k", "omit"), client=client).list_models()
+    assert seen["timeout"] == llm.MODELS_TIMEOUT_S

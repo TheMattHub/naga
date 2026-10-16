@@ -24,6 +24,7 @@ results = api.run_model(model_path, replications=5, run_length=200, warmup=20, s
 system = results["system"]          # one frame per kind of result, one row per run and object
 kpis = results.kpis()               # metric, mean, std, ci95 over the replications
 print(kpis.head())
+print(results.kpi("system/Avg Queue Length"))   # one KPI's mean; KeyError if the key is absent
 ```
 
 A KPI has a stable key, `family/name` or `family/object/column`
@@ -99,7 +100,11 @@ arrive >> serve >> m.dispose()
 
 m.save("mm1.json")                       # the short form `naga fmt` writes
 print(m.run(replications=2).kpis().head())
+print(m.run(replications=2).kpi("system/Total Entities Completed"))   # one KPI's mean
 ```
+
+A block's name is the first argument or `name=`, not both: `m.process(name="Lathe", ...)` and
+`m.process("Lathe", ...)` are the same block, and giving both is a `TypeError`.
 
 A line with a buffer between two machines, and a resource on a shift schedule beside a tank:
 

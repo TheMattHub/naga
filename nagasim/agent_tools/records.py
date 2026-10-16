@@ -497,11 +497,13 @@ def upsert_orders_from_csv(model: str, path: str, replace: bool = True) -> dict:
 _document_args("upsert_scenario", model="Workspace name of the model to edit.",
                name="Scenario name; \"Baseline\" is implicit and always present.",
                overrides="[{\"path\": \"resources.Server.capacity\", \"value\": 2}, ...].",
-               description="Free-text note about what this scenario represents.")
+               description="Free-text note about what this scenario represents.",
+               goal="The question this scenario answers, one sentence (max 500 characters).")
 
 
 @tool()
-def upsert_scenario(model: str, name: str, overrides: list, description: str | None = None) -> dict:
+def upsert_scenario(model: str, name: str, overrides: list, description: str | None = None,
+                    goal: str | None = None) -> dict:
     """Add or update a named scenario: a set of parameter overrides applied to
     the base model before a run.
 
@@ -516,5 +518,7 @@ def upsert_scenario(model: str, name: str, overrides: list, description: str | N
     entry = {"name": name, "overrides": [dict(o) for o in overrides]}
     if description:
         entry["description"] = description
+    if goal:
+        entry["goal"] = goal
     doc.set_scenarios(_upsert(doc.scenarios, entry))
     return _edit_result(doc, before, {"scenario": name})

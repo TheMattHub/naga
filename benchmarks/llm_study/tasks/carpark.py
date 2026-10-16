@@ -52,6 +52,22 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=200_000, warmup=0, replications=1)
+m.add_resource(name="Spaces", capacity=10)
+cars = m.create(distribution=nb.Exponential(rate=1 / 2))
+park = m.process("park", resource_name="Spaces", distribution=nb.Exponential(rate=1 / 15),
+                 balk_if='NR("Spaces") >= 10')
+cars >> park >> m.dispose()
+park >> m.dispose()                     # the second link: where a balking car goes
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {100 * kpis['queue/park/Balked'] / kpis['system/Total Entities Created']:.4f}")
+"""
+
+
 def naga_answer(results):
     created = results[-2]["system"]["Total Entities Created"]["mean"]
     return 100 * results[-1]["rows"][0]["Balked"] / created

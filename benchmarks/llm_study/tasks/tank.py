@@ -37,6 +37,20 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=6_000, warmup=0, replications=1)
+m.add_timeseries_input(name="pump", times=[0, 20], values=[25, 0], beyond="repeat", period=60)
+m.add_level(name="Tank", initial=0)
+m.add_flow(name="pump", to="Tank", rate='TS("pump")')
+m.add_flow(name="draw", **{"from": "Tank"}, rate=10)
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['level/Tank/Time Empty %']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["rows"][0]["Time Empty %"]
 

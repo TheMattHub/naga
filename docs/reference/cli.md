@@ -24,6 +24,7 @@
 | [`naga check`](#naga-check) | run a model's assertions and reality checks |
 | [`naga ci-template`](#naga-ci-template) | print a GitHub Actions workflow running 'naga check' |
 | [`naga generate`](#naga-generate) | build a model from Stations/Products/Routings tables |
+| [`naga discover`](#naga-discover) | draft a model from an event log (CSV or XES), with a report of what it assumed |
 | [`naga sdimport`](#naga-sdimport) | translate an XMILE/Vensim file into a model JSON |
 | [`naga viewer`](#naga-viewer) | one HTML file in which the engine re-runs a model in a browser |
 | [`naga bind`](#naga-bind) | resolve a model's data bindings and show what each one read |
@@ -455,6 +456,57 @@ options:
                         write the generated model JSON here (default: stdout)
   --template FILE       write an empty .xlsx workbook with header rows and
                         exit
+```
+
+## naga discover
+
+```text
+usage: naga discover [-h] [--check] [-o OUTPUT] [--report REPORT]
+                     [--format {csv,xes}]
+                     [--time-unit {seconds,minutes,hours,days}]
+                     [--routing {auto,markov,variants}] [--case COLUMN]
+                     [--activity COLUMN] [--timestamp COLUMN]
+                     [--lifecycle COLUMN] [--resource COLUMN] [--start COLUMN]
+                     [--complete COLUMN]
+                     log
+
+Draft a model from an event log (CSV, or XES): arrivals, activity times,
+routing and resources as the log shows them, with a report of what was
+inferred, assumed and dropped.
+
+positional arguments:
+  log                   the event log: a CSV file, an .xes file, or the name
+                        of a bundled sample (job_shop_log)
+
+options:
+  -h, --help            show this help message and exit
+  --check               only check the log: what it holds and what that means
+                        for a draft; no model is written
+  -o OUTPUT, --output OUTPUT
+                        write the draft model here (default: stdout)
+  --report REPORT       write the report as JSON here
+  --format {csv,xes}    the log's format (default: by the file's suffix)
+  --time-unit {seconds,minutes,hours,days}
+                        the draft's time unit; a numeric timestamp is taken as
+                        in it
+  --routing {auto,markov,variants}
+                        markov: chances to the next activity; variants: one
+                        routing per observed sequence; auto picks by a test on
+                        the log
+  --case COLUMN         the CSV column holding the case (default: found by
+                        name)
+  --activity COLUMN     the CSV column holding the activity (default: found by
+                        name)
+  --timestamp COLUMN    the CSV column holding the timestamp (default: found
+                        by name)
+  --lifecycle COLUMN    the CSV column holding the lifecycle (default: found
+                        by name)
+  --resource COLUMN     the CSV column holding the resource (default: found by
+                        name)
+  --start COLUMN        the CSV column holding the start (default: found by
+                        name)
+  --complete COLUMN     the CSV column holding the complete (default: found by
+                        name)
 ```
 
 ## naga sdimport

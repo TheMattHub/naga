@@ -110,7 +110,7 @@ def said(code, message, severity="warning"):
 
 def test_a_summary_says_the_forecast_against_what_was_observed_and_how_to_read_it():
     shown = monitor.summary(result())
-    assert shown["head"] == "cycle 12: plant at t = 720 minutes (2026-10-10T12:00:00+00:00)"
+    assert shown["head"] == "Plant time 720 minutes (2026-10-10T12:00:00+00:00); cycle 12"
     assert shown["notes"] == [] and shown["sources"] == [["plc", "live", 1.5, 0, 0]]
     forecast = shown["forecast"]
     assert forecast["points"] == [["system/WIP", 710.0, 4.0, 2.0, 6.0, 7.0, "no"],
@@ -164,15 +164,13 @@ def test_a_twin_is_stale_after_two_cadences_and_never_when_a_scheduler_steps_it(
     assert live.stamp(shown["written"]) == at
     # The age is always said, and whose clock judges it.
     assert monitor.state(shown, at + 9.0) == (
-        "Written 9 s ago, by this computer's clock (2026-10-10T12:00:10+00:00); the twin's "
-        "cadence is 5 s.", False)
+        "Updated 9 s ago; the twin looks at the plant every 5 s.", False)
     assert monitor.state(shown, at + 11.0) == (
-        "STALE: the twin last wrote 11 s ago, judged by this computer's clock "
-        "(2026-10-10T12:00:10+00:00); its cadence is 5 s. What is shown is old.", True)
+        "STALE: no update for 11 s, though the twin looks at the plant every 5 s. What is "
+        "shown is old.", True)
     scheduled = monitor.summary(result(cadence={"every": None, "forecast_every": 0.0}))
     assert monitor.state(scheduled, at + 9999.0) == (
-        "Written 9999 s ago, by this computer's clock (2026-10-10T12:00:10+00:00); stepped by "
-        "a scheduler: not watched for staleness.", False)
+        "Updated 9999 s ago; stepped by a scheduler, so not watched for staleness.", False)
 
 
 # ---------------------------------------------------------------- event lines
@@ -184,13 +182,14 @@ def test_the_event_lines_are_what_happened_to_items_resources_and_the_twin():
     clock.mono = 5.5
     log.add(cycle.step(), cycle.events)
     texts = [row[2] for row in log.rows]
-    assert texts[:5] == ["Server capacity 1", "an item entered at c", "an item: c to p",
-                         "an item entered at c", "an item: c to p"]
+    assert texts[:5] == ["Server capacity 1", "an item entered at c", "an item moved from c to p",
+                         "an item entered at c", "an item moved from c to p"]
     assert "an item left from d" in texts
     # Then what the twin itself did, at the instant of the step.
     assert texts[-4:-1] == ["source plant: live", "forecast: failed (E_TWIN_FORECAST)",
                             "E_TWIN_FORECAST: the forecast failed (ZeroDivisionError)"]
-    assert list(log.rows[3][:2]) == [2.0, "1970-01-01T00:00:02+00:00"] and log.rows[-1][0] == 5.5
+    # This plant's clock starts at 1970-01-01: a log in model time, so no date (D20).
+    assert list(log.rows[3][:2]) == [2.0, None] and log.rows[-1][0] == 5.5
     before = len(log.rows)
     clock.mono = 5.6
     log.add(cycle.step(), cycle.events)
@@ -205,6 +204,22 @@ def test_the_event_lines_are_bounded_and_the_rest_is_counted():
         log.add(result(), burst)
     assert len(log.rows) == monitor.KEPT and log.more == 3 * 150
     assert log.rows[-1][2] == "Part left from Pack" and log.rows[-1][0] == 249.0
+
+
+def test_event_lines_are_plain_words_said_once_per_instant():
+    """D20: inside one asset its steps, between two the assets; the same line at one
+    instant is said once with how many times."""
+    def moved(t, src, dst, e_type="ORDER", item=1):
+        return TraceEvent(t=t, kind="entity_moved", entity_id=item, e_type=e_type, block=src,
+                          target=dst)
+    log = monitor.Log()
+    log.add(result(), [moved(1.0, "pick_a/waited", "pick_a/pick", item=i) for i in range(3)]
+            + [moved(1.0, "dock/drop", "dock/free", "PALLET", 9),    # one item, three steps
+               moved(1.0, "dock/free", "zone_a/at_zone", "PALLET", 9),
+               moved(1.0, "zone_a/at_zone", "zone_a/claim", "PALLET", 9), moved(2.0, "a", "b")])
+    assert [row[2] for row in log.rows][:3] == [
+        "3 x ORDER in pick_a: waited to pick", "PALLET moved from dock to zone_a",
+        "ORDER moved from a to b"]
 
 
 # ---------------------------------------------------------------- the page
@@ -367,11 +382,11 @@ def test_the_script_shows_the_summary_the_events_and_says_when_the_twin_is_stale
     written = live.stamp(doc["written"])
     fresh = run_panel(text, written + 4.0)
     assert fresh["hidden"] == "none" and fresh["run-h"] == "The plant now"
-    assert fresh["m-head"] == "cycle 12: plant at t = 720 minutes (2026-10-10T12:00:00+00:00)"
+    assert fresh["m-head"] == "Plant time 720 minutes (2026-10-10T12:00:00+00:00); cycle 12"
     assert fresh["stale"] == "" and fresh["m-state"] == (
         monitor.state(page_summary(text), written + 4.0)[0]
         + " Twin started 2026-10-10T11:00:00+00:00. This page reloads every 2 s.")
-    assert "Written 4 s ago, by this computer's clock" in fresh["m-state"]
+    assert "Updated 4 s ago; the twin looks at the plant every 5 s." in fresh["m-state"]
     assert fresh["m-notes"] == monitor.APPROXIMATE
     assert "plc|live|1.5|0|0" in fresh["m-sources"] and HOSTILE in fresh["m-problems"]
     assert monitor.IN_DISTRIBUTION in fresh["m-forecast"]
@@ -382,12 +397,12 @@ def test_the_script_shows_the_summary_the_events_and_says_when_the_twin_is_stale
     old = run_panel(text, written + 11.0)
     assert old["stale"] == "stale" and old["m-state"].startswith(
         monitor.state(page_summary(text), written + 11.0)[0])
-    assert "judged by this computer's clock" in old["m-state"]
+    assert "STALE: no update for 11 s" in old["m-state"]
     doc["cadence"] = {"every": None, "forecast_every": 0.0}
     scheduled = run_panel(monitor.Page(slow_line(), tmp_path / "s.html").build(doc, []),
                           written + 9999.0)
-    assert scheduled["stale"] == "" and "Written 9999 s ago" in scheduled["m-state"] \
-        and "stepped by a scheduler: not watched for staleness" in scheduled["m-state"]
+    assert scheduled["stale"] == "" and "Updated 9999 s ago" in scheduled["m-state"] \
+        and "stepped by a scheduler, so not watched for staleness" in scheduled["m-state"]
 
 
 # -- a real browser: Chrome or Edge prints the page it made ----------------------------
@@ -410,12 +425,12 @@ def test_a_real_browser_runs_the_page_opened_from_disk(tmp_path):
          (tmp_path / "out" / monitor.PAGE_FILE).as_uri()],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     dom = done.stdout
-    assert done.returncode == 0 and '<p id="m-head">cycle 1: plant at t = 10.5 seconds' in dom, \
+    assert done.returncode == 0 and '<p id="m-head">Plant time 10.5 seconds' in dom, \
         done.stderr[-2000:]
     # The policy let the one script run, and the script filled the panels as text.
     assert '<h2 id="run-h">The plant now</h2>' in dom and "<td>an item entered at c</td>" in dom
     assert "&lt;img src=x onerror=alert(1)&gt;" in dom and "<img" not in dom
-    assert 'class="stale">STALE: the twin last wrote' in dom
+    assert 'class="stale">STALE: no update for' in dom
     # Not asserted: the drawing and its "now" panel, filled on an animation frame the
     # dump may come before (the script's drawing half is run under node, above).
 

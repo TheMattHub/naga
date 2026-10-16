@@ -17,9 +17,9 @@ __all__ = ["Node", "build_outline", "transition_label", "RECORD_GROUPS", "SECTIO
 # (group label, document section, node kind), in display order. Table-driven:
 # a new named-record section is one line here, not one builder per kind.
 RECORD_GROUPS = (
-    ("Agent types", "agent_types", "agent_type"),
+    ("Agents", "agent_types", "agent_type"),
     ("Populations", "populations", "population"),
-    ("Levels", "levels", "level"),
+    ("Stocks", "levels", "level"),
     ("Flows", "flows", "flow"),
     ("Auxiliaries", "auxiliaries", "auxiliary"),
     ("Delays", "delays", "delay"),
@@ -27,7 +27,7 @@ RECORD_GROUPS = (
     ("Resource sets", "resource_sets", "resource_set"),
     ("Schedules", "schedules", "schedule"),
     ("Failures", "failures", "failure"),
-    ("Tables", "tables", "table"),
+    ("Lookup tables", "tables", "table"),
     ("Time series", "timeseries_inputs", "timeseries_input"),
     ("Variables", "variables", "variable"),
     ("Conversions", "conversions", "conversion"),

@@ -360,7 +360,6 @@ class Level:
     def create(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -399,7 +398,6 @@ class Level:
     def dispose(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -422,7 +420,6 @@ class Level:
     def assign(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -439,7 +436,6 @@ class Level:
     def decide(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -468,7 +464,6 @@ class Level:
     def seize(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -513,7 +508,6 @@ class Level:
     def delay(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -534,7 +528,6 @@ class Level:
     def release(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -559,7 +552,6 @@ class Level:
     def batch(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -582,7 +574,6 @@ class Level:
     def match(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -607,7 +598,6 @@ class Level:
     def separate(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -626,7 +616,6 @@ class Level:
     def duplicate(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -643,7 +632,6 @@ class Level:
     def hold(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -668,7 +656,6 @@ class Level:
     def signal(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -691,7 +678,6 @@ class Level:
     def logic(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -708,7 +694,6 @@ class Level:
     def process(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -775,7 +760,6 @@ class Level:
     def motion(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -846,7 +830,6 @@ class Level:
     def record(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -869,7 +852,6 @@ class Level:
     def station(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -890,7 +872,6 @@ class Level:
     def route(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -917,7 +898,6 @@ class Level:
     def transfer(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -940,7 +920,6 @@ class Level:
     def transport(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -961,7 +940,6 @@ class Level:
     def conveyor(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -996,7 +974,6 @@ class Level:
     def buffer(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -1015,7 +992,6 @@ class Level:
     def send(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -1036,7 +1012,6 @@ class Level:
     def submodel(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -1057,7 +1032,6 @@ class Level:
     def sub_entry(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -1074,7 +1048,6 @@ class Level:
     def sub_exit(
         self,
         name: str | None = None,
-        /,
         *,
         description: str | None = None,
         position: list[Any] | None = None,
@@ -1147,12 +1120,14 @@ class Model(Level):
         *,
         name: str = ...,
         description: str = ...,
+        goal: str = ...,
         overrides: list[Any] = ...,
     ) -> Any:
         """Add one entry to `scenarios` and return its name. Named parameter-override sets, run and compared by `nagasim.experiments`.
 
         name
         description
+        goal: Optional: the question this scenario answers, in a sentence. Shown in Present mode and the editor.
         overrides
         """
 

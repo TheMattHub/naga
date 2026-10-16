@@ -370,4 +370,32 @@ def test_a_twin_on_the_mock_mes_recommends_order_verbs_and_they_reproduce(tmp_pa
                  if r["action"] == wanted[0]]
     assert recommend.check(record)
     lines, differences = recommend.reproduce(tmp_path / "out", model)
-    assert differences == 0 and sum("reproduced" in line for line in lines) >= 1, lines
+    assert differences == 0 and sum("reproduced" in line for line in lines) >= 1
+
+
+# ---------------------------------------------------------------- the bundled order shop
+def test_the_bundled_priority_shop_takes_every_order_verb_and_expedite_moves_a_completion():
+    """order_priority_shop ranks its Cutter on entity.priority, so no verb is refused at load
+    (expedite is, on the FIFO order_due_dates); expedite WO-3 completes it at 7, not 11."""
+    model = bundled("order_priority_shop")
+    for action in (act("hold", "WO-4", True), act("release", "WO-5", True),
+                   act("expedite", "WO-3", 0), act("resequence", "WO-5", "WO-4")):
+        assert recommend.check_action(action, model)
+    with pytest.raises(recommend.Refused, match="entity.priority"):
+        recommend.check_action(act("expedite", "WO-3", 0), bundled("order_due_dates"))
+    started = started_at(model, 0.5)
+    assert summary(started).loc["WO-3", "Completion Time"] == 11.0
+    expedited = recommend.applied(started, act("expedite", "WO-3", 0))
+    assert done(expedited, "WO-3") == (1, 7.0)
+    rows, reason = recommend.effects(started, [act("expedite", "WO-3", 0)],
+                                     kpi="order/WO-3/Completion Time", better="lower",
+                                     horizon=40.0, replications=2, seed=0)
+    assert reason is None and rows[0]["verdict"] == "better" and rows[0]["effect"] == -4.0
+
+
+@pytest.mark.parametrize("at", [0.5, 5.5])
+def test_the_bundled_priority_shop_is_taken_again_the_same(at):
+    model = bundled("order_priority_shop")
+    doc = state.take(model, at)
+    started, _ = state.start(model, doc)
+    assert state.take(started, at)["hash"] == doc["hash"], lines

@@ -45,6 +45,21 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=40_000, warmup=1_000, replications=1)
+pastries = m.create(distribution=nb.Exponential(rate=1 / 2))
+tray = m.batch(batch_size=5)
+tunnel = m.delay(distribution=nb.Constant(value=3.0))
+baked = m.record(stat_name="pastry time", kind="tally", expr="TNOW - entity.creation_time")
+pastries >> tray >> tunnel >> m.separate() >> baked >> m.dispose()
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['user/pastry time']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["user_stats"]["pastry time"]["mean"]
 

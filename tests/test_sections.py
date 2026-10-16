@@ -122,9 +122,11 @@ _OLD_TABS = {"orders": "Orders", "resources": "Resources", "resource_sets": "Res
 
 def test_headings_match_the_editors_old_tab_lists():
     """D202: `Section.tab` is the heading a client lists a section under,
-    here as the editor's own lists had it; D205: one family of headings."""
+    here as the editor's own lists had it; C13: every heading in one of the
+    families, sections sharing a heading in the same one, none without."""
     assert {s.name: s.tab for s in sections.SECTIONS if s.tab} == _OLD_TABS
-    assert {s.group for s in sections.SECTIONS} == {"Model data"}
+    assert {s.group for s in sections.SECTIONS if s.tab} == set(sections.FAMILIES)
+    assert all(s.group == "" for s in sections.SECTIONS if not s.tab)
 
 
 def test_what_a_client_derives_from_the_headings_is_well_defined():

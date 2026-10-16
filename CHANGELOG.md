@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Added: `naga discover LOG` drafts a model from an event log (CSV or XES): arrivals, activity
+  times, routing by chance or by variant, resources at their observed peak, and a report with a
+  check of the log and next steps; `--check` reads a log without drafting. The agent tool
+  `import_event_log` does the same in a workspace. A sample log (`job_shop_log`) and a tutorial
+  come with it; the event-log page says how accurate drafts are on three public real logs.
+- Builder: `results.kpi("system/Total Entities Completed")` reads one KPI's mean; a block's
+  name may be given as `name=`; an `add_<item>` keyword the record does not have raises, as a
+  block method's does.
+- Added: the bundled model `order_priority_shop`, an order shop whose cutter ranks jobs on
+  priority, so `expedite` shows its effect (WO-3 finishes at 7 instead of 11).
+
 ## 0.9.1 (2026-10-16)
 
 A small release: a keyword for running only the scenarios you name, and documentation that

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -90,9 +91,15 @@ _EFFECT = {"waiting": "being measured", "measured": "measured", "missed": "misse
            "such figure"}
 _LIMIT = "Stated limit: this model is monitored, not forecast. "
 # The age of a result, by the clock of whoever looks: {age} is filled in when it is looked at.
-_FRESH = "Written {age} s ago, by this computer's clock ({written}); "
-_STALE = ("STALE: the twin last wrote {age} s ago, judged by this computer's clock ({written}); "
-          "its cadence is {every} s. What is shown is old.")
+_FRESH = "Updated {age} s ago; "
+_STALE = ("STALE: no update for {age} s, though the twin looks at the plant every {every} s. "
+          "What is shown is old.")
+# D576: whether a plant has dates is decided once per twin, from its mapping: an epoch of
+# 1970-01-01 with a plant clock that reads near it is a log written in model time
+# (`plant.log_of`, the starter mapping's epoch), and no date is shown however long it runs.
+# A clock past 1980 on such an epoch is a real one (a live plant read in Unix seconds).
+# ponytail: a model-time log over 10 years long would read as dated from then on.
+_NO_DATE, _WALL = 366 * 86400, 10 * 365 * 86400
 _INSIDE = {True: "yes", False: "no", None: ""}
 _WHY = {"skipped": "No forecast was started: ", "refused": "The forecast was refused: ",
         "failed": "The latest forecast failed: "}
@@ -119,6 +126,21 @@ def _number(value):
 
 def _g(value) -> str:
     return "-" if _number(value) is None else f"{value:g}"
+
+
+def _clock(value) -> str:
+    """A plant time as a person reads it: two decimals at most (1.80952 -> 1.81)."""
+    return "-" if _number(value) is None else f"{round(value, 2):g}"
+
+
+def _dated(doc: dict) -> bool:
+    """Whether the plant of this result has dates (D576): from its epoch, else its clock."""
+    model = _table(doc.get("model"))
+    epoch = stamp(model.get("epoch")) if isinstance(model.get("epoch"), str) else None
+    unit, at = UNITS.get(model.get("time_unit")), _number(doc.get("at"))
+    if epoch is None:
+        return False
+    return epoch >= _NO_DATE or (unit is not None and at is not None and epoch + at * unit >= _WALL)
 
 
 def _scores(doc: dict, unit: str) -> dict:
@@ -255,9 +277,9 @@ def summary(doc) -> dict:
     model, view, forecast = _table(doc.get("model")), _table(doc.get("view")), _table(doc.get("forecast"))
     unit = _text(model.get("time_unit"))
     problems = _rows(doc.get("problems"))
-    head = f"cycle {_text(doc.get('cycle'))}: plant at t = {_g(doc.get('at'))} {unit}".rstrip()
-    if doc.get("stamp"):
-        head += f" ({_text(doc.get('stamp'))})"
+    date = _text(doc.get("stamp")) if _dated(doc) else "no date"
+    head = (f"Plant time {_clock(doc.get('at'))} {unit}".rstrip()
+            + (f" ({date})" if date else "") + f"; cycle {_text(doc.get('cycle'))}")
     status, reason = _text(forecast.get("status")) or "none", _text(forecast.get("reason"))
     record = isinstance(forecast.get("state"), str)
     lines = [f"Status: {status}"]
@@ -299,13 +321,12 @@ def summary(doc) -> dict:
     written = _text(doc.get("written"))
     every = _number(_table(doc.get("cadence")).get("every"))
     every = every if every and every > 0 else None
-    fresh = _FRESH.replace("{written}", written) + (
-        "stepped by a scheduler: not watched for staleness." if every is None
-        else f"the twin's cadence is {every:g} s.")
+    fresh = _FRESH + ("stepped by a scheduler, so not watched for staleness." if every is None
+                      else f"the twin looks at the plant every {every:g} s.")
     return {
         "head": head, "written": written, "started": _text(doc.get("started")), "every": every,
         "state": {"fresh": fresh, "stale": None if every is None else _STALE.replace(
-            "{written}", written).replace("{every}", f"{every:g}")},
+            "{every}", f"{every:g}")},
         "notes": [APPROXIMATE] if view.get("approximate") or forecast.get("approximate") else [],
         "sources": [[_text(row.get("name")), _text(row.get("state")), _number(row.get("age")),
                      _number(row.get("lost")), _number(row.get("gaps"))]
@@ -343,8 +364,14 @@ def _said(event) -> str | None:
     if kind == "entity_created":
         return f"{_item(event)} entered at {event.block}"
     if kind == "entity_moved":
-        return f"{_item(event)}: {event.block} to {event.target}" if event.block \
-            else f"{_item(event)} back at {event.target}"
+        if not event.block:
+            return f"{_item(event)} back at {event.target}"
+        # Inside one asset (`pick_a/waited` to `pick_a/pick`) its steps; between two, the assets.
+        here, _, step = str(event.block).rpartition("/")
+        there, _, then = str(event.target).rpartition("/")
+        if here and here == there:
+            return f"{_item(event)} in {here}: {step} to {then}"
+        return f"{_item(event)} moved from {here or step} to {there or then}"
     if kind == "entity_disposed":
         return f"{_item(event)} left from {event.block}"
     if kind == "resource_state":
@@ -357,6 +384,23 @@ def _said(event) -> str | None:
     return None
 
 
+def _folded(events) -> list:
+    """The events with each item's moves at one instant made one: from where it was to
+    where it came to (`pick_a/at_pick` ... `pick_a/pick` is one step of pick_a)."""
+    out, open_at = [], {}
+    for event in events:
+        key = (event.t, event.entity_id)
+        if event.kind == "entity_moved" and event.block:
+            if key in open_at:
+                out[open_at[key]] = replace(out[open_at[key]], target=event.target)
+                continue
+            open_at[key] = len(out)
+        else:
+            open_at.pop(key, None)
+        out.append(event)
+    return out
+
+
 class Log:
     """The event lines of one twin, oldest first: `rows` is `[t, stamp or None, text]`, at
     most `KEPT`; `more` counts what a step had over `PER_STEP`."""
@@ -365,20 +409,31 @@ class Log:
         self.rows: deque = deque(maxlen=KEPT)
         self.more = 0
         self._was: tuple = ({}, None, set())
+        self.dated: bool | None = None          # decided at the first result (D576)
 
     def add(self, doc, events) -> None:
         doc = _table(doc)
         model = _table(doc.get("model"))
         epoch, unit = stamp(model.get("epoch")), UNITS.get(model.get("time_unit"))
+        if self.dated is None:
+            self.dated = _dated(doc)
 
         def instant(t):
+            if not self.dated:
+                return None
             try:
                 return datetime.fromtimestamp(epoch + t * unit, timezone.utc).isoformat(
                     timespec="seconds")
             except (TypeError, OverflowError, OSError, ValueError):
                 return None
 
-        said = [(event.t, text) for event in events if (text := _said(event)) is not None]
+        # One line per thing that happened at an instant: an item's steps through the model
+        # in no time are one move, and the same line N times is said once.
+        counted: dict = {}
+        for event in _folded(events):
+            if (text := _said(event)) is not None:
+                counted[(event.t, text)] = counted.get((event.t, text), 0) + 1
+        said = [(t, text if n == 1 else f"{n} x {text}") for (t, text), n in counted.items()]
         self.more += max(len(said) - PER_STEP, 0)
         self.rows.extend([t, instant(t), text[:_TEXT]] for t, text in said[-PER_STEP:])
         # What changed about the twin itself since the step before.
@@ -395,7 +450,7 @@ class Log:
         seen = {code for code, _message in was_codes}
         own += [f"{code}: {message}" for code, message in sorted(codes) if code not in seen]
         at = _number(doc.get("at"))
-        self.rows.extend([at, doc.get("stamp") if isinstance(doc.get("stamp"), str) else None,
+        self.rows.extend([at, _text(doc.get("stamp")) or None if self.dated else None,
                           text[:_TEXT]] for text in own[:PER_STEP])
         self._was = (sources, status, codes)
 
@@ -509,8 +564,12 @@ function monitor(m, el, add, clear) {
     return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3])];
   });
   el("m-more").textContent = m.more ? "+" + m.more + " more not listed (newest first)" : "Newest first";
-  rows("m-events", ["Time", "Instant", "Event"], m.events, "No events yet.", function (r) {
-    return [fmt(r[0]), r[1] === null ? "" : r[1], r[2]];
+  /* A recorded log without dates has no Date column (D20 of the review). */
+  var dated = m.events.some(function (r) { return r[1] !== null; });
+  rows("m-events", dated ? ["Plant time", "Date", "Event"] : ["Plant time", "Event"], m.events,
+       "No events yet.", function (r) {
+    var t = typeof r[0] === "number" ? String(Math.round(r[0] * 100) / 100) : "";
+    return dated ? [t, r[1] === null ? "" : r[1], r[2]] : [t, r[2]];
   });
   el("foot").textContent = "The drawing is the plant as the twin read it at its last step, in " +
     "generic shapes. It does not move between two reloads.";

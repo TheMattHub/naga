@@ -41,6 +41,21 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=5_000, warmup=0, replications=1, time_unit="hours")
+m.add_agent_type(name="Machine", initial_state="Running",
+                 states=[{"name": "Running"}, {"name": "Broken"}],
+                 transitions=[{"from": "Running", "to": "Broken", "timeout": "EXPO(50)"},
+                              {"from": "Broken", "to": "Running", "timeout": "EXPO(5)"}])
+m.add_population(name="Machines", type="Machine", count=20)
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['agent/Machines/Running/Avg Count']:.4f}")
+"""
+
+
 def naga_answer(results):
     return next(row["Avg Count"] for row in results[-1]["rows"] if row["State"] == "Running")
 

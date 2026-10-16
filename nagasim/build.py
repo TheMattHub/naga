@@ -49,8 +49,16 @@ __all__ = ["Model", "Level", "Block", "Distribution", "export_python", "main"]
 _RECORDS = {f"add_{s.item}": s for s in sections.DOCUMENT_LISTS}
 _TOP = {s.name for s in sections.SECTIONS} - {"blocks", "links", "submodels"} - {
     s.name for s in sections.DOCUMENT_LISTS}
+_SCHEMA = build_json_schema()
 # The run settings, keywords of Model too: the keys the schema gives `simulation`.
-SIMULATION = tuple(build_json_schema()["$defs"]["simulation"]["properties"])
+SIMULATION = tuple(_SCHEMA["$defs"]["simulation"]["properties"])
+
+
+def _record_keys(section) -> set | None:
+    """The keys a record of *section* may have, from the schema; None when it is open."""
+    ref = ((_SCHEMA["properties"].get(section.name) or {}).get("items") or {}).get("$ref", "")
+    record = _SCHEMA["$defs"].get(ref.rsplit("/", 1)[-1]) or {}
+    return set(record.get("properties") or ()) if record.get("additionalProperties") is False else None
 
 
 def _keyword(name: str) -> str:
@@ -155,7 +163,16 @@ def _block_method(level: "Level", spec):
     names = {p.name for p in spec.params}
     allowed = names | set(modelfmt.BLOCK_KEYS)
 
-    def add(name=None, /, **fields):
+    def add(*args, **fields):
+        # `name` is taken positionally or as `name=`; `*args` (not `name=None`) so that giving
+        # both can name both values instead of Python's bare "multiple values".
+        if len(args) > 1:
+            raise TypeError(f"{spec.type_name.lower()}() takes at most 1 positional argument "
+                            f"(the name), got {len(args)}")
+        if args and "name" in fields:
+            raise TypeError(f"{spec.type_name.lower()}() got the name twice: positionally "
+                            f"({args[0]!r}) and as name={fields['name']!r}")
+        name = args[0] if args else fields.pop("name", None)
         unknown = sorted(set(fields) - allowed)
         if unknown:
             raise TypeError(f"{spec.type_name.lower()}() got unknown keyword(s) {unknown}; "
@@ -174,7 +191,7 @@ def _block_method(level: "Level", spec):
         for p in spec.params])
     kw = inspect.Parameter.KEYWORD_ONLY
     add.__signature__ = inspect.Signature(
-        [inspect.Parameter("name", inspect.Parameter.POSITIONAL_ONLY, default=None)]
+        [inspect.Parameter("name", inspect.Parameter.POSITIONAL_OR_KEYWORD, default=None)]
         + [inspect.Parameter(k, kw, default=None) for k in modelfmt.BLOCK_KEYS]
         + [inspect.Parameter(p.name, kw, default=p.default) for p in spec.params
            if p.name.isidentifier() and not keyword.iskeyword(p.name)])
@@ -245,7 +262,13 @@ class Model(Level):
         if section is None:
             return super().__getattr__(attr)
 
+        known = _record_keys(section)
+
         def add(**fields):
+            # As a block method does (#556): a misspelt key would be written and then ignored.
+            unknown = sorted(set(fields) - known) if known is not None else []
+            if unknown:
+                raise TypeError(f"{attr}() got unknown keyword(s) {unknown}; its keys: {sorted(known)}")
             record = _plain(fields)
             self.layout.setdefault(section.name, []).append(record)
             return record.get(section.key)

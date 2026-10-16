@@ -185,7 +185,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "70" and first.startswith("naga://reference/")
+    assert count == "71" and first.startswith("naga://reference/")
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):

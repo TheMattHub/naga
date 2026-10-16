@@ -1,0 +1,155 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "release_orders",
+      "type": "CREATE",
+      "description": "Releases every declared order at its own release time",
+      "position": [120.0, 300.0],
+      "params": {"e_type": "WIDGET", "arrival_mode": "Orders"}
+    },
+    {
+      "name": "route_1",
+      "type": "ROUTE",
+      "description": "Send each job to the next station of its routing",
+      "position": [340.0, 300.0]
+    },
+    {
+      "name": "Cut",
+      "type": "STATION",
+      "description": "Cutting station entry point",
+      "position": [600.0, 200.0],
+      "layout_position": [3.0, 3.0]
+    },
+    {
+      "name": "Pack",
+      "type": "STATION",
+      "description": "Packing station entry point",
+      "position": [600.0, 400.0],
+      "layout_position": [3.0, 13.0]
+    },
+    {
+      "name": "process_cut",
+      "type": "PROCESS",
+      "description": "Cutting; the time comes with the job, from its routing step",
+      "position": [820.0, 200.0],
+      "layout_position": [14.0, 3.0],
+      "params": {"dist_params": {"value": "entity.process_time"}, "resource_name": "Cutter"}
+    },
+    {
+      "name": "process_pack",
+      "type": "PROCESS",
+      "description": "Packing; same, one step later",
+      "position": [820.0, 400.0],
+      "layout_position": [14.0, 13.0],
+      "params": {"dist_params": {"value": "entity.process_time"}, "resource_name": "Packer"}
+    },
+    {
+      "name": "dispose_1",
+      "type": "DISPOSE",
+      "description": "Job leaves; its lateness against entity.due_date is recorded here",
+      "position": [340.0, 520.0]
+    }
+  ],
+  "links": [
+    {"source": "release_orders", "target": "route_1"},
+    {"source": "route_1", "target": "dispose_1"},
+    {"source": "Cut", "target": "process_cut"},
+    {"source": "process_cut", "target": "route_1"},
+    {"source": "Pack", "target": "process_pack"},
+    {"source": "process_pack", "target": "route_1"}
+  ],
+  "orders": [
+    {
+      "id": "WO-1",
+      "description": "One widget, comfortable due date",
+      "release": 0,
+      "due": 10,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Fast",
+      "priority": 1
+    },
+    {
+      "id": "WO-2",
+      "description": "Two widgets on one order",
+      "release": 0,
+      "due": 20,
+      "quantity": 2,
+      "entity_type": "WIDGET",
+      "sequence": "Fast",
+      "priority": 1
+    },
+    {
+      "id": "WO-3",
+      "description": "A gadget behind the widgets: late by 3 unless expedited",
+      "release": 0,
+      "due": 8,
+      "quantity": 1,
+      "entity_type": "GADGET",
+      "sequence": "Slow",
+      "priority": 1
+    },
+    {
+      "id": "WO-4",
+      "description": "A widget released at 5",
+      "release": 5,
+      "due": 30,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Fast",
+      "priority": 1
+    },
+    {
+      "id": "WO-5",
+      "description": "A widget released at 6",
+      "release": 6,
+      "due": 30,
+      "quantity": 1,
+      "entity_type": "WIDGET",
+      "sequence": "Fast",
+      "priority": 1
+    }
+  ],
+  "resources": [
+    {
+      "name": "Cutter",
+      "capacity": 1,
+      "discipline": "LowestValueFirst",
+      "ranking_expr": "entity.priority"
+    },
+    {"name": "Packer", "capacity": 1, "discipline": "FIFO"}
+  ],
+  "sequences": [
+    {
+      "name": "Fast",
+      "description": "Cut 2, pack 1",
+      "steps": [
+        {"station": "Cut", "values": {"process_time": 2.0}},
+        {"station": "Pack", "values": {"process_time": 1.0}}
+      ]
+    },
+    {
+      "name": "Slow",
+      "description": "Cut 3, pack 2",
+      "steps": [
+        {"station": "Cut", "values": {"process_time": 3.0}},
+        {"station": "Pack", "values": {"process_time": 2.0}}
+      ]
+    }
+  ],
+  "entities": [
+    {"name": "WIDGET", "shape": "square", "color": "BLUE"},
+    {"name": "GADGET", "shape": "circle", "color": "GREEN"}
+  ],
+  "info": {
+    "title": "Order shop ranked by priority",
+    "category": "Manufacturing",
+    "description": "Five work orders through a two-station routed shop whose Cutter serves the lowest priority number first. Every time is a constant, so every completion is exact arithmetic; expediting an order (priority 0) moves its completion, which a FIFO shop cannot show.",
+    "author": "Naga",
+    "notes": "Times in minutes. WO-1 to WO-3 release at 0, WO-4 at 5, WO-5 at 6, all at priority 1. Cutter and Packer are single servers; the Cutter ranks its queue on entity.priority (lowest first, ties in arrival order). Without action WO-3 completes at 11 (due 8); expedite it to priority 0 at t=0.5 and it completes at 7. hold, release and resequence act on WO-4 and WO-5, which are not released at the start."
+  },
+  "simulation": {"time_limit": null, "warmup": 0, "replications": 1, "entity_log_limit": 100000},
+  "outputs": {}
+}

@@ -734,7 +734,7 @@ def test_a_number_no_float_can_hold_stops_neither_a_counter_nor_a_twin(tmp_path)
     shown = monitor.summary({**doc, "at": 10 ** 400, "scores": {"rows": [{"lead": 10 ** 400}],
                                                                   "basis": {"points": 10 ** 400}}})
     json.dumps(shown, allow_nan=False)
-    assert "t = -" in shown["head"]
+    assert "Plant time -" in shown["head"]
 
 
 def test_the_blocks_to_count_are_validated_and_bounded():

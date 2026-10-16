@@ -149,6 +149,41 @@
     "read_only": false
   },
   {
+    "description": "Draft a model from an event log: what happened to each case, activity by activity.\n\nThe log needs a case id, an activity and a timestamp per row (CSV), or XES traces;\nlifecycle (schedule/start/complete) and resource columns make the draft better. The\ndraft has one CREATE fitted to the case arrivals, one block per activity with its fitted\ntime, routing from the observed transitions and resources from the resource column,\nand opens in the workspace under *name* like `open_model`. Nothing is written to disk.\n\nIt is a first draft: read `assumptions` (what the log could not tell, such as shifts or\nthe wait before a case's first activity) and `dropped` before trusting its numbers.\nThe file must be under the workspace root; a log over a size ceiling, or an XES file\nwith a DOCTYPE, is refused outright, and there is no argument that changes either.\n\nReturns {\"ok\", \"model\", \"routing\", \"activities\": [{\"block\", \"original\", \"count\",\n\"lifecycle\", \"distribution\", \"mean\", \"mean_wait\", \"resource\"}], \"resources\",\n\"activities_total\", \"resources_total\", \"assumptions\", \"dropped\", \"check\": {\"verdict\",\n\"findings\": [{\"level\", \"what\", \"means\"}]} (is the log good enough, and what each gap\nmeans for the draft), \"next_steps\": {\"check\", \"never\"} (what to check in the draft, and\nwhat this log cannot tell), \"observed\", \"errors\", \"warnings\", \"problems\"}. The two lists are cut to fit one reply; the totals say how many\nthere are, and the open model has them all.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Workspace name to open the draft under; defaults to the file stem.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Event log (CSV, or .xes), relative to the workspace root.",
+          "type": "string"
+        },
+        "routing": {
+          "default": "auto",
+          "description": "\"auto\" (a test on the log picks), \"markov\" (chances to the next activity) or \"variants\" (one routing per observed sequence).",
+          "type": "string"
+        },
+        "time_unit": {
+          "default": "minutes",
+          "description": "The draft's time unit: seconds, minutes, hours or days. A numeric timestamp is taken as already in it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "import_event_log",
+    "read_only": false
+  },
+  {
     "description": "Translate a Vensim system-dynamics file into a new model.\n\nReads equations, INTEG stocks, an inline `WITH LOOKUP` (as a lookup table) and\nsubscript ranges with a small stdlib reader (no `pysd`), into the workspace under\n*name*, exactly like `open_model` does for a model JSON file. The file must be\nunder the workspace root -- a path that escapes it is refused, and there is no\nargument that widens that.\n\nA construct this cannot translate (a `:MACRO:`, `GET XLS/DIRECT ...` external\ndata, a variable name with a space, an unknown function or name, an INTEG rate\nthat is not a plain flow name or sum/difference of flow names, a subscript\nequivalence `<->`) is reported in `import_problems` (code `E_SDIMPORT_UNSUPPORTED`) and\nleft out of the model rather than guessed at.\n\nReturns {\"ok\", \"model\", \"path\", \"import_problems\": [{\"code\", \"severity\",\n\"message\", \"path\", \"hint\"}], \"errors\", \"warnings\", \"problems\"} -- the last\nthree are the usual model-validation answer, over what DID translate.",
     "input_schema": {
       "additionalProperties": false,
@@ -1226,6 +1261,13 @@
       "properties": {
         "description": {
           "description": "Free-text note about what this scenario represents.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "goal": {
+          "description": "The question this scenario answers, one sentence (max 500 characters).",
           "type": [
             "string",
             "null"

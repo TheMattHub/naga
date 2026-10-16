@@ -34,6 +34,18 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=15, warmup=0, replications=1, sd={"dt": 0.05, "method": "rk4"})
+m.add_level(name="Temperature", initial=90.0)
+m.add_flow(name="cooling", **{"from": "Temperature"}, rate='0.1 * (LEVEL("Temperature") - 20)')
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['level/Temperature/Final']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["rows"][0]["Final"]
 

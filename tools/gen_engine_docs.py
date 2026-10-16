@@ -1444,7 +1444,7 @@ def build_stub() -> str:
             "    def link(self, source: Block | str, target: _End, **fields: Any) -> _End: ..."]
     for type_name, spec in BLOCK_REGISTRY.items():
         props = variants[type_name]["properties"]
-        params = ["name: str | None = None", "/", "*"] + [
+        params = ["name: str | None = None", "*"] + [
             f"{key}: {_py_type(props.get(key), defs)} | None = None" for key in BLOCK_KEYS]
         given = props["params"].get("properties", {})
         doc = [f"Add a {type_name} block. " + " ".join((spec.cls.__doc__ or "").split()), ""]

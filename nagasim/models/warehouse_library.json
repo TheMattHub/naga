@@ -105,6 +105,7 @@
       "type": "SUBMODEL",
       "description": "Order arrivals",
       "position": [-600.0, 250.0],
+      "layout_position": [12.0, 48.0],
       "params": {
         "definition": "Order arrivals",
         "arguments": {
@@ -126,6 +127,7 @@
       "type": "SUBMODEL",
       "description": "Order arrivals",
       "position": [-600.0, 420.0],
+      "layout_position": [37.0, 58.0],
       "params": {
         "definition": "Order arrivals",
         "arguments": {
@@ -225,6 +227,7 @@
       "type": "SUBMODEL",
       "description": "Vehicle fleet",
       "position": [150.0, -100.0],
+      "layout_position": [33.0, 4.0],
       "params": {
         "definition": "Vehicle fleet",
         "arguments": {
@@ -249,7 +252,8 @@
       "name": "left_site",
       "type": "DISPOSE",
       "description": "Left the site",
-      "position": [600.0, 340.0]
+      "position": [600.0, 340.0],
+      "layout_position": [80.0, 0.0]
     }
   ],
   "links": [

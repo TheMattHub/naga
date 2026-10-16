@@ -400,6 +400,7 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SCENARIO_NAME": "A scenario has an empty name.",
     "E_DUPLICATE_SCENARIO": "Two scenarios share a name.",
     "E_SCENARIO_OVERRIDE": "A scenario override is missing its path or its value.",
+    "E_SCENARIO_GOAL": "A scenario's goal is not text, or is longer than 500 characters.",
     # -- reality checks (PHASE6 S8) -------------------------------------------
     "E_REALITY_CHECK_NAME": "A reality check has an empty name.",
     "E_DUPLICATE_REALITY_CHECK": "Two reality checks share a name.",

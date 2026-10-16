@@ -53,6 +53,26 @@ NAGA = [
 ]
 
 
+# The builder arm's reference: a script that builds the model with nagasim.build and runs it.
+BUILDER = """\
+from nagasim import build as nb
+
+m = nb.Model(time_limit=200_000, warmup=5_000, replications=1)
+m.add_resource(name="Technician")
+urgent = m.create(distribution=nb.Exponential(rate=1 / 20))
+routine = m.create(distribution=nb.Exponential(rate=1 / 8))
+fix_urgent = m.process(resource_name="Technician", distribution=nb.Exponential(rate=1 / 4))
+fix_routine = m.process(resource_name="Technician", distribution=nb.Exponential(rate=1 / 4),
+                        priority=1)
+timed = m.record(stat_name="urgent time", kind="tally", expr="TNOW - entity.creation_time")
+leave = m.dispose()
+urgent >> fix_urgent >> timed >> leave
+routine >> fix_routine >> leave
+kpis = m.run().kpis().set_index("metric")["mean"]
+print(f"ANSWER: {kpis['user/urgent time']:.4f}")
+"""
+
+
 def naga_answer(results):
     return results[-1]["user_stats"]["urgent time"]["mean"]
 

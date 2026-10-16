@@ -1621,6 +1621,9 @@ def _defs() -> dict:
             "properties": {
                 "name": {"type": "string", "minLength": 1},
                 "description": {"type": "string"},
+                "goal": {"type": "string", "maxLength": 500,
+                         "description": "Optional: the question this scenario answers, in a "
+                                        "sentence. Shown in Present mode and the editor."},
                 "overrides": {
                     "type": "array",
                     "items": {

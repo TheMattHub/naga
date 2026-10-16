@@ -10,17 +10,19 @@ The tasks are in `tasks/`: one file each, with the request as a practitioner wou
 answer and how it is derived, and a reference solution for each arm (the tool calls in `NAGA`,
 and the file itself as the SimPy script).
 
-Two arms, the same request, the same number of model replies allowed:
+Three arms, the same request, the same number of model replies allowed:
 
-* `tools`: the model builds, validates and runs the model through Naga's tools and says the
+* `whole`: the model builds, validates and runs the model through Naga's tools and says the
   answer. Locally this is the engine's own loop (`nagasim.assistant`); for Claude Code it is the
   `naga mcp` server and nothing else.
 * `simpy`: the model writes a Python script that uses SimPy. The harness runs it and, locally,
   sends back what it printed when it failed; Claude Code runs it itself.
+* `builder`: as `simpy`, the script built and run with Naga's Python builder (`nagasim.build`),
+  its documentation given with the request (`builder_reference`).
 
 Three outcomes per attempt, each implying the one before:
 
-* valid: the model file passes validation / the script parses and imports SimPy;
+* valid: the model file passes validation / the script parses and imports SimPy (the builder);
 * runnable: it runs to the end within the time limit;
 * correct: the answer given, a last line `ANSWER: <number>`, is within the task's tolerance (and,
   in the tools arm, the model was run through the tools at least once).
@@ -53,15 +55,17 @@ ROOT = HERE.parents[1]
 TASK_IDS = ("mm1", "mmc", "md1", "tandem", "rework", "priority", "batch", "carpark", "shift",
             "cooling", "repair", "tank")
 ARMS = {"tools": "Naga tools, block by block", "whole": "Naga tools, whole model",
-        "simpy": "SimPy code"}
+        "builder": "Naga builder code", "simpy": "SimPy code"}
 # "tools" is the record of the tools before write_model (D396): the current tools are not what
 # it measured, so it is reported but never run again; "whole" is the tools arm since.
-RUNNABLE_ARMS = ("whole", "simpy")
+RUNNABLE_ARMS = ("whole", "builder", "simpy")
 TOOL_ARMS = {"tools", "whole"}
+# What a code arm's script must import, and the simulation libraries it may not lean on.
+LIBRARY = {"simpy": "simpy", "builder": "nagasim.build"}
 SIGMAS, SEEDS = 5, 20           # a statistical tolerance: SIGMAS standard deviations over SEEDS runs
 FULL_REPEATS = 3                # planned attempts per task and arm; a run stopped short says so
 RUN_TOOLS = {"run_model", "run_to_precision", "run_scenarios"}
-OTHER_LIBRARIES = {"nagasim", "salabim", "ciw"}     # what a SimPy script may not lean on
+OTHER_LIBRARIES = {"nagasim", "simpy", "salabim", "ciw"}
 CLAUDE = None                   # the command that starts Claude Code; a test puts a script here
 
 # The requests end the same way in both arms; only the means differ.
@@ -78,6 +82,33 @@ CLAUDE_TOOLS_ASK = ("\n\nUse the simulation tools you have been given. Save the 
 CLAUDE_SIMPY_ASK = ("\n\nSolve this with a Python script that uses SimPy (it is installed). Save "
                     "it as solution.py; its last printed line must have the form "
                     "`ANSWER: <number>`. You can run it with `python solution.py`.")
+# The builder arm: the SimPy arm's words, the builder for SimPy, and its documentation after them.
+BUILDER_SYSTEM = (
+    "You are a simulation engineer. Answer with ONE complete Python script in a single "
+    "```python block. The script builds the model with Naga's Python builder (`from nagasim "
+    "import build as nb`), runs it with `m.run()`, takes no input, finishes within {timeout} "
+    "seconds, and its last printed line is `ANSWER: <number>`. It is run for you: if it fails "
+    "you are sent what it printed, and you answer with the whole corrected script.\n\n{reference}")
+CLAUDE_BUILDER_ASK = (
+    "\n\nSolve this with a Python script that builds the model with Naga's Python builder "
+    "(`from nagasim import build as nb`, it is installed) and runs it with `m.run()`. Save it "
+    "as solution.py; its last printed line must have the form `ANSWER: <number>`. You can run "
+    "it with `python solution.py`. The builder's documentation follows.\n\n{reference}")
+
+
+def builder_reference() -> str:
+    """What the builder arm is given, the counterpart of the tools arm's get_model_format: the
+    Python API page's sections on running a model and on the builder, as a user reads them,
+    and the model file's description the tools arm reads (the builder's keywords are the
+    file's keys)."""
+    from nagasim.agent_tools.wholemodel import get_model_format
+
+    # The page sits under public/ here, at the root of docs/ in the engine's own repository.
+    page = next(path for path in (ROOT / "packages" / "engine" / "public" / "docs" / "python-api.md",
+                                  ROOT / "docs" / "python-api.md") if path.is_file())
+    sections = re.split(r"(?m)^## ", page.read_text(encoding="utf-8"))
+    kept = ["## " + s.strip() for s in sections if s.startswith(("Run a model", "Build a model in Python"))]
+    return "\n\n".join(kept + ["## The model file the builder writes", get_model_format()["format"]])
 
 
 # ---------------------------------------------------------------- tasks
@@ -153,8 +184,8 @@ def _run(command, *, cwd, timeout, stdin="", env=None):
         return None, out, err
 
 
-def check_script(path: Path, task, timeout: float):
-    """(grade, what to tell the author) for a SimPy script; the second is empty once the
+def check_script(path: Path, task, timeout: float, arm: str = "simpy"):
+    """(grade, what to tell the author) for a code arm's script; the second is empty once the
     script runs and prints an answer."""
     grade = {"valid": False, "runnable": False, "correct": False, "answer": None, "note": ""}
     try:
@@ -162,14 +193,22 @@ def check_script(path: Path, task, timeout: float):
     except (OSError, SyntaxError, ValueError) as exc:
         grade["note"] = "no script" if isinstance(exc, OSError) else "syntax error"
         return grade, f"The script could not be read as Python: {exc}"
-    imported = {name.split(".")[0] for node in ast.walk(tree)
+    # Dotted names, so that `from nagasim import build` is `nagasim.build`.
+    imported = {name for node in ast.walk(tree)
                 for name in ([alias.name for alias in node.names] if isinstance(node, ast.Import)
-                             else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])}
-    if "simpy" not in imported or imported & OTHER_LIBRARIES:
-        grade["note"] = "does not import simpy" if "simpy" not in imported else "imports another simulation library"
-        return grade, "The script must use SimPy (`import simpy`) and no other simulation library."
+                             else [node.module or "", *(f"{node.module}.{a.name}" for a in node.names)]
+                             if isinstance(node, ast.ImportFrom) else [])}
+    library = LIBRARY[arm]
+    others = {name.split(".")[0] for name in imported} & (OTHER_LIBRARIES - {library.split(".")[0]})
+    if library not in imported or others:
+        grade["note"] = f"does not import {library}" if library not in imported else "imports another simulation library"
+        return grade, ("The script must use SimPy (`import simpy`) and no other simulation library."
+                       if arm == "simpy" else "The script must build the model with "
+                       "`from nagasim import build as nb` and use no other simulation library.")
     grade["valid"] = True
-    code, out, err = _run([sys.executable, path.name], cwd=path.parent, timeout=timeout)
+    # The builder arm runs this checkout's engine, as the tools arm's server does.
+    code, out, err = _run([sys.executable, path.name], cwd=path.parent, timeout=timeout,
+                          env={"PYTHONPATH": str(ROOT)} if arm == "builder" else None)
     if code != 0:
         grade["note"] = "timeout" if code is None else f"exit {code}"
         ended = f"did not finish within {timeout:g} seconds" if code is None else f"failed (exit code {code})"
@@ -284,10 +323,11 @@ def local_tools(task, provider, options, work: Path):
     return grade, len(turn.tool_calls), transcript
 
 
-def local_simpy(task, provider, options, work: Path):
+def local_code(task, provider, options, work: Path, arm: str):
     from nagasim import llm
 
-    system = SIMPY_SYSTEM.format(timeout=f"{options.timeout:g}")
+    system = (SIMPY_SYSTEM if arm == "simpy" else BUILDER_SYSTEM).format(
+        timeout=f"{options.timeout:g}", reference=builder_reference() if arm == "builder" else "")
     history, runs, script = [{"role": "user", "text": task.request}], 0, work / "solution.py"
     grade = {"valid": False, "runnable": False, "correct": False, "answer": None, "note": "no script"}
     error = None
@@ -304,7 +344,7 @@ def local_simpy(task, provider, options, work: Path):
         else:
             script.write_text(blocks[-1], encoding="utf-8")
             runs += 1
-            grade, told = check_script(script, task, options.timeout)
+            grade, told = check_script(script, task, options.timeout, arm)
         if not told:
             break
         history.append({"role": "user", "text": told})
@@ -320,8 +360,8 @@ def local_attempt(task, arm, options):
                                 reasoning=options.reasoning, environ={})
     provider = Recorder(llm.build_provider(config))
     with tempfile.TemporaryDirectory(prefix="naga_llm_study_", ignore_cleanup_errors=True) as work:
-        grade, calls, transcript = (local_tools if arm in TOOL_ARMS else local_simpy)(
-            task, provider, options, Path(work))
+        grade, calls, transcript = (local_tools(task, provider, options, Path(work)) if arm in TOOL_ARMS
+                                    else local_code(task, provider, options, Path(work), arm))
     if provider.unreachable:
         raise SystemExit(f"stopped, nothing written for this attempt: {provider.unreachable}")
     tokens = [reply["tokens"] for reply in provider.replies if "tokens" in reply]
@@ -358,9 +398,11 @@ def claude_attempt(task, arm, options):
         servers.write_text(json.dumps({"mcpServers": naga if arm in TOOL_ARMS else {}}), encoding="utf-8")
         allow = ["mcp__naga"] if arm in TOOL_ARMS else ["Read", "Write", "Edit", "Bash(python solution.py)"]
         settings.write_text(json.dumps({"permissions": {"allow": allow}}), encoding="utf-8")
-        # `python` is this interpreter, which has SimPy.
-        env = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")])}
-        ask = task.request + (CLAUDE_TOOLS_ASK if arm in TOOL_ARMS else CLAUDE_SIMPY_ASK)
+        # `python` is this interpreter, which has SimPy; the builder arm's is this checkout's engine.
+        env = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
+               **({"PYTHONPATH": str(ROOT)} if arm == "builder" else {})}
+        ask = task.request + (CLAUDE_TOOLS_ASK if arm in TOOL_ARMS else CLAUDE_SIMPY_ASK if arm == "simpy"
+                              else CLAUDE_BUILDER_ASK.format(reference=builder_reference()))
         code, out, err = _run(claude_command(arm, options, settings, servers), cwd=work,
                               timeout=options.attempt_timeout, stdin=ask, env=env)
         events = []
@@ -384,7 +426,7 @@ def claude_attempt(task, arm, options):
             ran = any(str(block.get("name", "")).rsplit("__", 1)[-1] in RUN_TOOLS for block in used)
             grade = grade_model(work / "model.json", reply, task, ran, options.timeout)
         else:
-            grade, _told = check_script(work / "solution.py", task, options.timeout)
+            grade, _told = check_script(work / "solution.py", task, options.timeout, arm)
         limit = "timeout" if code is None else "turn limit" if result.get("subtype") == "error_max_turns" else ""
         grade["note"] = "; ".join(filter(None, [limit, grade["note"]]))
         started = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
@@ -502,12 +544,14 @@ def render(results: dict) -> str:
             continue
         every = [row for _arms, mine in shown.values() for row in mine]
         versions = every[0]["versions"]
+        engines = sorted({row["versions"]["nagasim"] for row in every},
+                         key=lambda v: [int(p) if p.isdigit() else p for p in v.split(".")])
         ids = sorted({row["model_id"] for row in every if row.get("model_id")})
         parts += [
             f"Attempts made from {min(r['date'] for r in every)} to {max(r['date'] for r in every)}: "
             f"{len(tasks)} tasks, {_span(shown, tasks)} per task and arm, at most {every[0]['budget']} "
             f"{'model replies' if comparison == 'local' else 'agent turns'} per attempt. "
-            f"Naga {versions['nagasim']}, SimPy {versions['simpy']}, Python {versions['python']}."
+            f"Naga {', '.join(engines)}, SimPy {versions['simpy']}, Python {versions['python']}."
             + (f" Model ids as reported by Claude Code: {', '.join(ids)}." if ids else "")
             + pilot_note, "",
             HEADER, "|---|---|---|---|---|---|---|---|---|---|---|---|"]

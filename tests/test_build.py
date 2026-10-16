@@ -167,3 +167,28 @@ def test_the_stub_is_the_generators_and_names_every_method():
     assert "setup_unit: Literal['base', 'milliseconds', 'seconds'," in text
     assert "speed_unit: Literal['base', 'mm/ms'," in text and "'m/s'" in text
     assert "        time_unit: Literal['milliseconds'," in text      # the model's own: no "base"
+
+
+def test_a_block_name_is_positional_or_keyword_never_both():
+    m = nb.Model()
+    a, b = m.process("A"), m.process(name="B")
+    assert (a.name, b.name) == ("A", "B")
+    with pytest.raises(TypeError, match="'X'.*name='Y'"):
+        m.process("X", name="Y")
+    with pytest.raises(TypeError, match="ratee.*parameters"):     # still a clear unknown-keyword error
+        m.process(name="Z", ratee=1)
+    with pytest.raises(TypeError, match="at most 1 positional"):
+        m.process("P", "Q")
+
+
+def test_results_kpi_is_the_mean_of_kpis():
+    m = nb.Model(time_limit=100, replications=2)
+    m.add_resource(name="S")
+    m.create(distribution=nb.Exponential(rate=1.0)) >> m.process(
+        name="P", resource_name="S", distribution=nb.Exponential(rate=2.0)) >> m.dispose()
+    r = m.run()
+    key = "system/Total Entities Completed"
+    table = r.kpis().set_index("metric")
+    assert r.kpi(key) == table.loc[key, "mean"]
+    with pytest.raises(KeyError, match="nope"):
+        r.kpi("system/nope")

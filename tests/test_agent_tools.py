@@ -1252,3 +1252,12 @@ def test_a_bindings_value_is_bounded_in_a_tool_answer(ws, tmp_path):
     assert book["value_cut"] == {"rows": 25, "characters": 100 * data_tools.MAX_ROWS}
     assert (count["value"], count["value_cut"]) == (data_tools.MAX_ROWS + 25, None)
     assert len(json.dumps(answer)) < 80_000
+
+
+def test_upsert_scenario_stores_a_goal():
+    """D577: the question a scenario answers rides along with its overrides."""
+    from nagasim.agent_tools.core import _open
+    model = build_mm1("goal_mm1", capacity=1)
+    ok(T.call("upsert_scenario", model=model, name="S", goal="Can two servers do it?",
+              overrides=[{"path": "resources.Server.capacity", "value": 2}]))
+    assert _open(model)[0].scenarios[0]["goal"] == "Can two servers do it?"
