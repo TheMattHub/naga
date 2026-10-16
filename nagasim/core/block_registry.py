@@ -81,7 +81,10 @@ def validate_params(type_name: str, params: dict) -> list[str]:
                 problems.append(f"unknown key: {key}")
                 continue
             expected = schema[key].type
-            if not _type_ok(value, expected):
+            # A number-or-expression param is declared str, but a number is one of its kinds,
+            # as the JSON Schema and the builder's hints say (#502).
+            number_ok = "number" in (schema[key].kinds or ()) and _type_ok(value, float)
+            if not number_ok and not _type_ok(value, expected):
                 problems.append(
                     f"wrong type for key '{key}': expected {expected.__name__}, "
                     f"got {type(value).__name__}"

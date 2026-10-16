@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 (2026-10-16)
+
+A model can now be written without an editor: `nagasim.build` builds one in Python, with an
+editor completing every built-in parameter, distribution and unit; `naga export --python` turns
+any model into that code; `naga fmt` writes a model file in its shortest form, and the bundled
+models ship that way. A state read from a live plant now covers conveyors, batches, transfers and
+robot and cobot cycles, so a twin forecasts the warehouse and automation models from plant data.
+A minor version, because two results can change: a block parameter left out of a model file now
+takes its published default (a state saved for such a file must be taken again), and a
+deterministic Schedule arrival no longer depends on the seed.
 
 - State: a MOTION job mid-cycle and a mobile cobot tending a machine (a pick held by its
   machine, a place in progress, each cycle's time) are carried; `automation_cell` and
@@ -44,6 +53,14 @@
 - Fixed: `naga export --python` refuses a block type that is not registered; `naga fmt`
   keeps a value whose type differs from its default and refuses non-finite numbers
   and files that are not models.
+- Builder: a distribution constructor per distribution, `nb.Exponential(rate=1.25)`, wherever a
+  model has a distribution (a misspelt parameter is an error; `lambda` is `lambda_`); run settings
+  are `Model` keywords, `nb.Model(time_limit=1000, warmup=100, replications=5)`; the package ships
+  `build.pyi`, so editors complete block parameters, records, run settings and distribution
+  parameters and flag a wrong one, a misspelt unit (`setup_unit="secs"`) included. The string
+  forms still work; model files and results are unchanged.
+- Fixed: a number given for a parameter that takes a number or an expression (a setup time,
+  a renege time, a batch's maximum wait, ...) is accepted, as the schema says.
 
 ## 0.7.2 (2026-10-15)
 

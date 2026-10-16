@@ -76,6 +76,19 @@ print(results["resource_summary"].head())   # one row per resource and replicati
 `results` is a dictionary of pandas frames; the [KPI reference](reference/kpis.md) lists every
 frame and column. The same seed gives the same frames.
 
+The same file can be written from Python ([Build a model in Python](python-api.md#build-a-model-in-python)):
+
+```python
+from nagasim import build as nb
+
+m = nb.Model(time_limit=10000, warmup=1000, replications=5)
+m.add_resource(name="Server", capacity=1)
+arrive = m.create("arrive", distribution=nb.Exponential(rate=1.0))
+serve = m.process("serve", resource_name="Server", distribution=nb.Exponential(rate=1.25))
+arrive >> serve >> m.dispose("leave")
+m.save("mm1.json")
+```
+
 ## Next
 
 - Change the model and compare: `naga scenarios`, `naga optimize`, `naga doe`

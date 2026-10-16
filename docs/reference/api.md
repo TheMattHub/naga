@@ -99,7 +99,7 @@ The current model file format as a draft 2020-12 JSON Schema.
 class Model(**top)
 ```
 
-A model. Keywords are top-level sections (`simulation`, `info`, `network`, ...).
+A model. Keywords are the run settings (`time_limit`, `warmup`, `replications`, every key of `simulation`) and the top-level sections (`info`, `network`, `simulation`, ...).
 
 ## nagasim.build.export_python
 
@@ -107,7 +107,7 @@ A model. Keywords are top-level sections (`simulation`, `info`, `network`, ...).
 export_python(layout) -> str
 ```
 
-Builder code for *layout* (a path or a dict): running it gives `m`, whose `to_dict()` is `naga fmt`'s form of the model. Every value is written as a Python literal (`repr`): no text of the model ever becomes code.
+Builder code for *layout* (a path or a dict): running it gives `m`, whose `to_dict()` is `naga fmt`'s form of the model. Every value is written as a Python literal (`repr`), a distribution as its constructor when its name and keys are the registry's: no text of the model ever becomes code.
 
 ## nagasim.modelfmt.minimal
 

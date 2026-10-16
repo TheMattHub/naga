@@ -45,6 +45,8 @@ markdown_extensions:
 # tools/gen_engine_docs.py reads this nav to write docs/llms.txt: every page is listed here.
 nav:
   - Home: index.md
+  - What's new: whats-new.md
+  - Release notes: changelog.md
   - Quick start: quickstart.md
   - Gallery:
       - gallery/index.md
@@ -111,7 +113,6 @@ nav:
       - Agent tools: reference/tools.md
       - Python entry points: reference/api.md
   - Project:
-      - Changelog: changelog.md
       - Contributing: contributing.md
 
 validation:

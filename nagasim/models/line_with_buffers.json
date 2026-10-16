@@ -370,7 +370,7 @@
         "library": {
           "library": "manufacturing",
           "asset": "workstation",
-          "version": "2.2.0"
+          "version": "2.3.0"
         },
         "parameters": [
           {
@@ -564,6 +564,14 @@
             "Press": "Generic reference value (Naga); replace with plant data.",
             "Paint booth": "Generic reference value (Naga); replace with plant data."
           }
+        },
+        "owns": {
+          "resources": [
+            "Mfg Machine"
+          ],
+          "failures": [
+            "Mfg Machine breakdown"
+          ]
         }
       },
       "parameters": [
@@ -697,7 +705,7 @@
         "library": {
           "library": "manufacturing",
           "asset": "buffer",
-          "version": "2.2.0"
+          "version": "2.3.0"
         },
         "parameters": [
           {
@@ -713,7 +721,12 @@
             "choices": [],
             "refers_to": ""
           }
-        ]
+        ],
+        "owns": {
+          "levels": [
+            "Mfg Buffer stock"
+          ]
+        }
       },
       "parameters": [
         {

@@ -78,19 +78,23 @@ prediction bands. Each has a command of the same name.
 `nagasim.build` writes the model file from Python. Every block type is a method named after
 it, taking the block's parameters by name (the [block reference](reference/blocks.md));
 `a >> b` links two blocks; `add_resource`, `add_schedule`, `add_level` and the like add an
-entry to a list of the file; `Model(...)` takes the other sections. A block without a name
-gets one (`process_1`). It is a thin layer: the file it writes is the model, and what each
-value means is the same as in a file you write by hand. It may change between minor
-versions before 1.0.
+entry to a list of the file; `Model(...)` takes the run settings (`time_limit`, `warmup`,
+`replications`, every key of `simulation`) and the other sections. Every distribution of the
+[distribution reference](reference/distributions.md) is a constructor taking its parameters
+by name, `nb.Exponential(rate=1.25)`; given as `distribution=` it writes the file's
+`"distribution"` and `"dist_params"`, and a parameter named like a Python keyword takes a
+trailing underscore (`nb.Poisson(lambda_=2)`). A block without a name gets one
+(`process_1`). It is a thin layer: the file it writes is the model, and what each value
+means is the same as in a file you write by hand. It may change between minor versions
+before 1.0.
 
 ```python
 from nagasim import build as nb
 
-m = nb.Model(simulation={"time_limit": 1000, "warmup": 100, "replications": 5})
+m = nb.Model(time_limit=1000, warmup=100, replications=5)
 m.add_resource(name="Server")
-arrive = m.create(distribution="Exponential", dist_params={"rate": 1.0})
-serve = m.process(resource_name="Server", distribution="Exponential",
-                  dist_params={"rate": 1.25})
+arrive = m.create(distribution=nb.Exponential(rate=1.0))
+serve = m.process(resource_name="Server", distribution=nb.Exponential(rate=1.25))
 arrive >> serve >> m.dispose()
 
 m.save("mm1.json")                       # the short form `naga fmt` writes
@@ -100,24 +104,33 @@ print(m.run(replications=2).kpis().head())
 A line with a buffer between two machines, and a resource on a shift schedule beside a tank:
 
 ```python
-line = nb.Model(simulation={"time_limit": 480})
+line = nb.Model(time_limit=480)
 line.add_resource(name="Lathe")
 line.add_resource(name="Mill")
-parts = line.create(distribution="Exponential", dist_params={"rate": 0.5})
-lathe = line.process(resource_name="Lathe", distribution="Triangular",
-                     dist_params={"low": 1, "mode": 1.5, "high": 2})
-mill = line.process(resource_name="Mill", distribution="Constant", dist_params={"value": 1.8})
+parts = line.create(distribution=nb.Exponential(rate=0.5))
+lathe = line.process(resource_name="Lathe", distribution=nb.Triangular(low=1, mode=1.5, high=2))
+mill = line.process(resource_name="Mill", distribution=nb.Constant(value=1.8))
 parts >> lathe >> line.buffer(capacity=5) >> mill >> line.dispose()
+line.add_failure(name="Mill breaks", resources=["Mill"], uptime=nb.Exponential(rate=0.01),
+                 downtime=nb.Constant(value=15))
 
-plant = nb.Model(simulation={"time_limit": 100})
+plant = nb.Model(time_limit=100)
 plant.add_schedule(name="shifts", kind="capacity", points=[[50, 2], [50, 1]], repeat=True)
 plant.add_resource(name="Pump", capacity=2, capacity_schedule="shifts")
 plant.add_level(name="Tank", capacity=100, initial=20)
 plant.add_flow(name="draw", **{"from": "Tank"}, rate="2")
 ```
 
-`help(m.process)` lists a block's parameters with their defaults. `naga export --python
-model.json` writes the code that builds any model file, the bundled ones included:
+The strings still work (`distribution="Exponential", dist_params={"rate": 1.25}`,
+`simulation={"time_limit": 1000}`); a value given both ways is an error. The package ships
+type hints for the builder (`build.pyi`), so an editor completes block parameters, records,
+run settings and distribution parameters and flags a misspelt one before the model runs; a
+plugin's blocks and distributions are there at run time only. A value is in the model's
+time unit (`nb.Model(time_unit="hours")`) unless its own unit keyword says otherwise
+(`setup=90, setup_unit="seconds"`; a block's distribution: `time_unit="hours"`); the
+hints list the units each keyword accepts, so nothing needs converting by hand. `help(m.process)` lists a
+block's parameters with their defaults. `naga export --python model.json` writes the code
+that builds any model file, the bundled ones included:
 
 ```console
 naga export --python single_server -o mm1.py

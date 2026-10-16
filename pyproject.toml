@@ -72,7 +72,8 @@ include = ["nagasim*"]
 # nagasim/modelcheck.py at run time. models/data/mes_twin_shop/*.csv and
 # models/data/*.mesmap.json: the MES twin demo.
 nagasim = ["models/*.json", "models/data/*.csv", "models/data/*.mesmap.json",
-          "models/data/mes_twin_shop/*.csv", "templates/*.yml", "templates/*.txt", "py.typed"]
+          "models/data/mes_twin_shop/*.csv", "templates/*.yml", "templates/*.txt", "py.typed",
+          "*.pyi"]
 
 [tool.setuptools.dynamic]
 version = {attr = "nagasim.__version__"}
