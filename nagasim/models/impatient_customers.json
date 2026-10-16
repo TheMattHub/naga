@@ -6,47 +6,28 @@
       "name": "calls",
       "type": "CREATE",
       "description": "Walk-in customers",
-      "position": [
-        160.0,
-        240.0
-      ],
-      "params": {
-        "e_type": "Customer",
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.5
-        }
-      }
+      "position": [160.0, 240.0],
+      "params": {"e_type": "Customer", "distribution": "Exponential", "dist_params": {"rate": 0.5}}
     },
     {
       "name": "escalations",
       "type": "CREATE",
       "description": "Escalated cases",
-      "position": [
-        160.0,
-        480.0
-      ],
+      "position": [160.0, 480.0],
       "params": {
         "e_type": "Escalation",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.05
-        }
+        "dist_params": {"rate": 0.05}
       }
     },
     {
       "name": "desk",
       "type": "PROCESS",
       "description": "Service desk",
-      "position": [
-        480.0,
-        240.0
-      ],
+      "position": [480.0, 240.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.25
-        },
+        "dist_params": {"rate": 0.25},
         "priority": 5,
         "resource_name": "Agents",
         "balk_if": "queue_length >= 5",
@@ -57,71 +38,35 @@
       "name": "escalated",
       "type": "PROCESS",
       "description": "Escalation, interrupts a normal case",
-      "position": [
-        480.0,
-        480.0
-      ],
+      "position": [480.0, 480.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.2
-        },
+        "dist_params": {"rate": 0.2},
         "priority": 1,
         "resource_name": "Agents",
         "preempt": true
       }
     },
-    {
-      "name": "served",
-      "type": "DISPOSE",
-      "description": "Served",
-      "position": [
-        800.0,
-        240.0
-      ]
-    },
+    {"name": "served", "type": "DISPOSE", "description": "Served", "position": [800.0, 240.0]},
     {
       "name": "lost",
       "type": "DISPOSE",
       "description": "Left without service",
-      "position": [
-        800.0,
-        400.0
-      ]
+      "position": [800.0, 400.0]
     }
   ],
   "links": [
-    {
-      "source": "calls",
-      "target": "desk"
-    },
-    {
-      "source": "escalations",
-      "target": "escalated"
-    },
-    {
-      "source": "desk",
-      "target": "served"
-    },
-    {
-      "source": "desk",
-      "target": "lost"
-    },
-    {
-      "source": "escalated",
-      "target": "served"
-    }
+    {"source": "calls", "target": "desk"},
+    {"source": "escalations", "target": "escalated"},
+    {"source": "desk", "target": "served"},
+    {"source": "desk", "target": "lost"},
+    {"source": "escalated", "target": "served"}
   ],
   "scenarios": [
     {
       "name": "Three agents",
       "description": "One more agent on the desk",
-      "overrides": [
-        {
-          "path": "resources.Agents.capacity",
-          "value": 3
-        }
-      ]
+      "overrides": [{"path": "resources.Agents.capacity", "value": 3}]
     }
   ],
   "resources": [
@@ -134,22 +79,8 @@
       "cost_per_use": 0.0
     }
   ],
-  "entities": [
-    {
-      "name": "Customer"
-    },
-    {
-      "name": "Escalation"
-    }
-  ],
-  "info": {
-    "title": "Impatient customers (balking and reneging)",
-    "category": "Services"
-  },
-  "simulation": {
-    "time_limit": 480.0,
-    "warmup": 60.0,
-    "replications": 10
-  },
+  "entities": [{"name": "Customer"}, {"name": "Escalation"}],
+  "info": {"title": "Impatient customers (balking and reneging)", "category": "Services"},
+  "simulation": {"time_limit": 480.0, "warmup": 60.0, "replications": 10},
   "outputs": {}
 }

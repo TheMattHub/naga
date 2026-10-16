@@ -6,13 +6,8 @@
       "name": "sir_1",
       "type": "SUBMODEL",
       "description": "SIR epidemic",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "SIR epidemic"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "SIR epidemic"}
     }
   ],
   "levels": [
@@ -21,16 +16,8 @@
       "initial": "AUX(\"$SD population\") - AUX(\"$SD initial infected\")",
       "min": 0.0
     },
-    {
-      "name": "SD Infected",
-      "initial": 1.0,
-      "min": 0.0
-    },
-    {
-      "name": "SD Recovered",
-      "initial": 0.0,
-      "min": 0.0
-    }
+    {"name": "SD Infected", "initial": 1.0, "min": 0.0},
+    {"name": "SD Recovered", "initial": 0.0, "min": 0.0}
   ],
   "flows": [
     {
@@ -47,32 +34,16 @@
     }
   ],
   "auxiliaries": [
-    {
-      "name": "SD beta",
-      "expr": "0.4"
-    },
-    {
-      "name": "SD gamma",
-      "expr": "0.1"
-    },
-    {
-      "name": "SD population",
-      "expr": "1000"
-    },
-    {
-      "name": "SD initial infected",
-      "expr": "1"
-    }
+    {"name": "SD beta", "expr": "0.4"},
+    {"name": "SD gamma", "expr": "0.1"},
+    {"name": "SD population", "expr": "1000"},
+    {"name": "SD initial infected", "expr": "1"}
   ],
   "submodels": {
     "SIR epidemic": {
       "info": {
         "description": "The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run experiment (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid.",
-        "library": {
-          "library": "sd",
-          "asset": "sir",
-          "version": "1.1.0"
-        },
+        "library": {"library": "sd", "asset": "sir", "version": "1.1.0"},
         "parameters": [
           {
             "name": "population",
@@ -128,21 +99,9 @@
           }
         ],
         "owns": {
-          "levels": [
-            "SD Susceptible",
-            "SD Infected",
-            "SD Recovered"
-          ],
-          "auxiliaries": [
-            "SD beta",
-            "SD gamma",
-            "SD population",
-            "SD initial infected"
-          ],
-          "flows": [
-            "SD infection",
-            "SD recovery"
-          ]
+          "levels": ["SD Susceptible", "SD Infected", "SD Recovered"],
+          "auxiliaries": ["SD beta", "SD gamma", "SD population", "SD initial infected"],
+          "flows": ["SD infection", "SD recovery"]
         }
       },
       "parameters": [
@@ -158,12 +117,7 @@
           "type": "number",
           "description": "Infected at t=0; the rest start Susceptible."
         },
-        {
-          "name": "beta",
-          "default": 0.4,
-          "type": "number",
-          "description": "Transmission rate."
-        },
+        {"name": "beta", "default": 0.4, "type": "number", "description": "Transmission rate."},
         {
           "name": "gamma",
           "default": 0.1,
@@ -173,40 +127,17 @@
       ],
       "scoped": {
         "levels": {
-          "SD Infected": {
-            "initial": {
-              "$arg": "initial_infected"
-            }
-          },
+          "SD Infected": {"initial": {"$arg": "initial_infected"}},
           "SD Susceptible": {},
           "SD Recovered": {}
         },
         "auxiliaries": {
-          "SD beta": {
-            "expr": {
-              "$arg": "beta"
-            }
-          },
-          "SD gamma": {
-            "expr": {
-              "$arg": "gamma"
-            }
-          },
-          "SD population": {
-            "expr": {
-              "$arg": "population"
-            }
-          },
-          "SD initial infected": {
-            "expr": {
-              "$arg": "initial_infected"
-            }
-          }
+          "SD beta": {"expr": {"$arg": "beta"}},
+          "SD gamma": {"expr": {"$arg": "gamma"}},
+          "SD population": {"expr": {"$arg": "population"}},
+          "SD initial infected": {"expr": {"$arg": "initial_infected"}}
         },
-        "flows": {
-          "SD infection": {},
-          "SD recovery": {}
-        }
+        "flows": {"SD infection": {}, "SD recovery": {}}
       },
       "blocks": [],
       "links": [],
@@ -222,11 +153,7 @@
     "time_limit": 80.0,
     "warmup": 0,
     "replications": 1,
-    "sd": {
-      "dt": 0.1,
-      "method": "rk4",
-      "time_unit": "minutes"
-    }
+    "sd": {"dt": 0.1, "method": "rk4", "time_unit": "minutes"}
   },
   "outputs": {}
 }

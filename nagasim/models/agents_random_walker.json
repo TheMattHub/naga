@@ -6,55 +6,19 @@
       "name": "random_walker_1",
       "type": "SUBMODEL",
       "description": "Random walker (continuous space)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Random walker (continuous space)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Random walker (continuous space)"}
     }
   ],
   "agent_types": [
     {
       "name": "Walker",
-      "parameters": {
-        "walk_speed": 2
-      },
-      "space": {
-        "kind": "continuous",
-        "bounds": [
-          0,
-          0,
-          100,
-          100
-        ]
-      },
+      "parameters": {"walk_speed": 2},
+      "space": {"kind": "continuous", "bounds": [0, 0, 100, 100]},
       "speed": "walk_speed",
-      "states": [
-        {
-          "name": "Moving",
-          "entry": [
-            {
-              "move_to": [
-                80,
-                0
-              ]
-            }
-          ]
-        },
-        {
-          "name": "Arrived"
-        }
-      ],
+      "states": [{"name": "Moving", "entry": [{"move_to": [80, 0]}]}, {"name": "Arrived"}],
       "initial_state": "Moving",
-      "transitions": [
-        {
-          "from": "Moving",
-          "to": "Arrived",
-          "message": "arrived"
-        }
-      ]
+      "transitions": [{"from": "Moving", "to": "Arrived", "message": "arrived"}]
     }
   ],
   "populations": [
@@ -62,26 +26,14 @@
       "name": "Walkers",
       "type": "Walker",
       "count": 1,
-      "placement": {
-        "kind": "table",
-        "points": [
-          [
-            0,
-            0
-          ]
-        ]
-      }
+      "placement": {"kind": "table", "points": [[0, 0]]}
     }
   ],
   "submodels": {
     "Random walker (continuous space)": {
       "info": {
         "description": "One Walker agent in a 100x100 continuous space, placed at [0, 0] and sent moving to [80, 0] the instant it starts (an entry action on its initial state); it enters Arrived on the 'arrived' message move_to delivers on the exact arrival instant. A straight trip at a fixed speed is a deterministic oracle: sojourn in Moving equals distance/speed exactly, no tolerance needed. Copy this asset, add more agents with a random {\"kind\": \"random\"} placement and a move_to target expression (e.g. another agent's position via AGENT(...)) to build a crowd or a pursuit model.",
-        "library": {
-          "library": "agents",
-          "asset": "random_walker",
-          "version": "1.2.0"
-        },
+        "library": {"library": "agents", "asset": "random_walker", "version": "1.2.0"},
         "parameters": [
           {
             "name": "walk_speed",
@@ -97,14 +49,7 @@
             "refers_to": ""
           }
         ],
-        "owns": {
-          "agent_types": [
-            "Walker"
-          ],
-          "populations": [
-            "Walkers"
-          ]
-        }
+        "owns": {"agent_types": ["Walker"], "populations": ["Walkers"]}
       },
       "parameters": [
         {
@@ -115,16 +60,8 @@
         }
       ],
       "scoped": {
-        "agent_types": {
-          "Walker": {
-            "parameters.walk_speed": {
-              "$arg": "walk_speed"
-            }
-          }
-        },
-        "populations": {
-          "Walkers": {}
-        }
+        "agent_types": {"Walker": {"parameters.walk_speed": {"$arg": "walk_speed"}}},
+        "populations": {"Walkers": {}}
       },
       "blocks": [],
       "links": [],
@@ -136,10 +73,6 @@
     "category": "Agent-based",
     "description": "One Walker agent in a 100x100 continuous space, placed at [0, 0] and sent moving to [80, 0] the instant it starts (an entry action on its initial state); it enters Arrived on the 'arrived' message move_to delivers on the exact arrival instant. A straight trip at a fixed speed is a deterministic oracle: sojourn in Moving equals distance/speed exactly, no tolerance needed. Copy this asset, add more agents with a random {\"kind\": \"random\"} placement and a move_to target expression (e.g. another agent's position via AGENT(...)) to build a crowd or a pursuit model."
   },
-  "simulation": {
-    "time_limit": 100.0,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 100.0, "warmup": 0, "replications": 1},
   "outputs": {}
 }

@@ -7,7 +7,7 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 ## Start
 
 - [Home](https://thematthub.github.io/naga/index.html): Naga is a simulation engine for Python, built on SimPy.
-- [What's new](https://thematthub.github.io/naga/whats-new.html): The major changes of each minor release, newest first.
+- [What's new](https://thematthub.github.io/naga/whats-new.html): This page gives the major changes of each minor release, newest first: what you can do now that you could not before, and what changes when you upgrade.
 - [Release notes](https://thematthub.github.io/naga/changelog.html)
 - [Quick start](https://thematthub.github.io/naga/quickstart.html): A single-server queue, from nothing to numbers.
 

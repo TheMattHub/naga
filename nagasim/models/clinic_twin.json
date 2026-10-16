@@ -6,37 +6,24 @@
       "name": "arrivals",
       "type": "CREATE",
       "description": "Walk-in patients; the rate profile is read from the visit log",
-      "position": [
-        0.0,
-        200.0
-      ],
+      "position": [0.0, 200.0],
       "params": {
         "e_type": "PATIENT",
         "arrival_mode": "Schedule",
         "schedule_name": "arrivals",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.15
-        }
+        "dist_params": {"rate": 0.15}
       }
     },
     {
       "name": "Reception",
       "type": "PROCESS",
       "description": "Check-in at the desk",
-      "position": [
-        220.0,
-        200.0
-      ],
-      "layout_position": [
-        3.0,
-        3.0
-      ],
+      "position": [220.0, 200.0],
+      "layout_position": [3.0, 3.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.5
-        },
+        "dist_params": {"rate": 0.5},
         "resource_name": "Clerk"
       }
     },
@@ -44,19 +31,11 @@
       "name": "Consult",
       "type": "PROCESS",
       "description": "Consultation; the distribution is fitted from the visit log",
-      "position": [
-        440.0,
-        200.0
-      ],
-      "layout_position": [
-        14.0,
-        3.0
-      ],
+      "position": [440.0, 200.0],
+      "layout_position": [14.0, 3.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.1111111111111111
-        },
+        "dist_params": {"rate": 0.1111111111111111},
         "resource_name": "Doctor"
       }
     },
@@ -64,10 +43,7 @@
       "name": "time_in_system",
       "type": "RECORD",
       "description": "Time in system per patient",
-      "position": [
-        660.0,
-        200.0
-      ],
+      "position": [660.0, 200.0],
       "params": {
         "stat_name": "time_in_system",
         "kind": "tally",
@@ -78,41 +54,18 @@
       "name": "leave",
       "type": "DISPOSE",
       "description": "Patient leaves",
-      "position": [
-        880.0,
-        200.0
-      ]
+      "position": [880.0, 200.0]
     }
   ],
   "links": [
-    {
-      "source": "arrivals",
-      "target": "Reception"
-    },
-    {
-      "source": "Reception",
-      "target": "Consult"
-    },
-    {
-      "source": "Consult",
-      "target": "time_in_system"
-    },
-    {
-      "source": "time_in_system",
-      "target": "leave"
-    }
+    {"source": "arrivals", "target": "Reception"},
+    {"source": "Reception", "target": "Consult"},
+    {"source": "Consult", "target": "time_in_system"},
+    {"source": "time_in_system", "target": "leave"}
   ],
   "resources": [
-    {
-      "name": "Clerk",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Doctor",
-      "capacity": 2,
-      "discipline": "FIFO"
-    }
+    {"name": "Clerk", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Doctor", "capacity": 2, "discipline": "FIFO"}
   ],
   "schedules": [
     {
@@ -120,48 +73,18 @@
       "kind": "arrival",
       "repeat": false,
       "points": [
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ],
-        [
-          60.0,
-          0.15
-        ]
+        [60.0, 0.15],
+        [60.0, 0.15],
+        [60.0, 0.15],
+        [60.0, 0.15],
+        [60.0, 0.15],
+        [60.0, 0.15],
+        [60.0, 0.15],
+        [60.0, 0.15]
       ]
     }
   ],
-  "entities": [
-    {
-      "name": "PATIENT",
-      "shape": "circle",
-      "color": "blue"
-    }
-  ],
+  "entities": [{"name": "PATIENT", "shape": "circle", "color": "blue"}],
   "info": {
     "title": "Walk-in clinic digital twin",
     "category": "Services",
@@ -181,9 +104,7 @@
       "name": "consultation_time",
       "source": "visits",
       "column": "service_minutes",
-      "filter": {
-        "clinic": "north"
-      },
+      "filter": {"clinic": "north"},
       "transform": "fit",
       "target": "blocks.Consult.params.distribution",
       "enabled": true,
@@ -208,25 +129,13 @@
         "e_type": "PATIENT",
         "age": 12.0,
         "in_service": 1,
-        "remaining": [
-          6.0
-        ],
+        "remaining": [6.0],
         "age_unit": "minutes"
       },
-      {
-        "block": "Reception",
-        "count": 1,
-        "e_type": "PATIENT",
-        "age": 2.0,
-        "age_unit": "minutes"
-      }
+      {"block": "Reception", "count": 1, "e_type": "PATIENT", "age": 2.0, "age_unit": "minutes"}
     ],
     "time_unit": "minutes"
   },
-  "simulation": {
-    "time_limit": 480.0,
-    "warmup": 0,
-    "replications": 20
-  },
+  "simulation": {"time_limit": 480.0, "warmup": 0, "replications": 20},
   "outputs": {}
 }

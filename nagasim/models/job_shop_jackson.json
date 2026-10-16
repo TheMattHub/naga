@@ -6,34 +6,18 @@
       "name": "create_1",
       "type": "CREATE",
       "description": "External Poisson arrivals to Cutting, rate 1.0/min",
-      "position": [
-        100.0,
-        300.0
-      ],
-      "params": {
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.0
-        }
-      }
+      "position": [100.0, 300.0],
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}
     },
     {
       "name": "process_cutting",
       "type": "PROCESS",
       "description": "Cutting station (single server)",
-      "position": [
-        300.0,
-        300.0
-      ],
-      "layout_position": [
-        3.0,
-        8.0
-      ],
+      "position": [300.0, 300.0],
+      "layout_position": [3.0, 8.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.65
-        },
+        "dist_params": {"rate": 1.65},
         "resource_name": "Cutting"
       }
     },
@@ -41,34 +25,18 @@
       "name": "decide_cutting",
       "type": "DECIDE",
       "description": "Cutting routes: 0.6 to Drilling, 0.4 to Assembly",
-      "position": [
-        500.0,
-        300.0
-      ],
-      "params": {
-        "probs": [
-          0.6,
-          0.4
-        ]
-      }
+      "position": [500.0, 300.0],
+      "params": {"probs": [0.6, 0.4]}
     },
     {
       "name": "process_drilling",
       "type": "PROCESS",
       "description": "Drilling station (resource SET of two single-capacity drills)",
-      "position": [
-        700.0,
-        200.0
-      ],
-      "layout_position": [
-        23.0,
-        3.0
-      ],
+      "position": [700.0, 200.0],
+      "layout_position": [23.0, 3.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.5
-        },
+        "dist_params": {"rate": 0.5},
         "resource_name": "Drilling"
       }
     },
@@ -76,34 +44,18 @@
       "name": "decide_drilling",
       "type": "DECIDE",
       "description": "Drilling routes: 0.5 to Assembly, 0.5 exits",
-      "position": [
-        900.0,
-        200.0
-      ],
-      "params": {
-        "probs": [
-          0.5,
-          0.5
-        ]
-      }
+      "position": [900.0, 200.0],
+      "params": {"probs": [0.5, 0.5]}
     },
     {
       "name": "process_assembly",
       "type": "PROCESS",
       "description": "Assembly station (capacity 2)",
-      "position": [
-        700.0,
-        400.0
-      ],
-      "layout_position": [
-        23.0,
-        13.0
-      ],
+      "position": [700.0, 400.0],
+      "layout_position": [23.0, 13.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.55
-        },
+        "dist_params": {"rate": 0.55},
         "resource_name": "AssemblyStation"
       }
     },
@@ -111,42 +63,21 @@
       "name": "decide_assembly",
       "type": "DECIDE",
       "description": "Assembly routes: 0.2 rework to Cutting, 0.8 exits",
-      "position": [
-        900.0,
-        400.0
-      ],
-      "params": {
-        "probs": [
-          0.2,
-          0.8
-        ]
-      }
+      "position": [900.0, 400.0],
+      "params": {"probs": [0.2, 0.8]}
     },
     {
       "name": "assign_rework",
       "type": "ASSIGN",
       "description": "Count reworked jobs (model variable, via expression)",
-      "position": [
-        1100.0,
-        500.0
-      ],
-      "params": {
-        "assignments": [
-          {
-            "target": "reworks",
-            "expr": "reworks + 1"
-          }
-        ]
-      }
+      "position": [1100.0, 500.0],
+      "params": {"assignments": [{"target": "reworks", "expr": "reworks + 1"}]}
     },
     {
       "name": "record_drilling_exit",
       "type": "RECORD",
       "description": "Tally time in system for jobs exiting after Drilling",
-      "position": [
-        1100.0,
-        200.0
-      ],
+      "position": [1100.0, 200.0],
       "params": {
         "stat_name": "time_in_system",
         "kind": "tally",
@@ -157,10 +88,7 @@
       "name": "record_assembly_exit",
       "type": "RECORD",
       "description": "Tally time in system for jobs exiting after Assembly",
-      "position": [
-        1100.0,
-        400.0
-      ],
+      "position": [1100.0, 400.0],
       "params": {
         "stat_name": "time_in_system",
         "kind": "tally",
@@ -171,89 +99,34 @@
       "name": "dispose_1",
       "type": "DISPOSE",
       "description": "Jobs leave the shop",
-      "position": [
-        1300.0,
-        300.0
-      ]
+      "position": [1300.0, 300.0]
     }
   ],
   "links": [
-    {
-      "source": "create_1",
-      "target": "process_cutting"
-    },
-    {
-      "source": "process_cutting",
-      "target": "decide_cutting"
-    },
-    {
-      "source": "decide_cutting",
-      "target": "process_drilling"
-    },
-    {
-      "source": "decide_cutting",
-      "target": "process_assembly"
-    },
-    {
-      "source": "process_drilling",
-      "target": "decide_drilling"
-    },
-    {
-      "source": "decide_drilling",
-      "target": "process_assembly"
-    },
-    {
-      "source": "decide_drilling",
-      "target": "record_drilling_exit"
-    },
-    {
-      "source": "process_assembly",
-      "target": "decide_assembly"
-    },
-    {
-      "source": "decide_assembly",
-      "target": "assign_rework"
-    },
-    {
-      "source": "decide_assembly",
-      "target": "record_assembly_exit"
-    },
-    {
-      "source": "assign_rework",
-      "target": "process_cutting"
-    },
-    {
-      "source": "record_drilling_exit",
-      "target": "dispose_1"
-    },
-    {
-      "source": "record_assembly_exit",
-      "target": "dispose_1"
-    }
+    {"source": "create_1", "target": "process_cutting"},
+    {"source": "process_cutting", "target": "decide_cutting"},
+    {"source": "decide_cutting", "target": "process_drilling"},
+    {"source": "decide_cutting", "target": "process_assembly"},
+    {"source": "process_drilling", "target": "decide_drilling"},
+    {"source": "decide_drilling", "target": "process_assembly"},
+    {"source": "decide_drilling", "target": "record_drilling_exit"},
+    {"source": "process_assembly", "target": "decide_assembly"},
+    {"source": "decide_assembly", "target": "assign_rework"},
+    {"source": "decide_assembly", "target": "record_assembly_exit"},
+    {"source": "assign_rework", "target": "process_cutting"},
+    {"source": "record_drilling_exit", "target": "dispose_1"},
+    {"source": "record_assembly_exit", "target": "dispose_1"}
   ],
   "scenarios": [
     {
       "name": "Extra Assembly server",
       "description": "AssemblyStation capacity 2 -> 3 (a third assembler)",
-      "overrides": [
-        {
-          "path": "resources.AssemblyStation.capacity",
-          "value": 3
-        }
-      ]
+      "overrides": [{"path": "resources.AssemblyStation.capacity", "value": 3}]
     },
     {
       "name": "Less rework",
       "description": "Assembly rework probability 0.2 -> 0.1 (decide_assembly probs kept consistent: [0.1, 0.9])",
-      "overrides": [
-        {
-          "path": "blocks.decide_assembly.params.probs",
-          "value": [
-            0.1,
-            0.9
-          ]
-        }
-      ]
+      "overrides": [{"path": "blocks.decide_assembly.params.probs", "value": [0.1, 0.9]}]
     }
   ],
   "resources": [
@@ -291,38 +164,15 @@
     }
   ],
   "resource_sets": [
-    {
-      "name": "Drilling",
-      "members": [
-        "Drill1",
-        "Drill2"
-      ],
-      "rule": "SmallestNumberBusy"
-    }
+    {"name": "Drilling", "members": ["Drill1", "Drill2"], "rule": "SmallestNumberBusy"}
   ],
-  "variables": [
-    {
-      "name": "reworks",
-      "initial": 0
-    }
-  ],
-  "entities": [
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK",
-      "holding_cost": 0.05
-    }
-  ],
+  "variables": [{"name": "reworks", "initial": 0}],
+  "entities": [{"name": "DEFAULT", "shape": "circle", "color": "BLACK", "holding_cost": 0.05}],
   "info": {
     "title": "Job shop (Jackson network)",
     "category": "Manufacturing",
     "description": "Three-station job shop (Cutting, then a 0.6/0.4 split to Drilling or Assembly, with a 0.2 rework loop back to Cutting) modelled as an open Jackson network -- costed resources, a WIP holding cost, and two example scenarios (extra Assembly capacity, less rework)."
   },
-  "simulation": {
-    "time_limit": 10000,
-    "warmup": 2000,
-    "replications": 20
-  },
+  "simulation": {"time_limit": 10000, "warmup": 2000, "replications": 20},
   "outputs": {}
 }

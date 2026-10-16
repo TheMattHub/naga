@@ -6,33 +6,15 @@
       "name": "sir_agents_1",
       "type": "SUBMODEL",
       "description": "SIR epidemic (agents)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "SIR epidemic (agents)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "SIR epidemic (agents)"}
     }
   ],
   "agent_types": [
     {
       "name": "SIR Person",
-      "parameters": {
-        "beta": 0.25,
-        "gamma": 0.1
-      },
-      "states": [
-        {
-          "name": "S"
-        },
-        {
-          "name": "I"
-        },
-        {
-          "name": "R"
-        }
-      ],
+      "parameters": {"beta": 0.25, "gamma": 0.1},
+      "states": [{"name": "S"}, {"name": "I"}, {"name": "R"}],
       "initial_state": "S",
       "transitions": [
         {
@@ -41,12 +23,7 @@
           "rate": "beta * COUNT(\"$SIR People\", \"I\") / COUNT(\"$SIR People\")",
           "rate_unit": "minutes"
         },
-        {
-          "from": "I",
-          "to": "R",
-          "timeout": "EXPO(1 / gamma)",
-          "timeout_unit": "minutes"
-        }
+        {"from": "I", "to": "R", "timeout": "EXPO(1 / gamma)", "timeout_unit": "minutes"}
       ]
     }
   ],
@@ -55,23 +32,14 @@
       "name": "SIR People",
       "type": "SIR Person",
       "count": 2000,
-      "initial": [
-        {
-          "state": "I",
-          "count": 10
-        }
-      ]
+      "initial": [{"state": "I", "count": 10}]
     }
   ],
   "submodels": {
     "SIR epidemic (agents)": {
       "info": {
         "description": "The individual-based twin of the System dynamics library's SIR asset: 2000 Person agents, each a Susceptible/Infected/Recovered state machine. Infection is a SHARED rate beta * I / N (COUNT of the Infected state over the population) so every Susceptible agent's hazard tracks the current outbreak size; recovery is a per-agent EXPO(1/gamma) timeout. With beta=0.25, gamma=0.1 (R0=2.5) and 10 initial Infected, the final Recovered count converges to the classic final-size relation z = 1 - exp(-R0 z) as the population grows. Beta, gamma, the population and the initial Infected are this instance's own; the Outbreak preset fills beta and gamma from an illustrative catalogue.",
-        "library": {
-          "library": "agents",
-          "asset": "sir_agents",
-          "version": "1.2.0"
-        },
+        "library": {"library": "agents", "asset": "sir_agents", "version": "1.2.0"},
         "parameters": [
           {
             "name": "beta",
@@ -130,10 +98,7 @@
           "catalogue": "ABM Outbreaks",
           "label": "Outbreak",
           "group": "Parameters",
-          "map": {
-            "beta": "beta",
-            "gamma": "gamma"
-          },
+          "map": {"beta": "beta", "gamma": "gamma"},
           "rows": [
             "Default (R0 2.5, 10 days)",
             "Mild (R0 1.3, 4 days)",
@@ -141,18 +106,9 @@
           ],
           "units": {},
           "values": {
-            "Default (R0 2.5, 10 days)": {
-              "beta": 0.25,
-              "gamma": 0.1
-            },
-            "Mild (R0 1.3, 4 days)": {
-              "beta": 0.325,
-              "gamma": 0.25
-            },
-            "Highly contagious (R0 15, 8 days)": {
-              "beta": 1.875,
-              "gamma": 0.125
-            }
+            "Default (R0 2.5, 10 days)": {"beta": 0.25, "gamma": 0.1},
+            "Mild (R0 1.3, 4 days)": {"beta": 0.325, "gamma": 0.25},
+            "Highly contagious (R0 15, 8 days)": {"beta": 1.875, "gamma": 0.125}
           },
           "sources": {
             "Default (R0 2.5, 10 days)": "Illustrative.",
@@ -160,14 +116,7 @@
             "Highly contagious (R0 15, 8 days)": "Illustrative."
           }
         },
-        "owns": {
-          "agent_types": [
-            "SIR Person"
-          ],
-          "populations": [
-            "SIR People"
-          ]
-        }
+        "owns": {"agent_types": ["SIR Person"], "populations": ["SIR People"]}
       },
       "parameters": [
         {
@@ -197,23 +146,12 @@
       ],
       "scoped": {
         "agent_types": {
-          "SIR Person": {
-            "parameters.beta": {
-              "$arg": "beta"
-            },
-            "parameters.gamma": {
-              "$arg": "gamma"
-            }
-          }
+          "SIR Person": {"parameters.beta": {"$arg": "beta"}, "parameters.gamma": {"$arg": "gamma"}}
         },
         "populations": {
           "SIR People": {
-            "count": {
-              "$arg": "population"
-            },
-            "initial.0.count": {
-              "$arg": "initial_infected"
-            }
+            "count": {"$arg": "population"},
+            "initial.0.count": {"$arg": "initial_infected"}
           }
         }
       },
@@ -227,10 +165,6 @@
     "category": "Agent-based",
     "description": "The individual-based twin of the System dynamics library's SIR asset: 2000 Person agents, each a Susceptible/Infected/Recovered state machine. Infection is a SHARED rate beta * I / N (COUNT of the Infected state over the population) so every Susceptible agent's hazard tracks the current outbreak size; recovery is a per-agent EXPO(1/gamma) timeout. With beta=0.25, gamma=0.1 (R0=2.5) and 10 initial Infected, the final Recovered count converges to the classic final-size relation z = 1 - exp(-R0 z) as the population grows. Beta, gamma, the population and the initial Infected are this instance's own; the Outbreak preset fills beta and gamma from an illustrative catalogue."
   },
-  "simulation": {
-    "time_limit": 150.0,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 150.0, "warmup": 0, "replications": 1},
   "outputs": {}
 }

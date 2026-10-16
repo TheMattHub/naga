@@ -6,48 +6,22 @@
       "name": "sir_small_world_1",
       "type": "SUBMODEL",
       "description": "SIR on a small-world network",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "SIR on a small-world network"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "SIR on a small-world network"}
     }
   ],
   "agent_types": [
     {
       "name": "SIR SW Person",
-      "parameters": {
-        "recovery_time": 5.0
-      },
-      "states": [
-        {
-          "name": "S"
-        },
-        {
-          "name": "I"
-        },
-        {
-          "name": "R"
-        }
-      ],
+      "parameters": {"recovery_time": 5.0},
+      "states": [{"name": "S"}, {"name": "I"}, {"name": "R"}],
       "transitions": [
-        {
-          "from": "S",
-          "to": "I",
-          "message": "infect"
-        },
+        {"from": "S", "to": "I", "message": "infect"},
         {
           "from": "I",
           "to": "R",
           "timeout": "recovery_time",
-          "actions": [
-            {
-              "send": "infect",
-              "to": "links"
-            }
-          ],
+          "actions": [{"send": "infect", "to": "links"}],
           "timeout_unit": "minutes"
         }
       ],
@@ -59,28 +33,15 @@
       "name": "SIR SW People",
       "type": "SIR SW Person",
       "count": 200,
-      "initial": [
-        {
-          "state": "I",
-          "count": 1
-        }
-      ],
-      "network": {
-        "kind": "small_world",
-        "k": 4,
-        "beta": 0.1
-      }
+      "initial": [{"state": "I", "count": 1}],
+      "network": {"kind": "small_world", "k": 4, "beta": 0.1}
     }
   ],
   "submodels": {
     "SIR on a small-world network": {
       "info": {
         "description": "SIR spreading over a Watts-Strogatz network (Population Person agents, `network`: \"small_world\", degree K, rewiring Beta): a Susceptible only ever becomes Infected by MESSAGE from a linked neighbour, sent the instant that neighbour recovers (`send(\"infect\", \"links\")` on its own I->R transition) -- so infection rides the network structure itself, not a mean-field rate. Beta=0 collapses the network to a plain ring (each agent linked to its K nearest) and, with a CONSTANT recovery time instead of an exponential one, the outbreak becomes a deterministic wavefront: node at ring-distance d recovers at exactly (d + 1) * Recovery time, so Recovered(t) is an EXACT closed form, not a Monte Carlo estimate -- the oracle this asset ships with. The default instance (Beta 0.1) is an ordinary small-world outbreak, faster and larger than the pure ring since the rewired long-range links shortcut the front; Degree, Beta, Recovery time, Population and Initial infected are this instance's own.",
-        "library": {
-          "library": "abm_classics",
-          "asset": "sir_small_world",
-          "version": "1.2.0"
-        },
+        "library": {"library": "abm_classics", "asset": "sir_small_world", "version": "1.2.0"},
         "parameters": [
           {
             "name": "degree",
@@ -148,14 +109,7 @@
             "refers_to": ""
           }
         ],
-        "owns": {
-          "agent_types": [
-            "SIR SW Person"
-          ],
-          "populations": [
-            "SIR SW People"
-          ]
-        }
+        "owns": {"agent_types": ["SIR SW Person"], "populations": ["SIR SW People"]}
       },
       "parameters": [
         {
@@ -190,27 +144,13 @@
         }
       ],
       "scoped": {
-        "agent_types": {
-          "SIR SW Person": {
-            "parameters.recovery_time": {
-              "$arg": "recovery_time"
-            }
-          }
-        },
+        "agent_types": {"SIR SW Person": {"parameters.recovery_time": {"$arg": "recovery_time"}}},
         "populations": {
           "SIR SW People": {
-            "count": {
-              "$arg": "population"
-            },
-            "initial.0.count": {
-              "$arg": "initial_infected"
-            },
-            "network.k": {
-              "$arg": "degree"
-            },
-            "network.beta": {
-              "$arg": "beta"
-            }
+            "count": {"$arg": "population"},
+            "initial.0.count": {"$arg": "initial_infected"},
+            "network.k": {"$arg": "degree"},
+            "network.beta": {"$arg": "beta"}
           }
         }
       },
@@ -224,10 +164,6 @@
     "category": "Agent-based",
     "description": "SIR spreading over a Watts-Strogatz network (Population Person agents, `network`: \"small_world\", degree K, rewiring Beta): a Susceptible only ever becomes Infected by MESSAGE from a linked neighbour, sent the instant that neighbour recovers (`send(\"infect\", \"links\")` on its own I->R transition) -- so infection rides the network structure itself, not a mean-field rate. Beta=0 collapses the network to a plain ring (each agent linked to its K nearest) and, with a CONSTANT recovery time instead of an exponential one, the outbreak becomes a deterministic wavefront: node at ring-distance d recovers at exactly (d + 1) * Recovery time, so Recovered(t) is an EXACT closed form, not a Monte Carlo estimate -- the oracle this asset ships with. The default instance (Beta 0.1) is an ordinary small-world outbreak, faster and larger than the pure ring since the rewired long-range links shortcut the front; Degree, Beta, Recovery time, Population and Initial infected are this instance's own."
   },
-  "simulation": {
-    "time_limit": 52.0,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 52.0, "warmup": 0, "replications": 1},
   "outputs": {}
 }

@@ -5,30 +5,16 @@
     {
       "name": "widget_arrives",
       "type": "CREATE",
-      "position": [
-        200.0,
-        240.0
-      ],
-      "params": {
-        "e_type": "WIDGET",
-        "dist_params": {
-          "value": 10.0
-        },
-        "max_arrivals": 1
-      }
+      "position": [200.0, 240.0],
+      "params": {"e_type": "WIDGET", "dist_params": {"value": 10.0}, "max_arrivals": 1}
     },
     {
       "name": "gadget_arrives",
       "type": "CREATE",
-      "position": [
-        200.0,
-        400.0
-      ],
+      "position": [200.0, 400.0],
       "params": {
         "e_type": "GADGET",
-        "dist_params": {
-          "value": 10.0
-        },
+        "dist_params": {"value": 10.0},
         "max_arrivals": 1,
         "start_time": 100
       }
@@ -36,107 +22,47 @@
     {
       "name": "cut",
       "type": "PROCESS",
-      "position": [
-        460.0,
-        320.0
-      ],
+      "position": [460.0, 320.0],
       "params": {
-        "dist_params": {
-          "value": "TABLE('ProcessTime', entity.e_type, 'Cut')"
-        },
+        "dist_params": {"value": "TABLE('ProcessTime', entity.e_type, 'Cut')"},
         "resource_name": "Cutter"
       }
     },
     {
       "name": "pack",
       "type": "PROCESS",
-      "position": [
-        700.0,
-        320.0
-      ],
+      "position": [700.0, 320.0],
       "params": {
-        "dist_params": {
-          "value": "TABLE('ProcessTime', entity.e_type, 'Pack')"
-        },
+        "dist_params": {"value": "TABLE('ProcessTime', entity.e_type, 'Pack')"},
         "resource_name": "Packer"
       }
     },
-    {
-      "name": "leave",
-      "type": "DISPOSE",
-      "position": [
-        940.0,
-        320.0
-      ]
-    }
+    {"name": "leave", "type": "DISPOSE", "position": [940.0, 320.0]}
   ],
   "links": [
-    {
-      "source": "widget_arrives",
-      "target": "cut"
-    },
-    {
-      "source": "gadget_arrives",
-      "target": "cut"
-    },
-    {
-      "source": "cut",
-      "target": "pack"
-    },
-    {
-      "source": "pack",
-      "target": "leave"
-    }
+    {"source": "widget_arrives", "target": "cut"},
+    {"source": "gadget_arrives", "target": "cut"},
+    {"source": "cut", "target": "pack"},
+    {"source": "pack", "target": "leave"}
   ],
   "resources": [
-    {
-      "name": "Cutter",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Packer",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
+    {"name": "Cutter", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Packer", "capacity": 1, "discipline": "FIFO"}
   ],
   "tables": [
     {
       "name": "ProcessTime",
       "description": "Minutes per product per station",
-      "keys": [
-        "WIDGET",
-        "GADGET"
-      ],
-      "columns": [
-        "Cut",
-        "Pack"
-      ],
-      "values": [
-        [
-          3,
-          2
-        ],
-        [
-          4,
-          6
-        ]
-      ],
+      "keys": ["WIDGET", "GADGET"],
+      "columns": ["Cut", "Pack"],
+      "values": [[3, 2], [4, 6]],
       "key_mode": "exact",
       "column_mode": "exact"
     }
   ],
   "entities": [
-    {
-      "name": "WIDGET",
-      "shape": "square",
-      "color": "BLUE"
-    },
-    {
-      "name": "GADGET",
-      "shape": "circle",
-      "color": "GREEN"
-    }
+    {"name": "WIDGET", "shape": "square", "color": "BLUE"},
+    {"name": "GADGET", "shape": "circle", "color": "GREEN"}
   ],
   "info": {
     "title": "Process time lookup table",

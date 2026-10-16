@@ -6,22 +6,11 @@
       "name": "population_1",
       "type": "SUBMODEL",
       "description": "Population (logistic)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Population (logistic)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Population (logistic)"}
     }
   ],
-  "levels": [
-    {
-      "name": "SD Population",
-      "initial": 10.0,
-      "min": 0.0
-    }
-  ],
+  "levels": [{"name": "SD Population", "initial": 10.0, "min": 0.0}],
   "flows": [
     {
       "name": "SD growth",
@@ -30,24 +19,14 @@
     }
   ],
   "auxiliaries": [
-    {
-      "name": "SD growth rate",
-      "expr": "0.2"
-    },
-    {
-      "name": "SD carrying capacity",
-      "expr": "1000"
-    }
+    {"name": "SD growth rate", "expr": "0.2"},
+    {"name": "SD carrying capacity", "expr": "1000"}
   ],
   "submodels": {
     "Population (logistic)": {
       "info": {
         "description": "The textbook logistic-growth stock and flow: one level (Population) fed by one flow whose rate reads the level itself, r * P * (1 - P/K), so growth slows as the population nears its carrying capacity. Needs the system-dynamics grid (simulation.sd) to integrate -- placing this asset does not set it for you (Run > Run experiment (SD step and method)), because a model may mix this with entities that need no grid at all.",
-        "library": {
-          "library": "sd",
-          "asset": "population",
-          "version": "1.1.0"
-        },
+        "library": {"library": "sd", "asset": "population", "version": "1.1.0"},
         "parameters": [
           {
             "name": "initial_population",
@@ -90,16 +69,9 @@
           }
         ],
         "owns": {
-          "levels": [
-            "SD Population"
-          ],
-          "auxiliaries": [
-            "SD growth rate",
-            "SD carrying capacity"
-          ],
-          "flows": [
-            "SD growth"
-          ]
+          "levels": ["SD Population"],
+          "auxiliaries": ["SD growth rate", "SD carrying capacity"],
+          "flows": ["SD growth"]
         }
       },
       "parameters": [
@@ -123,28 +95,12 @@
         }
       ],
       "scoped": {
-        "levels": {
-          "SD Population": {
-            "initial": {
-              "$arg": "initial_population"
-            }
-          }
-        },
+        "levels": {"SD Population": {"initial": {"$arg": "initial_population"}}},
         "auxiliaries": {
-          "SD growth rate": {
-            "expr": {
-              "$arg": "growth_rate"
-            }
-          },
-          "SD carrying capacity": {
-            "expr": {
-              "$arg": "carrying_capacity"
-            }
-          }
+          "SD growth rate": {"expr": {"$arg": "growth_rate"}},
+          "SD carrying capacity": {"expr": {"$arg": "carrying_capacity"}}
         },
-        "flows": {
-          "SD growth": {}
-        }
+        "flows": {"SD growth": {}}
       },
       "blocks": [],
       "links": [],
@@ -160,11 +116,7 @@
     "time_limit": 50.0,
     "warmup": 0,
     "replications": 1,
-    "sd": {
-      "dt": 0.1,
-      "method": "rk4",
-      "time_unit": "minutes"
-    }
+    "sd": {"dt": 0.1, "method": "rk4", "time_unit": "minutes"}
   },
   "outputs": {}
 }

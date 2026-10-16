@@ -6,171 +6,76 @@
       "name": "wolf_sheep_1",
       "type": "SUBMODEL",
       "description": "Wolf-Sheep predation with grass (grid)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Wolf-Sheep predation with grass (grid)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Wolf-Sheep predation with grass (grid)"}
     }
   ],
   "agent_types": [
     {
       "name": "Sheep",
-      "parameters": {
-        "gain": 4.0,
-        "sheep_reproduce": 0.04,
-        "regrowth": 30.0
-      },
-      "attributes": [
-        {
-          "name": "energy",
-          "init": "floor(UNIF(0, 2 * gain))"
-        }
-      ],
-      "states": [
-        {
-          "name": "Alive"
-        }
-      ],
+      "parameters": {"gain": 4.0, "sheep_reproduce": 0.04, "regrowth": 30.0},
+      "attributes": [{"name": "energy", "init": "floor(UNIF(0, 2 * gain))"}],
+      "states": [{"name": "Alive"}],
       "transitions": [
-        {
-          "from": "Alive",
-          "to": "Alive",
-          "tick": "self.energy < 0",
-          "actions": [
-            {
-              "remove": "self"
-            }
-          ]
-        },
+        {"from": "Alive", "to": "Alive", "tick": "self.energy < 0", "actions": [{"remove": "self"}]},
         {
           "from": "Alive",
           "to": "Alive",
           "tick": "UNIF(0, 1) < sheep_reproduce",
           "actions": [
-            {
-              "spawn": "$Sheep",
-              "count": 1,
-              "init": {
-                "energy": "self.energy / 2"
-              }
-            },
-            {
-              "target": "self.energy",
-              "expr": "self.energy / 2"
-            }
+            {"spawn": "$Sheep", "count": 1, "init": {"energy": "self.energy / 2"}},
+            {"target": "self.energy", "expr": "self.energy / 2"}
           ]
         }
       ],
       "initial_state": "Alive",
       "space": {
         "kind": "grid",
-        "size": [
-          30,
-          30
-        ],
+        "size": [30, 30],
         "torus": true,
         "neighbourhood": "moore",
         "patches": [
           {
             "name": "grass",
             "init": "IF(UNIF(0, 1) < 0.5, 30, floor(UNIF(0, 30)))",
-            "grow": {
-              "rate": 1,
-              "max": 30
-            }
+            "grow": {"rate": 1, "max": 30}
           }
         ],
         "patch_tick": 1,
         "time_unit": "minutes"
       },
-      "tick": {
-        "dt": 1,
-        "activation": "random",
-        "time_unit": "minutes"
-      },
+      "tick": {"dt": 1, "activation": "random", "time_unit": "minutes"},
       "on_tick": [
-        {
-          "move_random": "any"
-        },
+        {"move_random": "any"},
         {
           "target": "self.energy",
           "expr": "self.energy - 1 + IF(PATCH(\"grass\") >= regrowth, gain, 0)"
         },
-        {
-          "target": "patch.grass",
-          "expr": "IF(PATCH(\"grass\") >= regrowth, 0, PATCH(\"grass\"))"
-        }
+        {"target": "patch.grass", "expr": "IF(PATCH(\"grass\") >= regrowth, 0, PATCH(\"grass\"))"}
       ]
     },
     {
       "name": "Wolf",
-      "parameters": {
-        "gain": 20.0,
-        "wolf_reproduce": 0.05
-      },
-      "attributes": [
-        {
-          "name": "energy",
-          "init": "floor(UNIF(0, 2 * gain))"
-        }
-      ],
-      "states": [
-        {
-          "name": "Alive"
-        }
-      ],
+      "parameters": {"gain": 20.0, "wolf_reproduce": 0.05},
+      "attributes": [{"name": "energy", "init": "floor(UNIF(0, 2 * gain))"}],
+      "states": [{"name": "Alive"}],
       "transitions": [
-        {
-          "from": "Alive",
-          "to": "Alive",
-          "tick": "self.energy < 0",
-          "actions": [
-            {
-              "remove": "self"
-            }
-          ]
-        },
+        {"from": "Alive", "to": "Alive", "tick": "self.energy < 0", "actions": [{"remove": "self"}]},
         {
           "from": "Alive",
           "to": "Alive",
           "tick": "UNIF(0, 1) < wolf_reproduce",
           "actions": [
-            {
-              "spawn": "$Wolves",
-              "count": 1,
-              "init": {
-                "energy": "self.energy / 2"
-              }
-            },
-            {
-              "target": "self.energy",
-              "expr": "self.energy / 2"
-            }
+            {"spawn": "$Wolves", "count": 1, "init": {"energy": "self.energy / 2"}},
+            {"target": "self.energy", "expr": "self.energy / 2"}
           ]
         }
       ],
       "initial_state": "Alive",
-      "space": {
-        "kind": "grid",
-        "size": [
-          30,
-          30
-        ],
-        "torus": true,
-        "neighbourhood": "moore"
-      },
-      "tick": {
-        "dt": 1,
-        "activation": "random",
-        "time_unit": "minutes"
-      },
+      "space": {"kind": "grid", "size": [30, 30], "torus": true, "neighbourhood": "moore"},
+      "tick": {"dt": 1, "activation": "random", "time_unit": "minutes"},
       "on_tick": [
-        {
-          "move_random": "any"
-        },
+        {"move_random": "any"},
         {
           "target": "self.energy",
           "expr": "self.energy - 1 + IF(CELL_COUNT(\"$Sheep\") > 0, gain, 0)"
@@ -186,28 +91,14 @@
     }
   ],
   "populations": [
-    {
-      "name": "Sheep",
-      "type": "Sheep",
-      "count": 35,
-      "max_count": 4000
-    },
-    {
-      "name": "Wolves",
-      "type": "Wolf",
-      "count": 17,
-      "max_count": 2000
-    }
+    {"name": "Sheep", "type": "Sheep", "count": 35, "max_count": 4000},
+    {"name": "Wolves", "type": "Wolf", "count": 17, "max_count": 2000}
   ],
   "submodels": {
     "Wolf-Sheep predation with grass (grid)": {
       "info": {
         "description": "NetLogo's 'Wolf Sheep Predation' in its sheep-wolves-grass version, with NetLogo's own parameters: 35 Sheep and 17 Wolves (NetLogo's 100/50 scaled to this 30x30 torus, about a third of its 51x51 world) wander one Moore cell per tick in random order and lose 1 energy a tick. GRASS is a patch that regrows (`grow: {rate: 1, max: 30}`): a cell at 30 is green, a sheep on it gains Sheep gain from food and sets it to 0, and it is green again exactly 30 ticks later -- NetLogo's grass-regrowth-time countdown, counted up. A Wolf eats ONE sheep on its cell, drawn from its own stream (the one-to-one claim: `remove: {population: Sheep, where: <same cell as sender>, random: true}`), and gains Wolf gain from food only then; two wolves on one sheep cannot both eat it. Either species reproduces with its probability each tick (halving its energy with the newborn) and dies below zero energy. Oracle (seed 1, 300 ticks, statistics after a 50-tick warm-up): sheep, wolves AND grass coexist through repeated boom-bust oscillations -- a sheep starts with under 8 energy and pays 1 a tick, so sheep still alive at t=300 can only be eating regrown grass. A qualitative oracle on the Min/Max/Final columns: a small predator-prey system is chaotic, and averaging replications would average away the cycles. Known deviation: a newborn is placed at a random cell (the population's placement rule), not beside its parent.",
-        "library": {
-          "library": "abm_classics",
-          "asset": "wolf_sheep",
-          "version": "1.2.0"
-        },
+        "library": {"library": "abm_classics", "asset": "wolf_sheep", "version": "1.2.0"},
         "parameters": [
           {
             "name": "sheep_gain_from_food",
@@ -262,16 +153,7 @@
             "refers_to": ""
           }
         ],
-        "owns": {
-          "agent_types": [
-            "Sheep",
-            "Wolf"
-          ],
-          "populations": [
-            "Sheep",
-            "Wolves"
-          ]
-        }
+        "owns": {"agent_types": ["Sheep", "Wolf"], "populations": ["Sheep", "Wolves"]}
       },
       "parameters": [
         {
@@ -302,26 +184,15 @@
       "scoped": {
         "agent_types": {
           "Sheep": {
-            "parameters.gain": {
-              "$arg": "sheep_gain_from_food"
-            },
-            "parameters.sheep_reproduce": {
-              "$arg": "sheep_reproduce"
-            }
+            "parameters.gain": {"$arg": "sheep_gain_from_food"},
+            "parameters.sheep_reproduce": {"$arg": "sheep_reproduce"}
           },
           "Wolf": {
-            "parameters.gain": {
-              "$arg": "wolf_gain_from_food"
-            },
-            "parameters.wolf_reproduce": {
-              "$arg": "wolf_reproduce"
-            }
+            "parameters.gain": {"$arg": "wolf_gain_from_food"},
+            "parameters.wolf_reproduce": {"$arg": "wolf_reproduce"}
           }
         },
-        "populations": {
-          "Sheep": {},
-          "Wolves": {}
-        }
+        "populations": {"Sheep": {}, "Wolves": {}}
       },
       "blocks": [],
       "links": [],
@@ -333,10 +204,6 @@
     "category": "Agent-based",
     "description": "NetLogo's 'Wolf Sheep Predation' in its sheep-wolves-grass version, with NetLogo's own parameters: 35 Sheep and 17 Wolves (NetLogo's 100/50 scaled to this 30x30 torus, about a third of its 51x51 world) wander one Moore cell per tick in random order and lose 1 energy a tick. GRASS is a patch that regrows (`grow: {rate: 1, max: 30}`): a cell at 30 is green, a sheep on it gains Sheep gain from food and sets it to 0, and it is green again exactly 30 ticks later -- NetLogo's grass-regrowth-time countdown, counted up. A Wolf eats ONE sheep on its cell, drawn from its own stream (the one-to-one claim: `remove: {population: Sheep, where: <same cell as sender>, random: true}`), and gains Wolf gain from food only then; two wolves on one sheep cannot both eat it. Either species reproduces with its probability each tick (halving its energy with the newborn) and dies below zero energy. Oracle (seed 1, 300 ticks, statistics after a 50-tick warm-up): sheep, wolves AND grass coexist through repeated boom-bust oscillations -- a sheep starts with under 8 energy and pays 1 a tick, so sheep still alive at t=300 can only be eating regrown grass. A qualitative oracle on the Min/Max/Final columns: a small predator-prey system is chaotic, and averaging replications would average away the cycles. Known deviation: a newborn is placed at a random cell (the population's placement rule), not beside its parent."
   },
-  "simulation": {
-    "time_limit": 300.0,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 300.0, "warmup": 0, "replications": 1},
   "outputs": {}
 }

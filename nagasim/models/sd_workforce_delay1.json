@@ -6,22 +6,11 @@
       "name": "workforce_delay1_1",
       "type": "SUBMODEL",
       "description": "Workforce (goal-seeking)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Workforce (goal-seeking)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Workforce (goal-seeking)"}
     }
   ],
-  "levels": [
-    {
-      "name": "SD Workforce",
-      "initial": 20.0,
-      "min": null
-    }
-  ],
+  "levels": [{"name": "SD Workforce", "initial": 20.0, "min": null}],
   "flows": [
     {
       "name": "SD hiring",
@@ -31,18 +20,9 @@
     }
   ],
   "auxiliaries": [
-    {
-      "name": "SD target workforce",
-      "expr": "100"
-    },
-    {
-      "name": "SD adjustment time",
-      "expr": "10"
-    },
-    {
-      "name": "SD reporting delay",
-      "expr": "2"
-    },
+    {"name": "SD target workforce", "expr": "100"},
+    {"name": "SD adjustment time", "expr": "10"},
+    {"name": "SD reporting delay", "expr": "2"},
     {
       "name": "SD Reported Workforce",
       "expr": "DELAY1(LEVEL(\"$SD Workforce\"), AUX(\"$SD reporting delay\"))"
@@ -52,11 +32,7 @@
     "Workforce (goal-seeking)": {
       "info": {
         "description": "Headcount that hires (or attrits) toward a target at a fixed adjustment rate -- the textbook first-order goal-seeking structure, (target - Workforce) / adjustment_time -- an exact exponential approach to the target. \"SD Reported Workforce\" is a DELAY1-smoothed reading of the headcount (a reported figure that lags the real one, e.g. because payroll reports it monthly); it does not feed back into hiring. Needs simulation.sd.",
-        "library": {
-          "library": "sd",
-          "asset": "workforce_delay1",
-          "version": "1.1.0"
-        },
+        "library": {"library": "sd", "asset": "workforce_delay1", "version": "1.1.0"},
         "parameters": [
           {
             "name": "initial_workforce",
@@ -112,18 +88,14 @@
           }
         ],
         "owns": {
-          "levels": [
-            "SD Workforce"
-          ],
+          "levels": ["SD Workforce"],
           "auxiliaries": [
             "SD target workforce",
             "SD adjustment time",
             "SD reporting delay",
             "SD Reported Workforce"
           ],
-          "flows": [
-            "SD hiring"
-          ]
+          "flows": ["SD hiring"]
         }
       },
       "parameters": [
@@ -153,34 +125,14 @@
         }
       ],
       "scoped": {
-        "levels": {
-          "SD Workforce": {
-            "initial": {
-              "$arg": "initial_workforce"
-            }
-          }
-        },
+        "levels": {"SD Workforce": {"initial": {"$arg": "initial_workforce"}}},
         "auxiliaries": {
-          "SD target workforce": {
-            "expr": {
-              "$arg": "target_workforce"
-            }
-          },
-          "SD adjustment time": {
-            "expr": {
-              "$arg": "adjustment_time"
-            }
-          },
-          "SD reporting delay": {
-            "expr": {
-              "$arg": "reporting_delay"
-            }
-          },
+          "SD target workforce": {"expr": {"$arg": "target_workforce"}},
+          "SD adjustment time": {"expr": {"$arg": "adjustment_time"}},
+          "SD reporting delay": {"expr": {"$arg": "reporting_delay"}},
           "SD Reported Workforce": {}
         },
-        "flows": {
-          "SD hiring": {}
-        }
+        "flows": {"SD hiring": {}}
       },
       "blocks": [],
       "links": [],
@@ -196,11 +148,7 @@
     "time_limit": 40.0,
     "warmup": 0,
     "replications": 1,
-    "sd": {
-      "dt": 0.1,
-      "method": "rk4",
-      "time_unit": "minutes"
-    }
+    "sd": {"dt": 0.1, "method": "rk4", "time_unit": "minutes"}
   },
   "outputs": {}
 }

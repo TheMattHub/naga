@@ -5,203 +5,95 @@
     {
       "name": "pallets_fast",
       "type": "CREATE",
-      "position": [
-        -260.0,
-        -120.0
-      ],
-      "layout_position": [
-        -18.0,
-        2.0
-      ],
+      "position": [-260.0, -120.0],
+      "layout_position": [-18.0, 2.0],
       "params": {
         "e_type": "Fast mover",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.22
-        },
+        "dist_params": {"rate": 0.22},
         "sequence": "Fast mover"
       }
     },
     {
       "name": "pallets_bulk",
       "type": "CREATE",
-      "position": [
-        -260.0,
-        40.0
-      ],
-      "layout_position": [
-        -18.0,
-        18.0
-      ],
+      "position": [-260.0, 40.0],
+      "layout_position": [-18.0, 18.0],
       "params": {
         "e_type": "Bulk",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.14
-        },
+        "dist_params": {"rate": 0.14},
         "sequence": "Bulk"
       }
     },
     {
       "name": "to_first_stop",
       "type": "ROUTE",
-      "position": [
-        -100.0,
-        -40.0
-      ],
-      "layout_position": [
-        -9.0,
-        10.0
-      ]
+      "position": [-100.0, -40.0],
+      "layout_position": [-9.0, 10.0]
     },
-    {
-      "name": "Dock",
-      "type": "STATION",
-      "position": [
-        60.0,
-        -40.0
-      ],
-      "params": {
-        "node": "dock"
-      }
-    },
+    {"name": "Dock", "type": "STATION", "position": [60.0, -40.0], "params": {"node": "dock"}},
     {
       "name": "unload",
       "type": "PROCESS",
-      "position": [
-        200.0,
-        -40.0
-      ],
-      "layout_position": [
-        0.0,
-        20.0
-      ],
+      "position": [200.0, -40.0],
+      "layout_position": [0.0, 20.0],
       "params": {
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 2.0,
-          "mode": 3.0,
-          "high": 5.0
-        },
+        "dist_params": {"low": 2.0, "mode": 3.0, "high": 5.0},
         "resource_name": "Dock crew"
       }
     },
-    {
-      "name": "Storage A",
-      "type": "STATION",
-      "position": [
-        60.0,
-        80.0
-      ],
-      "params": {
-        "node": "zone_a"
-      }
-    },
+    {"name": "Storage A", "type": "STATION", "position": [60.0, 80.0], "params": {"node": "zone_a"}},
     {
       "name": "putaway_a",
       "type": "DELAY",
-      "position": [
-        200.0,
-        80.0
-      ],
-      "layout_position": [
-        30.0,
-        30.0
-      ],
+      "position": [200.0, 80.0],
+      "layout_position": [30.0, 30.0],
       "params": {
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 1.0,
-          "mode": 1.5,
-          "high": 2.5
-        }
+        "dist_params": {"low": 1.0, "mode": 1.5, "high": 2.5}
       }
     },
     {
       "name": "Storage B",
       "type": "STATION",
-      "position": [
-        60.0,
-        200.0
-      ],
-      "params": {
-        "node": "zone_b"
-      }
+      "position": [60.0, 200.0],
+      "params": {"node": "zone_b"}
     },
     {
       "name": "putaway_b",
       "type": "DELAY",
-      "position": [
-        200.0,
-        200.0
-      ],
-      "layout_position": [
-        55.0,
-        40.0
-      ],
+      "position": [200.0, 200.0],
+      "layout_position": [55.0, 40.0],
       "params": {
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 1.5,
-          "mode": 2.5,
-          "high": 4.0
-        }
+        "dist_params": {"low": 1.5, "mode": 2.5, "high": 4.0}
       }
     },
-    {
-      "name": "Picking",
-      "type": "STATION",
-      "position": [
-        60.0,
-        320.0
-      ],
-      "params": {
-        "node": "pick"
-      }
-    },
+    {"name": "Picking", "type": "STATION", "position": [60.0, 320.0], "params": {"node": "pick"}},
     {
       "name": "pick_order",
       "type": "PROCESS",
-      "position": [
-        200.0,
-        320.0
-      ],
-      "layout_position": [
-        80.0,
-        30.0
-      ],
+      "position": [200.0, 320.0],
+      "layout_position": [80.0, 30.0],
       "params": {
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 3.0,
-          "mode": 4.5,
-          "high": 7.0
-        },
+        "dist_params": {"low": 3.0, "mode": 4.5, "high": 7.0},
         "resource_name": "Pickers"
       }
     },
     {
       "name": "forklift_move",
       "type": "TRANSPORT",
-      "position": [
-        400.0,
-        140.0
-      ],
-      "layout_position": [
-        45.0,
-        22.0
-      ],
-      "params": {
-        "fleet": "Forklifts"
-      }
+      "position": [400.0, 140.0],
+      "layout_position": [45.0, 22.0],
+      "params": {"fleet": "Forklifts"}
     },
     {
       "name": "takeaway_belt",
       "type": "CONVEYOR",
-      "position": [
-        580.0,
-        140.0
-      ],
+      "position": [580.0, 140.0],
       "params": {
         "speed": 12.0,
         "spacing": 1.4,
@@ -210,146 +102,53 @@
         "to_node": "ship"
       }
     },
-    {
-      "name": "Shipping",
-      "type": "STATION",
-      "position": [
-        740.0,
-        140.0
-      ],
-      "params": {
-        "node": "ship"
-      }
-    },
+    {"name": "Shipping", "type": "STATION", "position": [740.0, 140.0], "params": {"node": "ship"}},
     {
       "name": "load_truck",
       "type": "PROCESS",
-      "position": [
-        880.0,
-        140.0
-      ],
-      "layout_position": [
-        80.0,
-        0.0
-      ],
+      "position": [880.0, 140.0],
+      "layout_position": [80.0, 0.0],
       "params": {
         "action": "Delay Release",
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 1.0,
-          "mode": 1.5,
-          "high": 2.5
-        },
+        "dist_params": {"low": 1.0, "mode": 1.5, "high": 2.5},
         "resource_name": "Loaders"
       }
     },
     {
       "name": "shipped",
       "type": "DISPOSE",
-      "position": [
-        1020.0,
-        140.0
-      ],
-      "layout_position": [
-        90.0,
-        0.0
-      ]
+      "position": [1020.0, 140.0],
+      "layout_position": [90.0, 0.0]
     }
   ],
   "links": [
-    {
-      "source": "pallets_fast",
-      "target": "to_first_stop"
-    },
-    {
-      "source": "pallets_bulk",
-      "target": "to_first_stop"
-    },
-    {
-      "source": "to_first_stop",
-      "target": "shipped"
-    },
-    {
-      "source": "Dock",
-      "target": "unload"
-    },
-    {
-      "source": "unload",
-      "target": "forklift_move"
-    },
-    {
-      "source": "Storage A",
-      "target": "putaway_a"
-    },
-    {
-      "source": "putaway_a",
-      "target": "forklift_move"
-    },
-    {
-      "source": "Storage B",
-      "target": "putaway_b"
-    },
-    {
-      "source": "putaway_b",
-      "target": "forklift_move"
-    },
-    {
-      "source": "Picking",
-      "target": "pick_order"
-    },
-    {
-      "source": "pick_order",
-      "target": "forklift_move"
-    },
-    {
-      "source": "forklift_move",
-      "target": "takeaway_belt"
-    },
-    {
-      "source": "takeaway_belt",
-      "target": "Shipping"
-    },
-    {
-      "source": "Shipping",
-      "target": "load_truck"
-    },
-    {
-      "source": "load_truck",
-      "target": "shipped"
-    }
+    {"source": "pallets_fast", "target": "to_first_stop"},
+    {"source": "pallets_bulk", "target": "to_first_stop"},
+    {"source": "to_first_stop", "target": "shipped"},
+    {"source": "Dock", "target": "unload"},
+    {"source": "unload", "target": "forklift_move"},
+    {"source": "Storage A", "target": "putaway_a"},
+    {"source": "putaway_a", "target": "forklift_move"},
+    {"source": "Storage B", "target": "putaway_b"},
+    {"source": "putaway_b", "target": "forklift_move"},
+    {"source": "Picking", "target": "pick_order"},
+    {"source": "pick_order", "target": "forklift_move"},
+    {"source": "forklift_move", "target": "takeaway_belt"},
+    {"source": "takeaway_belt", "target": "Shipping"},
+    {"source": "Shipping", "target": "load_truck"},
+    {"source": "load_truck", "target": "shipped"}
   ],
   "scenarios": [
-    {
-      "name": "Four forklifts",
-      "overrides": [
-        {
-          "path": "fleets.Forklifts.count",
-          "value": 4
-        }
-      ]
-    },
+    {"name": "Four forklifts", "overrides": [{"path": "fleets.Forklifts.count", "value": 4}]},
     {
       "name": "Dock across the yard",
       "overrides": [
-        {
-          "path": "network.nodes.dock.x",
-          "value": -70.0
-        },
-        {
-          "path": "network.segments.dock->aisle_w.length",
-          "value": 90.0
-        }
+        {"path": "network.nodes.dock.x", "value": -70.0},
+        {"path": "network.segments.dock->aisle_w.length", "value": 90.0}
       ]
     },
-    {
-      "name": "FIFO dispatch",
-      "overrides": [
-        {
-          "path": "fleets.Forklifts.dispatch",
-          "value": "fifo"
-        }
-      ]
-    }
+    {"name": "FIFO dispatch", "overrides": [{"path": "fleets.Forklifts.dispatch", "value": "fifo"}]}
   ],
   "resources": [
     {
@@ -381,51 +180,23 @@
     {
       "name": "Fast mover",
       "steps": [
-        {
-          "station": "Dock",
-          "values": {}
-        },
-        {
-          "station": "Storage A",
-          "values": {}
-        },
-        {
-          "station": "Picking",
-          "values": {}
-        }
+        {"station": "Dock", "values": {}},
+        {"station": "Storage A", "values": {}},
+        {"station": "Picking", "values": {}}
       ]
     },
     {
       "name": "Bulk",
       "steps": [
-        {
-          "station": "Dock",
-          "values": {}
-        },
-        {
-          "station": "Storage B",
-          "values": {}
-        },
-        {
-          "station": "Picking",
-          "values": {}
-        }
+        {"station": "Dock", "values": {}},
+        {"station": "Storage B", "values": {}},
+        {"station": "Picking", "values": {}}
       ]
     }
   ],
   "entities": [
-    {
-      "name": "Fast mover",
-      "shape": "square",
-      "color": "BLUE",
-      "holding_cost": 0.0
-    },
-    {
-      "name": "Bulk",
-      "shape": "circle",
-      "color": "ORANGE",
-      "holding_cost": 0.0
-    }
+    {"name": "Fast mover", "shape": "square", "color": "BLUE", "holding_cost": 0.0},
+    {"name": "Bulk", "shape": "circle", "color": "ORANGE", "holding_cost": 0.0}
   ],
   "fleets": [
     {
@@ -447,46 +218,14 @@
   "network": {
     "length_factor": 1.0,
     "nodes": [
-      {
-        "name": "dock",
-        "x": 0.0,
-        "y": 10.0
-      },
-      {
-        "name": "aisle_w",
-        "x": 20.0,
-        "y": 10.0
-      },
-      {
-        "name": "aisle_m",
-        "x": 45.0,
-        "y": 10.0
-      },
-      {
-        "name": "aisle_e",
-        "x": 70.0,
-        "y": 10.0
-      },
-      {
-        "name": "zone_a",
-        "x": 20.0,
-        "y": 30.0
-      },
-      {
-        "name": "zone_b",
-        "x": 45.0,
-        "y": 40.0
-      },
-      {
-        "name": "pick",
-        "x": 70.0,
-        "y": 30.0
-      },
-      {
-        "name": "ship",
-        "x": 70.0,
-        "y": 0.0
-      }
+      {"name": "dock", "x": 0.0, "y": 10.0},
+      {"name": "aisle_w", "x": 20.0, "y": 10.0},
+      {"name": "aisle_m", "x": 45.0, "y": 10.0},
+      {"name": "aisle_e", "x": 70.0, "y": 10.0},
+      {"name": "zone_a", "x": 20.0, "y": 30.0},
+      {"name": "zone_b", "x": 45.0, "y": 40.0},
+      {"name": "pick", "x": 70.0, "y": 30.0},
+      {"name": "ship", "x": 70.0, "y": 0.0}
     ],
     "segments": [
       {
@@ -554,10 +293,6 @@
     "author": "Naga",
     "notes": "Distances in metres, times in minutes, speeds in metres per minute (50 m/min loaded is about 0.8 m/s, a cautious indoor forklift; the belt runs at 12 m/min). Fast movers are stored close to the dock, bulk pallets far away, so the two routings really do cost different amounts of driving."
   },
-  "simulation": {
-    "time_limit": 960,
-    "warmup": 120,
-    "replications": 5
-  },
+  "simulation": {"time_limit": 960, "warmup": 120, "replications": 5},
   "outputs": {}
 }

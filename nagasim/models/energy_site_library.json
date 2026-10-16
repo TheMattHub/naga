@@ -6,14 +6,8 @@
       "name": "pv_array_1",
       "type": "SUBMODEL",
       "description": "PV array",
-      "position": [
-        -200.0,
-        -120.0
-      ],
-      "layout_position": [
-        10.0,
-        5.0
-      ],
+      "position": [-200.0, -120.0],
+      "layout_position": [10.0, 5.0],
       "params": {
         "definition": "PV array",
         "arguments": {
@@ -28,33 +22,16 @@
       "name": "electrical_load_1",
       "type": "SUBMODEL",
       "description": "Electrical load",
-      "position": [
-        -200.0,
-        40.0
-      ],
-      "layout_position": [
-        4.0,
-        13.0
-      ],
-      "params": {
-        "definition": "Electrical load",
-        "arguments": {
-          "peak_kw": 2.0
-        }
-      }
+      "position": [-200.0, 40.0],
+      "layout_position": [4.0, 13.0],
+      "params": {"definition": "Electrical load", "arguments": {"peak_kw": 2.0}}
     },
     {
       "name": "battery_storage_1",
       "type": "SUBMODEL",
       "description": "Battery storage",
-      "position": [
-        60.0,
-        -40.0
-      ],
-      "layout_position": [
-        20.0,
-        6.0
-      ],
+      "position": [60.0, -40.0],
+      "layout_position": [20.0, 6.0],
       "params": {
         "definition": "Battery storage",
         "arguments": {
@@ -76,14 +53,8 @@
       "name": "grid_connection_1",
       "type": "SUBMODEL",
       "description": "Grid connection",
-      "position": [
-        320.0,
-        -40.0
-      ],
-      "layout_position": [
-        38.0,
-        6.0
-      ],
+      "position": [320.0, -40.0],
+      "layout_position": [38.0, 6.0],
       "params": {
         "definition": "Grid connection",
         "arguments": {
@@ -102,55 +73,29 @@
       "name": "No battery",
       "description": "The same site with the battery's power limits at 0.",
       "overrides": [
-        {
-          "path": "blocks.battery_storage_1.params.arguments.charge_kw",
-          "value": 0.0
-        },
-        {
-          "path": "blocks.battery_storage_1.params.arguments.discharge_kw",
-          "value": 0.0
-        },
-        {
-          "path": "blocks.battery_storage_1.params.arguments.capacity_kwh",
-          "value": 0.1
-        }
+        {"path": "blocks.battery_storage_1.params.arguments.charge_kw", "value": 0.0},
+        {"path": "blocks.battery_storage_1.params.arguments.discharge_kw", "value": 0.0},
+        {"path": "blocks.battery_storage_1.params.arguments.capacity_kwh", "value": 0.1}
       ]
     },
     {
       "name": "20 kWh battery",
       "description": "Twice the storage, at 5 kW.",
       "overrides": [
-        {
-          "path": "blocks.battery_storage_1.params.arguments.capacity_kwh",
-          "value": 20.0
-        },
-        {
-          "path": "blocks.battery_storage_1.params.arguments.charge_kw",
-          "value": 5.0
-        },
-        {
-          "path": "blocks.battery_storage_1.params.arguments.discharge_kw",
-          "value": 5.0
-        }
+        {"path": "blocks.battery_storage_1.params.arguments.capacity_kwh", "value": 20.0},
+        {"path": "blocks.battery_storage_1.params.arguments.charge_kw", "value": 5.0},
+        {"path": "blocks.battery_storage_1.params.arguments.discharge_kw", "value": 5.0}
       ]
     },
     {
       "name": "Tariff arbitrage",
       "description": "The same battery charging on price rather than on surplus.",
       "overrides": [
-        {
-          "path": "blocks.battery_storage_1.params.arguments.dispatch",
-          "value": "tariff_arbitrage"
-        }
+        {"path": "blocks.battery_storage_1.params.arguments.dispatch", "value": "tariff_arbitrage"}
       ]
     }
   ],
-  "variables": [
-    {
-      "name": "nrg_setpoint_kw",
-      "initial": 0.0
-    }
-  ],
+  "variables": [{"name": "nrg_setpoint_kw", "initial": 0.0}],
   "timeseries_inputs": [
     {
       "name": "Nrg pv profile",
@@ -264,9 +209,7 @@
       "step": 1,
       "interpolation": "step",
       "beyond": "hold",
-      "values": [
-        0.25
-      ]
+      "values": [0.25]
     },
     {
       "name": "Nrg grid intensity",
@@ -408,11 +351,7 @@
     "PV array": {
       "info": {
         "description": "Non-dispatchable generation from a normalised profile: output = profile x installed capacity x performance ratio. The profile is one value per hour of the day, in kW per kW installed, so the same asset is a wind turbine or a run-of-river plant with a different profile. Its output joins the site bus under the tag \"generation\", which every dispatchable asset reads -- place two arrays with different profiles and they simply add up. The annualised capital cost is a FIXED cost, prorated over the run, so a sizing run over installed_kwp compares like with like. No ports: this is a continuous asset, nothing flows through it.",
-        "library": {
-          "library": "energy",
-          "asset": "pv_array",
-          "version": "1.2.0"
-        },
+        "library": {"library": "energy", "asset": "pv_array", "version": "1.2.0"},
         "parameters": [
           {
             "name": "installed_kwp",
@@ -514,14 +453,7 @@
           "description": "Fraction of the capital cost charged per year -- depreciation plus cost of capital. The charge is PRORATED over the run: amount x HORIZON / 8760, so a one-week run pays one week of it and capex and operating cost cover the same window. 0 leaves the capital cost out of Total Cost entirely. The model's time unit must be hours."
         }
       ],
-      "scoped": {
-        "flows": {
-          "Nrg PV": {}
-        },
-        "fixed_costs": {
-          "Nrg PV capital": {}
-        }
-      },
+      "scoped": {"flows": {"Nrg PV": {}}, "fixed_costs": {"Nrg PV capital": {}}},
       "blocks": [],
       "links": [],
       "annotations": []
@@ -529,11 +461,7 @@
     "Electrical load": {
       "info": {
         "description": "The site's electrical demand, from a normalised profile x a peak. Its draw joins the site bus under the tag \"demand\", which storage, a generator and the grid connection all read, so two loads (a building and a process) simply add up. No ports: this is a continuous asset.",
-        "library": {
-          "library": "energy",
-          "asset": "site_load",
-          "version": "1.2.0"
-        },
+        "library": {"library": "energy", "asset": "site_load", "version": "1.2.0"},
         "parameters": [
           {
             "name": "peak_kw",
@@ -578,11 +506,7 @@
           "description": "Normalised demand by hour of the day, 1.0 at the peak. Edit the values in the model's Time series tab, or bind them to metered data."
         }
       ],
-      "scoped": {
-        "flows": {
-          "Nrg load": {}
-        }
-      },
+      "scoped": {"flows": {"Nrg load": {}}},
       "blocks": [],
       "links": [],
       "annotations": []
@@ -590,11 +514,7 @@
     "Battery storage": {
       "info": {
         "description": "Storage with power limits, separate charge and discharge efficiencies, a usable state-of-charge window and three dispatch rules. \"self_consumption\" charges on the site's surplus and discharges on its deficit; \"tariff_arbitrage\" charges whenever the price is below a threshold and discharges to cover the load when it is above another; \"policy\" follows this battery's OWN setpoint variable, <instance>/nrg_setpoint_kw (positive charges, negative discharges), which a Policy-mode DECIDE -- or nagasim.rl -- writes; each Battery storage instance has its own, so a site may train two. It reads the site bus (generation, demand and what storage ahead of it in the merit order already took) and injects into it, so a second battery with a higher merit number sees exactly the surplus the first one left. Equivalent full cycles are reported as a flow; the annualised capital cost is a FIXED cost, prorated over the run, so a sizing study trades it against the energy it saves. No ports: this is a continuous asset.",
-        "library": {
-          "library": "energy",
-          "asset": "battery",
-          "version": "1.2.0"
-        },
+        "library": {"library": "energy", "asset": "battery", "version": "1.2.0"},
         "parameters": [
           {
             "name": "capacity_kwh",
@@ -723,11 +643,7 @@
             "group": "Dispatch",
             "min": null,
             "max": null,
-            "choices": [
-              "self_consumption",
-              "tariff_arbitrage",
-              "policy"
-            ],
+            "choices": ["self_consumption", "tariff_arbitrage", "policy"],
             "refers_to": ""
           },
           {
@@ -847,11 +763,7 @@
             "discharge_efficiency": "discharge_efficiency",
             "capex_per_kwh": "capex_per_kwh"
           },
-          "rows": [
-            "Home 10 kWh",
-            "Home 20 kWh",
-            "Commercial 100 kWh"
-          ],
+          "rows": ["Home 10 kWh", "Home 20 kWh", "Commercial 100 kWh"],
           "units": {
             "capacity_kwh": "kWh",
             "charge_kw": "kW",
@@ -904,11 +816,7 @@
           "type": "number",
           "description": "Fraction of the nameplate capacity kept in reserve; the battery never discharges below it."
         },
-        {
-          "name": "max_soc",
-          "default": 1.0,
-          "type": "number"
-        },
+        {"name": "max_soc", "default": 1.0, "type": "number"},
         {
           "name": "initial_soc",
           "default": 0.5,
@@ -982,11 +890,7 @@
           "type": "int",
           "description": "Dispatch order among the storage on this bus: 1 is served first, and a battery with a higher number sees only the surplus (or deficit) the ones before it left."
         },
-        {
-          "name": "capex_per_kwh",
-          "default": 600.0,
-          "type": "number"
-        },
+        {"name": "capex_per_kwh", "default": 600.0, "type": "number"},
         {
           "name": "capex_per_kw",
           "default": 0.0,
@@ -1009,30 +913,13 @@
           }
         },
         "flows": {
-          "Nrg charge": {
-            "efficiency": {
-              "$arg": "charge_efficiency"
-            },
-            "priority": {
-              "$arg": "merit"
-            }
-          },
-          "Nrg discharge": {
-            "priority": {
-              "$arg": "merit"
-            }
-          },
-          "Nrg storage output": {
-            "priority": {
-              "$arg": "merit"
-            }
-          },
+          "Nrg charge": {"efficiency": {"$arg": "charge_efficiency"}, "priority": {"$arg": "merit"}},
+          "Nrg discharge": {"priority": {"$arg": "merit"}},
+          "Nrg storage output": {"priority": {"$arg": "merit"}},
           "Nrg standby loss": {},
           "Nrg cycles": {}
         },
-        "fixed_costs": {
-          "Nrg battery capital": {}
-        }
+        "fixed_costs": {"Nrg battery capital": {}}
       },
       "blocks": [],
       "links": [],
@@ -1041,11 +928,7 @@
     "Grid connection": {
       "info": {
         "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
-        "library": {
-          "library": "energy",
-          "asset": "grid_connection",
-          "version": "1.2.0"
-        },
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.2.0"},
         "parameters": [
           {
             "name": "import_profile",
@@ -1130,31 +1013,13 @@
           "catalogue": "Nrg tariffs",
           "label": "Tariff",
           "group": "Prices",
-          "map": {
-            "import_profile": "import_profile",
-            "export_price": "export_price"
-          },
-          "rows": [
-            "Flat",
-            "Time of use",
-            "Time of use, no export"
-          ],
-          "units": {
-            "export_price": "EUR/kWh"
-          },
+          "map": {"import_profile": "import_profile", "export_price": "export_price"},
+          "rows": ["Flat", "Time of use", "Time of use, no export"],
+          "units": {"export_price": "EUR/kWh"},
           "values": {
-            "Flat": {
-              "import_profile": "Nrg flat tariff",
-              "export_price": 0.05
-            },
-            "Time of use": {
-              "import_profile": "Nrg tariff",
-              "export_price": 0.05
-            },
-            "Time of use, no export": {
-              "import_profile": "Nrg tariff",
-              "export_price": 0.0
-            }
+            "Flat": {"import_profile": "Nrg flat tariff", "export_price": 0.05},
+            "Time of use": {"import_profile": "Nrg tariff", "export_price": 0.05},
+            "Time of use, no export": {"import_profile": "Nrg tariff", "export_price": 0.0}
           },
           "sources": {
             "Flat": "Illustrative starting point (Naga); not market data.",
@@ -1205,11 +1070,7 @@
       ],
       "scoped": {
         "flows": {
-          "Nrg import": {
-            "peak_price": {
-              "$arg": "demand_charge_per_kw"
-            }
-          },
+          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
           "Nrg unserved": {},
           "Nrg export": {},
           "Nrg curtailed": {}
@@ -1233,10 +1094,7 @@
     "replications": 1,
     "time_unit": "hours",
     "timeseries_points": 168,
-    "calendar": {
-      "start": "2026-06-15T00:00:00",
-      "timezone": "Europe/Rome"
-    }
+    "calendar": {"start": "2026-06-15T00:00:00", "timezone": "Europe/Rome"}
   },
   "outputs": {}
 }

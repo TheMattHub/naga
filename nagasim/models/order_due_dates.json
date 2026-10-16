@@ -6,123 +6,59 @@
       "name": "release_orders",
       "type": "CREATE",
       "description": "Releases every declared order at its own release time",
-      "position": [
-        120.0,
-        300.0
-      ],
-      "params": {
-        "e_type": "WIDGET",
-        "arrival_mode": "Orders"
-      }
+      "position": [120.0, 300.0],
+      "params": {"e_type": "WIDGET", "arrival_mode": "Orders"}
     },
     {
       "name": "route_1",
       "type": "ROUTE",
       "description": "Send each job to the next station of its routing",
-      "position": [
-        340.0,
-        300.0
-      ]
+      "position": [340.0, 300.0]
     },
     {
       "name": "Cut",
       "type": "STATION",
       "description": "Cutting station entry point",
-      "position": [
-        600.0,
-        200.0
-      ],
-      "layout_position": [
-        3.0,
-        3.0
-      ]
+      "position": [600.0, 200.0],
+      "layout_position": [3.0, 3.0]
     },
     {
       "name": "Pack",
       "type": "STATION",
       "description": "Packing station entry point",
-      "position": [
-        600.0,
-        400.0
-      ],
-      "layout_position": [
-        3.0,
-        13.0
-      ]
+      "position": [600.0, 400.0],
+      "layout_position": [3.0, 13.0]
     },
     {
       "name": "process_cut",
       "type": "PROCESS",
       "description": "Cutting; the time comes with the job, from its routing step",
-      "position": [
-        820.0,
-        200.0
-      ],
-      "layout_position": [
-        14.0,
-        3.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": "entity.process_time"
-        },
-        "resource_name": "Cutter"
-      }
+      "position": [820.0, 200.0],
+      "layout_position": [14.0, 3.0],
+      "params": {"dist_params": {"value": "entity.process_time"}, "resource_name": "Cutter"}
     },
     {
       "name": "process_pack",
       "type": "PROCESS",
       "description": "Packing; same, one step later",
-      "position": [
-        820.0,
-        400.0
-      ],
-      "layout_position": [
-        14.0,
-        13.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": "entity.process_time"
-        },
-        "resource_name": "Packer"
-      }
+      "position": [820.0, 400.0],
+      "layout_position": [14.0, 13.0],
+      "params": {"dist_params": {"value": "entity.process_time"}, "resource_name": "Packer"}
     },
     {
       "name": "dispose_1",
       "type": "DISPOSE",
       "description": "Job leaves; its lateness against entity.due_date is recorded here",
-      "position": [
-        340.0,
-        520.0
-      ]
+      "position": [340.0, 520.0]
     }
   ],
   "links": [
-    {
-      "source": "release_orders",
-      "target": "route_1"
-    },
-    {
-      "source": "route_1",
-      "target": "dispose_1"
-    },
-    {
-      "source": "Cut",
-      "target": "process_cut"
-    },
-    {
-      "source": "Pack",
-      "target": "process_pack"
-    },
-    {
-      "source": "process_cut",
-      "target": "route_1"
-    },
-    {
-      "source": "process_pack",
-      "target": "route_1"
-    }
+    {"source": "release_orders", "target": "route_1"},
+    {"source": "route_1", "target": "dispose_1"},
+    {"source": "Cut", "target": "process_cut"},
+    {"source": "Pack", "target": "process_pack"},
+    {"source": "process_cut", "target": "route_1"},
+    {"source": "process_pack", "target": "route_1"}
   ],
   "orders": [
     {
@@ -154,66 +90,30 @@
     }
   ],
   "resources": [
-    {
-      "name": "Cutter",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Packer",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
+    {"name": "Cutter", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Packer", "capacity": 1, "discipline": "FIFO"}
   ],
   "sequences": [
     {
       "name": "Fast",
       "description": "Cut 2, pack 1",
       "steps": [
-        {
-          "station": "Cut",
-          "values": {
-            "process_time": 2.0
-          }
-        },
-        {
-          "station": "Pack",
-          "values": {
-            "process_time": 1.0
-          }
-        }
+        {"station": "Cut", "values": {"process_time": 2.0}},
+        {"station": "Pack", "values": {"process_time": 1.0}}
       ]
     },
     {
       "name": "Slow",
       "description": "Cut 3, pack 2",
       "steps": [
-        {
-          "station": "Cut",
-          "values": {
-            "process_time": 3.0
-          }
-        },
-        {
-          "station": "Pack",
-          "values": {
-            "process_time": 2.0
-          }
-        }
+        {"station": "Cut", "values": {"process_time": 3.0}},
+        {"station": "Pack", "values": {"process_time": 2.0}}
       ]
     }
   ],
   "entities": [
-    {
-      "name": "WIDGET",
-      "shape": "square",
-      "color": "BLUE"
-    },
-    {
-      "name": "GADGET",
-      "shape": "circle",
-      "color": "GREEN"
-    }
+    {"name": "WIDGET", "shape": "square", "color": "BLUE"},
+    {"name": "GADGET", "shape": "circle", "color": "GREEN"}
   ],
   "info": {
     "title": "Orders, due dates and tardiness",
@@ -222,11 +122,6 @@
     "author": "Naga",
     "notes": "Release and due times are in the base time unit (minutes). Orders release at t=0 in id order; the Cutter and the Packer are single servers, FIFO. Cut then Pack: WO-1 finishes at 3 (due 10), WO-2 at 7 (due 20), WO-3 at 11 (due 8) -- late by 3. Service level 3/4 of the entities, 2/3 of the orders."
   },
-  "simulation": {
-    "time_limit": null,
-    "warmup": 0,
-    "replications": 1,
-    "entity_log_limit": 100000
-  },
+  "simulation": {"time_limit": null, "warmup": 0, "replications": 1, "entity_log_limit": 100000},
   "outputs": {}
 }

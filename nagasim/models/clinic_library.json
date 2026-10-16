@@ -6,69 +6,37 @@
       "name": "walk_in_arrivals_by_time_of_day_1",
       "type": "SUBMODEL",
       "description": "Walk-in arrivals by time of day",
-      "position": [
-        -620.0,
-        0.0
-      ],
+      "position": [-620.0, 0.0],
       "params": {
         "definition": "Walk-in arrivals by time of day",
-        "arguments": {
-          "arrival_schedule": "Svc Walk-in Day",
-          "entity_type": "PATIENT"
-        }
+        "arguments": {"arrival_schedule": "Svc Walk-in Day", "entity_type": "PATIENT"}
       }
     },
     {
       "name": "triage_1",
       "type": "SUBMODEL",
       "description": "Triage",
-      "position": [
-        -380.0,
-        0.0
-      ],
-      "layout_position": [
-        2.0,
-        1.0
-      ],
+      "position": [-380.0, 0.0],
+      "layout_position": [2.0, 1.0],
       "params": {
         "definition": "Triage",
-        "arguments": {
-          "class1_probability": 0.15,
-          "class2_probability": 0.45
-        }
+        "arguments": {"class1_probability": 0.15, "class2_probability": 0.45}
       }
     },
     {
       "name": "service_target_1",
       "type": "SUBMODEL",
       "description": "Service target",
-      "position": [
-        -140.0,
-        0.0
-      ],
-      "layout_position": [
-        13.0,
-        1.0
-      ],
-      "params": {
-        "definition": "Service target",
-        "arguments": {
-          "target": 45.0
-        }
-      }
+      "position": [-140.0, 0.0],
+      "layout_position": [13.0, 1.0],
+      "params": {"definition": "Service target", "arguments": {"target": 45.0}}
     },
     {
       "name": "service_desk_with_impatient_customers_1",
       "type": "SUBMODEL",
       "description": "Service desk with impatient customers",
-      "position": [
-        100.0,
-        0.0
-      ],
-      "layout_position": [
-        26.0,
-        1.0
-      ],
+      "position": [100.0, 0.0],
+      "layout_position": [26.0, 1.0],
       "params": {
         "definition": "Service desk with impatient customers",
         "arguments": {
@@ -84,14 +52,8 @@
       "name": "consultation_treatment_room_1",
       "type": "SUBMODEL",
       "description": "Consultation / treatment room",
-      "position": [
-        340.0,
-        0.0
-      ],
-      "layout_position": [
-        38.0,
-        2.0
-      ],
+      "position": [340.0, 0.0],
+      "layout_position": [38.0, 2.0],
       "params": {
         "definition": "Consultation / treatment room",
         "arguments": {
@@ -102,23 +64,12 @@
         }
       }
     },
-    {
-      "name": "dispose_1",
-      "type": "DISPOSE",
-      "description": "Seen",
-      "position": [
-        580.0,
-        -60.0
-      ]
-    },
+    {"name": "dispose_1", "type": "DISPOSE", "description": "Seen", "position": [580.0, -60.0]},
     {
       "name": "dispose_2",
       "type": "DISPOSE",
       "description": "Left without being seen",
-      "position": [
-        340.0,
-        200.0
-      ]
+      "position": [340.0, 200.0]
     }
   ],
   "links": [
@@ -128,12 +79,7 @@
       "source_port": "out",
       "target_port": "in"
     },
-    {
-      "source": "triage_1",
-      "target": "service_target_1",
-      "source_port": "out",
-      "target_port": "in"
-    },
+    {"source": "triage_1", "target": "service_target_1", "source_port": "out", "target_port": "in"},
     {
       "source": "service_target_1",
       "target": "service_desk_with_impatient_customers_1",
@@ -151,18 +97,10 @@
       "target": "dispose_2",
       "source_port": "left"
     },
-    {
-      "source": "consultation_treatment_room_1",
-      "target": "dispose_1",
-      "source_port": "out"
-    }
+    {"source": "consultation_treatment_room_1", "target": "dispose_1", "source_port": "out"}
   ],
   "resources": [
-    {
-      "name": "Svc Impatient Staff",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
+    {"name": "Svc Impatient Staff", "capacity": 1, "discipline": "FIFO"},
     {
       "name": "Svc Room",
       "capacity": 1,
@@ -181,46 +119,15 @@
       "name": "Svc Walk-in Day",
       "kind": "arrival",
       "repeat": true,
-      "points": [
-        [
-          120,
-          0.3
-        ],
-        [
-          240,
-          0.18
-        ],
-        [
-          120,
-          0.3
-        ],
-        [
-          120,
-          0.08
-        ],
-        [
-          840,
-          0.0
-        ]
-      ]
+      "points": [[120, 0.3], [240, 0.18], [120, 0.3], [120, 0.08], [840, 0.0]]
     }
   ],
-  "entities": [
-    {
-      "name": "PATIENT",
-      "shape": "circle",
-      "color": "BLUE"
-    }
-  ],
+  "entities": [{"name": "PATIENT", "shape": "circle", "color": "BLUE"}],
   "submodels": {
     "Walk-in arrivals by time of day": {
       "info": {
         "description": "A source: patients (or customers) walk in at a rate that follows an arrival schedule, so a morning peak and a quiet afternoon are one record rather than a hand-built expression. The schedule's values are arrivals per minute and drive a non-homogeneous Poisson process; edit them in the model's Schedules tab. No input port -- this asset starts the flow. To stamp a service target on every arrival, chain the Service target asset after it.",
-        "library": {
-          "library": "services",
-          "asset": "walkin_arrivals",
-          "version": "1.1.0"
-        },
+        "library": {"library": "services", "asset": "walkin_arrivals", "version": "1.1.0"},
         "parameters": [
           {
             "name": "arrival_schedule",
@@ -271,22 +178,13 @@
           "name": "arrive",
           "type": "CREATE",
           "description": "Walk-ins arrive",
-          "position": [
-            0.0,
-            0.0
-          ],
+          "position": [0.0, 0.0],
           "params": {
-            "e_type": {
-              "$arg": "entity_type"
-            },
+            "e_type": {"$arg": "entity_type"},
             "arrival_mode": "Schedule",
-            "schedule_name": {
-              "$arg": "arrival_schedule"
-            },
+            "schedule_name": {"$arg": "arrival_schedule"},
             "distribution": "Exponential",
-            "dist_params": {
-              "rate": 1.0
-            },
+            "dist_params": {"rate": 1.0},
             "time_unit": "minutes"
           }
         },
@@ -294,28 +192,16 @@
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Arrivals leave",
-          "position": [
-            250.0,
-            0.0
-          ]
+          "position": [250.0, 0.0]
         }
       ],
-      "links": [
-        {
-          "source": "arrive",
-          "target": "out"
-        }
-      ],
+      "links": [{"source": "arrive", "target": "out"}],
       "annotations": []
     },
     "Triage": {
       "info": {
         "description": "Classify an arriving patient into one of three acuity classes by probability and stamp entity.acuity (1 = most urgent) and entity.priority (= acuity, so a LowestValueFirst resource downstream serves the most urgent first). One exit: a single stream with priority set is more composable than three physically separate paths, since most triage feeds one shared queue rather than three.",
-        "library": {
-          "library": "services",
-          "asset": "triage",
-          "version": "1.1.0"
-        },
+        "library": {"library": "services", "asset": "triage", "version": "1.1.0"},
         "parameters": [
           {
             "name": "class1_probability",
@@ -364,29 +250,20 @@
           "name": "in",
           "type": "SUB_ENTRY",
           "description": "Patients arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
+          "position": [0.0, 0.0]
         },
         {
           "name": "classify",
           "type": "ASSIGN",
           "description": "Draw an acuity class and set priority",
-          "position": [
-            250.0,
-            0.0
-          ],
+          "position": [250.0, 0.0],
           "params": {
             "assignments": [
               {
                 "target": "entity.acuity",
                 "expr": "DISC(1, class1_probability, 2, class2_probability, 3, 1 - class1_probability - class2_probability)"
               },
-              {
-                "target": "entity.priority",
-                "expr": "entity.acuity"
-              }
+              {"target": "entity.priority", "expr": "entity.acuity"}
             ]
           }
         },
@@ -394,32 +271,16 @@
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Classified patients leave",
-          "position": [
-            500.0,
-            0.0
-          ]
+          "position": [500.0, 0.0]
         }
       ],
-      "links": [
-        {
-          "source": "in",
-          "target": "classify"
-        },
-        {
-          "source": "classify",
-          "target": "out"
-        }
-      ],
+      "links": [{"source": "in", "target": "classify"}, {"source": "classify", "target": "out"}],
       "annotations": []
     },
     "Service target": {
       "info": {
         "description": "Stamp entity.due_date = now + target on entry; DISPOSE already accounts due dates for every entity that carries one (lateness, tardiness, service level -- see the Due Dates report), so nothing else is needed at the exit.",
-        "library": {
-          "library": "services",
-          "asset": "service_target",
-          "version": "1.1.0"
-        },
+        "library": {"library": "services", "asset": "service_target", "version": "1.1.0"},
         "parameters": [
           {
             "name": "target",
@@ -449,58 +310,29 @@
           "name": "in",
           "type": "SUB_ENTRY",
           "description": "Entities arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
+          "position": [0.0, 0.0]
         },
         {
           "name": "stamp",
           "type": "ASSIGN",
           "description": "Set the due date",
-          "position": [
-            250.0,
-            0.0
-          ],
-          "params": {
-            "assignments": [
-              {
-                "target": "entity.due_date",
-                "expr": "TNOW + target"
-              }
-            ]
-          }
+          "position": [250.0, 0.0],
+          "params": {"assignments": [{"target": "entity.due_date", "expr": "TNOW + target"}]}
         },
         {
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Entities leave",
-          "position": [
-            500.0,
-            0.0
-          ]
+          "position": [500.0, 0.0]
         }
       ],
-      "links": [
-        {
-          "source": "in",
-          "target": "stamp"
-        },
-        {
-          "source": "stamp",
-          "target": "out"
-        }
-      ],
+      "links": [{"source": "in", "target": "stamp"}, {"source": "stamp", "target": "out"}],
       "annotations": []
     },
     "Service desk with impatient customers": {
       "info": {
         "description": "A service desk where customers balk (leave immediately) if too many are already waiting, and renege (give up) if they wait past their patience. Exits: 'served' (got helped) and 'left' (balked or reneged, entity.left_reason says which).",
-        "library": {
-          "library": "services",
-          "asset": "service_desk_impatient",
-          "version": "1.1.0"
-        },
+        "library": {"library": "services", "asset": "service_desk_impatient", "version": "1.1.0"},
         "parameters": [
           {
             "name": "service_time",
@@ -525,11 +357,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              "fixed",
-              "exponential",
-              "triangular"
-            ],
+            "choices": ["fixed", "exponential", "triangular"],
             "refers_to": ""
           },
           {
@@ -611,27 +439,19 @@
           "name": "in",
           "type": "SUB_ENTRY",
           "description": "Customers arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
+          "position": [0.0, 0.0]
         },
         {
           "name": "serve",
           "type": "PROCESS",
           "description": "Serve at the desk",
-          "position": [
-            250.0,
-            0.0
-          ],
+          "position": [250.0, 0.0],
           "params": {
             "dist_params": {
               "value": "service_time if time_distribution == 'fixed' else (EXPO(service_time) if time_distribution == 'exponential' else TRIA(0.7 * service_time, service_time, 1.3 * service_time))"
             },
             "time_unit": "minutes",
-            "resource_name": {
-              "$arg": "staff_pool"
-            },
+            "resource_name": {"$arg": "staff_pool"},
             "balk_if": "queue_length >= max_queue",
             "renege_after": "patience",
             "renege_time_unit": "minutes"
@@ -641,51 +461,28 @@
           "name": "served",
           "type": "SUB_EXIT",
           "description": "Customers served",
-          "position": [
-            500.0,
-            -80.0
-          ],
-          "params": {
-            "port": "served"
-          }
+          "position": [500.0, -80.0],
+          "params": {"port": "served"}
         },
         {
           "name": "left",
           "type": "SUB_EXIT",
           "description": "Left without service",
-          "position": [
-            500.0,
-            80.0
-          ],
-          "params": {
-            "port": "left"
-          }
+          "position": [500.0, 80.0],
+          "params": {"port": "left"}
         }
       ],
       "links": [
-        {
-          "source": "in",
-          "target": "serve"
-        },
-        {
-          "source": "serve",
-          "target": "served"
-        },
-        {
-          "source": "serve",
-          "target": "left"
-        }
+        {"source": "in", "target": "serve"},
+        {"source": "serve", "target": "served"},
+        {"source": "serve", "target": "left"}
       ],
       "annotations": []
     },
     "Consultation / treatment room": {
       "info": {
         "description": "A visit that needs BOTH a room and a clinician: the patient holds one clinician from the named pool for the whole visit and one of this instance's own rooms. The room queues FIFO by default; to serve by entity.priority (e.g. set upstream by Triage), give this instance's own room resource a LowestValueFirst discipline with ranking_expr entity.priority in the model's Resources tab -- not the default, since an entity with no priority ever assigned would otherwise fail there. An emergency already in a room is not interrupted: preemption needs one block to own the whole hold, and here the clinician and the room are held across two (ARCHITECTURE 5.17 scope).",
-        "library": {
-          "library": "services",
-          "asset": "consultation_room",
-          "version": "1.1.0"
-        },
+        "library": {"library": "services", "asset": "consultation_room", "version": "1.1.0"},
         "parameters": [
           {
             "name": "consult_time",
@@ -710,11 +507,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              "fixed",
-              "exponential",
-              "triangular"
-            ],
+            "choices": ["fixed", "exponential", "triangular"],
             "refers_to": ""
           },
           {
@@ -761,27 +554,13 @@
           "catalogue": "Service time benchmarks",
           "label": "Benchmark",
           "group": "Timing",
-          "map": {
-            "service_time": "consult_time"
-          },
-          "rows": [
-            "Quick query",
-            "Standard consultation",
-            "Complex case"
-          ],
-          "units": {
-            "service_time": "minutes"
-          },
+          "map": {"service_time": "consult_time"},
+          "rows": ["Quick query", "Standard consultation", "Complex case"],
+          "units": {"service_time": "minutes"},
           "values": {
-            "Quick query": {
-              "consult_time": 3.0
-            },
-            "Standard consultation": {
-              "consult_time": 15.0
-            },
-            "Complex case": {
-              "consult_time": 45.0
-            }
+            "Quick query": {"consult_time": 3.0},
+            "Standard consultation": {"consult_time": 15.0},
+            "Complex case": {"consult_time": 45.0}
           },
           "sources": {
             "Quick query": "Illustrative starting point (Naga); not measured data.",
@@ -823,47 +602,26 @@
           "description": "Cost charged per minute while the resource is busy; 0 leaves it out of the costing."
         }
       ],
-      "scoped": {
-        "resources": {
-          "Svc Room": {
-            "capacity": "rooms",
-            "cost_busy": "cost_rate"
-          }
-        }
-      },
+      "scoped": {"resources": {"Svc Room": {"capacity": "rooms", "cost_busy": "cost_rate"}}},
       "blocks": [
         {
           "name": "in",
           "type": "SUB_ENTRY",
           "description": "Patients arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
+          "position": [0.0, 0.0]
         },
         {
           "name": "take_clinician",
           "type": "SEIZE",
           "description": "Call a clinician",
-          "position": [
-            200.0,
-            0.0
-          ],
-          "params": {
-            "time_unit": "minutes",
-            "resource_name": {
-              "$arg": "clinician_pool"
-            }
-          }
+          "position": [200.0, 0.0],
+          "params": {"time_unit": "minutes", "resource_name": {"$arg": "clinician_pool"}}
         },
         {
           "name": "room",
           "type": "PROCESS",
           "description": "Room and consultation",
-          "position": [
-            400.0,
-            0.0
-          ],
+          "position": [400.0, 0.0],
           "params": {
             "dist_params": {
               "value": "consult_time if time_distribution == 'fixed' else (EXPO(consult_time) if time_distribution == 'exponential' else TRIA(0.7 * consult_time, consult_time, 1.3 * consult_time))"
@@ -876,44 +634,21 @@
           "name": "free_clinician",
           "type": "RELEASE",
           "description": "Clinician leaves",
-          "position": [
-            600.0,
-            0.0
-          ],
-          "params": {
-            "time_unit": "minutes",
-            "resource_name": {
-              "$arg": "clinician_pool"
-            }
-          }
+          "position": [600.0, 0.0],
+          "params": {"time_unit": "minutes", "resource_name": {"$arg": "clinician_pool"}}
         },
         {
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Patients leave",
-          "position": [
-            800.0,
-            0.0
-          ]
+          "position": [800.0, 0.0]
         }
       ],
       "links": [
-        {
-          "source": "in",
-          "target": "take_clinician"
-        },
-        {
-          "source": "take_clinician",
-          "target": "room"
-        },
-        {
-          "source": "room",
-          "target": "free_clinician"
-        },
-        {
-          "source": "free_clinician",
-          "target": "out"
-        }
+        {"source": "in", "target": "take_clinician"},
+        {"source": "take_clinician", "target": "room"},
+        {"source": "room", "target": "free_clinician"},
+        {"source": "free_clinician", "target": "out"}
       ],
       "annotations": []
     }
@@ -923,10 +658,6 @@
     "category": "Services",
     "description": "One 10-hour day of a walk-in clinic, built entirely from the Services and healthcare library. Walk-ins arrive on a time-of-day schedule (two peaks, about 125 patients), Triage stamps an acuity class and priority, a service target stamps a 45-minute due date, a one-person registration desk models balking and reneging (its 'left' exit is left-without-being-seen) and a consultation room -- a room plus a clinician -- serves the registered patients most-urgent-first. A clinic day is a TERMINATING simulation, so it runs with no warm-up: the quiet start and the end-of-day tail are part of the answer, not transient error to discard."
   },
-  "simulation": {
-    "time_limit": 600,
-    "warmup": 0,
-    "replications": 10
-  },
+  "simulation": {"time_limit": 600, "warmup": 0, "replications": 10},
   "outputs": {}
 }

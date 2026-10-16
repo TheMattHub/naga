@@ -6,26 +6,15 @@
       "name": "release",
       "type": "CREATE",
       "description": "Raw parts released every minute -- more than the line can make, so station 1 is never starved",
-      "position": [
-        60.0,
-        200.0
-      ],
-      "params": {
-        "e_type": "Part"
-      }
+      "position": [60.0, 200.0],
+      "params": {"e_type": "Part"}
     },
     {
       "name": "station_1",
       "type": "SUBMODEL",
       "description": "Station 1",
-      "position": [
-        260.0,
-        200.0
-      ],
-      "layout_position": [
-        2.0,
-        1.0
-      ],
+      "position": [260.0, 200.0],
+      "layout_position": [2.0, 1.0],
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -42,14 +31,8 @@
       "name": "station_2",
       "type": "SUBMODEL",
       "description": "Station 2",
-      "position": [
-        500.0,
-        200.0
-      ],
-      "layout_position": [
-        20.0,
-        1.0
-      ],
+      "position": [500.0, 200.0],
+      "layout_position": [20.0, 1.0],
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -66,33 +49,16 @@
       "name": "buffer_1",
       "type": "SUBMODEL",
       "description": "Buffer 1: the space between stations 1 and 2",
-      "position": [
-        400.0,
-        200.0
-      ],
-      "layout_position": [
-        13.0,
-        1.0
-      ],
-      "params": {
-        "definition": "Buffer",
-        "arguments": {
-          "places": 4
-        }
-      }
+      "position": [400.0, 200.0],
+      "layout_position": [13.0, 1.0],
+      "params": {"definition": "Buffer", "arguments": {"places": 4}}
     },
     {
       "name": "station_3",
       "type": "SUBMODEL",
       "description": "Station 3 -- the unreliable one (MTBF 60 min, MTTR 12 min)",
-      "position": [
-        740.0,
-        200.0
-      ],
-      "layout_position": [
-        39.0,
-        1.0
-      ],
+      "position": [740.0, 200.0],
+      "layout_position": [39.0, 1.0],
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -109,33 +75,16 @@
       "name": "buffer_2",
       "type": "SUBMODEL",
       "description": "Buffer 2: the space between stations 2 and 3",
-      "position": [
-        640.0,
-        200.0
-      ],
-      "layout_position": [
-        31.0,
-        1.0
-      ],
-      "params": {
-        "definition": "Buffer",
-        "arguments": {
-          "places": 4
-        }
-      }
+      "position": [640.0, 200.0],
+      "layout_position": [31.0, 1.0],
+      "params": {"definition": "Buffer", "arguments": {"places": 4}}
     },
     {
       "name": "station_4",
       "type": "SUBMODEL",
       "description": "Station 4",
-      "position": [
-        980.0,
-        200.0
-      ],
-      "layout_position": [
-        57.0,
-        1.0
-      ],
+      "position": [980.0, 200.0],
+      "layout_position": [57.0, 1.0],
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -152,207 +101,92 @@
       "name": "buffer_3",
       "type": "SUBMODEL",
       "description": "Buffer 3: the space between stations 3 and 4",
-      "position": [
-        880.0,
-        200.0
-      ],
-      "layout_position": [
-        50.0,
-        1.0
-      ],
-      "params": {
-        "definition": "Buffer",
-        "arguments": {
-          "places": 4
-        }
-      }
+      "position": [880.0, 200.0],
+      "layout_position": [50.0, 1.0],
+      "params": {"definition": "Buffer", "arguments": {"places": 4}}
     },
     {
       "name": "finished",
       "type": "DISPOSE",
       "description": "Finished parts leave the line",
-      "position": [
-        1300.0,
-        200.0
-      ]
+      "position": [1300.0, 200.0]
     }
   ],
   "links": [
-    {
-      "source": "release",
-      "target": "station_1",
-      "target_port": "in"
-    },
-    {
-      "source": "station_1",
-      "target": "buffer_1",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "buffer_1",
-      "target": "station_2",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "station_2",
-      "target": "buffer_2",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "buffer_2",
-      "target": "station_3",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "station_3",
-      "target": "buffer_3",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "buffer_3",
-      "target": "station_4",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "station_4",
-      "target": "finished",
-      "source_port": "out"
-    }
+    {"source": "release", "target": "station_1", "target_port": "in"},
+    {"source": "station_1", "target": "buffer_1", "source_port": "out", "target_port": "in"},
+    {"source": "buffer_1", "target": "station_2", "source_port": "out", "target_port": "in"},
+    {"source": "station_2", "target": "buffer_2", "source_port": "out", "target_port": "in"},
+    {"source": "buffer_2", "target": "station_3", "source_port": "out", "target_port": "in"},
+    {"source": "station_3", "target": "buffer_3", "source_port": "out", "target_port": "in"},
+    {"source": "buffer_3", "target": "station_4", "source_port": "out", "target_port": "in"},
+    {"source": "station_4", "target": "finished", "source_port": "out"}
   ],
   "scenarios": [
     {
       "name": "No buffers",
       "description": "Zero places anywhere: every stoppage at one station stops the whole line.",
       "overrides": [
-        {
-          "path": "blocks.buffer_1.params.arguments.places",
-          "value": 0
-        },
-        {
-          "path": "blocks.buffer_2.params.arguments.places",
-          "value": 0
-        },
-        {
-          "path": "blocks.buffer_3.params.arguments.places",
-          "value": 0
-        }
+        {"path": "blocks.buffer_1.params.arguments.places", "value": 0},
+        {"path": "blocks.buffer_2.params.arguments.places", "value": 0},
+        {"path": "blocks.buffer_3.params.arguments.places", "value": 0}
       ]
     },
     {
       "name": "Even split",
       "description": "Four places between each pair of stations -- the model as it is saved.",
       "overrides": [
-        {
-          "path": "blocks.buffer_1.params.arguments.places",
-          "value": 4
-        },
-        {
-          "path": "blocks.buffer_2.params.arguments.places",
-          "value": 4
-        },
-        {
-          "path": "blocks.buffer_3.params.arguments.places",
-          "value": 4
-        }
+        {"path": "blocks.buffer_1.params.arguments.places", "value": 4},
+        {"path": "blocks.buffer_2.params.arguments.places", "value": 4},
+        {"path": "blocks.buffer_3.params.arguments.places", "value": 4}
       ]
     },
     {
       "name": "Protect the bottleneck",
       "description": "All twelve places either side of station 3, the unreliable one.",
       "overrides": [
-        {
-          "path": "blocks.buffer_1.params.arguments.places",
-          "value": 0
-        },
-        {
-          "path": "blocks.buffer_2.params.arguments.places",
-          "value": 6
-        },
-        {
-          "path": "blocks.buffer_3.params.arguments.places",
-          "value": 6
-        }
+        {"path": "blocks.buffer_1.params.arguments.places", "value": 0},
+        {"path": "blocks.buffer_2.params.arguments.places", "value": 6},
+        {"path": "blocks.buffer_3.params.arguments.places", "value": 6}
       ]
     },
     {
       "name": "All at the front",
       "description": "Every place before station 2 and none after it.",
       "overrides": [
-        {
-          "path": "blocks.buffer_1.params.arguments.places",
-          "value": 12
-        },
-        {
-          "path": "blocks.buffer_2.params.arguments.places",
-          "value": 0
-        },
-        {
-          "path": "blocks.buffer_3.params.arguments.places",
-          "value": 0
-        }
+        {"path": "blocks.buffer_1.params.arguments.places", "value": 12},
+        {"path": "blocks.buffer_2.params.arguments.places", "value": 0},
+        {"path": "blocks.buffer_3.params.arguments.places", "value": 0}
       ]
     },
     {
       "name": "All at the back",
       "description": "Every place before station 4 and none earlier.",
       "overrides": [
-        {
-          "path": "blocks.buffer_1.params.arguments.places",
-          "value": 0
-        },
-        {
-          "path": "blocks.buffer_2.params.arguments.places",
-          "value": 0
-        },
-        {
-          "path": "blocks.buffer_3.params.arguments.places",
-          "value": 12
-        }
+        {"path": "blocks.buffer_1.params.arguments.places", "value": 0},
+        {"path": "blocks.buffer_2.params.arguments.places", "value": 0},
+        {"path": "blocks.buffer_3.params.arguments.places", "value": 12}
       ]
     }
   ],
-  "resources": [
-    {
-      "name": "Mfg Machine",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
-  ],
+  "resources": [{"name": "Mfg Machine", "capacity": 1, "discipline": "FIFO"}],
   "failures": [
     {
       "name": "Mfg Machine breakdown",
-      "resources": [
-        "Mfg Machine"
-      ],
+      "resources": ["Mfg Machine"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.001
-        },
+        "dist_params": {"rate": 0.001},
         "time_unit": "minutes"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.05
-        },
+        "dist_params": {"rate": 0.05},
         "time_unit": "minutes"
       }
     }
   ],
-  "entities": [
-    {
-      "name": "Part",
-      "shape": "square",
-      "color": "BLUE"
-    }
-  ],
+  "entities": [{"name": "Part", "shape": "square", "color": "BLUE"}],
   "levels": [
     {
       "name": "Mfg Buffer stock",
@@ -367,11 +201,7 @@
     "Workstation": {
       "info": {
         "description": "One station with its own queue and machines: jobs seize a machine, are worked on, and leave. Optional breakdowns (MTBF/MTTR), a changeover time and cost when the job type changes, and a finite input buffer that blocks the station upstream when it is full.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "workstation",
-          "version": "2.3.0"
-        },
+        "library": {"library": "manufacturing", "asset": "workstation", "version": "2.3.0"},
         "parameters": [
           {
             "name": "process_time",
@@ -396,11 +226,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              "fixed",
-              "exponential",
-              "triangular"
-            ],
+            "choices": ["fixed", "exponential", "triangular"],
             "refers_to": ""
           },
           {
@@ -506,13 +332,7 @@
             "setup_time": "setup_time",
             "cost_rate": "cost_rate"
           },
-          "rows": [
-            "Manual bench",
-            "CNC mill",
-            "Laser cutter",
-            "Press",
-            "Paint booth"
-          ],
+          "rows": ["Manual bench", "CNC mill", "Laser cutter", "Press", "Paint booth"],
           "units": {
             "process_time": "minutes",
             "mtbf": "minutes",
@@ -565,14 +385,7 @@
             "Paint booth": "Generic reference value (Naga); replace with plant data."
           }
         },
-        "owns": {
-          "resources": [
-            "Mfg Machine"
-          ],
-          "failures": [
-            "Mfg Machine breakdown"
-          ]
-        }
+        "owns": {"resources": ["Mfg Machine"], "failures": ["Mfg Machine breakdown"]}
       },
       "parameters": [
         {
@@ -631,12 +444,7 @@
         }
       ],
       "scoped": {
-        "resources": {
-          "Mfg Machine": {
-            "capacity": "machines",
-            "cost_busy": "cost_rate"
-          }
-        },
+        "resources": {"Mfg Machine": {"capacity": "machines", "cost_busy": "cost_rate"}},
         "failures": {
           "Mfg Machine breakdown": {
             "uptime.dist_params.rate": "1.0 / mtbf if mtbf > 0 else 1e-9",
@@ -645,23 +453,12 @@
         }
       },
       "blocks": [
-        {
-          "name": "in",
-          "type": "SUB_ENTRY",
-          "description": "Jobs arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
-        },
+        {"name": "in", "type": "SUB_ENTRY", "description": "Jobs arrive", "position": [0.0, 0.0]},
         {
           "name": "machine",
           "type": "PROCESS",
           "description": "Machine",
-          "position": [
-            250.0,
-            0.0
-          ],
+          "position": [250.0, 0.0],
           "params": {
             "dist_params": {
               "value": "process_time if time_distribution == 'fixed' else (EXPO(process_time) if time_distribution == 'exponential' else TRIA(0.7 * process_time, process_time, 1.3 * process_time))"
@@ -672,41 +469,18 @@
             "setup_key": "entity.e_type",
             "setup_cost": "setup_cost",
             "setup_cost_category": "Changeover",
-            "queue_capacity": {
-              "$arg": "input_buffer"
-            }
+            "queue_capacity": {"$arg": "input_buffer"}
           }
         },
-        {
-          "name": "out",
-          "type": "SUB_EXIT",
-          "description": "Jobs leave",
-          "position": [
-            600.0,
-            0.0
-          ]
-        }
+        {"name": "out", "type": "SUB_EXIT", "description": "Jobs leave", "position": [600.0, 0.0]}
       ],
-      "links": [
-        {
-          "source": "in",
-          "target": "machine"
-        },
-        {
-          "source": "machine",
-          "target": "out"
-        }
-      ],
+      "links": [{"source": "in", "target": "machine"}, {"source": "machine", "target": "out"}],
       "annotations": []
     },
     "Buffer": {
       "info": {
         "description": "The finite space between two stations. A job takes a place on the way in and keeps it until the next station starts it, so the station upstream stays BLOCKED -- occupied, holding its finished job -- while the buffer is full. 0 places is the classic zero-buffer line. For an unlimited queue, do not place a buffer at all.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "buffer",
-          "version": "2.3.0"
-        },
+        "library": {"library": "manufacturing", "asset": "buffer", "version": "2.3.0"},
         "parameters": [
           {
             "name": "places",
@@ -722,11 +496,7 @@
             "refers_to": ""
           }
         ],
-        "owns": {
-          "levels": [
-            "Mfg Buffer stock"
-          ]
-        }
+        "owns": {"levels": ["Mfg Buffer stock"]}
       },
       "parameters": [
         {
@@ -736,58 +506,19 @@
           "description": "How many jobs fit between the two stations. 0 means none at all: the upstream machine holds its finished job until the next station starts it."
         }
       ],
-      "scoped": {
-        "levels": {
-          "Mfg Buffer stock": {
-            "capacity": "places"
-          }
-        }
-      },
+      "scoped": {"levels": {"Mfg Buffer stock": {"capacity": "places"}}},
       "blocks": [
-        {
-          "name": "in",
-          "type": "SUB_ENTRY",
-          "description": "Jobs arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
-        },
+        {"name": "in", "type": "SUB_ENTRY", "description": "Jobs arrive", "position": [0.0, 0.0]},
         {
           "name": "places",
           "type": "BUFFER",
           "description": "Buffer",
-          "position": [
-            250.0,
-            0.0
-          ],
-          "params": {
-            "capacity": {
-              "$arg": "places"
-            },
-            "level": "$Mfg Buffer stock"
-          }
+          "position": [250.0, 0.0],
+          "params": {"capacity": {"$arg": "places"}, "level": "$Mfg Buffer stock"}
         },
-        {
-          "name": "out",
-          "type": "SUB_EXIT",
-          "description": "Jobs leave",
-          "position": [
-            500.0,
-            0.0
-          ]
-        }
+        {"name": "out", "type": "SUB_EXIT", "description": "Jobs leave", "position": [500.0, 0.0]}
       ],
-      "links": [
-        {
-          "source": "in",
-          "target": "places"
-        },
-        {
-          "source": "places",
-          "target": "out"
-        }
-      ],
+      "links": [{"source": "in", "target": "places"}, {"source": "places", "target": "out"}],
       "annotations": []
     }
   },
@@ -796,10 +527,6 @@
     "category": "Manufacturing",
     "description": "A four-station line with finite buffers between the stations: when a buffer is full the machine behind it stays BLOCKED, holding its finished part. Station 3 breaks down often, so where the twelve available buffer places go decides the line's throughput -- the scenarios move them around without ever adding any."
   },
-  "simulation": {
-    "time_limit": 2400,
-    "warmup": 240,
-    "replications": 10
-  },
+  "simulation": {"time_limit": 2400, "warmup": 240, "replications": 10},
   "outputs": {}
 }

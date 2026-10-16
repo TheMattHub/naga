@@ -5,75 +5,33 @@
     {
       "name": "create_1",
       "type": "CREATE",
-      "position": [
-        200.0,
-        320.0
-      ],
-      "params": {
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.0
-        }
-      }
+      "position": [200.0, 320.0],
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}
     },
     {
       "name": "process_1",
       "type": "PROCESS",
       "description": "Serve",
-      "position": [
-        520.0,
-        320.0
-      ],
+      "position": [520.0, 320.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.25
-        },
+        "dist_params": {"rate": 1.25},
         "resource_name": "Server"
       }
     },
-    {
-      "name": "dispose_1",
-      "type": "DISPOSE",
-      "position": [
-        840.0,
-        320.0
-      ]
-    }
+    {"name": "dispose_1", "type": "DISPOSE", "position": [840.0, 320.0]}
   ],
   "links": [
-    {
-      "source": "create_1",
-      "target": "process_1"
-    },
-    {
-      "source": "process_1",
-      "target": "dispose_1"
-    }
+    {"source": "create_1", "target": "process_1"},
+    {"source": "process_1", "target": "dispose_1"}
   ],
-  "resources": [
-    {
-      "name": "Server",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
-  ],
-  "entities": [
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK"
-    }
-  ],
+  "resources": [{"name": "Server", "capacity": 1, "discipline": "FIFO"}],
+  "entities": [{"name": "DEFAULT", "shape": "circle", "color": "BLACK"}],
   "info": {
     "title": "Single server (M/M/1)",
     "category": "Teaching",
     "description": "The classic M/M/1 queue: a single Server processes arriving customers one at a time -- the baseline example for utilization and waiting-time KPIs."
   },
-  "simulation": {
-    "time_limit": 1000,
-    "warmup": 100,
-    "replications": 5
-  },
+  "simulation": {"time_limit": 1000, "warmup": 100, "replications": 5},
   "outputs": {}
 }

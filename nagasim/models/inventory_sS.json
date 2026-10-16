@@ -6,182 +6,88 @@
       "name": "demand",
       "type": "CREATE",
       "description": "One customer every 0.25 days",
-      "position": [
-        80.0,
-        100.0
-      ],
-      "params": {
-        "e_type": "CUSTOMER",
-        "dist_params": {
-          "value": 0.25
-        }
-      }
+      "position": [80.0, 100.0],
+      "params": {"e_type": "CUSTOMER", "dist_params": {"value": 0.25}}
     },
     {
       "name": "take_stock",
       "type": "TRANSFER",
       "description": "Draw 5 units, waiting if the shelf is short",
-      "position": [
-        260.0,
-        100.0
-      ],
-      "params": {
-        "level": "Stock",
-        "amount": "5",
-        "wait": true
-      }
+      "position": [260.0, 100.0],
+      "params": {"level": "Stock", "amount": "5", "wait": true}
     },
     {
       "name": "sold",
       "type": "RECORD",
       "description": "Units sold",
-      "position": [
-        440.0,
-        100.0
-      ],
-      "params": {
-        "stat_name": "units_sold",
-        "expr": "5"
-      }
+      "position": [440.0, 100.0],
+      "params": {"stat_name": "units_sold", "expr": "5"}
     },
     {
       "name": "leave",
       "type": "DISPOSE",
       "description": "Customer leaves",
-      "position": [
-        620.0,
-        100.0
-      ]
+      "position": [620.0, 100.0]
     },
     {
       "name": "agent",
       "type": "CREATE",
       "description": "One long-lived purchasing agent",
-      "position": [
-        80.0,
-        260.0
-      ],
-      "params": {
-        "e_type": "AGENT",
-        "max_arrivals": 1
-      }
+      "position": [80.0, 260.0],
+      "params": {"e_type": "AGENT", "max_arrivals": 1}
     },
     {
       "name": "wait_reorder",
       "type": "HOLD",
       "description": "Wait for the stock to fall through s",
-      "position": [
-        260.0,
-        260.0
-      ],
-      "params": {
-        "signal_name": "reorder"
-      }
+      "position": [260.0, 260.0],
+      "params": {"signal_name": "reorder"}
     },
     {
       "name": "order_placed",
       "type": "RECORD",
       "description": "Replenishment orders placed",
-      "position": [
-        440.0,
-        260.0
-      ],
-      "params": {
-        "stat_name": "orders_placed"
-      }
+      "position": [440.0, 260.0],
+      "params": {"stat_name": "orders_placed"}
     },
     {
       "name": "order_charge",
       "type": "RECORD",
       "description": "Ordering cost",
-      "position": [
-        440.0,
-        380.0
-      ],
-      "params": {
-        "stat_name": "ordering cost",
-        "kind": "cost",
-        "expr": "35",
-        "category": "Ordering"
-      }
+      "position": [440.0, 380.0],
+      "params": {"stat_name": "ordering cost", "kind": "cost", "expr": "35", "category": "Ordering"}
     },
     {
       "name": "lead_time",
       "type": "DELAY",
       "description": "Supplier lead time",
-      "position": [
-        620.0,
-        260.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 1.9
-        }
-      }
+      "position": [620.0, 260.0],
+      "params": {"dist_params": {"value": 1.9}}
     },
     {
       "name": "receive",
       "type": "TRANSFER",
       "description": "Put the order-up-to quantity on the shelf",
-      "position": [
-        800.0,
-        260.0
-      ],
-      "params": {
-        "level": "Stock",
-        "amount": "70",
-        "mode": "add"
-      }
+      "position": [800.0, 260.0],
+      "params": {"level": "Stock", "amount": "70", "mode": "add"}
     }
   ],
   "links": [
-    {
-      "source": "demand",
-      "target": "take_stock"
-    },
-    {
-      "source": "take_stock",
-      "target": "sold"
-    },
-    {
-      "source": "sold",
-      "target": "leave"
-    },
-    {
-      "source": "agent",
-      "target": "wait_reorder"
-    },
-    {
-      "source": "wait_reorder",
-      "target": "order_placed"
-    },
-    {
-      "source": "order_placed",
-      "target": "order_charge"
-    },
-    {
-      "source": "lead_time",
-      "target": "receive"
-    },
-    {
-      "source": "receive",
-      "target": "wait_reorder"
-    },
-    {
-      "source": "order_charge",
-      "target": "lead_time"
-    }
+    {"source": "demand", "target": "take_stock"},
+    {"source": "take_stock", "target": "sold"},
+    {"source": "sold", "target": "leave"},
+    {"source": "agent", "target": "wait_reorder"},
+    {"source": "wait_reorder", "target": "order_placed"},
+    {"source": "order_placed", "target": "order_charge"},
+    {"source": "lead_time", "target": "receive"},
+    {"source": "receive", "target": "wait_reorder"},
+    {"source": "order_charge", "target": "lead_time"}
   ],
   "scenarios": [
     {
       "name": "Longer lead time",
       "description": "4 days instead of 1.9: the stock runs out and customers are backordered.",
-      "overrides": [
-        {
-          "path": "blocks.lead_time.params.dist_params.value",
-          "value": 4.0
-        }
-      ]
+      "overrides": [{"path": "blocks.lead_time.params.dist_params.value", "value": 4.0}]
     },
     {
       "name": "Higher reorder point",
@@ -201,25 +107,10 @@
       ]
     }
   ],
-  "variables": [
-    {
-      "name": "stock_at_reorder",
-      "initial": 0
-    }
-  ],
+  "variables": [{"name": "stock_at_reorder", "initial": 0}],
   "entities": [
-    {
-      "name": "CUSTOMER",
-      "shape": "circle",
-      "color": "BLUE",
-      "holding_cost": 0.0
-    },
-    {
-      "name": "AGENT",
-      "shape": "square",
-      "color": "GREY",
-      "holding_cost": 0.0
-    }
+    {"name": "CUSTOMER", "shape": "circle", "color": "BLUE", "holding_cost": 0.0},
+    {"name": "AGENT", "shape": "square", "color": "GREY", "holding_cost": 0.0}
   ],
   "levels": [
     {
@@ -229,12 +120,7 @@
       "min": 0,
       "initial": 80,
       "thresholds": [
-        {
-          "value": 50,
-          "direction": "falling",
-          "signal": "reorder",
-          "variable": "stock_at_reorder"
-        }
+        {"value": 50, "direction": "falling", "signal": "reorder", "variable": "stock_at_reorder"}
       ],
       "unit": "units"
     }

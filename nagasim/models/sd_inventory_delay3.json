@@ -6,64 +6,30 @@
       "name": "inventory_delay3_1",
       "type": "SUBMODEL",
       "description": "Inventory with lead time",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Inventory with lead time"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Inventory with lead time"}
     }
   ],
   "levels": [
-    {
-      "name": "SD Inventory",
-      "initial": 150.0,
-      "min": 0.0
-    },
-    {
-      "name": "SD On Order",
-      "initial": 0.0,
-      "min": 0.0
-    }
+    {"name": "SD Inventory", "initial": 150.0, "min": 0.0},
+    {"name": "SD On Order", "initial": 0.0, "min": 0.0}
   ],
   "flows": [
-    {
-      "name": "SD place order",
-      "rate": "AUX(\"$SD demand rate\")",
-      "to": "SD On Order"
-    },
+    {"name": "SD place order", "rate": "AUX(\"$SD demand rate\")", "to": "SD On Order"},
     {
       "name": "SD arrivals",
       "rate": "DELAY3(AUX(\"$SD demand rate\"), AUX(\"$SD lead time\"), 0)",
       "from": "SD On Order",
       "to": "SD Inventory"
     },
-    {
-      "name": "SD consumption",
-      "rate": "AUX(\"$SD demand rate\")",
-      "from": "SD Inventory"
-    }
+    {"name": "SD consumption", "rate": "AUX(\"$SD demand rate\")", "from": "SD Inventory"}
   ],
-  "auxiliaries": [
-    {
-      "name": "SD demand rate",
-      "expr": "10"
-    },
-    {
-      "name": "SD lead time",
-      "expr": "5"
-    }
-  ],
+  "auxiliaries": [{"name": "SD demand rate", "expr": "10"}, {"name": "SD lead time", "expr": "5"}],
   "submodels": {
     "Inventory with lead time": {
       "info": {
         "description": "A stock replenished through a lead time: orders are placed at the (constant) demand rate, arrive DELAY3(demand_rate, lead_time) later (a third-order material delay -- an S-shaped, not instant, response), and are consumed at the demand rate. \"SD On Order\" is the pipeline itself (orders placed but not yet arrived); by Little's law it settles at demand_rate x lead_time. Needs simulation.sd.",
-        "library": {
-          "library": "sd",
-          "asset": "inventory_delay3",
-          "version": "1.1.0"
-        },
+        "library": {"library": "sd", "asset": "inventory_delay3", "version": "1.1.0"},
         "parameters": [
           {
             "name": "demand_rate",
@@ -106,19 +72,9 @@
           }
         ],
         "owns": {
-          "levels": [
-            "SD Inventory",
-            "SD On Order"
-          ],
-          "auxiliaries": [
-            "SD demand rate",
-            "SD lead time"
-          ],
-          "flows": [
-            "SD place order",
-            "SD arrivals",
-            "SD consumption"
-          ]
+          "levels": ["SD Inventory", "SD On Order"],
+          "auxiliaries": ["SD demand rate", "SD lead time"],
+          "flows": ["SD place order", "SD arrivals", "SD consumption"]
         }
       },
       "parameters": [
@@ -142,31 +98,12 @@
         }
       ],
       "scoped": {
-        "levels": {
-          "SD Inventory": {
-            "initial": {
-              "$arg": "initial_stock"
-            }
-          },
-          "SD On Order": {}
-        },
+        "levels": {"SD Inventory": {"initial": {"$arg": "initial_stock"}}, "SD On Order": {}},
         "auxiliaries": {
-          "SD demand rate": {
-            "expr": {
-              "$arg": "demand_rate"
-            }
-          },
-          "SD lead time": {
-            "expr": {
-              "$arg": "lead_time"
-            }
-          }
+          "SD demand rate": {"expr": {"$arg": "demand_rate"}},
+          "SD lead time": {"expr": {"$arg": "lead_time"}}
         },
-        "flows": {
-          "SD place order": {},
-          "SD arrivals": {},
-          "SD consumption": {}
-        }
+        "flows": {"SD place order": {}, "SD arrivals": {}, "SD consumption": {}}
       },
       "blocks": [],
       "links": [],
@@ -182,11 +119,7 @@
     "time_limit": 200.0,
     "warmup": 0,
     "replications": 1,
-    "sd": {
-      "dt": 0.1,
-      "method": "rk4",
-      "time_unit": "minutes"
-    }
+    "sd": {"dt": 0.1, "method": "rk4", "time_unit": "minutes"}
   },
   "outputs": {}
 }

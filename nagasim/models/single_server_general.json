@@ -5,77 +5,34 @@
     {
       "name": "create_1",
       "type": "CREATE",
-      "position": [
-        200.0,
-        320.0
-      ],
-      "params": {
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.0
-        }
-      }
+      "position": [200.0, 320.0],
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}
     },
     {
       "name": "process_1",
       "type": "PROCESS",
       "description": "Serve (uniform time)",
-      "position": [
-        520.0,
-        320.0
-      ],
+      "position": [520.0, 320.0],
       "params": {
         "distribution": "Uniform",
-        "dist_params": {
-          "low": 0.2,
-          "high": 1.4
-        },
+        "dist_params": {"low": 0.2, "high": 1.4},
         "resource_name": "Server"
       }
     },
-    {
-      "name": "dispose_1",
-      "type": "DISPOSE",
-      "position": [
-        840.0,
-        320.0
-      ]
-    }
+    {"name": "dispose_1", "type": "DISPOSE", "position": [840.0, 320.0]}
   ],
   "links": [
-    {
-      "source": "create_1",
-      "target": "process_1"
-    },
-    {
-      "source": "process_1",
-      "target": "dispose_1"
-    }
+    {"source": "create_1", "target": "process_1"},
+    {"source": "process_1", "target": "dispose_1"}
   ],
-  "resources": [
-    {
-      "name": "Server",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
-  ],
-  "entities": [
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK"
-    }
-  ],
+  "resources": [{"name": "Server", "capacity": 1, "discipline": "FIFO"}],
+  "entities": [{"name": "DEFAULT", "shape": "circle", "color": "BLACK"}],
   "info": {
     "title": "Single server, general service times (M/G/1)",
     "category": "Teaching",
     "description": "The single-server queue with Poisson arrivals (one a minute) and a service time that is not exponential: uniform between 0.2 and 1.4 minutes, mean 0.8. The server is as busy as in an M/M/1 queue of the same load (80%), but the queue is shorter, because the service time varies less. Read the Server's average queue length: the Pollaczek-Khinchine formula gives lambda^2 E[S^2] / (2 (1 - rho)) = 0.76 / 0.4 = 1.9.",
     "notes": "E[S] = 0.8 and Var[S] = 1.2^2 / 12 = 0.12, so E[S^2] = 0.76 and rho = 0.8. With an exponential service time of the same mean the queue would hold 3.2 on average. A short run scatters widely around 1.9; lengthen the run or add replications to see it settle."
   },
-  "simulation": {
-    "time_limit": 5500,
-    "warmup": 500,
-    "replications": 20
-  },
+  "simulation": {"time_limit": 5500, "warmup": 500, "replications": 20},
   "outputs": {}
 }

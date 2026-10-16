@@ -6,16 +6,11 @@
       "name": "create_widget",
       "type": "CREATE",
       "description": "Widget orders, Poisson 0.5/min",
-      "position": [
-        100.0,
-        160.0
-      ],
+      "position": [100.0, 160.0],
       "params": {
         "e_type": "WIDGET",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.5
-        },
+        "dist_params": {"rate": 0.5},
         "sequence": "Widget"
       }
     },
@@ -23,16 +18,11 @@
       "name": "create_bracket",
       "type": "CREATE",
       "description": "Bracket orders, Poisson 0.3/min",
-      "position": [
-        100.0,
-        300.0
-      ],
+      "position": [100.0, 300.0],
       "params": {
         "e_type": "BRACKET",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.3
-        },
+        "dist_params": {"rate": 0.3},
         "sequence": "Bracket"
       }
     },
@@ -40,16 +30,11 @@
       "name": "create_shaft",
       "type": "CREATE",
       "description": "Shaft orders, Poisson 0.2/min",
-      "position": [
-        100.0,
-        440.0
-      ],
+      "position": [100.0, 440.0],
       "params": {
         "e_type": "SHAFT",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.2
-        },
+        "dist_params": {"rate": 0.2},
         "sequence": "Shaft"
       }
     },
@@ -57,72 +42,39 @@
       "name": "route_1",
       "type": "ROUTE",
       "description": "Send each job to the next station of its routing; travel time from the Distance table",
-      "position": [
-        340.0,
-        300.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": "TABLE(\"Distance\", from_station, to_station)"
-        }
-      }
+      "position": [340.0, 300.0],
+      "params": {"dist_params": {"value": "TABLE(\"Distance\", from_station, to_station)"}}
     },
     {
       "name": "Cutting",
       "type": "STATION",
       "description": "Cutting station entry point",
-      "position": [
-        600.0,
-        160.0
-      ],
-      "layout_position": [
-        3.0,
-        3.0
-      ]
+      "position": [600.0, 160.0],
+      "layout_position": [3.0, 3.0]
     },
     {
       "name": "Drilling",
       "type": "STATION",
       "description": "Drilling station entry point",
-      "position": [
-        600.0,
-        300.0
-      ],
-      "layout_position": [
-        3.0,
-        13.0
-      ]
+      "position": [600.0, 300.0],
+      "layout_position": [3.0, 13.0]
     },
     {
       "name": "Assembly",
       "type": "STATION",
       "description": "Assembly station entry point",
-      "position": [
-        600.0,
-        440.0
-      ],
-      "layout_position": [
-        3.0,
-        24.0
-      ]
+      "position": [600.0, 440.0],
+      "layout_position": [3.0, 24.0]
     },
     {
       "name": "process_cutting",
       "type": "PROCESS",
       "description": "Cutting (single saw); mean time comes with the job, from its routing step",
-      "position": [
-        820.0,
-        160.0
-      ],
-      "layout_position": [
-        19.0,
-        3.0
-      ],
+      "position": [820.0, 160.0],
+      "layout_position": [19.0, 3.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": "1.0 / entity.process_time"
-        },
+        "dist_params": {"rate": "1.0 / entity.process_time"},
         "resource_name": "Cutting",
         "setup_key": "entity.sequence"
       }
@@ -131,19 +83,11 @@
       "name": "process_drilling",
       "type": "PROCESS",
       "description": "Drilling (set of two single-capacity drills)",
-      "position": [
-        820.0,
-        300.0
-      ],
-      "layout_position": [
-        19.0,
-        13.0
-      ],
+      "position": [820.0, 300.0],
+      "layout_position": [19.0, 13.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": "1.0 / entity.process_time"
-        },
+        "dist_params": {"rate": "1.0 / entity.process_time"},
         "resource_name": "Drilling"
       }
     },
@@ -151,19 +95,11 @@
       "name": "process_assembly",
       "type": "PROCESS",
       "description": "Assembly (capacity 2)",
-      "position": [
-        820.0,
-        440.0
-      ],
-      "layout_position": [
-        19.0,
-        24.0
-      ],
+      "position": [820.0, 440.0],
+      "layout_position": [19.0, 24.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": "1.0 / entity.process_time"
-        },
+        "dist_params": {"rate": "1.0 / entity.process_time"},
         "resource_name": "AssemblyStation"
       }
     },
@@ -171,10 +107,7 @@
       "name": "record_exit",
       "type": "RECORD",
       "description": "Tally time in system for a finished job",
-      "position": [
-        340.0,
-        600.0
-      ],
+      "position": [340.0, 600.0],
       "params": {
         "stat_name": "time_in_system",
         "kind": "tally",
@@ -185,57 +118,21 @@
       "name": "dispose_1",
       "type": "DISPOSE",
       "description": "Finished jobs leave the shop",
-      "position": [
-        600.0,
-        600.0
-      ]
+      "position": [600.0, 600.0]
     }
   ],
   "links": [
-    {
-      "source": "create_widget",
-      "target": "route_1"
-    },
-    {
-      "source": "create_bracket",
-      "target": "route_1"
-    },
-    {
-      "source": "create_shaft",
-      "target": "route_1"
-    },
-    {
-      "source": "route_1",
-      "target": "record_exit"
-    },
-    {
-      "source": "Cutting",
-      "target": "process_cutting"
-    },
-    {
-      "source": "Drilling",
-      "target": "process_drilling"
-    },
-    {
-      "source": "Assembly",
-      "target": "process_assembly"
-    },
-    {
-      "source": "process_cutting",
-      "target": "route_1"
-    },
-    {
-      "source": "process_drilling",
-      "target": "route_1"
-    },
-    {
-      "source": "process_assembly",
-      "target": "route_1"
-    },
-    {
-      "source": "record_exit",
-      "target": "dispose_1"
-    }
+    {"source": "create_widget", "target": "route_1"},
+    {"source": "create_bracket", "target": "route_1"},
+    {"source": "create_shaft", "target": "route_1"},
+    {"source": "route_1", "target": "record_exit"},
+    {"source": "Cutting", "target": "process_cutting"},
+    {"source": "Drilling", "target": "process_drilling"},
+    {"source": "Assembly", "target": "process_assembly"},
+    {"source": "process_cutting", "target": "route_1"},
+    {"source": "process_drilling", "target": "route_1"},
+    {"source": "process_assembly", "target": "route_1"},
+    {"source": "record_exit", "target": "dispose_1"}
   ],
   "scenarios": [
     {
@@ -284,46 +181,15 @@
     }
   ],
   "resource_sets": [
-    {
-      "name": "Drilling",
-      "members": [
-        "Drill1",
-        "Drill2"
-      ],
-      "rule": "SmallestNumberBusy"
-    }
+    {"name": "Drilling", "members": ["Drill1", "Drill2"], "rule": "SmallestNumberBusy"}
   ],
   "tables": [
     {
       "name": "Distance",
       "description": "Travel time in minutes between stations; a job entering the shop has no travel, hence default 0.",
-      "keys": [
-        "Cutting",
-        "Drilling",
-        "Assembly"
-      ],
-      "columns": [
-        "Cutting",
-        "Drilling",
-        "Assembly"
-      ],
-      "values": [
-        [
-          0.0,
-          1.0,
-          1.5
-        ],
-        [
-          1.0,
-          0.0,
-          0.8
-        ],
-        [
-          1.5,
-          0.8,
-          0.0
-        ]
-      ],
+      "keys": ["Cutting", "Drilling", "Assembly"],
+      "columns": ["Cutting", "Drilling", "Assembly"],
+      "values": [[0.0, 1.0, 1.5], [1.0, 0.0, 0.8], [1.5, 0.8, 0.0]],
       "key_mode": "exact",
       "column_mode": "exact",
       "default": 0.0
@@ -331,33 +197,9 @@
     {
       "name": "Setups",
       "description": "Changeover minutes at Cutting from the previous routing to the next; keyed by sequence name, which is what process_cutting's setup_key reads.",
-      "keys": [
-        "Widget",
-        "Bracket",
-        "Shaft"
-      ],
-      "columns": [
-        "Widget",
-        "Bracket",
-        "Shaft"
-      ],
-      "values": [
-        [
-          0.0,
-          0.15,
-          0.1
-        ],
-        [
-          0.15,
-          0.0,
-          0.12
-        ],
-        [
-          0.1,
-          0.12,
-          0.0
-        ]
-      ],
+      "keys": ["Widget", "Bracket", "Shaft"],
+      "columns": ["Widget", "Bracket", "Shaft"],
+      "values": [[0.0, 0.15, 0.1], [0.15, 0.0, 0.12], [0.1, 0.12, 0.0]],
       "key_mode": "exact",
       "column_mode": "exact",
       "default": 0.0
@@ -368,106 +210,39 @@
       "name": "Widget",
       "description": "Cut, drill, assemble",
       "steps": [
-        {
-          "station": "Cutting",
-          "values": {
-            "operation": "cut",
-            "process_time": 0.6
-          }
-        },
-        {
-          "station": "Drilling",
-          "values": {
-            "operation": "drill",
-            "process_time": 2.0
-          }
-        },
-        {
-          "station": "Assembly",
-          "values": {
-            "operation": "assemble",
-            "process_time": 1.8
-          }
-        }
+        {"station": "Cutting", "values": {"operation": "cut", "process_time": 0.6}},
+        {"station": "Drilling", "values": {"operation": "drill", "process_time": 2.0}},
+        {"station": "Assembly", "values": {"operation": "assemble", "process_time": 1.8}}
       ]
     },
     {
       "name": "Bracket",
       "description": "Cut, assemble (no drilling)",
       "steps": [
-        {
-          "station": "Cutting",
-          "values": {
-            "operation": "cut",
-            "process_time": 0.5
-          }
-        },
-        {
-          "station": "Assembly",
-          "values": {
-            "operation": "assemble",
-            "process_time": 1.6
-          }
-        }
+        {"station": "Cutting", "values": {"operation": "cut", "process_time": 0.5}},
+        {"station": "Assembly", "values": {"operation": "assemble", "process_time": 1.6}}
       ]
     },
     {
       "name": "Shaft",
       "description": "Rough cut, drill, finish cut -- revisits Cutting, which no drawn flow could do",
       "steps": [
-        {
-          "station": "Cutting",
-          "values": {
-            "operation": "rough_cut",
-            "process_time": 0.7
-          }
-        },
-        {
-          "station": "Drilling",
-          "values": {
-            "operation": "drill",
-            "process_time": 1.6
-          }
-        },
-        {
-          "station": "Cutting",
-          "values": {
-            "operation": "finish_cut",
-            "process_time": 0.4
-          }
-        }
+        {"station": "Cutting", "values": {"operation": "rough_cut", "process_time": 0.7}},
+        {"station": "Drilling", "values": {"operation": "drill", "process_time": 1.6}},
+        {"station": "Cutting", "values": {"operation": "finish_cut", "process_time": 0.4}}
       ]
     }
   ],
   "entities": [
-    {
-      "name": "WIDGET",
-      "shape": "circle",
-      "color": "BLUE",
-      "holding_cost": 0.05
-    },
-    {
-      "name": "BRACKET",
-      "shape": "square",
-      "color": "GREEN",
-      "holding_cost": 0.05
-    },
-    {
-      "name": "SHAFT",
-      "shape": "triangle",
-      "color": "ORANGE",
-      "holding_cost": 0.05
-    }
+    {"name": "WIDGET", "shape": "circle", "color": "BLUE", "holding_cost": 0.05},
+    {"name": "BRACKET", "shape": "square", "color": "GREEN", "holding_cost": 0.05},
+    {"name": "SHAFT", "shape": "triangle", "color": "ORANGE", "holding_cost": 0.05}
   ],
   "info": {
     "title": "Job shop (routed, per-product sequences)",
     "category": "Manufacturing",
     "description": "The three-station job shop of job_shop_jackson.json rebuilt with ROUTE, STATION blocks and per-product routing sequences instead of DECIDE wiring. Three products follow fixed operation orders (Shaft visits Cutting twice, which no drawn flow could express without duplicating the station), each step carries its own process time, travel time between stations comes from a from-to Distance table, and a scenario switches on a sequence-dependent setup at Cutting."
   },
-  "simulation": {
-    "time_limit": 6000,
-    "warmup": 1000,
-    "replications": 10
-  },
+  "simulation": {"time_limit": 6000, "warmup": 1000, "replications": 10},
   "outputs": {}
 }

@@ -6,30 +6,15 @@
       "name": "bass_diffusion_agents_1",
       "type": "SUBMODEL",
       "description": "Bass diffusion (agents)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Bass diffusion (agents)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Bass diffusion (agents)"}
     }
   ],
   "agent_types": [
     {
       "name": "Prospect",
-      "parameters": {
-        "p": 0.03,
-        "q": 0.4
-      },
-      "states": [
-        {
-          "name": "Potential"
-        },
-        {
-          "name": "Adopter"
-        }
-      ],
+      "parameters": {"p": 0.03, "q": 0.4},
+      "states": [{"name": "Potential"}, {"name": "Adopter"}],
       "initial_state": "Potential",
       "transitions": [
         {
@@ -41,22 +26,12 @@
       ]
     }
   ],
-  "populations": [
-    {
-      "name": "Market",
-      "type": "Prospect",
-      "count": 2000
-    }
-  ],
+  "populations": [{"name": "Market", "type": "Prospect", "count": 2000}],
   "submodels": {
     "Bass diffusion (agents)": {
       "info": {
         "description": "The individual-based twin of the System dynamics library's Bass diffusion asset: 2000 Prospect agents, each moving from Potential to Adopter at the SHARED hazard p + q * Adopters/m (innovation p plus imitation q proportional to the fraction already adopted) -- no self term, so this is exactly the mean-field Bass rate applied per agent. With p=0.03, q=0.4, the SD closed form puts the inflection at t*=ln(q/p)/(p+q) and the adopted fraction there at (q-p)/(2q); the agent run matches it within Monte Carlo noise. p, q and the market size m are this instance's own; the Product preset fills p and q from an illustrative catalogue.",
-        "library": {
-          "library": "agents",
-          "asset": "bass_diffusion_agents",
-          "version": "1.2.0"
-        },
+        "library": {"library": "agents", "asset": "bass_diffusion_agents", "version": "1.2.0"},
         "parameters": [
           {
             "name": "p",
@@ -102,29 +77,13 @@
           "catalogue": "ABM Diffusion",
           "label": "Product",
           "group": "Parameters",
-          "map": {
-            "p": "p",
-            "q": "q"
-          },
-          "rows": [
-            "Default (p 0.03, q 0.4)",
-            "Imitation-led",
-            "Innovation-led"
-          ],
+          "map": {"p": "p", "q": "q"},
+          "rows": ["Default (p 0.03, q 0.4)", "Imitation-led", "Innovation-led"],
           "units": {},
           "values": {
-            "Default (p 0.03, q 0.4)": {
-              "p": 0.03,
-              "q": 0.4
-            },
-            "Imitation-led": {
-              "p": 0.01,
-              "q": 0.5
-            },
-            "Innovation-led": {
-              "p": 0.08,
-              "q": 0.2
-            }
+            "Default (p 0.03, q 0.4)": {"p": 0.03, "q": 0.4},
+            "Imitation-led": {"p": 0.01, "q": 0.5},
+            "Innovation-led": {"p": 0.08, "q": 0.2}
           },
           "sources": {
             "Default (p 0.03, q 0.4)": "Illustrative.",
@@ -132,14 +91,7 @@
             "Innovation-led": "Illustrative."
           }
         },
-        "owns": {
-          "agent_types": [
-            "Prospect"
-          ],
-          "populations": [
-            "Market"
-          ]
-        }
+        "owns": {"agent_types": ["Prospect"], "populations": ["Market"]}
       },
       "parameters": [
         {
@@ -154,31 +106,11 @@
           "type": "number",
           "description": "Adoption hazard per unit of the adopted fraction."
         },
-        {
-          "name": "m",
-          "default": 2000,
-          "type": "int",
-          "description": "Number of Prospect agents."
-        }
+        {"name": "m", "default": 2000, "type": "int", "description": "Number of Prospect agents."}
       ],
       "scoped": {
-        "agent_types": {
-          "Prospect": {
-            "parameters.p": {
-              "$arg": "p"
-            },
-            "parameters.q": {
-              "$arg": "q"
-            }
-          }
-        },
-        "populations": {
-          "Market": {
-            "count": {
-              "$arg": "m"
-            }
-          }
-        }
+        "agent_types": {"Prospect": {"parameters.p": {"$arg": "p"}, "parameters.q": {"$arg": "q"}}},
+        "populations": {"Market": {"count": {"$arg": "m"}}}
       },
       "blocks": [],
       "links": [],
@@ -190,10 +122,6 @@
     "category": "Agent-based",
     "description": "The individual-based twin of the System dynamics library's Bass diffusion asset: 2000 Prospect agents, each moving from Potential to Adopter at the SHARED hazard p + q * Adopters/m (innovation p plus imitation q proportional to the fraction already adopted) -- no self term, so this is exactly the mean-field Bass rate applied per agent. With p=0.03, q=0.4, the SD closed form puts the inflection at t*=ln(q/p)/(p+q) and the adopted fraction there at (q-p)/(2q); the agent run matches it within Monte Carlo noise. p, q and the market size m are this instance's own; the Product preset fills p and q from an illustrative catalogue."
   },
-  "simulation": {
-    "time_limit": 6.0238771289437825,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 6.0238771289437825, "warmup": 0, "replications": 1},
   "outputs": {}
 }

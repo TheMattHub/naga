@@ -6,64 +6,23 @@
       "name": "nagel_schreckenberg_1",
       "type": "SUBMODEL",
       "description": "Nagel-Schreckenberg traffic (ring)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Nagel-Schreckenberg traffic (ring)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Nagel-Schreckenberg traffic (ring)"}
     }
   ],
   "agent_types": [
     {
       "name": "Car",
-      "parameters": {
-        "vmax": 5.0,
-        "p": 0.15
-      },
-      "attributes": [
-        {
-          "name": "v"
-        },
-        {
-          "name": "flow_contrib"
-        }
-      ],
-      "states": [
-        {
-          "name": "Alive"
-        }
-      ],
+      "parameters": {"vmax": 5.0, "p": 0.15},
+      "attributes": [{"name": "v"}, {"name": "flow_contrib"}],
+      "states": [{"name": "Alive"}],
       "initial_state": "Alive",
-      "space": {
-        "kind": "grid",
-        "size": [
-          60,
-          1
-        ],
-        "torus": true,
-        "neighbourhood": "von_neumann"
-      },
-      "tick": {
-        "dt": 1,
-        "time_unit": "minutes"
-      },
+      "space": {"kind": "grid", "size": [60, 1], "torus": true, "neighbourhood": "von_neumann"},
+      "tick": {"dt": 1, "time_unit": "minutes"},
       "on_tick": [
-        {
-          "step": [
-            "vn",
-            0
-          ]
-        },
-        {
-          "target": "self.v",
-          "expr": "vn"
-        },
-        {
-          "target": "self.flow_contrib",
-          "expr": "(COUNT(\"$Cars\") / 60.0) * vn"
-        }
+        {"step": ["vn", 0]},
+        {"target": "self.v", "expr": "vn"},
+        {"target": "self.flow_contrib", "expr": "(COUNT(\"$Cars\") / 60.0) * vn"}
       ],
       "let": {
         "gap": "IF(CELL_COUNT(\"$Cars\", 1, 0) > 0, 0, IF(CELL_COUNT(\"$Cars\", 2, 0) > 0, 1, IF(CELL_COUNT(\"$Cars\", 3, 0) > 0, 2, IF(CELL_COUNT(\"$Cars\", 4, 0) > 0, 3, IF(CELL_COUNT(\"$Cars\", 5, 0) > 0, 4, vmax)))))",
@@ -80,246 +39,66 @@
       "placement": {
         "kind": "table",
         "points": [
-          [
-            0,
-            0
-          ],
-          [
-            1,
-            0
-          ],
-          [
-            2,
-            0
-          ],
-          [
-            3,
-            0
-          ],
-          [
-            4,
-            0
-          ],
-          [
-            5,
-            0
-          ],
-          [
-            6,
-            0
-          ],
-          [
-            7,
-            0
-          ],
-          [
-            8,
-            0
-          ],
-          [
-            9,
-            0
-          ],
-          [
-            10,
-            0
-          ],
-          [
-            11,
-            0
-          ],
-          [
-            12,
-            0
-          ],
-          [
-            13,
-            0
-          ],
-          [
-            14,
-            0
-          ],
-          [
-            15,
-            0
-          ],
-          [
-            16,
-            0
-          ],
-          [
-            17,
-            0
-          ],
-          [
-            18,
-            0
-          ],
-          [
-            19,
-            0
-          ],
-          [
-            20,
-            0
-          ],
-          [
-            21,
-            0
-          ],
-          [
-            22,
-            0
-          ],
-          [
-            23,
-            0
-          ],
-          [
-            24,
-            0
-          ],
-          [
-            25,
-            0
-          ],
-          [
-            26,
-            0
-          ],
-          [
-            27,
-            0
-          ],
-          [
-            28,
-            0
-          ],
-          [
-            29,
-            0
-          ],
-          [
-            30,
-            0
-          ],
-          [
-            31,
-            0
-          ],
-          [
-            32,
-            0
-          ],
-          [
-            33,
-            0
-          ],
-          [
-            34,
-            0
-          ],
-          [
-            35,
-            0
-          ],
-          [
-            36,
-            0
-          ],
-          [
-            37,
-            0
-          ],
-          [
-            38,
-            0
-          ],
-          [
-            39,
-            0
-          ],
-          [
-            40,
-            0
-          ],
-          [
-            41,
-            0
-          ],
-          [
-            42,
-            0
-          ],
-          [
-            43,
-            0
-          ],
-          [
-            44,
-            0
-          ],
-          [
-            45,
-            0
-          ],
-          [
-            46,
-            0
-          ],
-          [
-            47,
-            0
-          ],
-          [
-            48,
-            0
-          ],
-          [
-            49,
-            0
-          ],
-          [
-            50,
-            0
-          ],
-          [
-            51,
-            0
-          ],
-          [
-            52,
-            0
-          ],
-          [
-            53,
-            0
-          ],
-          [
-            54,
-            0
-          ],
-          [
-            55,
-            0
-          ],
-          [
-            56,
-            0
-          ],
-          [
-            57,
-            0
-          ],
-          [
-            58,
-            0
-          ],
-          [
-            59,
-            0
-          ]
+          [0, 0],
+          [1, 0],
+          [2, 0],
+          [3, 0],
+          [4, 0],
+          [5, 0],
+          [6, 0],
+          [7, 0],
+          [8, 0],
+          [9, 0],
+          [10, 0],
+          [11, 0],
+          [12, 0],
+          [13, 0],
+          [14, 0],
+          [15, 0],
+          [16, 0],
+          [17, 0],
+          [18, 0],
+          [19, 0],
+          [20, 0],
+          [21, 0],
+          [22, 0],
+          [23, 0],
+          [24, 0],
+          [25, 0],
+          [26, 0],
+          [27, 0],
+          [28, 0],
+          [29, 0],
+          [30, 0],
+          [31, 0],
+          [32, 0],
+          [33, 0],
+          [34, 0],
+          [35, 0],
+          [36, 0],
+          [37, 0],
+          [38, 0],
+          [39, 0],
+          [40, 0],
+          [41, 0],
+          [42, 0],
+          [43, 0],
+          [44, 0],
+          [45, 0],
+          [46, 0],
+          [47, 0],
+          [48, 0],
+          [49, 0],
+          [50, 0],
+          [51, 0],
+          [52, 0],
+          [53, 0],
+          [54, 0],
+          [55, 0],
+          [56, 0],
+          [57, 0],
+          [58, 0],
+          [59, 0]
         ]
       }
     }
@@ -328,11 +107,7 @@
     "Nagel-Schreckenberg traffic (ring)": {
       "info": {
         "description": "The Nagel-Schreckenberg traffic cellular automaton on a 60-cell ring (a 1-D torus grid, `size: [60, 1]`), its three rules written once as tick-local `let` values: `gap` (the free cells ahead, read by CELL_COUNT('$Cars', k, 0) for k = 1..5 -- an arbitrary-offset grid read), `v1 = min(v + 1, Vmax, gap)` (accelerate, then brake for the car ahead) and `vn`, v1 minus 1 with probability P when v1 > 0 -- ONE slowdown draw per car per tick, shared by the action that moves the car `vn` cells, the one that stores its speed and the one that records `flow_contrib = density * vn`, whose population mean IS the flow, with no derived-KPI step. Cars act in index order, which is ring order, so each reads the cells ahead before the car there moves (the parallel update NS defines); only the last car reads the first car's new cell across the wrap. With Vmax 5 and P 0.15 the flow-density curve peaks near density 0.1 (6 cars) and is far lower at density 0.8 (48 cars) -- the published shape. Vmax and P are this instance's own; the ring length and car count are fixed so the built-in oracle stays exact.",
-        "library": {
-          "library": "abm_classics",
-          "asset": "nagel_schreckenberg",
-          "version": "1.2.0"
-        },
+        "library": {"library": "abm_classics", "asset": "nagel_schreckenberg", "version": "1.2.0"},
         "parameters": [
           {
             "name": "vmax",
@@ -374,14 +149,7 @@
             "refers_to": ""
           }
         ],
-        "owns": {
-          "agent_types": [
-            "Car"
-          ],
-          "populations": [
-            "Cars"
-          ]
-        }
+        "owns": {"agent_types": ["Car"], "populations": ["Cars"]}
       },
       "parameters": [
         {
@@ -404,23 +172,8 @@
         }
       ],
       "scoped": {
-        "agent_types": {
-          "Car": {
-            "parameters.vmax": {
-              "$arg": "vmax"
-            },
-            "parameters.p": {
-              "$arg": "p"
-            }
-          }
-        },
-        "populations": {
-          "Cars": {
-            "count": {
-              "$arg": "cars"
-            }
-          }
-        }
+        "agent_types": {"Car": {"parameters.vmax": {"$arg": "vmax"}, "parameters.p": {"$arg": "p"}}},
+        "populations": {"Cars": {"count": {"$arg": "cars"}}}
       },
       "blocks": [],
       "links": [],
@@ -432,10 +185,6 @@
     "category": "Agent-based",
     "description": "The Nagel-Schreckenberg traffic cellular automaton on a 60-cell ring (a 1-D torus grid, `size: [60, 1]`), its three rules written once as tick-local `let` values: `gap` (the free cells ahead, read by CELL_COUNT('$Cars', k, 0) for k = 1..5 -- an arbitrary-offset grid read), `v1 = min(v + 1, Vmax, gap)` (accelerate, then brake for the car ahead) and `vn`, v1 minus 1 with probability P when v1 > 0 -- ONE slowdown draw per car per tick, shared by the action that moves the car `vn` cells, the one that stores its speed and the one that records `flow_contrib = density * vn`, whose population mean IS the flow, with no derived-KPI step. Cars act in index order, which is ring order, so each reads the cells ahead before the car there moves (the parallel update NS defines); only the last car reads the first car's new cell across the wrap. With Vmax 5 and P 0.15 the flow-density curve peaks near density 0.1 (6 cars) and is far lower at density 0.8 (48 cars) -- the published shape. Vmax and P are this instance's own; the ring length and car count are fixed so the built-in oracle stays exact."
   },
-  "simulation": {
-    "time_limit": 150.0,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 150.0, "warmup": 0, "replications": 1},
   "outputs": {}
 }

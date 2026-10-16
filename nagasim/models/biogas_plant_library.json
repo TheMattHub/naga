@@ -6,14 +6,8 @@
       "name": "feedstock_delivery_1",
       "type": "SUBMODEL",
       "description": "Feedstock delivery",
-      "position": [
-        -900.0,
-        -300.0
-      ],
-      "layout_position": [
-        3.0,
-        13.0
-      ],
+      "position": [-900.0, -300.0],
+      "layout_position": [3.0, 13.0],
       "params": {
         "definition": "Feedstock delivery",
         "arguments": {
@@ -31,14 +25,8 @@
       "name": "feedstock_delivery_2",
       "type": "SUBMODEL",
       "description": "Feedstock delivery",
-      "position": [
-        -900.0,
-        60.0
-      ],
-      "layout_position": [
-        3.0,
-        44.0
-      ],
+      "position": [-900.0, 60.0],
+      "layout_position": [3.0, 44.0],
       "params": {
         "definition": "Feedstock delivery",
         "arguments": {
@@ -57,14 +45,8 @@
       "name": "feed_line_1",
       "type": "SUBMODEL",
       "description": "Feed line",
-      "position": [
-        -600.0,
-        -300.0
-      ],
-      "layout_position": [
-        33.0,
-        14.0
-      ],
+      "position": [-600.0, -300.0],
+      "layout_position": [33.0, 14.0],
       "params": {
         "definition": "Feed line",
         "arguments": {
@@ -90,14 +72,8 @@
       "name": "feed_line_2",
       "type": "SUBMODEL",
       "description": "Feed line",
-      "position": [
-        -600.0,
-        60.0
-      ],
-      "layout_position": [
-        33.0,
-        45.0
-      ],
+      "position": [-600.0, 60.0],
+      "layout_position": [33.0, 45.0],
       "params": {
         "definition": "Feed line",
         "arguments": {
@@ -123,14 +99,8 @@
       "name": "digester_1",
       "type": "SUBMODEL",
       "description": "Digester",
-      "position": [
-        -300.0,
-        -120.0
-      ],
-      "layout_position": [
-        59.0,
-        34.0
-      ],
+      "position": [-300.0, -120.0],
+      "layout_position": [59.0, 34.0],
       "params": {
         "definition": "Digester",
         "arguments": {
@@ -150,14 +120,8 @@
       "name": "digester_2",
       "type": "SUBMODEL",
       "description": "Digester",
-      "position": [
-        -60.0,
-        -120.0
-      ],
-      "layout_position": [
-        80.0,
-        34.0
-      ],
+      "position": [-60.0, -120.0],
+      "layout_position": [80.0, 34.0],
       "params": {
         "definition": "Digester",
         "arguments": {
@@ -179,14 +143,8 @@
       "name": "gas_holder_with_flare_1",
       "type": "SUBMODEL",
       "description": "Gas holder with flare",
-      "position": [
-        200.0,
-        -300.0
-      ],
-      "layout_position": [
-        100.0,
-        16.0
-      ],
+      "position": [200.0, -300.0],
+      "layout_position": [100.0, 16.0],
       "params": {
         "definition": "Gas holder with flare",
         "arguments": {
@@ -204,14 +162,8 @@
       "name": "chp_unit_1",
       "type": "SUBMODEL",
       "description": "CHP unit",
-      "position": [
-        500.0,
-        -420.0
-      ],
-      "layout_position": [
-        124.0,
-        2.0
-      ],
+      "position": [500.0, -420.0],
+      "layout_position": [124.0, 2.0],
       "params": {
         "definition": "CHP unit",
         "arguments": {
@@ -240,14 +192,8 @@
       "name": "upgrading_unit_1",
       "type": "SUBMODEL",
       "description": "Upgrading unit",
-      "position": [
-        500.0,
-        -180.0
-      ],
-      "layout_position": [
-        124.0,
-        23.0
-      ],
+      "position": [500.0, -180.0],
+      "layout_position": [124.0, 23.0],
       "params": {
         "definition": "Upgrading unit",
         "arguments": {
@@ -274,14 +220,8 @@
       "name": "grid_injection_1",
       "type": "SUBMODEL",
       "description": "Grid injection",
-      "position": [
-        800.0,
-        -180.0
-      ],
-      "layout_position": [
-        147.0,
-        21.0
-      ],
+      "position": [800.0, -180.0],
+      "layout_position": [147.0, 21.0],
       "params": {
         "definition": "Grid injection",
         "arguments": {
@@ -296,14 +236,8 @@
       "name": "heat_balance_1",
       "type": "SUBMODEL",
       "description": "Heat balance",
-      "position": [
-        500.0,
-        60.0
-      ],
-      "layout_position": [
-        122.0,
-        42.0
-      ],
+      "position": [500.0, 60.0],
+      "layout_position": [122.0, 42.0],
       "params": {
         "definition": "Heat balance",
         "arguments": {
@@ -319,14 +253,8 @@
       "name": "digestate_store_1",
       "type": "SUBMODEL",
       "description": "Digestate store",
-      "position": [
-        200.0,
-        240.0
-      ],
-      "layout_position": [
-        109.0,
-        64.0
-      ],
+      "position": [200.0, 240.0],
+      "layout_position": [109.0, 64.0],
       "params": {
         "definition": "Digestate store",
         "arguments": {
@@ -342,34 +270,19 @@
       "name": "electrical_load_1",
       "type": "SUBMODEL",
       "description": "Electrical load",
-      "position": [
-        800.0,
-        60.0
-      ],
-      "layout_position": [
-        149.0,
-        43.0
-      ],
+      "position": [800.0, 60.0],
+      "layout_position": [149.0, 43.0],
       "params": {
         "definition": "Electrical load",
-        "arguments": {
-          "peak_kw": 15.0,
-          "profile": "Nrg load profile"
-        }
+        "arguments": {"peak_kw": 15.0, "profile": "Nrg load profile"}
       }
     },
     {
       "name": "grid_connection_1",
       "type": "SUBMODEL",
       "description": "Grid connection",
-      "position": [
-        800.0,
-        -420.0
-      ],
-      "layout_position": [
-        146.0,
-        0.0
-      ],
+      "position": [800.0, -420.0],
+      "layout_position": [146.0, 0.0],
       "params": {
         "definition": "Grid connection",
         "arguments": {
@@ -402,28 +315,16 @@
       "name": "CHP only",
       "description": "No upgrading: the whole gas output goes to the engine, and what it cannot take is flared.",
       "overrides": [
-        {
-          "path": "blocks.upgrading_unit_1.params.arguments.capacity_nm3_h",
-          "value": 0.0
-        }
+        {"path": "blocks.upgrading_unit_1.params.arguments.capacity_nm3_h", "value": 0.0}
       ]
     },
     {
       "name": "Biomethane only",
       "description": "No CHP: all the gas is upgraded and injected. The digester heat then has to come from the boiler.",
       "overrides": [
-        {
-          "path": "blocks.chp_unit_1.params.arguments.electrical_kw",
-          "value": 0.0
-        },
-        {
-          "path": "blocks.upgrading_unit_1.params.arguments.capacity_nm3_h",
-          "value": 350.0
-        },
-        {
-          "path": "blocks.grid_injection_1.params.arguments.injection_capacity",
-          "value": 200.0
-        }
+        {"path": "blocks.chp_unit_1.params.arguments.electrical_kw", "value": 0.0},
+        {"path": "blocks.upgrading_unit_1.params.arguments.capacity_nm3_h", "value": 350.0},
+        {"path": "blocks.grid_injection_1.params.arguments.injection_capacity", "value": 200.0}
       ]
     },
     {
@@ -438,68 +339,33 @@
           "path": "blocks.upgrading_unit_1.params.arguments.dispatch",
           "value": "when_better_than_electricity"
         },
-        {
-          "path": "blocks.upgrading_unit_1.params.arguments.capacity_nm3_h",
-          "value": 350.0
-        },
-        {
-          "path": "blocks.grid_injection_1.params.arguments.injection_capacity",
-          "value": 200.0
-        }
+        {"path": "blocks.upgrading_unit_1.params.arguments.capacity_nm3_h", "value": 350.0},
+        {"path": "blocks.grid_injection_1.params.arguments.injection_capacity", "value": 200.0}
       ]
     },
     {
       "name": "Grass instead of maize",
       "description": "The second feedstock mix: grass silage instead of maize -- a lower yield and a slower release, at a lower price.",
       "overrides": [
-        {
-          "path": "blocks.feed_line_1.params.arguments.gas_yield",
-          "value": 180.0
-        },
-        {
-          "path": "blocks.feed_line_1.params.arguments.ch4_share",
-          "value": 0.54
-        },
-        {
-          "path": "blocks.feed_line_1.params.arguments.half_life_days",
-          "value": 3.0
-        },
-        {
-          "path": "blocks.feed_line_1.params.arguments.dry_matter_percent",
-          "value": 30.0
-        },
-        {
-          "path": "blocks.feed_line_1.params.arguments.volatile_solids_percent",
-          "value": 90.0
-        },
-        {
-          "path": "blocks.feed_line_1.params.arguments.bulk_density",
-          "value": 0.7
-        },
-        {
-          "path": "blocks.feedstock_delivery_1.params.arguments.price_per_tonne",
-          "value": 35.0
-        }
+        {"path": "blocks.feed_line_1.params.arguments.gas_yield", "value": 180.0},
+        {"path": "blocks.feed_line_1.params.arguments.ch4_share", "value": 0.54},
+        {"path": "blocks.feed_line_1.params.arguments.half_life_days", "value": 3.0},
+        {"path": "blocks.feed_line_1.params.arguments.dry_matter_percent", "value": 30.0},
+        {"path": "blocks.feed_line_1.params.arguments.volatile_solids_percent", "value": 90.0},
+        {"path": "blocks.feed_line_1.params.arguments.bulk_density", "value": 0.7},
+        {"path": "blocks.feedstock_delivery_1.params.arguments.price_per_tonne", "value": 35.0}
       ]
     }
   ],
   "resources": [
-    {
-      "name": "Bio Feeder unit",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
+    {"name": "Bio Feeder unit", "capacity": 1, "discipline": "FIFO"},
     {
       "name": "Bio CHP engine",
       "capacity": 1,
       "discipline": "FIFO",
       "capacity_schedule": "Bio CHP maintenance"
     },
-    {
-      "name": "Bio Upgrading skid",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
+    {"name": "Bio Upgrading skid", "capacity": 1, "discipline": "FIFO"}
   ],
   "schedules": [
     {
@@ -507,55 +373,13 @@
       "kind": "arrival",
       "off_value": 0,
       "weekly": {
-        "mon": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ],
-        "tue": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ],
-        "wed": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ],
-        "thu": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ],
-        "fri": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ],
-        "sat": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ],
-        "sun": [
-          [
-            "00:00",
-            "24:00",
-            0.33
-          ]
-        ]
+        "mon": [["00:00", "24:00", 0.33]],
+        "tue": [["00:00", "24:00", 0.33]],
+        "wed": [["00:00", "24:00", 0.33]],
+        "thu": [["00:00", "24:00", 0.33]],
+        "fri": [["00:00", "24:00", 0.33]],
+        "sat": [["00:00", "24:00", 0.33]],
+        "sun": [["00:00", "24:00", 0.33]]
       },
       "exceptions": [
         {
@@ -571,95 +395,56 @@
       "name": "Bio CHP maintenance",
       "kind": "capacity",
       "repeat": true,
-      "points": [
-        [
-          720,
-          1
-        ],
-        [
-          24,
-          0
-        ]
-      ],
+      "points": [[720, 1], [24, 0]],
       "description": "A MONTHLY service day, so it stays a points schedule: a weekday grid says weeks, not months (ARCHITECTURE D81)."
     }
   ],
   "failures": [
     {
       "name": "Bio Feeder breakdown",
-      "resources": [
-        "Bio Feeder unit"
-      ],
+      "resources": ["Bio Feeder unit"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0014
-        },
+        "dist_params": {"rate": 0.0014},
         "time_unit": "hours"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.25
-        },
+        "dist_params": {"rate": 0.25},
         "time_unit": "hours"
       }
     },
     {
       "name": "Bio CHP breakdown",
-      "resources": [
-        "Bio CHP engine"
-      ],
+      "resources": ["Bio CHP engine"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.000667
-        },
+        "dist_params": {"rate": 0.000667},
         "time_unit": "hours"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0417
-        },
+        "dist_params": {"rate": 0.0417},
         "time_unit": "hours"
       }
     },
     {
       "name": "Bio Upgrading breakdown",
-      "resources": [
-        "Bio Upgrading skid"
-      ],
+      "resources": ["Bio Upgrading skid"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0005
-        },
+        "dist_params": {"rate": 0.0005},
         "time_unit": "hours"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0833
-        },
+        "dist_params": {"rate": 0.0833},
         "time_unit": "hours"
       }
     }
   ],
-  "variables": [
-    {
-      "name": "bio_flare_gate",
-      "initial": 0.0
-    }
-  ],
-  "entities": [
-    {
-      "name": "BIO_TRUCK",
-      "shape": "square",
-      "color": "BROWN",
-      "holding_cost": 0.0
-    }
-  ],
+  "variables": [{"name": "bio_flare_gate", "initial": 0.0}],
+  "entities": [{"name": "BIO_TRUCK", "shape": "square", "color": "BROWN", "holding_cost": 0.0}],
   "timeseries_inputs": [
     {
       "name": "Bio feed continuous",
@@ -668,9 +453,7 @@
       "step": 24,
       "interpolation": "step",
       "beyond": "repeat",
-      "values": [
-        1.0
-      ]
+      "values": [1.0]
     },
     {
       "name": "Bio feed 8 batches",
@@ -679,32 +462,7 @@
       "step": 1,
       "interpolation": "step",
       "beyond": "repeat",
-      "values": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ]
+      "values": [0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     },
     {
       "name": "Bio power price",
@@ -892,9 +650,7 @@
       "step": 24,
       "interpolation": "step",
       "beyond": "repeat",
-      "values": [
-        1.0
-      ]
+      "values": [1.0]
     },
     {
       "name": "Bio spreading windows",
@@ -1087,9 +843,7 @@
       "step": 1,
       "interpolation": "step",
       "beyond": "hold",
-      "values": [
-        0.25
-      ]
+      "values": [0.25]
     },
     {
       "name": "Nrg grid intensity",
@@ -1141,13 +895,7 @@
       "capacity": 3000,
       "min": 0,
       "initial": 2970,
-      "thresholds": [
-        {
-          "value": 2970,
-          "direction": "both",
-          "signal": "$Bio digester full"
-        }
-      ],
+      "thresholds": [{"value": 2970, "direction": "both", "signal": "$Bio digester full"}],
       "unit": "m3"
     },
     {
@@ -1156,23 +904,10 @@
       "capacity": 1500,
       "min": 0,
       "initial": 450,
-      "components": [
-        {
-          "name": "ch4",
-          "initial_fraction": 0.53
-        }
-      ],
+      "components": [{"name": "ch4", "initial_fraction": 0.53}],
       "thresholds": [
-        {
-          "value": 1380,
-          "direction": "rising",
-          "variable": "$bio_flare_gate"
-        },
-        {
-          "value": 1275,
-          "direction": "falling",
-          "variable": "$bio_flare_gate"
-        }
+        {"value": 1380, "direction": "rising", "variable": "$bio_flare_gate"},
+        {"value": 1275, "direction": "falling", "variable": "$bio_flare_gate"}
       ],
       "unit": "Nm3"
     },
@@ -1511,9 +1246,7 @@
           "yield": 200.0,
           "half_life": 60.0,
           "steps": 12,
-          "components": {
-            "ch4": "ch4_share"
-          },
+          "components": {"ch4": "ch4_share"},
           "initial_feed_rate": 0.5,
           "feed_time_unit": "hours"
         }
@@ -1531,9 +1264,7 @@
           "yield": 0.0,
           "half_life": 360.0,
           "steps": 12,
-          "components": {
-            "ch4": "residual_ch4_share"
-          },
+          "components": {"ch4": "residual_ch4_share"},
           "feed_time_unit": "hours"
         }
       ],
@@ -1558,11 +1289,7 @@
     "Feedstock delivery": {
       "info": {
         "description": "Trucks bringing feedstock onto the site. Each arrival carries a load in entity.bio_load, is charged at the purchase price per tonne, and leaves by the \"trucks\" port -- chain it to a Feed line, whose store the truck unloads into (it waits if the store is full, so a clamp that is too small shows up as a queue of trucks). Arrivals are either an interval or a seasonal SCHEDULE, which is how an autumn maize campaign is modelled: a schedule with a high rate for eight weeks and zero for the rest of the year. No input port -- this asset starts the flow.",
-        "library": {
-          "library": "biogas",
-          "asset": "feedstock_delivery",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "feedstock_delivery", "version": "1.1.0"},
         "parameters": [
           {
             "name": "arrival_mode",
@@ -1574,10 +1301,7 @@
             "group": "Deliveries",
             "min": null,
             "max": null,
-            "choices": [
-              "Interarrival",
-              "Schedule"
-            ],
+            "choices": ["Interarrival", "Schedule"],
             "refers_to": ""
           },
           {
@@ -1603,10 +1327,7 @@
             "group": "Deliveries",
             "min": null,
             "max": null,
-            "choices": [
-              "fixed",
-              "exponential"
-            ],
+            "choices": ["fixed", "exponential"],
             "refers_to": ""
           },
           {
@@ -1671,11 +1392,7 @@
             "group": "Load",
             "min": null,
             "max": null,
-            "choices": [
-              "fixed",
-              "exponential",
-              "triangular"
-            ],
+            "choices": ["fixed", "exponential", "triangular"],
             "refers_to": ""
           },
           {
@@ -1696,9 +1413,7 @@
           "catalogue": "Bio Feedstocks",
           "label": "Feedstock",
           "group": "Cost",
-          "map": {
-            "price_per_tonne": "price_per_tonne"
-          },
+          "map": {"price_per_tonne": "price_per_tonne"},
           "rows": [
             "Maize silage",
             "Grass silage",
@@ -1718,30 +1433,14 @@
             "price_per_tonne": "EUR/t"
           },
           "values": {
-            "Maize silage": {
-              "price_per_tonne": 38.0
-            },
-            "Grass silage": {
-              "price_per_tonne": 35.0
-            },
-            "Sugar beet": {
-              "price_per_tonne": 32.0
-            },
-            "Cattle slurry": {
-              "price_per_tonne": 2.0
-            },
-            "Pig slurry": {
-              "price_per_tonne": 2.0
-            },
-            "Solid manure": {
-              "price_per_tonne": 5.0
-            },
-            "Chicken manure": {
-              "price_per_tonne": 8.0
-            },
-            "Food waste": {
-              "price_per_tonne": 0.0
-            }
+            "Maize silage": {"price_per_tonne": 38.0},
+            "Grass silage": {"price_per_tonne": 35.0},
+            "Sugar beet": {"price_per_tonne": 32.0},
+            "Cattle slurry": {"price_per_tonne": 2.0},
+            "Pig slurry": {"price_per_tonne": 2.0},
+            "Solid manure": {"price_per_tonne": 5.0},
+            "Chicken manure": {"price_per_tonne": 8.0},
+            "Food waste": {"price_per_tonne": 0.0}
           },
           "sources": {
             "Maize silage": "Illustrative typical order of magnitude -- replace with lab or plant data before a decision rests on it.",
@@ -1768,11 +1467,7 @@
           "type": "time",
           "description": "Used by Interarrival arrivals only."
         },
-        {
-          "name": "interval_distribution",
-          "default": "fixed",
-          "type": "choice"
-        },
+        {"name": "interval_distribution", "default": "fixed", "type": "choice"},
         {
           "name": "schedule",
           "default": "Bio Delivery campaign",
@@ -1780,12 +1475,7 @@
           "refers_to": "schedule",
           "description": "Used by Schedule arrivals only. Edit its points in the model's Schedules tab: the shipped one is an autumn campaign -- eight weeks of trucks, then nothing."
         },
-        {
-          "name": "entity_type",
-          "default": "BIO_TRUCK",
-          "type": "name",
-          "refers_to": "entity"
-        },
+        {"name": "entity_type", "default": "BIO_TRUCK", "type": "name", "refers_to": "entity"},
         {
           "name": "tonnes_per_truck",
           "default": 25.0,
@@ -1798,11 +1488,7 @@
           "type": "time",
           "description": "Time on site before the truck leaves. It does not hold the store: the load is put in the store at arrival."
         },
-        {
-          "name": "unload_distribution",
-          "default": "triangular",
-          "type": "choice"
-        },
+        {"name": "unload_distribution", "default": "triangular", "type": "choice"},
         {
           "name": "price_per_tonne",
           "default": 38.0,
@@ -1815,20 +1501,11 @@
           "name": "arrive",
           "type": "CREATE",
           "description": "Trucks arrive",
-          "position": [
-            0.0,
-            0.0
-          ],
+          "position": [0.0, 0.0],
           "params": {
-            "e_type": {
-              "$arg": "entity_type"
-            },
-            "arrival_mode": {
-              "$arg": "arrival_mode"
-            },
-            "schedule_name": {
-              "$arg": "schedule"
-            },
+            "e_type": {"$arg": "entity_type"},
+            "arrival_mode": {"$arg": "arrival_mode"},
+            "schedule_name": {"$arg": "schedule"},
             "dist_params": {
               "value": "interval if interval_distribution == 'fixed' else EXPO(interval)"
             },
@@ -1839,40 +1516,21 @@
           "name": "load",
           "type": "ASSIGN",
           "description": "Load on board",
-          "position": [
-            180.0,
-            0.0
-          ],
-          "params": {
-            "assignments": [
-              {
-                "target": "entity.bio_load",
-                "expr": "tonnes_per_truck"
-              }
-            ]
-          }
+          "position": [180.0, 0.0],
+          "params": {"assignments": [{"target": "entity.bio_load", "expr": "tonnes_per_truck"}]}
         },
         {
           "name": "tonnes",
           "type": "RECORD",
           "description": "Tonnes delivered",
-          "position": [
-            360.0,
-            0.0
-          ],
-          "params": {
-            "stat_name": "$Bio tonnes delivered",
-            "expr": "entity.bio_load"
-          }
+          "position": [360.0, 0.0],
+          "params": {"stat_name": "$Bio tonnes delivered", "expr": "entity.bio_load"}
         },
         {
           "name": "purchase",
           "type": "RECORD",
           "description": "Feedstock purchase",
-          "position": [
-            540.0,
-            0.0
-          ],
+          "position": [540.0, 0.0],
           "params": {
             "stat_name": "$Bio feedstock purchase",
             "kind": "cost",
@@ -1884,10 +1542,7 @@
           "name": "unload",
           "type": "DELAY",
           "description": "Unloading",
-          "position": [
-            720.0,
-            0.0
-          ],
+          "position": [720.0, 0.0],
           "params": {
             "dist_params": {
               "value": "unload_time if unload_distribution == 'fixed' else (EXPO(unload_time) if unload_distribution == 'exponential' else TRIA(0.5 * unload_time, unload_time, 1.5 * unload_time))"
@@ -1899,47 +1554,23 @@
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Trucks leave",
-          "position": [
-            900.0,
-            0.0
-          ],
-          "params": {
-            "port": "trucks"
-          }
+          "position": [900.0, 0.0],
+          "params": {"port": "trucks"}
         }
       ],
       "links": [
-        {
-          "source": "arrive",
-          "target": "load"
-        },
-        {
-          "source": "load",
-          "target": "tonnes"
-        },
-        {
-          "source": "tonnes",
-          "target": "purchase"
-        },
-        {
-          "source": "purchase",
-          "target": "unload"
-        },
-        {
-          "source": "unload",
-          "target": "out"
-        }
+        {"source": "arrive", "target": "load"},
+        {"source": "load", "target": "tonnes"},
+        {"source": "tonnes", "target": "purchase"},
+        {"source": "purchase", "target": "unload"},
+        {"source": "unload", "target": "out"}
       ],
       "annotations": []
     },
     "Feed line": {
       "info": {
         "description": "One feedstock, end to end: its store, its feeder and its gas yield curve. Trucks arriving at the \"deliveries\" port unload into the store (they WAIT if it is full, so an undersized clamp shows as a truck queue). The feeder draws the daily recipe out of the store -- stopped for exactly the downtime whenever its own feeder unit fails -- and what it draws is posted on the site bus as volume (\"bio_feed\") and as organic load (\"bio_vs\"), which is what the digester integrates into its retention time and loading rate. The same tonnes drive a delayed conversion: the gas comes out over the following days on this feedstock's own yield curve, and is posted as \"biogas\" with its methane share as \"bio_ch4\" for the gas holder to blend. Place one Feed line per feedstock; pick the feedstock from the catalogue and the six yield parameters fill in. Store shortfall is the store's own Unmet.",
-        "library": {
-          "library": "biogas",
-          "asset": "feed_line",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "feed_line", "version": "1.1.0"},
         "parameters": [
           {
             "name": "gas_yield",
@@ -2333,11 +1964,7 @@
           "type": "number",
           "description": "The clamp or the tank. A delivery that does not fit waits at the gate."
         },
-        {
-          "name": "initial_stock",
-          "default": 2000.0,
-          "type": "number"
-        },
+        {"name": "initial_stock", "default": 2000.0, "type": "number"},
         {
           "name": "load_from_truck",
           "default": true,
@@ -2375,11 +2002,7 @@
           "type": "time",
           "description": "Mean time between feeder failures. The feed stops for exactly the repair time -- the rate reads the feeder's own availability."
         },
-        {
-          "name": "feeder_mttr",
-          "default": 4.0,
-          "type": "time"
-        },
+        {"name": "feeder_mttr", "default": 4.0, "type": "time"},
         {
           "name": "initial_feed_rate",
           "default": 12.0,
@@ -2394,15 +2017,8 @@
         }
       ],
       "scoped": {
-        "levels": {
-          "Bio Feed store": {
-            "capacity": "store_capacity",
-            "initial": "initial_stock"
-          }
-        },
-        "resources": {
-          "Bio Feeder unit": {}
-        },
+        "levels": {"Bio Feed store": {"capacity": "store_capacity", "initial": "initial_stock"}},
+        "resources": {"Bio Feeder unit": {}},
         "failures": {
           "Bio Feeder breakdown": {
             "uptime.dist_params.rate": "1.0 / feeder_mtbf if feeder_mtbf > 0 else 1e-12",
@@ -2412,18 +2028,10 @@
         "flows": {
           "Bio Feeding": {},
           "Bio Storage loss": {},
-          "Bio Feed volume": {
-            "tag": "'bio_feed' + circuit"
-          },
-          "Bio VS load": {
-            "tag": "'bio_vs' + circuit"
-          },
-          "Bio Biogas": {
-            "tag": "'biogas' + circuit"
-          },
-          "Bio CH4": {
-            "tag": "'bio_ch4' + circuit"
-          }
+          "Bio Feed volume": {"tag": "'bio_feed' + circuit"},
+          "Bio VS load": {"tag": "'bio_vs' + circuit"},
+          "Bio Biogas": {"tag": "'biogas' + circuit"},
+          "Bio CH4": {"tag": "'bio_ch4' + circuit"}
         },
         "conversions": {
           "Bio Yield": {
@@ -2439,22 +2047,14 @@
           "name": "deliveries",
           "type": "SUB_ENTRY",
           "description": "Trucks arrive",
-          "position": [
-            0.0,
-            0.0
-          ],
-          "params": {
-            "port": "deliveries"
-          }
+          "position": [0.0, 0.0],
+          "params": {"port": "deliveries"}
         },
         {
           "name": "unload",
           "type": "TRANSFER",
           "description": "Unload into the store",
-          "position": [
-            200.0,
-            0.0
-          ],
+          "position": [200.0, 0.0],
           "params": {
             "level": "$Bio Feed store",
             "amount": "entity.bio_load if load_from_truck else unload_amount",
@@ -2466,49 +2066,25 @@
           "name": "stored",
           "type": "RECORD",
           "description": "Tonnes into the store",
-          "position": [
-            400.0,
-            0.0
-          ],
+          "position": [400.0, 0.0],
           "params": {
             "stat_name": "$Bio tonnes stored",
             "expr": "entity.bio_load if load_from_truck else unload_amount"
           }
         },
-        {
-          "name": "away",
-          "type": "DISPOSE",
-          "description": "Truck leaves",
-          "position": [
-            600.0,
-            0.0
-          ]
-        }
+        {"name": "away", "type": "DISPOSE", "description": "Truck leaves", "position": [600.0, 0.0]}
       ],
       "links": [
-        {
-          "source": "deliveries",
-          "target": "unload"
-        },
-        {
-          "source": "unload",
-          "target": "stored"
-        },
-        {
-          "source": "stored",
-          "target": "away"
-        }
+        {"source": "deliveries", "target": "unload"},
+        {"source": "unload", "target": "stored"},
+        {"source": "stored", "target": "away"}
       ],
       "annotations": []
     },
     "Digester": {
       "info": {
         "description": "The vessel. It takes whatever the Feed lines on its circuit post, holds it at its working volume, and pushes the rest out as digestate. It reports the two numbers a digester is designed on: the hydraulic retention time (working volume over the volume fed per day) and the organic loading rate (kg of volatile solids per cubic metre per day), each as a flow whose Avg Rate is the KPI, with a rising threshold on the loading rate that counts how often the design limit was passed. It asks the heat bus for its heating and the electricity bus for its mixers, so an Energy-library Grid connection sees them. Place a SECOND one as a post-digester: set its inlet to the first one's outlet, give it a residual yield, and the gas it still makes joins the same holder. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "digester",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "digester", "version": "1.1.0"},
         "parameters": [
           {
             "name": "working_volume",
@@ -2718,16 +2294,8 @@
           "type": "number",
           "description": "Gas still to come out of the material LEAVING this vessel, per cubic metre. 0 for a main digester whose Feed lines already carry the whole yield; a post-digester is this asset with a residual yield of a few Nm3/m3."
         },
-        {
-          "name": "residual_half_life_days",
-          "default": 15.0,
-          "type": "time"
-        },
-        {
-          "name": "residual_ch4_share",
-          "default": 0.58,
-          "type": "number"
-        },
+        {"name": "residual_half_life_days", "default": 15.0, "type": "time"},
+        {"name": "residual_ch4_share", "default": 0.58, "type": "number"},
         {
           "name": "max_olr",
           "default": 4.0,
@@ -2770,21 +2338,13 @@
         "flows": {
           "Bio Digester in": {},
           "Bio Gas mass out": {},
-          "Bio Digestate out": {
-            "tag": "outlet_tag + circuit"
-          },
+          "Bio Digestate out": {"tag": "outlet_tag + circuit"},
           "Bio Digester heat": {},
           "Bio Digester mixing": {},
-          "Bio OLR": {
-            "thresholds.0.value": "max_olr"
-          },
+          "Bio OLR": {"thresholds.0.value": "max_olr"},
           "Bio HRT": {},
-          "Bio Residual gas": {
-            "tag": "'biogas' + circuit"
-          },
-          "Bio Residual CH4": {
-            "tag": "'bio_ch4' + circuit"
-          }
+          "Bio Residual gas": {"tag": "'biogas' + circuit"},
+          "Bio Residual CH4": {"tag": "'bio_ch4' + circuit"}
         },
         "conversions": {
           "Bio Residual": {
@@ -2800,11 +2360,7 @@
     "Gas holder with flare": {
       "info": {
         "description": "The buffer between the digesters and everything that burns gas. It takes the whole \"biogas\" tag in, tracks the methane as a component (so a mixed feed gives a mixed holder and the methane is conserved exactly), and serves whatever the CHP, the upgrading unit and the boiler ask for -- in merit order, because each of them only takes what the units ahead of it left. Its flare opens on a hysteresis band (two level thresholds writing this holder's OWN gate variable) and burns exactly the surplus, so the holder holds at the upper threshold instead of chattering. Flare methane slip is a parameter with its own GWP factor; the CO2 from burning biogenic gas is NOT counted by default, which is what the 0 impact factor means -- change it if your accounting says otherwise. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "gas_holder",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "gas_holder", "version": "1.1.0"},
         "parameters": [
           {
             "name": "capacity",
@@ -2939,21 +2495,9 @@
         ]
       },
       "parameters": [
-        {
-          "name": "capacity",
-          "default": 1500.0,
-          "type": "number"
-        },
-        {
-          "name": "initial_fill",
-          "default": 0.3,
-          "type": "number"
-        },
-        {
-          "name": "initial_ch4_share",
-          "default": 0.53,
-          "type": "number"
-        },
+        {"name": "capacity", "default": 1500.0, "type": "number"},
+        {"name": "initial_fill", "default": 0.3, "type": "number"},
+        {"name": "initial_ch4_share", "default": 0.53, "type": "number"},
         {
           "name": "flare_capacity",
           "default": 500.0,
@@ -3009,12 +2553,8 @@
         },
         "flows": {
           "Bio Gas in": {},
-          "Bio Gas out": {
-            "tag": "'bio_gas_supply' + circuit"
-          },
-          "Bio CH4 out": {
-            "tag": "'bio_ch4_supply' + circuit"
-          },
+          "Bio Gas out": {"tag": "'bio_gas_supply' + circuit"},
+          "Bio CH4 out": {"tag": "'bio_ch4_supply' + circuit"},
           "Bio Flare": {},
           "Bio Flare slip": {},
           "Bio Flare combustion": {}
@@ -3027,11 +2567,7 @@
     "CHP unit": {
       "info": {
         "description": "A gas engine on the holder. It asks the holder for the gas its rated output needs, takes what the units ahead of it in the merit order left, and turns the methane in it into electricity (tagged \"generation\", the same tag the Energy library uses, so an Energy-library Grid connection balances the site) and heat (tagged \"heat_supply\", which the Heat balance serves the digester from). It stops for exactly the downtime of its own maintenance schedule and its own random failures, is semi-continuous below its minimum load, and is charged a start cost every time it restarts. Its capital cost is an annualised fixed cost prorated over the run, so a sizing run over the rated power compares like with like. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "chp_unit",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "chp_unit", "version": "1.1.0"},
         "parameters": [
           {
             "name": "electrical_kw",
@@ -3173,10 +2709,7 @@
             "group": "Dispatch",
             "min": null,
             "max": null,
-            "choices": [
-              "always",
-              "when_better_than_biomethane"
-            ],
+            "choices": ["always", "when_better_than_biomethane"],
             "refers_to": ""
           },
           {
@@ -3294,17 +2827,8 @@
             "thermal_efficiency": "thermal_efficiency",
             "capex_per_kw": "capex_per_kw"
           },
-          "rows": [
-            "250 kW",
-            "500 kW",
-            "750 kW",
-            "1 MW",
-            "1.5 MW"
-          ],
-          "units": {
-            "electrical_kw": "kW",
-            "capex_per_kw": "EUR/kW"
-          },
+          "rows": ["250 kW", "500 kW", "750 kW", "1 MW", "1.5 MW"],
+          "units": {"electrical_kw": "kW", "capex_per_kw": "EUR/kW"},
           "values": {
             "250 kW": {
               "electrical_kw": 250.0,
@@ -3347,21 +2871,9 @@
         }
       },
       "parameters": [
-        {
-          "name": "electrical_kw",
-          "default": 500.0,
-          "type": "number"
-        },
-        {
-          "name": "electrical_efficiency",
-          "default": 0.4,
-          "type": "number"
-        },
-        {
-          "name": "thermal_efficiency",
-          "default": 0.43,
-          "type": "number"
-        },
+        {"name": "electrical_kw", "default": 500.0, "type": "number"},
+        {"name": "electrical_efficiency", "default": 0.4, "type": "number"},
+        {"name": "thermal_efficiency", "default": 0.43, "type": "number"},
         {
           "name": "min_load_percent",
           "default": 50.0,
@@ -3399,11 +2911,7 @@
           "type": "time",
           "description": "Unplanned failures, on top of the schedule."
         },
-        {
-          "name": "mttr",
-          "default": 24.0,
-          "type": "time"
-        },
+        {"name": "mttr", "default": 24.0, "type": "time"},
         {
           "name": "dispatch",
           "default": "always",
@@ -3461,13 +2969,7 @@
         }
       ],
       "scoped": {
-        "resources": {
-          "Bio CHP engine": {
-            "capacity_schedule": {
-              "$arg": "maintenance_schedule"
-            }
-          }
-        },
+        "resources": {"Bio CHP engine": {"capacity_schedule": {"$arg": "maintenance_schedule"}}},
         "failures": {
           "Bio CHP breakdown": {
             "uptime.dist_params.rate": "1.0 / mtbf if mtbf > 0 else 1e-12",
@@ -3477,31 +2979,15 @@
         "flows": {
           "Bio CHP gas demand": {
             "tag": "'bio_gas_demand' + circuit",
-            "priority": {
-              "$arg": "merit"
-            },
+            "priority": {"$arg": "merit"},
             "min_rate": "electrical_kw * min_load_percent / 100 / (electrical_efficiency * ch4_lhv * design_ch4_share)"
           },
-          "Bio CHP gas burned": {
-            "thresholds.0.cost": {
-              "$arg": "start_cost"
-            }
-          },
+          "Bio CHP gas burned": {"thresholds.0.cost": {"$arg": "start_cost"}},
           "Bio CHP electricity": {},
-          "Bio CHP heat": {
-            "priority": {
-              "$arg": "merit"
-            }
-          },
-          "Bio CHP operating cost": {
-            "price": {
-              "$arg": "om_per_kwh"
-            }
-          }
+          "Bio CHP heat": {"priority": {"$arg": "merit"}},
+          "Bio CHP operating cost": {"price": {"$arg": "om_per_kwh"}}
         },
-        "fixed_costs": {
-          "Bio CHP capital": {}
-        }
+        "fixed_costs": {"Bio CHP capital": {}}
       },
       "blocks": [],
       "links": [],
@@ -3510,11 +2996,7 @@
     "Upgrading unit": {
       "info": {
         "description": "Raw biogas in, biomethane out. It asks the holder for gas up to its rated throughput, takes what the units ahead of it in the merit order left, recovers the stated share of the methane and vents the rest -- which is charged at the methane GWP factor, because a slipped cubic metre is the single biggest emission an upgrading plant has. Its electricity use goes on the site bus under \"demand\", the same tag the Energy library reads. Pick the technology from the catalogue and the recovery, the electricity use and the capital cost fill in. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "upgrading_unit",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "upgrading_unit", "version": "1.1.0"},
         "parameters": [
           {
             "name": "capacity_nm3_h",
@@ -3630,10 +3112,7 @@
             "group": "Dispatch",
             "min": null,
             "max": null,
-            "choices": [
-              "always",
-              "when_better_than_electricity"
-            ],
+            "choices": ["always", "when_better_than_electricity"],
             "refers_to": ""
           },
           {
@@ -3763,12 +3242,7 @@
             "electricity_per_nm3": "electricity_per_nm3",
             "capex_per_nm3_h": "capex_per_nm3_h"
           },
-          "rows": [
-            "Membrane",
-            "Pressure swing adsorption",
-            "Water scrubbing",
-            "Amine scrubbing"
-          ],
+          "rows": ["Membrane", "Pressure swing adsorption", "Water scrubbing", "Amine scrubbing"],
           "units": {
             "methane_recovery": "%",
             "electricity_per_nm3": "kWh/Nm3",
@@ -3841,16 +3315,8 @@
           "type": "number",
           "description": "Only used to report the nominal biomethane rating; the output is computed from the methane actually received."
         },
-        {
-          "name": "mtbf",
-          "default": 2000.0,
-          "type": "time"
-        },
-        {
-          "name": "mttr",
-          "default": 12.0,
-          "type": "time"
-        },
+        {"name": "mtbf", "default": 2000.0, "type": "time"},
+        {"name": "mttr", "default": 12.0, "type": "time"},
         {
           "name": "dispatch",
           "default": "always",
@@ -3870,22 +3336,14 @@
           "type": "number",
           "description": "The electrical efficiency the alternative is valued at."
         },
-        {
-          "name": "ch4_lhv",
-          "default": 9.97,
-          "type": "number"
-        },
+        {"name": "ch4_lhv", "default": 9.97, "type": "number"},
         {
           "name": "biomethane_value",
           "default": 0.85,
           "type": "number",
           "description": "What a cubic metre of methane fetches once injected -- price plus incentive. Used by the price-led rule; the actual revenue is booked by the Grid injection asset."
         },
-        {
-          "name": "slip_impact_factor",
-          "default": 20.0,
-          "type": "number"
-        },
+        {"name": "slip_impact_factor", "default": 20.0, "type": "number"},
         {
           "name": "om_per_nm3",
           "default": 0.02,
@@ -3912,9 +3370,7 @@
         }
       ],
       "scoped": {
-        "resources": {
-          "Bio Upgrading skid": {}
-        },
+        "resources": {"Bio Upgrading skid": {}},
         "failures": {
           "Bio Upgrading breakdown": {
             "uptime.dist_params.rate": "1.0 / mtbf if mtbf > 0 else 1e-12",
@@ -3924,28 +3380,16 @@
         "flows": {
           "Bio Upgrading gas demand": {
             "tag": "'bio_gas_demand' + circuit",
-            "priority": {
-              "$arg": "merit"
-            },
+            "priority": {"$arg": "merit"},
             "min_rate": "capacity_nm3_h * min_load_percent / 100"
           },
           "Bio Upgrading gas in": {},
           "Bio Biomethane": {},
-          "Bio Upgrading slip": {
-            "emission_factor": {
-              "$arg": "slip_impact_factor"
-            }
-          },
+          "Bio Upgrading slip": {"emission_factor": {"$arg": "slip_impact_factor"}},
           "Bio Upgrading power": {},
-          "Bio Upgrading operating cost": {
-            "price": {
-              "$arg": "om_per_nm3"
-            }
-          }
+          "Bio Upgrading operating cost": {"price": {"$arg": "om_per_nm3"}}
         },
-        "fixed_costs": {
-          "Bio Upgrading capital": {}
-        }
+        "fixed_costs": {"Bio Upgrading capital": {}}
       },
       "blocks": [],
       "links": [],
@@ -3954,11 +3398,7 @@
     "Grid injection": {
       "info": {
         "description": "The meter at the gas grid. It injects whatever the upgrading units produced, up to the connection capacity, and books the revenue -- price plus incentive, both per cubic metre of methane, optionally shaped by a price profile. Anything over the capacity is CURTAILED and reported separately, which is the number that tells you whether the connection or the upgrading unit is the binding constraint. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "grid_injection",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "grid_injection", "version": "1.1.0"},
         "parameters": [
           {
             "name": "injection_capacity",
@@ -4021,11 +3461,7 @@
           "type": "number",
           "description": "The grid connection's limit, in cubic metres of methane per hour."
         },
-        {
-          "name": "price",
-          "default": 0.55,
-          "type": "number"
-        },
+        {"name": "price", "default": 0.55, "type": "number"},
         {
           "name": "incentive",
           "default": 0.3,
@@ -4040,12 +3476,7 @@
           "description": "A MULTIPLIER on the commodity price, by hour. The shipped profile is a flat 1.0, which is the constant-price case; replace its values for a seasonal or indexed price. The incentive is never scaled."
         }
       ],
-      "scoped": {
-        "flows": {
-          "Bio Injection": {},
-          "Bio Curtailed biomethane": {}
-        }
-      },
+      "scoped": {"flows": {"Bio Injection": {}, "Bio Curtailed biomethane": {}}},
       "blocks": [],
       "links": [],
       "annotations": []
@@ -4053,11 +3484,7 @@
     "Heat balance": {
       "info": {
         "description": "Closes the heat side. Whatever the digesters ask for on \"heat_demand\" is served first from the CHP heat on \"heat_supply\"; what is missing is made by a gas boiler on the holder (last in the merit order by default, so it only gets gas nobody else wanted), and anything the boiler still cannot cover is bought in at a price -- which is the honest way to show that a plant without enough CHP heat has a bill, not a miracle. Heat the site cannot use is reported as surplus, which is the number a heat-offtake business case starts from. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "heat_balance",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "heat_balance", "version": "1.1.0"},
         "parameters": [
           {
             "name": "boiler_capacity_kw",
@@ -4159,22 +3586,14 @@
           "type": "number",
           "description": "0 for a site with no boiler -- the shortfall is then all bought in."
         },
-        {
-          "name": "boiler_efficiency",
-          "default": 0.9,
-          "type": "number"
-        },
+        {"name": "boiler_efficiency", "default": 0.9, "type": "number"},
         {
           "name": "boiler_merit",
           "default": 3,
           "type": "int",
           "description": "Order on the gas holder. Leave it above the CHP's and the upgrading unit's so the boiler only burns gas nobody else took; lower it if process heat must come before electricity."
         },
-        {
-          "name": "ch4_lhv",
-          "default": 9.97,
-          "type": "number"
-        },
+        {"name": "ch4_lhv", "default": 9.97, "type": "number"},
         {
           "name": "design_ch4_share",
           "default": 0.53,
@@ -4200,21 +3619,11 @@
           "Bio Heat surplus": {},
           "Bio Boiler gas demand": {
             "tag": "'bio_gas_demand' + circuit",
-            "priority": {
-              "$arg": "boiler_merit"
-            }
+            "priority": {"$arg": "boiler_merit"}
           },
           "Bio Boiler gas burned": {},
-          "Bio Boiler heat": {
-            "priority": {
-              "$arg": "boiler_merit"
-            }
-          },
-          "Bio Heat bought": {
-            "price": {
-              "$arg": "bought_heat_price"
-            }
-          }
+          "Bio Boiler heat": {"priority": {"$arg": "boiler_merit"}},
+          "Bio Heat bought": {"price": {"$arg": "bought_heat_price"}}
         }
       },
       "blocks": [],
@@ -4224,11 +3633,7 @@
     "Digestate store": {
       "info": {
         "description": "The lagoon. It takes the digestate the digesters push out and empties only during the spreading windows -- a 0/1 profile over the year, which is what a nitrate regulation actually is. The store has to carry the whole closed period, so this is a real sizing constraint: if it fills before the window opens, the overflow shows up as the level's Spilled and the plant has a problem. No ports: this is a continuous asset.",
-        "library": {
-          "library": "biogas",
-          "asset": "digestate_store",
-          "version": "1.1.0"
-        },
+        "library": {"library": "biogas", "asset": "digestate_store", "version": "1.1.0"},
         "parameters": [
           {
             "name": "capacity",
@@ -4311,16 +3716,8 @@
         ]
       },
       "parameters": [
-        {
-          "name": "capacity",
-          "default": 6000.0,
-          "type": "number"
-        },
-        {
-          "name": "initial_fill",
-          "default": 0.2,
-          "type": "number"
-        },
+        {"name": "capacity", "default": 6000.0, "type": "number"},
+        {"name": "initial_fill", "default": 0.2, "type": "number"},
         {
           "name": "spreading_window",
           "default": "Bio spreading windows",
@@ -4349,15 +3746,9 @@
       ],
       "scoped": {
         "levels": {
-          "Bio Digestate store": {
-            "capacity": "capacity",
-            "initial": "capacity * initial_fill"
-          }
+          "Bio Digestate store": {"capacity": "capacity", "initial": "capacity * initial_fill"}
         },
-        "flows": {
-          "Bio Digestate in": {},
-          "Bio Spreading out": {}
-        }
+        "flows": {"Bio Digestate in": {}, "Bio Spreading out": {}}
       },
       "blocks": [],
       "links": [],
@@ -4366,11 +3757,7 @@
     "Electrical load": {
       "info": {
         "description": "The site's electrical demand, from a normalised profile x a peak. Its draw joins the site bus under the tag \"demand\", which storage, a generator and the grid connection all read, so two loads (a building and a process) simply add up. No ports: this is a continuous asset.",
-        "library": {
-          "library": "energy",
-          "asset": "site_load",
-          "version": "1.2.0"
-        },
+        "library": {"library": "energy", "asset": "site_load", "version": "1.2.0"},
         "parameters": [
           {
             "name": "peak_kw",
@@ -4415,11 +3802,7 @@
           "description": "Normalised demand by hour of the day, 1.0 at the peak. Edit the values in the model's Time series tab, or bind them to metered data."
         }
       ],
-      "scoped": {
-        "flows": {
-          "Nrg load": {}
-        }
-      },
+      "scoped": {"flows": {"Nrg load": {}}},
       "blocks": [],
       "links": [],
       "annotations": []
@@ -4427,11 +3810,7 @@
     "Grid connection": {
       "info": {
         "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
-        "library": {
-          "library": "energy",
-          "asset": "grid_connection",
-          "version": "1.2.0"
-        },
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.2.0"},
         "parameters": [
           {
             "name": "import_profile",
@@ -4516,31 +3895,13 @@
           "catalogue": "Nrg tariffs",
           "label": "Tariff",
           "group": "Prices",
-          "map": {
-            "import_profile": "import_profile",
-            "export_price": "export_price"
-          },
-          "rows": [
-            "Flat",
-            "Time of use",
-            "Time of use, no export"
-          ],
-          "units": {
-            "export_price": "EUR/kWh"
-          },
+          "map": {"import_profile": "import_profile", "export_price": "export_price"},
+          "rows": ["Flat", "Time of use", "Time of use, no export"],
+          "units": {"export_price": "EUR/kWh"},
           "values": {
-            "Flat": {
-              "import_profile": "Nrg flat tariff",
-              "export_price": 0.05
-            },
-            "Time of use": {
-              "import_profile": "Nrg tariff",
-              "export_price": 0.05
-            },
-            "Time of use, no export": {
-              "import_profile": "Nrg tariff",
-              "export_price": 0.0
-            }
+            "Flat": {"import_profile": "Nrg flat tariff", "export_price": 0.05},
+            "Time of use": {"import_profile": "Nrg tariff", "export_price": 0.05},
+            "Time of use, no export": {"import_profile": "Nrg tariff", "export_price": 0.0}
           },
           "sources": {
             "Flat": "Illustrative starting point (Naga); not market data.",
@@ -4591,11 +3952,7 @@
       ],
       "scoped": {
         "flows": {
-          "Nrg import": {
-            "peak_price": {
-              "$arg": "demand_charge_per_kw"
-            }
-          },
+          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
           "Nrg unserved": {},
           "Nrg export": {},
           "Nrg curtailed": {}
@@ -4619,10 +3976,7 @@
     "replications": 1,
     "time_unit": "hours",
     "timeseries_points": 365,
-    "calendar": {
-      "start": "2026-09-07T00:00:00",
-      "timezone": "Europe/Rome"
-    }
+    "calendar": {"start": "2026-09-07T00:00:00", "timezone": "Europe/Rome"}
   },
   "outputs": {}
 }

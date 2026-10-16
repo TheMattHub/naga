@@ -6,41 +6,22 @@
       "name": "release_orders",
       "type": "CREATE",
       "description": "Releases every work order at its own release time",
-      "position": [
-        140.0,
-        300.0
-      ],
-      "params": {
-        "e_type": "WIDGET",
-        "arrival_mode": "Orders"
-      }
+      "position": [140.0, 300.0],
+      "params": {"e_type": "WIDGET", "arrival_mode": "Orders"}
     },
     {
       "name": "dispatch",
       "type": "ROUTE",
       "description": "Send each job to the first station of its routing",
-      "position": [
-        380.0,
-        300.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 2.0
-        }
-      }
+      "position": [380.0, 300.0],
+      "params": {"dist_params": {"value": 2.0}}
     },
     {
       "name": "cutting",
       "type": "SUBMODEL",
       "description": "Cutting cell (one saw)",
-      "position": [
-        640.0,
-        140.0
-      ],
-      "layout_position": [
-        2.0,
-        1.0
-      ],
+      "position": [640.0, 140.0],
+      "layout_position": [2.0, 1.0],
       "params": {
         "definition": "Routed station",
         "arguments": {
@@ -56,14 +37,8 @@
       "name": "drilling",
       "type": "SUBMODEL",
       "description": "Drilling cell (two drills)",
-      "position": [
-        640.0,
-        300.0
-      ],
-      "layout_position": [
-        2.0,
-        9.0
-      ],
+      "position": [640.0, 300.0],
+      "layout_position": [2.0, 9.0],
       "params": {
         "definition": "Routed station",
         "arguments": {
@@ -79,14 +54,8 @@
       "name": "assembly",
       "type": "SUBMODEL",
       "description": "Assembly cell (one bench) -- the shop's bottleneck",
-      "position": [
-        640.0,
-        460.0
-      ],
-      "layout_position": [
-        2.0,
-        17.0
-      ],
+      "position": [640.0, 460.0],
+      "layout_position": [2.0, 17.0],
       "params": {
         "definition": "Routed station",
         "arguments": {
@@ -102,10 +71,7 @@
       "name": "record_exit",
       "type": "RECORD",
       "description": "Tally shop-floor time for a finished job",
-      "position": [
-        940.0,
-        300.0
-      ],
+      "position": [940.0, 300.0],
       "params": {
         "stat_name": "shop_floor_time",
         "kind": "tally",
@@ -116,40 +82,16 @@
       "name": "ship",
       "type": "DISPOSE",
       "description": "Finished jobs leave the shop",
-      "position": [
-        1140.0,
-        300.0
-      ]
+      "position": [1140.0, 300.0]
     }
   ],
   "links": [
-    {
-      "source": "release_orders",
-      "target": "dispatch"
-    },
-    {
-      "source": "dispatch",
-      "target": "record_exit"
-    },
-    {
-      "source": "cutting",
-      "target": "record_exit",
-      "source_port": "out"
-    },
-    {
-      "source": "drilling",
-      "target": "record_exit",
-      "source_port": "out"
-    },
-    {
-      "source": "assembly",
-      "target": "record_exit",
-      "source_port": "out"
-    },
-    {
-      "source": "record_exit",
-      "target": "ship"
-    }
+    {"source": "release_orders", "target": "dispatch"},
+    {"source": "dispatch", "target": "record_exit"},
+    {"source": "cutting", "target": "record_exit", "source_port": "out"},
+    {"source": "drilling", "target": "record_exit", "source_port": "out"},
+    {"source": "assembly", "target": "record_exit", "source_port": "out"},
+    {"source": "record_exit", "target": "ship"}
   ],
   "orders": [
     {
@@ -927,71 +869,47 @@
       "priority": 0
     }
   ],
-  "resources": [
-    {
-      "name": "Mfg Routed machine",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
-  ],
+  "resources": [{"name": "Mfg Routed machine", "capacity": 1, "discipline": "FIFO"}],
   "failures": [
     {
       "name": "Cutting breakdowns",
-      "resources": [
-        "cutting/Mfg Routed machine"
-      ],
+      "resources": ["cutting/Mfg Routed machine"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0011111111111111111
-        },
+        "dist_params": {"rate": 0.0011111111111111111},
         "time_unit": "minutes"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.03333333333333333
-        },
+        "dist_params": {"rate": 0.03333333333333333},
         "time_unit": "minutes"
       }
     },
     {
       "name": "Drilling breakdowns",
-      "resources": [
-        "drilling/Mfg Routed machine"
-      ],
+      "resources": ["drilling/Mfg Routed machine"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0008333333333333334
-        },
+        "dist_params": {"rate": 0.0008333333333333334},
         "time_unit": "minutes"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.04
-        },
+        "dist_params": {"rate": 0.04},
         "time_unit": "minutes"
       }
     },
     {
       "name": "Assembly breakdowns",
-      "resources": [
-        "assembly/Mfg Routed machine"
-      ],
+      "resources": ["assembly/Mfg Routed machine"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.0020833333333333333
-        },
+        "dist_params": {"rate": 0.0020833333333333333},
         "time_unit": "minutes"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.022222222222222223
-        },
+        "dist_params": {"rate": 0.022222222222222223},
         "time_unit": "minutes"
       }
     }
@@ -1000,27 +918,9 @@
     {
       "name": "Mfg Process times",
       "description": "Process time in minutes by product (rows) and station (columns). The MES parameter feed refits these cells from the plant's own operation history. BRACKET never visits Drilling, so that cell is never observed and the thin-data guard leaves it alone.",
-      "keys": [
-        "WIDGET",
-        "BRACKET"
-      ],
-      "columns": [
-        "Cutting",
-        "Drilling",
-        "Assembly"
-      ],
-      "values": [
-        [
-          20.0,
-          35.0,
-          40.0
-        ],
-        [
-          18.0,
-          35.0,
-          35.0
-        ]
-      ],
+      "keys": ["WIDGET", "BRACKET"],
+      "columns": ["Cutting", "Drilling", "Assembly"],
+      "values": [[20.0, 35.0, 40.0], [18.0, 35.0, 35.0]],
       "key_mode": "exact",
       "column_mode": "exact",
       "default": 20.0
@@ -1031,73 +931,29 @@
       "name": "Widget",
       "description": "Cut, drill, assemble",
       "steps": [
-        {
-          "station": "Cutting",
-          "values": {
-            "operation": "cut",
-            "process_time": 20.0
-          }
-        },
-        {
-          "station": "Drilling",
-          "values": {
-            "operation": "drill",
-            "process_time": 35.0
-          }
-        },
-        {
-          "station": "Assembly",
-          "values": {
-            "operation": "assemble",
-            "process_time": 40.0
-          }
-        }
+        {"station": "Cutting", "values": {"operation": "cut", "process_time": 20.0}},
+        {"station": "Drilling", "values": {"operation": "drill", "process_time": 35.0}},
+        {"station": "Assembly", "values": {"operation": "assemble", "process_time": 40.0}}
       ]
     },
     {
       "name": "Bracket",
       "description": "Cut, assemble (no drilling)",
       "steps": [
-        {
-          "station": "Cutting",
-          "values": {
-            "operation": "cut",
-            "process_time": 18.0
-          }
-        },
-        {
-          "station": "Assembly",
-          "values": {
-            "operation": "assemble",
-            "process_time": 35.0
-          }
-        }
+        {"station": "Cutting", "values": {"operation": "cut", "process_time": 18.0}},
+        {"station": "Assembly", "values": {"operation": "assemble", "process_time": 35.0}}
       ]
     }
   ],
   "entities": [
-    {
-      "name": "WIDGET",
-      "shape": "circle",
-      "color": "BLUE",
-      "holding_cost": 0.02
-    },
-    {
-      "name": "BRACKET",
-      "shape": "square",
-      "color": "GREEN",
-      "holding_cost": 0.02
-    }
+    {"name": "WIDGET", "shape": "circle", "color": "BLUE", "holding_cost": 0.02},
+    {"name": "BRACKET", "shape": "square", "color": "GREEN", "holding_cost": 0.02}
   ],
   "submodels": {
     "Routed station": {
       "info": {
         "description": "A station a routing sends jobs to: it carries a station NAME a sequence step can use, works the job for the time its routing gives it, and routes it on to its next step. Wire 'in' only for jobs that start here; everything else arrives by routing.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "routed_station",
-          "version": "2.0.0"
-        },
+        "library": {"library": "manufacturing", "asset": "routed_station", "version": "2.0.0"},
         "parameters": [
           {
             "name": "station_name",
@@ -1122,10 +978,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              "attribute",
-              "table"
-            ],
+            "choices": ["attribute", "table"],
             "refers_to": ""
           },
           {
@@ -1202,45 +1055,27 @@
         }
       ],
       "scoped": {
-        "resources": {
-          "Mfg Routed machine": {
-            "capacity": "machines",
-            "cost_busy": "cost_rate"
-          }
-        }
+        "resources": {"Mfg Routed machine": {"capacity": "machines", "cost_busy": "cost_rate"}}
       },
       "blocks": [
         {
           "name": "in",
           "type": "SUB_ENTRY",
           "description": "Jobs starting here",
-          "position": [
-            0.0,
-            0.0
-          ]
+          "position": [0.0, 0.0]
         },
         {
           "name": "station",
           "type": "STATION",
           "description": "Station",
-          "position": [
-            200.0,
-            0.0
-          ],
-          "params": {
-            "station": {
-              "$arg": "station_name"
-            }
-          }
+          "position": [200.0, 0.0],
+          "params": {"station": {"$arg": "station_name"}}
         },
         {
           "name": "work",
           "type": "PROCESS",
           "description": "Machine",
-          "position": [
-            400.0,
-            0.0
-          ],
+          "position": [400.0, 0.0],
           "params": {
             "dist_params": {
               "value": "entity.process_time if time_source == 'attribute' else TABLE('Mfg Process times', entity.e_type, entity.station)"
@@ -1253,44 +1088,21 @@
           "name": "leave",
           "type": "ROUTE",
           "description": "To the next step",
-          "position": [
-            600.0,
-            0.0
-          ],
-          "params": {
-            "dist_params": {
-              "value": "transfer_time"
-            },
-            "time_unit": "minutes"
-          }
+          "position": [600.0, 0.0],
+          "params": {"dist_params": {"value": "transfer_time"}, "time_unit": "minutes"}
         },
         {
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Routing finished",
-          "position": [
-            800.0,
-            0.0
-          ]
+          "position": [800.0, 0.0]
         }
       ],
       "links": [
-        {
-          "source": "in",
-          "target": "station"
-        },
-        {
-          "source": "station",
-          "target": "work"
-        },
-        {
-          "source": "work",
-          "target": "leave"
-        },
-        {
-          "source": "leave",
-          "target": "out"
-        }
+        {"source": "in", "target": "station"},
+        {"source": "station", "target": "work"},
+        {"source": "work", "target": "leave"},
+        {"source": "leave", "target": "out"}
       ],
       "annotations": []
     }
@@ -1300,11 +1112,6 @@
     "category": "Manufacturing",
     "description": "A three-station job shop built from Manufacturing library Routed stations, driven by a Manufacturing Execution System. Two products follow their own routings, process times come from a lookup table the MES parameter feed refits, and each station breaks down. On its own it runs as a plain job shop; an MES twin runs it against the mock MES in models/data/mes_twin_shop/ with the mapping in models/data/mes_twin_shop.mesmap.json."
   },
-  "simulation": {
-    "time_limit": 480,
-    "warmup": 0,
-    "replications": 20,
-    "entity_log_limit": 100000
-  },
+  "simulation": {"time_limit": 480, "warmup": 0, "replications": 20, "entity_log_limit": 100000},
   "outputs": {}
 }

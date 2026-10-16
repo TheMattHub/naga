@@ -6,90 +6,37 @@
       "name": "create_1",
       "type": "CREATE",
       "description": "Customers",
-      "position": [
-        200.0,
-        320.0
-      ],
-      "params": {
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.5
-        }
-      }
+      "position": [200.0, 320.0],
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.5}}
     },
     {
       "name": "process_1",
       "type": "PROCESS",
       "description": "Serve at either teller",
-      "position": [
-        520.0,
-        320.0
-      ],
+      "position": [520.0, 320.0],
       "params": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.0
-        },
+        "dist_params": {"rate": 1.0},
         "resource_name": "Tellers"
       }
     },
-    {
-      "name": "dispose_1",
-      "type": "DISPOSE",
-      "position": [
-        840.0,
-        320.0
-      ]
-    }
+    {"name": "dispose_1", "type": "DISPOSE", "position": [840.0, 320.0]}
   ],
   "links": [
-    {
-      "source": "create_1",
-      "target": "process_1"
-    },
-    {
-      "source": "process_1",
-      "target": "dispose_1"
-    }
+    {"source": "create_1", "target": "process_1"},
+    {"source": "process_1", "target": "dispose_1"}
   ],
   "resources": [
-    {
-      "name": "TellerA",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "TellerB",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
+    {"name": "TellerA", "capacity": 1, "discipline": "FIFO"},
+    {"name": "TellerB", "capacity": 1, "discipline": "FIFO"}
   ],
-  "resource_sets": [
-    {
-      "name": "Tellers",
-      "members": [
-        "TellerA",
-        "TellerB"
-      ],
-      "rule": "Cyclical"
-    }
-  ],
-  "entities": [
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK"
-    }
-  ],
+  "resource_sets": [{"name": "Tellers", "members": ["TellerA", "TellerB"], "rule": "Cyclical"}],
+  "entities": [{"name": "DEFAULT", "shape": "circle", "color": "BLACK"}],
   "info": {
     "title": "Two tellers (resource set)",
     "category": "Teaching",
     "description": "Customers served by either of two named tellers (TellerA/TellerB) through one PROCESS block -- the minimal example of a resource set with a selection rule."
   },
-  "simulation": {
-    "time_limit": 2000,
-    "warmup": 200,
-    "replications": 5
-  },
+  "simulation": {"time_limit": 2000, "warmup": 200, "replications": 5},
   "outputs": {}
 }

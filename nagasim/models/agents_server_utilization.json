@@ -6,30 +6,15 @@
       "name": "server_utilization_1",
       "type": "SUBMODEL",
       "description": "Server busy/idle cycle (agents)",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "params": {
-        "definition": "Server busy/idle cycle (agents)"
-      }
+      "position": [0.0, 0.0],
+      "params": {"definition": "Server busy/idle cycle (agents)"}
     }
   ],
   "agent_types": [
     {
       "name": "Server",
-      "parameters": {
-        "arrival_rate": 0.8,
-        "service_rate": 1.0
-      },
-      "states": [
-        {
-          "name": "Idle"
-        },
-        {
-          "name": "Busy"
-        }
-      ],
+      "parameters": {"arrival_rate": 0.8, "service_rate": 1.0},
+      "states": [{"name": "Idle"}, {"name": "Busy"}],
       "initial_state": "Idle",
       "transitions": [
         {
@@ -47,22 +32,12 @@
       ]
     }
   ],
-  "populations": [
-    {
-      "name": "Servers",
-      "type": "Server",
-      "count": 1
-    }
-  ],
+  "populations": [{"name": "Servers", "type": "Server", "count": 1}],
   "submodels": {
     "Server busy/idle cycle (agents)": {
       "info": {
         "description": "A single Server agent alternating Idle (waiting EXPO(1/lambda) for the next customer) and Busy (serving for EXPO(1/mu)) -- the busy/idle process of an M/M/1 queue's server, without tracking the waiting line itself. Memorylessness makes each state's mean sojourn exactly 1/rate: with lambda=0.8, mu=1.0, Idle averages 1.25 and Busy averages 1.0 -- the same identity Little's law rests on. The arrival and service rates are this instance's own; add a queue-length agent type (states 0..K, arrival/departure transitions) for the waiting line itself.",
-        "library": {
-          "library": "agents",
-          "asset": "server_utilization",
-          "version": "1.2.0"
-        },
+        "library": {"library": "agents", "asset": "server_utilization", "version": "1.2.0"},
         "parameters": [
           {
             "name": "arrival_rate",
@@ -91,14 +66,7 @@
             "refers_to": ""
           }
         ],
-        "owns": {
-          "agent_types": [
-            "Server"
-          ],
-          "populations": [
-            "Servers"
-          ]
-        }
+        "owns": {"agent_types": ["Server"], "populations": ["Servers"]}
       },
       "parameters": [
         {
@@ -117,17 +85,11 @@
       "scoped": {
         "agent_types": {
           "Server": {
-            "parameters.arrival_rate": {
-              "$arg": "arrival_rate"
-            },
-            "parameters.service_rate": {
-              "$arg": "service_rate"
-            }
+            "parameters.arrival_rate": {"$arg": "arrival_rate"},
+            "parameters.service_rate": {"$arg": "service_rate"}
           }
         },
-        "populations": {
-          "Servers": {}
-        }
+        "populations": {"Servers": {}}
       },
       "blocks": [],
       "links": [],
@@ -139,10 +101,6 @@
     "category": "Agent-based",
     "description": "A single Server agent alternating Idle (waiting EXPO(1/lambda) for the next customer) and Busy (serving for EXPO(1/mu)) -- the busy/idle process of an M/M/1 queue's server, without tracking the waiting line itself. Memorylessness makes each state's mean sojourn exactly 1/rate: with lambda=0.8, mu=1.0, Idle averages 1.25 and Busy averages 1.0 -- the same identity Little's law rests on. The arrival and service rates are this instance's own; add a queue-length agent type (states 0..K, arrival/departure transitions) for the waiting line itself."
   },
-  "simulation": {
-    "time_limit": 3000.0,
-    "warmup": 0,
-    "replications": 1
-  },
+  "simulation": {"time_limit": 3000.0, "warmup": 0, "replications": 1},
   "outputs": {}
 }

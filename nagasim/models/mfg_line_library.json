@@ -6,68 +6,34 @@
       "name": "release",
       "type": "CREATE",
       "description": "Release jobs",
-      "position": [
-        -400.0,
-        0.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 6.0
-        }
-      }
+      "position": [-400.0, 0.0],
+      "params": {"dist_params": {"value": 6.0}}
     },
     {
       "name": "wip_cap_conwip_kanban_loop_1",
       "type": "SUBMODEL",
       "description": "WIP cap (CONWIP / kanban loop)",
-      "position": [
-        -200.0,
-        0.0
-      ],
-      "layout_position": [
-        1.0,
-        0.0
-      ],
-      "params": {
-        "definition": "WIP cap (CONWIP / kanban loop)",
-        "arguments": {
-          "cap": 12
-        }
-      }
+      "position": [-200.0, 0.0],
+      "layout_position": [1.0, 0.0],
+      "params": {"definition": "WIP cap (CONWIP / kanban loop)", "arguments": {"cap": 12}}
     },
     {
       "name": "batch_oven_1",
       "type": "SUBMODEL",
       "description": "Batch oven",
-      "position": [
-        0.0,
-        0.0
-      ],
-      "layout_position": [
-        12.0,
-        1.0
-      ],
+      "position": [0.0, 0.0],
+      "layout_position": [12.0, 1.0],
       "params": {
         "definition": "Batch oven",
-        "arguments": {
-          "bake_time": 18.0,
-          "time_distribution": 1,
-          "ovens": 1
-        }
+        "arguments": {"bake_time": 18.0, "time_distribution": 1, "ovens": 1}
       }
     },
     {
       "name": "workstation_1",
       "type": "SUBMODEL",
       "description": "Workstation",
-      "position": [
-        200.0,
-        0.0
-      ],
-      "layout_position": [
-        22.0,
-        1.0
-      ],
+      "position": [200.0, 0.0],
+      "layout_position": [22.0, 1.0],
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -85,57 +51,25 @@
       "name": "inspection_1",
       "type": "SUBMODEL",
       "description": "Inspection",
-      "position": [
-        400.0,
-        0.0
-      ],
-      "layout_position": [
-        32.0,
-        1.0
-      ],
+      "position": [400.0, 0.0],
+      "layout_position": [32.0, 1.0],
       "params": {
         "definition": "Inspection",
-        "arguments": {
-          "inspection_time": 4.0,
-          "pass_probability": 0.85,
-          "rework_probability": 0.1
-        }
+        "arguments": {"inspection_time": 4.0, "pass_probability": 0.85, "rework_probability": 0.1}
       }
     },
-    {
-      "name": "shipped",
-      "type": "DISPOSE",
-      "description": "Shipped",
-      "position": [
-        800.0,
-        0.0
-      ]
-    }
+    {"name": "shipped", "type": "DISPOSE", "description": "Shipped", "position": [800.0, 0.0]}
   ],
   "links": [
-    {
-      "source": "release",
-      "target": "wip_cap_conwip_kanban_loop_1",
-      "target_port": "in"
-    },
+    {"source": "release", "target": "wip_cap_conwip_kanban_loop_1", "target_port": "in"},
     {
       "source": "wip_cap_conwip_kanban_loop_1",
       "target": "batch_oven_1",
       "source_port": "out",
       "target_port": "in"
     },
-    {
-      "source": "batch_oven_1",
-      "target": "workstation_1",
-      "source_port": "out",
-      "target_port": "in"
-    },
-    {
-      "source": "workstation_1",
-      "target": "inspection_1",
-      "source_port": "out",
-      "target_port": "in"
-    },
+    {"source": "batch_oven_1", "target": "workstation_1", "source_port": "out", "target_port": "in"},
+    {"source": "workstation_1", "target": "inspection_1", "source_port": "out", "target_port": "in"},
     {
       "source": "inspection_1",
       "target": "wip_cap_conwip_kanban_loop_1",
@@ -154,72 +88,36 @@
       "source_port": "scrap",
       "target_port": "return"
     },
-    {
-      "source": "wip_cap_conwip_kanban_loop_1",
-      "target": "shipped",
-      "source_port": "done"
-    }
+    {"source": "wip_cap_conwip_kanban_loop_1", "target": "shipped", "source_port": "done"}
   ],
   "resources": [
-    {
-      "name": "Mfg WIP tokens",
-      "capacity": 10,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Mfg Oven",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Mfg Machine",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Mfg Inspector",
-      "capacity": 1,
-      "discipline": "FIFO"
-    }
+    {"name": "Mfg WIP tokens", "capacity": 10, "discipline": "FIFO"},
+    {"name": "Mfg Oven", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Mfg Machine", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Mfg Inspector", "capacity": 1, "discipline": "FIFO"}
   ],
   "failures": [
     {
       "name": "Mfg Machine breakdown",
-      "resources": [
-        "Mfg Machine"
-      ],
+      "resources": ["Mfg Machine"],
       "uptime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.001
-        },
+        "dist_params": {"rate": 0.001},
         "time_unit": "minutes"
       },
       "downtime": {
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.05
-        },
+        "dist_params": {"rate": 0.05},
         "time_unit": "minutes"
       }
     }
   ],
-  "entities": [
-    {
-      "name": "Mfg Load",
-      "shape": "square",
-      "color": "RED"
-    }
-  ],
+  "entities": [{"name": "Mfg Load", "shape": "square", "color": "RED"}],
   "submodels": {
     "WIP cap (CONWIP / kanban loop)": {
       "info": {
         "description": "Caps the work in progress of a region. Wire the line's entry through 'in' -> 'out' and its exit through 'return' -> 'done': a job takes one of this instance's tokens on the way in and gives it back on the way out, so at most 'cap' jobs are ever inside.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "wip_cap",
-          "version": "1.0.0"
-        },
+        "library": {"library": "manufacturing", "asset": "wip_cap", "version": "1.0.0"},
         "parameters": [
           {
             "name": "cap",
@@ -242,111 +140,61 @@
           "description": "Largest number of jobs allowed inside the region at once."
         }
       ],
-      "scoped": {
-        "resources": {
-          "Mfg WIP tokens": {
-            "capacity": "cap"
-          }
-        }
-      },
+      "scoped": {"resources": {"Mfg WIP tokens": {"capacity": "cap"}}},
       "blocks": [
         {
           "name": "in",
           "type": "SUB_ENTRY",
           "description": "Jobs entering the region",
-          "position": [
-            0.0,
-            0.0
-          ]
+          "position": [0.0, 0.0]
         },
         {
           "name": "take_token",
           "type": "SEIZE",
           "description": "Take a WIP token",
-          "position": [
-            200.0,
-            0.0
-          ],
-          "params": {
-            "time_unit": "minutes",
-            "resource_name": "$Mfg WIP tokens"
-          }
+          "position": [200.0, 0.0],
+          "params": {"time_unit": "minutes", "resource_name": "$Mfg WIP tokens"}
         },
         {
           "name": "out",
           "type": "SUB_EXIT",
           "description": "Jobs admitted",
-          "position": [
-            400.0,
-            0.0
-          ]
+          "position": [400.0, 0.0]
         },
         {
           "name": "return",
           "type": "SUB_ENTRY",
           "description": "Jobs leaving the region",
-          "position": [
-            0.0,
-            150.0
-          ],
-          "params": {
-            "port": "return"
-          }
+          "position": [0.0, 150.0],
+          "params": {"port": "return"}
         },
         {
           "name": "give_token",
           "type": "RELEASE",
           "description": "Give the token back",
-          "position": [
-            200.0,
-            150.0
-          ],
-          "params": {
-            "time_unit": "minutes",
-            "resource_name": "$Mfg WIP tokens"
-          }
+          "position": [200.0, 150.0],
+          "params": {"time_unit": "minutes", "resource_name": "$Mfg WIP tokens"}
         },
         {
           "name": "done",
           "type": "SUB_EXIT",
           "description": "Jobs released",
-          "position": [
-            400.0,
-            150.0
-          ],
-          "params": {
-            "port": "done"
-          }
+          "position": [400.0, 150.0],
+          "params": {"port": "done"}
         }
       ],
       "links": [
-        {
-          "source": "in",
-          "target": "take_token"
-        },
-        {
-          "source": "take_token",
-          "target": "out"
-        },
-        {
-          "source": "return",
-          "target": "give_token"
-        },
-        {
-          "source": "give_token",
-          "target": "done"
-        }
+        {"source": "in", "target": "take_token"},
+        {"source": "take_token", "target": "out"},
+        {"source": "return", "target": "give_token"},
+        {"source": "give_token", "target": "done"}
       ],
       "annotations": []
     },
     "Batch oven": {
       "info": {
         "description": "Collects 4 jobs, processes them together for one bake time, then splits them again. The batch size is fixed in the definition: open the instance and edit the 'collect' block to change it.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "batch_oven",
-          "version": "1.0.0"
-        },
+        "library": {"library": "manufacturing", "asset": "batch_oven", "version": "1.0.0"},
         "parameters": [
           {
             "name": "bake_time",
@@ -370,11 +218,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              1,
-              2,
-              3
-            ]
+            "choices": [1, 2, 3]
           },
           {
             "name": "ovens",
@@ -424,45 +268,21 @@
           "description": "Cost charged per minute while the station is busy; 0 leaves it out of the costing."
         }
       ],
-      "scoped": {
-        "resources": {
-          "Mfg Oven": {
-            "capacity": "ovens",
-            "cost_busy": "cost_rate"
-          }
-        }
-      },
+      "scoped": {"resources": {"Mfg Oven": {"capacity": "ovens", "cost_busy": "cost_rate"}}},
       "blocks": [
-        {
-          "name": "in",
-          "type": "SUB_ENTRY",
-          "description": "Jobs arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
-        },
+        {"name": "in", "type": "SUB_ENTRY", "description": "Jobs arrive", "position": [0.0, 0.0]},
         {
           "name": "collect",
           "type": "BATCH",
           "description": "Collect 4 jobs",
-          "position": [
-            200.0,
-            0.0
-          ],
-          "params": {
-            "batch_size": 4,
-            "batched_entity_type": "Mfg Load"
-          }
+          "position": [200.0, 0.0],
+          "params": {"batch_size": 4, "batched_entity_type": "Mfg Load"}
         },
         {
           "name": "bake",
           "type": "PROCESS",
           "description": "Oven",
-          "position": [
-            400.0,
-            0.0
-          ],
+          "position": [400.0, 0.0],
           "params": {
             "dist_params": {
               "value": "bake_time if time_distribution == 1 else (EXPO(bake_time) if time_distribution == 2 else TRIA(0.7 * bake_time, bake_time, 1.3 * bake_time))"
@@ -475,49 +295,22 @@
           "name": "unload",
           "type": "SEPARATE",
           "description": "Split the load",
-          "position": [
-            600.0,
-            0.0
-          ]
+          "position": [600.0, 0.0]
         },
-        {
-          "name": "out",
-          "type": "SUB_EXIT",
-          "description": "Jobs leave",
-          "position": [
-            800.0,
-            0.0
-          ]
-        }
+        {"name": "out", "type": "SUB_EXIT", "description": "Jobs leave", "position": [800.0, 0.0]}
       ],
       "links": [
-        {
-          "source": "in",
-          "target": "collect"
-        },
-        {
-          "source": "collect",
-          "target": "bake"
-        },
-        {
-          "source": "bake",
-          "target": "unload"
-        },
-        {
-          "source": "unload",
-          "target": "out"
-        }
+        {"source": "in", "target": "collect"},
+        {"source": "collect", "target": "bake"},
+        {"source": "bake", "target": "unload"},
+        {"source": "unload", "target": "out"}
       ],
       "annotations": []
     },
     "Workstation": {
       "info": {
         "description": "One station with its own queue and machines: jobs seize a machine, are worked on, and leave. Optional breakdowns (MTBF/MTTR) and a changeover time when the job type changes.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "workstation",
-          "version": "1.0.0"
-        },
+        "library": {"library": "manufacturing", "asset": "workstation", "version": "1.0.0"},
         "parameters": [
           {
             "name": "process_time",
@@ -541,11 +334,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              1,
-              2,
-              3
-            ]
+            "choices": [1, 2, 3]
           },
           {
             "name": "setup_time",
@@ -619,13 +408,7 @@
             "setup_time": "setup_time",
             "cost_rate": "cost_rate"
           },
-          "rows": [
-            "Manual bench",
-            "CNC mill",
-            "Laser cutter",
-            "Press",
-            "Paint booth"
-          ],
+          "rows": ["Manual bench", "CNC mill", "Laser cutter", "Press", "Paint booth"],
           "units": {
             "process_time": "minutes",
             "mtbf": "minutes",
@@ -717,12 +500,7 @@
         }
       ],
       "scoped": {
-        "resources": {
-          "Mfg Machine": {
-            "capacity": "machines",
-            "cost_busy": "cost_rate"
-          }
-        },
+        "resources": {"Mfg Machine": {"capacity": "machines", "cost_busy": "cost_rate"}},
         "failures": {
           "Mfg Machine breakdown": {
             "uptime.dist_params.rate": "1.0 / mtbf if mtbf > 0 else 1e-9",
@@ -731,23 +509,12 @@
         }
       },
       "blocks": [
-        {
-          "name": "in",
-          "type": "SUB_ENTRY",
-          "description": "Jobs arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
-        },
+        {"name": "in", "type": "SUB_ENTRY", "description": "Jobs arrive", "position": [0.0, 0.0]},
         {
           "name": "machine",
           "type": "PROCESS",
           "description": "Machine",
-          "position": [
-            250.0,
-            0.0
-          ],
+          "position": [250.0, 0.0],
           "params": {
             "dist_params": {
               "value": "process_time if time_distribution == 1 else (EXPO(process_time) if time_distribution == 2 else TRIA(0.7 * process_time, process_time, 1.3 * process_time))"
@@ -758,36 +525,15 @@
             "setup_key": "entity.e_type"
           }
         },
-        {
-          "name": "out",
-          "type": "SUB_EXIT",
-          "description": "Jobs leave",
-          "position": [
-            600.0,
-            0.0
-          ]
-        }
+        {"name": "out", "type": "SUB_EXIT", "description": "Jobs leave", "position": [600.0, 0.0]}
       ],
-      "links": [
-        {
-          "source": "in",
-          "target": "machine"
-        },
-        {
-          "source": "machine",
-          "target": "out"
-        }
-      ],
+      "links": [{"source": "in", "target": "machine"}, {"source": "machine", "target": "out"}],
       "annotations": []
     },
     "Inspection": {
       "info": {
         "description": "Inspect a job and send it out by one of three exits: pass, rework (wire it back to the station that should redo it) or scrap.",
-        "library": {
-          "library": "manufacturing",
-          "asset": "inspection",
-          "version": "1.0.0"
-        },
+        "library": {"library": "manufacturing", "asset": "inspection", "version": "1.0.0"},
         "parameters": [
           {
             "name": "inspection_time",
@@ -811,11 +557,7 @@
             "group": "Timing",
             "min": null,
             "max": null,
-            "choices": [
-              1,
-              2,
-              3
-            ]
+            "choices": [1, 2, 3]
           },
           {
             "name": "inspectors",
@@ -900,31 +642,15 @@
         }
       ],
       "scoped": {
-        "resources": {
-          "Mfg Inspector": {
-            "capacity": "inspectors",
-            "cost_busy": "cost_rate"
-          }
-        }
+        "resources": {"Mfg Inspector": {"capacity": "inspectors", "cost_busy": "cost_rate"}}
       },
       "blocks": [
-        {
-          "name": "in",
-          "type": "SUB_ENTRY",
-          "description": "Jobs arrive",
-          "position": [
-            0.0,
-            0.0
-          ]
-        },
+        {"name": "in", "type": "SUB_ENTRY", "description": "Jobs arrive", "position": [0.0, 0.0]},
         {
           "name": "inspect",
           "type": "PROCESS",
           "description": "Inspection",
-          "position": [
-            200.0,
-            0.0
-          ],
+          "position": [200.0, 0.0],
           "params": {
             "dist_params": {
               "value": "inspection_time if time_distribution == 1 else (EXPO(inspection_time) if time_distribution == 2 else TRIA(0.7 * inspection_time, inspection_time, 1.3 * inspection_time))"
@@ -937,27 +663,14 @@
           "name": "draw",
           "type": "ASSIGN",
           "description": "Draw the verdict",
-          "position": [
-            400.0,
-            0.0
-          ],
-          "params": {
-            "assignments": [
-              {
-                "target": "entity.inspection_draw",
-                "expr": "RAND()"
-              }
-            ]
-          }
+          "position": [400.0, 0.0],
+          "params": {"assignments": [{"target": "entity.inspection_draw", "expr": "RAND()"}]}
         },
         {
           "name": "verdict",
           "type": "DECIDE",
           "description": "Pass, rework or scrap",
-          "position": [
-            600.0,
-            0.0
-          ],
+          "position": [600.0, 0.0],
           "params": {
             "mode": "Condition",
             "conditions": [
@@ -970,64 +683,31 @@
           "name": "pass",
           "type": "SUB_EXIT",
           "description": "Good jobs",
-          "position": [
-            800.0,
-            -100.0
-          ],
-          "params": {
-            "port": "pass"
-          }
+          "position": [800.0, -100.0],
+          "params": {"port": "pass"}
         },
         {
           "name": "rework",
           "type": "SUB_EXIT",
           "description": "Jobs to redo",
-          "position": [
-            800.0,
-            0.0
-          ],
-          "params": {
-            "port": "rework"
-          }
+          "position": [800.0, 0.0],
+          "params": {"port": "rework"}
         },
         {
           "name": "scrap",
           "type": "SUB_EXIT",
           "description": "Scrapped jobs",
-          "position": [
-            800.0,
-            100.0
-          ],
-          "params": {
-            "port": "scrap"
-          }
+          "position": [800.0, 100.0],
+          "params": {"port": "scrap"}
         }
       ],
       "links": [
-        {
-          "source": "in",
-          "target": "inspect"
-        },
-        {
-          "source": "inspect",
-          "target": "draw"
-        },
-        {
-          "source": "draw",
-          "target": "verdict"
-        },
-        {
-          "source": "verdict",
-          "target": "pass"
-        },
-        {
-          "source": "verdict",
-          "target": "rework"
-        },
-        {
-          "source": "verdict",
-          "target": "scrap"
-        }
+        {"source": "in", "target": "inspect"},
+        {"source": "inspect", "target": "draw"},
+        {"source": "draw", "target": "verdict"},
+        {"source": "verdict", "target": "pass"},
+        {"source": "verdict", "target": "rework"},
+        {"source": "verdict", "target": "scrap"}
       ],
       "annotations": []
     }
@@ -1037,10 +717,6 @@
     "category": "Manufacturing",
     "description": "A small make-to-order line built entirely from Manufacturing 1.0.0 assets, and deliberately still on those v1 definitions (the library has a 2.0.0 since). Jobs are released every 6 minutes into a CONWIP loop of 12 tokens, baked four to a load, machined, then inspected -- 85% pass, 10% go back to the machine, 5% are scrapped, and every job gives its token back whichever way it leaves. All four resources run at 60-85%, so the queues, the rework loop and the oven's batching are all visible in the results."
   },
-  "simulation": {
-    "time_limit": 1500,
-    "warmup": 200,
-    "replications": 3
-  },
+  "simulation": {"time_limit": 1500, "warmup": 200, "replications": 3},
   "outputs": {}
 }

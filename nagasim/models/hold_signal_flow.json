@@ -5,132 +5,68 @@
     {
       "name": "create_1",
       "type": "CREATE",
-      "position": [
-        180.0,
-        240.0
-      ],
-      "params": {
-        "max_arrivals": 10
-      }
+      "position": [180.0, 240.0],
+      "params": {"max_arrivals": 10}
     },
     {
       "name": "delay_1",
       "type": "DELAY",
-      "position": [
-        440.0,
-        240.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 1.0
-        }
-      }
+      "position": [440.0, 240.0],
+      "params": {"dist_params": {"value": 1.0}}
     },
-    {
-      "name": "dispose_1",
-      "type": "DISPOSE",
-      "position": [
-        1020.0,
-        200.0
-      ]
-    },
+    {"name": "dispose_1", "type": "DISPOSE", "position": [1020.0, 200.0]},
     {
       "name": "create_2",
       "type": "CREATE",
-      "position": [
-        180.0,
-        420.0
-      ],
+      "position": [180.0, 420.0],
       "params": {
         "e_type": "A",
         "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.5
-        },
+        "dist_params": {"rate": 0.5},
         "max_arrivals": 10
       }
     },
     {
       "name": "seize_1",
       "type": "SEIZE",
-      "position": [
-        440.0,
-        440.0
-      ],
+      "position": [440.0, 440.0],
       "params": {
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 1.0,
-          "high": 5.0,
-          "mode": 3.0
-        },
+        "dist_params": {"low": 1.0, "high": 5.0, "mode": 3.0},
         "resource_name": "Dock"
       }
     },
     {
       "name": "release_1",
       "type": "RELEASE",
-      "position": [
-        640.0,
-        440.0
-      ],
-      "params": {
-        "resource_name": "Dock"
-      }
+      "position": [640.0, 440.0],
+      "params": {"resource_name": "Dock"}
     },
     {
       "name": "dispose_2",
       "type": "DISPOSE",
-      "position": [
-        1020.0,
-        400.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 0
-        }
-      }
+      "position": [1020.0, 400.0],
+      "params": {"dist_params": {"value": 0}}
     },
     {
       "name": "decide_1",
       "type": "DECIDE",
-      "position": [
-        880.0,
-        320.0
-      ],
-      "params": {
-        "probs": [
-          0.5
-        ],
-        "conditions": [
-          "True"
-        ]
-      }
+      "position": [880.0, 320.0],
+      "params": {"probs": [0.5], "conditions": ["True"]}
     },
     {
       "name": "hold_2",
       "type": "HOLD",
-      "position": [
-        660.0,
-        240.0
-      ],
-      "params": {
-        "signal_name": "Signal1"
-      }
+      "position": [660.0, 240.0],
+      "params": {"signal_name": "Signal1"}
     },
     {
       "name": "create_3",
       "type": "CREATE",
-      "position": [
-        200.0,
-        640.0
-      ],
+      "position": [200.0, 640.0],
       "params": {
         "distribution": "Uniform",
-        "dist_params": {
-          "low": 1.0,
-          "high": 3.0
-        },
+        "dist_params": {"low": 1.0, "high": 3.0},
         "max_arrivals": 10,
         "start_time": 2
       }
@@ -138,158 +74,52 @@
     {
       "name": "signal_1",
       "type": "SIGNAL",
-      "position": [
-        320.0,
-        640.0
-      ],
-      "params": {
-        "signal_name": "Signal1"
-      }
+      "position": [320.0, 640.0],
+      "params": {"signal_name": "Signal1"}
     },
     {
       "name": "dispose_3",
       "type": "DISPOSE",
-      "position": [
-        480.0,
-        640.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 0
-        }
-      }
+      "position": [480.0, 640.0],
+      "params": {"dist_params": {"value": 0}}
     }
   ],
   "links": [
-    {
-      "source": "create_2",
-      "target": "seize_1"
-    },
-    {
-      "source": "seize_1",
-      "target": "release_1"
-    },
-    {
-      "source": "create_1",
-      "target": "delay_1"
-    },
-    {
-      "source": "release_1",
-      "target": "decide_1"
-    },
-    {
-      "source": "decide_1",
-      "target": "dispose_1"
-    },
-    {
-      "source": "decide_1",
-      "target": "dispose_2"
-    },
-    {
-      "source": "delay_1",
-      "target": "hold_2"
-    },
-    {
-      "source": "hold_2",
-      "target": "decide_1"
-    },
-    {
-      "source": "create_3",
-      "target": "signal_1"
-    },
-    {
-      "source": "signal_1",
-      "target": "dispose_3"
-    }
+    {"source": "create_2", "target": "seize_1"},
+    {"source": "seize_1", "target": "release_1"},
+    {"source": "create_1", "target": "delay_1"},
+    {"source": "release_1", "target": "decide_1"},
+    {"source": "decide_1", "target": "dispose_1"},
+    {"source": "decide_1", "target": "dispose_2"},
+    {"source": "delay_1", "target": "hold_2"},
+    {"source": "hold_2", "target": "decide_1"},
+    {"source": "create_3", "target": "signal_1"},
+    {"source": "signal_1", "target": "dispose_3"}
   ],
   "resources": [
-    {
-      "name": "Forklift1",
-      "capacity": 2,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "TruckBay",
-      "capacity": 1,
-      "discipline": "FIFO"
-    },
-    {
-      "name": "Dock",
-      "capacity": 3,
-      "discipline": "FIFO"
-    }
+    {"name": "Forklift1", "capacity": 2, "discipline": "FIFO"},
+    {"name": "TruckBay", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Dock", "capacity": 3, "discipline": "FIFO"}
   ],
   "entities": [
-    {
-      "name": "A",
-      "shape": "square",
-      "color": "BLUE"
-    },
-    {
-      "name": "B",
-      "shape": "square",
-      "color": "RED"
-    },
-    {
-      "name": "C",
-      "shape": "triangle",
-      "color": "ORANGE"
-    },
-    {
-      "name": "D",
-      "shape": "circle",
-      "color": "GREEN"
-    },
-    {
-      "name": "E",
-      "shape": "circle",
-      "color": "CYAN"
-    },
-    {
-      "name": "F",
-      "shape": "triangle",
-      "color": "PURPLE"
-    },
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK"
-    },
-    {
-      "name": "TRUCK",
-      "shape": "square",
-      "color": "NAVY"
-    },
-    {
-      "name": "VAN",
-      "shape": "square",
-      "color": "OLIVE"
-    },
-    {
-      "name": "DRONE",
-      "shape": "triangle",
-      "color": "CAROLINA_BLUE"
-    },
-    {
-      "name": "WORKER",
-      "shape": "circle",
-      "color": "LIME"
-    },
-    {
-      "name": "ROBOT",
-      "shape": "circle",
-      "color": "YELLOW"
-    }
+    {"name": "A", "shape": "square", "color": "BLUE"},
+    {"name": "B", "shape": "square", "color": "RED"},
+    {"name": "C", "shape": "triangle", "color": "ORANGE"},
+    {"name": "D", "shape": "circle", "color": "GREEN"},
+    {"name": "E", "shape": "circle", "color": "CYAN"},
+    {"name": "F", "shape": "triangle", "color": "PURPLE"},
+    {"name": "DEFAULT", "shape": "circle", "color": "BLACK"},
+    {"name": "TRUCK", "shape": "square", "color": "NAVY"},
+    {"name": "VAN", "shape": "square", "color": "OLIVE"},
+    {"name": "DRONE", "shape": "triangle", "color": "CAROLINA_BLUE"},
+    {"name": "WORKER", "shape": "circle", "color": "LIME"},
+    {"name": "ROBOT", "shape": "circle", "color": "YELLOW"}
   ],
   "info": {
     "title": "Delay, seize/release and signal HOLD",
     "category": "Teaching",
     "description": "Three independent flows in one model: a plain delay chain, a SEIZE/RELEASE pair, and a HOLD gated by a SIGNAL -- demonstrates resource seizing and signal-based synchronization side by side."
   },
-  "simulation": {
-    "time_limit": 200,
-    "warmup": 0,
-    "replications": 2
-  },
+  "simulation": {"time_limit": 200, "warmup": 0, "replications": 2},
   "outputs": {}
 }

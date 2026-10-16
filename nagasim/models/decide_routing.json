@@ -5,117 +5,52 @@
     {
       "name": "create_1",
       "type": "CREATE",
-      "position": [
-        200.0,
-        400.0
-      ],
-      "params": {
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 1.0
-        }
-      }
+      "position": [200.0, 400.0],
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}
     },
     {
       "name": "decide_1",
       "type": "DECIDE",
       "description": "30/70 split",
-      "position": [
-        520.0,
-        400.0
-      ],
-      "params": {
-        "probs": [
-          0.3,
-          0.7
-        ]
-      }
+      "position": [520.0, 400.0],
+      "params": {"probs": [0.3, 0.7]}
     },
     {
       "name": "delay_fast",
       "type": "DELAY",
       "description": "Fast path",
-      "position": [
-        800.0,
-        260.0
-      ],
-      "params": {
-        "dist_params": {
-          "value": 0.5
-        }
-      }
+      "position": [800.0, 260.0],
+      "params": {"dist_params": {"value": 0.5}}
     },
     {
       "name": "delay_slow",
       "type": "DELAY",
       "description": "Slow path",
-      "position": [
-        800.0,
-        560.0
-      ],
+      "position": [800.0, 560.0],
       "params": {
         "distribution": "Triangular",
-        "dist_params": {
-          "low": 1.0,
-          "high": 3.0,
-          "mode": 2.0
-        }
+        "dist_params": {"low": 1.0, "high": 3.0, "mode": 2.0}
       }
     },
-    {
-      "name": "dispose_1",
-      "type": "DISPOSE",
-      "position": [
-        1120.0,
-        400.0
-      ]
-    }
+    {"name": "dispose_1", "type": "DISPOSE", "position": [1120.0, 400.0]}
   ],
   "links": [
-    {
-      "source": "create_1",
-      "target": "decide_1"
-    },
-    {
-      "source": "decide_1",
-      "target": "delay_fast"
-    },
-    {
-      "source": "decide_1",
-      "target": "delay_slow"
-    },
+    {"source": "create_1", "target": "decide_1"},
+    {"source": "decide_1", "target": "delay_fast"},
+    {"source": "decide_1", "target": "delay_slow"},
     {
       "source": "delay_fast",
       "target": "dispose_1",
-      "delay": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 2.0
-        },
-        "time_unit": "minutes"
-      }
+      "delay": {"distribution": "Constant", "dist_params": {"value": 2.0}, "time_unit": "minutes"}
     },
-    {
-      "source": "delay_slow",
-      "target": "dispose_1"
-    }
+    {"source": "delay_slow", "target": "dispose_1"}
   ],
-  "entities": [
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK"
-    }
-  ],
+  "entities": [{"name": "DEFAULT", "shape": "circle", "color": "BLACK"}],
   "info": {
     "title": "Chance-based branching (DECIDE)",
     "category": "Teaching",
     "description": "A CREATE feeding a DECIDE that splits arrivals 30/70 between a fast and a slow DELAY path -- the minimal example of chance-based branching."
   },
-  "simulation": {
-    "time_limit": 500,
-    "warmup": 0,
-    "replications": 3
-  },
+  "simulation": {"time_limit": 500, "warmup": 0, "replications": 3},
   "outputs": {}
 }
