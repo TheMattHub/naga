@@ -1,55 +1,44 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "create_1",
-      "description": "Calls (time-varying rate)",
       "type": "CREATE",
+      "description": "Calls (time-varying rate)",
       "position": [
         200.0,
         320.0
       ],
       "params": {
-        "e_type": "DEFAULT",
         "arrival_mode": "Schedule",
         "schedule_name": "call_rate",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.7
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        }
       }
     },
     {
       "name": "process_1",
-      "description": "Handle the call",
       "type": "PROCESS",
+      "description": "Handle the call",
       "position": [
         520.0,
         320.0
       ],
       "params": {
-        "action": "Seize Delay Release",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.25
         },
-        "time_unit": "minutes",
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Agents",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Agents"
       }
     },
     {
       "name": "record_1",
-      "description": "Time in system",
       "type": "RECORD",
+      "description": "Time in system",
       "position": [
         840.0,
         320.0
@@ -62,19 +51,11 @@
     },
     {
       "name": "dispose_1",
-      "description": "dispose_1",
       "type": "DISPOSE",
       "position": [
         1160.0,
         320.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -350,22 +331,18 @@
       ]
     }
   ],
-  "orders": [],
   "resources": [
     {
       "name": "Agents",
       "capacity": 5,
       "discipline": "FIFO",
-      "capacity_schedule": "agent_shifts",
-      "cost_time_unit": "hours"
+      "capacity_schedule": "agent_shifts"
     }
   ],
-  "resource_sets": [],
   "schedules": [
     {
       "name": "call_rate",
       "kind": "arrival",
-      "time_unit": "hours",
       "off_value": 0,
       "weekly": {
         "mon": [
@@ -607,12 +584,12 @@
           "value": 0,
           "description": "Epiphany: the line is closed"
         }
-      ]
+      ],
+      "time_unit": "hours"
     },
     {
       "name": "agent_shifts",
       "kind": "capacity",
-      "time_unit": "hours",
       "off_value": 0,
       "weekly": {
         "mon": [
@@ -854,59 +831,30 @@
           "value": 0,
           "description": "Epiphany: no agents on shift"
         }
-      ]
+      ],
+      "time_unit": "hours"
     }
   ],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLACK"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Call centre on real dates",
     "category": "Services",
     "description": "A call centre on REAL DATES: the week of Monday 5 January 2026, Europe/Rome. The arrival rate and the agent roster are both weekday schedules in local wall-clock time -- Mon-Fri 08:00-16:00, a short Saturday morning, Sunday closed -- with Epiphany (Tuesday 6 January) closed by a dated exception. RECORD tracks each call's time in system; every chart, the playback clock and the exported workbook show the real day and hour."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 10080,
     "warmup": 0,
     "replications": 5,
-    "time_unit": "minutes",
     "calendar": {
       "start": "2026-01-05T08:00:00",
       "timezone": "Europe/Rome"
-    },
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    }
   },
   "outputs": {}
 }

@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "network_courier_1",
-      "description": "Courier on a path network",
       "type": "SUBMODEL",
+      "description": "Courier on a path network",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Courier on a path network",
-        "arguments": {},
-        "preset": ""
+        "definition": "Courier on a path network"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Courier",
@@ -68,8 +45,7 @@
           "to": "Delivered",
           "message": "arrived"
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     }
   ],
   "populations": [
@@ -85,7 +61,6 @@
       }
     }
   ],
-  "reality_checks": [],
   "network": {
     "nodes": [
       {
@@ -110,7 +85,6 @@
       }
     ]
   },
-  "annotations": [],
   "submodels": {
     "Courier on a path network": {
       "info": {
@@ -169,23 +143,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Courier on a path network",
     "category": "Agent-based",
     "description": "One Courier agent moving on the model's own path network (`network`) instead of continuous space: it starts at a node named \"Dock\", is sent to a node named \"Dropoff\" the instant it starts, and enters Delivered on arrival. Needs the model to declare those two node names and a segment joining them -- validation reports E_AGENT_SPACE with a clear hint if they are missing. move_to's travel time is segment length / speed, exact, so a fixed leg gives an exact sojourn oracle just like the continuous walker asset."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 100.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

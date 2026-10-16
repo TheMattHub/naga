@@ -132,17 +132,19 @@ def test_a_non_accumulating_belt_with_parts_on_it_is_refused_by_name():
     assert "E_INITIAL_BELT" in problem_codes(model)
 
 
-def test_a_conveyor_under_a_plant_stays_refused_by_name(tmp_path, capsys):
-    """By the twin (`refused_kind`) and by `naga plant replay|watch --state` (#450)."""
-    assert state.refused_kind(_belt_line()) == "conveyors"
+def test_a_non_accumulating_conveyor_under_a_plant_stays_refused_by_name(tmp_path, capsys):
+    """By the twin (`refused_kind`) and by `naga plant replay|watch --state` (#450); an
+    accumulating belt is carried from when each part entered it (D460)."""
+    assert state.refused_kind(_belt_line()) is None
+    assert state.refused_kind(_belt_line(accumulating=False)) == "a non-accumulating conveyor"
     model, mapping, log, taken = (str(tmp_path / name) for name in (
         "line.json", "line.plantmap.json", "plant.jsonl", "s.json"))
-    Path(model).write_text(json.dumps(_belt_line()), encoding="utf-8")
+    Path(model).write_text(json.dumps(_belt_line(accumulating=False)), encoding="utf-8")
     assert plant.main(["init", model, "--out", mapping]) == 0
     assert plant.main(["mock", model, "--map", mapping, "--out", log, "--seed", "1"]) == 0
     capsys.readouterr()
     assert plant.main(["replay", mapping, model, log, "--state", taken]) == 1
-    assert "E_STATE_UNSUPPORTED: a state from a plant cannot carry conveyors" \
+    assert "E_STATE_UNSUPPORTED: a state from a plant cannot carry a non-accumulating conveyor" \
         in capsys.readouterr().out
 
 

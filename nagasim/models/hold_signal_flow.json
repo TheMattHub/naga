@@ -1,62 +1,41 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "create_1",
-      "description": "create_1",
       "type": "CREATE",
       "position": [
         180.0,
         240.0
       ],
       "params": {
-        "e_type": "DEFAULT",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 1.0
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 10,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        "max_arrivals": 10
       }
     },
     {
       "name": "delay_1",
-      "description": "delay_1",
       "type": "DELAY",
       "position": [
         440.0,
         240.0
       ],
       "params": {
-        "distribution": "Constant",
         "dist_params": {
           "value": 1.0
-        },
-        "time_unit": "minutes"
+        }
       }
     },
     {
       "name": "dispose_1",
-      "description": "dispose_1",
       "type": "DISPOSE",
       "position": [
         1020.0,
         200.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     },
     {
       "name": "create_2",
-      "description": "create_2",
       "type": "CREATE",
       "position": [
         180.0,
@@ -68,16 +47,11 @@
         "dist_params": {
           "rate": 0.5
         },
-        "entities_per_arrival": 1,
-        "max_arrivals": 10,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        "max_arrivals": 10
       }
     },
     {
       "name": "seize_1",
-      "description": "seize_1",
       "type": "SEIZE",
       "position": [
         440.0,
@@ -90,132 +64,99 @@
           "high": 5.0,
           "mode": 3.0
         },
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Dock",
-        "time_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Dock"
       }
     },
     {
       "name": "release_1",
-      "description": "release_1",
       "type": "RELEASE",
       "position": [
         640.0,
         440.0
       ],
       "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "resource_name": "Dock",
-        "time_unit": "minutes"
+        "resource_name": "Dock"
       }
     },
     {
       "name": "dispose_2",
-      "description": "dispose_2",
       "type": "DISPOSE",
       "position": [
         1020.0,
         400.0
       ],
       "params": {
-        "distribution": "Constant",
         "dist_params": {
           "value": 0
-        },
-        "time_unit": "minutes"
+        }
       }
     },
     {
       "name": "decide_1",
-      "description": "decide_1",
       "type": "DECIDE",
       "position": [
         880.0,
         320.0
       ],
       "params": {
-        "conditions": [
-          "True"
-        ],
         "probs": [
           0.5
         ],
-        "mode": "Chance"
+        "conditions": [
+          "True"
+        ]
       }
     },
     {
       "name": "hold_2",
-      "description": "hold_2",
       "type": "HOLD",
       "position": [
         660.0,
         240.0
       ],
       "params": {
-        "mode": "Signal",
-        "signal_name": "Signal1",
-        "conditions": [],
-        "scan_interval_unit": "minutes"
+        "signal_name": "Signal1"
       }
     },
     {
       "name": "create_3",
-      "description": "create_3",
       "type": "CREATE",
       "position": [
         200.0,
         640.0
       ],
       "params": {
-        "e_type": "DEFAULT",
         "distribution": "Uniform",
         "dist_params": {
           "low": 1.0,
           "high": 3.0
         },
-        "entities_per_arrival": 1,
         "max_arrivals": 10,
-        "start_time": 2,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        "start_time": 2
       }
     },
     {
       "name": "signal_1",
-      "description": "signal_1",
       "type": "SIGNAL",
       "position": [
         320.0,
         640.0
       ],
       "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "signal_name": "Signal1",
-        "time_unit": "minutes"
+        "signal_name": "Signal1"
       }
     },
     {
       "name": "dispose_3",
-      "description": "dispose_3",
       "type": "DISPOSE",
       "position": [
         480.0,
         640.0
       ],
       "params": {
-        "distribution": "Constant",
         "dist_params": {
           "value": 0
-        },
-        "time_unit": "minutes"
+        }
       }
     }
   ],
@@ -261,142 +202,94 @@
       "target": "dispose_3"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Forklift1",
       "capacity": 2,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "TruckBay",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "Dock",
       "capacity": 3,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "A",
       "shape": "square",
-      "color": "BLUE",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLUE"
     },
     {
       "name": "B",
       "shape": "square",
-      "color": "RED",
-      "holding_cost_time_unit": "minutes"
+      "color": "RED"
     },
     {
       "name": "C",
       "shape": "triangle",
-      "color": "ORANGE",
-      "holding_cost_time_unit": "minutes"
+      "color": "ORANGE"
     },
     {
       "name": "D",
       "shape": "circle",
-      "color": "GREEN",
-      "holding_cost_time_unit": "minutes"
+      "color": "GREEN"
     },
     {
       "name": "E",
       "shape": "circle",
-      "color": "CYAN",
-      "holding_cost_time_unit": "minutes"
+      "color": "CYAN"
     },
     {
       "name": "F",
       "shape": "triangle",
-      "color": "PURPLE",
-      "holding_cost_time_unit": "minutes"
+      "color": "PURPLE"
     },
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLACK"
     },
     {
       "name": "TRUCK",
       "shape": "square",
-      "color": "NAVY",
-      "holding_cost_time_unit": "minutes"
+      "color": "NAVY"
     },
     {
       "name": "VAN",
       "shape": "square",
-      "color": "OLIVE",
-      "holding_cost_time_unit": "minutes"
+      "color": "OLIVE"
     },
     {
       "name": "DRONE",
       "shape": "triangle",
-      "color": "CAROLINA_BLUE",
-      "holding_cost_time_unit": "minutes"
+      "color": "CAROLINA_BLUE"
     },
     {
       "name": "WORKER",
       "shape": "circle",
-      "color": "LIME",
-      "holding_cost_time_unit": "minutes"
+      "color": "LIME"
     },
     {
       "name": "ROBOT",
       "shape": "circle",
-      "color": "YELLOW",
-      "holding_cost_time_unit": "minutes"
+      "color": "YELLOW"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Delay, seize/release and signal HOLD",
     "category": "Teaching",
     "description": "Three independent flows in one model: a plain delay chain, a SEIZE/RELEASE pair, and a HOLD gated by a SIGNAL -- demonstrates resource seizing and signal-based synchronization side by side."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 200,
     "warmup": 0,
-    "replications": 2,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 2
   },
   "outputs": {}
 }

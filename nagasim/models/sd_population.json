@@ -1,54 +1,34 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "population_1",
-      "description": "Population (logistic)",
       "type": "SUBMODEL",
+      "description": "Population (logistic)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Population (logistic)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Population (logistic)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "SD Population",
       "initial": 10.0,
-      "min": 0.0,
-      "rate_time_unit": "minutes"
+      "min": 0.0
     }
   ],
   "flows": [
     {
       "name": "SD growth",
       "rate": "AUX(\"$SD growth rate\") * LEVEL(\"$SD Population\") * (1 - LEVEL(\"$SD Population\") / AUX(\"$SD carrying capacity\"))",
-      "to": "SD Population",
-      "rate_time_unit": "minutes"
+      "to": "SD Population"
     }
   ],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
   "auxiliaries": [
     {
       "name": "SD growth rate",
@@ -59,13 +39,6 @@
       "expr": "1000"
     }
   ],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Population (logistic)": {
       "info": {
@@ -178,23 +151,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Population (logistic)",
     "category": "System dynamics",
     "description": "The textbook logistic-growth stock and flow: one level (Population) fed by one flow whose rate reads the level itself, r * P * (1 - P/K), so growth slows as the population nears its carrying capacity. Needs the system-dynamics grid (simulation.sd) to integrate -- placing this asset does not set it for you (Run > Run experiment (SD step and method)), because a model may mix this with entities that need no grid at all."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 50.0,
     "warmup": 0,
     "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0,
     "sd": {
       "dt": 0.1,
       "method": "rk4",

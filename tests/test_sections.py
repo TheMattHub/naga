@@ -55,7 +55,7 @@ def test_table_matches_the_old_hand_lists():
 def test_every_section_is_in_the_json_schema_and_back():
     json_schema = build_json_schema()
     top = json_schema["properties"]
-    assert set(top) - {"schema_version"} == {s.name for s in sections.SECTIONS}
+    assert set(top) - {"$schema", "schema_version"} == {s.name for s in sections.SECTIONS}
     # The default shape names a `$def` after the row: it must exist.
     for name, spec in top.items():
         ref = (spec.get("items") or spec).get("$ref")

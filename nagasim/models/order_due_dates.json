@@ -1,51 +1,33 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "release_orders",
-      "description": "Releases every declared order at its own release time",
       "type": "CREATE",
+      "description": "Releases every declared order at its own release time",
       "position": [
         120.0,
         300.0
       ],
       "params": {
         "e_type": "WIDGET",
-        "arrival_mode": "Orders",
-        "schedule_name": "",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 1.0
-        },
-        "time_unit": "minutes",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "sequence": "",
-        "start_time_unit": "minutes"
+        "arrival_mode": "Orders"
       }
     },
     {
       "name": "route_1",
-      "description": "Send each job to the next station of its routing",
       "type": "ROUTE",
+      "description": "Send each job to the next station of its routing",
       "position": [
         340.0,
         300.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes",
-        "speed_unit": "m/min"
-      }
+      ]
     },
     {
       "name": "Cut",
-      "description": "Cutting station entry point",
       "type": "STATION",
+      "description": "Cutting station entry point",
       "position": [
         600.0,
         200.0
@@ -53,13 +35,12 @@
       "layout_position": [
         3.0,
         3.0
-      ],
-      "params": {}
+      ]
     },
     {
       "name": "Pack",
-      "description": "Packing station entry point",
       "type": "STATION",
+      "description": "Packing station entry point",
       "position": [
         600.0,
         400.0
@@ -67,13 +48,12 @@
       "layout_position": [
         3.0,
         13.0
-      ],
-      "params": {}
+      ]
     },
     {
       "name": "process_cut",
-      "description": "Cutting; the time comes with the job, from its routing step",
       "type": "PROCESS",
+      "description": "Cutting; the time comes with the job, from its routing step",
       "position": [
         820.0,
         200.0
@@ -83,26 +63,16 @@
         3.0
       ],
       "params": {
-        "action": "Seize Delay Release",
-        "distribution": "Constant",
         "dist_params": {
           "value": "entity.process_time"
         },
-        "time_unit": "minutes",
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Cutter",
-        "setup": "",
-        "setup_key": "",
-        "initial_key": "",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Cutter"
       }
     },
     {
       "name": "process_pack",
-      "description": "Packing; same, one step later",
       "type": "PROCESS",
+      "description": "Packing; same, one step later",
       "position": [
         820.0,
         400.0
@@ -112,37 +82,20 @@
         13.0
       ],
       "params": {
-        "action": "Seize Delay Release",
-        "distribution": "Constant",
         "dist_params": {
           "value": "entity.process_time"
         },
-        "time_unit": "minutes",
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Packer",
-        "setup": "",
-        "setup_key": "",
-        "initial_key": "",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Packer"
       }
     },
     {
       "name": "dispose_1",
-      "description": "Job leaves; its lateness against entity.due_date is recorded here",
       "type": "DISPOSE",
+      "description": "Job leaves; its lateness against entity.due_date is recorded here",
       "position": [
         340.0,
         520.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -171,7 +124,6 @@
       "target": "route_1"
     }
   ],
-  "scenarios": [],
   "orders": [
     {
       "id": "WO-1",
@@ -205,20 +157,14 @@
     {
       "name": "Cutter",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "Packer",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
   "sequences": [
     {
       "name": "Fast",
@@ -257,39 +203,18 @@
       ]
     }
   ],
-  "variables": [],
   "entities": [
     {
       "name": "WIDGET",
       "shape": "square",
-      "color": "BLUE",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLUE"
     },
     {
       "name": "GADGET",
       "shape": "circle",
-      "color": "GREEN",
-      "holding_cost_time_unit": "minutes"
+      "color": "GREEN"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Orders, due dates and tardiness",
     "category": "Manufacturing",
@@ -297,18 +222,11 @@
     "author": "Naga",
     "notes": "Release and due times are in the base time unit (minutes). Orders release at t=0 in id order; the Cutter and the Packer are single servers, FIFO. Cut then Pack: WO-1 finishes at 3 (due 10), WO-2 at 7 (due 20), WO-3 at 11 (due 8) -- late by 3. Service level 3/4 of the entities, 2/3 of the orders."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": null,
     "warmup": 0,
     "replications": 1,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "entity_log_limit": 100000,
-    "energy_price": 0,
-    "length_unit": "meters"
+    "entity_log_limit": 100000
   },
   "outputs": {}
 }

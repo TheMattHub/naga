@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "schelling_segregation_1",
-      "description": "Schelling segregation (grid)",
       "type": "SUBMODEL",
+      "description": "Schelling segregation (grid)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Schelling segregation (grid)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Schelling segregation (grid)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Schelling Person",
@@ -100,8 +77,7 @@
           "target": "self.like_frac",
           "expr": "IF(NEIGHBOURS(\"$Schelling People\") > 0, IF(self.state == \"Red\", NEIGHBOURS(\"$Schelling People\", \"Red\"), NEIGHBOURS(\"$Schelling People\", \"Blue\")) / NEIGHBOURS(\"$Schelling People\"), 1)"
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     }
   ],
   "populations": [
@@ -1402,9 +1378,6 @@
       }
     }
   ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Schelling segregation (grid)": {
       "info": {
@@ -1463,23 +1436,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Schelling segregation (grid)",
     "category": "Agent-based",
     "description": "Schelling's 1971 tipping-point model: 320 Person agents (160 Red, 160 Blue -- colour IS the state, since only NEIGHBOURS(pop, state) can count a neighbourhood by category) scattered over 80% of a 20x20 torus grid. Each tick, an agent computes the SHARE of its 8 Moore neighbours that share its own colour (like_frac, an ordinary attribute so it shows up in Agent attributes/End Mean) and, if that share is below Tolerance, jumps to a uniformly drawn EMPTY cell (move_random(free=True), Schelling's own move rule -- no other feature needed). With Tolerance in the classic 0.3-0.5 band the population-wide like_frac climbs from its random-mixing baseline (~0.5, two colours) to a segregated plateau around 0.6-0.7 within a few dozen ticks, even though every individual agent is only mildly colour-prejudiced -- the model's own point. The grid and the 320 starting cells are fixed (a fixed shuffle, so the run is exactly reproducible); Tolerance is this instance's own."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 1.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

@@ -6,11 +6,43 @@ load_from_json` reads it for the engine after migrating (older files) and valida
 [schema reference](reference/schema.md) for the top-level key list, derived
 live from `core/schema/`; this page is the field-by-field guide.
 
+## Completion in your editor
+
+The JSON Schema of each schema version is published at
+`https://thematthub.github.io/naga/schema/model-v<N>.json` (`naga schema` prints the current
+one). Name it in the file's first key and VS Code, PyCharm and most editors complete keys,
+block types and parameters, show each parameter's description, and flag a wrong key as you
+type:
+
+```json
+{"$schema": "https://thematthub.github.io/naga/schema/model-v29.json", "schema_version": 29}
+```
+
+The engine ignores `"$schema"`.
+
+## The short form: `naga fmt`
+
+```console
+naga fmt model.json
+naga fmt --check model.json
+```
+
+`naga fmt` rewrites a file in its shortest form, with `"$schema"` first: every value the
+engine fills in anyway is left out (a parameter at its default, a description that is the
+block's name, a unit that is the model's, an empty section), and keys come in one order. The
+model is the same before and after: it runs the same, validates the same, and has the same
+hash for a saved state. Layout (positions, annotations) stays. `--check` changes nothing and
+exits 1 when a file is not in that form, for CI. The desktop editor saves the long
+form, so `--check` flags a file saved from it until you run `naga fmt` on it. A parameter
+you leave out of a file you write by hand means its default in the
+[block reference](reference/blocks.md).
+
 ## Top-level shape
 
 ```jsonc
 {
-  "schema_version": 19,
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
   "blocks": [ ... ], "links": [ ... ],
   "resources": [ ... ], "resource_sets": [ ... ],
   "entities": [ ... ], "variables": [ ... ], "tables": [ ... ], "sequences": [ ... ], "orders": [ ... ],

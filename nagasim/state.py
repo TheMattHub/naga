@@ -195,11 +195,14 @@ def refused_kind(layout) -> str | None:
     would otherwise start it as declared (D270). The model is built, not run."""
     session = SimSession(layout, 0)
     ctx = session.ctx
-    if ctx.conveyors:       # D434: no signal says where a part is on a belt
-        return "conveyors"
-    if any(fleet.arm for fleet in ctx.fleets.values()) \
-            and any(station.tending for station in ctx.stations.values()):
-        return "a mobile cobot that tends"      # D449: no signal says a cycle's stage
+    # D434, D460: a part's stage on an accumulating belt follows from when it entered; a
+    # stopped belt's clock is shared history no signal says
+    if any(not belt.accumulating for belt in ctx.conveyors.values()):
+        return "a non-accumulating conveyor"
+    if any(fleet.arm for fleet in ctx.fleets.values()) and any(
+            station.tending.get("cobot") == "stay" for station in ctx.stations.values()
+            if station.tending):
+        return "a cobot that stays with its part"   # D449, D463: a second hold, no signal
     try:
         _refuse_kinds(session)
     except StateError as exc:
@@ -850,7 +853,6 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                     f"/{initial_state.SECTION}/resources/{rname}",
                     hint="a resource with one failure starts down, its repair drawn afresh"))
 
-    fleets, loads = _plant_fleets(flat, blocks, seen, entities, problems)
     out_links: dict = {}
     for link in flat.get("links") or []:
         out_links.setdefault(link.get("source"), []).append(link.get("target"))
@@ -859,6 +861,9 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
     for source, targets in out_links.items():
         for target in targets:
             incoming.setdefault(target, []).append(source)
+    routes = _Routes(flat, blocks, out_links, incoming)
+    fleets, loads = _plant_fleets(flat, blocks, seen, entities, problems, routes, clock)
+    belts, entries = _plant_belts(flat, blocks, entities, seen, clock, problems)
 
     def kind_of(name) -> str:
         return str(blocks.get(name, {}).get("type", "")).upper()
@@ -905,18 +910,24 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
         out = {"block": name, "count": 1}
         if entity["e_type"]:
             out["e_type"] = entity["e_type"]
+        if entity.get("members"):           # D461: the manifest, in the order merged
+            out["members"] = [_member(member, name, routes, declared)
+                              for member in entity["members"]]
+        # D459: the numbers the plant gives; the routing is the model's (D458)
+        attributes = {**(entity.get("attributes") or {}), **routes.attributes(entity)}
         if id(entity) in loads:
             out.update(loads[id(entity)])
+            attributes.update(out.get("attributes") or {})
+        if attributes:
+            out["attributes"] = attributes
+        if id(entity) in loads:
             return out
         # Reported further on while its last station still holds its unit: that station
-        # is blocked after service, and the part waits where it is (D381).
+        # is blocked after service, and the part waits where it is (D381), a belt's entry
+        # included (D430).
         held = [b for r in entity["holds"] for b in seizes.get(r, []) if b != name]
-        if len(held) == 1 and len(entity["holds"]) == 1 and not entity["serving"] \
-                and held[0] in blockers:
-            out["held_by"] = held[0]
-            if places:
-                out["place"] = False
-            return out
+        blocked = len(held) == 1 and len(entity["holds"]) == 1 and not entity["serving"] \
+            and held[0] in blockers
         # #445: what it holds that its own block does not seize for it, it holds from an
         # earlier block (D432); put back without it, its RELEASE downstream would raise.
         params = blocks.get(name, {}).get("params") or {}
@@ -924,10 +935,43 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
             kind in blocking.PROCESS_TYPES and str(params.get("action", "Seize Delay Release"))
             .startswith("Seize"))) else None
         extra = {r: {} for r in entity["holds"] if r != own and r in carried}
+        if id(entity) in belts:
+            out.update(belts[id(entity)])
+            if extra:                       # #484: a belt part keeps them too
+                out["holds"] = extra
+            if blocked:
+                out["held_by"] = held[0]
+            return out
+        if blocked:
+            out["held_by"] = held[0]
+            if places:
+                out["place"] = False
+            return out
         if extra:
             out["holds"] = extra
         if entity["serving"]:
             out["in_service"] = 1
+            step = (seen.get("steps") or {}).get(name)
+            if kind == "MOTION" and step and step[1] <= clock and (entity["since"] is None or
+                                                                   step[1] >= entity["since"]) \
+                    and sum(e["block"] == name and e["serving"] for e in entities) == 1:
+                out["cycle"] = {"stage": step[0], "since": step[1]}     # D464
+            elif kind == "MOTION" and step and step[1] <= clock and entity["since"] is not None                     and step[1] < entity["since"]:
+                problems.append(problem(      # M2: said, not dropped silently
+                    "W_STATE_NOT_COVERED", f"the step of MOTION '{name}' predates its job: "
+                    f"the job runs a whole cycle afresh", f"/{initial_state.SECTION}/entities"))
+            return out
+        if kind == "TRANSFER" and params.get("wait"):
+            # D462: the amount it waits for is the block's number, or the attribute it names
+            amount = _amount(params.get("amount", "1"), attributes)
+            if amount is None or entity["since"] is None:
+                problems.append(problem(
+                    "E_STATE_UNSUPPORTED", f"a state from a plant cannot carry an entity "
+                    f"waiting at TRANSFER '{name}': the amount it waits for is not observed",
+                    f"/{initial_state.SECTION}/entities", hint="map the attribute the "
+                    "block's amount names (an \"at\" signal's attributes)"))
+                return out
+            out.update(transfer={"amount": amount}, since=entity["since"])
             return out
         if kind == "BUFFER" and places:
             # In the buffer while it has a place left; the ones beyond wait to get in.
@@ -949,19 +993,21 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
     # A BUFFER that mirrors a level: a part put back AT it counts itself in on arriving, one
     # that has its place while it waits further on (`held_by`) is counted here. So the
     # parts make the level, and the level the plant reports is not added to them.
-    for name in blocks:
-        level = (blocks[name].get("params") or {}).get("level")
-        held = sum(e.get("held_by") == name for e in listed)
-        parts = held + sum(e["block"] == name and e.get("place") is not False for e in listed)
-        if kind_of(name) != "BUFFER" or level not in levels or not parts:
+    for buffer in blocks:           # #481: not `name`, the model's
+        level = (blocks[buffer].get("params") or {}).get("level")
+        held = sum(e.get("held_by") == buffer for e in listed)
+        parts = held + sum(e["block"] == buffer and e.get("place") is not False for e in listed)
+        if kind_of(buffer) != "BUFFER" or level not in levels or not parts:
             continue
         if reported.get(level, parts) != parts:
             problems.append(problem(
                 "W_PLANT_CONTRADICTION", f"the plant reports level '{level}' at "
-                f"{reported[level]:g} and {parts} parts in BUFFER '{name}', which mirrors it: "
+                f"{reported[level]:g} and {parts} parts in BUFFER '{buffer}', which mirrors it: "
                 f"the parts stand", f"/{initial_state.SECTION}/levels/{level}",
                 hint="the level a BUFFER mirrors is its parts; map one of the two"))
         reported[level] = held
+    if entries:
+        state["blocks"] = {belt: {"next_entry": at} for belt, at in entries.items()}
     for key, value in (("entities", listed), ("resources", resources), ("fleets", fleets),
                        ("levels", reported)):
         if value:
@@ -987,12 +1033,14 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                     stamp=seen.get("stamp")), problems
 
 
-def _plant_fleets(flat, blocks, seen, entities, problems) -> tuple:
+def _plant_fleets(flat, blocks, seen, entities, problems, routes, clock) -> tuple:
     """(the `fleets` section, {id(entity dict): its trip entry}) a plant's vehicles make
     (D387): each stands at the node it last reported, idle, or carrying its load from there
-    to the destination its TRANSPORT block declares. A fleet is written whole or not at
-    all: a vehicle not observed, a load whose destination no block declares and a load
-    waiting for a vehicle are each said, and the fleet is left for the caller to refuse."""
+    to its trip's target: the destination its TRANSPORT block declares, or the next station
+    of its routing (D458). A load no vehicle carries waits for one at the STATION it came
+    through (D457). A fleet is written whole or not at all: a vehicle not observed and a
+    load whose trip is not known are each said, and the fleet is left for the caller to
+    refuse."""
     def missing(fleet, what):
         problems.append(problem(
             "W_STATE_NOT_COVERED", f"the observed timeline cannot place fleet '{fleet}': {what}",
@@ -1000,11 +1048,6 @@ def _plant_fleets(flat, blocks, seen, entities, problems) -> tuple:
             hint="map a \"vehicle\" and a \"load\" signal for every vehicle, and give the "
                  "TRANSPORT block a destination"))
 
-    stations = {}
-    for name, block in blocks.items():
-        if str(block.get("type", "")).upper() == "STATION":
-            node = (block.get("params") or {}).get("node")
-            stations[name] = stations[(block.get("params") or {}).get("station") or name] = (name, node)
     carriers: dict = {}             # fleet -> its TRANSPORT blocks
     for name, block in blocks.items():
         if str(block.get("type", "")).upper() == "TRANSPORT":
@@ -1019,28 +1062,320 @@ def _plant_fleets(flat, blocks, seen, entities, problems) -> tuple:
             continue
         riding = [e for e in entities if e.get("on") and e["on"][0] == fleet]
         waiting = [e for e in entities if e["block"] in carriers.get(fleet, ()) and not e.get("on")]
-        trips = {}
+        trips, waits = {}, []
         for entity in riding:
             unit = entity["on"][1]
             via = entity["block"] if entity["block"] in carriers.get(fleet, ()) else (
                 carriers[fleet][0] if len(carriers.get(fleet, ())) == 1 else None)
-            target = stations.get((blocks.get(via, {}).get("params") or {}).get("destination"))
-            if target is None or not target[1] or unit in trips or unit not in said:
+            found = routes.trip(entity, via)
+            if found is None or unit in trips or unit not in said:
                 trips = None
                 break
+            trip, attributes = found
             trips[unit] = (entity, {"block": via, "trip": {
-                "origin": said[unit]["node"], "destination": target[1], "target": target[0],
-                "unit": unit, "stage": "carry"}})
+                **trip, "origin": said[unit]["node"], "unit": unit, "stage": "carry"},
+                **({"attributes": attributes} if attributes else {})})
+        for entity in waiting if trips is not None else ():
+            found = routes.trip(entity, entity["block"])
+            if found is None or not found[0]["origin"] or entity["since"] is None:
+                waits = None
+                break
+            trip, attributes = found
+            waits.append((entity, {"block": entity["block"], "trip": trip,
+                                   "since": entity["since"],
+                                   **({"attributes": attributes} if attributes else {})}))
+        records = [{"node": said[unit]["node"]} for unit in range(count)]
+        if trips is not None and waits is not None and str(spec.get("arm") or "").strip() \
+                and routes.tended:
+            _plant_tending(spec, said, records, set(trips), waits, entities, routes, clock,
+                           carriers.get(fleet, ()))
         if trips is None:
-            missing(fleet, "a load's TRANSPORT block declares no destination station")
-        elif waiting:
-            missing(fleet, "a load waits for a vehicle, and where it waits is not observed")
+            missing(fleet, "a load's trip has no target: its TRANSPORT block declares no "
+                           "destination station and its routing is not known")
+        elif waits is None:
+            missing(fleet, "a load waits for a vehicle, and the station it waits at or its "
+                           "trip's target is not known")
         elif any(said[unit]["load"] and unit not in trips for unit in range(count)):
             missing(fleet, "a vehicle carries an item no signal places")
         else:
-            out[fleet] = {"vehicles": [{"node": said[unit]["node"]} for unit in range(count)]}
-            loads.update({id(entity): trip for entity, trip in trips.values()})
+            out[fleet] = {"vehicles": records}
+            loads.update({id(entity): trip for entity, trip in [*trips.values(), *waits]})
     return out, loads
+
+
+def _plant_tending(spec, said, records, busy, waits, entities, routes, clock, carriers) -> None:
+    """D463: a cobot fleet's picks and places. A finished part at its TRANSPORT that still
+    holds its tending station's machine is `held_by` that machine (D446); a cobot at that
+    station whose `tend` says "pick" since a time is picking it, until that time + the pick's
+    fixed cycle. A cobot at a tending station that says "place" is placing the one part its
+    machine holds (D447). With no fixed cycle, or no such signal, the part waits for a cobot,
+    or is in its machine: the cycle is not carried (approximate)."""
+    arm = str(spec.get("arm")).strip()
+
+    def cobot(station, which):
+        """(the unit at *station* running *which* and not yet given a task, its cycle)."""
+        node = (station.get("params") or {}).get("node")
+        units = [u for u in range(len(records)) if u not in busy and said[u]["node"] == node
+                 and (said[u].get("cycle") or [None])[0] == which]
+        fixed = initial_state._tending_seconds(routes.flat, station, which, arm)
+        return (units[0], fixed[0]) if units and len(fixed) == 1 else (None, None)
+
+    def start(unit, cycle) -> float:
+        # a cycle said for longer than the model's time for it ends now (approximate, as a
+        # robot's step, D464); the part was made no later than the cycle began
+        since = said[unit]["cycle"][1]
+        records[unit]["until"] = max(since + cycle, clock)
+        busy.add(unit)
+        return clock - since
+
+    for entity, entry in waits:
+        here = (entry.get("attributes") or {}).get("station")
+        machine = routes.machine(here)
+        if machine is None or (machine.get("params") or {}).get("resource_name") \
+                not in entity["holds"]:
+            continue
+        entry["held_by"] = machine["name"]
+        unit, cycle = cobot(routes.blocks[routes.tended[here]], "pick")
+        if unit is not None:
+            entry.pop("since", None)
+            entry.update(trip={**entry["trip"], "unit": unit, "stage": "load", "cycle": cycle},
+                         age=start(unit, cycle))
+    for alias, name in routes.tended.items() if len(carriers) == 1 else ():
+        station, machine = routes.blocks[name], routes.machine(alias)
+        placed = [e for e in entities if machine is not None and e["block"] == machine["name"]
+                  and (machine.get("params") or {}).get("resource_name") in e["holds"]]
+        unit, cycle = cobot(station, "place")
+        if unit is None or len(placed) != 1:
+            continue
+        node = (station.get("params") or {}).get("node")
+        waits.append((placed[0], {
+            "block": carriers[0], "trip": {"origin": said[unit]["node"], "destination": node,
+                                           "target": name, "unit": unit, "stage": "unload",
+                                           "cycle": cycle},
+            "attributes": {"station": alias, **routes.route(placed[0]["e_type"], None, alias)},
+            "age": start(unit, cycle)}))
+
+
+def _kind(block) -> str:
+    return str((block or {}).get("type", "")).upper()
+
+
+def _member(seen, block, routes, declared) -> dict:
+    """D461: a member's record from a plant: its type, the declared resources it holds (put
+    back with it, given back after the split), its attributes and routing."""
+    out = {"e_type": seen["e_type"]} if seen.get("e_type") else {}
+    holds = {name: {} for name in seen.get("holds") or () if name in declared}
+    attributes = {**(seen.get("attributes") or {}),
+                  **routes.attributes({"block": block, "e_type": seen.get("e_type")})}
+    return {**out, **({"holds": holds} if holds else {}),
+            **({"attributes": attributes} if attributes else {})}
+
+
+def _amount(text, attributes) -> float | None:
+    """D462: what a TRANSFER asks, from a plant: its number, or `entity.<name>` read from
+    *attributes*; None for anything else (an expression is not evaluated here)."""
+    text = str(text).strip()
+    match = re.fullmatch(r"entity\.([A-Za-z_]\w*)", text)
+    try:
+        value = float(attributes.get(match.group(1))) if match else float(text)
+    except (TypeError, ValueError):
+        return None
+    return max(value, 0.0) if math.isfinite(value) else None
+
+
+def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
+    """D460: ({id(entity dict): its `belt` and `since`}, {belt: next_entry}) of the parts a
+    plant shows at an accumulating CONVEYOR. A part entered when first reported there, at
+    the latest a spacing after the part before it; it rides while its ride lasts; past it,
+    in entry order, the first is at the end (moving up a spacing after the part ahead left
+    later than its ride ended, else at the end stop) and the others are packed behind it.
+    Beyond the cells a part waits for one. What does not fit is said and left out, and
+    `start` refuses it."""
+    units = initial_state.units_of(flat.get("simulation"))
+    try:
+        network = initial_state.build_network(flat.get("network"), units)
+    except Exception:       # a broken network is the network section's own problem
+        network = None
+    out, entries = {}, {}
+    for name, block in blocks.items():
+        on = [e for e in entities if e["block"] == name]
+        if _kind(block) != "CONVEYOR" or not on:
+            continue
+        params = block.get("params") or {}
+        geometry = initial_state._geometry(params, units, network)
+        if params.get("accumulating", True) is False or geometry is None \
+                or any(e["since"] is None for e in on):
+            continue        # `start` refuses them with the section's own code
+        _cells, gap, travel = geometry
+        stop = str(params.get("exit_resource") or "").strip()
+        left = (seen.get("exits") or {}).get(name)
+        # The mapper's entry (`entered`) carries the cells and the infeed rhythm of the parts
+        # already gone; a part it gives none waits for a cell. The mapper always has the
+        # layout when it gets here, so no rhythm is made up from `since` (M7).
+        entered, ahead = None, None
+        for entity in sorted(on, key=lambda e: e.get("entered", e["since"])):
+            if "entered" not in entity:
+                out[id(entity)] = {"belt": {"stage": "cell"}}
+                continue
+            entered = entity["entered"]
+            end = entered + travel
+            if entered > clock:
+                belt = {"stage": "slot", "until": entered}
+            elif end > clock:
+                belt = {"stage": "ride", "until": end, "entered": entered}
+            elif ahead is not None:
+                belt = {"stage": "packed", "entered": entered}
+            else:
+                # A tie packs it: its ride's end was due before what let the part ahead go.
+                moved = left + gap if left is not None and left >= end else None
+                if moved is not None and moved > clock:
+                    belt = {"stage": "move", "until": moved, "entered": entered}
+                elif stop:
+                    out[id(entity)] = {"belt": {"stage": "stop", "entered": entered},
+                                       "since": end if moved is None else moved}
+                    ahead = True
+                    continue
+                else:
+                    problems.append(problem(
+                        "W_STATE_NOT_COVERED", f"the observed timeline shows a part at the end "
+                        f"of belt '{name}' with no end stop: what holds it is not observed",
+                        f"/{initial_state.SECTION}/entities", hint="map the belt after it"))
+                    continue
+                ahead = True
+            out[id(entity)] = {"belt": belt}
+        if entered is not None and entered + gap > clock:
+            entries[name] = entered + gap
+    return out, entries
+
+
+class _Routes:
+    """D458: what the model says of an item's routing from where a plant saw it (its block,
+    the block before, its type), never read from plant text: the STATION it came through
+    (`station`), the one sequence its type is made with and its step in it."""
+
+    def __init__(self, flat, blocks, out_links, incoming):
+        self.flat, self.blocks, self.out, self.incoming = flat, blocks, out_links, incoming
+        self.tended = initial_state._tended(blocks)     # station alias -> its block (D446)
+        self.stations = {}          # station name and block name -> (block name, node)
+        for name, block in blocks.items():
+            if _kind(block) == "STATION":
+                params = block.get("params") or {}
+                self.stations[name] = self.stations[params.get("station") or name] = (
+                    name, params.get("node"))
+        self.sequences = {s.get("name"): s.get("steps") for s in flat.get("sequences") or []
+                          if isinstance(s, dict) and isinstance(s.get("steps"), list)}
+        self.made: dict = {}        # TYPE -> the sequences CREATEs make it with
+        for block in blocks.values():
+            params = block.get("params") or {}
+            if _kind(block) == "CREATE" and params.get("sequence"):
+                self.made.setdefault(str(params.get("e_type") or "").upper(), set()).add(
+                    params["sequence"])
+
+    def station(self, name):
+        """The station an item at block *name* came through: the first STATION walking back
+        along the one link into each block, or the text an ASSIGN on the way gives
+        `entity.station` (a quoted text or a local of the block). None when not one."""
+        seen = set()
+        while name in self.blocks and name not in seen:
+            seen.add(name)
+            block = self.blocks[name]
+            params = block.get("params") or {}
+            if _kind(block) == "STATION":
+                return params.get("station") or name
+            assigned = [a.get("expr") for a in params.get("assignments") or []
+                        if isinstance(a, dict) and a.get("target") == "entity.station"] \
+                if _kind(block) == "ASSIGN" else []
+            if assigned:
+                text, local = str(assigned[-1]).strip(), (block.get("locals") or {})
+                if len(text) > 1 and text[0] == text[-1] and text[0] in "'\"":
+                    return text[1:-1]
+                value = local.get(text)
+                return value if isinstance(value, str) else None
+            sources = set(self.incoming.get(name, ()))
+            if len(sources) != 1:
+                return None
+            name = sources.pop()
+        return None
+
+    def machine(self, alias):
+        """The block that works a part placed at the tending station *alias*, or None."""
+        name = self.tended.get(alias) if isinstance(alias, str) else None
+        return initial_state._machine(self.blocks, self.flat, name) if name else None
+
+    def _steps(self, e_type):
+        made = self.made.get(str(e_type or "").upper(), set())
+        if len(made) != 1:
+            return None, []
+        name = next(iter(made))
+        steps = self.sequences.get(name) or []
+        return name, [s.get("station") if isinstance(s, dict) else None for s in steps]
+
+    def route(self, e_type, station, target=None) -> dict:
+        """{sequence, step, and the values of the steps passed} of an item of type *e_type*
+        at *station*, or carried to *target*: the step after it (0 before the routing);
+        {} when its type has no one sequence or its place in it is not one."""
+        name, stations = self._steps(e_type)
+        where = target if target is not None else station
+        if name is None or stations.count(where) > 1 or (target is not None
+                                                         and where not in stations):
+            return {}
+        step = stations.index(where) + 1 if where in stations else 0
+        out = {"sequence": name, "step": step}
+        for spec in self.sequences[name][:step]:
+            values = spec.get("values") if isinstance(spec, dict) else None
+            out.update({k: v for k, v in (values or {}).items()
+                        if isinstance(k, str) and isinstance(v, (int, float, str))})
+        return out
+
+    def _ahead(self, name, stop) -> set:
+        """The kinds of the blocks reached from *name* (itself included) along links, not
+        past a block *stop* accepts."""
+        found, todo, seen = set(), [name], set()
+        while todo:
+            name = todo.pop()
+            if name in seen or name not in self.blocks:
+                continue
+            seen.add(name)
+            block = self.blocks[name]
+            found.add((_kind(block), bool((block.get("params") or {}).get("destination"))))
+            if not stop(block):
+                todo += self.out.get(name, ())
+        return found
+
+    def attributes(self, entity) -> dict:
+        """The routing attributes an item needs ahead of it: `station` where a TRANSPORT is
+        reached before a STATION (D451), `sequence` and `step` where a ROUTE or a TRANSPORT
+        with no destination is reached."""
+        name, out = entity["block"], {}
+        here = self.station(name) or (self.station(entity.get("came")) if entity.get("came")
+                                      else None)
+        before = self._ahead(name, lambda b: _kind(b) == "STATION")
+        if here and any(kind == "TRANSPORT" for kind, _ in before):
+            out["station"] = here
+        if {("ROUTE", False), ("TRANSPORT", False)} & self._ahead(name, lambda b: False):
+            out.update(self.route(entity.get("e_type"), here))
+        return out
+
+    def trip(self, entity, via):
+        """((origin, destination, target) of the trip of an item at the TRANSPORT *via*, its
+        routing attributes), or None when its target is not known: the block's
+        destination, or the next station of its routing after the one it came through."""
+        params = (self.blocks.get(via) or {}).get("params") or {}
+        here = self.station(entity.get("came")) if entity.get("came") else self.station(via)
+        attributes = {"station": here} if here else {}
+        target = params.get("destination") or None
+        if not target:
+            name, stations = self._steps(entity.get("e_type"))
+            step = self.route(entity.get("e_type"), here).get("step")
+            if name is None or step is None or step >= len(stations):
+                return None
+            target = stations[step]
+            attributes.update(self.route(entity.get("e_type"), here, target))
+        station = self.stations.get(target)
+        if station is None or not station[1]:
+            return None
+        origin = self.stations.get(here, (None, None))[1]
+        return {"origin": origin, "destination": station[1], "target": station[0]}, attributes
 
 
 # ---------------------------------------------------------------- into a run
@@ -1079,7 +1414,8 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
         return refused("E_STATE_MODEL", f"the state was taken for model "
                        f"'{str(doc['model'].get('name', ''))[:80]}' ({doc['model']['hash'][:12]}), and "
                        f"this model is {mine[:12]}",
-                       "a state belongs to the exact model file it was taken for; take it again")
+                       "a state belongs to the exact model file it was taken for; take it again "
+                       "(an engine upgrade can move the hash too)")
     taken = doc.get("taken") if isinstance(doc.get("taken"), dict) else {}
     if max_age is not None and taken.get("source") == "observed":
         seen = stamp_seconds(taken.get("stamp"))

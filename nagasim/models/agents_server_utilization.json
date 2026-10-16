@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "server_utilization_1",
-      "description": "Server busy/idle cycle (agents)",
       "type": "SUBMODEL",
+      "description": "Server busy/idle cycle (agents)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Server busy/idle cycle (agents)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Server busy/idle cycle (agents)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Server",
@@ -67,8 +44,7 @@
           "timeout": "EXPO(1 / service_rate)",
           "timeout_unit": "minutes"
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     }
   ],
   "populations": [
@@ -78,9 +54,6 @@
       "count": 1
     }
   ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Server busy/idle cycle (agents)": {
       "info": {
@@ -161,23 +134,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Server busy/idle cycle (agents)",
     "category": "Agent-based",
     "description": "A single Server agent alternating Idle (waiting EXPO(1/lambda) for the next customer) and Busy (serving for EXPO(1/mu)) -- the busy/idle process of an M/M/1 queue's server, without tracking the waiting line itself. Memorylessness makes each state's mean sojourn exactly 1/rate: with lambda=0.8, mu=1.0, Idle averages 1.25 and Busy averages 1.0 -- the same identity Little's law rests on. The arrival and service rates are this instance's own; add a queue-length agent type (states 0..K, arrival/departure transitions) for the waiting line itself."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 3000.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

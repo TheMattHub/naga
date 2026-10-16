@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "sir_agents_1",
-      "description": "SIR epidemic (agents)",
       "type": "SUBMODEL",
+      "description": "SIR epidemic (agents)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "SIR epidemic (agents)",
-        "arguments": {},
-        "preset": ""
+        "definition": "SIR epidemic (agents)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "SIR Person",
@@ -70,8 +47,7 @@
           "timeout": "EXPO(1 / gamma)",
           "timeout_unit": "minutes"
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     }
   ],
   "populations": [
@@ -87,9 +63,6 @@
       ]
     }
   ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "SIR epidemic (agents)": {
       "info": {
@@ -249,23 +222,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "SIR epidemic (agents)",
     "category": "Agent-based",
     "description": "The individual-based twin of the System dynamics library's SIR asset: 2000 Person agents, each a Susceptible/Infected/Recovered state machine. Infection is a SHARED rate beta * I / N (COUNT of the Infected state over the population) so every Susceptible agent's hazard tracks the current outbreak size; recovery is a per-agent EXPO(1/gamma) timeout. With beta=0.25, gamma=0.1 (R0=2.5) and 10 initial Infected, the final Recovered count converges to the classic final-size relation z = 1 - exp(-R0 z) as the population grows. Beta, gamma, the population and the initial Infected are this instance's own; the Outbreak preset fills beta and gamma from an illustrative catalogue."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 150.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

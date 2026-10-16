@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "sugarscape_lite_1",
-      "description": "Sugarscape with regrowth (grid, patches)",
       "type": "SUBMODEL",
+      "description": "Sugarscape with regrowth (grid, patches)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Sugarscape with regrowth (grid, patches)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Sugarscape with regrowth (grid, patches)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Ant",
@@ -108,8 +85,7 @@
           "target": "patch.sugar",
           "expr": "0"
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     }
   ],
   "populations": [
@@ -122,9 +98,6 @@
       }
     }
   ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Sugarscape with regrowth (grid, patches)": {
       "info": {
@@ -183,23 +156,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Sugarscape with regrowth (grid, patches)",
     "category": "Agent-based",
     "description": "Epstein and Axtell's Sugarscape rule G1 on one sugar hill: 120 Ant agents on a 30x30 bounded grid; the `sugar` patch starts at each cell's capacity (10 at the centre, falling by 1 per step of Manhattan distance) and GROWS BACK 1 per tick up to that capacity (`grow: {rate: 1}`, max defaulting to the initial landscape). Each tick an ant steps to the best of its 4 von Neumann neighbours and its own cell (a 5-way PATCH comparison: vision 1), harvests the whole cell and pays Metabolism; it starves at zero wealth. The population falls from 120 to about 24 by t=40 as the ants that cannot see the hill starve, then HOLDS for good: the hill's 181 cells regrow 1 sugar each per tick, more than its survivors burn, so regrowth balances consumption (the oracle checks t=40 and t=120; the same ants with no regrowth all starve by about t=110). Metabolism and the wealth range are this instance's own; the grid and the hill are fixed."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 40.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

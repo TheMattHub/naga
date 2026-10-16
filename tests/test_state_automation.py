@@ -276,9 +276,15 @@ def test_what_tending_still_refuses_is_named(line, kind):
     assert kind in found
 
 
-def test_tending_from_a_plant_stays_refused_by_name():
-    assert state.refused_kind(_bundled("automation_floor")) == "a mobile cobot that tends"
+def test_tending_from_a_plant_is_refused_by_name_only_for_a_cobot_that_stays():
+    """D463: a cobot's pick and place come from its `tend` signal; one that stays with its
+    part is a second hold no signal says."""
+    floor = _bundled("automation_floor")
+    assert state.refused_kind(floor) is None
     assert state.refused_kind(_bundled("automation_cell")) is None
+    next(b for b in floor["blocks"] if b["name"] == "tended_machine_1")["params"]["arguments"][
+        "cobot"] = "stay"
+    assert state.refused_kind(floor) == "a cobot that stays with its part"
 
 
 def _picked(**entry):

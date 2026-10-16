@@ -11,6 +11,7 @@ from nagasim.core.schema import (
     validate_layout_structured, validate_model,
 )
 from nagasim.core.quantities import fill_units
+from nagasim.core.schema.migrate import _fill_block_defaults
 from nagasim.modelschema import build_json_schema
 
 
@@ -20,6 +21,7 @@ def _v28(layout: dict) -> dict:
     import copy
     out = copy.deepcopy(layout)
     out["simulation"] = {**out["simulation"], "length_unit": "meters"}
+    _fill_block_defaults(out["blocks"])      # every left-out parameter, D471
     return fill_units(out)
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "nagasim" / "models"
@@ -70,7 +72,7 @@ def test_gen1_layout_migrates_to_v4():
 
     dispose_params = migrated["blocks"][1]["params"]
     assert dispose_params == {"distribution": "Constant", "dist_params": {"value": 3},
-                             "time_unit": "minutes"}
+                             "time_unit": "minutes", "remove_agent": False}
 
     # positions shift from top-left (v3-and-earlier) to centre (v4): (pos + (40, 20)) * 1.5,
     # snapped to the 20-unit grid (120x60 Qt blocks vs 80x40 legacy pixel blocks)
@@ -327,7 +329,7 @@ def test_v6_layout_gains_the_schedule_sections():
     assert migrated["schema_version"] == CURRENT_VERSION
     assert migrated["schedules"] == [] and migrated["failures"] == []
     assert migrated["resources"] == [{**v6["resources"][0], "cost_time_unit": "hours"}]
-    assert migrated["blocks"] == [{**v6["blocks"][0], "params": {"time_unit": "minutes"}}]
+    assert migrated["blocks"] == _v28(v6)["blocks"]        # a unit filled, D159; defaults, D471
 
 
 def test_v5_resource_type_migrates_to_a_queue_discipline():

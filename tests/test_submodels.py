@@ -776,7 +776,7 @@ def test_definition_content_round_trips_through_the_layout(tmp_path):
     path = tmp_path / "m.json"
     doc.save(path)
     again = ModelDocument.load(path)
-    assert again.to_layout() == fill_units(doc.to_layout())    # save fills "base" (D159)
+    assert again.to_layout() == ModelDocument(schema.migrate(doc.to_layout())).to_layout()  # D159, D471
     assert list(again.submodels) == ["Cell"]
 
 

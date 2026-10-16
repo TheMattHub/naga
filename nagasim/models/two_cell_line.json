@@ -1,33 +1,26 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "create_1",
-      "description": "External Poisson arrivals, 0.8/min",
       "type": "CREATE",
+      "description": "External Poisson arrivals, 0.8/min",
       "position": [
         100.0,
         200.0
       ],
       "params": {
-        "e_type": "DEFAULT",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.8
-        },
-        "time_unit": "minutes",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "start_time_unit": "minutes"
+        }
       }
     },
     {
       "name": "cell_1",
-      "description": "Cell 1 (rate 1.2/min)",
       "type": "SUBMODEL",
+      "description": "Cell 1 (rate 1.2/min)",
       "position": [
         320.0,
         200.0
@@ -45,8 +38,8 @@
     },
     {
       "name": "cell_2",
-      "description": "Cell 2 (rate 1.5/min)",
       "type": "SUBMODEL",
+      "description": "Cell 2 (rate 1.5/min)",
       "position": [
         540.0,
         200.0
@@ -64,8 +57,8 @@
     },
     {
       "name": "record_exit",
-      "description": "Tally the end-to-end time in system",
       "type": "RECORD",
+      "description": "Tally the end-to-end time in system",
       "position": [
         760.0,
         200.0
@@ -78,19 +71,12 @@
     },
     {
       "name": "dispose_1",
-      "description": "Jobs leave the line",
       "type": "DISPOSE",
+      "description": "Jobs leave the line",
       "position": [
         980.0,
         200.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -111,46 +97,20 @@
       "target": "dispose_1"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Machine",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLACK"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Cell": {
       "info": {
@@ -178,64 +138,53 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Jobs enter the cell",
           "type": "SUB_ENTRY",
+          "description": "Jobs enter the cell",
           "position": [
             0.0,
             200.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "machine",
-          "description": "Machine (per-instance resource, cloned from the Machine template; capacity = servers, a scoped override)",
           "type": "PROCESS",
+          "description": "Machine (per-instance resource, cloned from the Machine template; capacity = servers, a scoped override)",
           "position": [
             200.0,
             200.0
           ],
           "params": {
-            "action": "Seize Delay Release",
             "distribution": "Exponential",
             "dist_params": {
               "rate": "rate"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Machine"
           }
         },
         {
           "name": "rework",
-          "description": "10% of jobs are reworked on the same machine",
           "type": "DECIDE",
+          "description": "10% of jobs are reworked on the same machine",
           "position": [
             400.0,
             200.0
           ],
           "params": {
-            "mode": "Chance",
             "probs": [
               0.1,
               0.9
-            ],
-            "conditions": []
+            ]
           }
         },
         {
           "name": "out",
-          "description": "Jobs leave the cell",
           "type": "SUB_EXIT",
+          "description": "Jobs leave the cell",
           "position": [
             600.0,
             200.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -259,23 +208,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Two-cell line (reusable submodel)",
     "category": "Manufacturing",
     "description": "Two identical work cells built from one reusable submodel definition Cell(rate, servers): a machine on a per-instance `$Machine` resource with a 10% rework loop. An open Jackson network of two M/M/1 nodes with feedback."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 6000,
     "warmup": 1000,
-    "replications": 10,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 10
   },
   "outputs": {}
 }

@@ -1,279 +1,115 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "weekly_review",
-      "description": "A review token every week: drives the player's order-rate decision, not a physical flow",
       "type": "CREATE",
-      "position": [
-        0.0,
-        260.0
-      ],
-      "params": {
-        "e_type": "ORDER_REVIEW",
-        "arrival_mode": "Interarrival",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 1.0
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "time_unit": "weeks",
-        "start_time_unit": "weeks"
-      }
+      "description": "A review token every week: drives the player's order-rate decision, not a physical flow",
+      "position": [0.0, 260.0],
+      "params": {"e_type": "ORDER_REVIEW"}
     },
     {
       "name": "order_decision",
-      "description": "Weekly order-rate policy 'order'; falls back to the low order rate with no controller attached",
       "type": "DECIDE",
-      "position": [
-        220.0,
-        260.0
-      ],
+      "description": "Weekly order-rate policy 'order'; falls back to the low order rate with no controller attached",
+      "position": [220.0, 260.0],
       "params": {
         "mode": "Policy",
-        "probs": [],
-        "conditions": [],
         "policy": "order",
-        "observation": [
-          "LEVEL(\"Inventory\")",
-          "LEVEL(\"Supply Line\")"
-        ],
-        "fallback": "first",
-        "queue_exprs": []
+        "observation": ["LEVEL(\"Inventory\")", "LEVEL(\"Supply Line\")"]
       }
     },
     {
       "name": "assign_low",
-      "description": "Option 0: order low (8/week)",
       "type": "ASSIGN",
-      "position": [
-        440.0,
-        140.0
-      ],
-      "params": {
-        "assignments": [
-          {
-            "target": "orders",
-            "expr": "8"
-          }
-        ]
-      }
+      "description": "Option 0: order low (8/week)",
+      "position": [440.0, 140.0],
+      "params": {"assignments": [{"target": "orders", "expr": "8"}]}
     },
     {
       "name": "assign_medium",
-      "description": "Option 1: order medium (14/week)",
       "type": "ASSIGN",
-      "position": [
-        440.0,
-        260.0
-      ],
-      "params": {
-        "assignments": [
-          {
-            "target": "orders",
-            "expr": "14"
-          }
-        ]
-      }
+      "description": "Option 1: order medium (14/week)",
+      "position": [440.0, 260.0],
+      "params": {"assignments": [{"target": "orders", "expr": "14"}]}
     },
     {
       "name": "assign_high",
-      "description": "Option 2: order high (22/week)",
       "type": "ASSIGN",
-      "position": [
-        440.0,
-        380.0
-      ],
-      "params": {
-        "assignments": [
-          {
-            "target": "orders",
-            "expr": "22"
-          }
-        ]
-      }
+      "description": "Option 2: order high (22/week)",
+      "position": [440.0, 380.0],
+      "params": {"assignments": [{"target": "orders", "expr": "22"}]}
     },
     {
       "name": "leave_review",
-      "description": "The review token has done its job",
       "type": "DISPOSE",
-      "position": [
-        660.0,
-        260.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "weeks"
-      }
+      "description": "The review token has done its job",
+      "position": [660.0, 260.0]
     }
   ],
   "links": [
-    {
-      "source": "weekly_review",
-      "target": "order_decision"
-    },
-    {
-      "source": "order_decision",
-      "target": "assign_low"
-    },
-    {
-      "source": "order_decision",
-      "target": "assign_medium"
-    },
-    {
-      "source": "order_decision",
-      "target": "assign_high"
-    },
-    {
-      "source": "assign_low",
-      "target": "leave_review"
-    },
-    {
-      "source": "assign_medium",
-      "target": "leave_review"
-    },
-    {
-      "source": "assign_high",
-      "target": "leave_review"
-    }
+    {"source": "weekly_review", "target": "order_decision"},
+    {"source": "order_decision", "target": "assign_low"},
+    {"source": "order_decision", "target": "assign_medium"},
+    {"source": "order_decision", "target": "assign_high"},
+    {"source": "assign_low", "target": "leave_review"},
+    {"source": "assign_medium", "target": "leave_review"},
+    {"source": "assign_high", "target": "leave_review"}
   ],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [
-    {
-      "name": "orders",
-      "initial": 10
-    }
-  ],
-  "entities": [
-    {
-      "name": "ORDER_REVIEW",
-      "shape": "circle",
-      "color": "blue",
-      "holding_cost_time_unit": "weeks"
-    }
-  ],
-  "timeseries_inputs": [],
+  "variables": [{"name": "orders", "initial": 10}],
+  "entities": [{"name": "ORDER_REVIEW", "shape": "circle", "color": "blue"}],
   "levels": [
-    {
-      "name": "Inventory",
-      "initial": 100.0,
-      "min": null,
-      "rate_time_unit": "weeks"
-    },
-    {
-      "name": "Supply Line",
-      "initial": 30.0,
-      "min": 0.0,
-      "rate_time_unit": "weeks"
-    },
-    {
-      "name": "Total Cost",
-      "initial": 0.0,
-      "min": 0.0,
-      "rate_time_unit": "weeks"
-    }
+    {"name": "Inventory", "initial": 100.0, "min": null},
+    {"name": "Supply Line", "initial": 30.0, "min": 0.0},
+    {"name": "Total Cost", "initial": 0.0, "min": 0.0}
   ],
   "flows": [
     {
       "name": "place_order",
       "description": "The player's order rate joins the pipeline",
       "rate": "orders",
-      "to": "Supply Line",
-      "rate_time_unit": "weeks"
+      "to": "Supply Line"
     },
     {
       "name": "receive_shipment",
       "description": "Orders arrive after a 3rd-order (S-shaped) shipping delay",
       "rate": "DELAY3(orders, AUX(\"lead_time\"), 0)",
       "from": "Supply Line",
-      "to": "Inventory",
-      "rate_time_unit": "weeks"
+      "to": "Inventory"
     },
     {
       "name": "ship_to_customer",
       "description": "Customer demand is always shipped; a negative Inventory IS the backlog",
       "rate": "AUX(\"customer_demand\")",
-      "from": "Inventory",
-      "rate_time_unit": "weeks"
+      "from": "Inventory"
     },
     {
       "name": "accrue_cost",
       "description": "Holding cost on positive Inventory, backorder cost on negative Inventory",
       "rate": "AUX(\"holding_unit_cost\") * max(LEVEL(\"Inventory\"), 0) + AUX(\"backorder_unit_cost\") * max(-LEVEL(\"Inventory\"), 0)",
-      "to": "Total Cost",
-      "rate_time_unit": "weeks"
+      "to": "Total Cost"
     }
   ],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
   "auxiliaries": [
-    {
-      "name": "customer_demand",
-      "expr": "10 + STEP(6, 5)"
-    },
-    {
-      "name": "lead_time",
-      "expr": "3"
-    },
-    {
-      "name": "holding_unit_cost",
-      "expr": "0.5"
-    },
-    {
-      "name": "backorder_unit_cost",
-      "expr": "1.5"
-    },
-    {
-      "name": "service_level",
-      "expr": "max(0, min(1, 1 + LEVEL(\"Inventory\") / 40))"
-    }
+    {"name": "customer_demand", "expr": "10 + STEP(6, 5)"},
+    {"name": "lead_time", "expr": "3"},
+    {"name": "holding_unit_cost", "expr": "0.5"},
+    {"name": "backorder_unit_cost", "expr": "1.5"},
+    {"name": "service_level", "expr": "max(0, min(1, 1 + LEVEL(\"Inventory\") / 40))"}
   ],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Supply line: order-rate management game",
     "category": "Games",
     "description": "A one-echelon, beer-game-style supply line: Inventory is replenished from a Supply Line pipeline through a 3rd-order shipping delay (DELAY3); customer demand steps up in week 5. A negative Inventory level IS the backlog, so one stock covers both. Every week a Policy-mode DECIDE ('order') asks the player to set the order rate low/medium/high, with a finer control beside it; Total Cost accumulates holding and backorder cost. In the results, read on-hand inventory against backlog, total cost and the service level.",
     "author": "Naga example"
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 40.0,
     "warmup": 0.0,
     "replications": 1,
     "time_unit": "weeks",
-    "currency": "EUR",
-    "sd": {
-      "dt": 0.1,
-      "method": "rk4",
-      "time_unit": "weeks"
-    },
-    "energy_price": 0,
-    "length_unit": "meters"
+    "sd": {"dt": 0.1, "method": "rk4", "time_unit": "weeks"}
   },
   "outputs": {},
   "dashboard": {
@@ -283,22 +119,11 @@
         "kind": "line",
         "title": "On-hand inventory vs backlog",
         "series": [
-          {
-            "label": "On-hand",
-            "expr": "max(LEVEL(\"Inventory\"), 0)"
-          },
-          {
-            "label": "Backlog",
-            "expr": "max(-LEVEL(\"Inventory\"), 0)"
-          }
+          {"label": "On-hand", "expr": "max(LEVEL(\"Inventory\"), 0)"},
+          {"label": "Backlog", "expr": "max(-LEVEL(\"Inventory\"), 0)"}
         ]
       },
-      {
-        "name": "total_cost",
-        "kind": "kpi",
-        "title": "Total cost",
-        "expr": "LEVEL(\"Total Cost\")"
-      },
+      {"name": "total_cost", "kind": "kpi", "title": "Total cost", "expr": "LEVEL(\"Total Cost\")"},
       {
         "name": "service_level_gauge",
         "kind": "gauge",
@@ -306,10 +131,7 @@
         "expr": "AUX(\"service_level\")",
         "min": 0,
         "max": 1,
-        "thresholds": [
-          0.7,
-          0.9
-        ]
+        "thresholds": [0.7, 0.9]
       }
     ],
     "controls": [
@@ -317,9 +139,7 @@
         "name": "orders_slider",
         "kind": "slider",
         "title": "Fine-tune the order rate",
-        "target": {
-          "variable": "orders"
-        },
+        "target": {"variable": "orders"},
         "min": 0,
         "max": 30,
         "step": 1
@@ -329,11 +149,7 @@
         "kind": "decision",
         "title": "Weekly order rate (reviewed every week)",
         "policy": "order",
-        "options": [
-          "Low (8/week)",
-          "Medium (14/week)",
-          "High (22/week)"
-        ]
+        "options": ["Low (8/week)", "Medium (14/week)", "High (22/week)"]
       }
     ]
   }

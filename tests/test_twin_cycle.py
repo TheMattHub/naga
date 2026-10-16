@@ -554,6 +554,7 @@ def test_a_plant_source_shows_the_plant_and_a_forecast_starts_from_its_state(tmp
 
 def test_a_model_no_state_can_carry_is_monitored_and_refused_by_name(tmp_path):
     model = api.load_layout(MODELS / "warehouse_forklifts.json")
+    next(b for b in model["blocks"] if b["type"] == "CONVEYOR")["params"]["accumulating"] = False
     mapping = plant.scaffold(model)
     mapping["time"] = {"epoch": "1970-01-01T00:00:00+00:00", "unit": "seconds"}
     block = next(iter(next(s for s in mapping["signals"] if s["as"] == "at")["blocks"]))
@@ -570,7 +571,7 @@ def test_a_model_no_state_can_carry_is_monitored_and_refused_by_name(tmp_path):
     assert doc["forecast"] == {"status": "refused", "reason": "E_TWIN_STATE"}
     refusal = next(p for p in doc["problems"] if p["code"] == "E_TWIN_STATE")
     assert refusal["message"] == ("this model cannot be started from plant state yet: "
-                                  "conveyors")
+                                  "a non-accumulating conveyor")
     assert doc["view"]["wip"] == 1 and sum(doc["view"]["blocks"].values()) == 1
 
 

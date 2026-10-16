@@ -1050,8 +1050,9 @@ def test_reroute_sends_every_item_reaching_its_branch_down_the_link_it_names():
     model = state._model(branch_line())
     assert recommend.check_action(FAST, model) == FAST
     # Two constants of our own, one a link: no text of the action enters an expression.
+    split = next(b for b in model["blocks"] if b["name"] == "split")    # its other params kept
     assert recommend.override_of(SLOW, model) == {"path": "blocks.split.params", "value": {
-        "mode": "Condition", "probs": [0.5, 0.5], "conditions": ["True", "False"]}}
+        **split["params"], "mode": "Condition", "probs": [0.5, 0.5], "conditions": ["True", "False"]}}
     twice = branch_line()
     twice["links"].append({"source": "split", "target": "fast"})
     lone = branch_line()

@@ -1,51 +1,35 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "sir_1",
-      "description": "SIR epidemic",
       "type": "SUBMODEL",
+      "description": "SIR epidemic",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "SIR epidemic",
-        "arguments": {},
-        "preset": ""
+        "definition": "SIR epidemic"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "SD Susceptible",
       "initial": "AUX(\"$SD population\") - AUX(\"$SD initial infected\")",
-      "min": 0.0,
-      "rate_time_unit": "minutes"
+      "min": 0.0
     },
     {
       "name": "SD Infected",
       "initial": 1.0,
-      "min": 0.0,
-      "rate_time_unit": "minutes"
+      "min": 0.0
     },
     {
       "name": "SD Recovered",
       "initial": 0.0,
-      "min": 0.0,
-      "rate_time_unit": "minutes"
+      "min": 0.0
     }
   ],
   "flows": [
@@ -53,22 +37,15 @@
       "name": "SD infection",
       "rate": "AUX(\"$SD beta\") * LEVEL(\"$SD Susceptible\") * LEVEL(\"$SD Infected\") / AUX(\"$SD population\")",
       "from": "SD Susceptible",
-      "to": "SD Infected",
-      "rate_time_unit": "minutes"
+      "to": "SD Infected"
     },
     {
       "name": "SD recovery",
       "rate": "AUX(\"$SD gamma\") * LEVEL(\"$SD Infected\")",
       "from": "SD Infected",
-      "to": "SD Recovered",
-      "rate_time_unit": "minutes"
+      "to": "SD Recovered"
     }
   ],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
   "auxiliaries": [
     {
       "name": "SD beta",
@@ -87,13 +64,6 @@
       "expr": "1"
     }
   ],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "SIR epidemic": {
       "info": {
@@ -243,23 +213,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "SIR epidemic",
     "category": "System dynamics",
     "description": "The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run experiment (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 80.0,
     "warmup": 0,
     "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0,
     "sd": {
       "dt": 0.1,
       "method": "rk4",

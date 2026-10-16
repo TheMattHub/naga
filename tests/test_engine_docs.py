@@ -172,6 +172,20 @@ def test_the_gallery_shows_every_bundled_model_and_nothing_else(tmp_path):
     assert not missing, missing
 
 
+def test_the_published_model_schema_is_the_generators_at_its_id(tmp_path):
+    """D470: the schema a model's `"$schema"` names is on the site, at its `$id`."""
+    from nagasim.modelschema import SCHEMA_ID
+
+    gen.gen_model_schema(tmp_path)
+    (page,) = tmp_path.iterdir()
+    assert _same(page, DOCS / "schema" / page.name), f"schema/{page.name} {REGENERATE}"
+    config, _nav = gen.site_nav()
+    assert SCHEMA_ID == config["site_url"].rstrip("/") + "/schema/" + page.name
+    named = {m for p in DOCS.rglob("*.md")
+             for m in re.findall(r"/schema/(model-v\d+\.json)", p.read_text(encoding="utf-8"))}
+    assert named == {page.name}, "a page names the current schema version's file"
+
+
 # -- llms.txt (D346): a truthful map of the site ------------------------------
 
 def test_llms_txt_is_the_generators_and_lists_every_page(tmp_path):

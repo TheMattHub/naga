@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "wolf_sheep_1",
-      "description": "Wolf-Sheep predation with grass (grid)",
       "type": "SUBMODEL",
+      "description": "Wolf-Sheep predation with grass (grid)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Wolf-Sheep predation with grass (grid)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Wolf-Sheep predation with grass (grid)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Sheep",
@@ -126,8 +103,7 @@
           "target": "patch.grass",
           "expr": "IF(PATCH(\"grass\") >= regrowth, 0, PATCH(\"grass\"))"
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     },
     {
       "name": "Wolf",
@@ -206,8 +182,7 @@
             "random": true
           }
         }
-      ],
-      "speed_unit": "m/min"
+      ]
     }
   ],
   "populations": [
@@ -224,9 +199,6 @@
       "max_count": 2000
     }
   ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Wolf-Sheep predation with grass (grid)": {
       "info": {
@@ -356,23 +328,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Wolf-Sheep predation with grass (grid)",
     "category": "Agent-based",
     "description": "NetLogo's 'Wolf Sheep Predation' in its sheep-wolves-grass version, with NetLogo's own parameters: 35 Sheep and 17 Wolves (NetLogo's 100/50 scaled to this 30x30 torus, about a third of its 51x51 world) wander one Moore cell per tick in random order and lose 1 energy a tick. GRASS is a patch that regrows (`grow: {rate: 1, max: 30}`): a cell at 30 is green, a sheep on it gains Sheep gain from food and sets it to 0, and it is green again exactly 30 ticks later -- NetLogo's grass-regrowth-time countdown, counted up. A Wolf eats ONE sheep on its cell, drawn from its own stream (the one-to-one claim: `remove: {population: Sheep, where: <same cell as sender>, random: true}`), and gains Wolf gain from food only then; two wolves on one sheep cannot both eat it. Either species reproduces with its probability each tick (halving its energy with the newborn) and dies below zero energy. Oracle (seed 1, 300 ticks, statistics after a 50-tick warm-up): sheep, wolves AND grass coexist through repeated boom-bust oscillations -- a sheep starts with under 8 energy and pays 1 a tick, so sheep still alive at t=300 can only be eating regrown grass. A qualitative oracle on the Min/Max/Final columns: a small predator-prey system is chaotic, and averaging replications would average away the cycles. Known deviation: a newborn is placed at a random cell (the population's placement rule), not beside its parent."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 300.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

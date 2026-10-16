@@ -59,7 +59,20 @@ class Motion(Process):
     def resume(self, entity, cycle: dict):
         """Generator: the cycle a state found mid-way (D444), from its segment in progress,
         which ends at `until`; the segments before it are in the record as they ran, the
-        timed ones after it were drawn at the cycle's start, a move is timed when it starts."""
+        timed ones after it were drawn at the cycle's start, a move is timed when it starts.
+        A plant's cycle (D464) is the segment and when it began: the times are drawn now,
+        the moves begun timed now, and the segment ends at `since` + its time (now if past)."""
+        if "since" in cycle:
+            stage, times = cycle["stage"], self._draw_times(entity)
+            record = []
+            for i, segment in enumerate(self.segments[:stage + 1]):
+                slow = segment.get("kind") == "move" and timing.collaborative_now(
+                    self.ctx, self.hrc, self.zone)
+                record.append((segment.get("kind"), self._move_time(segment, slow)
+                               if segment.get("kind") == "move" else times[i], slow))
+            until = max(float(cycle["since"]) + record[stage][1], self.env.now)
+            yield from self._run(entity, times, stage, record, until)
+            return
         stage, times, slow = cycle["stage"], cycle["times"], set(cycle.get("slow") or ())
         record = [(s.get("kind"), float(times[i]), i in slow)
                   for i, s in enumerate(self.segments[:stage + 1])]

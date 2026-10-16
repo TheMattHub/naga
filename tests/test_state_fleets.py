@@ -618,19 +618,41 @@ def test_a_plant_places_each_vehicle_and_its_load():
     assert [p.code for p in problems if p.severity == "error"] == []
     assert doc["state"]["fleets"] == {"F": {"vehicles": [{"node": "a"}]}}
     assert doc["state"]["entities"] == [{"block": "move", "count": 1, "trip": {
-        "origin": "a", "destination": "b", "target": "S_B", "unit": 0, "stage": "carry"}}]
+        "origin": "a", "destination": "b", "target": "S_B", "unit": 0, "stage": "carry"},
+        "attributes": {"station": "S_A"}}]                 # D458: the station it came through
     started, refused = state.start(model, doc)
     assert refused == []
     assert list(api.run_model(started)["entity_log"]["Exited At"]) == [15.0]
 
 
+def test_a_load_a_plant_sees_waiting_for_a_vehicle_waits_at_the_station_it_came_through():
+    """D457: item 7 is seen at the TRANSPORT at 3 with no vehicle carrying it: it waits at
+    S_A (node a), where vehicle 0 stands. Dispatched at 3, it loads 3-4.5, rides 4.5-14.5,
+    unloads to 15.5. With no destination and no routing its trip has no target: said."""
+    model = _yard(2, time_limit=600)
+    model["simulation"]["time_unit"] = "seconds"
+    model["blocks"][0]["params"]["start_time"] = 5000
+    log = [_said("agv/0/node", "A", 2.0), _said("agv/1/node", "B", 2.0), _said("item/7", "truck", 3.0)]
+    _events, mapper = plant.replay(_yard_mapping((0, 1)), model, log)
+    doc, problems = state.from_plant(model, mapper.snapshot())
+    assert [p.code for p in problems if p.severity == "error"] == []
+    assert doc["state"]["entities"] == [{"block": "move", "count": 1, "trip": {
+        "origin": "a", "destination": "b", "target": "S_B"}, "since": 3.0,
+        "attributes": {"station": "S_A"}}]
+    started, refused = state.start(model, doc)
+    assert refused == []
+    assert list(api.run_model(started)["entity_log"]["Exited At"]) == [15.5]
+    model["blocks"][2]["params"]["destination"] = ""
+    doc, problems = state.from_plant(model, mapper.snapshot())
+    assert "fleets" not in doc["state"] and any("a load waits for a vehicle" in p.message
+                                                for p in problems)
+
+
 @pytest.mark.parametrize("log, why", [
     ([_said("agv/0/node", "A", 2.0)], "not every vehicle reports a node"),          # 1 of 2
-    ([_said("agv/0/node", "A", 2.0), _said("agv/1/node", "B", 2.0), _said("item/7", "truck", 3.0)],
-     "a load waits for a vehicle"),
     ([_said("agv/0/node", "A", 2.0), _said("agv/1/node", "B", 2.0), _said("agv/1/load", "9", 3.0)],
      "an item no signal places"),
-], ids=["unit not observed", "waiting load", "unseen load"])
+], ids=["unit not observed", "unseen load"])
 def test_what_a_plant_does_not_say_of_a_fleet_is_named_and_the_twin_refuses(log, why, tmp_path):
     model = _yard(2)
     model["simulation"]["time_unit"] = "seconds"

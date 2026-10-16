@@ -1,43 +1,20 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "nagel_schreckenberg_1",
-      "description": "Nagel-Schreckenberg traffic (ring)",
       "type": "SUBMODEL",
+      "description": "Nagel-Schreckenberg traffic (ring)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Nagel-Schreckenberg traffic (ring)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Nagel-Schreckenberg traffic (ring)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Car",
@@ -92,8 +69,7 @@
         "gap": "IF(CELL_COUNT(\"$Cars\", 1, 0) > 0, 0, IF(CELL_COUNT(\"$Cars\", 2, 0) > 0, 1, IF(CELL_COUNT(\"$Cars\", 3, 0) > 0, 2, IF(CELL_COUNT(\"$Cars\", 4, 0) > 0, 3, IF(CELL_COUNT(\"$Cars\", 5, 0) > 0, 4, vmax)))))",
         "v1": "min(self.v + 1, vmax, gap)",
         "vn": "IF(UNIF(0, 1) < p and v1 > 0, v1 - 1, v1)"
-      },
-      "speed_unit": "m/min"
+      }
     }
   ],
   "populations": [
@@ -348,9 +324,6 @@
       }
     }
   ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Nagel-Schreckenberg traffic (ring)": {
       "info": {
@@ -454,23 +427,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Nagel-Schreckenberg traffic (ring)",
     "category": "Agent-based",
     "description": "The Nagel-Schreckenberg traffic cellular automaton on a 60-cell ring (a 1-D torus grid, `size: [60, 1]`), its three rules written once as tick-local `let` values: `gap` (the free cells ahead, read by CELL_COUNT('$Cars', k, 0) for k = 1..5 -- an arbitrary-offset grid read), `v1 = min(v + 1, Vmax, gap)` (accelerate, then brake for the car ahead) and `vn`, v1 minus 1 with probability P when v1 > 0 -- ONE slowdown draw per car per tick, shared by the action that moves the car `vn` cells, the one that stores its speed and the one that records `flow_contrib = density * vn`, whose population mean IS the flow, with no derived-KPI step. Cars act in index order, which is ring order, so each reads the cells ahead before the car there moves (the parallel update NS defines); only the last car reads the first car's new cell across the wrap. With Vmax 5 and P 0.15 the flow-density curve peaks near density 0.1 (6 cars) and is far lower at density 0.8 (48 cars) -- the published shape. Vmax and P are this instance's own; the ring length and car count are fixed so the built-in oracle stays exact."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 150.0,
     "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "replications": 1
   },
   "outputs": {}
 }

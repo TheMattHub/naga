@@ -1,39 +1,25 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "workforce_delay1_1",
-      "description": "Workforce (goal-seeking)",
       "type": "SUBMODEL",
+      "description": "Workforce (goal-seeking)",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Workforce (goal-seeking)",
-        "arguments": {},
-        "preset": ""
+        "definition": "Workforce (goal-seeking)"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "SD Workforce",
       "initial": 20.0,
-      "min": null,
-      "rate_time_unit": "minutes"
+      "min": null
     }
   ],
   "flows": [
@@ -41,15 +27,9 @@
       "name": "SD hiring",
       "rate": "(AUX(\"$SD target workforce\") - LEVEL(\"$SD Workforce\")) / AUX(\"$SD adjustment time\")",
       "to": "SD Workforce",
-      "biflow": true,
-      "rate_time_unit": "minutes"
+      "biflow": true
     }
   ],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
   "auxiliaries": [
     {
       "name": "SD target workforce",
@@ -68,13 +48,6 @@
       "expr": "DELAY1(LEVEL(\"$SD Workforce\"), AUX(\"$SD reporting delay\"))"
     }
   ],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Workforce (goal-seeking)": {
       "info": {
@@ -214,23 +187,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Workforce (goal-seeking)",
     "category": "System dynamics",
     "description": "Headcount that hires (or attrits) toward a target at a fixed adjustment rate -- the textbook first-order goal-seeking structure, (target - Workforce) / adjustment_time -- an exact exponential approach to the target. \"SD Reported Workforce\" is a DELAY1-smoothed reading of the headcount (a reported figure that lags the real one, e.g. because payroll reports it monthly); it does not feed back into hiring. Needs simulation.sd."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 40.0,
     "warmup": 0,
     "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0,
     "sd": {
       "dt": 0.1,
       "method": "rk4",

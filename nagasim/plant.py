@@ -37,15 +37,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim.core import schema as model_schema, submodels
+from nagasim.core.initial_state import _OWN, _geometry
+from nagasim.core.network import build_network
 from nagasim.core.problems import Problem, problem
 from nagasim.core.timeunits import UNITS, units_of
-from nagasim.core.trace import DEFAULT_MAX_EVENTS, TraceEvent
+from nagasim.core.trace import DEFAULT_MAX_EVENTS, TraceEvent, TraceRecorder
 from nagasim import readers
 from nagasim.live import MAX_TEXT, SKEW_SECONDS, Feed, stamp
 
 __all__ = ["FORMAT", "LIMITS", "KINDS", "STATES", "PlantError", "load", "check", "schema",
            "scaffold", "Mapper", "UNTYPED",
-           "read_log", "write_log", "in_order", "replay", "Watch", "log_of", "main"]
+           "read_log", "write_log", "in_order", "replay", "Watch", "Recorder", "log_of", "main"]
 
 FORMAT = 1
 LIMITS = {
@@ -61,6 +63,7 @@ LIMITS = {
     "left": 10_000,                 # items that left, remembered so that none comes back (#372)
     "count": 10_000,                # a queue length or a unit count
     "seconds": 100 * 365 * 86400,   # model time, from the epoch
+    "attributes": 256,              # attributes an "at" signal reads (D459)
 }
 # as -> (the field naming what it speaks of, the other fields it may carry)
 KINDS = {
@@ -70,14 +73,20 @@ KINDS = {
     "blocked": ("resource", ()),
     "job": ("resource", ()),
     "queue": ("block", ("type",)),
-    "at": ("blocks", ("gone", "merged", "type", "type_field", "types")),
+    "at": ("blocks", ("gone", "merged", "type", "type_field", "types", "attributes",
+                      "batch_field")),
     "seen": ("block", ("leaves", "type")),
     "level": ("level", ("scale",)),
     "counter": ("block", ("rollover",)),
     # A vehicle of a fleet (D387): the node it last reported, and the item it carries.
     "vehicle": ("fleet", ("unit", "nodes")),
     "load": ("fleet", ("unit",)),
+    # A cobot's pick or place running, since when it said so (D463); the segment a MOTION
+    # block's job runs, since when (D464): what a robot controller publishes as its step.
+    "tend": ("fleet", ("unit", "cycles")),
+    "step": ("block", ()),
 }
+CYCLES = ("pick", "place", "idle")
 STATES = ("busy", "idle", "blocked", "down", "up")
 _UNITS_STATES = frozenset({"busy", "idle", "blocked"})     # the ones that hold or free a unit
 UNTYPED = "Unknown"             # the type of an entity nothing gives one (as a trace writes it)
@@ -117,12 +126,22 @@ def _names(layout) -> dict:
         return [str(r["name"]) for r in flat.get(section) or [] if r.get("name")]
     types = {str(e).upper() for e in of("entities")}
     types |= {str((b.get("params") or {}).get(key)).upper() for b in flat.get("blocks") or []
-              for key in ("e_type", "batch_type") if (b.get("params") or {}).get(key)}
+              for key in ("e_type", "batched_entity_type")          # #482
+              if (b.get("params") or {}).get(key)}
     network = flat.get("network") if isinstance(flat.get("network"), dict) else {}
-    return {"block": of("blocks"), "resource": of("resources") + of("fleets"),
+    assigned = {str(a.get("target"))[len("entity."):] for b in flat.get("blocks") or []
+                if str(b.get("type", "")).upper() == "ASSIGN"
+                for a in (b.get("params") or {}).get("assignments") or []
+                if isinstance(a, dict) and str(a.get("target", "")).startswith("entity.")}
+    return {"attributes": sorted(filter(_attribute, assigned))[:LIMITS["attributes"]],
+            "motion": [str(b["name"]) for b in flat.get("blocks") or []
+                       if str(b.get("type", "")).upper() == "MOTION" and b.get("name")],
+            "arms": [str(f["name"]) for f in flat.get("fleets") or []
+                     if f.get("name") and str(f.get("arm") or "").strip()],
+            "block": of("blocks"), "resource": of("resources") + of("fleets"),
             "fleet": of("fleets"), "node": [str(n["name"]) for n in network.get("nodes") or []
                                             if isinstance(n, dict) and n.get("name")],
-            "units": {str(f["name"]): len(f.get("units") or []) or f.get("count", 1)
+            "units": {str(f["name"]): len(f.get("units") or []) or _whole(f.get("count", 1))
                       for f in flat.get("fleets") or [] if f.get("name")},
             "level": of("levels"), "types": sorted(types), "unit": units_of(flat.get("simulation")).time}
 
@@ -139,6 +158,17 @@ def load(path) -> tuple:
     except (OSError, ValueError, RecursionError) as exc:
         return None, [problem("E_PLANTMAP_FORMAT", f"the mapping file cannot be read "
                               f"({type(exc).__name__})", "/", hint=_HINT)]
+
+
+_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
+_ROUTING = frozenset({"station", "sequence", "step"})
+_CELLS = frozenset({"at", "type", "batch"})        # the scaffold's own cells of an "at" row
+
+
+def _attribute(name) -> bool:
+    """D459: an attribute a plant may set: a plain name the engine does not own."""
+    return isinstance(name, str) and bool(_NAME.fullmatch(name)) and name not in _OWN \
+        and name not in _ROUTING
 
 
 def _table(value, allowed=None) -> str | None:
@@ -208,21 +238,29 @@ def check(mapping, layout=None) -> list[Problem]:
         if key.count("{id}") != (kind == "at") or key.count("*") > (kind == "job"):
             bad(f"signal {index}: an \"at\" key holds one {{id}}, a \"job\" key may hold one "
                 f"*, and no other key holds either", f"{at}/key")
-        for name in ("source", "field", "type", "type_field"):
+        for name in ("source", "field", "type", "type_field", "batch_field"):
             if name in signal and not (isinstance(signal[name], str) and signal[name]
                                        and len(signal[name]) <= 200):
                 bad(f"signal {index}: {name} must be a text of at most 200 characters",
                     f"{at}/{name}")
-        tables = {"states": STATES, "blocks": None, "types": None, "nodes": None}
+        tables = {"states": STATES, "blocks": None, "types": None, "nodes": None,
+                  "attributes": None, "cycles": CYCLES}
         for name, allowed in tables.items():
             if name in signal or (name, kind) in (("states", "state"), ("blocks", "at"),
-                                                  ("nodes", "vehicle")):
+                                                  ("nodes", "vehicle"), ("cycles", "tend")):
                 reason = _table(signal.get(name), allowed)
+                bound = LIMITS["attributes" if name == "attributes" else "entries"]
                 if reason:
                     bad(f"signal {index}: {name} {reason}", f"{at}/{name}")
-                elif len(signal[name]) > LIMITS["entries"]:
-                    bad(f"signal {index}: {name} is over {LIMITS['entries']} entries",
+                elif len(signal[name]) > bound:
+                    bad(f"signal {index}: {name} is over {bound} entries",
                         f"{at}/{name}", "E_PLANTMAP_SIZE")
+                elif name == "attributes" and not all(map(_attribute, signal[name].values())):
+                    # D459: what the plant gives is a number the model reads; the routing
+                    # and what the engine keeps on an entity are never the plant's (D458)
+                    bad(f"signal {index}: attributes names an attribute that is not a name "
+                        f"of at most 64 letters, digits and _, or that the engine owns",
+                        f"{at}/attributes")
         for name in ("gone", "merged"):
             codes = signal.get(name, [])
             if not isinstance(codes, list) or len(codes) > LIMITS["entries"] or not all(
@@ -237,7 +275,7 @@ def check(mapping, layout=None) -> list[Problem]:
                 f"the counter returns to 0 at", f"{at}/rollover")
         if "leaves" in signal and not isinstance(signal["leaves"], bool):
             bad(f"signal {index}: leaves must be true or false", f"{at}/leaves")
-        unit = signal.get("unit", 0 if kind in ("vehicle", "load") else None)
+        unit = signal.get("unit", 0 if kind in ("vehicle", "load", "tend") else None)
         if unit is not None and (isinstance(unit, bool) or not isinstance(unit, int)
                                  or not 0 <= unit < LIMITS["count"]):
             bad(f"signal {index}: unit must be the index of a vehicle of the fleet, from 0",
@@ -268,6 +306,10 @@ def check(mapping, layout=None) -> list[Problem]:
                     bad(f"signal {index}: the model's network has no node '{node[:80]}'",
                         f"{at}/nodes", "E_PLANTMAP_NAME",
                         f"its nodes: {', '.join(sorted(names['node'])[:20]) or '(none)'}")
+            if kind == "step" and named[0] in names["block"] and named[0] not in names["motion"]:
+                bad(f"signal {index}: block '{named[0][:80]}' is no MOTION block, which a step "
+                    f"belongs to", f"{at}/block", "E_PLANTMAP_NAME",
+                    f"its MOTION blocks: {', '.join(sorted(names['motion'])[:20]) or '(none)'}")
         if kind in ("job", "busy", "blocked") or (
                 kind == "state" and isinstance(signal.get("states"), dict)
                 and _UNITS_STATES & set(signal["states"].values())):
@@ -280,7 +322,7 @@ def check(mapping, layout=None) -> list[Problem]:
             # change; several jobs, and several ways to see an item, are what a plant has.
             what = f"\"{kind}\" of {group} '{named[0]}'" + ("" if unit is None else f" {unit}")
             told[what] = told.get(what, 0) + 1
-        if group == "block" and kind != "counter":     # a counter tells what left, not what is there
+        if group == "block" and kind not in ("counter", "step"):   # neither tells what is there
             for name in named:
                 if isinstance(name, str):
                     members.setdefault(f"content of block '{name}'", set()).add(
@@ -329,11 +371,17 @@ def schema() -> dict:
                         "field": {**text, "description": "The cell to read when the value is a row."},
                         "as": {"enum": list(KINDS), "description": "What the key asserts."},
                         "resource": {**text, "description": "A resource or a fleet of the model."},
-                        "block": {**text, "description": "A block of the flattened model."},
+                        "block": {**text, "description": "A block of the flattened model (\"step\": "
+                                  "a MOTION block, whose value is the segment its job runs, "
+                                  "from 0; null when idle)."},
                         "level": {**text, "description": "A level of the model."},
-                        "fleet": {**text, "description": "\"vehicle\", \"load\": a fleet of the model."},
+                        "fleet": {**text, "description": "\"vehicle\", \"load\", \"tend\": a "
+                                  "fleet of the model."},
                         "unit": {"type": "integer", "minimum": 0, "description": "\"vehicle\", "
-                                 "\"load\": which vehicle of the fleet, from 0 (default 0)."},
+                                 "\"load\", \"tend\": which vehicle of the fleet, from 0 "
+                                 "(default 0)."},
+                        "cycles": {**table, "description": "\"tend\": plant value -> "
+                                   + ", ".join(CYCLES) + "."},
                         "nodes": {**table, "description": "\"vehicle\": plant value -> the "
                                   "network node the vehicle is at."},
                         "states": {**table, "description": "Plant value -> "
@@ -343,6 +391,11 @@ def schema() -> dict:
                         "merged": {**values, "description": "Values that take it into a batch."},
                         "type": {**text, "description": "The entity type of what this signal names."},
                         "type_field": {**text, "description": "The cell of a row that holds the product."},
+                        "attributes": {**table, "maxProperties": LIMITS["attributes"],
+                                       "description": "\"at\": cell of a row -> the entity "
+                                       "attribute its number sets."},
+                        "batch_field": {**text, "description": "\"at\": the cell of a merged "
+                                        "member's row that holds the id of its batch."},
                         "types": {**table, "description": "Product -> entity type."},
                         "leaves": {"type": "boolean", "description": "\"seen\": the entity has left."},
                         "scale": {"type": "number", "description": "\"level\": model value = value * scale."},
@@ -371,8 +424,25 @@ def scaffold(layout, anonymous: bool = False, counters: bool = False) -> dict:
     elif names["block"]:
         signals.append({"key": "entity/{id}", "field": "at", "as": "at",
                         "blocks": {name: name for name in names["block"]}, "merged": ["+"],
-                        "type_field": "type", "types": {name: name for name in names["types"]}})
+                        "batch_field": "batch",
+                        "type_field": "type", "types": {name: name for name in names["types"]},
+                        **({"attributes": {name: name for name in names["attributes"]
+                                           if name not in _CELLS}}
+                           if set(names["attributes"]) - _CELLS else {})})
     signals += [{"key": f"level/{name}", "as": "level", "level": name} for name in names["level"]]
+    if not anonymous:       # D457: where each vehicle is and what it carries
+        for fleet in names["fleet"]:
+            for unit in range(names["units"].get(fleet, 0)):
+                signals += [{"key": f"fleet/{fleet}/{unit}/node", "as": "vehicle", "fleet": fleet,
+                             "unit": unit, "nodes": {node: node for node in names["node"]}},
+                            {"key": f"fleet/{fleet}/{unit}/load", "as": "load", "fleet": fleet,
+                             "unit": unit}]
+                if fleet in names["arms"]:      # D463: the cobot's cycle
+                    signals.append({"key": f"fleet/{fleet}/{unit}/cycle", "as": "tend",
+                                    "fleet": fleet, "unit": unit,
+                                    "cycles": {"pick": "pick", "place": "place"}})
+        signals += [{"key": f"block/{name}/step", "as": "step", "block": name}   # D464
+                    for name in names["motion"]]
     if counters:
         signals += [{"key": f"block/{name}/out", "as": "counter", "block": name}
                     for name in names["block"]]
@@ -389,6 +459,11 @@ def _number(value) -> bool:
     """Finite. A JSON integer may be too large for a float: it is then no number (#373)."""
     return isinstance(value, (int, float)) and not isinstance(value, bool) \
         and abs(value) <= sys.float_info.max
+
+
+def _whole(value) -> int:
+    """A model's own count as an int (0 when it is none: the model's validation says why)."""
+    return int(value) if _count(value) is not None else 0
 
 
 def _count(value) -> int | None:
@@ -423,12 +498,15 @@ def _event(t, kind, entity=-1, e_type="", block="", target=None, **more) -> Trac
 
 
 class _Entity:
-    """A named entity: where it is, whether it is there or inside a batch, since when."""
-    __slots__ = ("id", "block", "present", "e_type", "since", "order")
+    """A named entity: where it is, whether it is there or inside a batch, since when, and
+    the block it was seen in before (`came`, D457)."""
+    __slots__ = ("id", "block", "present", "e_type", "since", "order", "came", "entered",
+                 "attributes", "batch")
 
     def __init__(self, ident, block, e_type, since, order):
         self.id, self.block, self.present, self.e_type = ident, block, True, e_type
-        self.since, self.order = since, order
+        self.since, self.order, self.came, self.entered = since, order, None, None
+        self.attributes = self.batch = None
 
 
 # code -> the reasons it reports, with how each reads
@@ -483,8 +561,30 @@ class Mapper:
         # by its TRANSPORT), and each level's declared bounds. Without one, neither is judged.
         self._seizes: dict[str, set] = {}
         self._bounds: dict[str, tuple] = {}
+        # D460: an accumulating belt's (cells, entry spacing in model time), the entry of the
+        # last part on it, the parts with a cell and those waiting for one, first come first.
+        # A part enters when it has a cell, at the latest a spacing after the part before it
+        # (the belt's own rule), so a log of a run gives each part's entry.
+        self._gaps: dict[str, tuple] = {}
+        self._entered: dict[str, float] = {}
+        self._cells: dict[str, list] = {}           # belt -> [parts with a cell, [waiting]]
+        self._segments: dict[str, int] = {}         # MOTION block -> its segment count (a step's bound)
         if layout is not None:
             flat = _flat(layout)
+            units = units_of(flat.get("simulation"))
+            try:
+                network = build_network(flat.get("network"), units)
+            except Exception:       # a broken network is the network section's own problem
+                network = None
+            for block in flat.get("blocks") or []:
+                params = block.get("params") or {}
+                geometry = _geometry(params, units, network) if str(block.get(
+                    "type", "")).upper() == "CONVEYOR" and params.get("accumulating", True) \
+                    is not False else None
+                if geometry is not None:
+                    self._gaps[block.get("name")] = geometry[:2]
+                if str(block.get("type", "")).upper() == "MOTION":
+                    self._segments[block.get("name")] = len(params.get("segments") or ())
             sets = {str(r.get("name")): r.get("members") or [] for r in flat.get("resource_sets") or []}
             for block in flat.get("blocks") or []:
                 for key in ("resource_name", "fleet"):
@@ -518,10 +618,13 @@ class Mapper:
         self._jobs: dict[tuple, tuple] = {}         # (source, key) -> (resource, entity id)
         self._working: dict[str, int] = {}          # resource -> the jobs it holds
         self._merged: dict[int, str] = {}           # entities inside a batch, oldest first
+        self._exits: dict[str, float] = {}          # block -> when an item last left it (D460)
         self._units = {"busy": {}, "blocked": {}}   # resource -> units nobody names
         self._down: dict[str, bool] = {}
         self._capacity: dict[str, float] = {}
         self._vehicles: dict[tuple, list] = {}      # (fleet, unit) -> [node, the entity it carries]
+        self._cycles: dict[tuple, tuple] = {}       # (fleet, unit) -> (pick or place, since)
+        self._steps: dict[str, tuple] = {}          # MOTION block -> (segment, since)
         self._levels: dict[str, tuple] = {}         # level -> (time, value) last said
         # block -> [last value, total, since, resets, when it last spoke]
         self._counters: dict[str, list] = {}
@@ -768,9 +871,18 @@ class Mapper:
         entity = self._entities.get(self.ids.get(ident, 0))
         if code in map(_text, signal.get("merged", ())):
             if entity is not None and entity.present:
+                self._leave(entity, t)      # a belt's cell is free for the part waiting for one
                 entity.present = False
                 self._merged[entity.id] = ident
                 out.append(_event(t, "entity_absorbed", entity.id, entity.e_type, entity.block))
+                # D461: the batch it went into, by the id the plant gives that batch
+                batch = row.get(signal["batch_field"]) if "batch_field" in signal \
+                    and isinstance(row, dict) else None
+                if isinstance(batch, bool) or isinstance(batch, float) and not batch.is_integer():
+                    self._drop("value")
+                elif batch is not None and batch != "":
+                    entity.batch = _text(batch)
+                self._attributes(signal, entity, row)
             return None
         block = signal["blocks"].get(code)
         if block is None:
@@ -778,6 +890,22 @@ class Mapper:
         product = row.get(signal.get("type_field")) if isinstance(row, dict) else None
         e_type = signal.get("types", {}).get(_text(product)) if product is not None else None
         self._place(ident, block, e_type or signal.get("type"), t, out)
+        self._attributes(signal, self._entities.get(self.ids.get(ident, 0)), row)
+
+    def _attributes(self, signal, entity, row) -> None:
+        """D459: the numbers a row gives the attributes its signal names; anything else in
+        such a cell is no value of it."""
+        if entity is None or not isinstance(row, dict) or not signal.get("attributes"):
+            return
+        for cell, name in signal["attributes"].items():
+            if cell not in row:
+                continue
+            if not _number(row[cell]):
+                self._drop("value")
+                continue
+            if entity.attributes is None:
+                entity.attributes = {}
+            entity.attributes[name] = row[cell]
 
     def _as_seen(self, signal, _key, _ident, cell, _row, t, out) -> None:
         if cell is None or cell == "":
@@ -803,6 +931,7 @@ class Mapper:
             self.ids[ident] = self._next
             self._entities[self._next] = entity
             self._next += 1
+            self._enter(entity, block, t)
             out.append(_event(t, "entity_created", entity.id, entity.e_type, block))
             return None
         if e_type and e_type != entity.e_type:
@@ -813,14 +942,52 @@ class Mapper:
         # read as one inside an instance, which the timeline does not show.
         out.append(_event(t, "entity_moved", entity.id, entity.e_type,
                           entity.block if entity.present else "", block))
+        if entity.present:
+            self._leave(entity, t)
+        entity.came = entity.block if entity.present else None
         entity.block, entity.present, entity.since, entity.order = block, True, t, self._order
+        entity.batch = None
         self._merged.pop(entity.id, None)
+        self._enter(entity, block, t)
+
+    def _enter(self, entity, block, t) -> None:
+        """D460: a part first seen at a belt takes a cell, or waits for one."""
+        entity.entered = None
+        if block in self._gaps:
+            cells = self._cells.setdefault(block, [0, []])
+            if cells[0] < self._gaps[block][0]:
+                cells[0] += 1
+                self._board(entity, block, t)
+            elif len(cells[1]) < LIMITS["entities"]:
+                cells[1].append(entity)
+
+    def _board(self, entity, block, t) -> None:
+        last = self._entered.get(block)
+        entity.entered = self._entered[block] = t if last is None \
+            else max(t, last + self._gaps[block][1])
+
+    def _leave(self, entity, t) -> None:
+        """*entity* left the block it was in: a belt's cell goes to the part waiting longest."""
+        block = entity.block
+        cells = self._cells.get(block)
+        if cells is None:
+            self._exits[block] = t
+            return
+        if entity in cells[1]:
+            cells[1].remove(entity)        # it never boarded: nothing left the belt's end (M3)
+            return
+        self._exits[block] = t
+        cells[0] = max(cells[0] - 1, 0)
+        while cells[1] and cells[0] < self._gaps[block][0]:
+            cells[0] += 1
+            self._board(cells[1].pop(0), block, t)
 
     def _gone(self, ident, t, out) -> None:
         entity = self._entities.pop(self.ids.pop(ident, 0), None)
         if entity is not None:
             self._merged.pop(entity.id, None)
         if entity is not None and entity.present:
+            self._leave(entity, t)
             out.append(_event(t, "entity_disposed", entity.id, entity.e_type, entity.block))
 
     # ------------------------------------------------------------ vehicles (D387)
@@ -845,6 +1012,34 @@ class Mapper:
         if entity == -1:
             self._drop("job_unseen")
         self._vehicles.setdefault((signal["fleet"], signal.get("unit", 0)), [None, None])[1] = entity
+
+    def _as_tend(self, signal, _key, _ident, cell, _row, t, _out) -> None:
+        """A cobot's pick or place, since when it was first said (D463): a state asserted
+        again is not a new cycle. Null, empty or "idle": none runs."""
+        what = "idle" if cell is None or cell == "" else signal["cycles"].get(_text(cell))
+        if what is None:
+            return self._drop("value")
+        which, held = (signal["fleet"], signal.get("unit", 0)), self._cycles.get(
+            (signal["fleet"], signal.get("unit", 0)))
+        if what == "idle":
+            self._cycles.pop(which, None)
+        elif held is None or held[0] != what:
+            self._cycles[which] = (what, t)
+
+    def _as_step(self, signal, _key, _ident, cell, _row, t, _out) -> None:
+        """The segment a MOTION block's job runs, from 0, since when it was first said
+        (D464); null or empty: idle."""
+        if cell is None or cell == "":
+            self._steps.pop(signal["block"], None)
+            return None
+        step = _count(cell)
+        # Out of the block's segments (when the model is known): no step, so the job runs
+        # afresh (D464) rather than `start` refusing the whole forecast for one bad word.
+        if step is None or step >= self._segments.get(signal["block"], LIMITS["count"] + 1):
+            return self._drop("value")
+        held = self._steps.get(signal["block"])
+        if held is None or held[0] != step:
+            self._steps[signal["block"]] = (step, t)
 
     # ------------------------------------------------------------ levels
     def _as_level(self, signal, _key, _ident, cell, _row, t, out) -> None:
@@ -928,18 +1123,32 @@ class Mapper:
             return None if e_type in (UNTYPED, "", None) else e_type
         riding = {entity: [fleet, unit] for (fleet, unit), (_node, entity)
                   in self._vehicles.items() if entity is not None}
+        members: dict[int, list] = {}       # D461: a batch's members, in the order merged
+        for entity in map(self._entities.get, self._merged):
+            batch = self.ids.get(entity.batch) if entity is not None and entity.batch else None
+            if batch is not None:
+                members.setdefault(batch, []).append({
+                    "e_type": typed(entity.e_type), "holds": holds.get(entity.id, []),
+                    **({"attributes": dict(entity.attributes)} if entity.attributes else {})})
         entities = [{"block": e.block, "e_type": typed(e.e_type),
-                     "since": e.since, "holds": holds.get(e.id, []),
-                     **({"on": riding[e.id]} if e.id in riding else {})} for e in present]
+                     "since": e.since, "holds": holds.get(e.id, []), "came": e.came,
+                     **({"on": riding[e.id]} if e.id in riding else {}),
+                     **({"entered": e.entered} if e.entered is not None else {}),
+                     **({"attributes": dict(e.attributes)} if e.attributes else {}),
+                     **({"members": members[e.id]} if e.id in members else {})}
+                    for e in present]
         vehicles: dict = {}
-        for (fleet, unit), (node, entity) in sorted(self._vehicles.items()):
+        for fleet, unit in sorted({*self._vehicles, *self._cycles}):
+            node, entity = self._vehicles.get((fleet, unit), (None, None))
             # `load`: True with an item on it; "unseen" when that item is nowhere to be found
             vehicles.setdefault(fleet, []).append({
                 "unit": unit, "node": node, "load": entity is not None and (
                     True if entity in self._entities and self._entities[entity].present
-                    else "unseen")})
+                    else "unseen"),
+                **({"cycle": list(self._cycles[fleet, unit])} if (fleet, unit) in self._cycles
+                   else {})})
         entities += [{"block": block, "e_type": typed(self._anonymous_type.get(block)),
-                      "since": None, "holds": []}
+                      "since": None, "holds": [], "came": None}
                      for block, members in self._anonymous.items() for _ in members]
         return {"at": self.now, "stamp": self.stamp(), "entities": entities,
                 # `units`: the part of `busy` nobody is named for (a count, not a job).
@@ -947,7 +1156,8 @@ class Mapper:
                                      "down": self._down.get(name, False)}
                               for name in sorted({*busy, *self._down, *self._capacity})},
                 "levels": {name: said[1] for name, said in self._levels.items()},
-                "vehicles": vehicles,
+                "vehicles": vehicles, "exits": dict(self._exits),
+                "steps": {block: list(said) for block, said in self._steps.items()},
                 "counters": self.counters()}
 
     def stamp(self) -> str | None:
@@ -1093,12 +1303,35 @@ class Watch:
 _VALUES = {"true": True, "false": False, "null": None}
 
 
-def log_of(events, mapping, source: str = "plant") -> list[dict]:
+class Recorder(TraceRecorder):
+    """A trace recorder that also keeps, for each entity event it records, the attributes of
+    the entity that are numbers (`attributes`, by the event's index): what `log_of` writes
+    through an `at` signal's `attributes` (D459). For a log made from a run."""
+
+    def __init__(self, max_events: int | None = None):
+        super().__init__(max_events)
+        self.attributes: dict[int, dict] = {}
+
+    def __call__(self, name, *, entity=None, **payload):
+        index = len(self.events)
+        super().__call__(name, entity=entity, **payload)
+        if entity is not None and len(self.events) > index \
+                and name in ("entity_created", "entity_moved"):
+            values = {}
+            for key, value in vars(entity).items():
+                value = value.item() if getattr(value, "shape", None) == () else value
+                if not key.startswith("_") and _number(value):
+                    values[key] = value
+            self.attributes[index] = values
+
+
+def log_of(events, mapping, source: str = "plant", attributes=None) -> list[dict]:
     """The plant log a recorded run would have left, through *mapping* read backwards: one
     observation, in the feed's event shape, for what each trace event changes. Mapped back
     (`replay`) it gives the run's timeline, but for what a mapping cannot say (the spec's
     section 3). It writes through `at`, `queue`, `job`, `busy`, `blocked`, `capacity`,
-    `state`, `level` and `counter`; an event nothing of the mapping speaks of leaves no line."""
+    `state`, `level`, `counter`, `vehicle` and `load`; an event nothing of the mapping
+    speaks of leaves no line. *attributes*: a `Recorder`'s, for an `at` signal's own."""
     refused = check(mapping)
     if refused:
         raise PlantError(refused)
@@ -1113,6 +1346,10 @@ def log_of(events, mapping, source: str = "plant") -> list[dict]:
         elif kind == "state":
             for code, state in signal["states"].items():
                 by.setdefault((f"state:{state}", signal["resource"]), (signal, code))
+        elif kind in ("vehicle", "load", "tend"):
+            by.setdefault((kind, signal["fleet"], signal.get("unit", 0)), signal)
+        elif kind == "step":
+            by.setdefault(("step", signal["block"], None), signal)
         elif kind != "seen":
             by.setdefault((kind, signal[KINDS[kind][0]]), signal)
     lines: list = []
@@ -1128,7 +1365,7 @@ def log_of(events, mapping, source: str = "plant") -> list[dict]:
             "value": {signal["field"]: cell, **row} if "field" in signal else cell,
             "source_time": at, "received": at})
 
-    def leave(t, entity, ending) -> None:
+    def leave(t, entity, ending, batch=None) -> None:
         block = where.pop(entity, None)
         if ("queue", block) in by:
             inside[block] = max(inside.get(block, 0) - 1, 0)
@@ -1136,9 +1373,11 @@ def log_of(events, mapping, source: str = "plant") -> list[dict]:
         elif ("at", block) in by and ending is not None:
             signal = by["at", block][0]
             codes = signal.get(ending) or signal.get("gone") or [None]
-            say(t, signal, signal["key"].replace("{id}", str(entity)), codes[0])
+            row = {signal["batch_field"]: str(batch)} if batch is not None \
+                and "batch_field" in signal and ending == "merged" else {}
+            say(t, signal, signal["key"].replace("{id}", str(entity)), codes[0], **row)
 
-    def enter(t, entity, e_type, block) -> None:
+    def enter(t, entity, e_type, block, n) -> None:
         old = where.get(entity)
         if ("at", block) not in by:
             # Out of what the identities cover: it is gone for them (and one more in a queue).
@@ -1154,6 +1393,9 @@ def log_of(events, mapping, source: str = "plant") -> list[dict]:
             product = next((text for text, name in signal.get("types", {}).items()
                             if name == e_type), None)
             row = {signal["type_field"]: product} if "type_field" in signal and product else {}
+            had = (attributes or {}).get(n) or {}       # D459: the numbers the run's item had
+            row.update({cell: had[name] for cell, name in signal.get("attributes", {}).items()
+                        if name in had})
             say(t, signal, signal["key"].replace("{id}", str(entity)), code, **row)
 
     def hold(t, resource, which, change) -> None:
@@ -1173,11 +1415,70 @@ def log_of(events, mapping, source: str = "plant") -> list[dict]:
     steps: list = []
     riding: dict[int, tuple] = {}                   # entity -> (its ride's step, its arrival)
     passed: dict[str, int] = {}                     # block -> what its counter shows
-    for (kind, _block), signal in list(by.items()) if events else ():
-        if kind == "counter":                       # a counter is there before the first part
+    for key, signal in list(by.items()) if events else ():
+        if key[0] == "counter":                     # a counter is there before the first part
             say(events[0].t, signal, signal["key"], 0)
+    # D457: a vehicle says the node it sets out from and the one it arrives at (not when a
+    # later leg set out first: it was diverted), and the item it carries from the start of
+    # its loaded drive (the TRANSPORT's ride, emitted just before it) to the ride's end.
+    driving: dict[tuple, tuple] = {}                # (fleet, unit) -> (its arrival's step, when)
+    ride_of = None                                  # (block, t, entity, its end) of the last ride
+    vehicles: dict[tuple, object] = {}              # (kind, fleet, unit) -> what it last said
+
+    def tell(t, kind, fleet, unit, cell) -> None:
+        signal = by.get((kind, fleet, unit))
+        if signal is None or vehicles.get((kind, fleet, unit), ()) == cell:
+            return
+        vehicles[kind, fleet, unit] = cell
+        if kind in ("vehicle", "tend"):         # the plant's own code for it
+            table = signal["nodes" if kind == "vehicle" else "cycles"]
+            code = next((code for code, value in table.items() if value == (cell or "idle")), None)
+            if code is None and cell is not None:
+                return
+            cell = code
+        say(t, signal, signal["key"], cell)
+
+    # D461: the members a BATCH (or a MATCH) absorbs are followed by the batch's creation, in
+    # the same block and instant (`make_batch_entity`); a SEPARATE's absorbed batch is not.
+    into: dict[int, int] = {}                       # a member's absorption -> its batch
+    gathering: list = []
     for n, e in enumerate(events):
         at = e.t
+        if e.kind == "entity_absorbed":
+            gathering.append((n, e.block, e.t))
+        elif e.kind == "entity_created":
+            into.update((m, e.entity_id) for m, block, t in gathering if (block, t) == (e.block, e.t))
+            gathering = []
+        # D464: a MOTION job's segment as it starts, idle once the job leaves; D463: a
+        # cobot's pick or place from its start to its end
+        if e.kind == "cycle_phase":
+            steps.append((e.t, True, n, ("step", e.block, None, int(e.value))))
+            continue
+        if e.kind in ("entity_moved", "entity_disposed") and ("step", e.block, None) in by \
+                and e.target != e.block:
+            steps.append((e.t, True, n, ("step", e.block, None, None)))
+        if e.kind == "tend":
+            steps.append((e.t, True, n, ("tend", e.target, e.entity_id, e.state)))
+            steps.append((e.t + e.duration, False, n, ("tend", e.target, e.entity_id, None)))
+            continue
+        if e.kind == "mover_moved" and e.path:
+            which = (e.target, e.entity_id)
+            arriving = driving.pop(which, None)
+            if arriving is not None and e.t < arriving[1]:
+                steps[arriving[0]] = None
+            travel = e.travel or e.duration
+            if len(e.path) > 1:
+                driving[which] = (len(steps) + 1, e.t + travel)
+            steps.append((e.t, True, n, ("vehicle", *which, e.path[0])))
+            if len(e.path) > 1:
+                steps.append((e.t + travel, False, n, ("vehicle", *which, e.path[-1])))
+            if ride_of is not None and ride_of[:2] == (e.block, e.t):
+                steps.append((e.t, True, n, ("load", *which, str(ride_of[2]))))
+                steps.append((ride_of[3], False, n, ("load", *which, None)))
+            ride_of = None
+            continue
+        if e.kind == "entity_moved" and e.path and e.target and e.target != e.block:
+            ride_of = (e.block, e.t, e.entity_id, e.t + e.duration)
         if ("counter", e.block) in by and (e.kind == "entity_disposed" or (
                 e.kind == "entity_moved" and e.target and e.target != e.block)):
             # When it leaves, a ride included: what `block/<name>/out` counts in a run.
@@ -1191,13 +1492,17 @@ def log_of(events, mapping, source: str = "plant") -> list[dict]:
                 at = e.t + e.duration
                 riding[e.entity_id] = (len(steps), at)
         steps.append((at, at == e.t, n, e))
-    for t, _on_time, _n, e in sorted(step for step in steps if step is not None):
-        if e.kind == "entity_created":
-            enter(e.t, e.entity_id, e.e_type, e.block)
+    for t, _on_time, n, e in sorted(
+            (step for step in steps if step is not None), key=lambda step: step[:3]):
+        if isinstance(e, tuple):
+            tell(t, *e)
+        elif e.kind == "entity_created":
+            enter(e.t, e.entity_id, e.e_type, e.block, n)
         elif e.kind == "entity_moved" and e.target and e.target != e.block:
-            enter(t, e.entity_id, e.e_type, e.target)
+            enter(t, e.entity_id, e.e_type, e.target, n)
         elif e.kind in ("entity_disposed", "entity_absorbed"):
-            leave(e.t, e.entity_id, "gone" if e.kind == "entity_disposed" else "merged")
+            leave(e.t, e.entity_id, "gone" if e.kind == "entity_disposed" else "merged",
+                  into.get(n))
         elif e.kind == "entity_seized" and ("job", e.target) in by:
             taken = slots.setdefault(e.target, {})
             slot = next(n for n in range(1, len(taken) + 2) if n not in taken)
@@ -1335,11 +1640,9 @@ def main(argv=None) -> int:
         return 0
     mapping["time"].setdefault("unit", _names(layout)["unit"])
     if args.verb == "mock":
-        from nagasim.core.trace import TraceRecorder
-
-        recorder = TraceRecorder()
+        recorder = Recorder()
         api.run_model(layout, replications=1, seed=args.seed, trace=recorder, record_logs=False)
-        lines = log_of(recorder.events, mapping)
+        lines = log_of(recorder.events, mapping, attributes=recorder.attributes)
         write_log(args.out, lines)
         print(f"{len(lines)} observations of a run with seed {args.seed} written to {args.out}")
         return 0

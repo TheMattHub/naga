@@ -977,7 +977,17 @@ def _validate_cycle(layout, entry, block, start, at, problems) -> None:
         return segments[i].get("kind") == "move"
 
     ok = entry.get("ends") is None and entry.get("remaining") is None
-    if ok and cycle is not None:
+    if ok and isinstance(cycle, dict) and "since" in cycle:
+        # D464: a plant's: the segment its controller says and when that segment began,
+        # at or before the clock and not before the job was made (when its age is given)
+        stage, since, age = cycle.get("stage"), cycle.get("since"), entry.get("age")
+        eps = 1e-9 * max(1.0, abs(start))
+        ok = (set(cycle) == {"stage", "since"} and entry.get("count") == 1
+              and entry.get("in_service") == 1 and isinstance(stage, int)
+              and not isinstance(stage, bool) and 0 <= stage < len(segments)
+              and _number(since) and since <= start + eps
+              and (age is None or (_number(age) and since >= start - age - eps)))
+    elif ok and cycle is not None:
         ok = (isinstance(cycle, dict) and set(cycle) <= {"stage", "until", "times", "slow"}
               and entry.get("count") == 1 and entry.get("in_service") == 1)
         stage, until, times, slow = (cycle.get(k) for k in ("stage", "until", "times", "slow")) \
@@ -1012,8 +1022,9 @@ def _validate_cycle(layout, entry, block, start, at, problems) -> None:
             hint="until is at or after the clock and no further than that segment's time; times "
                  "has one value per segment (null for a move not started), a move's the "
                  "profile's; slow lists the moves timed slowed; the job's age covers the "
-                 "segments up to until (the cycle began after it was made); with no cycle "
-                 "the job runs a whole cycle drawn afresh"))
+                 "segments up to until (the cycle began after it was made); a plant's cycle "
+                 "is the segment (stage) and when it began (since, at or before the clock); "
+                 "with no cycle the job runs a whole cycle drawn afresh"))
 
 
 def _room(layout, level) -> float:

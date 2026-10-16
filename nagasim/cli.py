@@ -40,6 +40,8 @@ COMMANDS = {
     "policy-eval": ("rl", "main", "evaluate a controller against a Policy-mode DECIDE"),
     "schema": ("modelschema", "main_schema", "JSON Schema of the model file format"),
     "validate": ("modelschema", "main_validate", "structured validation problems, exit 1 on errors"),
+    "fmt": ("modelfmt", "main", "rewrite model files in their shortest canonical form"),
+    "export": ("build", "main", "write a model as Python code that builds it (nagasim.build)"),
     "diff": ("modeldiff", "main", "semantic diff of two model files by record identity"),
     "merge": ("modeldiff", "merge_main", "three-way merge of model files by record identity"),
     "check": ("modelcheck", "main", "run a model's assertions and reality checks"),

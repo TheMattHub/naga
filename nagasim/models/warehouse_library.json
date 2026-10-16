@@ -1,10 +1,11 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "trucks_fast",
-      "description": "Truck arrivals",
       "type": "SUBMODEL",
+      "description": "Truck arrivals",
       "position": [
         -600.0,
         -200.0
@@ -25,14 +26,13 @@
           "truck_type": "TRUCK",
           "route": "Fast mover",
           "max_trucks": 0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "trucks_bulk",
-      "description": "Truck arrivals",
       "type": "SUBMODEL",
+      "description": "Truck arrivals",
       "position": [
         -600.0,
         0.0
@@ -53,14 +53,13 @@
           "truck_type": "TRUCK",
           "route": "Bulk",
           "max_trucks": 0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "dock",
-      "description": "Dock (inbound)",
       "type": "SUBMODEL",
+      "description": "Dock (inbound)",
       "position": [
         -350.0,
         -100.0
@@ -78,14 +77,13 @@
           "time_distribution": "triangular",
           "crew": "Log Dock crew",
           "door_cost_rate": 0.25
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "zone_a",
-      "description": "Storage zone",
       "type": "SUBMODEL",
+      "description": "Storage zone",
       "position": [
         -50.0,
         -250.0
@@ -104,14 +102,13 @@
           "putaway_time": 1.5,
           "dwell_time": 60.0,
           "dwell_distribution": "exponential"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "zone_b",
-      "description": "Storage zone",
       "type": "SUBMODEL",
+      "description": "Storage zone",
       "position": [
         -50.0,
         -80.0
@@ -130,14 +127,13 @@
           "putaway_time": 2.5,
           "dwell_time": 60.0,
           "dwell_distribution": "exponential"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "orders_fast",
-      "description": "Order arrivals",
       "type": "SUBMODEL",
+      "description": "Order arrivals",
       "position": [
         -600.0,
         250.0
@@ -155,14 +151,13 @@
           "due_in": 60.0,
           "order_type": "ORDER",
           "max_orders": 0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "orders_bulk",
-      "description": "Order arrivals",
       "type": "SUBMODEL",
+      "description": "Order arrivals",
       "position": [
         -600.0,
         420.0
@@ -180,14 +175,13 @@
           "due_in": 60.0,
           "order_type": "ORDER",
           "max_orders": 0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "pick_a",
-      "description": "Order picking from stock",
       "type": "SUBMODEL",
+      "description": "Order picking from stock",
       "position": [
         -300.0,
         250.0
@@ -208,14 +202,13 @@
           "setup_time": 1.0,
           "time_per_line": 1.5,
           "pickers": "Log Pickers"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "pick_b",
-      "description": "Order picking from stock",
       "type": "SUBMODEL",
+      "description": "Order picking from stock",
       "position": [
         -300.0,
         420.0
@@ -236,14 +229,13 @@
           "setup_time": 1.0,
           "time_per_line": 1.5,
           "pickers": "Log Pickers"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "belt",
-      "description": "Conveyor segment",
       "type": "SUBMODEL",
+      "description": "Conveyor segment",
       "position": [
         0.0,
         340.0
@@ -261,14 +253,13 @@
           "spacing": 1.4,
           "accumulating": true,
           "exit_resource": ""
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "shipping",
-      "description": "Shipping dock (outbound)",
       "type": "SUBMODEL",
+      "description": "Shipping dock (outbound)",
       "position": [
         300.0,
         340.0
@@ -286,14 +277,13 @@
           "doors": 1,
           "load_time_per_pallet": 0.5,
           "door_cost_rate": 0.2
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "forklifts",
-      "description": "Vehicle fleet",
       "type": "SUBMODEL",
+      "description": "Vehicle fleet",
       "position": [
         150.0,
         -100.0
@@ -315,25 +305,17 @@
           "cost_idle": 0.0,
           "destination": "",
           "priority": 0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "left_site",
-      "description": "Left the site",
       "type": "DISPOSE",
+      "description": "Left the site",
       "position": [
         600.0,
         340.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -452,45 +434,36 @@
       ]
     }
   ],
-  "orders": [],
   "resources": [
     {
       "name": "Log Dock door",
       "capacity": 2,
       "discipline": "FIFO",
       "cost_busy": 0.0,
-      "cost_idle": 0.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 0.0
     },
     {
       "name": "Log Dock crew",
       "capacity": 2,
       "discipline": "FIFO",
       "cost_busy": 32.0,
-      "cost_idle": 22.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 22.0
     },
     {
       "name": "Log Pickers",
       "capacity": 1,
       "discipline": "FIFO",
       "cost_busy": 30.0,
-      "cost_idle": 21.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 21.0
     },
     {
       "name": "Log Shipping door",
       "capacity": 2,
       "discipline": "FIFO",
       "cost_busy": 0.0,
-      "cost_idle": 0.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 0.0
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
   "sequences": [
     {
       "name": "Fast mover",
@@ -511,66 +484,54 @@
       ]
     }
   ],
-  "variables": [],
   "entities": [
     {
       "name": "Fast mover",
       "shape": "square",
       "color": "BLUE",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.0
     },
     {
       "name": "Bulk",
       "shape": "circle",
       "color": "ORANGE",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.0
     },
     {
       "name": "PALLET",
       "shape": "square",
       "color": "BROWN",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.0
     },
     {
       "name": "TRUCK",
       "shape": "rect",
       "color": "GREY",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.0
     },
     {
       "name": "ORDER",
       "shape": "triangle",
       "color": "GREEN",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.0
     },
     {
       "name": "TRUCKLOAD",
       "shape": "rect",
       "color": "BLUE",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.0
     }
   ],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "Log Zone stock",
       "description": "Pallet positions in use.",
-      "unit": "pallets",
       "min": 0,
       "initial": 0,
       "capacity": 400,
-      "rate_time_unit": "minutes"
+      "unit": "pallets"
     }
   ],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
   "fleets": [
     {
       "name": "Log Forklifts",
@@ -579,26 +540,15 @@
       "speed_empty": 70.0,
       "load_time": "0.4",
       "unload_time": "0.4",
-      "time_unit": "minutes",
       "home": "",
       "park": "stay",
       "dispatch": "nearest",
       "select": "nearest",
       "cost_busy": 0.0,
       "cost_idle": 0.0,
-      "cost_per_use": 0.0,
-      "cost_time_unit": "hours",
-      "speed_unit": "m/min"
+      "cost_per_use": 0.0
     }
   ],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
   "network": {
     "nodes": [
       {
@@ -758,7 +708,6 @@
       }
     ]
   },
-  "annotations": [],
   "submodels": {
     "Truck arrivals": {
       "info": {
@@ -966,8 +915,8 @@
       "blocks": [
         {
           "name": "arrive",
-          "description": "Trucks",
           "type": "CREATE",
+          "description": "Trucks",
           "position": [
             0.0,
             0.0
@@ -982,7 +931,6 @@
             "schedule_name": {
               "$arg": "truck_schedule"
             },
-            "distribution": "Constant",
             "dist_params": {
               "value": "interval if interval_distribution == 'fixed' else (EXPO(interval) if interval_distribution == 'exponential' else TRIA(0.5 * interval, interval, 1.5 * interval))"
             },
@@ -993,7 +941,6 @@
             "max_arrivals": {
               "$arg": "max_trucks"
             },
-            "start_time": 0,
             "sequence": {
               "$arg": "route"
             }
@@ -1001,8 +948,8 @@
         },
         {
           "name": "load",
-          "description": "One truckload",
           "type": "BATCH",
+          "description": "One truckload",
           "position": [
             200.0,
             0.0
@@ -1014,14 +961,13 @@
             "batched_entity_type": {
               "$arg": "truck_type"
             },
-            "max_wait": "",
             "max_wait_time_unit": "minutes"
           }
         },
         {
           "name": "manifest",
-          "description": "Stamp the load",
           "type": "ASSIGN",
+          "description": "Stamp the load",
           "position": [
             400.0,
             0.0
@@ -1037,8 +983,8 @@
         },
         {
           "name": "trucks",
-          "description": "Trucks leaving the yard",
           "type": "SUB_EXIT",
+          "description": "Trucks leaving the yard",
           "position": [
             600.0,
             0.0
@@ -1215,20 +1161,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Trucks arriving",
           "type": "SUB_ENTRY",
+          "description": "Trucks arriving",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_dock",
-          "description": "Dock",
           "type": "STATION",
+          "description": "Dock",
           "position": [
             200.0,
             0.0
@@ -1242,43 +1185,30 @@
         },
         {
           "name": "take_door",
-          "description": "Take a door",
           "type": "SEIZE",
+          "description": "Take a door",
           "position": [
             400.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
-            "dist_params": {
-              "value": 0.0
-            },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
-            "resource_name": "$Log Dock door",
-            "balk_if": "",
-            "renege_after": "",
-            "renege_time_unit": "base"
+            "resource_name": "$Log Dock door"
           }
         },
         {
           "name": "unload",
-          "description": "Unload the truck with the crew",
           "type": "PROCESS",
+          "description": "Unload the truck with the crew",
           "position": [
             600.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "entity.pallets * (unload_time if time_distribution == 'fixed' else (EXPO(unload_time) if time_distribution == 'exponential' else TRIA(0.5 * unload_time, unload_time, 1.5 * unload_time)))"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": {
               "$arg": "crew"
             }
@@ -1286,38 +1216,30 @@
         },
         {
           "name": "free_door",
-          "description": "Free the door",
           "type": "RELEASE",
+          "description": "Free the door",
           "position": [
             800.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
-            "dist_params": {
-              "value": 0.0
-            },
             "time_unit": "minutes",
             "resource_name": "$Log Dock door"
           }
         },
         {
           "name": "drop",
-          "description": "Pallets off the truck",
           "type": "SEPARATE",
+          "description": "Pallets off the truck",
           "position": [
             900.0,
             0.0
-          ],
-          "params": {
-            "mode": "Retain original entity values",
-            "attrs": []
-          }
+          ]
         },
         {
           "name": "at_door",
-          "description": "The pallets are at the dock",
           "type": "ASSIGN",
+          "description": "The pallets are at the dock",
           "position": [
             950.0,
             0.0
@@ -1333,15 +1255,12 @@
         },
         {
           "name": "out",
-          "description": "Pallets off the truck",
           "type": "SUB_EXIT",
+          "description": "Pallets off the truck",
           "position": [
             1050.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -1550,20 +1469,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Pallets starting here",
           "type": "SUB_ENTRY",
+          "description": "Pallets starting here",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_zone",
-          "description": "Storage zone",
           "type": "STATION",
+          "description": "Storage zone",
           "position": [
             200.0,
             0.0
@@ -1577,29 +1493,27 @@
         },
         {
           "name": "claim",
-          "description": "Claim a position",
           "type": "TRANSFER",
+          "description": "Claim a position",
           "position": [
             400.0,
             0.0
           ],
           "params": {
             "level": "$Log Zone stock",
-            "amount": "1",
             "mode": "add",
             "wait": true
           }
         },
         {
           "name": "putaway",
-          "description": "Put away",
           "type": "DELAY",
+          "description": "Put away",
           "position": [
             600.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
             "dist_params": {
               "value": "putaway_time"
             },
@@ -1608,15 +1522,14 @@
         },
         {
           "name": "route",
-          "description": "Dwell and leave, or stay as stock",
           "type": "DECIDE",
+          "description": "Dwell and leave, or stay as stock",
           "position": [
             800.0,
             0.0
           ],
           "params": {
             "mode": "Condition",
-            "probs": [],
             "conditions": [
               "1 if mode == 'pass_through' else 0"
             ]
@@ -1624,14 +1537,13 @@
         },
         {
           "name": "dwell",
-          "description": "Waiting to be picked",
           "type": "DELAY",
+          "description": "Waiting to be picked",
           "position": [
             1000.0,
             -80.0
           ],
           "params": {
-            "distribution": "Constant",
             "dist_params": {
               "value": "dwell_time if dwell_distribution == 'fixed' else (EXPO(dwell_time) if dwell_distribution == 'exponential' else TRIA(0.5 * dwell_time, dwell_time, 1.5 * dwell_time))"
             },
@@ -1640,46 +1552,33 @@
         },
         {
           "name": "stored",
-          "description": "In stock, waiting for an order",
           "type": "DISPOSE",
+          "description": "In stock, waiting for an order",
           "position": [
             1000.0,
             80.0
-          ],
-          "params": {
-            "distribution": "Constant",
-            "dist_params": {
-              "value": 0.0
-            },
-            "time_unit": "base"
-          }
+          ]
         },
         {
           "name": "release_position",
-          "description": "Give the position back",
           "type": "TRANSFER",
+          "description": "Give the position back",
           "position": [
             1200.0,
             -80.0
           ],
           "params": {
-            "level": "$Log Zone stock",
-            "amount": "1",
-            "mode": "remove",
-            "wait": false
+            "level": "$Log Zone stock"
           }
         },
         {
           "name": "out",
-          "description": "Picked from stock",
           "type": "SUB_EXIT",
+          "description": "Picked from stock",
           "position": [
             1400.0,
             -80.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -1933,8 +1832,8 @@
       "blocks": [
         {
           "name": "arrive",
-          "description": "Customer orders",
           "type": "CREATE",
+          "description": "Customer orders",
           "position": [
             0.0,
             0.0
@@ -1949,23 +1848,19 @@
             "schedule_name": {
               "$arg": "order_schedule"
             },
-            "distribution": "Constant",
             "dist_params": {
               "value": "interval if interval_distribution == 'fixed' else EXPO(interval)"
             },
             "time_unit": "minutes",
-            "entities_per_arrival": 1,
             "max_arrivals": {
               "$arg": "max_orders"
-            },
-            "start_time": 0,
-            "sequence": ""
+            }
           }
         },
         {
           "name": "size",
-          "description": "Lines and stock needed",
           "type": "ASSIGN",
+          "description": "Lines and stock needed",
           "position": [
             200.0,
             0.0
@@ -1985,15 +1880,14 @@
         },
         {
           "name": "promised",
-          "description": "Is a lead time promised?",
           "type": "DECIDE",
+          "description": "Is a lead time promised?",
           "position": [
             400.0,
             0.0
           ],
           "params": {
             "mode": "Condition",
-            "probs": [],
             "conditions": [
               "1 if due_in > 0 else 0"
             ]
@@ -2001,8 +1895,8 @@
         },
         {
           "name": "due",
-          "description": "Promise it",
           "type": "ASSIGN",
+          "description": "Promise it",
           "position": [
             600.0,
             -60.0
@@ -2018,8 +1912,8 @@
         },
         {
           "name": "out",
-          "description": "Orders leave",
           "type": "SUB_EXIT",
+          "description": "Orders leave",
           "position": [
             800.0,
             0.0
@@ -2254,8 +2148,8 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Orders arrive",
           "type": "SUB_ENTRY",
+          "description": "Orders arrive",
           "position": [
             0.0,
             0.0
@@ -2266,8 +2160,8 @@
         },
         {
           "name": "at_pick",
-          "description": "Order picking",
           "type": "STATION",
+          "description": "Order picking",
           "position": [
             200.0,
             0.0
@@ -2281,8 +2175,8 @@
         },
         {
           "name": "need",
-          "description": "What it needs, and whether the zone has it",
           "type": "ASSIGN",
+          "description": "What it needs, and whether the zone has it",
           "position": [
             400.0,
             0.0
@@ -2310,8 +2204,8 @@
         },
         {
           "name": "fill",
-          "description": "Fill rate",
           "type": "RECORD",
+          "description": "Fill rate",
           "position": [
             600.0,
             0.0
@@ -2324,8 +2218,8 @@
         },
         {
           "name": "draw",
-          "description": "Take the stock out of the zone",
           "type": "TRANSFER",
+          "description": "Take the stock out of the zone",
           "position": [
             800.0,
             0.0
@@ -2335,14 +2229,13 @@
               "$arg": "stock_level"
             },
             "amount": "entity.log_pick_qty",
-            "mode": "remove",
             "wait": true
           }
         },
         {
           "name": "waited",
-          "description": "Backorder time",
           "type": "RECORD",
+          "description": "Backorder time",
           "position": [
             1000.0,
             0.0
@@ -2355,21 +2248,17 @@
         },
         {
           "name": "pick",
-          "description": "Pick the order",
           "type": "PROCESS",
+          "description": "Pick the order",
           "position": [
             1200.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "setup_time + time_per_line * entity.log_pick_lines"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": {
               "$arg": "pickers"
             }
@@ -2377,8 +2266,8 @@
         },
         {
           "name": "out",
-          "description": "Picked orders leave",
           "type": "SUB_EXIT",
+          "description": "Picked orders leave",
           "position": [
             1400.0,
             0.0
@@ -2564,20 +2453,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Onto the belt",
           "type": "SUB_ENTRY",
+          "description": "Onto the belt",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_belt",
-          "description": "Head of the belt",
           "type": "STATION",
+          "description": "Head of the belt",
           "position": [
             100.0,
             0.0
@@ -2591,8 +2477,8 @@
         },
         {
           "name": "belt",
-          "description": "Belt",
           "type": "CONVEYOR",
+          "description": "Belt",
           "position": [
             200.0,
             0.0
@@ -2619,15 +2505,12 @@
         },
         {
           "name": "out",
-          "description": "Off the belt",
           "type": "SUB_EXIT",
+          "description": "Off the belt",
           "position": [
             400.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -2790,20 +2673,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Pallets starting here",
           "type": "SUB_ENTRY",
+          "description": "Pallets starting here",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_bay",
-          "description": "Shipping",
           "type": "STATION",
+          "description": "Shipping",
           "position": [
             200.0,
             0.0
@@ -2817,8 +2697,8 @@
         },
         {
           "name": "consolidate",
-          "description": "Build a truck load",
           "type": "BATCH",
+          "description": "Build a truck load",
           "position": [
             400.0,
             0.0
@@ -2834,41 +2714,33 @@
         },
         {
           "name": "load",
-          "description": "Load the truck",
           "type": "PROCESS",
+          "description": "Load the truck",
           "position": [
             600.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "load_time_per_pallet * pallets_per_load"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Log Shipping door"
           }
         },
         {
           "name": "unbatch",
-          "description": "Back to pallets",
           "type": "SEPARATE",
+          "description": "Back to pallets",
           "position": [
             800.0,
             0.0
-          ],
-          "params": {
-            "mode": "Retain original entity values",
-            "attrs": []
-          }
+          ]
         },
         {
           "name": "out",
-          "description": "Shipped",
           "type": "SUB_EXIT",
+          "description": "Shipped",
           "position": [
             1000.0,
             0.0
@@ -3287,20 +3159,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Pallets to move",
           "type": "SUB_ENTRY",
+          "description": "Pallets to move",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "carry",
-          "description": "Carry to the next station",
           "type": "TRANSPORT",
+          "description": "Carry to the next station",
           "position": [
             200.0,
             0.0
@@ -3317,8 +3186,8 @@
         },
         {
           "name": "out",
-          "description": "Routing finished",
           "type": "SUB_EXIT",
+          "description": "Routing finished",
           "position": [
             400.0,
             0.0
@@ -3341,7 +3210,6 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Order-driven warehouse (library assets)",
     "category": "Logistics",
@@ -3349,17 +3217,10 @@
     "author": "Naga",
     "notes": "Metres, minutes, metres per minute. Fast movers and bulk pallets have their own zone, their own order stream and their own picking station, so a shortage in one is visible on its own fill rate. The zones open with about half their positions filled and the two streams are sized to roughly balance, which is what makes the demand-surge scenario a real question rather than a foregone conclusion."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 960,
     "warmup": 180,
-    "replications": 5,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 5
   },
   "outputs": {}
 }

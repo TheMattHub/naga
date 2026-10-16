@@ -1,41 +1,26 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
   "timeseries_inputs": [
     {
       "name": "pump",
       "description": "What the pump delivers, litres a minute: 6 for the first 40 minutes, then nothing.",
       "start": 0,
       "step": 40,
-      "time_unit": "minutes",
       "interpolation": "step",
       "beyond": "hold",
-      "values": [
-        6,
-        0
-      ]
+      "values": [6, 0]
     }
   ],
   "levels": [
     {
       "name": "Tank",
       "description": "Water in the tank.",
-      "unit": "litres",
       "capacity": 100,
       "min": 0,
       "initial": 20,
-      "rate_time_unit": "minutes"
+      "unit": "litres"
     }
   ],
   "flows": [
@@ -43,49 +28,21 @@
       "name": "fill",
       "description": "The pump fills the tank; what a full tank cannot take is Spilled.",
       "to": "Tank",
-      "rate": "TS(\"pump\")",
-      "rate_time_unit": "minutes"
+      "rate": "TS(\"pump\")"
     },
     {
       "name": "draw",
       "description": "A constant demand of 2 litres a minute; what an empty tank cannot give is Unmet.",
       "from": "Tank",
-      "rate": "2",
-      "rate_time_unit": "minutes"
+      "rate": "2"
     }
   ],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Tank: fill, overflow and run dry",
     "category": "Teaching",
     "description": "A tank of 100 litres that starts with 20, a pump that delivers 6 litres a minute for 40 minutes and then stops, and a constant demand of 2 litres a minute. Nothing is random and no time step is involved: the level moves in straight lines and the engine computes the instants it reaches a bound. Read the Tank's row: it is full from minute 20 to 40 (80 litres spilled), empty from minute 90 (20 litres of demand unmet), and holds 57 litres on average over the 100 minutes.",
     "notes": "By hand: the level rises by 4 a minute from 20 and reaches 100 at minute 20; the pump's surplus of 4 a minute spills for 20 minutes; from minute 40 the level falls by 2 a minute and reaches 0 at minute 90. Area under the level: 1200 + 2000 + 2500 = 5700 litre-minutes, so the average is 57."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
-  "simulation": {
-    "time_limit": 100,
-    "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
-  },
+  "simulation": {"time_limit": 100, "warmup": 0, "replications": 1},
   "outputs": {}
 }

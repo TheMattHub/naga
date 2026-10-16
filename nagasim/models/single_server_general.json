@@ -1,65 +1,45 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "create_1",
-      "description": "create_1",
       "type": "CREATE",
       "position": [
         200.0,
         320.0
       ],
       "params": {
-        "e_type": "DEFAULT",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 1.0
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        }
       }
     },
     {
       "name": "process_1",
-      "description": "Serve (uniform time)",
       "type": "PROCESS",
+      "description": "Serve (uniform time)",
       "position": [
         520.0,
         320.0
       ],
       "params": {
-        "action": "Seize Delay Release",
         "distribution": "Uniform",
         "dist_params": {
           "low": 0.2,
           "high": 1.4
         },
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Server",
-        "time_unit": "minutes",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Server"
       }
     },
     {
       "name": "dispose_1",
-      "description": "dispose_1",
       "type": "DISPOSE",
       "position": [
         840.0,
         320.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -72,65 +52,30 @@
       "target": "dispose_1"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Server",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLACK"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Single server, general service times (M/G/1)",
     "category": "Teaching",
     "description": "The single-server queue with Poisson arrivals (one a minute) and a service time that is not exponential: uniform between 0.2 and 1.4 minutes, mean 0.8. The server is as busy as in an M/M/1 queue of the same load (80%), but the queue is shorter, because the service time varies less. Read the Server's average queue length: the Pollaczek-Khinchine formula gives lambda^2 E[S^2] / (2 (1 - rho)) = 0.76 / 0.4 = 1.9.",
     "notes": "E[S] = 0.8 and Var[S] = 1.2^2 / 12 = 0.12, so E[S^2] = 0.76 and rho = 0.8. With an exponential service time of the same mean the queue would hold 3.2 on average. A short run scatters widely around 1.9; lengthen the run or add replications to see it settle."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 5500,
     "warmup": 500,
-    "replications": 20,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 20
   },
   "outputs": {}
 }

@@ -55,7 +55,9 @@ from nagasim.core.timeunits import LENGTH_UNITS, SPEED_PATTERN, UNITS, unit_choi
 
 __all__ = ["build_json_schema", "SCHEMA_ID"]
 
-SCHEMA_ID = "https://github.com/TheMattHub/naga/schema/model.json"
+# The engine site publishes one file per schema version at this URL (D470), so a model's
+# `"$schema"` keeps meaning the version it was written for.
+SCHEMA_ID = f"https://thematthub.github.io/naga/schema/model-v{CURRENT_VERSION}.json"
 _DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
 # A number or an expression string: every numeric distribution parameter, and
@@ -2535,7 +2537,7 @@ def build_json_schema() -> dict:
     return {
         "$schema": _DRAFT,
         "$id": SCHEMA_ID,
-        "title": f"Naga model, schema version {CURRENT_VERSION}",
+        "title": f"Model file, schema version {CURRENT_VERSION}",
         "description": (
             "A discrete-event model: blocks, the links between them, the resources they seize, "
             "and the run settings. Generated from the live registries "
@@ -2543,6 +2545,9 @@ def build_json_schema() -> dict:
             f"{arrival_modes}."),
         "type": "object",
         "properties": {
+            "$schema": {"type": "string", "format": "uri",
+                        "description": "This schema's URL, for an editor's completion and "
+                                       "checks; the engine ignores it."},
             "schema_version": {"type": "integer", "maximum": CURRENT_VERSION,
                                "default": CURRENT_VERSION,
                                "description": "Older files migrate on load; a newer one is refused."},

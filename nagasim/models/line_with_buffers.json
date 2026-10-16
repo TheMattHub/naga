@@ -1,33 +1,23 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "release",
-      "description": "Raw parts released every minute -- more than the line can make, so station 1 is never starved",
       "type": "CREATE",
+      "description": "Raw parts released every minute -- more than the line can make, so station 1 is never starved",
       "position": [
         60.0,
         200.0
       ],
       "params": {
-        "e_type": "Part",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 1.0
-        },
-        "time_unit": "minutes",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "start_time_unit": "minutes"
+        "e_type": "Part"
       }
     },
     {
       "name": "station_1",
-      "description": "Station 1",
       "type": "SUBMODEL",
+      "description": "Station 1",
       "position": [
         260.0,
         200.0
@@ -45,14 +35,13 @@
           "cost_rate": 0.5,
           "mtbf": 120.0,
           "mttr": 10.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "station_2",
-      "description": "Station 2",
       "type": "SUBMODEL",
+      "description": "Station 2",
       "position": [
         500.0,
         200.0
@@ -70,14 +59,13 @@
           "cost_rate": 0.5,
           "mtbf": 120.0,
           "mttr": 10.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "buffer_1",
-      "description": "Buffer 1: the space between stations 1 and 2",
       "type": "SUBMODEL",
+      "description": "Buffer 1: the space between stations 1 and 2",
       "position": [
         400.0,
         200.0
@@ -90,14 +78,13 @@
         "definition": "Buffer",
         "arguments": {
           "places": 4
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "station_3",
-      "description": "Station 3 -- the unreliable one (MTBF 60 min, MTTR 12 min)",
       "type": "SUBMODEL",
+      "description": "Station 3 -- the unreliable one (MTBF 60 min, MTTR 12 min)",
       "position": [
         740.0,
         200.0
@@ -115,14 +102,13 @@
           "cost_rate": 0.5,
           "mtbf": 60.0,
           "mttr": 12.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "buffer_2",
-      "description": "Buffer 2: the space between stations 2 and 3",
       "type": "SUBMODEL",
+      "description": "Buffer 2: the space between stations 2 and 3",
       "position": [
         640.0,
         200.0
@@ -135,14 +121,13 @@
         "definition": "Buffer",
         "arguments": {
           "places": 4
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "station_4",
-      "description": "Station 4",
       "type": "SUBMODEL",
+      "description": "Station 4",
       "position": [
         980.0,
         200.0
@@ -160,14 +145,13 @@
           "cost_rate": 0.5,
           "mtbf": 120.0,
           "mttr": 10.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "buffer_3",
-      "description": "Buffer 3: the space between stations 3 and 4",
       "type": "SUBMODEL",
+      "description": "Buffer 3: the space between stations 3 and 4",
       "position": [
         880.0,
         200.0
@@ -180,25 +164,17 @@
         "definition": "Buffer",
         "arguments": {
           "places": 4
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "finished",
-      "description": "Finished parts leave the line",
       "type": "DISPOSE",
+      "description": "Finished parts leave the line",
       "position": [
         1300.0,
         200.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -341,17 +317,13 @@
       ]
     }
   ],
-  "orders": [],
   "resources": [
     {
       "name": "Mfg Machine",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
   "failures": [
     {
       "name": "Mfg Machine breakdown",
@@ -374,43 +346,23 @@
       }
     }
   ],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "Part",
       "shape": "square",
-      "color": "BLUE",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLUE"
     }
   ],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "Mfg Buffer stock",
       "description": "Jobs waiting in the buffer.",
-      "unit": "jobs",
       "min": 0,
       "initial": 0,
       "capacity": 5,
-      "rate_time_unit": "minutes"
+      "unit": "jobs"
     }
   ],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Workstation": {
       "info": {
@@ -687,33 +639,26 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Jobs arrive",
           "type": "SUB_ENTRY",
+          "description": "Jobs arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "machine",
-          "description": "Machine",
           "type": "PROCESS",
+          "description": "Machine",
           "position": [
             250.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "process_time if time_distribution == 'fixed' else (EXPO(process_time) if time_distribution == 'exponential' else TRIA(0.7 * process_time, process_time, 1.3 * process_time))"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Mfg Machine",
             "setup": "setup_time",
             "setup_key": "entity.e_type",
@@ -726,15 +671,12 @@
         },
         {
           "name": "out",
-          "description": "Jobs leave",
           "type": "SUB_EXIT",
+          "description": "Jobs leave",
           "position": [
             600.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -791,20 +733,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Jobs arrive",
           "type": "SUB_ENTRY",
+          "description": "Jobs arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "places",
-          "description": "Buffer",
           "type": "BUFFER",
+          "description": "Buffer",
           "position": [
             250.0,
             0.0
@@ -818,15 +757,12 @@
         },
         {
           "name": "out",
-          "description": "Jobs leave",
           "type": "SUB_EXIT",
+          "description": "Jobs leave",
           "position": [
             500.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -842,23 +778,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Line with finite buffers",
     "category": "Manufacturing",
     "description": "A four-station line with finite buffers between the stations: when a buffer is full the machine behind it stays BLOCKED, holding its finished part. Station 3 breaks down often, so where the twelve available buffer places go decides the line's throughput -- the scenarios move them around without ever adding any."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 2400,
     "warmup": 240,
-    "replications": 10,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 10
   },
   "outputs": {}
 }

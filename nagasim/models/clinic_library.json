@@ -1,10 +1,11 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "walk_in_arrivals_by_time_of_day_1",
-      "description": "Walk-in arrivals by time of day",
       "type": "SUBMODEL",
+      "description": "Walk-in arrivals by time of day",
       "position": [
         -620.0,
         0.0
@@ -14,14 +15,13 @@
         "arguments": {
           "arrival_schedule": "Svc Walk-in Day",
           "entity_type": "PATIENT"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "triage_1",
-      "description": "Triage",
       "type": "SUBMODEL",
+      "description": "Triage",
       "position": [
         -380.0,
         0.0
@@ -35,14 +35,13 @@
         "arguments": {
           "class1_probability": 0.15,
           "class2_probability": 0.45
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "service_target_1",
-      "description": "Service target",
       "type": "SUBMODEL",
+      "description": "Service target",
       "position": [
         -140.0,
         0.0
@@ -55,14 +54,13 @@
         "definition": "Service target",
         "arguments": {
           "target": 45.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "service_desk_with_impatient_customers_1",
-      "description": "Service desk with impatient customers",
       "type": "SUBMODEL",
+      "description": "Service desk with impatient customers",
       "position": [
         100.0,
         0.0
@@ -79,14 +77,13 @@
           "staff_pool": "Svc Impatient Staff",
           "max_queue": 6,
           "patience": 20.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "consultation_treatment_room_1",
-      "description": "Consultation / treatment room",
       "type": "SUBMODEL",
+      "description": "Consultation / treatment room",
       "position": [
         340.0,
         0.0
@@ -102,41 +99,26 @@
           "time_distribution": "exponential",
           "rooms": 2,
           "clinician_pool": "Svc Clinicians"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "dispose_1",
-      "description": "Seen",
       "type": "DISPOSE",
+      "description": "Seen",
       "position": [
         580.0,
         -60.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     },
     {
       "name": "dispose_2",
-      "description": "Left without being seen",
       "type": "DISPOSE",
+      "description": "Left without being seen",
       "position": [
         340.0,
         200.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -175,37 +157,30 @@
       "source_port": "out"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Svc Impatient Staff",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "Svc Room",
       "capacity": 1,
       "discipline": "LowestValueFirst",
-      "ranking_expr": "entity.priority",
-      "cost_time_unit": "hours"
+      "ranking_expr": "entity.priority"
     },
     {
       "name": "Svc Clinicians",
       "capacity": 2,
       "discipline": "LowestValueFirst",
-      "ranking_expr": "entity.priority",
-      "cost_time_unit": "hours"
+      "ranking_expr": "entity.priority"
     }
   ],
-  "resource_sets": [],
   "schedules": [
     {
       "name": "Svc Walk-in Day",
       "kind": "arrival",
       "repeat": true,
-      "time_unit": "minutes",
       "points": [
         [
           120,
@@ -230,34 +205,13 @@
       ]
     }
   ],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "PATIENT",
       "shape": "circle",
-      "color": "BLUE",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLUE"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Walk-in arrivals by time of day": {
       "info": {
@@ -315,8 +269,8 @@
       "blocks": [
         {
           "name": "arrive",
-          "description": "Walk-ins arrive",
           "type": "CREATE",
+          "description": "Walk-ins arrive",
           "position": [
             0.0,
             0.0
@@ -333,23 +287,17 @@
             "dist_params": {
               "rate": 1.0
             },
-            "time_unit": "minutes",
-            "entities_per_arrival": 1,
-            "max_arrivals": 0,
-            "start_time": 0
+            "time_unit": "minutes"
           }
         },
         {
           "name": "out",
-          "description": "Arrivals leave",
           "type": "SUB_EXIT",
+          "description": "Arrivals leave",
           "position": [
             250.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -414,20 +362,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Patients arrive",
           "type": "SUB_ENTRY",
+          "description": "Patients arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "classify",
-          "description": "Draw an acuity class and set priority",
           "type": "ASSIGN",
+          "description": "Draw an acuity class and set priority",
           "position": [
             250.0,
             0.0
@@ -447,15 +392,12 @@
         },
         {
           "name": "out",
-          "description": "Classified patients leave",
           "type": "SUB_EXIT",
+          "description": "Classified patients leave",
           "position": [
             500.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -505,20 +447,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Entities arrive",
           "type": "SUB_ENTRY",
+          "description": "Entities arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "stamp",
-          "description": "Set the due date",
           "type": "ASSIGN",
+          "description": "Set the due date",
           "position": [
             250.0,
             0.0
@@ -534,15 +473,12 @@
         },
         {
           "name": "out",
-          "description": "Entities leave",
           "type": "SUB_EXIT",
+          "description": "Entities leave",
           "position": [
             500.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -673,33 +609,26 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Customers arrive",
           "type": "SUB_ENTRY",
+          "description": "Customers arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "serve",
-          "description": "Serve at the desk",
           "type": "PROCESS",
+          "description": "Serve at the desk",
           "position": [
             250.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "service_time if time_distribution == 'fixed' else (EXPO(service_time) if time_distribution == 'exponential' else TRIA(0.7 * service_time, service_time, 1.3 * service_time))"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": {
               "$arg": "staff_pool"
             },
@@ -710,8 +639,8 @@
         },
         {
           "name": "served",
-          "description": "Customers served",
           "type": "SUB_EXIT",
+          "description": "Customers served",
           "position": [
             500.0,
             -80.0
@@ -722,8 +651,8 @@
         },
         {
           "name": "left",
-          "description": "Left without service",
           "type": "SUB_EXIT",
+          "description": "Left without service",
           "position": [
             500.0,
             80.0
@@ -905,32 +834,23 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Patients arrive",
           "type": "SUB_ENTRY",
+          "description": "Patients arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "take_clinician",
-          "description": "Call a clinician",
           "type": "SEIZE",
+          "description": "Call a clinician",
           "position": [
             200.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
-            "dist_params": {
-              "value": 0.0
-            },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": {
               "$arg": "clinician_pool"
             }
@@ -938,37 +858,29 @@
         },
         {
           "name": "room",
-          "description": "Room and consultation",
           "type": "PROCESS",
+          "description": "Room and consultation",
           "position": [
             400.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "consult_time if time_distribution == 'fixed' else (EXPO(consult_time) if time_distribution == 'exponential' else TRIA(0.7 * consult_time, consult_time, 1.3 * consult_time))"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Svc Room"
           }
         },
         {
           "name": "free_clinician",
-          "description": "Clinician leaves",
           "type": "RELEASE",
+          "description": "Clinician leaves",
           "position": [
             600.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
-            "dist_params": {
-              "value": 0.0
-            },
             "time_unit": "minutes",
             "resource_name": {
               "$arg": "clinician_pool"
@@ -977,15 +889,12 @@
         },
         {
           "name": "out",
-          "description": "Patients leave",
           "type": "SUB_EXIT",
+          "description": "Patients leave",
           "position": [
             800.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -1009,23 +918,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Walk-in clinic (library assets)",
     "category": "Services",
     "description": "One 10-hour day of a walk-in clinic, built entirely from the Services and healthcare library. Walk-ins arrive on a time-of-day schedule (two peaks, about 125 patients), Triage stamps an acuity class and priority, a service target stamps a 45-minute due date, a one-person registration desk models balking and reneging (its 'left' exit is left-without-being-seen) and a consultation room -- a room plus a clinician -- serves the registered patients most-urgent-first. A clinic day is a TERMINATING simulation, so it runs with no warm-up: the quiet start and the end-of-day tail are part of the answer, not transient error to discard."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 600,
     "warmup": 0,
-    "replications": 10,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 10
   },
   "outputs": {}
 }

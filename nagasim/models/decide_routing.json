@@ -1,64 +1,54 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "create_1",
-      "description": "create_1",
       "type": "CREATE",
       "position": [
         200.0,
         400.0
       ],
       "params": {
-        "e_type": "DEFAULT",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 1.0
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        }
       }
     },
     {
       "name": "decide_1",
-      "description": "30/70 split",
       "type": "DECIDE",
+      "description": "30/70 split",
       "position": [
         520.0,
         400.0
       ],
       "params": {
-        "mode": "Chance",
         "probs": [
           0.3,
           0.7
-        ],
-        "conditions": []
+        ]
       }
     },
     {
       "name": "delay_fast",
-      "description": "Fast path",
       "type": "DELAY",
+      "description": "Fast path",
       "position": [
         800.0,
         260.0
       ],
       "params": {
-        "distribution": "Constant",
         "dist_params": {
           "value": 0.5
-        },
-        "time_unit": "minutes"
+        }
       }
     },
     {
       "name": "delay_slow",
-      "description": "Slow path",
       "type": "DELAY",
+      "description": "Slow path",
       "position": [
         800.0,
         560.0
@@ -69,25 +59,16 @@
           "low": 1.0,
           "high": 3.0,
           "mode": 2.0
-        },
-        "time_unit": "minutes"
+        }
       }
     },
     {
       "name": "dispose_1",
-      "description": "dispose_1",
       "type": "DISPOSE",
       "position": [
         1120.0,
         400.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -119,57 +100,22 @@
       "target": "dispose_1"
     }
   ],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLACK"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Chance-based branching (DECIDE)",
     "category": "Teaching",
     "description": "A CREATE feeding a DECIDE that splits arrivals 30/70 between a fast and a slow DELAY path -- the minimal example of chance-based branching."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 500,
     "warmup": 0,
-    "replications": 3,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 3
   },
   "outputs": {}
 }

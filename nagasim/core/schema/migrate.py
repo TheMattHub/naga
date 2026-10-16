@@ -136,6 +136,29 @@ def _migrate_hold_mode(layout: dict) -> None:
             params["mode"] = "Condition"
 
 
+def _fill_block_defaults(blocks) -> None:
+    """Mutate *blocks* in place: every parameter a block leaves out gets its published
+    `ParamSpec` default, and a missing `description` the block's name (#496, D471). This is
+    the one place "absent" gets its meaning, so a short file and a long one are the same
+    model to every reader (the run, validation, `naga diff`, the model hash), and `naga fmt`
+    may leave out exactly what lands here. A required parameter is never filled: its absence
+    is the file's error to report."""
+    from nagasim.core.block_registry import BLOCK_REGISTRY      # blocks import the schema
+
+    for block in blocks if isinstance(blocks, list) else ():
+        if not isinstance(block, dict):
+            continue                    # validation's to report
+        spec = BLOCK_REGISTRY.get(str(block.get("type", "")).upper())
+        params = block.setdefault("params", {})
+        if spec is None or not isinstance(params, dict):
+            continue
+        if isinstance(block.get("name"), str):
+            block.setdefault("description", block["name"])
+        for param in spec.params:
+            if not param.required and param.name not in params:
+                params[param.name] = copy.deepcopy(param.default)
+
+
 def _strip_consent(layout: dict) -> dict:
     """Drop every consent key from the data sources, in place.
 
@@ -183,6 +206,13 @@ def migrate(layout: dict) -> dict:
     simulation.setdefault("energy_price", 0)                    # v23 -> v24 (PHASE6 W3 M1)
     if version is None or version < 4:
         _shift_positions_to_centre(migrated)  # v(<4) stored top-left; v4 stores centre
+    # An editor's pointer to the JSON Schema, not part of the model (D470).
+    migrated.pop("$schema", None)
+    _fill_block_defaults(migrated.get("blocks"))
+    for definition in (migrated.get("submodels") or {}).values() \
+            if isinstance(migrated.get("submodels"), dict) else ():
+        if isinstance(definition, dict):
+            _fill_block_defaults(definition.get("blocks"))
     from nagasim.core.quantities import fill_units              # kept off the module import
     fill_units(migrated)                                        # v27 -> v28 (D159), idempotent
     migrated["schema_version"] = CURRENT_VERSION

@@ -93,6 +93,30 @@ build_json_schema() -> dict
 
 The current model file format as a draft 2020-12 JSON Schema.
 
+## nagasim.build.Model
+
+```text
+class Model(**top)
+```
+
+A model. Keywords are top-level sections (`simulation`, `info`, `network`, ...).
+
+## nagasim.build.export_python
+
+```text
+export_python(layout) -> str
+```
+
+Builder code for *layout* (a path or a dict): running it gives `m`, whose `to_dict()` is `naga fmt`'s form of the model. Every value is written as a Python literal (`repr`): no text of the model ever becomes code.
+
+## nagasim.modelfmt.minimal
+
+```text
+minimal(layout) -> dict
+```
+
+The shortest form of *layout* (a path or a dict) that migrates to the same model.
+
 ## nagasim.core.document.ModelDocument
 
 ```text

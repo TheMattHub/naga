@@ -1,9 +1,9 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "widget_arrives",
-      "description": "widget_arrives",
       "type": "CREATE",
       "position": [
         200.0,
@@ -11,22 +11,14 @@
       ],
       "params": {
         "e_type": "WIDGET",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
-        "distribution": "Constant",
         "dist_params": {
           "value": 10.0
         },
-        "entities_per_arrival": 1,
-        "max_arrivals": 1,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        "max_arrivals": 1
       }
     },
     {
       "name": "gadget_arrives",
-      "description": "gadget_arrives",
       "type": "CREATE",
       "position": [
         200.0,
@@ -34,78 +26,48 @@
       ],
       "params": {
         "e_type": "GADGET",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
-        "distribution": "Constant",
         "dist_params": {
           "value": 10.0
         },
-        "entities_per_arrival": 1,
         "max_arrivals": 1,
-        "start_time": 100,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        "start_time": 100
       }
     },
     {
       "name": "cut",
-      "description": "cut",
       "type": "PROCESS",
       "position": [
         460.0,
         320.0
       ],
       "params": {
-        "action": "Seize Delay Release",
-        "resource_name": "Cutter",
-        "distribution": "Constant",
         "dist_params": {
           "value": "TABLE('ProcessTime', entity.e_type, 'Cut')"
         },
-        "priority": 0,
-        "quantity": 1,
-        "time_unit": "minutes",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Cutter"
       }
     },
     {
       "name": "pack",
-      "description": "pack",
       "type": "PROCESS",
       "position": [
         700.0,
         320.0
       ],
       "params": {
-        "action": "Seize Delay Release",
-        "resource_name": "Packer",
-        "distribution": "Constant",
         "dist_params": {
           "value": "TABLE('ProcessTime', entity.e_type, 'Pack')"
         },
-        "priority": 0,
-        "quantity": 1,
-        "time_unit": "minutes",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Packer"
       }
     },
     {
       "name": "leave",
-      "description": "leave",
       "type": "DISPOSE",
       "position": [
         940.0,
         320.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -126,25 +88,18 @@
       "target": "leave"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Cutter",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "Packer",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
   "tables": [
     {
       "name": "ProcessTime",
@@ -171,56 +126,22 @@
       "column_mode": "exact"
     }
   ],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "WIDGET",
       "shape": "square",
-      "color": "BLUE",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLUE"
     },
     {
       "name": "GADGET",
       "shape": "circle",
-      "color": "GREEN",
-      "holding_cost_time_unit": "minutes"
+      "color": "GREEN"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Process time lookup table",
     "category": "Teaching",
     "description": "Process time by product and station, read from a 2-D lookup table. Deterministic on purpose: one WIDGET and one GADGET (entity types are upper-cased by the engine, so the table's keys are too), far enough apart that neither ever queues, so every KPI is exact by hand."
-  },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
-  "simulation": {
-    "time_limit": null,
-    "warmup": 0,
-    "replications": 1,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
   },
   "outputs": {}
 }

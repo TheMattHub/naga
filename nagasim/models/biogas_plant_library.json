@@ -1,10 +1,11 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "feedstock_delivery_1",
-      "description": "Feedstock delivery",
       "type": "SUBMODEL",
+      "description": "Feedstock delivery",
       "position": [
         -900.0,
         -300.0
@@ -28,8 +29,8 @@
     },
     {
       "name": "feedstock_delivery_2",
-      "description": "Feedstock delivery",
       "type": "SUBMODEL",
+      "description": "Feedstock delivery",
       "position": [
         -900.0,
         60.0
@@ -54,8 +55,8 @@
     },
     {
       "name": "feed_line_1",
-      "description": "Feed line",
       "type": "SUBMODEL",
+      "description": "Feed line",
       "position": [
         -600.0,
         -300.0
@@ -87,8 +88,8 @@
     },
     {
       "name": "feed_line_2",
-      "description": "Feed line",
       "type": "SUBMODEL",
+      "description": "Feed line",
       "position": [
         -600.0,
         60.0
@@ -120,8 +121,8 @@
     },
     {
       "name": "digester_1",
-      "description": "Digester",
       "type": "SUBMODEL",
+      "description": "Digester",
       "position": [
         -300.0,
         -120.0
@@ -142,14 +143,13 @@
           "inlet_tag": "bio_feed",
           "outlet_tag": "digestate",
           "vs_tag": "bio_vs"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "digester_2",
-      "description": "Digester",
       "type": "SUBMODEL",
+      "description": "Digester",
       "position": [
         -60.0,
         -120.0
@@ -172,14 +172,13 @@
           "inlet_tag": "digestate",
           "outlet_tag": "digestate_final",
           "vs_tag": "none"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "gas_holder_with_flare_1",
-      "description": "Gas holder with flare",
       "type": "SUBMODEL",
+      "description": "Gas holder with flare",
       "position": [
         200.0,
         -300.0
@@ -198,14 +197,13 @@
           "flare_start_level": 92.0,
           "flare_stop_level": 85.0,
           "flare_ch4_slip": 1.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "chp_unit_1",
-      "description": "CHP unit",
       "type": "SUBMODEL",
+      "description": "CHP unit",
       "position": [
         500.0,
         -420.0
@@ -240,8 +238,8 @@
     },
     {
       "name": "upgrading_unit_1",
-      "description": "Upgrading unit",
       "type": "SUBMODEL",
+      "description": "Upgrading unit",
       "position": [
         500.0,
         -180.0
@@ -274,8 +272,8 @@
     },
     {
       "name": "grid_injection_1",
-      "description": "Grid injection",
       "type": "SUBMODEL",
+      "description": "Grid injection",
       "position": [
         800.0,
         -180.0
@@ -291,14 +289,13 @@
           "price": 0.55,
           "incentive": 0.3,
           "price_profile": "Bio biomethane price"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "heat_balance_1",
-      "description": "Heat balance",
       "type": "SUBMODEL",
+      "description": "Heat balance",
       "position": [
         500.0,
         60.0
@@ -315,14 +312,13 @@
           "boiler_merit": 3,
           "design_ch4_share": 0.537,
           "bought_heat_price": 0.06
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "digestate_store_1",
-      "description": "Digestate store",
       "type": "SUBMODEL",
+      "description": "Digestate store",
       "position": [
         200.0,
         240.0
@@ -339,14 +335,13 @@
           "spreading_window": "Bio spreading windows",
           "spreading_rate": 400.0,
           "inlet_tag": "digestate_final"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "electrical_load_1",
-      "description": "Electrical load",
       "type": "SUBMODEL",
+      "description": "Electrical load",
       "position": [
         800.0,
         60.0
@@ -360,14 +355,13 @@
         "arguments": {
           "peak_kw": 15.0,
           "profile": "Nrg load profile"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "grid_connection_1",
-      "description": "Grid connection",
       "type": "SUBMODEL",
+      "description": "Grid connection",
       "position": [
         800.0,
         -420.0
@@ -385,8 +379,7 @@
           "import_limit_kw": 300.0,
           "export_limit_kw": 800.0,
           "demand_charge_per_kw": 0.0
-        },
-        "preset": ""
+        }
       }
     }
   ],
@@ -490,34 +483,28 @@
       ]
     }
   ],
-  "orders": [],
   "resources": [
     {
       "name": "Bio Feeder unit",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "Bio CHP engine",
       "capacity": 1,
       "discipline": "FIFO",
-      "capacity_schedule": "Bio CHP maintenance",
-      "cost_time_unit": "hours"
+      "capacity_schedule": "Bio CHP maintenance"
     },
     {
       "name": "Bio Upgrading skid",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
   "schedules": [
     {
       "name": "Bio Delivery campaign",
       "kind": "arrival",
-      "time_unit": "hours",
       "off_value": 0,
       "weekly": {
         "mon": [
@@ -584,7 +571,6 @@
       "name": "Bio CHP maintenance",
       "kind": "capacity",
       "repeat": true,
-      "time_unit": "hours",
       "points": [
         [
           720,
@@ -660,8 +646,6 @@
       }
     }
   ],
-  "tables": [],
-  "sequences": [],
   "variables": [
     {
       "name": "bio_flare_gate",
@@ -673,8 +657,7 @@
       "name": "BIO_TRUCK",
       "shape": "square",
       "color": "BROWN",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "hours"
+      "holding_cost": 0.0
     }
   ],
   "timeseries_inputs": [
@@ -683,7 +666,6 @@
       "description": "A flat multiplier: the recipe is fed evenly around the clock.",
       "start": 0,
       "step": 24,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -695,7 +677,6 @@
       "description": "A batch feeder: 3.0 for eight hours from 06:00, 0 for the rest of the day. Its daily mean is 1, so the daily amount is still the recipe.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -730,7 +711,6 @@
       "description": "SYNTHETIC hourly day-ahead price, EUR/kWh: one weekly pattern (a morning and an evening peak, 10% lower at the weekend) repeated over the year. It is not a real market series -- replace it with one before a price-led dispatch conclusion is quoted.",
       "start": "2026-09-07T00:00:00",
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "period": "weekly",
@@ -910,7 +890,6 @@
       "description": "A flat multiplier of 1.0 on the biomethane price. Replace the values for an indexed or seasonal price.",
       "start": 0,
       "step": 24,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -920,7 +899,6 @@
     {
       "name": "Bio spreading windows",
       "description": "Spreading allowed (1) or closed (0), one value per REAL WEEK from the maize harvest on Monday 7 September 2026: the autumn window, the winter closure and the spring reopening are dates, not offsets. Illustrative -- replace it with your own regulation.",
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "period": "yearly",
@@ -1031,14 +1009,14 @@
         "2027-08-16T00:00:00",
         "2027-08-23T00:00:00",
         "2027-08-30T00:00:00"
-      ]
+      ],
+      "time_unit": "hours"
     },
     {
       "name": "Nrg load profile",
       "description": "Illustrative household demand, normalised to its evening peak, one value per hour of the day (about 9 times the peak in kWh per day).",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -1073,7 +1051,6 @@
       "description": "Illustrative time-of-use import price, EUR/kWh, by hour of the day.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -1108,7 +1085,6 @@
       "description": "A flat import price, EUR/kWh: one value, held for the whole run.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "hold",
       "values": [
@@ -1120,7 +1096,6 @@
       "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day: cleaner around midday, dirtier at the evening peak.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -1155,16 +1130,14 @@
     {
       "name": "Bio Feed store",
       "description": "Feedstock in store, tonnes (solid) or cubic metres (liquid). Unmet is the feeding shortfall: what the feeder asked for and the store could not give.",
-      "unit": "t or m3",
       "capacity": 4000,
       "min": 0,
       "initial": 2000,
-      "rate_time_unit": "hours"
+      "unit": "t or m3"
     },
     {
       "name": "Bio Digester content",
       "description": "What is in the tank, m3. It fills to the working volume and then passes through what it is fed.",
-      "unit": "m3",
       "capacity": 3000,
       "min": 0,
       "initial": 2970,
@@ -1175,12 +1148,11 @@
           "signal": "$Bio digester full"
         }
       ],
-      "rate_time_unit": "hours"
+      "unit": "m3"
     },
     {
       "name": "Bio Gas holder",
       "description": "Biogas in store, Nm3, with its methane share tracked as a component: every inflow carries its own share and every outflow draws the holder's blend, so methane is conserved exactly.",
-      "unit": "Nm3",
       "capacity": 1500,
       "min": 0,
       "initial": 450,
@@ -1202,16 +1174,15 @@
           "variable": "$bio_flare_gate"
         }
       ],
-      "rate_time_unit": "hours"
+      "unit": "Nm3"
     },
     {
       "name": "Bio Digestate store",
       "description": "Digestate waiting for a spreading window, m3. Spilled is overflow: the store filled while spreading was closed.",
-      "unit": "m3",
       "capacity": 6000,
       "min": 0,
       "initial": 1200,
-      "rate_time_unit": "hours"
+      "unit": "m3"
     }
   ],
   "flows": [
@@ -1219,63 +1190,54 @@
       "name": "Bio Feeding",
       "description": "The feeder, drawing the daily recipe out of the store. Its rate reads the feeder unit's availability, so a breakdown stops the feed for exactly the repair time.",
       "rate": "AVAILABLE(\"$Bio Feeder unit\") * feed_rate / 24 * TS(feed_profile)",
-      "rate_time_unit": "hours",
       "from": "$Bio Feed store"
     },
     {
       "name": "Bio Storage loss",
       "description": "Losses in store, proportional to what is in store.",
       "rate": "LEVEL(\"$Bio Feed store\") * storage_loss_percent_month / 100 / 720",
-      "rate_time_unit": "hours",
       "from": "$Bio Feed store"
     },
     {
       "name": "Bio Feed volume",
       "description": "What the feeder delivered, as VOLUME on the site bus -- the digester's inflow and the denominator of its retention time.",
       "rate": "FLOW(\"$Bio Feeding\") / bulk_density",
-      "rate_time_unit": "hours",
       "tag": "bio_feed"
     },
     {
       "name": "Bio VS load",
       "description": "Organic load delivered, kg of volatile solids per hour, on the site bus -- the numerator of the digester's loading rate.",
       "rate": "FLOW(\"$Bio Feeding\") * 1000 * dry_matter_percent / 100 * volatile_solids_percent / 100",
-      "rate_time_unit": "hours",
       "tag": "bio_vs"
     },
     {
       "name": "Bio Biogas",
       "description": "Gas released by this feedstock, days after it was fed, on its own yield curve. It is posted on the bus; the gas holder takes the total in.",
       "rate": "CONV(\"$Bio Yield\")",
-      "rate_time_unit": "hours",
       "tag": "biogas"
     },
     {
       "name": "Bio CH4",
       "description": "The methane inside that gas, on the bus, so the holder can blend several feed lines correctly.",
       "rate": "CONV(\"$Bio Yield\") * ch4_share",
-      "rate_time_unit": "hours",
       "tag": "bio_ch4"
     },
     {
       "name": "Bio Digester in",
       "description": "Everything the feed lines on this circuit delivered, as volume.",
       "rate": "FLOWSUM(inlet_tag + circuit)",
-      "rate_time_unit": "hours",
       "to": "$Bio Digester content"
     },
     {
       "name": "Bio Gas mass out",
       "description": "Mass leaving the tank with the gas -- the documented mass-coupling pattern that keeps the balance closed.",
       "rate": "FLOWSUM(\"biogas\" + circuit) * gas_density",
-      "rate_time_unit": "hours",
       "from": "$Bio Digester content"
     },
     {
       "name": "Bio Digestate out",
       "description": "Overflow. A vessel that has reached its working volume passes through what comes in, less the mass that left with the gas -- which is the constant-volume (CSTR) assumption, and is exact: the level does not move, so there is no feedback loop to oscillate. A vessel started part full simply fills until it gets there, and the threshold on the level makes that instant exact.",
       "rate": "max(FLOW(\"$Bio Digester in\") - FLOW(\"$Bio Gas mass out\"), 0) * (1 if LEVEL(\"$Bio Digester content\") >= working_volume * 0.99 else 0)",
-      "rate_time_unit": "hours",
       "tag": "digestate",
       "from": "$Bio Digester content"
     },
@@ -1283,21 +1245,18 @@
       "name": "Bio Digester heat",
       "description": "Process heating asked of the heat bus, kW th.",
       "rate": "working_volume * heat_per_m3",
-      "rate_time_unit": "hours",
       "tag": "heat_demand"
     },
     {
       "name": "Bio Digester mixing",
       "description": "Mixer load on the site electricity bus, kW.",
       "rate": "mixing_kw",
-      "rate_time_unit": "hours",
       "tag": "demand"
     },
     {
       "name": "Bio OLR",
       "description": "Organic loading rate, kg VS per m3 of working volume per day. Its Avg Rate is the KPI and its Starts count how often the design limit was crossed upwards.",
       "rate": "FLOWSUM(vs_tag + circuit) * 24 / working_volume",
-      "rate_time_unit": "hours",
       "thresholds": [
         {
           "value": 4.0,
@@ -1311,28 +1270,24 @@
     {
       "name": "Bio HRT",
       "description": "Hydraulic retention time in days, instantaneous: working volume over the volume fed per day. Its Avg Rate is the time-averaged retention time, capped at 999 days while nothing is being fed.",
-      "rate": "min(working_volume / max(FLOWSUM(inlet_tag + circuit) * 24, 1e-9), 999)",
-      "rate_time_unit": "hours"
+      "rate": "min(working_volume / max(FLOWSUM(inlet_tag + circuit) * 24, 1e-9), 999)"
     },
     {
       "name": "Bio Residual gas",
       "description": "Gas still released by the material that has left the tank -- what makes this asset a post-digester. Zero when the residual yield is 0.",
       "rate": "CONV(\"$Bio Residual\")",
-      "rate_time_unit": "hours",
       "tag": "biogas"
     },
     {
       "name": "Bio Residual CH4",
       "description": "The methane inside the residual gas, for the holder's blend.",
       "rate": "CONV(\"$Bio Residual\") * residual_ch4_share",
-      "rate_time_unit": "hours",
       "tag": "bio_ch4"
     },
     {
       "name": "Bio Gas in",
       "description": "Everything posted as biogas on this circuit, with the blended methane share of what is arriving right now.",
       "rate": "FLOWSUM(\"biogas\" + circuit)",
-      "rate_time_unit": "hours",
       "to": "$Bio Gas holder",
       "components": {
         "ch4": "FLOWSUM(\"bio_ch4\" + circuit) / max(FLOWSUM(\"biogas\" + circuit), 1e-9)"
@@ -1342,7 +1297,6 @@
       "name": "Bio Gas out",
       "description": "Gas served to the consumers. When the holder runs empty the engine scales it down, and the consumers see exactly that through the supply tag.",
       "rate": "FLOWSUM(\"bio_gas_demand\" + circuit)",
-      "rate_time_unit": "hours",
       "tag": "bio_gas_supply",
       "from": "$Bio Gas holder"
     },
@@ -1350,35 +1304,30 @@
       "name": "Bio CH4 out",
       "description": "The methane inside the served gas, so every consumer reads the same blend without naming this holder.",
       "rate": "FLOW(\"$Bio Gas out\") * FRACTION(\"$Bio Gas holder\", \"ch4\")",
-      "rate_time_unit": "hours",
       "tag": "bio_ch4_supply"
     },
     {
       "name": "Bio Flare",
       "description": "The flare. It lights on the upper threshold, burns exactly the surplus so the holder holds there, and goes out on the lower one.",
       "rate": "min(flare_capacity, max(FLOWSUM(\"biogas\" + circuit) - FLOWSUM(\"bio_gas_demand\" + circuit), 0)) * (1 if VAR(\"$bio_flare_gate\") > capacity * (flare_start_level + flare_stop_level) / 200 else 0)",
-      "rate_time_unit": "hours",
       "from": "$Bio Gas holder"
     },
     {
       "name": "Bio Flare slip",
       "description": "Methane that leaves the flare unburned, charged at the methane GWP factor.",
       "rate": "FLOW(\"$Bio Flare\") * FRACTION(\"$Bio Gas holder\", \"ch4\") * flare_ch4_slip / 100",
-      "rate_time_unit": "hours",
       "emission_factor": "slip_impact_factor"
     },
     {
       "name": "Bio Flare combustion",
       "description": "Methane the flare burned. Its impact factor is 0 by default: the carbon is biogenic.",
       "rate": "FLOW(\"$Bio Flare\") * FRACTION(\"$Bio Gas holder\", \"ch4\") * (1 - flare_ch4_slip / 100)",
-      "rate_time_unit": "hours",
       "emission_factor": "flare_impact_factor"
     },
     {
       "name": "Bio CHP gas demand",
       "description": "Gas the engine asks the holder for, at its rated output and the design methane share. It is 0 while the engine is unavailable or the dispatch rule says stand down, and it is semi-continuous below the minimum load.",
       "rate": "AVAILABLE(\"$Bio CHP engine\") * electrical_kw / (electrical_efficiency * ch4_lhv * (max(design_ch4_share, min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0)))) * (1 if dispatch == \"always\" else (1 if TS(electricity_price) * electrical_efficiency * ch4_lhv > biomethane_value else 0))",
-      "rate_time_unit": "hours",
       "tag": "bio_gas_demand",
       "priority": 1,
       "min_rate": 200.0
@@ -1387,7 +1336,6 @@
       "name": "Bio CHP gas burned",
       "description": "What the engine actually got: its own demand, capped by what the holder served after the units ahead of it took their share.",
       "rate": "max(min(FLOW(\"$Bio CHP gas demand\"), FLOWSUM(\"bio_gas_supply\" + circuit) - FLOWSUM(\"bio_gas_demand\" + circuit, merit)), 0)",
-      "rate_time_unit": "hours",
       "thresholds": [
         {
           "value": 1.0,
@@ -1402,7 +1350,6 @@
       "name": "Bio CHP electricity",
       "description": "Electrical output on the site bus, kW: the methane actually burned times its heating value times the electrical efficiency. A negative price is revenue.",
       "rate": "FLOW(\"$Bio CHP gas burned\") * (min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0)) * ch4_lhv * electrical_efficiency",
-      "rate_time_unit": "hours",
       "tag": "generation",
       "price": "-TS(electricity_price) if sell_electricity else 0"
     },
@@ -1410,7 +1357,6 @@
       "name": "Bio CHP heat",
       "description": "Recoverable heat on the heat bus, kW th.",
       "rate": "FLOW(\"$Bio CHP gas burned\") * (min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0)) * ch4_lhv * thermal_efficiency",
-      "rate_time_unit": "hours",
       "tag": "heat_supply",
       "priority": 1
     },
@@ -1418,14 +1364,12 @@
       "name": "Bio CHP operating cost",
       "description": "Service and consumables, priced per kWh generated.",
       "rate": "FLOW(\"$Bio CHP electricity\")",
-      "rate_time_unit": "hours",
       "price": 0.02
     },
     {
       "name": "Bio Upgrading gas demand",
       "description": "Raw gas the unit asks the holder for.",
       "rate": "AVAILABLE(\"$Bio Upgrading skid\") * capacity_nm3_h * (1 if dispatch == \"always\" else (1 if biomethane_value > TS(electricity_price) * chp_efficiency * ch4_lhv else 0))",
-      "rate_time_unit": "hours",
       "tag": "bio_gas_demand",
       "priority": 2,
       "min_rate": 200.0
@@ -1433,82 +1377,70 @@
     {
       "name": "Bio Upgrading gas in",
       "description": "Raw gas actually treated: its own demand, capped by what the holder served after the units ahead of it took their share.",
-      "rate": "max(min(FLOW(\"$Bio Upgrading gas demand\"), FLOWSUM(\"bio_gas_supply\" + circuit) - FLOWSUM(\"bio_gas_demand\" + circuit, merit)), 0)",
-      "rate_time_unit": "hours"
+      "rate": "max(min(FLOW(\"$Bio Upgrading gas demand\"), FLOWSUM(\"bio_gas_supply\" + circuit) - FLOWSUM(\"bio_gas_demand\" + circuit, merit)), 0)"
     },
     {
       "name": "Bio Biomethane",
       "description": "Biomethane produced, Nm3 of methane per hour, on the site bus. The Grid injection asset takes it.",
       "rate": "FLOW(\"$Bio Upgrading gas in\") * (min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0)) * methane_recovery / 100",
-      "rate_time_unit": "hours",
       "tag": "biomethane"
     },
     {
       "name": "Bio Upgrading slip",
       "description": "Methane vented with the off-gas, charged at the methane GWP factor.",
       "rate": "FLOW(\"$Bio Upgrading gas in\") * (min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0)) * (1 - methane_recovery / 100)",
-      "rate_time_unit": "hours",
       "emission_factor": 20.0
     },
     {
       "name": "Bio Upgrading power",
       "description": "Electrical load of the unit on the site bus, kW.",
       "rate": "FLOW(\"$Bio Upgrading gas in\") * electricity_per_nm3",
-      "rate_time_unit": "hours",
       "tag": "demand"
     },
     {
       "name": "Bio Upgrading operating cost",
       "description": "Consumables and service, per cubic metre of raw gas treated.",
       "rate": "FLOW(\"$Bio Upgrading gas in\")",
-      "rate_time_unit": "hours",
       "price": 0.02
     },
     {
       "name": "Bio Injection",
       "description": "Biomethane injected, Nm3 of methane per hour. A negative price is revenue.",
       "rate": "min(FLOWSUM(\"biomethane\"), injection_capacity)",
-      "rate_time_unit": "hours",
       "tag": "bio_injected",
       "price": "-(price * TS(price_profile) + incentive)"
     },
     {
       "name": "Bio Curtailed biomethane",
       "description": "Biomethane the connection could not take. A non-zero total here says the injection capacity, not the upgrading unit, is the binding constraint.",
-      "rate": "max(FLOWSUM(\"biomethane\") - injection_capacity, 0)",
-      "rate_time_unit": "hours"
+      "rate": "max(FLOWSUM(\"biomethane\") - injection_capacity, 0)"
     },
     {
       "name": "Bio Heat served",
       "description": "Process heat actually covered by the CHP and the boiler, kW th.",
-      "rate": "min(FLOWSUM(\"heat_supply\", 9), FLOWSUM(\"heat_demand\"))",
-      "rate_time_unit": "hours"
+      "rate": "min(FLOWSUM(\"heat_supply\", 9), FLOWSUM(\"heat_demand\"))"
     },
     {
       "name": "Bio Heat surplus",
       "description": "Heat the site cannot use, kW th. A heat-offtake business case starts here.",
-      "rate": "max(FLOWSUM(\"heat_supply\", 9) - FLOWSUM(\"heat_demand\"), 0)",
-      "rate_time_unit": "hours"
+      "rate": "max(FLOWSUM(\"heat_supply\", 9) - FLOWSUM(\"heat_demand\"), 0)"
     },
     {
       "name": "Bio Boiler gas demand",
       "description": "Gas the boiler asks the holder for, sized on the heat still missing after the CHP. Its merit number keeps it behind the engines.",
       "rate": "min(boiler_capacity_kw, max(FLOWSUM(\"heat_demand\") - FLOWSUM(\"heat_supply\", boiler_merit), 0)) / (boiler_efficiency * ch4_lhv * (max(design_ch4_share, min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0))))",
-      "rate_time_unit": "hours",
       "tag": "bio_gas_demand",
       "priority": 3
     },
     {
       "name": "Bio Boiler gas burned",
       "description": "What the boiler actually got from the holder.",
-      "rate": "max(min(FLOW(\"$Bio Boiler gas demand\"), FLOWSUM(\"bio_gas_supply\" + circuit) - FLOWSUM(\"bio_gas_demand\" + circuit, boiler_merit)), 0)",
-      "rate_time_unit": "hours"
+      "rate": "max(min(FLOW(\"$Bio Boiler gas demand\"), FLOWSUM(\"bio_gas_supply\" + circuit) - FLOWSUM(\"bio_gas_demand\" + circuit, boiler_merit)), 0)"
     },
     {
       "name": "Bio Boiler heat",
       "description": "Boiler output on the heat bus, kW th.",
       "rate": "FLOW(\"$Bio Boiler gas burned\") * (min(FLOWSUM(\"bio_ch4_supply\" + circuit) / max(FLOWSUM(\"bio_gas_supply\" + circuit), 1e-9), 1.0)) * ch4_lhv * boiler_efficiency",
-      "rate_time_unit": "hours",
       "tag": "heat_supply",
       "priority": 3
     },
@@ -1516,7 +1448,6 @@
       "name": "Bio Heat bought",
       "description": "Heat bought in because neither the CHP nor the boiler could cover the demand, kW th.",
       "rate": "max(FLOWSUM(\"heat_demand\") - FLOWSUM(\"heat_supply\", 9), 0)",
-      "rate_time_unit": "hours",
       "tag": "heat_supply",
       "priority": 9,
       "price": 0.06
@@ -1525,28 +1456,24 @@
       "name": "Bio Digestate in",
       "description": "Digestate arriving from the vessels on this circuit.",
       "rate": "FLOWSUM(inlet_tag + circuit)",
-      "rate_time_unit": "hours",
       "to": "$Bio Digestate store"
     },
     {
       "name": "Bio Spreading out",
       "description": "Digestate leaving to the fields, only while a window is open.",
       "rate": "spreading_rate / 24 * TS(spreading_window)",
-      "rate_time_unit": "hours",
       "from": "$Bio Digestate store"
     },
     {
       "name": "Nrg load",
       "description": "Site demand drawn from the bus, kW.",
       "rate": "TS(profile) * peak_kw",
-      "rate_time_unit": "hours",
       "tag": "demand"
     },
     {
       "name": "Nrg import",
       "description": "Whatever the site could not cover itself, up to the connection limit, kW.",
       "rate": "min(max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\"), 0), import_limit_kw)",
-      "rate_time_unit": "hours",
       "price": "TS(import_profile)",
       "emission_factor": "TS(intensity_profile)",
       "tag": "import",
@@ -1556,14 +1483,12 @@
       "name": "Nrg unserved",
       "description": "Demand the connection limit could not deliver, kW.",
       "rate": "max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\") - FLOW(\"$Nrg import\"), 0)",
-      "rate_time_unit": "hours",
       "tag": "unserved"
     },
     {
       "name": "Nrg export",
       "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
       "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
-      "rate_time_unit": "hours",
       "price": "-export_price",
       "tag": "export"
     },
@@ -1571,7 +1496,6 @@
       "name": "Nrg curtailed",
       "description": "Generation that was neither used, stored nor exported, kW.",
       "rate": "max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\") - FLOW(\"$Nrg export\"), 0)",
-      "rate_time_unit": "hours",
       "tag": "curtailed"
     }
   ],
@@ -1579,9 +1503,7 @@
     {
       "name": "Bio Yield",
       "description": "Feed in, biogas out over the following days on this feedstock's release curve. Cohorts close hourly.",
-      "unit": "Nm3",
       "cohort_interval": 1,
-      "time_unit": "hours",
       "substrates": [
         {
           "name": "feed",
@@ -1595,14 +1517,13 @@
           "initial_feed_rate": 0.5,
           "feed_time_unit": "hours"
         }
-      ]
+      ],
+      "unit": "Nm3"
     },
     {
       "name": "Bio Residual",
       "description": "Residual gas from the digestate leaving the vessel.",
-      "unit": "Nm3",
       "cohort_interval": 1,
-      "time_unit": "hours",
       "substrates": [
         {
           "name": "digestate",
@@ -1615,7 +1536,8 @@
           },
           "feed_time_unit": "hours"
         }
-      ]
+      ],
+      "unit": "Nm3"
     }
   ],
   "fixed_costs": [
@@ -1632,17 +1554,6 @@
       "category": "Capital"
     }
   ],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Feedstock delivery": {
       "info": {
@@ -1902,8 +1813,8 @@
       "blocks": [
         {
           "name": "arrive",
-          "description": "Trucks arrive",
           "type": "CREATE",
+          "description": "Trucks arrive",
           "position": [
             0.0,
             0.0
@@ -1918,21 +1829,16 @@
             "schedule_name": {
               "$arg": "schedule"
             },
-            "distribution": "Constant",
             "dist_params": {
               "value": "interval if interval_distribution == 'fixed' else EXPO(interval)"
             },
-            "time_unit": "hours",
-            "entities_per_arrival": 1,
-            "max_arrivals": 0,
-            "start_time": 0,
-            "sequence": ""
+            "time_unit": "hours"
           }
         },
         {
           "name": "load",
-          "description": "Load on board",
           "type": "ASSIGN",
+          "description": "Load on board",
           "position": [
             180.0,
             0.0
@@ -1948,22 +1854,21 @@
         },
         {
           "name": "tonnes",
-          "description": "Tonnes delivered",
           "type": "RECORD",
+          "description": "Tonnes delivered",
           "position": [
             360.0,
             0.0
           ],
           "params": {
             "stat_name": "$Bio tonnes delivered",
-            "kind": "count",
             "expr": "entity.bio_load"
           }
         },
         {
           "name": "purchase",
-          "description": "Feedstock purchase",
           "type": "RECORD",
+          "description": "Feedstock purchase",
           "position": [
             540.0,
             0.0
@@ -1977,14 +1882,13 @@
         },
         {
           "name": "unload",
-          "description": "Unloading",
           "type": "DELAY",
+          "description": "Unloading",
           "position": [
             720.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
             "dist_params": {
               "value": "unload_time if unload_distribution == 'fixed' else (EXPO(unload_time) if unload_distribution == 'exponential' else TRIA(0.5 * unload_time, unload_time, 1.5 * unload_time))"
             },
@@ -1993,8 +1897,8 @@
         },
         {
           "name": "out",
-          "description": "Trucks leave",
           "type": "SUB_EXIT",
+          "description": "Trucks leave",
           "position": [
             900.0,
             0.0
@@ -2533,8 +2437,8 @@
       "blocks": [
         {
           "name": "deliveries",
-          "description": "Trucks arrive",
           "type": "SUB_ENTRY",
+          "description": "Trucks arrive",
           "position": [
             0.0,
             0.0
@@ -2545,8 +2449,8 @@
         },
         {
           "name": "unload",
-          "description": "Unload into the store",
           "type": "TRANSFER",
+          "description": "Unload into the store",
           "position": [
             200.0,
             0.0
@@ -2560,32 +2464,25 @@
         },
         {
           "name": "stored",
-          "description": "Tonnes into the store",
           "type": "RECORD",
+          "description": "Tonnes into the store",
           "position": [
             400.0,
             0.0
           ],
           "params": {
             "stat_name": "$Bio tonnes stored",
-            "kind": "count",
             "expr": "entity.bio_load if load_from_truck else unload_amount"
           }
         },
         {
           "name": "away",
-          "description": "Truck leaves",
           "type": "DISPOSE",
+          "description": "Truck leaves",
           "position": [
             600.0,
             0.0
-          ],
-          "params": {
-            "distribution": "Constant",
-            "dist_params": {
-              "value": 0.0
-            }
-          }
+          ]
         }
       ],
       "links": [
@@ -4709,7 +4606,6 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Biogas plant (library assets)",
     "category": "Energy",
@@ -4717,22 +4613,16 @@
     "author": "Naga",
     "notes": "Total Cost is the annual margin, negated: feedstock purchases, CHP and upgrading operating cost and annualised capex, CHP starts, bought heat and grid import, less the electricity and biomethane revenue. That makes it the objective a sizing run minimises: naga optimize --factor blocks.<holder>.params.arguments.capacity --factor blocks.<upgrading>.params.arguments.capacity_nm3_h --factor blocks.<chp>.params.arguments.electrical_kw --response system/Total Cost --goal min. The CHP sells its own output at the hourly price series and the grid connection's export price is 0, so the electricity revenue is booked once. Both the price series and the spreading windows are SYNTHETIC. Total Impact is the methane slipped by the flare and the upgrading unit plus the grid import's carbon intensity; biogenic CO2 is not counted."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 8760,
     "warmup": 0,
     "replications": 1,
     "time_unit": "hours",
-    "currency": "EUR",
     "timeseries_points": 365,
     "calendar": {
       "start": "2026-09-07T00:00:00",
       "timezone": "Europe/Rome"
-    },
-    "energy_price": 0,
-    "length_unit": "meters"
+    }
   },
   "outputs": {}
 }

@@ -1,10 +1,11 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "robot_arm_cell_1",
-      "description": "Robot arm cell",
       "type": "SUBMODEL",
+      "description": "Robot arm cell",
       "position": [
         200.0,
         100.0
@@ -14,15 +15,13 @@
         0.0
       ],
       "params": {
-        "definition": "Robot arm cell",
-        "arguments": {},
-        "preset": ""
+        "definition": "Robot arm cell"
       }
     },
     {
       "name": "safety_zone_1",
-      "description": "Safety zone",
       "type": "SUBMODEL",
+      "description": "Safety zone",
       "position": [
         400.0,
         -60.0
@@ -32,15 +31,13 @@
         7.0
       ],
       "params": {
-        "definition": "Safety zone",
-        "arguments": {},
-        "preset": ""
+        "definition": "Safety zone"
       }
     },
     {
       "name": "cobot_cell_1",
-      "description": "Cobot cell",
       "type": "SUBMODEL",
+      "description": "Cobot cell",
       "position": [
         400.0,
         100.0
@@ -54,14 +51,13 @@
         "arguments": {
           "hrc": "separation",
           "zone": "safety_zone_1/zone"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "palletiser_1",
-      "description": "Palletiser",
       "type": "SUBMODEL",
+      "description": "Palletiser",
       "position": [
         800.0,
         300.0
@@ -75,14 +71,13 @@
         "arguments": {
           "cases_per_pallet": 8,
           "pallet_change_time": 10.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "amr_fleet_1",
-      "description": "AMR fleet",
       "type": "SUBMODEL",
+      "description": "AMR fleet",
       "position": [
         800.0,
         100.0
@@ -96,14 +91,13 @@
         "arguments": {
           "home_node": "line_out",
           "destination": "Pallet in"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "charger_1",
-      "description": "Charger",
       "type": "SUBMODEL",
+      "description": "Charger",
       "position": [
         1000.0,
         -60.0
@@ -113,15 +107,13 @@
         22.0
       ],
       "params": {
-        "definition": "Charger",
-        "arguments": {},
-        "preset": ""
+        "definition": "Charger"
       }
     },
     {
       "name": "mobile_cobot_fleet_1",
-      "description": "Mobile cobot fleet",
       "type": "SUBMODEL",
+      "description": "Mobile cobot fleet",
       "position": [
         400.0,
         500.0
@@ -134,14 +126,13 @@
         "definition": "Mobile cobot fleet",
         "arguments": {
           "home_node": "raw"
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "tended_machine_1",
-      "description": "Tended machine",
       "type": "SUBMODEL",
+      "description": "Tended machine",
       "position": [
         400.0,
         660.0
@@ -155,35 +146,25 @@
         "arguments": {
           "station": "Lathe",
           "process_time": 40.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "cases",
-      "description": "A case every 20 s",
       "type": "CREATE",
+      "description": "A case every 20 s",
       "position": [
         0.0,
         100.0
       ],
       "params": {
-        "e_type": "DEFAULT",
-        "arrival_mode": "Interarrival",
-        "distribution": "Constant",
         "dist_params": {
           "value": 20.0
-        },
-        "time_unit": "seconds",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "start_time_unit": "seconds"
+        }
       }
     },
     {
       "name": "Line out",
-      "description": "Line out",
       "type": "STATION",
       "position": [
         600.0,
@@ -196,7 +177,6 @@
     },
     {
       "name": "Pallet in",
-      "description": "Pallet in",
       "type": "STATION",
       "position": [
         600.0,
@@ -209,62 +189,39 @@
     },
     {
       "name": "pallets",
-      "description": "Full pallets leave",
       "type": "DISPOSE",
+      "description": "Full pallets leave",
       "position": [
         1000.0,
         300.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "seconds"
-      }
+      ]
     },
     {
       "name": "shuttled",
-      "description": "The AMR's own exit (the case goes on from Pallet in)",
       "type": "DISPOSE",
+      "description": "The AMR's own exit (the case goes on from Pallet in)",
       "position": [
         1000.0,
         100.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "seconds"
-      }
+      ]
     },
     {
       "name": "blanks",
-      "description": "A blank every 90 s",
       "type": "CREATE",
+      "description": "A blank every 90 s",
       "position": [
         0.0,
         500.0
       ],
       "params": {
-        "e_type": "DEFAULT",
-        "arrival_mode": "Interarrival",
-        "distribution": "Constant",
         "dist_params": {
           "value": 90.0
         },
-        "time_unit": "seconds",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "sequence": "Tend",
-        "start_time_unit": "seconds"
+        "sequence": "Tend"
       }
     },
     {
       "name": "Raw",
-      "description": "Raw",
       "type": "STATION",
       "position": [
         200.0,
@@ -277,7 +234,6 @@
     },
     {
       "name": "Finished",
-      "description": "Finished",
       "type": "STATION",
       "position": [
         800.0,
@@ -290,35 +246,21 @@
     },
     {
       "name": "parts",
-      "description": "Machined parts leave",
       "type": "DISPOSE",
+      "description": "Machined parts leave",
       "position": [
         1000.0,
         500.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "seconds"
-      }
+      ]
     },
     {
       "name": "tended",
-      "description": "The mobile cobot's own exit",
       "type": "DISPOSE",
+      "description": "The mobile cobot's own exit",
       "position": [
         600.0,
         500.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "seconds"
-      }
+      ]
     }
   ],
   "links": [
@@ -383,46 +325,36 @@
       "target": "parts"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Auto Robot",
       "capacity": 1,
       "discipline": "FIFO",
       "cost_busy": 0.0,
-      "cost_idle": 0.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 0.0
     },
     {
       "name": "Auto Cobot",
       "capacity": 1,
       "discipline": "FIFO",
       "cost_busy": 0.0,
-      "cost_idle": 0.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 0.0
     },
     {
       "name": "Auto Palletiser",
       "capacity": 1,
       "discipline": "FIFO",
       "cost_busy": 0.0,
-      "cost_idle": 0.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 0.0
     },
     {
       "name": "Auto Machine",
       "capacity": 1,
       "discipline": "FIFO",
       "cost_busy": 0.0,
-      "cost_idle": 0.0,
-      "cost_time_unit": "hours"
+      "cost_idle": 0.0
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
   "sequences": [
     {
       "name": "Tend",
@@ -436,19 +368,13 @@
       ]
     }
   ],
-  "variables": [],
   "entities": [
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "seconds"
+      "color": "BLACK"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
   "fixed_costs": [
     {
       "name": "Auto Robot capex",
@@ -501,7 +427,6 @@
       "speed_empty": 90.0,
       "load_time": "0.3",
       "unload_time": "0.3",
-      "time_unit": "minutes",
       "home": "",
       "park": "stay",
       "dispatch": "nearest",
@@ -509,7 +434,6 @@
       "cost_busy": 0.0,
       "cost_idle": 0.0,
       "cost_per_use": 0.0,
-      "cost_time_unit": "hours",
       "power": {
         "busy": 0.4
       },
@@ -521,7 +445,7 @@
         "opportunity_below": 0.8
       },
       "length_m": 1.0,
-      "speed_unit": "m/s"
+      "time_unit": "minutes"
     },
     {
       "name": "Auto Mobile cobots",
@@ -530,7 +454,6 @@
       "speed_empty": 90.0,
       "load_time": "0.3",
       "unload_time": "0.3",
-      "time_unit": "minutes",
       "home": "",
       "park": "stay",
       "dispatch": "nearest",
@@ -538,7 +461,6 @@
       "cost_busy": 0.0,
       "cost_idle": 0.0,
       "cost_per_use": 0.0,
-      "cost_time_unit": "hours",
       "power": {
         "busy": 0.4
       },
@@ -551,7 +473,7 @@
       },
       "arm": "$Auto Mobile arm",
       "length_m": 1.1,
-      "speed_unit": "m/s"
+      "time_unit": "minutes"
     }
   ],
   "motion_profiles": [
@@ -562,9 +484,7 @@
       "accel": 6.0,
       "payload_max": 20.0,
       "payload_derate": 0.7,
-      "collaborative_speed": 0.25,
-      "speed_unit": "m/s",
-      "payload_unit": "kg"
+      "collaborative_speed": 0.25
     },
     {
       "name": "Auto Cobot arm",
@@ -573,9 +493,7 @@
       "accel": 2.0,
       "payload_max": 10.0,
       "payload_derate": 0.8,
-      "collaborative_speed": 0.25,
-      "speed_unit": "m/s",
-      "payload_unit": "kg"
+      "collaborative_speed": 0.25
     },
     {
       "name": "Auto Palletiser arm",
@@ -584,9 +502,7 @@
       "accel": 4.0,
       "payload_max": 180.0,
       "payload_derate": 0.6,
-      "collaborative_speed": 0.25,
-      "speed_unit": "m/s",
-      "payload_unit": "kg"
+      "collaborative_speed": 0.25
     },
     {
       "name": "Auto Mobile arm",
@@ -595,9 +511,7 @@
       "accel": 2.0,
       "payload_max": 10.0,
       "payload_derate": 0.8,
-      "collaborative_speed": 0.25,
-      "speed_unit": "m/s",
-      "payload_unit": "kg"
+      "collaborative_speed": 0.25
     }
   ],
   "chargers": [
@@ -623,12 +537,6 @@
       "power_kw": 1.0
     }
   ],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
   "network": {
     "nodes": [
       {
@@ -761,7 +669,6 @@
       }
     ]
   },
-  "annotations": [],
   "submodels": {
     "Robot arm cell": {
       "info": {
@@ -1255,20 +1162,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Parts arrive",
           "type": "SUB_ENTRY",
+          "description": "Parts arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_cell",
-          "description": "Cell",
           "type": "STATION",
+          "description": "Cell",
           "position": [
             200.0,
             0.0
@@ -1282,20 +1186,14 @@
         },
         {
           "name": "work",
-          "description": "Pick, place and process",
           "type": "MOTION",
+          "description": "Pick, place and process",
           "position": [
             400.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "resource_name": "$Auto Robot",
-            "quantity": 1,
-            "priority": 0,
             "profile": "$Auto Robot arm",
-            "hrc": "none",
-            "time_unit": "seconds",
             "segments": [
               {
                 "kind": "move",
@@ -1328,20 +1226,18 @@
                 "kind": "tool_change",
                 "time": "tool_change_time / cycles_per_tool_change"
               }
-            ]
+            ],
+            "resource_name": "$Auto Robot"
           }
         },
         {
           "name": "out",
-          "description": "Parts leave",
           "type": "SUB_EXIT",
+          "description": "Parts leave",
           "position": [
             600.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -1969,20 +1865,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Parts arrive",
           "type": "SUB_ENTRY",
+          "description": "Parts arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_cell",
-          "description": "Cell",
           "type": "STATION",
+          "description": "Cell",
           "position": [
             200.0,
             0.0
@@ -1996,22 +1889,25 @@
         },
         {
           "name": "work",
-          "description": "Pick, place and process",
           "type": "MOTION",
+          "description": "Pick, place and process",
           "position": [
             400.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "resource_name": "$Auto Cobot",
-            "quantity": 1,
-            "priority": 0,
             "profile": "$Auto Cobot arm",
             "hrc": {
               "$arg": "hrc"
             },
-            "time_unit": "seconds",
+            "zone": {
+              "node": {
+                "$arg": "zone"
+              },
+              "radius_m": {
+                "$arg": "zone_radius_m"
+              }
+            },
             "segments": [
               {
                 "kind": "move",
@@ -2045,27 +1941,17 @@
                 "time": "tool_change_time / cycles_per_tool_change"
               }
             ],
-            "zone": {
-              "node": {
-                "$arg": "zone"
-              },
-              "radius_m": {
-                "$arg": "zone_radius_m"
-              }
-            }
+            "resource_name": "$Auto Cobot"
           }
         },
         {
           "name": "out",
-          "description": "Parts leave",
           "type": "SUB_EXIT",
+          "description": "Parts leave",
           "position": [
             600.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -2529,32 +2415,23 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Cases arrive",
           "type": "SUB_ENTRY",
+          "description": "Cases arrive",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "stack",
-          "description": "Stack a case",
           "type": "MOTION",
+          "description": "Stack a case",
           "position": [
             200.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "resource_name": "$Auto Palletiser",
-            "quantity": 1,
-            "priority": 0,
             "profile": "$Auto Palletiser arm",
-            "hrc": "none",
-            "time_unit": "seconds",
             "segments": [
               {
                 "kind": "move",
@@ -2579,13 +2456,14 @@
                 "kind": "place",
                 "time": "place_time"
               }
-            ]
+            ],
+            "resource_name": "$Auto Palletiser"
           }
         },
         {
           "name": "pallet",
-          "description": "Full pallet",
           "type": "BATCH",
+          "description": "Full pallet",
           "position": [
             400.0,
             0.0
@@ -2594,42 +2472,33 @@
             "batch_size": {
               "$arg": "cases_per_pallet"
             },
-            "batched_entity_type": "Auto Pallet",
-            "max_wait": "",
-            "max_wait_time_unit": "base"
+            "batched_entity_type": "Auto Pallet"
           }
         },
         {
           "name": "change",
-          "description": "Change the pallet",
           "type": "PROCESS",
+          "description": "Change the pallet",
           "position": [
             600.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "pallet_change_time"
             },
             "time_unit": "seconds",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Auto Palletiser"
           }
         },
         {
           "name": "out",
-          "description": "Pallets leave",
           "type": "SUB_EXIT",
+          "description": "Pallets leave",
           "position": [
             800.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -3106,20 +2975,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Parts to move",
           "type": "SUB_ENTRY",
+          "description": "Parts to move",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "carry",
-          "description": "Carry to the next station",
           "type": "TRANSPORT",
+          "description": "Carry to the next station",
           "position": [
             200.0,
             0.0
@@ -3136,8 +3002,8 @@
         },
         {
           "name": "out",
-          "description": "Routing finished",
           "type": "SUB_EXIT",
+          "description": "Routing finished",
           "position": [
             400.0,
             0.0
@@ -3978,20 +3844,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Parts to move",
           "type": "SUB_ENTRY",
+          "description": "Parts to move",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "carry",
-          "description": "Carry to the next station",
           "type": "TRANSPORT",
+          "description": "Carry to the next station",
           "position": [
             200.0,
             0.0
@@ -4008,8 +3871,8 @@
         },
         {
           "name": "out",
-          "description": "Routing finished",
           "type": "SUB_EXIT",
+          "description": "Routing finished",
           "position": [
             400.0,
             0.0
@@ -4284,20 +4147,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Parts arriving by hand",
           "type": "SUB_ENTRY",
+          "description": "Parts arriving by hand",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "at_machine",
-          "description": "Machine",
           "type": "STATION",
+          "description": "Machine",
           "position": [
             200.0,
             0.0
@@ -4349,35 +4209,28 @@
         },
         {
           "name": "machine",
-          "description": "Machine",
           "type": "PROCESS",
+          "description": "Machine",
           "position": [
             400.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "process_time"
             },
             "time_unit": "seconds",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Auto Machine"
           }
         },
         {
           "name": "out",
-          "description": "Finished parts",
           "type": "SUB_EXIT",
+          "description": "Finished parts",
           "position": [
             600.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -4397,23 +4250,16 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Automation floor (robot cells, AMR, palletiser)",
     "category": "Manufacturing",
     "description": "Every asset of the Automation library on one floor: a robot arm cell and a cobot cell in line, an AMR shuttle to a palletiser, and mobile cobots tending a lathe. In the results, read the motion summary (each arm's cycle by phase), the fleet's trips and waiting, and the tending summary for the lathe. Illustrative figures."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 1800,
     "warmup": 0,
     "replications": 3,
-    "time_unit": "seconds",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
+    "time_unit": "seconds"
   },
   "outputs": {}
 }

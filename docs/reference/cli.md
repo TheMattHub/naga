@@ -17,6 +17,8 @@
 | [`naga policy-eval`](#naga-policy-eval) | evaluate a controller against a Policy-mode DECIDE |
 | [`naga schema`](#naga-schema) | JSON Schema of the model file format |
 | [`naga validate`](#naga-validate) | structured validation problems, exit 1 on errors |
+| [`naga fmt`](#naga-fmt) | rewrite model files in their shortest canonical form |
+| [`naga export`](#naga-export) | write a model as Python code that builds it (nagasim.build) |
 | [`naga diff`](#naga-diff) | semantic diff of two model files by record identity |
 | [`naga merge`](#naga-merge) | three-way merge of model files by record identity |
 | [`naga check`](#naga-check) | run a model's assertions and reality checks |
@@ -332,6 +334,41 @@ positional arguments:
 options:
   -h, --help  show this help message and exit
   --json      emit the problems as a JSON array instead of one line each
+```
+
+## naga fmt
+
+```text
+usage: naga fmt [-h] [--check] files [files ...]
+
+Rewrite model files in their shortest canonical form: every value the engine
+fills in anyway left out, keys in one order, "$schema" first. The model, and
+every run of it, stays the same.
+
+positional arguments:
+  files       model JSON files, rewritten in place
+
+options:
+  -h, --help  show this help message and exit
+  --check     change nothing; name each file not in that form and exit 1
+```
+
+## naga export
+
+```text
+usage: naga export [-h] --python [-o OUT] model
+
+Write a model as code that builds it again (nagasim.build). Running the code
+gives the model in the form `naga fmt` writes.
+
+positional arguments:
+  model              path to the model JSON, or a bundled model's name (naga
+                     examples)
+
+options:
+  -h, --help         show this help message and exit
+  --python           Python code using nagasim.build (the one format so far)
+  -o OUT, --out OUT  write the code here instead of printing it
 ```
 
 ## naga diff

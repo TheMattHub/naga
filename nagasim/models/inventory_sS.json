@@ -1,34 +1,26 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "demand",
-      "description": "One customer every 0.25 days",
       "type": "CREATE",
+      "description": "One customer every 0.25 days",
       "position": [
         80.0,
         100.0
       ],
       "params": {
         "e_type": "CUSTOMER",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
-        "distribution": "Constant",
         "dist_params": {
           "value": 0.25
-        },
-        "time_unit": "days",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "sequence": "",
-        "start_time_unit": "days"
+        }
       }
     },
     {
       "name": "take_stock",
-      "description": "Draw 5 units, waiting if the shelf is short",
       "type": "TRANSFER",
+      "description": "Draw 5 units, waiting if the shelf is short",
       "position": [
         260.0,
         100.0
@@ -36,98 +28,72 @@
       "params": {
         "level": "Stock",
         "amount": "5",
-        "mode": "remove",
         "wait": true
       }
     },
     {
       "name": "sold",
-      "description": "Units sold",
       "type": "RECORD",
+      "description": "Units sold",
       "position": [
         440.0,
         100.0
       ],
       "params": {
         "stat_name": "units_sold",
-        "kind": "count",
         "expr": "5"
       }
     },
     {
       "name": "leave",
-      "description": "Customer leaves",
       "type": "DISPOSE",
+      "description": "Customer leaves",
       "position": [
         620.0,
         100.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "days"
-      }
+      ]
     },
     {
       "name": "agent",
-      "description": "One long-lived purchasing agent",
       "type": "CREATE",
+      "description": "One long-lived purchasing agent",
       "position": [
         80.0,
         260.0
       ],
       "params": {
         "e_type": "AGENT",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 1.0
-        },
-        "time_unit": "days",
-        "entities_per_arrival": 1,
-        "max_arrivals": 1,
-        "start_time": 0,
-        "sequence": "",
-        "start_time_unit": "days"
+        "max_arrivals": 1
       }
     },
     {
       "name": "wait_reorder",
-      "description": "Wait for the stock to fall through s",
       "type": "HOLD",
+      "description": "Wait for the stock to fall through s",
       "position": [
         260.0,
         260.0
       ],
       "params": {
-        "mode": "Signal",
-        "signal_name": "reorder",
-        "conditions": [],
-        "scan_interval": 1.0,
-        "scan_interval_unit": "days"
+        "signal_name": "reorder"
       }
     },
     {
       "name": "order_placed",
-      "description": "Replenishment orders placed",
       "type": "RECORD",
+      "description": "Replenishment orders placed",
       "position": [
         440.0,
         260.0
       ],
       "params": {
-        "stat_name": "orders_placed",
-        "kind": "count",
-        "expr": "1"
+        "stat_name": "orders_placed"
       }
     },
     {
       "name": "order_charge",
-      "description": "Ordering cost",
       "type": "RECORD",
+      "description": "Ordering cost",
       "position": [
         440.0,
         380.0
@@ -141,24 +107,22 @@
     },
     {
       "name": "lead_time",
-      "description": "Supplier lead time",
       "type": "DELAY",
+      "description": "Supplier lead time",
       "position": [
         620.0,
         260.0
       ],
       "params": {
-        "distribution": "Constant",
         "dist_params": {
           "value": 1.9
-        },
-        "time_unit": "days"
+        }
       }
     },
     {
       "name": "receive",
-      "description": "Put the order-up-to quantity on the shelf",
       "type": "TRANSFER",
+      "description": "Put the order-up-to quantity on the shelf",
       "position": [
         800.0,
         260.0
@@ -166,8 +130,7 @@
       "params": {
         "level": "Stock",
         "amount": "70",
-        "mode": "add",
-        "wait": false
+        "mode": "add"
       }
     }
   ],
@@ -238,13 +201,6 @@
       ]
     }
   ],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
   "variables": [
     {
       "name": "stock_at_reorder",
@@ -256,23 +212,19 @@
       "name": "CUSTOMER",
       "shape": "circle",
       "color": "BLUE",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "days"
+      "holding_cost": 0.0
     },
     {
       "name": "AGENT",
       "shape": "square",
       "color": "GREY",
-      "holding_cost": 0.0,
-      "holding_cost_time_unit": "days"
+      "holding_cost": 0.0
     }
   ],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "Stock",
       "description": "Units on the shelf. Unmet counts units a customer could not get at once.",
-      "unit": "units",
       "capacity": 200,
       "min": 0,
       "initial": 80,
@@ -284,25 +236,9 @@
           "variable": "stock_at_reorder"
         }
       ],
-      "rate_time_unit": "days"
+      "unit": "units"
     }
   ],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "(s, S) inventory with backorders",
     "category": "Supply chain",
@@ -310,18 +246,12 @@
     "author": "Naga",
     "notes": "s = 50, S = 120, so the order quantity is S - s = 70. Demand is deterministic: 4 customers a day from t=0, 5 units each = 20 units a day. Starting from 80 the stock falls through 50 at t=1.25, the order arrives 1.9 days later with 15 on the shelf and takes it to 85, and that 3.5-day cycle then repeats. Over 34 days: 10 orders placed, 9 received (630 units), 137 customers served (685 units), closing stock 80 + 630 - 685 = 25, and no customer ever waits. Each of the 10 orders carries a 35 EUR ordering cost (a RECORD with kind=cost), so Total Cost is 350 EUR -- a lump sum the engine accrues and itemises in the cost summary, not a rate."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 34,
     "warmup": 0,
     "replications": 1,
     "time_unit": "days",
-    "currency": "EUR",
-    "timeseries_points": 200,
-    "energy_price": 0,
-    "length_unit": "meters"
+    "timeseries_points": 200
   },
   "outputs": {}
 }

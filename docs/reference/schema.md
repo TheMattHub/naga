@@ -81,10 +81,11 @@ A `signals` entry:
 | `field` | The cell to read when the value is a row. |
 | `as` | What the key asserts. |
 | `resource` | A resource or a fleet of the model. |
-| `block` | A block of the flattened model. |
+| `block` | A block of the flattened model ("step": a MOTION block, whose value is the segment its job runs, from 0; null when idle). |
 | `level` | A level of the model. |
-| `fleet` | "vehicle", "load": a fleet of the model. |
-| `unit` | "vehicle", "load": which vehicle of the fleet, from 0 (default 0). |
+| `fleet` | "vehicle", "load", "tend": a fleet of the model. |
+| `unit` | "vehicle", "load", "tend": which vehicle of the fleet, from 0 (default 0). |
+| `cycles` | "tend": plant value -> pick, place, idle. |
 | `nodes` | "vehicle": plant value -> the network node the vehicle is at. |
 | `states` | Plant value -> busy, idle, blocked, down, up. |
 | `blocks` | Plant value -> block. |
@@ -92,6 +93,8 @@ A `signals` entry:
 | `merged` | Values that take it into a batch. |
 | `type` | The entity type of what this signal names. |
 | `type_field` | The cell of a row that holds the product. |
+| `attributes` | "at": cell of a row -> the entity attribute its number sets. |
+| `batch_field` | "at": the cell of a merged member's row that holds the id of its batch. |
 | `types` | Product -> entity type. |
 | `leaves` | "seen": the entity has left. |
 | `scale` | "level": model value = value * scale. |

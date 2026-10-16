@@ -1,55 +1,35 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "bass_diffusion_1",
-      "description": "Bass diffusion",
       "type": "SUBMODEL",
+      "description": "Bass diffusion",
       "position": [
         0.0,
         0.0
       ],
       "params": {
-        "definition": "Bass diffusion",
-        "arguments": {},
-        "preset": ""
+        "definition": "Bass diffusion"
       }
     }
   ],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
   "levels": [
     {
       "name": "SD Adopters",
       "initial": 0.0,
       "min": 0.0,
-      "capacity": 1000.0,
-      "rate_time_unit": "minutes"
+      "capacity": 1000.0
     }
   ],
   "flows": [
     {
       "name": "SD adoption",
       "rate": "(AUX(\"$SD innovation coeff\") + AUX(\"$SD imitation coeff\") * LEVEL(\"$SD Adopters\") / AUX(\"$SD market potential\")) * (AUX(\"$SD market potential\") - LEVEL(\"$SD Adopters\"))",
-      "to": "SD Adopters",
-      "rate_time_unit": "minutes"
+      "to": "SD Adopters"
     }
   ],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
   "auxiliaries": [
     {
       "name": "SD market potential",
@@ -64,13 +44,6 @@
       "expr": "0.4"
     }
   ],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Bass diffusion": {
       "info": {
@@ -189,23 +162,15 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Bass diffusion",
     "category": "System dynamics",
     "description": "Frank Bass's new-product adoption model: one stock (cumulative Adopters) and one flow, (p + q*Adopters/m) * (m - Adopters) -- innovators (rate p) plus imitators (rate q, proportional to the fraction already adopted). Needs simulation.sd (Run > Run experiment (SD step and method))."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 40.0,
     "warmup": 0,
     "replications": 1,
-    "time_unit": "minutes",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0,
     "sd": {
       "dt": 0.05,
       "method": "rk4",

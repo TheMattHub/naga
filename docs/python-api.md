@@ -75,27 +75,56 @@ prediction bands. Each has a command of the same name.
 
 ## Build a model in Python
 
-`ModelDocument` is the model as an editable, undoable document. It writes the same JSON a
-hand-written file holds.
+`nagasim.build` writes the model file from Python. Every block type is a method named after
+it, taking the block's parameters by name (the [block reference](reference/blocks.md));
+`a >> b` links two blocks; `add_resource`, `add_schedule`, `add_level` and the like add an
+entry to a list of the file; `Model(...)` takes the other sections. A block without a name
+gets one (`process_1`). It is a thin layer: the file it writes is the model, and what each
+value means is the same as in a file you write by hand. It may change between minor
+versions before 1.0.
 
 ```python
-from nagasim.core.document import ModelDocument
+from nagasim import build as nb
 
-doc = ModelDocument()
-doc.set_resources([{"name": "Server", "capacity": 1, "discipline": "FIFO"}])
-doc.add_block("CREATE", (100, 100), "create_1")
-doc.set_params("create_1", {"distribution": "Exponential", "dist_params": {"rate": 1.0}})
-doc.add_block("PROCESS", (300, 100), "process_1")
-doc.set_params("process_1", {"resource_name": "Server", "distribution": "Exponential",
-                             "dist_params": {"rate": 1.25}})
-doc.add_block("DISPOSE", (500, 100), "dispose_1")
-doc.add_link("create_1", "process_1")
-doc.add_link("process_1", "dispose_1")
-doc.set_simulation(time_limit=200, warmup=20, replications=5)
-doc.save("built.json")
+m = nb.Model(simulation={"time_limit": 1000, "warmup": 100, "replications": 5})
+m.add_resource(name="Server")
+arrive = m.create(distribution="Exponential", dist_params={"rate": 1.0})
+serve = m.process(resource_name="Server", distribution="Exponential",
+                  dist_params={"rate": 1.25})
+arrive >> serve >> m.dispose()
 
-print(api.run_model("built.json").kpis().head())
+m.save("mm1.json")                       # the short form `naga fmt` writes
+print(m.run(replications=2).kpis().head())
 ```
+
+A line with a buffer between two machines, and a resource on a shift schedule beside a tank:
+
+```python
+line = nb.Model(simulation={"time_limit": 480})
+line.add_resource(name="Lathe")
+line.add_resource(name="Mill")
+parts = line.create(distribution="Exponential", dist_params={"rate": 0.5})
+lathe = line.process(resource_name="Lathe", distribution="Triangular",
+                     dist_params={"low": 1, "mode": 1.5, "high": 2})
+mill = line.process(resource_name="Mill", distribution="Constant", dist_params={"value": 1.8})
+parts >> lathe >> line.buffer(capacity=5) >> mill >> line.dispose()
+
+plant = nb.Model(simulation={"time_limit": 100})
+plant.add_schedule(name="shifts", kind="capacity", points=[[50, 2], [50, 1]], repeat=True)
+plant.add_resource(name="Pump", capacity=2, capacity_schedule="shifts")
+plant.add_level(name="Tank", capacity=100, initial=20)
+plant.add_flow(name="draw", **{"from": "Tank"}, rate="2")
+```
+
+`help(m.process)` lists a block's parameters with their defaults. `naga export --python
+model.json` writes the code that builds any model file, the bundled ones included:
+
+```console
+naga export --python single_server -o mm1.py
+```
+
+`ModelDocument` (`nagasim.core.document`) is the editor's document of the same file: undo,
+positions, renames that follow every reference.
 
 ## What else is importable
 

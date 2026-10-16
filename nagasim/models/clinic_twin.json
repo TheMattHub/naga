@@ -1,10 +1,11 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "arrivals",
-      "description": "Walk-in patients; the rate profile is read from the visit log",
       "type": "CREATE",
+      "description": "Walk-in patients; the rate profile is read from the visit log",
       "position": [
         0.0,
         200.0
@@ -16,18 +17,13 @@
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.15
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        }
       }
     },
     {
       "name": "Reception",
-      "description": "Check-in at the desk",
       "type": "PROCESS",
+      "description": "Check-in at the desk",
       "position": [
         220.0,
         200.0
@@ -37,23 +33,17 @@
         3.0
       ],
       "params": {
-        "action": "Seize Delay Release",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.5
         },
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Clerk",
-        "time_unit": "minutes",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Clerk"
       }
     },
     {
       "name": "Consult",
-      "description": "Consultation; the distribution is fitted from the visit log",
       "type": "PROCESS",
+      "description": "Consultation; the distribution is fitted from the visit log",
       "position": [
         440.0,
         200.0
@@ -63,23 +53,17 @@
         3.0
       ],
       "params": {
-        "action": "Seize Delay Release",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.1111111111111111
         },
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Doctor",
-        "time_unit": "minutes",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Doctor"
       }
     },
     {
       "name": "time_in_system",
-      "description": "Time in system per patient",
       "type": "RECORD",
+      "description": "Time in system per patient",
       "position": [
         660.0,
         200.0
@@ -92,19 +76,12 @@
     },
     {
       "name": "leave",
-      "description": "Patient leaves",
       "type": "DISPOSE",
+      "description": "Patient leaves",
       "position": [
         880.0,
         200.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -125,23 +102,18 @@
       "target": "leave"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Clerk",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     },
     {
       "name": "Doctor",
       "capacity": 2,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
   "schedules": [
     {
       "name": "arrivals",
@@ -180,40 +152,16 @@
           60.0,
           0.15
         ]
-      ],
-      "time_unit": "minutes"
+      ]
     }
   ],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "PATIENT",
       "shape": "circle",
-      "color": "blue",
-      "holding_cost_time_unit": "minutes"
+      "color": "blue"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Walk-in clinic digital twin",
     "category": "Services",
@@ -262,24 +210,23 @@
         "in_service": 1,
         "remaining": [
           6.0
-        ]
+        ],
+        "age_unit": "minutes"
       },
       {
         "block": "Reception",
         "count": 1,
         "e_type": "PATIENT",
-        "age": 2.0
+        "age": 2.0,
+        "age_unit": "minutes"
       }
-    ]
+    ],
+    "time_unit": "minutes"
   },
   "simulation": {
     "time_limit": 480.0,
     "warmup": 0,
-    "replications": 20,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 20
   },
   "outputs": {}
 }

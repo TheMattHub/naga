@@ -23,6 +23,27 @@
 - Fixed: a deterministic Schedule arrival no longer hangs the run on a tiny rate or a repeating
   schedule whose bounds are not exact floats; a state document with arrival keys on
   a Schedule CREATE, a huge integer, or an order counter below zero is refused by name.
+- Twin: a state from a live plant now covers conveyors (from when each part entered), batches
+  (a manifest of their members), order lines and transfer amounts, a cobot's pick and place and
+  a robot's cycle step, so a twin forecasts `warehouse_forklifts`, `warehouse_library`,
+  `mfg_line_library`, `automation_cell` and `automation_floor` from plant data. New mapping
+  signals: `attributes` and `batch_field` on `at`, `tend`, `step`; `naga plant init` maps them.
+- Fixed: a state from a plant keeps the model's name and a resource a belt part holds;
+  a part merged on a belt frees its place; `naga plant init` types the batches a
+  model forms.
+- Authoring: `naga fmt FILE... [--check]` rewrites a model in its shortest canonical form
+  (defaults, units and empty sections left out, `$schema` first); the model and its runs are
+  unchanged. `nagasim.build` (provisional) builds a model in Python, one method per block type
+  generated from the registry; `naga export --python` writes that code for any model. The model
+  JSON Schema is published at `https://thematthub.github.io/naga/schema/model-v<N>.json`: add
+  `"$schema"` for completion in your editor. Bundled models ship in the short form.
+- Changed results: a block parameter left out of a model file now means its published default
+  (a CREATE without an entity type made type "A", now "DEFAULT"; a HOLD/SIGNAL without a signal
+  name used "Default", now ""). The model hash of a file that left any parameter out moves
+  once: take a saved state for it again.
+- Fixed: `naga export --python` refuses a block type that is not registered; `naga fmt`
+  keeps a value whose type differs from its default and refuses non-finite numbers
+  and files that are not models.
 
 ## 0.7.2 (2026-10-15)
 

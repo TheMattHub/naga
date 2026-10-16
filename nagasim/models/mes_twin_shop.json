@@ -1,51 +1,38 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "release_orders",
-      "description": "Releases every work order at its own release time",
       "type": "CREATE",
+      "description": "Releases every work order at its own release time",
       "position": [
         140.0,
         300.0
       ],
       "params": {
         "e_type": "WIDGET",
-        "arrival_mode": "Orders",
-        "schedule_name": "",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 1.0
-        },
-        "time_unit": "minutes",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "sequence": "",
-        "start_time_unit": "minutes"
+        "arrival_mode": "Orders"
       }
     },
     {
       "name": "dispatch",
-      "description": "Send each job to the first station of its routing",
       "type": "ROUTE",
+      "description": "Send each job to the first station of its routing",
       "position": [
         380.0,
         300.0
       ],
       "params": {
-        "distribution": "Constant",
         "dist_params": {
           "value": 2.0
-        },
-        "time_unit": "minutes",
-        "speed_unit": "m/min"
+        }
       }
     },
     {
       "name": "cutting",
-      "description": "Cutting cell (one saw)",
       "type": "SUBMODEL",
+      "description": "Cutting cell (one saw)",
       "position": [
         640.0,
         140.0
@@ -62,14 +49,13 @@
           "machines": 1,
           "transfer_time": 2.0,
           "cost_rate": 0.6
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "drilling",
-      "description": "Drilling cell (two drills)",
       "type": "SUBMODEL",
+      "description": "Drilling cell (two drills)",
       "position": [
         640.0,
         300.0
@@ -86,14 +72,13 @@
           "machines": 2,
           "transfer_time": 2.0,
           "cost_rate": 0.6
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "assembly",
-      "description": "Assembly cell (one bench) -- the shop's bottleneck",
       "type": "SUBMODEL",
+      "description": "Assembly cell (one bench) -- the shop's bottleneck",
       "position": [
         640.0,
         460.0
@@ -110,14 +95,13 @@
           "machines": 1,
           "transfer_time": 2.0,
           "cost_rate": 0.6
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "record_exit",
-      "description": "Tally shop-floor time for a finished job",
       "type": "RECORD",
+      "description": "Tally shop-floor time for a finished job",
       "position": [
         940.0,
         300.0
@@ -130,19 +114,12 @@
     },
     {
       "name": "ship",
-      "description": "Finished jobs leave the shop",
       "type": "DISPOSE",
+      "description": "Finished jobs leave the shop",
       "position": [
         1140.0,
         300.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -174,7 +151,6 @@
       "target": "ship"
     }
   ],
-  "scenarios": [],
   "orders": [
     {
       "id": "WO-1000",
@@ -955,12 +931,9 @@
     {
       "name": "Mfg Routed machine",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
   "failures": [
     {
       "name": "Cutting breakdowns",
@@ -1102,39 +1075,20 @@
       ]
     }
   ],
-  "variables": [],
   "entities": [
     {
       "name": "WIDGET",
       "shape": "circle",
       "color": "BLUE",
-      "holding_cost": 0.02,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.02
     },
     {
       "name": "BRACKET",
       "shape": "square",
       "color": "GREEN",
-      "holding_cost": 0.02,
-      "holding_cost_time_unit": "minutes"
+      "holding_cost": 0.02
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "Routed station": {
       "info": {
@@ -1258,20 +1212,17 @@
       "blocks": [
         {
           "name": "in",
-          "description": "Jobs starting here",
           "type": "SUB_ENTRY",
+          "description": "Jobs starting here",
           "position": [
             0.0,
             0.0
-          ],
-          "params": {
-            "port": "in"
-          }
+          ]
         },
         {
           "name": "station",
-          "description": "Station",
           "type": "STATION",
+          "description": "Station",
           "position": [
             200.0,
             0.0
@@ -1284,34 +1235,29 @@
         },
         {
           "name": "work",
-          "description": "Machine",
           "type": "PROCESS",
+          "description": "Machine",
           "position": [
             400.0,
             0.0
           ],
           "params": {
-            "action": "Seize Delay Release",
-            "distribution": "Constant",
             "dist_params": {
               "value": "entity.process_time if time_source == 'attribute' else TABLE('Mfg Process times', entity.e_type, entity.station)"
             },
             "time_unit": "minutes",
-            "priority": 0,
-            "quantity": 1,
             "resource_name": "$Mfg Routed machine"
           }
         },
         {
           "name": "leave",
-          "description": "To the next step",
           "type": "ROUTE",
+          "description": "To the next step",
           "position": [
             600.0,
             0.0
           ],
           "params": {
-            "distribution": "Constant",
             "dist_params": {
               "value": "transfer_time"
             },
@@ -1320,15 +1266,12 @@
         },
         {
           "name": "out",
-          "description": "Routing finished",
           "type": "SUB_EXIT",
+          "description": "Routing finished",
           "position": [
             800.0,
             0.0
-          ],
-          "params": {
-            "port": "out"
-          }
+          ]
         }
       ],
       "links": [
@@ -1352,24 +1295,16 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "Job shop with MES digital twin",
     "category": "Manufacturing",
     "description": "A three-station job shop built from Manufacturing library Routed stations, driven by a Manufacturing Execution System. Two products follow their own routings, process times come from a lookup table the MES parameter feed refits, and each station breaks down. On its own it runs as a plain job shop; an MES twin runs it against the mock MES in models/data/mes_twin_shop/ with the mapping in models/data/mes_twin_shop.mesmap.json."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 480,
     "warmup": 0,
     "replications": 20,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "entity_log_limit": 100000,
-    "energy_price": 0,
-    "length_unit": "meters"
+    "entity_log_limit": 100000
   },
   "outputs": {}
 }

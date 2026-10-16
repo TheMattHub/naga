@@ -65,7 +65,7 @@ def test_a_filled_model_runs_identically():
 
 def test_base_in_a_definition_and_a_scenario_override_resolves_to_the_model_unit():
     out = migrate(_model())
-    assert "time_unit" not in out["submodels"]["D"]["blocks"][0]["params"]   # a template
+    assert out["submodels"]["D"]["blocks"][0]["params"]["time_unit"] == "base"   # a template
     blocks = [create(max_arrivals=3), delay(value=0.5), dispose()]
     runs = []
     for unit in ("base", "hours"):

@@ -17,6 +17,7 @@ this as `mm1.json`:
 
 ```json title="mm1.json"
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "blocks": [
     {"name": "arrive", "type": "CREATE",
      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}},
@@ -33,6 +34,8 @@ this as `mm1.json`:
 
 Three blocks, two links, one resource. Times are in minutes unless the file says otherwise.
 Every parameter of every block type is in the [block reference](reference/blocks.md).
+The `"$schema"` line is optional: it points your editor at the file format, so it completes
+keys and parameters and flags a wrong one as you type (the engine ignores it).
 
 ## Run it
 

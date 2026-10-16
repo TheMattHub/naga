@@ -1,10 +1,11 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "pv_array_1",
-      "description": "PV array",
       "type": "SUBMODEL",
+      "description": "PV array",
       "position": [
         -200.0,
         -120.0
@@ -20,14 +21,13 @@
           "performance_ratio": 0.85,
           "capex_per_kwp": 900.0,
           "annual_cost_rate": 0.08
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "electrical_load_1",
-      "description": "Electrical load",
       "type": "SUBMODEL",
+      "description": "Electrical load",
       "position": [
         -200.0,
         40.0
@@ -40,14 +40,13 @@
         "definition": "Electrical load",
         "arguments": {
           "peak_kw": 2.0
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "battery_storage_1",
-      "description": "Battery storage",
       "type": "SUBMODEL",
+      "description": "Battery storage",
       "position": [
         60.0,
         -40.0
@@ -70,14 +69,13 @@
           "merit": 1,
           "capex_per_kwh": 600.0,
           "annual_cost_rate": 0.1
-        },
-        "preset": ""
+        }
       }
     },
     {
       "name": "grid_connection_1",
-      "description": "Grid connection",
       "type": "SUBMODEL",
+      "description": "Grid connection",
       "position": [
         320.0,
         -40.0
@@ -95,12 +93,10 @@
           "import_limit_kw": 20.0,
           "export_limit_kw": 5.0,
           "demand_charge_per_kw": 0.0
-        },
-        "preset": ""
+        }
       }
     }
   ],
-  "links": [],
   "scenarios": [
     {
       "name": "No battery",
@@ -149,27 +145,18 @@
       ]
     }
   ],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
   "variables": [
     {
       "name": "nrg_setpoint_kw",
       "initial": 0.0
     }
   ],
-  "entities": [],
   "timeseries_inputs": [
     {
       "name": "Nrg pv profile",
       "description": "Illustrative PV output, kW per kW installed, one value per hour of the day (about 5 kWh per kWp per day). Replace it with your own measured or modelled profile.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -205,7 +192,6 @@
       "description": "Illustrative household demand, normalised to its evening peak, one value per hour of the day (about 9 times the peak in kWh per day).",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -241,7 +227,6 @@
       "description": "Illustrative time-of-use import price, EUR/kWh, by hour of the day.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -277,7 +262,6 @@
       "description": "A flat import price, EUR/kWh: one value, held for the whole run.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "hold",
       "values": [
@@ -289,7 +273,6 @@
       "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day: cleaner around midday, dirtier at the evening peak.",
       "start": 0,
       "step": 1,
-      "time_unit": "hours",
       "interpolation": "step",
       "beyond": "repeat",
       "values": [
@@ -325,11 +308,10 @@
     {
       "name": "Nrg Battery",
       "description": "Energy stored, kWh. The bounds are the usable state-of-charge window.",
-      "unit": "kWh",
       "capacity": 10.0,
       "min": 1.0,
       "initial": 5.0,
-      "rate_time_unit": "hours"
+      "unit": "kWh"
     }
   ],
   "flows": [
@@ -337,14 +319,12 @@
       "name": "Nrg PV",
       "description": "Generation injected into the site bus, kW.",
       "rate": "TS(profile) * installed_kwp * performance_ratio",
-      "rate_time_unit": "hours",
       "tag": "generation"
     },
     {
       "name": "Nrg load",
       "description": "Site demand drawn from the bus, kW.",
       "rate": "TS(profile) * peak_kw",
-      "rate_time_unit": "hours",
       "tag": "demand"
     },
     {
@@ -352,7 +332,6 @@
       "to": "Nrg Battery",
       "description": "Power drawn from the site bus to charge, kW. Saturation stops it when the battery is full, and what it could not take is spilled -- surplus for the export or curtailment accounting to pick up.",
       "rate": "min(charge_kw, (dispatch == \"self_consumption\") * max(FLOWSUM(\"generation\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\", merit), 0) + (dispatch == \"tariff_arbitrage\") * (TS(price_profile) < charge_below_price) * charge_kw + (dispatch == \"policy\") * max(VAR(\"$nrg_setpoint_kw\"), 0))",
-      "rate_time_unit": "hours",
       "efficiency": 0.95,
       "tag": "storage_in",
       "priority": 1
@@ -362,14 +341,12 @@
       "from": "Nrg Battery",
       "description": "Energy taken OUT of the battery, kW: what the bus needs divided by the discharge efficiency.",
       "rate": "min(discharge_kw, (dispatch == \"self_consumption\") * max(FLOWSUM(\"demand\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\", merit), 0) + (dispatch == \"tariff_arbitrage\") * (TS(price_profile) > discharge_above_price) * min(discharge_kw, max(FLOWSUM(\"demand\") - FLOWSUM(\"storage_out\", merit), 0)) + (dispatch == \"policy\") * max(-VAR(\"$nrg_setpoint_kw\"), 0)) / discharge_efficiency",
-      "rate_time_unit": "hours",
       "priority": 1
     },
     {
       "name": "Nrg storage output",
       "description": "Power actually injected into the site bus, kW -- what the battery managed after its power limit and its state of charge, times the discharge efficiency.",
       "rate": "FLOW(\"$Nrg discharge\") * discharge_efficiency",
-      "rate_time_unit": "hours",
       "tag": "storage_out",
       "priority": 1
     },
@@ -377,20 +354,17 @@
       "name": "Nrg standby loss",
       "from": "Nrg Battery",
       "description": "Constant standby consumption, kW.",
-      "rate": "standby_loss_kw",
-      "rate_time_unit": "hours"
+      "rate": "standby_loss_kw"
     },
     {
       "name": "Nrg cycles",
       "description": "Equivalent full cycles: energy delivered divided by the nameplate capacity. Its Total is the cycle count, for degradation and for a sustainability assessment.",
-      "rate": "FLOW(\"$Nrg discharge\") * discharge_efficiency / capacity_kwh",
-      "rate_time_unit": "hours"
+      "rate": "FLOW(\"$Nrg discharge\") * discharge_efficiency / capacity_kwh"
     },
     {
       "name": "Nrg import",
       "description": "Whatever the site could not cover itself, up to the connection limit, kW.",
       "rate": "min(max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\"), 0), import_limit_kw)",
-      "rate_time_unit": "hours",
       "price": "TS(import_profile)",
       "emission_factor": "TS(intensity_profile)",
       "tag": "import",
@@ -400,14 +374,12 @@
       "name": "Nrg unserved",
       "description": "Demand the connection limit could not deliver, kW.",
       "rate": "max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\") - FLOW(\"$Nrg import\"), 0)",
-      "rate_time_unit": "hours",
       "tag": "unserved"
     },
     {
       "name": "Nrg export",
       "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
       "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
-      "rate_time_unit": "hours",
       "price": "-export_price",
       "tag": "export"
     },
@@ -415,11 +387,9 @@
       "name": "Nrg curtailed",
       "description": "Generation that was neither used, stored nor exported, kW.",
       "rate": "max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\") - FLOW(\"$Nrg export\"), 0)",
-      "rate_time_unit": "hours",
       "tag": "curtailed"
     }
   ],
-  "conversions": [],
   "fixed_costs": [
     {
       "name": "Nrg PV capital",
@@ -434,17 +404,6 @@
       "category": "Capital"
     }
   ],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
   "submodels": {
     "PV array": {
       "info": {
@@ -1261,7 +1220,6 @@
       "annotations": []
     }
   },
-  "background": null,
   "info": {
     "title": "PV + battery site (library assets)",
     "category": "Energy",
@@ -1269,22 +1227,16 @@
     "author": "Naga",
     "notes": "Total Cost is the weekly energy bill PLUS the annualised capital cost of the PV and the battery charged over the same week, so it is the objective a sizing run minimises: naga optimize --factor blocks.<battery block>.params.arguments.capacity_kwh=continuous:0.1:30 --factor blocks.<pv block>.params.arguments.installed_kwp=continuous:0:15 --response system/Total Cost --goal min. Total Impact is kg CO2e on the grid intensity profile."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 168,
     "warmup": 0,
     "replications": 1,
     "time_unit": "hours",
-    "currency": "EUR",
     "timeseries_points": 168,
     "calendar": {
       "start": "2026-06-15T00:00:00",
       "timezone": "Europe/Rome"
-    },
-    "energy_price": 0,
-    "length_unit": "meters"
+    }
   },
   "outputs": {}
 }

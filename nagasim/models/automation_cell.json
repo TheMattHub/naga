@@ -1,250 +1,86 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "arrive",
-      "description": "Kits arrive, one every 50 s on average",
       "type": "CREATE",
-      "position": [
-        100.0,
-        200.0
-      ],
-      "params": {
-        "e_type": "DEFAULT",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
-        "distribution": "Exponential",
-        "dist_params": {
-          "rate": 0.02
-        },
-        "time_unit": "seconds",
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "start_time_unit": "seconds"
-      }
+      "description": "Kits arrive, one every 50 s on average",
+      "position": [100.0, 200.0],
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 0.02}}
     },
     {
       "name": "prepare",
-      "description": "Prepare the kit",
       "type": "PROCESS",
-      "position": [
-        320.0,
-        200.0
-      ],
-      "params": {
-        "action": "Seize Delay Release",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": "TRIA(20, 25, 32)"
-        },
-        "time_unit": "seconds",
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Press",
-        "setup_unit": "seconds",
-        "renege_time_unit": "seconds"
-      }
+      "description": "Prepare the kit",
+      "position": [320.0, 200.0],
+      "params": {"dist_params": {"value": "TRIA(20, 25, 32)"}, "resource_name": "Press"}
     },
     {
       "name": "assemble",
-      "description": "Assemble: by hand as saved, by a robot arm in the scenario \"Robot cell\"",
       "type": "MOTION",
-      "position": [
-        540.0,
-        200.0
-      ],
+      "description": "Assemble: by hand as saved, by a robot arm in the scenario \"Robot cell\"",
+      "position": [540.0, 200.0],
       "params": {
-        "action": "Seize Delay Release",
-        "resource_name": "Assembly",
-        "quantity": 1,
-        "priority": 0,
         "profile": "Operator",
-        "hrc": "none",
-        "time_unit": "seconds",
         "segments": [
-          {
-            "kind": "move",
-            "distance_m": 3.0
-          },
-          {
-            "kind": "pick",
-            "time": "2.0"
-          },
-          {
-            "kind": "move",
-            "distance_m": 3.0,
-            "payload_kg": 2.0
-          },
-          {
-            "kind": "place",
-            "time": "1.0"
-          },
-          {
-            "kind": "process",
-            "time": "TRIA(24, 30, 40)"
-          }
+          {"kind": "move", "distance_m": 3.0},
+          {"kind": "pick", "time": "2.0"},
+          {"kind": "move", "distance_m": 3.0, "payload_kg": 2.0},
+          {"kind": "place", "time": "1.0"},
+          {"kind": "process", "time": "TRIA(24, 30, 40)"}
         ],
-        "setup_unit": "seconds",
-        "renege_time_unit": "seconds"
+        "resource_name": "Assembly"
       }
     },
     {
       "name": "test",
-      "description": "Test the assembly",
       "type": "PROCESS",
-      "position": [
-        760.0,
-        200.0
-      ],
-      "params": {
-        "action": "Seize Delay Release",
-        "distribution": "Constant",
-        "dist_params": {
-          "value": "15"
-        },
-        "time_unit": "seconds",
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Tester",
-        "setup_unit": "seconds",
-        "renege_time_unit": "seconds"
-      }
+      "description": "Test the assembly",
+      "position": [760.0, 200.0],
+      "params": {"dist_params": {"value": "15"}, "resource_name": "Tester"}
     },
     {
       "name": "ship",
-      "description": "Good parts leave",
       "type": "DISPOSE",
-      "position": [
-        980.0,
-        200.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "seconds"
-      }
+      "description": "Good parts leave",
+      "position": [980.0, 200.0]
     }
   ],
   "links": [
-    {
-      "source": "arrive",
-      "target": "prepare"
-    },
-    {
-      "source": "prepare",
-      "target": "assemble"
-    },
-    {
-      "source": "assemble",
-      "target": "test"
-    },
-    {
-      "source": "test",
-      "target": "ship"
-    }
+    {"source": "arrive", "target": "prepare"},
+    {"source": "prepare", "target": "assemble"},
+    {"source": "assemble", "target": "test"},
+    {"source": "test", "target": "ship"}
   ],
   "scenarios": [
     {
       "name": "Robot cell",
       "overrides": [
-        {
-          "path": "blocks.assemble.params.profile",
-          "value": "Robot arm"
-        },
+        {"path": "blocks.assemble.params.profile", "value": "Robot arm"},
         {
           "path": "blocks.assemble.params.segments",
           "value": [
-            {
-              "kind": "move",
-              "distance_m": 0.8
-            },
-            {
-              "kind": "pick",
-              "time": "0.5"
-            },
-            {
-              "kind": "move",
-              "distance_m": 0.8,
-              "payload_kg": 2.0
-            },
-            {
-              "kind": "place",
-              "time": "0.5"
-            },
-            {
-              "kind": "process",
-              "time": "TRIA(16, 20, 26)"
-            }
+            {"kind": "move", "distance_m": 0.8},
+            {"kind": "pick", "time": "0.5"},
+            {"kind": "move", "distance_m": 0.8, "payload_kg": 2.0},
+            {"kind": "place", "time": "0.5"},
+            {"kind": "process", "time": "TRIA(16, 20, 26)"}
           ]
         },
-        {
-          "path": "resources.Assembly.cost_busy",
-          "value": 2.0
-        },
-        {
-          "path": "resources.Assembly.cost_idle",
-          "value": 2.0
-        },
-        {
-          "path": "fixed_costs.Robot cell.amount",
-          "value": 85000
-        }
+        {"path": "resources.Assembly.cost_busy", "value": 2.0},
+        {"path": "resources.Assembly.cost_idle", "value": 2.0},
+        {"path": "fixed_costs.Robot cell.amount", "value": 85000}
       ]
     }
   ],
-  "orders": [],
   "resources": [
-    {
-      "name": "Press",
-      "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
-    },
-    {
-      "name": "Assembly",
-      "capacity": 1,
-      "discipline": "FIFO",
-      "cost_busy": 30.0,
-      "cost_idle": 30.0,
-      "cost_time_unit": "hours"
-    },
-    {
-      "name": "Tester",
-      "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
-    }
+    {"name": "Press", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Assembly", "capacity": 1, "discipline": "FIFO", "cost_busy": 30.0, "cost_idle": 30.0},
+    {"name": "Tester", "capacity": 1, "discipline": "FIFO"}
   ],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [
-    {
-      "name": "DEFAULT",
-      "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "seconds"
-    }
-  ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [
-    {
-      "name": "Robot cell",
-      "category": "Capital",
-      "amount": 0,
-      "capex": true
-    }
-  ],
-  "fleets": [],
+  "entities": [{"name": "DEFAULT", "shape": "circle", "color": "BLACK"}],
+  "fixed_costs": [{"name": "Robot cell", "category": "Capital", "amount": 0, "capex": true}],
   "motion_profiles": [
     {
       "name": "Operator",
@@ -252,9 +88,7 @@
       "speed": 1.2,
       "accel": 0.8,
       "payload_max": 15.0,
-      "payload_derate": 0.7,
-      "speed_unit": "m/s",
-      "payload_unit": "kg"
+      "payload_derate": 0.7
     },
     {
       "name": "Robot arm",
@@ -262,40 +96,15 @@
       "speed": 2.0,
       "accel": 6.0,
       "payload_max": 20.0,
-      "payload_derate": 0.7,
-      "speed_unit": "m/s",
-      "payload_unit": "kg"
+      "payload_derate": 0.7
     }
   ],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Robot cell against manual assembly",
     "category": "Manufacturing",
     "description": "A short line whose assembly station is manual as saved (a MOTION cycle with a human profile, an operator at 30 per hour) and a robot cell in the scenario \"Robot cell\" (a robot profile and cycle, 2 per hour of maintenance, 85 000 of capex). Its investment section compares the scenario with the saved model: `naga invest` gives payback, NPV and ROI, and `naga scenarios` the throughput and cost of each. Illustrative figures."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
-  "simulation": {
-    "time_limit": 30600,
-    "warmup": 1800,
-    "replications": 5,
-    "time_unit": "seconds",
-    "length_unit": "meters",
-    "currency": "EUR",
-    "energy_price": 0
-  },
-  "outputs": {},
+  "simulation": {"time_limit": 30600, "warmup": 1800, "replications": 5, "time_unit": "seconds"},
   "investment": {
     "baseline": "",
     "horizon_years": 5,
@@ -303,5 +112,6 @@
     "operating_hours_per_year": 2000,
     "margin_per_part": 0.0,
     "throughput": ""
-  }
+  },
+  "outputs": {}
 }

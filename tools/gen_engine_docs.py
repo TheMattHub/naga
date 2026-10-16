@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import sys
 from pathlib import Path
@@ -701,7 +702,9 @@ API = ("nagasim.api.run_model", "nagasim.experiments.run_scenarios",
        "nagasim.experiments.flatten_kpis", "nagasim.optimize.optimize",
        "nagasim.calibrate.calibrate", "nagasim.forecast.forecast",
        "nagasim.inputfit.best_fit", "nagasim.modelcheck.assert_model",
-       "nagasim.modelschema.build_json_schema", "nagasim.core.document.ModelDocument")
+       "nagasim.modelschema.build_json_schema", "nagasim.build.Model",
+       "nagasim.build.export_python", "nagasim.modelfmt.minimal",
+       "nagasim.core.document.ModelDocument")
 
 
 def gen_api(out: Path) -> None:
@@ -894,9 +897,11 @@ REFERENCE_SEED = GALLERY_SEED
 
 
 def _layout(model: str) -> dict:
-    import json
+    """The migrated model: the bundled files are in the short form (D474), every left-out
+    default filled back, which the exact formulas read."""
+    from nagasim.core.schema import load_layout
 
-    return json.loads((MODELS / f"{model}.json").read_text(encoding="utf-8"))
+    return load_layout(MODELS / f"{model}.json")
 
 
 def _named(items: list, name: str) -> dict:
@@ -1303,7 +1308,19 @@ def gen_llms(out: Path) -> None:
     (out / "llms.txt").write_text(llms_txt(), encoding="utf-8", newline="\n")
 
 
+def gen_model_schema(out: Path) -> None:
+    """The model file's JSON Schema at its `$id` (D470): one file per schema version, older
+    versions stay committed so a file's `"$schema"` keeps meaning what it was written for."""
+    from nagasim.modelschema import build_json_schema
+
+    out.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(build_json_schema(), indent=2) + "\n"
+    (out / f"model-v{schema_mod.CURRENT_VERSION}.json").write_text(text, encoding="utf-8",
+                                                                  newline="\n")
+
+
 def main() -> None:
+    gen_model_schema(DOCS / "schema")
     for generate in REFERENCE:
         generate(DOCS / "reference")
     gen_gallery(DOCS / "gallery")

@@ -17,7 +17,7 @@ from __future__ import annotations
 import copy
 import json
 
-from nagasim import examples
+from nagasim import examples, modelfmt
 from nagasim.core import layout_tools
 from nagasim.core import schema as schema_mod
 from nagasim.core.block_registry import BLOCK_REGISTRY
@@ -117,25 +117,13 @@ def _block_line(name: str, detail: bool) -> str:
 
 
 def _example() -> str:
-    """A bundled model with every value its schema or block type would fill anyway left
-    out: what a minimal valid file looks like, never typed by hand."""
-    layout = json.loads(examples.path(_EXAMPLE).read_text(encoding="utf-8"))
-    full = _schema()
-    unit = layout.get("simulation", {}).get("time_unit")
+    """A bundled model in `naga fmt`'s form, positions left out: what a minimal valid file
+    looks like, never typed by hand."""
+    layout = modelfmt.minimal(examples.path(_EXAMPLE))
     for block in layout["blocks"]:
-        defaults = {p.name: p.default for p in BLOCK_REGISTRY[block["type"]].params}
-        block["params"] = {k: v for k, v in block["params"].items()
-                           if v != defaults.get(k, object()) and not (k.endswith("unit") and v == unit)}
-        for key in ("position", "description"):
-            block.pop(key, None)
-        if not block["params"]:
-            block.pop("params")
-    resource = full["$defs"]["resource"]["properties"]
-    layout["resources"] = [{k: v for k, v in r.items() if v != resource.get(k, {}).get("default")}
-                           for r in layout["resources"]]
-    keep = ("time_limit", "warmup", "replications", "time_unit")
-    layout["simulation"] = {k: v for k, v in layout["simulation"].items() if k in keep}
-    return _value({k: layout[k] for k in ("blocks", "links", "resources", "simulation")})
+        block.pop("position", None)
+    return _value({k: layout[k] for k in ("blocks", "links", "resources", "simulation")
+                   if k in layout})
 
 
 def _overview() -> str:

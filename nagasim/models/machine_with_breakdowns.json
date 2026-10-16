@@ -1,33 +1,26 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [
     {
       "name": "create_1",
-      "description": "Jobs",
       "type": "CREATE",
+      "description": "Jobs",
       "position": [
         200.0,
         320.0
       ],
       "params": {
-        "e_type": "DEFAULT",
-        "arrival_mode": "Interarrival",
-        "schedule_name": "",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 0.5
-        },
-        "entities_per_arrival": 1,
-        "max_arrivals": 0,
-        "start_time": 0,
-        "time_unit": "minutes",
-        "start_time_unit": "minutes"
+        }
       }
     },
     {
       "name": "process_1",
-      "description": "Machine",
       "type": "PROCESS",
+      "description": "Machine",
       "position": [
         520.0,
         320.0
@@ -37,34 +30,20 @@
         3.0
       ],
       "params": {
-        "action": "Seize Delay Release",
         "distribution": "Exponential",
         "dist_params": {
           "rate": 1.0
         },
-        "priority": 0,
-        "quantity": 1,
-        "resource_name": "Machine",
-        "time_unit": "minutes",
-        "setup_unit": "minutes",
-        "renege_time_unit": "minutes"
+        "resource_name": "Machine"
       }
     },
     {
       "name": "dispose_1",
-      "description": "dispose_1",
       "type": "DISPOSE",
       "position": [
         840.0,
         320.0
-      ],
-      "params": {
-        "distribution": "Constant",
-        "dist_params": {
-          "value": 0.0
-        },
-        "time_unit": "minutes"
-      }
+      ]
     }
   ],
   "links": [
@@ -77,18 +56,13 @@
       "target": "dispose_1"
     }
   ],
-  "scenarios": [],
-  "orders": [],
   "resources": [
     {
       "name": "Machine",
       "capacity": 1,
-      "discipline": "FIFO",
-      "cost_time_unit": "hours"
+      "discipline": "FIFO"
     }
   ],
-  "resource_sets": [],
-  "schedules": [],
   "failures": [
     {
       "name": "breakdown",
@@ -111,51 +85,22 @@
       }
     }
   ],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
   "entities": [
     {
       "name": "DEFAULT",
       "shape": "circle",
-      "color": "BLACK",
-      "holding_cost_time_unit": "minutes"
+      "color": "BLACK"
     }
   ],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
-  "agent_types": [],
-  "populations": [],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
   "info": {
     "title": "Machine with breakdowns",
     "category": "Manufacturing",
     "description": "A single Machine subject to random failures (uptime/downtime distributions) -- shows how a resource failure interrupts and resumes service."
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
   "simulation": {
     "time_limit": 4000,
     "warmup": 400,
-    "replications": 5,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
+    "replications": 5
   },
   "outputs": {}
 }

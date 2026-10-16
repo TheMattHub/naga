@@ -370,9 +370,10 @@ LOST_KINDS = ("movers", "handling", "soc", "chargers", "charging", "phases", "ph
               "placed", "tending", "agents", "agent_links", "entity_agents")
 
 
-def _compare(model, simulated, events, *, lost=(), instants=None):
-    """Every key of the state but *lost*, and every derivation, at every instant. With an
-    entity on a timed link only what the spec promises: it is in the block it left."""
+def _compare(model, simulated, events, *, lost=(), instants=None, approximate=()):
+    """Every key of the state but *lost* (empty) and *approximate* (D457: a vehicle at the
+    node it last reported), and every derivation, at every instant. With an entity on a
+    timed link only what the spec promises: it is in the block it left."""
     run, plant_ = Timeline(simulated), Timeline(events)
     derive, previous = _derived(model), None
     for t in instants or _instants(simulated):
@@ -387,9 +388,9 @@ def _compare(model, simulated, events, *, lost=(), instants=None):
                 == ours["entities"]
             assert (ours["resources"], ours["levels"]) == (theirs["resources"], theirs["levels"])
         else:
-            assert {k: v for k, v in ours.items() if k not in lost} \
-                == {k: v for k, v in theirs.items() if k not in lost}, t
-            if not lost:
+            assert {k: v for k, v in ours.items() if k not in (*lost, *approximate)} \
+                == {k: v for k, v in theirs.items() if k not in (*lost, *approximate)}, t
+            if not lost and not approximate:
                 assert derive(run, ours, t) == derive(plant_, theirs, t), t
         assert playback.kpi_snapshot(run, t) == playback.kpi_snapshot(plant_, t)
         previous = t
@@ -429,18 +430,21 @@ def test_an_entity_on_a_timed_link_stays_in_the_block_it_left(name, tmp_path):
     _compare(model, simulated, _observed(model, simulated, tmp_path)[0])
 
 
-@pytest.mark.parametrize("name, lost", [
-    ("automation_cell", ("phases", "phases_all", "placed")),
-    ("ed_patient_agents", ("entity_agents",)),
-    ("warehouse_forklifts", ("movers", "handling")),
-    ("abm_wolf_sheep", ("agents",))])
-def test_what_is_not_mappable_is_lost_and_the_rest_is_the_run(name, lost, tmp_path):
+@pytest.mark.parametrize("name, lost, approximate", [
+    ("automation_cell", ("phases", "phases_all", "placed"), ()),
+    ("ed_patient_agents", ("entity_agents",), ()),
+    ("warehouse_forklifts", ("handling",), ("movers",)),       # D457: the node last reported
+    ("abm_wolf_sheep", ("agents",), ())])
+def test_what_is_not_mappable_is_lost_and_the_rest_is_the_run(name, lost, approximate, tmp_path):
     model = api.load_layout(MODELS / f"{name}.json")
     simulated = _recorded(model)
     run = Timeline(simulated)
     seen = [run.state_at(t) for t in _instants(simulated)[::50]]
     assert all(any(state[key] for state in seen) for key in lost) and set(lost) <= set(LOST_KINDS)
-    _compare(model, simulated, _observed(model, simulated, tmp_path)[0], lost=lost)
+    events = _observed(model, simulated, tmp_path)[0]
+    _compare(model, simulated, events, lost=lost, approximate=approximate)
+    shown = [Timeline(events).state_at(t) for t in _instants(simulated)[::50]]
+    assert all(any(state[key] for state in shown) for key in approximate)
 
 
 @pytest.mark.parametrize("name", ["single_server", "line_with_buffers", "inventory_sS"])
@@ -675,8 +679,8 @@ def test_a_state_from_a_plant_names_the_blocks_inside_an_asset_and_what_it_does_
     fleets = api.load_layout(MODELS / "warehouse_forklifts.json")
     _doc, problems = state.from_plant(fleets, {"at": 5.0})
     assert any("fleets and vehicles" in p.message for p in problems)
-    # and its belt is refused by name (D434, #450)
-    assert {p.code for p in problems} == {"W_STATE_NOT_COVERED", "E_STATE_UNSUPPORTED"}
+    # and its accumulating belt is carried (D460): only a non-accumulating one is refused
+    assert {p.code for p in problems} == {"W_STATE_NOT_COVERED"}
 
 
 # ---------------------------------------------------------------- commands and the tool (D259)

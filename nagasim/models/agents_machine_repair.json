@@ -1,148 +1,49 @@
 {
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
   "schema_version": 29,
   "blocks": [],
-  "links": [],
-  "scenarios": [],
-  "orders": [],
-  "resources": [],
-  "resource_sets": [],
-  "schedules": [],
-  "failures": [],
-  "tables": [],
-  "sequences": [],
-  "variables": [],
-  "entities": [],
-  "timeseries_inputs": [],
-  "levels": [],
-  "flows": [],
-  "conversions": [],
-  "fixed_costs": [],
-  "fleets": [],
-  "motion_profiles": [],
-  "chargers": [],
-  "auxiliaries": [],
-  "delays": [],
-  "subscripts": [],
   "agent_types": [
     {
       "name": "Machine",
       "description": "A machine cycles Idle/Busy while Working; wear from each job started, or a rare random failure, sends it to Broken. Repair uses deep history so it resumes the sub-state (Idle or Busy) it was in.",
-      "attributes": [
-        {
-          "name": "wear",
-          "init": "0"
-        }
-      ],
+      "attributes": [{"name": "wear", "init": "0"}],
       "states": [
-        {
-          "name": "Working",
-          "initial": "Idle"
-        },
-        {
-          "name": "Idle",
-          "parent": "Working",
-          "color": "GREEN",
-          "diagram": {
-            "x": -90.0,
-            "y": -60.0
-          }
-        },
+        {"name": "Working", "initial": "Idle"},
+        {"name": "Idle", "parent": "Working", "color": "GREEN", "diagram": {"x": -90.0, "y": -60.0}},
         {
           "name": "Busy",
           "parent": "Working",
           "color": "#5A46FF",
-          "entry": [
-            {
-              "target": "self.wear",
-              "expr": "self.wear + 1"
-            }
-          ],
-          "diagram": {
-            "x": 90.0,
-            "y": -60.0
-          }
+          "entry": [{"target": "self.wear", "expr": "self.wear + 1"}],
+          "diagram": {"x": 90.0, "y": -60.0}
         },
-        {
-          "name": "Broken",
-          "color": "RED",
-          "diagram": {
-            "x": 0.0,
-            "y": 140.0
-          }
-        }
+        {"name": "Broken", "color": "RED", "diagram": {"x": 0.0, "y": 140.0}}
       ],
       "transitions": [
-        {
-          "from": "Idle",
-          "to": "Busy",
-          "timeout": "EXPO(2)",
-          "timeout_unit": "minutes"
-        },
-        {
-          "from": "Busy",
-          "to": "Idle",
-          "timeout": "EXPO(5)",
-          "timeout_unit": "minutes"
-        },
-        {
-          "from": "Working",
-          "to": "Broken",
-          "rate": "0.002",
-          "rate_unit": "minutes"
-        },
-        {
-          "from": "Working",
-          "to": "Broken",
-          "condition": "self.wear >= 20"
-        },
+        {"from": "Idle", "to": "Busy", "timeout": "EXPO(2)", "timeout_unit": "minutes"},
+        {"from": "Busy", "to": "Idle", "timeout": "EXPO(5)", "timeout_unit": "minutes"},
+        {"from": "Working", "to": "Broken", "rate": "0.002", "rate_unit": "minutes"},
+        {"from": "Working", "to": "Broken", "condition": "self.wear >= 20"},
         {
           "from": "Broken",
           "to": "Working",
           "timeout": "EXPO(30)",
           "history": "deep",
-          "actions": [
-            {
-              "target": "self.wear",
-              "expr": "0"
-            }
-          ],
+          "actions": [{"target": "self.wear", "expr": "0"}],
           "timeout_unit": "minutes"
         }
       ],
-      "initial_state": "Working",
-      "speed_unit": "m/min"
+      "initial_state": "Working"
     }
   ],
-  "populations": [
-    {
-      "name": "Machines",
-      "type": "Machine",
-      "count": 6
-    }
-  ],
-  "reality_checks": [],
-  "network": null,
-  "annotations": [],
-  "submodels": {},
-  "background": null,
+  "populations": [{"name": "Machines", "type": "Machine", "count": 6}],
   "info": {
     "title": "Machine agent with repair",
     "category": "Agent-based",
     "description": "Six Machine agents, each Working{Idle, Busy} while processing jobs (EXPO(2) idle, EXPO(5) busy). Two composite-level transitions out of Working, live regardless of which child is active and not restarted by an Idle<->Busy move: a rare random breakdown (rate 0.002, MTBF ~500 min) and a usage-based preventive-maintenance condition (self.wear >= 20, incremented on each Busy entry). Either sends the machine to Broken; repair (EXPO(30)) re-enters Working with history \"deep\", so the machine resumes the sub-state -- Idle or Busy -- it was in when it broke down, and resets wear. KPIs: COUNT(\"Machines\", \"Working\") vs COUNT(\"Machines\", \"Broken\"), and fleet availability.",
     "author": "Naga example"
   },
-  "data_sources": [],
-  "data_bindings": [],
-  "initial_state": {},
-  "simulation": {
-    "time_limit": 3000.0,
-    "warmup": 200.0,
-    "replications": 5,
-    "time_unit": "minutes",
-    "currency": "EUR",
-    "energy_price": 0,
-    "length_unit": "meters"
-  },
+  "simulation": {"time_limit": 3000.0, "warmup": 200.0, "replications": 5},
   "outputs": {},
   "dashboard": {
     "widgets": [
@@ -165,10 +66,7 @@
         "expr": "COUNT(\"Machines\", \"Working\") / COUNT(\"Machines\")",
         "min": 0,
         "max": 1,
-        "thresholds": [
-          0.7,
-          0.9
-        ]
+        "thresholds": [0.7, 0.9]
       }
     ]
   }
