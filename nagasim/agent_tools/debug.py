@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import sys
 
-from nagasim.core.debugger import Stops, entity_view, watch_values
+from nagasim.core.debugger import ScopedStep, Stops, entity_view, note_point, watch_values
 from nagasim.core.playback import Timeline, visible_name
 from nagasim.core.session import SimSession
 from nagasim.core.trace import TraceRecorder
@@ -97,16 +97,21 @@ def _arm(session, stops: list) -> Stops | None:
         return Stops(session, stops) if stops else None
     except ValueError as exc:       # ExpressionError is one
         raise ToolError("E_BAD_STOP", str(exc),
-                        "a stop is {\"block\": a block or submodel instance name} or "
-                        "{\"expr\": an expression without random draws}; blocks: "
+                        "a stop is {\"block\": a block or submodel instance name}, "
+                        "{\"entity\": an entity id} (either may add \"when\": an expression "
+                        "read with the entering entity) or {\"expr\": an expression}, none "
+                        "with random draws; blocks: "
                         + ", ".join(session.model.blocks)) from None
 
 
 _document_args("debug_run", model="Workspace name of the model to debug.",
                stops="Replaces the stops (a list of at most 50, each text at most 500 "
                      "characters): [{\"block\": name}] stops when an entity enters that block "
-                     "(a submodel instance name: anything inside it), [{\"expr\": text}] when the "
-                     "expression becomes true. Omit to keep them, [] to clear.",
+                     "(a submodel instance name: anything inside it), [{\"entity\": id}] when "
+                     "that entity is created or moves, [{\"expr\": text}] when the expression "
+                     "becomes true. A block or entity stop may add \"entity\" (that entity only) "
+                     "and \"when\" (an expression read with the entering entity, e.g. "
+                     "'entity.e_type == \"Red\"'). Omit to keep them, [] to clear.",
                watches="Replaces the watch expressions, read at every return (a list of at most "
                        "50 texts of at most 500 characters). Omit to keep, [] to clear.",
                to="Model time to run to at most (a finite number); omit for no time limit.",
@@ -118,6 +123,13 @@ _document_args("debug_run", model="Workspace name of the model to debug.",
                restart="True: drop the run and start again from t = 0 on the model as it is "
                        "now, keeping the stops and watches unless new ones are given.",
                seed="Seed of the run; read only when the run starts or restarts.",
+               scope="With `step`: a submodel instance (or a block); the step goes on to the "
+                     "next event of a block inside it, so it stays where you are looking.",
+               back="True: go back to where the previous call left the run, exactly (it is "
+                    "replayed from the seed and the decisions made), and return without "
+                    "moving. The replay runs from t = 0 within max_seconds; when it does not "
+                    "fit, E_BUDGET and the run stays where it was. Not with `to`, `step`, "
+                    "`scope`, `decisions` or `restart`.",
                max_seconds="Wall-clock budget for this call; the run stays where it got to. 0 "
                            "means no budget: the call runs until a stop, `to`, a decision or "
                            "the end.")
@@ -126,7 +138,8 @@ _document_args("debug_run", model="Workspace name of the model to debug.",
 @tool()
 def debug_run(model: str, stops: list | None = None, watches: list | None = None,
               to: float | None = None, step: bool = False, decisions: list | None = None,
-              restart: bool = False, seed: int = 0, max_seconds: float = 10.0) -> dict:
+              restart: bool = False, seed: int = 0, max_seconds: float = 10.0,
+              back: bool = False, scope: str | None = None) -> dict:
     """Run one replication of a model under a debugger: start it, or continue it,
     until a stop, one step, a model time, a pending decision or the end.
 
@@ -137,7 +150,10 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
     changes the results: a run that is stopped, stepped and inspected ends with the
     same numbers as `run_model` with one replication and the same seed.
 
-    `state` says why it returned: "stop" (see `hits`), "step", "time" (reached
+    `back` undoes the previous call's move: the run is rebuilt where that call
+    found it, by replaying the same seed and decisions, so nothing is approximated.
+
+    `state` says why it returned: "back", "stop" (see `hits`), "step", "time" (reached
     `to`), "decision" (a Policy DECIDE waits: answer with `decisions`; the clock
     cannot move until you do), "budget" (max_seconds ran out; call again),
     "horizon" or "drained" (the run is over; `restart` to debug again). `hits`
@@ -156,16 +172,23 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
     call.
 
     Returns {"model", "t", "state", "hits": [{"stop": index, "block", "entity_id",
-    "entity_type"} or {"stop": index, "expr"}] (the first 50) and "hits_total": how
+    "entity_type"} (an entity stop's "block" is the block entered) or {"stop": index,
+    "expr"}] (the first 50) and "hits_total": how
     many fired, "watches": {text: value or "error: ..."} for the watches and the
     stop expressions, "pending": [{"id", "policy", "block", "t", "entity_id",
     "options"}] (the first 50) and "pending_total": how many wait, "model_edited":
     true when the model changed since this run began}.
     """
     _check_arguments(stops, watches, to)
+    if back and (to is not None or step or decisions or restart or scope is not None):
+        raise _refuse("back goes alone: not with to, step, scope, decisions or restart")
+    if scope is not None and not (step and isinstance(scope, str) and len(scope) <= MAX_TEXT):
+        raise _refuse("scope is a block or submodel instance name, given with step=True")
     ws = workspace()
     doc = ws.document(model)
     run = ws.debug.get(model)
+    if back:
+        return _step_back(model, doc, _debug_run_of(model), stops, watches, max_seconds)
     continuing = run is not None and not restart
     # Arming takes each expression stop's baseline anew, which loses a flip the last event
     # made and nothing has read yet: the same list sent again keeps the armed stops (as the
@@ -184,13 +207,20 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
         fresh = {"layout": layout, "session": session, "recorder": recorder,
                  "timeline": Timeline([], live=True), "stops": _arm(session, specs),
                  "stop_specs": [dict(stop) for stop in specs],
-                 "watches": [str(text) for text in texts]}
+                 "watches": [str(text) for text in texts],
+                 "positions": [(session._steps, session.now, 0)]}     # `back` can reach t = 0
         fresh["timeline"].append(recorder.events)           # what building the run emitted
         recorder.events = []
         if run is not None and run["stops"] is not None:
             run["stops"].close()
         ws.debug[model] = run = fresh
     session, recorder = run["session"], run["recorder"]
+    if scope is not None and not any(name == scope or name.startswith(scope + "/")
+                                     for name in session.model.blocks):
+        if new_stops is not None:
+            new_stops.close()
+        raise ToolError("E_UNKNOWN_BLOCK", f"no block or instance named '{scope}' in this "
+                        "debug run", f"blocks: {', '.join(session.model.blocks) or '(none)'}")
     try:
         for answer in decisions or []:
             session.decide(answer["policy"], answer["option"], answer.get("request_id"))
@@ -207,18 +237,26 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
             run["watches"] = [str(text) for text in watches]
 
     armed, budget, late = run["stops"], _budget(max_seconds), False
+    scoped = ScopedStep(scope) if scope is not None else None
 
     def until() -> bool:
         nonlocal late
-        # Not while stepping: a step is over as soon as the recorder holds an event.
-        if not step and len(recorder.events) > FLUSH_EVENTS:
-            run["timeline"].append(recorder.events)
-            recorder.events = []
+        # The budget first: a flip the last event made stays unread for the next call.
         if budget is not None and budget():
             late = True
             return True
         hit = armed() if armed is not None else False       # read even when stepping
-        return hit or (step and bool(recorder.events))
+        # #619: the newest events are read before they are handed over below.
+        stepped = step and (scoped.seen(recorder.events) if scoped is not None
+                            else bool(recorder.events))
+        # A plain step is over as soon as the recorder holds an event; a scoped one
+        # hands what it has read over, as a run does.
+        if (scoped is not None or not step) and len(recorder.events) > FLUSH_EVENTS:
+            run["timeline"].append(recorder.events)
+            recorder.events = []
+            if scoped is not None:
+                scoped.emptied()
+        return hit or stepped
 
     state = session.advance(to=to, until=until)
     events, recorder.events = recorder.events, []
@@ -226,10 +264,72 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
     hits = armed.take_hits() if armed is not None else []
     if state == "until":
         state = "stop" if hits else "budget" if late else "step"
+    return _answer(model, doc, run, state, hits)
+
+
+def _answer(model, doc, run, state, hits) -> dict:
+    session = run["session"]
+    # D598: where each call left the run, the targets of `back`; #621: a call that only
+    # answered decisions is a point of its own, so `back` returns to the unanswered state.
+    note_point(run.setdefault("positions", []), session, keep_edits=False)
     texts = run["watches"] + [stop["expr"] for stop in run["stop_specs"] if "expr" in stop]
     return _json_safe({"model": model, "t": session.now, "state": state, "hits": hits[:MAX_HITS],
                        "hits_total": len(hits), "watches": watch_values(session, texts),
                        **_pending(session), "model_edited": _edited(doc, run)})
+
+
+class _OverBudget(Exception):
+    pass
+
+
+class _Replay(TraceRecorder):
+    """The recorder of a `back` replay (#620): it hands its events to the timeline in
+    chunks, as a forward call does, and stops the replay once the budget runs out."""
+
+    def __init__(self, timeline, budget):
+        super().__init__(max_events=float("inf"))
+        self.timeline, self.budget = timeline, budget
+
+    def __call__(self, name, **event):
+        super().__call__(name, **event)
+        if self.timeline is not None and len(self.events) > FLUSH_EVENTS:
+            self.timeline.append(self.events)
+            self.events = []
+        if self.budget is not None and self.budget():
+            raise _OverBudget
+
+
+def _step_back(model, doc, run, stops, watches, max_seconds) -> dict:
+    """`debug_run(back=True)`: rebuild the run where the previous call left it. The
+    run is left as it was when the replay is refused or runs out of time."""
+    positions = run.get("positions", [])
+    if len(positions) < 2:
+        raise _refuse("back: the run is at its start")
+    specs = run["stop_specs"] if stops is None else stops
+    old = run["session"]
+    step, t, n = positions[-2]
+    timeline = Timeline([], live=True)
+    recorder = _Replay(timeline, _budget(max_seconds))
+    try:
+        session = SimSession.resumed(run["layout"], old.seed, old.game_log[:n], step, t,
+                                     trace=recorder)
+    except _OverBudget:
+        raise ToolError("E_BUDGET", f"back replays the run from t = 0 to t = {t:g}, which "
+                        f"takes longer than max_seconds", "call again with a larger "
+                        "max_seconds, or 0 for no limit; the run is where it was") from None
+    # The replay is done: from here the calls flush it themselves, after reading it.
+    recorder.budget = recorder.timeline = None
+    armed = _arm(session, specs)                    # a bad stop refuses before anything changes
+    positions.pop()
+    if run["stops"] is not None:
+        run["stops"].close()
+    timeline.append(recorder.events)
+    recorder.events = []
+    run.update(session=session, recorder=recorder, timeline=timeline, stops=armed,
+               stop_specs=[dict(stop) for stop in specs])
+    if watches is not None:
+        run["watches"] = [str(text) for text in watches]
+    return _answer(model, doc, run, "back", [])
 
 
 _document_args("debug_inspect", model="Workspace name of a model with a debug run.",

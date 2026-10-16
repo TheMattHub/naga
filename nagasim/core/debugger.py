@@ -15,8 +15,8 @@ from nagasim.core.sim_classes import Entity
 from nagasim.core.submodels import SubmodelError, flatten
 from nagasim.core.timeseries import peeking as _peeking
 
-__all__ = ["Stops", "entity_view", "readonly_expression", "watch_functions", "watch_names",
-           "watch_values"]
+__all__ = ["ScopedStep", "Stops", "entity_view", "note_point", "readonly_expression",
+           "watch_functions", "watch_names", "watch_values"]
 
 _SAMPLERS = frozenset(functions_with("sampler"))
 # RecursionError and MemoryError too: a text from a tool argument can nest just under the
@@ -85,10 +85,11 @@ def _plain(value):
     return value.item() if getattr(value, "shape", None) == () else value
 
 
-def _truth(expression: Expression, ctx) -> bool:
-    """A stop's reading: a failed or NaN read is false."""
+def _truth(expression: Expression, ctx, entity=None) -> bool:
+    """A stop's reading, with *entity* in hand for a block stop's "when": a failed
+    or NaN read is false."""
     try:
-        value = expression.evaluate(ExpressionScope(ctx=ctx))
+        value = expression.evaluate(ExpressionScope(entity=entity, ctx=ctx))
         return bool(value) and value == value
     except _READ_ERRORS:
         return False
@@ -97,6 +98,41 @@ def _truth(expression: Expression, ctx) -> bool:
 def _inside(block: str, name: str) -> bool:
     """*block* (a flattened name) is *name*, or inside the instance *name*."""
     return block == name or block.startswith(name + "/")
+
+
+def note_point(points: list, session, *, keep_edits: bool) -> None:
+    """Add where *session* stands, (steps, t, game_log length), to *points*: the
+    targets of a step back (D598). A point equal to the last is not repeated. One
+    at the same (steps, t) with a longer log replaces the last when *keep_edits*
+    (the editor: an edit made at a pause stays when stepping back to it), else it
+    is a point of its own (an agent: `back` undoes the answers of its last call)."""
+    here = (session._steps, session.now, len(session.game_log))
+    if points and (points[-1] == here or (keep_edits and points[-1][:2] == here[:2])):
+        points[-1] = here
+    else:
+        points.append(here)
+
+
+class ScopedStep:
+    """A step that ends at the next trace event of a block inside *scope* (a submodel
+    instance, or one block): the editor's F11 and `debug_run(scope=)` share it.
+
+    `seen(events)` reads the events added to *events* since the last call, each
+    once; call it before handing the list over and emptying it, then `emptied()`."""
+
+    def __init__(self, scope: str):
+        self.scope = scope
+        self._read = 0
+
+    def _in(self, name) -> bool:
+        return isinstance(name, str) and _inside(name, self.scope)
+
+    def seen(self, events) -> bool:
+        new, self._read = events[self._read:], len(events)
+        return any(self._in(e.block) or self._in(e.target) for e in new)
+
+    def emptied(self) -> None:
+        self._read = 0
 
 
 class Stops:
@@ -109,25 +145,47 @@ class Stops:
     false to true, read before each event. Both fire on a change, so continuing from
     a stop always moves.
 
-    Raises ValueError for a stop that is neither or names no block, ExpressionError
-    (a ValueError) for an expression outside the grammar or one that samples."""
+    A block stop may narrow (D597): "entity" (an id) fires for that entity only,
+    "when" (an expression) only when it holds for the entering entity, read with
+    that entity in hand (`entity.e_type == "Red"`, `entity.<attribute>`; a bare
+    `type` is no name and never holds). {"entity": id} alone fires whenever that
+    entity is created or moves, wherever it goes; its hit names the block entered.
+
+    Raises ValueError for a stop that is none of these or names no block,
+    ExpressionError (a ValueError) for an expression outside the grammar or one
+    that samples."""
+
+    _BLOCK_KEYS = frozenset(("block", "entity", "when"))
 
     def __init__(self, session, stops: list[dict] | None):
         self._ctx = session.ctx
         self._hits: list[dict] = []
-        self._blocks: list[tuple[int, str]] = []    # (stop index, name)
+        # (stop index, block name or None, entity id or None, "when" expression or None)
+        self._blocks: list[tuple] = []
         self._exprs: list[list] = []                # [stop index, text, expression, last truth]
         for index, stop in enumerate(stops or []):
-            if not (isinstance(stop, dict) and len(stop) == 1
-                    and next(iter(stop)) in ("block", "expr")):
-                raise ValueError(f"stop {index}: expected {{\"block\": name}} or "
+            keys = set(stop) if isinstance(stop, dict) else set()
+            if not (keys == {"expr"} or (keys and keys <= self._BLOCK_KEYS
+                                         and keys & {"block", "entity"})):
+                raise ValueError(f"stop {index}: expected {{\"block\": name}}, "
+                                 f"{{\"entity\": id}} (either with \"when\") or "
                                  f"{{\"expr\": text}}, got {_shown(stop)}")
-            if "block" in stop:
-                name = stop["block"]
-                if not (isinstance(name, str)
+            if keys != {"expr"}:
+                name, entity, when = stop.get("block"), stop.get("entity"), stop.get("when")
+                if "block" in stop and not (
+                        isinstance(name, str)
                         and any(_inside(block, name) for block in session.model.blocks)):
                     raise ValueError(f"stop {index}: no block named '{_shown(name)}'")
-                self._blocks.append((index, name))
+                if "entity" in stop and (isinstance(entity, bool) or not isinstance(entity, int)):
+                    raise ValueError(f"stop {index}: an entity is an id, got {_shown(entity)}")
+                if "when" in stop:
+                    if not isinstance(when, str):
+                        raise ValueError(f"stop {index}: a condition is text, got {_shown(when)}")
+                    try:
+                        when = readonly_expression(when)
+                    except ExpressionError as exc:
+                        raise ExpressionError(f"stop {index}: {stop['when']}: {exc}") from None
+                self._blocks.append((index, name, entity, when))
             else:
                 text = stop["expr"]
                 if not isinstance(text, str):       # str() would turn a list into a literal
@@ -153,10 +211,18 @@ class Stops:
             return
         if entered is None or entity is None:
             return
-        for index, stop in self._blocks:
-            if _inside(entered, stop) and not (source is not None and _inside(source, stop)):
-                self._hits.append({"stop": index, "block": stop, "entity_id": entity.id,
-                                   "entity_type": entity.e_type})
+        for index, stop, only, when in self._blocks:
+            if stop is not None and not (
+                    _inside(entered, stop) and not (source is not None and _inside(source, stop))):
+                continue
+            if only is not None and entity.id != only:
+                continue
+            if when is not None:
+                with _peeking(self._ctx):
+                    if not _truth(when, self._ctx, entity):
+                        continue
+            self._hits.append({"stop": index, "block": entered if stop is None else stop,
+                               "entity_id": entity.id, "entity_type": entity.e_type})
 
     def __call__(self) -> bool:
         """The `until=` predicate: read every expression stop (no short circuit, so

@@ -2048,10 +2048,15 @@
     "read_only": false
   },
   {
-    "description": "Run one replication of a model under a debugger: start it, or continue it,\nuntil a stop, one step, a model time, a pending decision or the end.\n\nThe run is kept between calls, one per model, so the usual loop is: set stops\nand watches, call again and again, and read `debug_inspect` whenever it\nreturns. A stop fires on a change -- an entity entering a block, an expression\ngoing from false to true -- so calling again always moves on. Nothing here\nchanges the results: a run that is stopped, stepped and inspected ends with the\nsame numbers as `run_model` with one replication and the same seed.\n\n`state` says why it returned: \"stop\" (see `hits`), \"step\", \"time\" (reached\n`to`), \"decision\" (a Policy DECIDE waits: answer with `decisions`; the clock\ncannot move until you do), \"budget\" (max_seconds ran out; call again),\n\"horizon\" or \"drained\" (the run is over; `restart` to debug again). `hits`\nlists every stop that fired during the call and is read at every return, so\nit can be non-empty beside any state, not only \"stop\".\n\nA call is refused (E_BAD_ARGUMENT) before anything changes when `stops` or\n`watches` is not a list, has more than 50 entries or holds a text of more than\n500 characters, or `to` is not a finite number; a bad stop likewise\n(E_BAD_STOP). Then a start or `restart` happens (with the new stops and watches,\nif given), then `decisions` are applied, then on a continuing run the new stops\nand watches take effect, then the run moves. A refused\ndecision answers with an error before the run moves: a continuing run keeps its\nstops and watches as they were, but the decisions listed before the refused one\nstay applied. A start or `restart` is not undone by a later error in the same\ncall.\n\nReturns {\"model\", \"t\", \"state\", \"hits\": [{\"stop\": index, \"block\", \"entity_id\",\n\"entity_type\"} or {\"stop\": index, \"expr\"}] (the first 50) and \"hits_total\": how\nmany fired, \"watches\": {text: value or \"error: ...\"} for the watches and the\nstop expressions, \"pending\": [{\"id\", \"policy\", \"block\", \"t\", \"entity_id\",\n\"options\"}] (the first 50) and \"pending_total\": how many wait, \"model_edited\":\ntrue when the model changed since this run began}.",
+    "description": "Run one replication of a model under a debugger: start it, or continue it,\nuntil a stop, one step, a model time, a pending decision or the end.\n\nThe run is kept between calls, one per model, so the usual loop is: set stops\nand watches, call again and again, and read `debug_inspect` whenever it\nreturns. A stop fires on a change -- an entity entering a block, an expression\ngoing from false to true -- so calling again always moves on. Nothing here\nchanges the results: a run that is stopped, stepped and inspected ends with the\nsame numbers as `run_model` with one replication and the same seed.\n\n`back` undoes the previous call's move: the run is rebuilt where that call\nfound it, by replaying the same seed and decisions, so nothing is approximated.\n\n`state` says why it returned: \"back\", \"stop\" (see `hits`), \"step\", \"time\" (reached\n`to`), \"decision\" (a Policy DECIDE waits: answer with `decisions`; the clock\ncannot move until you do), \"budget\" (max_seconds ran out; call again),\n\"horizon\" or \"drained\" (the run is over; `restart` to debug again). `hits`\nlists every stop that fired during the call and is read at every return, so\nit can be non-empty beside any state, not only \"stop\".\n\nA call is refused (E_BAD_ARGUMENT) before anything changes when `stops` or\n`watches` is not a list, has more than 50 entries or holds a text of more than\n500 characters, or `to` is not a finite number; a bad stop likewise\n(E_BAD_STOP). Then a start or `restart` happens (with the new stops and watches,\nif given), then `decisions` are applied, then on a continuing run the new stops\nand watches take effect, then the run moves. A refused\ndecision answers with an error before the run moves: a continuing run keeps its\nstops and watches as they were, but the decisions listed before the refused one\nstay applied. A start or `restart` is not undone by a later error in the same\ncall.\n\nReturns {\"model\", \"t\", \"state\", \"hits\": [{\"stop\": index, \"block\", \"entity_id\",\n\"entity_type\"} (an entity stop's \"block\" is the block entered) or {\"stop\": index,\n\"expr\"}] (the first 50) and \"hits_total\": how\nmany fired, \"watches\": {text: value or \"error: ...\"} for the watches and the\nstop expressions, \"pending\": [{\"id\", \"policy\", \"block\", \"t\", \"entity_id\",\n\"options\"}] (the first 50) and \"pending_total\": how many wait, \"model_edited\":\ntrue when the model changed since this run began}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "back": {
+          "default": false,
+          "description": "True: go back to where the previous call left the run, exactly (it is replayed from the seed and the decisions made), and return without moving. The replay runs from t = 0 within max_seconds; when it does not fit, E_BUDGET and the run stays where it was. Not with `to`, `step`, `scope`, `decisions` or `restart`.",
+          "type": "boolean"
+        },
         "decisions": {
           "description": "Answers to pending decisions: [{\"policy\", \"option\", \"request_id\"}] (request_id optional: the policy's oldest). Applied after the checks of the other arguments and after a start or `restart`, before the run moves.",
           "type": [
@@ -2073,6 +2078,13 @@
           "description": "True: drop the run and start again from t = 0 on the model as it is now, keeping the stops and watches unless new ones are given.",
           "type": "boolean"
         },
+        "scope": {
+          "description": "With `step`: a submodel instance (or a block); the step goes on to the next event of a block inside it, so it stays where you are looking.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "seed": {
           "default": 0,
           "description": "Seed of the run; read only when the run starts or restarts.",
@@ -2084,7 +2096,7 @@
           "type": "boolean"
         },
         "stops": {
-          "description": "Replaces the stops (a list of at most 50, each text at most 500 characters): [{\"block\": name}] stops when an entity enters that block (a submodel instance name: anything inside it), [{\"expr\": text}] when the expression becomes true. Omit to keep them, [] to clear.",
+          "description": "Replaces the stops (a list of at most 50, each text at most 500 characters): [{\"block\": name}] stops when an entity enters that block (a submodel instance name: anything inside it), [{\"entity\": id}] when that entity is created or moves, [{\"expr\": text}] when the expression becomes true. A block or entity stop may add \"entity\" (that entity only) and \"when\" (an expression read with the entering entity, e.g. 'entity.e_type == \"Red\"'). Omit to keep them, [] to clear.",
           "type": [
             "array",
             "null"

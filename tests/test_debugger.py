@@ -226,13 +226,49 @@ def test_a_failed_or_nan_read_is_false_for_the_whole_run():
 @pytest.mark.parametrize("stops", [
     [{"block": "nope"}], [{"blok": "delay_1"}], [{"block": "delay_1", "expr": "1"}], ["delay_1"],
     [{"block": 3}], [{"expr": "RAND() > 0.5"}], [{"expr": "1 +"}], [{"expr": "__import__('os')"}],
-    [{"expr": ["x > 0"]}], [{"expr": 3}], [{"expr": None}]])
+    [{"expr": ["x > 0"]}], [{"expr": 3}], [{"expr": None}],
+    # D597: a narrowed stop
+    [{"entity": True}], [{"entity": "1"}], [{"when": "TNOW > 0"}],
+    [{"block": "delay_1", "when": "RAND() > 0"}], [{"block": "delay_1", "when": 3}],
+    [{"expr": "TNOW > 0", "when": "TNOW > 1"}], [{"entity": 1, "expr": "1"}]])
 def test_a_bad_stop_is_refused_and_leaves_the_bus_alone(stops):
     s = SimSession(_line(), seed=0)
     # The "stop {index}: " prefix is relied on: the game worker cuts the message at ": ".
     with pytest.raises(ValueError, match=r"^stop 1: "):     # ExpressionError is one
         Stops(s, [{"block": "delay_1"}] + stops)
     assert not s.ctx.bus.has_subscribers
+
+
+def _hits_to_the_end(s, stops):
+    hits = []
+    while s.advance(until=stops) == "until":
+        hits += stops.take_hits()
+    stops.close()
+    return hits
+
+
+def test_a_when_condition_reads_the_entering_entity():
+    s = SimSession(_line(), seed=0)
+    hits = _hits_to_the_end(s, Stops(s, [{"block": "delay_1", "when": 'entity.name == "Entity 3"'},
+                                         {"block": "delay_1", "when": "nope > 1"}]))
+    assert hits == [{"stop": 0, "block": "delay_1", "entity_id": 3, "entity_type": "DEFAULT"}]
+
+
+def test_623_the_documented_when_example_fires_and_a_bare_type_never_does():
+    """DEVLOG #623: the Stops docstring showed `type == "red"`, which never holds."""
+    s = SimSession(_line(), seed=0)
+    hits = _hits_to_the_end(s, Stops(s, [
+        {"block": "delay_1", "when": 'entity.e_type == "DEFAULT"'},
+        {"block": "delay_1", "when": 'type == "DEFAULT"'}]))
+    assert {h["stop"] for h in hits} == {0} and len(hits) == 6
+    assert 'entity.e_type == "Red"' in Stops.__doc__
+
+
+def test_an_entity_stop_follows_one_entity_through_every_block():
+    s = SimSession(_line(), seed=0)
+    hits = _hits_to_the_end(s, Stops(s, [{"entity": 2}, {"block": "dispose_1", "entity": 4}]))
+    assert [(h["stop"], h["block"], h["entity_id"]) for h in hits] == [
+        (0, "create_1", 2), (0, "delay_1", 2), (0, "dispose_1", 2), (1, "dispose_1", 4)]
 
 
 @pytest.mark.parametrize("stops", [None, []])
@@ -395,8 +431,11 @@ def _debugged(doc, seed, traced, rounds=120):
     s = SimSession(doc, seed, trace=trace)
     exprs = _expressions(s)
     names = set(s.model.blocks) | {name.split("/")[0] for name in s.model.blocks}
+    # D597: a condition read inside an event, and one entity followed, change nothing either.
+    narrowed = [{"block": sorted(names)[0], "when": "TNOW >= 0 and entity.cost >= 0"},
+                {"entity": 1}] if names else []
     stops = Stops(s, [{"block": name} for name in sorted(names)]
-                  + [{"expr": text} for text in exprs])
+                  + [{"expr": text} for text in exprs] + narrowed)
     # The odd chunks (a quarter of the rounds, 2 units on average) add up to 1.5 times the
     # run's own length (a model may drain long before its horizon): the mix of calls spans
     # the whole run, not its first quarter.
@@ -517,6 +556,63 @@ def test_stops_steps_and_reads_around_decisions_leave_the_game_as_it_was(model):
     assert debugged.game_log == plain.game_log          # entry for entry, "step" included
     _frames_equal(got, expected)
     _frames_equal(SimSession.replay(doc, 0, plain.game_log), expected)
+
+
+# -- step back (D598): a session resumed at an earlier point is that run, exactly ------
+def _state(s, trace):
+    return (s._steps, s.now, json.dumps(s.snapshot(), sort_keys=True, default=str),
+            list(trace.events))
+
+
+def _drive(doc, seed, rounds=40):
+    """A traced run moved by steps and odd chunks; [(position, state)] at every pause."""
+    trace = TraceRecorder()
+    s = SimSession(doc, seed, trace=trace)
+    plain = SimSession(doc, seed)
+    plain.finish()
+    unit = plain.now * 2 / rounds
+    seen = []
+    for i in range(rounds):
+        if i % 2:
+            state = s.advance(to=s.now + unit * (0.5 + i % 3))
+        else:
+            n = len(trace.events)
+            state = s.advance(until=lambda: len(trace.events) > n)
+        seen.append(((s._steps, s.now, len(s.game_log)), _state(s, trace)))
+        if state in ("horizon", "drained"):
+            break
+    return s, seen
+
+
+def test_a_resumed_session_is_the_run_at_that_point_and_ends_with_the_golden_hash():
+    for model in GOLDEN_MODELS:
+        seed = SEEDS[0]
+        record = json.loads((GOLDEN_DIR / f"{Path(model).stem}_seed{seed}.json").read_text())
+        doc = _load(model)
+        run, seen = _drive(doc, seed)
+        for (step, t, n), expected in (seen[len(seen) // 3], seen[2 * len(seen) // 3]):
+            trace = TraceRecorder()
+            back = SimSession.resumed(doc, seed, run.game_log[:n], step, t, trace=trace)
+            assert _state(back, trace) == expected, (model, step)
+            assert golden_hash(payload_of(back.finish())) == record["hash"], (model, step)
+
+
+def test_a_resumed_game_keeps_its_answers_and_ends_as_the_plain_game():
+    doc = _load("ed_game.json")
+    plain, expected = _played_plainly(doc)
+    s, count, marks = SimSession(doc, seed=0), 0, []
+    while count < ANSWERS and s.advance() == "decision":
+        marks.append((s._steps, s.now, len(s.game_log), count))
+        count = _answer(s, count)
+    step, t, n, count = marks[len(marks) // 2]
+    back = SimSession.resumed(doc, 0, s.game_log[:n], step, t)
+    assert back.pending() and back.game_log == s.game_log[:n]
+    while count < ANSWERS:
+        count = _answer(back, count)
+        if back.advance() != "decision":
+            break
+    assert back.game_log == plain.game_log
+    _frames_equal(back.finish(), expected)
 
 
 # -- what a watch field offers (composing a watch, D360) ---------------------------

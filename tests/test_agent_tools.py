@@ -873,6 +873,82 @@ def test_a_run_model_between_two_debug_runs_changes_neither(ws):
     _frames_equal(ws.debug[model]["session"].finish(), expected)
 
 
+def test_debug_run_back_returns_exactly_where_the_previous_call_was(ws):
+    """D598: back rebuilds the run by replay; the run then ends as an uninterrupted one."""
+    from test_debugger import _frames_equal
+    model = _debugged()
+    expected = _plain_frames(ws, model)
+    assert T.call("debug_run", model=model, back=True)["error"]["code"] == "E_NO_DEBUG_RUN"
+    first = ok(T.call("debug_run", model=model, to=100, watches=['NQ("Server")']))
+    second = ok(T.call("debug_run", model=model, to=300))
+    back = ok(T.call("debug_run", model=model, back=True))
+    assert back["state"] == "back" and back["t"] == first["t"] == 100.0
+    assert back["watches"] == first["watches"]
+    assert ok(T.call("debug_run", model=model, to=300))["watches"] == second["watches"]
+    assert ok(T.call("debug_run", model=model, back=True))["t"] == 100.0
+    assert ok(T.call("debug_run", model=model, back=True))["t"] == 0.0
+    assert T.call("debug_run", model=model, back=True)["error"]["code"] == "E_BAD_ARGUMENT"
+    assert T.call("debug_run", model=model, back=True, step=True)["error"]["code"] == \
+        "E_BAD_ARGUMENT"
+    assert ok(T.call("debug_run", model=model))["state"] == "horizon"
+    _frames_equal(ws.debug[model]["session"].finish(), expected)
+
+
+def test_620_back_hands_its_replay_over_in_chunks_and_keeps_to_its_budget(ws, monkeypatch):
+    """DEVLOG #620: back held the whole replay in one list and ignored max_seconds."""
+    from test_debugger import _frames_equal
+    import nagasim.agent_tools.debug as debug_tools
+    model = _debugged()
+    expected = _plain_frames(ws, model)
+    ok(T.call("debug_run", model=model, to=400))
+    ok(T.call("debug_run", model=model, to=800))
+    sizes = []
+    real_append = debug_tools.Timeline.append
+    monkeypatch.setattr(debug_tools, "FLUSH_EVENTS", 50)
+    monkeypatch.setattr(debug_tools.Timeline, "append",
+                        lambda self, events: sizes.append(len(events)) or real_append(self, events))
+    with monkeypatch.context() as patched:
+        patched.setattr(debug_tools, "_budget", lambda _seconds: lambda: True)
+        refused = T.call("debug_run", model=model, back=True)
+    assert refused["error"]["code"] == "E_BUDGET"
+    assert ok(T.call("debug_inspect", model=model))["t"] == 800.0      # the run is as it was
+    sizes.clear()
+    assert ok(T.call("debug_run", model=model, back=True))["t"] == 400.0
+    assert len(sizes) > 2 and max(sizes) <= 51
+    assert ok(T.call("debug_run", model=model))["state"] == "horizon"
+    _frames_equal(ws.debug[model]["session"].finish(), expected)
+
+
+def test_621_back_returns_to_a_decision_answered_by_a_call_that_did_not_move(ws):
+    """DEVLOG #621: the saved points merged on (step, t) alone, so back after a call
+    that only answered a decision skipped to the call before it."""
+    model = _debugged("parallel_routing_policy")
+    first = ok(T.call("debug_run", model=model))
+    assert first["state"] == "decision"
+    request = first["pending"][0]
+    answered = ok(T.call("debug_run", model=model, to=first["t"], decisions=[
+        {"policy": request["policy"], "option": 0, "request_id": request["id"]}]))
+    assert answered["t"] == first["t"]
+    back = ok(T.call("debug_run", model=model, back=True))
+    assert back["t"] == first["t"] and back["pending"][0]["id"] == request["id"]
+    assert ws.debug[model]["session"].game_log == []
+
+
+def test_619_a_scoped_step_reads_the_events_that_trigger_a_flush(ws, monkeypatch):
+    """DEVLOG #619: the tool flushed its recorder before reading the newest events, so
+    an event inside the scope that crossed the flush size was never checked."""
+    from nagasim.core.session import SimSession
+    from nagasim.core.trace import TraceRecorder
+    monkeypatch.setattr("nagasim.agent_tools.debug.FLUSH_EVENTS", 0)    # every event flushes
+    model = _debugged("two_cell_line")
+    trace = TraceRecorder()
+    s = SimSession(ws.models[model].to_layout(), seed=0, trace=trace)
+    s.advance(until=lambda: any((e.block or "").startswith("cell_2/")
+                                or (e.target or "").startswith("cell_2/") for e in trace.events))
+    out = ok(T.call("debug_run", model=model, step=True, scope="cell_2"))
+    assert out["t"] == s.now
+
+
 def test_debug_run_out_of_budget_returns_and_the_run_goes_on_unchanged(ws, monkeypatch):
     from test_debugger import _frames_equal
     model = _debugged()
@@ -1026,7 +1102,8 @@ def test_a_crowd_of_waiting_decisions_comes_back_capped_with_its_full_count(ws):
 def test_the_debug_tools_take_no_path_endpoint_or_permission_argument():
     by_name = {t["name"]: t for t in T.tool_schemas()}
     assert set(by_name["debug_run"]["input_schema"]["properties"]) == {
-        "model", "stops", "watches", "to", "step", "decisions", "restart", "seed", "max_seconds"}
+        "model", "stops", "watches", "to", "step", "decisions", "restart", "seed", "max_seconds",
+        "back", "scope"}
     assert set(by_name["debug_inspect"]["input_schema"]["properties"]) == {
         "model", "block", "entity"}
     assert by_name["debug_inspect"]["read_only"] and not by_name["debug_run"]["read_only"]

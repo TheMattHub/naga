@@ -355,21 +355,37 @@ class SimSession:
         results["game_log"] = summarize_game_log(self.game_log, run_id=run_id)
         return results
 
+    def _replay_log(self, game_log) -> None:
+        """Make the calls of *game_log* again, each at its own step and time."""
+        actions = {"set_variable": self.set_variable, "set_constant": self.set_constant,
+                   "set_capacity": self.set_capacity, "set_probs": self.set_probs,
+                   "decide": self.decide}
+        for entry in game_log:
+            action = actions.get(entry["action"])
+            if action is None:
+                raise ValueError(f"unknown game_log action '{entry['action']}'")
+            self._goto(int(entry["step"]), float(entry["t"]))
+            # A decision answers the request it answered then (L2); a log
+            # saved before L2 has no id and meant the oldest.
+            extra = {"request_id": entry["request_id"]} if "request_id" in entry else {}
+            action(entry["target"], entry["value"], **extra)
+
     @classmethod
     def replay(cls, layout, seed: int, game_log, trace=None) -> dict:
         """Re-play a game from its seed and `game_log`; returns `finish()`.
         *trace* records the replayed run, e.g. to animate it."""
         session = cls(layout, seed, trace=trace)
-        actions = {"set_variable": session.set_variable, "set_constant": session.set_constant,
-                   "set_capacity": session.set_capacity, "set_probs": session.set_probs,
-                   "decide": session.decide}
-        for entry in game_log:
-            action = actions.get(entry["action"])
-            if action is None:
-                raise ValueError(f"unknown game_log action '{entry['action']}'")
-            session._goto(int(entry["step"]), float(entry["t"]))
-            # A decision answers the request it answered then (L2); a log
-            # saved before L2 has no id and meant the oldest.
-            extra = {"request_id": entry["request_id"]} if "request_id" in entry else {}
-            action(entry["target"], entry["value"], **extra)
+        session._replay_log(game_log)
         return session.finish()
+
+    @classmethod
+    def resumed(cls, layout, seed: int, game_log, step: int, t: float, trace=None,
+                subscribers=()) -> "SimSession":
+        """A new session standing where a run of *layout* and *seed* stood after
+        *step* steps at time *t*, *game_log* being the calls it had made by then
+        (D598: a step back). Built by replay, so its state is that run's, exactly:
+        continuing it gives the results the run would have given."""
+        session = cls(layout, seed, trace=trace, subscribers=subscribers)
+        session._replay_log(game_log)
+        session._goto(int(step), float(t))
+        return session
