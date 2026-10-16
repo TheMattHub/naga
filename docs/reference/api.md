@@ -16,7 +16,7 @@ Run *replications* replications with seeds seed, seed+1, ...
 ## nagasim.experiments.run_scenarios
 
 ```text
-run_scenarios(layout, scenario_names=None, *, replications: int | None=None, seed: int=0, run_length: float | None=None, warmup: float | None=None, crn: bool=True, workers: int | str=1, on_progress=None, should_stop=None, pool=None) -> ExperimentResult
+run_scenarios(layout, scenario_names=None, *, replications: int | None=None, seed: int=0, run_length: float | None=None, warmup: float | None=None, crn: bool=True, workers: int | str=1, on_progress=None, should_stop=None, pool=None, baseline: bool=True) -> ExperimentResult
 ```
 
 Run every named scenario (all of them by default) and return the results.

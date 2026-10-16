@@ -571,7 +571,7 @@ class ExperimentResult:
         return pd.DataFrame(rows, columns=COMPARISON_COLS)
 
 
-def _scenario_layouts(base: dict, scenario_names) -> dict[str, dict]:
+def _scenario_layouts(base: dict, scenario_names, baseline: bool = True) -> dict[str, dict]:
     """Apply and validate every chosen scenario up front, so a typo in an
     override is an error before the first replication rather than after the
     last one."""
@@ -579,8 +579,9 @@ def _scenario_layouts(base: dict, scenario_names) -> dict[str, dict]:
     # A caller's subset always gets the comparison baseline too (its own doc,
     # and the run_scenarios agent tool's, promise it): dropping it here is
     # what used to make ExperimentResult.comparison()'s default lookup raise
-    # "unknown baseline scenario" (DEVLOG #275).
-    if wanted is not None and BASELINE not in wanted:
+    # "unknown baseline scenario" (DEVLOG #275). `baseline=False` is the one
+    # caller that holds a baseline already.
+    if wanted is not None and baseline and BASELINE not in wanted:
         wanted = [BASELINE] + wanted
     layouts: dict[str, dict] = {}
     for scenario in scenarios_of(base):
@@ -618,8 +619,12 @@ def _window(candidate: dict, replications, run_length, warmup) -> tuple:
 def run_scenarios(layout, scenario_names=None, *, replications: int | None = None, seed: int = 0,
                   run_length: float | None = None, warmup: float | None = None, crn: bool = True,
                   workers: int | str = 1, on_progress=None, should_stop=None,
-                  pool=None) -> ExperimentResult:
+                  pool=None, baseline: bool = True) -> ExperimentResult:
     """Run every named scenario (all of them by default) and return the results.
+
+    A named subset also runs the baseline, unless *baseline* is False: for a
+    caller that keeps the baseline's results from an earlier run (the result then
+    has no baseline to compare against until the caller adds it).
 
     *replications*, *run_length* and *warmup* fall back to the model's own
     "simulation" section, exactly like `api.run_model`; run length and warm-up
@@ -652,7 +657,7 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
     base = _as_layout(layout)
     if replications is None:
         replications = int(base.get("simulation", {}).get("replications") or 1)
-    layouts = _scenario_layouts(base, scenario_names)
+    layouts = _scenario_layouts(base, scenario_names, baseline)
     # Tasks go straight to the pool, so the "model never ends on its own" guard
     # that `run_model` used to apply per scenario is applied here instead --
     # per scenario, each with its OWN simulation.time_limit and warmup unless

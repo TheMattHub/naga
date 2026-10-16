@@ -391,3 +391,39 @@ def test_a_what_if_is_a_scenario_nobody_saved():
     result = experiments.run_scenarios(yours, ["Yours"], replications=2, seed=0)
     assert result.scenarios == ["Baseline", "Yours"]
     assert result.seeds["Yours"] == result.seeds["Baseline"] == [0, 1]
+
+
+# -- generated charts (rule 3) ---------------------------------------------------
+@pytest.mark.parametrize("path", MODELS, ids=lambda p: p.stem)
+def test_the_generated_charts_validate_on_every_bundled_model(path):
+    doc = schema.load_layout(path)
+    charts = dashboard.generated_widgets(doc)
+    if (doc.get("dashboard") or {}).get("widgets"):
+        assert charts == []                 # the model's own charts win
+        return
+    shown = {**doc, "dashboard": {**(doc.get("dashboard") or {}), "widgets": charts}}
+    assert schema.fatal_problems(schema.validate_model_structured(shown)) == []
+    assert dashboard.generated_widgets(doc) == charts       # deterministic
+
+
+def test_the_generated_charts_name_what_runs_not_the_assets_templates():
+    charts = {w["name"]: w for w in dashboard.generated_widgets(_bundled("line_with_buffers"))}
+    assert [s["label"] for s in charts["Levels"]["series"]] == [
+        f"buffer_{i}/Mfg Buffer stock" for i in (1, 2, 3)]
+    assert charts["Levels"]["kind"] == "line"
+    assert charts["Levels"]["series"][0]["expr"] == 'LEVEL("buffer_1/Mfg Buffer stock")'
+    assert [s["label"] for s in charts["Queues"]["series"]] == [
+        f"station_{i}/Mfg Machine" for i in (1, 2, 3, 4)]
+    assert charts["Queues"]["kind"] == "bar"
+    assert len(dashboard.generated_widgets(_bundled("biogas_plant_library"))[0]["series"]) == 4
+    assert dashboard.generated_widgets(_bundled("abm_boids_flock")) == []     # nothing to chart
+
+
+def test_no_generated_charts_when_the_runs_record_no_samples():
+    doc = schema.load_layout(MODELS[0].parent / "line_with_buffers.json")
+    assert dashboard.generated_widgets(doc)
+    draining = {**doc, "simulation": {**doc.get("simulation", {}), "time_limit": 0,
+                                      "timeseries_interval": None}}
+    assert dashboard.generated_widgets(draining) == []
+    sampled = {**draining, "simulation": {**draining["simulation"], "timeseries_interval": 5}}
+    assert dashboard.generated_widgets(sampled)

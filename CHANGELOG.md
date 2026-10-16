@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1 (2026-10-16)
+
+A small release: a keyword for running only the scenarios you name, and documentation that
+says what the engine is and how to write a model.
+
+- Docs: the home page opens with what the engine is for, what it models, what it does around a
+  run and the three ways in; the README shows how to write a model in Python and as a file;
+  the twin page and the README's limits say what a state from a plant now carries.
+- `run_scenarios(..., baseline=False)` runs only the named scenarios; `nagasim.dashboard.
+  generated_widgets` gives the charts a dashboard viewer shows for a model that declares none.
+
 ## 0.9.0 (2026-10-16)
 
 A twin now follows the plant's orders. A plant mapping reads one row per order from any MES or

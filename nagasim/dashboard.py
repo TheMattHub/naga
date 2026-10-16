@@ -3,6 +3,7 @@ mode that must hold with no GUI.
 
     resolve_dashboard(layout)        the definition a viewer gets (stored, else generated)
     input_overrides(layout, values)  a viewer's values as overrides, each checked here
+    generated_widgets(layout)        the charts shown for a model that declares none
 
 `inputs` are the overrides a person who did not build the model may make, with
 their bounds; `results` the KPIs to report first; `limits` what a run on that
@@ -19,17 +20,19 @@ import copy
 import math
 
 from nagasim import experiments
-from nagasim.core import sections
+from nagasim.core import sections, submodels
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.schema.sections_validation import (CONNECTION_SOURCE_KINDS, DASHBOARD_LIMITS,
                                                      validate_dashboard_definition)
 
-__all__ = ["default_dashboard", "generated_dashboard", "resolve_dashboard", "merge_generated",
+__all__ = ["default_dashboard", "generated_dashboard", "generated_widgets", "resolve_dashboard",
+           "merge_generated",
            "input_overrides", "input_for", "check_inputs", "MAX_GENERATED_INPUTS"]
 
 # The generation rule's numbers (the spec's section 3), one constant each.
 MAX_GENERATED_INPUTS = 12
+_CHART_LEVELS, _CHART_QUEUES = 4, 8     # series of the generated line and bar charts
 _RANGE_STEPS = 50               # a generated non-integer range is cut in about this many
 # From 3: a 95% interval from two replications has one degree of freedom.
 _DEFAULT_REPLICATIONS, _MAX_REPLICATIONS = (3, 10), 30
@@ -231,6 +234,40 @@ def default_dashboard(layout: dict) -> dict:
         pages.append({"name": "Live", "activity": "live", "items": items})
     return {"widgets": widgets, "controls": controls, "inputs": inputs, "results": results,
             "limits": limits, "pages": pages}
+
+
+def generated_widgets(layout: dict) -> list[dict]:
+    """Rule 3: the charts Present mode shows for a model that declares no widget,
+    else none: a line of the first 4 levels and a bar of the queues of the first 8
+    resources. Over the FLATTENED names (an asset's level runs as
+    `<instance>/<name>`), less the templates an asset clones (`_templates`): the
+    names a run reads. Not part of the definition, so nothing is stored or merged:
+    the Presenter adds them to its own copy of the model. *layout* is validated."""
+    if (layout.get("dashboard") or {}).get("widgets"):
+        return []
+    sim = layout.get("simulation") or {}
+    if not (sim.get("time_limit") or sim.get("timeseries_interval")):
+        return []       # a draining run records no samples (sampling is off): the chart would stay empty
+    try:
+        flat = submodels.flatten(layout)
+    except submodels.SubmodelError:
+        return []
+    templates = _templates(layout)
+
+    def names(section: str, most: int) -> list[str]:
+        # A quote or a backslash would end the literal early: such a name gets no series.
+        return [r["name"] for r in flat.get(section) or [] if isinstance(r, dict)
+                and isinstance(r.get("name"), str) and r["name"] and not r.get("hidden")
+                and r["name"] not in templates.get(section, ())
+                and not {'"', "\\"} & set(r["name"]) and r["name"].isprintable()][:most]
+    widgets = []
+    for name, kind, function, found in (
+            ("Levels", "line", "LEVEL", names("levels", _CHART_LEVELS)),
+            ("Queues", "bar", "NQ", names("resources", _CHART_QUEUES))):
+        if found:
+            widgets.append({"name": name, "kind": kind, "series": [
+                {"label": n, "expr": f'{function}("{n}")'} for n in found]})
+    return widgets
 
 
 def generated_dashboard(layout: dict) -> dict:

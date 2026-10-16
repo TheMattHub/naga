@@ -546,6 +546,20 @@ def test_cli_scenario_filter_and_no_crn(tmp_path):
     assert rc == 0
 
 
+def test_baseline_false_runs_only_the_named_scenarios_and_default_adds_it():
+    layout = deterministic_layout()
+    layout["scenarios"] = [{"name": "A", "overrides": [
+        {"path": "blocks.delay_1.params.dist_params.value", "value": 3.0}]}]
+    assert list(experiments.run_scenarios(layout, ["A"]).results) == ["Baseline", "A"]
+    only = experiments.run_scenarios(layout, ["A"], baseline=False)
+    assert list(only.results) == ["A"] and list(only.seeds) == ["A"]
+    full = experiments.run_scenarios(layout, ["A"])
+    assert only.results["A"].keys() == full.results["A"].keys()
+    assert all(only.results["A"][k].equals(full.results["A"][k]) for k in full.results["A"])
+    with pytest.raises(ModelValidationError):       # an unknown name is still an error
+        experiments.run_scenarios(layout, ["nope"], baseline=False)
+
+
 # ---------------------------------------------------------------- workers="auto" (ROADMAP 1.7 E)
 @pytest.mark.slow
 def test_run_scenarios_workers_auto_decides_once(monkeypatch, worker_pool):
