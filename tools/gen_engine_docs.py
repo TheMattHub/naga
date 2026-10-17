@@ -1650,7 +1650,13 @@ def draw_worked_example_charts(out: Path) -> None:
     and its fonts: no date, a fixed hash salt, text kept as text."""
     import csv
 
-    import matplotlib
+    try:
+        import matplotlib
+    except ImportError:
+        # The docs workflow regenerates the pages without the `plot` extra and diffs them; the
+        # committed SVGs stay (their bytes differ by platform, so they are not part of that diff).
+        sys.stdout.write("gen_engine_docs: matplotlib not installed, charts left as committed\n")
+        return
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
