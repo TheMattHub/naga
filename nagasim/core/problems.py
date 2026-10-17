@@ -109,6 +109,9 @@ PROBLEM_CODES: dict[str, str] = {
                        "four times per step.",
     "W_RATE_UNIT_READ": "A flow rate or a conversion feed reads FLOW(), FLOWSUM() or CONV() of a "
                         "rate written per another time unit, and takes it unconverted.",
+    "W_RATE_UNIT_UNCHECKED": "A flow rate or a conversion feed reads FLOW(), FLOWSUM() or CONV() "
+                             "of a computed name, and the records it may read are per different "
+                             "time units, so the read cannot be unit-checked.",
     "W_RATE_UNIT_CHANGED": "Since 0.10.0 a flow's peak_price, thresholds and reported rates, and "
                            "a conversion's CONV() and rates, are per their own time unit, not "
                            "the base one.",

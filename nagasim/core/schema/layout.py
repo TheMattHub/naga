@@ -730,7 +730,7 @@ def _validate_flow_expressions(layout: dict, problems: list, variables: set[str]
         # A `$`-cloned flow carries its instance's submodel parameters (PHASE4
         # D3), which are in scope for its own expressions and nothing else --
         # the flow twin of an expanded block's "locals".
-        in_scope = variables | set(entry.get("locals") or {})
+        in_scope = variables | set(_locals(entry))
         for field in ("rate", "price", "emission_factor"):
             text = entry.get(field)
             if text not in (None, ""):
@@ -756,7 +756,7 @@ def _validate_sd_expressions(layout: dict, problems: list, variables: set[str],
     flow, none of them has an entity in scope."""
     def check(who, text, entry, path):
         if isinstance(text, str) and text:
-            _check_expression(problems, who, text, variables | set(entry.get("locals") or {}),
+            _check_expression(problems, who, text, variables | set(_locals(entry)),
                               path, tables=tables, refs=refs)
     for index, entry in enumerate(layout.get("auxiliaries") or []):
         check(f"auxiliary '{entry.get('name', '')}'", entry.get("expr", ""), entry,
@@ -847,6 +847,12 @@ def _without_stray_structural_args(layout: dict, problems: list) -> dict:
                 del params[key]
         cleaned.append({**block, "params": params})
     return {**layout, "blocks": cleaned}
+
+
+def _locals(record: dict) -> dict:
+    """A record's submodel parameters; anything but a dict (hand-written) has none."""
+    value = record.get("locals")
+    return value if isinstance(value, dict) else {}
 
 
 def validate_layout_structured(layout: dict) -> list[Problem]:
@@ -976,7 +982,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
             params = {key: value for key, value in params.items() if key not in misshapen}
         # A block expanded out of a submodel instance carries its parameters in
         # "locals" (ROADMAP 2.3 part B); they are legal names in its expressions.
-        in_scope = variables | set(block.get("locals") or {})
+        in_scope = variables | set(_locals(block))
         _check_block_expressions(problems, name, btype, params, in_scope, f"{at}/params",
                                  tables=table_dims, refs=refs)
         if btype == "TRANSFER":

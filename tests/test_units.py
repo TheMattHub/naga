@@ -230,3 +230,32 @@ def test_check_no_declared_units_no_warnings():
         levels=[{"name": "L"}],
         flows=[{"name": "f", "to": "L", "rate": "10"}])
     assert check(layout) == []
+
+
+def test_check_a_flow_rate_is_per_its_own_rate_time_unit():
+    """#688: the expected flow unit uses the flow's rate_time_unit; "base" or an
+    unknown unit (E_TIME_UNIT's to report) falls back to the model's."""
+    def codes(per, unit):
+        flow = {"name": "f", "to": "L", "rate": "1", "unit": unit, "rate_time_unit": per}
+        return [p.code for p in check(_sd_layout(
+            levels=[{"name": "L", "unit": "kg"}], flows=[flow],
+            simulation={"sd": {"dt": 1.0}, "time_unit": "days"}))]
+
+    assert codes("hours", "kg/h") == [] and codes("seconds", "kg/s") == []
+    assert codes("hours", "kg/day") == ["W_UNIT_TIME"]
+    assert codes("base", "kg/day") == [] and codes("fortnights", "kg/day") == []
+
+
+def test_a_power_is_its_energy_per_hour():
+    """#688: kW is kWh/h, so a kW flow into a kWh level checks per hour and warns
+    W_UNIT_TIME when its rate is per minute."""
+    assert parse("kW") == parse("kWh/h") and parse("MW*h") == parse("MWh")
+
+    def codes(**flow):
+        return [p.code for p in check(_sd_layout(
+            levels=[{"name": "B", "unit": "kWh"}],
+            flows=[{"name": "f", "to": "B", "rate": "1", "unit": "kW", **flow}],
+            simulation={"sd": {"dt": 1.0}, "time_unit": "minutes"}))]
+
+    assert codes(rate_time_unit="hours") == []
+    assert codes() == ["W_UNIT_TIME"]

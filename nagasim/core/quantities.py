@@ -73,6 +73,8 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
               _p("emission_factor", str, "0", "none", kinds=_NUMEXPR),
               _p("priority", int, 0, "none"), _p("peak_price", float, None, "money"),
               _p("min_rate", float, None, "rate", unit_key="rate_time_unit"),
+              # Each threshold's "value" is a rate per the flow's unit (D603, #689).
+              _p("thresholds", list, [], "rate", kinds=("table",), unit_key="rate_time_unit"),
               _unit("rate_time_unit")),
     "conversions": (_p("cohort_interval", float, 1.0, "time", min=0, unit_key="time_unit"),
                     _unit("time_unit")),
@@ -215,6 +217,10 @@ def to_base(spec: ParamSpec, record: dict, units: ModelUnits, fields=()):
     return scaled(record.get(spec.name, spec.default), field_factor(spec, record, units, fields))
 
 
+# The measured key of each item of a list field (default "time": MOTION segments).
+_ITEM_VALUE = {"thresholds": "value"}
+
+
 def switch_unit(record: dict, fields, unit_key: str, new_unit: str,
                 units: ModelUnits) -> tuple[dict, list[str]]:
     """D161: a copy of *record* with *unit_key* set to *new_unit* and every field
@@ -228,7 +234,10 @@ def switch_unit(record: dict, fields, unit_key: str, new_unit: str,
     for spec in fields:
         if spec.unit_field != unit_key:
             continue
-        f = conversion_factor(spec.quantity, field_unit(spec, record, units, fields), new_unit)
+        # "base" converts to what it means, not as a literal (#691).
+        target = (unit_default(spec, units, fields) if new_unit in (None, "", "base")
+                  else new_unit)
+        f = conversion_factor(spec.quantity, field_unit(spec, record, units, fields), target)
         box = out if spec.name == "dist_params" else out.get(spec.name) if holder else None
         if isinstance(box, dict) and ("dist_params" in box or spec.name == "dist_params"):
             rescaled = rescale_distribution_params(box.get("distribution", "Constant"),
@@ -238,13 +247,15 @@ def switch_unit(record: dict, fields, unit_key: str, new_unit: str,
             else:
                 box["dist_params"] = rescaled
         elif isinstance(out.get(spec.name), list):
-            # MOTION segments: a plain-number `time` converts; an expression or
-            # distribution string keeps its value and is reported (editor note).
+            # MOTION segments' `time`, a flow's thresholds' `value`: a plain number
+            # converts; an expression or distribution string keeps its value and is
+            # reported (editor note).
+            key = _ITEM_VALUE.get(spec.name, "time")
             for i, item in enumerate(out[spec.name]):
-                if not isinstance(item, dict) or item.get("time") in (None, ""):
+                if not isinstance(item, dict) or item.get(key) in (None, ""):
                     continue
-                if _is_number(item["time"]):
-                    item["time"] = tidy(scaled(item["time"], f), item["time"])
+                if _is_number(item[key]):
+                    item[key] = tidy(scaled(item[key], f), item[key])
                 else:
                     kept.append(f"{spec.name}[{i}]")
         elif (spec.name in out and not isinstance(out[spec.name], dict)

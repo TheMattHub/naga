@@ -7,11 +7,10 @@ any of this runs.
 """
 from __future__ import annotations
 
-import ast
 import math
 
 from nagasim.core import sd
-from nagasim.core.expressions import ExpressionError, compile_expression
+from nagasim.core.expressions import ExpressionError, bind_constants, compile_expression
 from nagasim.core.levels import (DEFAULT_BLEND_TOLERANCE, SD_METHODS, THRESHOLD_DIRECTIONS,
                                   _BUS_CALLS, _CLOCK_NAMES, _SAMPLER_CALLS, _half_up, is_dynamic)
 from nagasim.core.problems import problem
@@ -192,24 +191,40 @@ def _check_rate_units(problems: list, layout: dict) -> None:
             hint=f"set the same \"rate_time_unit\" on every flow tagged '{tag}' (the Energy "
                  f"library uses \"hours\")"))
 
-    def check(text, own, who, at):
+    def check(text, own, who, at, constants=None):
         if own is None:
             return
         try:
-            expression = compile_expression(str(text), None)
+            # A `$`-instance's parameters fold in, as the run does (`bind_constants`):
+            # FLOWSUM("bio_feed" + circuit) reads the literal tag it always was (#690).
+            expression = bind_constants(str(text), None,
+                                        constants if isinstance(constants, dict) else {})
         except ExpressionError:
             return                      # reported as E_EXPRESSION by the expression checks
         reads = [(f'FLOW("{n}")', flow_per.get(n)) for n in expression.refs.get("FLOW", ())]
         reads += [(f'CONV("{n}")', conv_per.get(n)) for n in expression.refs.get("CONV", ())]
-        # The literal tags, even beside a computed one (`bus_reads` is then None).
-        reads += [(f'FLOWSUM("{node.args[0].value}")', tag_per.get(node.args[0].value))
-                  for node in ast.walk(ast.parse(str(text), mode="eval"))
-                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                  and node.func.id == "FLOWSUM" and node.args
-                  and isinstance(node.args[0], ast.Constant)
-                  and isinstance(node.args[0].value, str)]
+        reads += [(f'FLOWSUM("{n}")', tag_per.get(n)) for n in expression.refs.get("FLOWSUM", ())]
+        computed = [(f"{call}()", pers) for call, pers in (
+            ("FLOW", flow_per), ("CONV", conv_per), ("FLOWSUM", tag_per))
+            if call in expression.computed_refs]
         if "POWER" in expression.calls:         # kW: a rate per hour
             reads.append(("POWER()", hours))
+        # D606: a computed name may read any record of its kind. One time unit
+        # among them is checked as a literal; several that differ from this rate's
+        # cannot be checked, which is said -- conservatively: the name may only
+        # ever read records in this rate's unit.
+        for call, pers in computed:
+            units_read = set(pers.values()) - {None}
+            if len(units_read) == 1:
+                unit = units_read.pop()
+                if unit not in {other for _call, other in reads}:     # said once
+                    reads.append((f"{call} (a computed name)", unit))
+            elif units_read - {own}:
+                problems.append(problem(
+                    "W_RATE_UNIT_UNCHECKED",
+                    f"{who}: {call} reads a computed name, and those it may read are per "
+                    f"different time units, so the read cannot be unit-checked", at,
+                    hint="write the name as a literal, or give every one the same time unit"))
         for call, other in reads:
             if other is not None and other != own:
                 problems.append(problem(
@@ -244,7 +259,7 @@ def _check_rate_units(problems: list, layout: dict) -> None:
                 hint="a 0.9.x model gave them per the base time unit"))
     for index, entry in enumerate(flows):
         check(entry.get("rate") or "0", flow_per[str(entry.get("name"))],
-              f"flow '{entry.get('name')}'", f"/flows/{index}/rate")
+              f"flow '{entry.get('name')}'", f"/flows/{index}/rate", entry.get("locals"))
     for c_index, entry in enumerate(layout.get("conversions") or []):
         if not isinstance(entry, dict):
             continue
@@ -252,7 +267,7 @@ def _check_rate_units(problems: list, layout: dict) -> None:
             if isinstance(spec, dict):
                 check(spec.get("feed", "0"), per(spec.get("feed_time_unit")),
                       f"conversion '{entry.get('name')}', substrate '{spec.get('name')}'",
-                      f"/conversions/{c_index}/substrates/{s_index}/feed")
+                      f"/conversions/{c_index}/substrates/{s_index}/feed", entry.get("locals"))
 
 
 LEAK_KINDS = ("linear", "exponential")

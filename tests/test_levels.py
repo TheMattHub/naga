@@ -831,3 +831,50 @@ def test_validation_warns_power_outside_hours_and_literal_tags_beside_computed_o
     layout["resources"] = [{"name": "M", "capacity": 1, "power": {"busy": 10}}]
     assert _codes(layout) == [("W_RATE_UNIT_READ", "/flows/1/rate"),
                               ("W_RATE_UNIT_READ", "/flows/3/rate")]
+
+
+def test_validation_checks_a_computed_rate_name_against_every_one_it_may_read():
+    """#690, D606: a computed FLOWSUM tag (or FLOW/CONV name) may read any of its kind;
+    one unit among them is checked, several that differ cannot be (W_RATE_UNIT_UNCHECKED)."""
+    def codes(*extra):
+        layout = _per_hour({"name": "a", "rate": "6", "tag": "kw", "rate_time_unit": "hours"},
+                           *extra)
+        return [(p.code, p.path) for p in validate_layout_structured(layout)
+                if p.code.startswith("W_RATE_UNIT")]
+
+    from nagasim.core.schema import validate_layout_structured
+    pick = 'FLOWSUM(IF(TNOW > 1, "kw", "m"))'
+    assert codes({"name": "r", "rate": pick, "rate_time_unit": "hours"}) == []
+    assert codes({"name": "m", "rate": "1", "tag": "m"},
+                 {"name": "r", "rate": pick, "rate_time_unit": "hours"}) == [
+        ("W_RATE_UNIT_UNCHECKED", "/flows/2/rate")]
+    assert codes({"name": "r", "rate": "FLOWSUM(t)", "rate_time_unit": "hours",
+                  "locals": {"t": "kw"}}) == []                  # folds to a per-hour tag
+
+
+def test_validation_of_computed_rate_names_folds_locals_and_reads_conversions():
+    """#690 follow-ups: a FLOWSUM folded from locals beside a computed FLOW() is checked
+    as its literal; a computed CONV() and a conversion feed's locals are checked; a
+    malformed `locals` is no crash."""
+    from nagasim.core.schema import validate_layout_structured
+
+    def codes(extra=(), conversions=()):
+        layout = _per_hour({"name": "a", "rate": "6", "tag": "kw", "rate_time_unit": "hours"},
+                           *extra)
+        layout["conversions"] = list(conversions)
+        return [(p.code, p.path) for p in validate_layout_structured(layout)
+                if p.code.startswith("W_RATE_UNIT")]
+
+    assert codes([{"name": "r", "rate": 'FLOWSUM(t) + FLOW(IF(TNOW > 1, "a", "r"))',
+                   "rate_time_unit": "hours", "locals": {"t": "kw"}}]) == []
+    feed = {"name": "s", "feed": "FLOWSUM(t)", "yield": 1.0, "curve": [[1, 1.0]]}
+    assert codes(conversions=[{"name": "D", "locals": {"t": "kw"}, "substrates": [feed]}]) == [
+        ("W_RATE_UNIT_READ", "/conversions/0/substrates/0/feed")]
+    two = [{"name": "D", "time_unit": "hours", "substrates": [{**feed, "feed": "1"}]},
+           {"name": "E", "substrates": [{**feed, "feed": "1"}]}]
+    assert codes([{"name": "r", "rate": 'CONV(IF(TNOW > 1, "D", "E"))',
+                   "rate_time_unit": "hours"}], two) == [
+        ("W_RATE_UNIT_CHANGED", "/conversions/0/time_unit"),
+        ("W_RATE_UNIT_UNCHECKED", "/flows/1/rate")]
+    for bad in (["t"], "t", 5):
+        assert isinstance(codes([{"name": "r", "rate": "FLOWSUM(t)", "locals": bad}]), list)

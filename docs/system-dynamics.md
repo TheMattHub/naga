@@ -104,7 +104,8 @@ a delay's `input`. Codes: `E_SUBSCRIPT_RANGE` (a parent that is not a declared s
 override key that is not an element of the record's dims).
 
 A declared or inferred `unit` (kg, kWh, people, ...) is checked wherever `simulation.sd` is
-present: a level's unit against its flows' (flow = level unit / time), an auxiliary's declared
+present: a level's unit against its flows' (flow = level unit / the flow's `rate_time_unit`; a power such as kW is its energy per
+hour, so a kW flow into a kWh level checks), an auxiliary's declared
 unit against what its expression implies, a table's `unit_x`/`unit_y` against a `TABLE()` call's
 key and result, a time series' `unit` against what `TS()` returns. `simulation.sd.units` picks
 how strict this is:

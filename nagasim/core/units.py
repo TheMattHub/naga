@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from nagasim.core.expressions import SD_MACROS, functions_with
 from nagasim.core.problems import problem
-from nagasim.core.timeunits import UNITS as MODEL_TIME_UNITS
+from nagasim.core.timeunits import POWER_UNITS, UNITS as MODEL_TIME_UNITS
 
 __all__ = ["Unit", "WILDCARD", "UnitParseError", "UnitMismatchError", "parse", "infer",
            "check", "Env"]
@@ -46,6 +46,9 @@ _TIME_SYMBOLS = {
     "month": 2592000.0, "months": 2592000.0,        # fixed 30/365 days (core/timeunits.py)
     "year": 31536000.0, "years": 31536000.0,
 }
+# A power is its energy per hour (kW = kWh/h), so a kW flow checks against a
+# kWh level's unit per hour (the Energy library's convention, #688).
+_POWER_SYMBOLS = {power: power + "h" for power in POWER_UNITS}
 _TIME_NAMES = {1.0: "s", 60.0: "min", 3600.0: "h", 86400.0: "day", 604800.0: "week",
                2592000.0: "month", 31536000.0: "year"}
 
@@ -143,6 +146,11 @@ def parse(text: str) -> Unit:
                 if symbol in _TIME_SYMBOLS:
                     dims["time"] = dims.get("time", 0) + e
                     scale *= _TIME_SYMBOLS[symbol] ** e
+                elif symbol in _POWER_SYMBOLS:
+                    energy = _POWER_SYMBOLS[symbol]
+                    dims[energy] = dims.get(energy, 0) + e
+                    dims["time"] = dims.get("time", 0) - e
+                    scale *= _TIME_SYMBOLS["h"] ** -e
                 else:
                     dims[symbol] = dims.get(symbol, 0) + e
             sign = 1
@@ -471,7 +479,11 @@ def check(layout: dict) -> list:
         source = level_units.get(entry.get("from"), WILDCARD)
         target = level_units.get(entry.get("to"), WILDCARD)
         level_u = target if source.wildcard else source
-        expected = level_u / time_unit if not level_u.wildcard else WILDCARD
+        # A rate is per the flow's own rate_time_unit (D603, #688); an unknown one
+        # is E_TIME_UNIT's to report, so it falls back to the model's.
+        own = MODEL_TIME_UNITS.get(entry.get("rate_time_unit"))
+        per = Unit((("time", 1),), own) if own else time_unit
+        expected = level_u / per if not level_u.wildcard else WILDCARD
         text = entry.get("unit") or ""
         declared = _declared(text, "flow", name, f"{path}/unit", problems)
         if strict and not text:
@@ -487,7 +499,7 @@ def check(layout: dict) -> list:
 
         candidates = []
         if not expected.wildcard:
-            candidates.append(("level unit / time", expected))
+            candidates.append(("level unit / rate time unit", expected))
         if not declared.wildcard:
             candidates.append(("declared unit", declared))
         if not inferred.wildcard:

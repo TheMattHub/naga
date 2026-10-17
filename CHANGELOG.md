@@ -46,6 +46,12 @@ units is refused (see the behaviour changes below).
 - Fixed: a reality check using `FLOW()` or `FLOWSUM()` no longer crashes, and one using `CONV()`,
   `FRACTION()` or `POWER()` says to read it through an auxiliary; `POWER()` after a shift change
   and in a flow price or a conversion feed.
+- Fixed: unit checks follow a flow's own time unit. The system-dynamics dimension check
+  expects level unit per `rate_time_unit` and reads kW as kWh per hour; a flow threshold's
+  `value` is a rate field, so switching the flow's unit converts it; switching a unit to
+  "base" converts to what "base" means; a FLOWSUM tag built from a submodel parameter is
+  checked as the literal it becomes, and a name computed at run time is checked against every
+  one it may read, or warned `W_RATE_UNIT_UNCHECKED` when those differ in time unit.
 
 ## 0.9.1 (2026-10-16)
 

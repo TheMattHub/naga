@@ -55,3 +55,19 @@ def test_the_same_units_are_a_no_op():
     depth = len(doc._undo_stack)
     doc.set_model_units(time_unit="minutes")
     assert len(doc._undo_stack) == depth
+
+
+def test_a_flow_threshold_keeps_its_rate_through_a_model_unit_change():
+    """#689: a threshold value is per the flow's rate_time_unit. A missing one is pinned
+    to the old model unit, an explicit one is kept, and the values stay as written."""
+    blocks = [create(max_arrivals=1), dispose()]
+    up = {"value": 30, "direction": "rising", "signal": "high"}
+    doc = ModelDocument(migrate(layout(
+        blocks, chain(*blocks), simulation={"time_unit": "hours", "time_limit": 10},
+        levels=[{"name": "S", "initial": 0}],
+        flows=[{"name": "a", "rate": "60", "to": "S", "thresholds": [up]},
+               {"name": "b", "rate": "60", "to": "S", "rate_time_unit": "minutes",
+                "thresholds": [up]}])))
+    doc.set_model_units(time_unit="days")
+    assert [(f["rate_time_unit"], f["rate"], f["thresholds"][0]["value"])
+            for f in doc.flows] == [("hours", "60", 30), ("minutes", "60", 30)]

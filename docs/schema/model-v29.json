@@ -7751,7 +7751,9 @@
               "value"
             ],
             "additionalProperties": false
-          }
+          },
+          "x-quantity": "rate",
+          "x-unit-key": "rate_time_unit"
         }
       },
       "required": [

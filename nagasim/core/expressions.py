@@ -962,7 +962,8 @@ def _expression(text: str, tree, variables: frozenset | None) -> Expression:
               and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)]
     refs: dict[str, tuple] = {}
     computed = set()
-    for func in _NAMED_LOOKUPS + _STATE_LOOKUPS:
+    # FLOWSUM's tags too, so a unit check reads the folded literals (#690).
+    for func in _NAMED_LOOKUPS + _STATE_LOOKUPS + ("FLOWSUM",):
         calls = [node for node in ast.walk(tree)
                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                  and node.func.id == func]

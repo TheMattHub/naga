@@ -103,7 +103,12 @@ engine reports about the flow's rate uses the same unit: `FLOW()`, `FLOWSUM()`, 
 Avg Rate, Peak Rate, a rate threshold, `min_rate` and `peak_price`. A flow written in kW with
 `"rate_time_unit": "hours"` therefore reads and reports kW, even in a model that counts minutes.
 A rate that reads `FLOW()`, `FLOWSUM()` or `CONV()` of something per another time unit takes the
-number unconverted, so validation warns about it (`W_RATE_UNIT_READ`).
+number unconverted, so validation warns about it (`W_RATE_UNIT_READ`). A name built from a
+submodel parameter (`FLOWSUM("biogas" + circuit)`) is checked as the literal it becomes; a name
+computed at run time is checked against every record it may read, and when those differ in time
+unit validation says the read cannot be checked (`W_RATE_UNIT_UNCHECKED`). That warning is
+conservative: the name may only ever read records in the right unit. Writing the name as a
+literal, or giving every record the same time unit, removes it.
 
 ## What the engine enforces: saturation
 
