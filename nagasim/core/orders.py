@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 from dataclasses import dataclass, field
 
 from nagasim.core import calendar as cal
@@ -42,6 +43,8 @@ from nagasim.core.quantities import SECTION_FIELDS, field_factor, param, scaled
 from nagasim.core.sequences import station_blocks
 from nagasim.core.timeunits import units_of
 from nagasim.core.utils import is_number as _is_number
+
+log = logging.getLogger(__name__)
 
 __all__ = ["ORDERS_MODE", "Order", "OrderError", "book_of", "build_orders", "orders_mode_creates",
            "orders_csv", "orders_from_csv", "validate_orders_structured"]
@@ -142,7 +145,8 @@ def build_orders(layout: dict, calendar=None) -> dict[str, Order]:
             entity_type=str(entry.get("entity_type") or ""),
             sequence=str(entry.get("sequence") or ""),
             priority=None if entry.get("priority") is None else _float(entry.get("priority"), 0.0),
-            attributes=dict(entry.get("attributes") or {}),
+            attributes={k: v for k, v in (entry.get("attributes") or {}).items()
+                        if k not in reserved_attribute_names()},   # #681: never override a field
             plan=dict(entry.get("plan") or {}),
             held=entry.get("held") is True,
             block=source if source in creates else ("" if source else default),
@@ -329,7 +333,11 @@ def _field_problems(oid: str, entry: dict, at: str, calendar=None) -> list:
             "E_ORDER_FIELD", f"order '{oid}': \"attributes\" must be an object",
             f"{at}/attributes", hint="write {\"customer\": \"ACME\", \"lot\": 3}")]
     for key, value in attributes.items():
-        if not str(key).isidentifier() or str(key).startswith("_"):
+        if str(key) in reserved_attribute_names():
+            problems.append(problem(
+                "W_ORDER_FIELD", f"order '{oid}': attribute '{key}' names a field of the entity "
+                "itself and is ignored", f"{at}/attributes/{key}", hint="rename the attribute"))
+        elif not str(key).isidentifier() or str(key).startswith("_"):
             problems.append(problem(
                 "E_ORDER_FIELD", f"order '{oid}': '{key}' is not a valid attribute name",
                 f"{at}/attributes/{key}",
@@ -377,6 +385,10 @@ def orders_from_csv(text: str) -> list[dict]:
         raise OrderError("the CSV has no data rows")
     if not any((r or {}).get("id") for r in rows):
         raise OrderError("the CSV has no \"id\" column")
+    skipped = clashing_names(k for k in rows[0] if k and k not in CSV_COLUMNS)
+    if skipped:
+        log.warning("orders CSV: column(s) %s name a field of the entity itself and are skipped; "
+                    "rename them", ", ".join(skipped))
     entries = []
     for row in rows:
         oid = str(row.get("id") or "").strip()
@@ -391,14 +403,28 @@ def orders_from_csv(text: str) -> list[dict]:
             text_value = str(row.get(column) or "").strip()
             if text_value:
                 entry[column] = text_value
-        attributes = {k: _scalar_cell(v) for k, v in row.items()
-                      if k and k not in CSV_COLUMNS and str(v or "").strip()}
+        attributes = {k: scalar_cell(v) for k, v in row.items()
+                      if k and k not in CSV_COLUMNS and k not in skipped and str(v or "").strip()}
         if attributes:
             entry["attributes"] = attributes
         entries.append(entry)
     if not entries:
         raise OrderError("the CSV has no row with an id")
     return entries
+
+
+def reserved_attribute_names() -> frozenset:
+    """Names an order attribute may not take (#681): every attribute of a fresh Entity, its
+    properties and methods, and the fields an order sets on it itself. Derived from the
+    class, so a new Entity field is covered without editing a list."""
+    from nagasim.core.sim_classes import Entity
+    return frozenset(n for n in set(vars(Entity(0))) | set(dir(Entity)) if not n.startswith("_"))         | {"order_id", "due_date", "priority", "plan", "sequence", "step"}
+
+
+def clashing_names(names) -> list:
+    """The names among *names* an order attribute may not take (#681); the CSV reader and
+    the orders data binding skip these columns and say so."""
+    return sorted(str(n) for n in names if str(n) in reserved_attribute_names())
 
 
 def _number_cell(cell):
@@ -408,7 +434,7 @@ def _number_cell(cell):
         return None
 
 
-def _scalar_cell(cell):
+def scalar_cell(cell):
     """A free-attribute cell: a number when it reads as one, else the text."""
     number = _number_cell(cell)
     if number is None:

@@ -96,6 +96,7 @@ import logging
 import math
 
 from nagasim.core import calendar as cal
+from nagasim.core.battery import battery_of
 from nagasim.core.block_registry import holding_types, queueing_types, service_types
 from nagasim.core.network import block_nodes, build_network
 from nagasim.core.orders import book_of as orders_book_of
@@ -1357,7 +1358,7 @@ def _validate_fleets(layout, state, blocks, start, problems, serving) -> None:
                                    or not -1 <= cursor < count):
             bad(f"fleet '{name}': cursor must be -1 or the index of a vehicle", f"{at}/cursor")
         # D386: what no vehicle record says is refused here as it is when a state is taken.
-        battery = fleet.get("battery") if isinstance(fleet.get("battery"), dict) else {}
+        battery = battery_of(fleet)
         kind = ("a gantry" if fleet.get("motion") == "gantry"
                 else "a worker fleet" if fleet.get("kind") == "worker"
                 else "a cobot fleet that exchanges parts" if name in arms and fleet.get("exchange")
@@ -1375,7 +1376,7 @@ def _validate_fleets(layout, state, blocks, start, problems, serving) -> None:
             ok = isinstance(node, str) and network.has(node)
             ok = ok and (record.get("idle_since") is None or time(record["idle_since"], True))
             soc = record.get("soc")
-            ok = ok and (soc is None or (_number(soc) and soc <= 1 and bool(fleet.get("battery"))))
+            ok = ok and (soc is None or (_number(soc) and soc <= 1 and bool(battery)))
             ok = ok and (until is None or (time(until, False) and drive is None))
             if ok and drive is not None:
                 ok = (isinstance(drive, dict) and isinstance(drive.get("to"), str)
@@ -1388,7 +1389,7 @@ def _validate_fleets(layout, state, blocks, start, problems, serving) -> None:
                 held, place = charge.get("held", True) if station else None, \
                     charge.get("wait", 0) if station else None
                 ok = (station is not None and station.get("kind", "charge") == "charge"
-                      and bool(fleet.get("battery")) and isinstance(held, bool) and until is None
+                      and bool(battery) and isinstance(held, bool) and until is None
                       and stage in ("drive", "wait", "charge")
                       and (stage == "drive") == (drive is not None)
                       and (stage != "drive" or drive["to"] == station.get("node"))

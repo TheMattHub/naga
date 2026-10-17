@@ -1,0 +1,3109 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "pushback",
+      "type": "SUBMODEL",
+      "description": "GSE fleet",
+      "position": [0.0, 900.0],
+      "layout_position": [-150.0, 40.0],
+      "params": {
+        "definition": "GSE fleet",
+        "arguments": {
+          "speed_kmh": 25,
+          "fuel_kw": 150.0,
+          "cost_per_hour": 70,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "count": 6,
+          "home_node": "gse_depot",
+          "charging": "threshold",
+          "opportunity_below": 0.6,
+          "charge_schedule": ""
+        }
+      }
+    },
+    {
+      "name": "belts",
+      "type": "SUBMODEL",
+      "description": "GSE fleet",
+      "position": [200.0, 900.0],
+      "layout_position": [-150.0, 40.0],
+      "params": {
+        "definition": "GSE fleet",
+        "arguments": {
+          "speed_kmh": 15,
+          "fuel_kw": 30.0,
+          "cost_per_hour": 20,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "count": 8,
+          "home_node": "gse_depot",
+          "charging": "threshold",
+          "opportunity_below": 0.6,
+          "charge_schedule": ""
+        }
+      }
+    },
+    {
+      "name": "tugs",
+      "type": "SUBMODEL",
+      "description": "GSE fleet",
+      "position": [400.0, 900.0],
+      "layout_position": [-150.0, 40.0],
+      "params": {
+        "definition": "GSE fleet",
+        "arguments": {
+          "speed_kmh": 25,
+          "fuel_kw": 40.0,
+          "cost_per_hour": 25,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "count": 8,
+          "home_node": "gse_depot",
+          "charging": "threshold",
+          "opportunity_below": 0.6,
+          "charge_schedule": ""
+        }
+      }
+    },
+    {
+      "name": "fuel",
+      "type": "SUBMODEL",
+      "description": "GSE fleet",
+      "position": [600.0, 900.0],
+      "layout_position": [-150.0, 40.0],
+      "params": {
+        "definition": "GSE fleet",
+        "arguments": {
+          "speed_kmh": 30,
+          "fuel_kw": 100.0,
+          "cost_per_hour": 40,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "count": 8,
+          "home_node": "gse_depot",
+          "charging": "threshold",
+          "opportunity_below": 0.6,
+          "charge_schedule": ""
+        }
+      }
+    },
+    {
+      "name": "catering",
+      "type": "SUBMODEL",
+      "description": "GSE fleet",
+      "position": [800.0, 900.0],
+      "layout_position": [-150.0, 40.0],
+      "params": {
+        "definition": "GSE fleet",
+        "arguments": {
+          "speed_kmh": 30,
+          "fuel_kw": 80.0,
+          "cost_per_hour": 35,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "count": 8,
+          "home_node": "gse_depot",
+          "charging": "threshold",
+          "opportunity_below": 0.6,
+          "charge_schedule": ""
+        }
+      }
+    },
+    {
+      "name": "gpu",
+      "type": "SUBMODEL",
+      "description": "GSE fleet",
+      "position": [1000.0, 900.0],
+      "layout_position": [-150.0, 40.0],
+      "params": {
+        "definition": "GSE fleet",
+        "arguments": {
+          "speed_kmh": 15,
+          "fuel_kw": 60.0,
+          "cost_per_hour": 15,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "count": 10,
+          "home_node": "gse_depot",
+          "charging": "threshold",
+          "opportunity_below": 0.6,
+          "charge_schedule": ""
+        }
+      }
+    },
+    {
+      "name": "ramp_crew",
+      "type": "SUBMODEL",
+      "description": "Handling crew",
+      "position": [0.0, 1050.0],
+      "layout_position": [0.0, 0.0],
+      "params": {
+        "definition": "Handling crew",
+        "arguments": {"agents": 18, "shift_schedule": "Ramp shifts"}
+      }
+    },
+    {
+      "name": "flight_schedule_1",
+      "type": "SUBMODEL",
+      "description": "Flight schedule",
+      "position": [0.0, 300.0],
+      "layout_position": [0.0, 0.0],
+      "params": {"definition": "Flight schedule"}
+    },
+    {
+      "name": "To stand",
+      "type": "DECIDE",
+      "description": "Each flight goes to the stand its schedule row names",
+      "position": [400.0, 300.0],
+      "params": {
+        "mode": "Condition",
+        "conditions": [
+          "entity.stand == 'S01'",
+          "entity.stand == 'S02'",
+          "entity.stand == 'S03'",
+          "entity.stand == 'S04'",
+          "entity.stand == 'S05'",
+          "entity.stand == 'S06'",
+          "entity.stand == 'S07'",
+          "entity.stand == 'S08'",
+          "entity.stand == 'S09'",
+          "entity.stand == 'S10'"
+        ]
+      }
+    },
+    {
+      "name": "on time",
+      "type": "RECORD",
+      "position": [1100.0, 400.0],
+      "params": {
+        "stat_name": "on_time_departure",
+        "kind": "tally",
+        "expr": "1 if now <= entity.due_date else 0"
+      }
+    },
+    {
+      "name": "By class",
+      "type": "DECIDE",
+      "position": [1300.0, 400.0],
+      "params": {
+        "mode": "Condition",
+        "conditions": [
+          "entity.aircraft == 'A330' or entity.aircraft == 'B777' or entity.aircraft == 'B787'"
+        ]
+      }
+    },
+    {
+      "name": "wide turn",
+      "type": "RECORD",
+      "position": [1500.0, 500.0],
+      "params": {
+        "stat_name": "turnaround_wide_min",
+        "kind": "tally",
+        "expr": "now - entity.creation_time"
+      }
+    },
+    {
+      "name": "narrow turn",
+      "type": "RECORD",
+      "position": [1500.0, 300.0],
+      "params": {
+        "stat_name": "turnaround_narrow_min",
+        "kind": "tally",
+        "expr": "now - entity.creation_time"
+      }
+    },
+    {"name": "Departed", "type": "DISPOSE", "position": [1700.0, 400.0]},
+    {
+      "name": "stand_1",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 0.0],
+      "layout_position": [0.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S01"}}
+    },
+    {
+      "name": "turn_S01",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S01",
+      "position": [900.0, 0.0],
+      "layout_position": [0.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_1/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_2",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 100.0],
+      "layout_position": [50.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S02"}}
+    },
+    {
+      "name": "turn_S02",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S02",
+      "position": [900.0, 100.0],
+      "layout_position": [50.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_2/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_3",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 200.0],
+      "layout_position": [100.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S03"}}
+    },
+    {
+      "name": "turn_S03",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S03",
+      "position": [900.0, 200.0],
+      "layout_position": [100.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_3/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_4",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 300.0],
+      "layout_position": [150.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S04"}}
+    },
+    {
+      "name": "turn_S04",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S04",
+      "position": [900.0, 300.0],
+      "layout_position": [150.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_4/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_5",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 400.0],
+      "layout_position": [200.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S05"}}
+    },
+    {
+      "name": "turn_S05",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S05",
+      "position": [900.0, 400.0],
+      "layout_position": [200.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_5/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_6",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 500.0],
+      "layout_position": [250.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S06"}}
+    },
+    {
+      "name": "turn_S06",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S06",
+      "position": [900.0, 500.0],
+      "layout_position": [250.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_6/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_7",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 600.0],
+      "layout_position": [300.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S07"}}
+    },
+    {
+      "name": "turn_S07",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S07",
+      "position": [900.0, 600.0],
+      "layout_position": [300.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_7/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_8",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 700.0],
+      "layout_position": [350.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S08"}}
+    },
+    {
+      "name": "turn_S08",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S08",
+      "position": [900.0, 700.0],
+      "layout_position": [350.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_8/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_9",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 800.0],
+      "layout_position": [400.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S09"}}
+    },
+    {
+      "name": "turn_S09",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S09",
+      "position": [900.0, 800.0],
+      "layout_position": [400.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_9/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "stand_10",
+      "type": "SUBMODEL",
+      "description": "Stand",
+      "position": [700.0, 900.0],
+      "layout_position": [450.0, 0.0],
+      "params": {"definition": "Stand", "arguments": {"station_name": "S10"}}
+    },
+    {
+      "name": "turn_S10",
+      "type": "SUBMODEL",
+      "description": "Ground handling at S10",
+      "position": [900.0, 900.0],
+      "layout_position": [450.0, -40.0],
+      "params": {
+        "definition": "Turnaround",
+        "arguments": {
+          "stand_node": "stand_10/stand",
+          "crew": "ramp_crew/AP Ramp crew",
+          "pushback_fleet": "pushback/AP GSE fleet",
+          "belt_loader_fleet": "belts/AP GSE fleet",
+          "baggage_tug_fleet": "tugs/AP GSE fleet",
+          "fuel_fleet": "fuel/AP GSE fleet",
+          "catering_fleet": "catering/AP GSE fleet",
+          "gpu_fleet": "gpu/AP GSE fleet"
+        }
+      }
+    },
+    {
+      "name": "grid_connection_1",
+      "type": "SUBMODEL",
+      "description": "Grid connection",
+      "position": [1500.0, 1300.0],
+      "layout_position": [-150.0, 100.0],
+      "params": {
+        "definition": "Grid connection",
+        "arguments": {
+          "import_profile": "Airport tariff",
+          "intensity_profile": "Airport grid intensity",
+          "import_limit_kw": 5000.0,
+          "demand_charge_per_kw": 0.33
+        }
+      }
+    }
+  ],
+  "links": [
+    {"source": "flight_schedule_1", "target": "To stand", "source_port": "out"},
+    {"source": "on time", "target": "By class"},
+    {"source": "By class", "target": "wide turn"},
+    {"source": "By class", "target": "narrow turn"},
+    {"source": "wide turn", "target": "Departed"},
+    {"source": "narrow turn", "target": "Departed"},
+    {"source": "To stand", "target": "stand_1", "target_port": "in"},
+    {"source": "stand_1", "target": "turn_S01", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S01", "target": "stand_1", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_1", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_2", "target_port": "in"},
+    {"source": "stand_2", "target": "turn_S02", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S02", "target": "stand_2", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_2", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_3", "target_port": "in"},
+    {"source": "stand_3", "target": "turn_S03", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S03", "target": "stand_3", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_3", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_4", "target_port": "in"},
+    {"source": "stand_4", "target": "turn_S04", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S04", "target": "stand_4", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_4", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_5", "target_port": "in"},
+    {"source": "stand_5", "target": "turn_S05", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S05", "target": "stand_5", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_5", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_6", "target_port": "in"},
+    {"source": "stand_6", "target": "turn_S06", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S06", "target": "stand_6", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_6", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_7", "target_port": "in"},
+    {"source": "stand_7", "target": "turn_S07", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S07", "target": "stand_7", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_7", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_8", "target_port": "in"},
+    {"source": "stand_8", "target": "turn_S08", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S08", "target": "stand_8", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_8", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_9", "target_port": "in"},
+    {"source": "stand_9", "target": "turn_S09", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S09", "target": "stand_9", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_9", "target": "on time", "source_port": "out"},
+    {"source": "To stand", "target": "stand_10", "target_port": "in"},
+    {"source": "stand_10", "target": "turn_S10", "source_port": "turn_out", "target_port": "in"},
+    {"source": "turn_S10", "target": "stand_10", "source_port": "out", "target_port": "turn_in"},
+    {"source": "stand_10", "target": "on time", "source_port": "out"}
+  ],
+  "scenarios": [
+    {
+      "name": "Electric GSE, overnight charging",
+      "description": "Electric equipment at today's counts, charging in the 22:00-04:00 window.",
+      "overrides": [
+        {"path": "blocks.pushback.params.arguments.count", "value": 6},
+        {"path": "blocks.pushback.params.arguments.speed_kmh", "value": 25},
+        {"path": "blocks.pushback.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.pushback.params.arguments.cost_per_hour", "value": 60},
+        {"path": "blocks.pushback.params.arguments.drive_kw", "value": 80},
+        {"path": "blocks.pushback.params.arguments.battery_kwh", "value": 120},
+        {"path": "blocks.pushback.params.arguments.charging", "value": "scheduled"},
+        {"path": "blocks.pushback.params.arguments.charge_schedule", "value": "Night"},
+        {"path": "blocks.pushback.params.preset", "value": "Pushback tractor electric"},
+        {"path": "blocks.belts.params.arguments.count", "value": 8},
+        {"path": "blocks.belts.params.arguments.speed_kmh", "value": 15},
+        {"path": "blocks.belts.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.belts.params.arguments.cost_per_hour", "value": 18},
+        {"path": "blocks.belts.params.arguments.drive_kw", "value": 8},
+        {"path": "blocks.belts.params.arguments.battery_kwh", "value": 50},
+        {"path": "blocks.belts.params.arguments.charging", "value": "scheduled"},
+        {"path": "blocks.belts.params.arguments.charge_schedule", "value": "Night"},
+        {"path": "blocks.belts.params.preset", "value": "Belt loader electric"},
+        {"path": "blocks.tugs.params.arguments.count", "value": 8},
+        {"path": "blocks.tugs.params.arguments.speed_kmh", "value": 25},
+        {"path": "blocks.tugs.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.tugs.params.arguments.cost_per_hour", "value": 20},
+        {"path": "blocks.tugs.params.arguments.drive_kw", "value": 10},
+        {"path": "blocks.tugs.params.arguments.battery_kwh", "value": 30},
+        {"path": "blocks.tugs.params.arguments.charging", "value": "scheduled"},
+        {"path": "blocks.tugs.params.arguments.charge_schedule", "value": "Night"},
+        {"path": "blocks.tugs.params.preset", "value": "Baggage tug electric"},
+        {"path": "blocks.catering.params.arguments.count", "value": 8},
+        {"path": "blocks.catering.params.arguments.speed_kmh", "value": 30},
+        {"path": "blocks.catering.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.catering.params.arguments.cost_per_hour", "value": 30},
+        {"path": "blocks.catering.params.arguments.drive_kw", "value": 30},
+        {"path": "blocks.catering.params.arguments.battery_kwh", "value": 100},
+        {"path": "blocks.catering.params.arguments.charging", "value": "scheduled"},
+        {"path": "blocks.catering.params.arguments.charge_schedule", "value": "Night"},
+        {"path": "blocks.catering.params.preset", "value": "Catering truck electric"},
+        {"path": "blocks.gpu.params.arguments.count", "value": 10},
+        {"path": "blocks.gpu.params.arguments.speed_kmh", "value": 15},
+        {"path": "blocks.gpu.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.gpu.params.arguments.cost_per_hour", "value": 12},
+        {"path": "blocks.gpu.params.arguments.drive_kw", "value": 35},
+        {"path": "blocks.gpu.params.arguments.battery_kwh", "value": 250},
+        {"path": "blocks.gpu.params.arguments.charging", "value": "scheduled"},
+        {"path": "blocks.gpu.params.arguments.charge_schedule", "value": "Night"},
+        {"path": "blocks.gpu.params.preset", "value": "GPU electric"},
+        {"path": "chargers.GSE chargers.points", "value": 20},
+        {"path": "fixed_costs.Vehicles.amount", "value": 3190000},
+        {"path": "fixed_costs.Chargers.amount", "value": 700000}
+      ]
+    },
+    {
+      "name": "Electric GSE, opportunity charging",
+      "description": "Electric equipment at today's counts, topping up whenever it is free and below 60 %.",
+      "overrides": [
+        {"path": "blocks.pushback.params.arguments.count", "value": 6},
+        {"path": "blocks.pushback.params.arguments.speed_kmh", "value": 25},
+        {"path": "blocks.pushback.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.pushback.params.arguments.cost_per_hour", "value": 60},
+        {"path": "blocks.pushback.params.arguments.drive_kw", "value": 80},
+        {"path": "blocks.pushback.params.arguments.battery_kwh", "value": 120},
+        {"path": "blocks.pushback.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.pushback.params.preset", "value": "Pushback tractor electric"},
+        {"path": "blocks.belts.params.arguments.count", "value": 8},
+        {"path": "blocks.belts.params.arguments.speed_kmh", "value": 15},
+        {"path": "blocks.belts.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.belts.params.arguments.cost_per_hour", "value": 18},
+        {"path": "blocks.belts.params.arguments.drive_kw", "value": 8},
+        {"path": "blocks.belts.params.arguments.battery_kwh", "value": 50},
+        {"path": "blocks.belts.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.belts.params.preset", "value": "Belt loader electric"},
+        {"path": "blocks.tugs.params.arguments.count", "value": 8},
+        {"path": "blocks.tugs.params.arguments.speed_kmh", "value": 25},
+        {"path": "blocks.tugs.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.tugs.params.arguments.cost_per_hour", "value": 20},
+        {"path": "blocks.tugs.params.arguments.drive_kw", "value": 10},
+        {"path": "blocks.tugs.params.arguments.battery_kwh", "value": 30},
+        {"path": "blocks.tugs.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.tugs.params.preset", "value": "Baggage tug electric"},
+        {"path": "blocks.catering.params.arguments.count", "value": 8},
+        {"path": "blocks.catering.params.arguments.speed_kmh", "value": 30},
+        {"path": "blocks.catering.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.catering.params.arguments.cost_per_hour", "value": 30},
+        {"path": "blocks.catering.params.arguments.drive_kw", "value": 30},
+        {"path": "blocks.catering.params.arguments.battery_kwh", "value": 100},
+        {"path": "blocks.catering.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.catering.params.preset", "value": "Catering truck electric"},
+        {"path": "blocks.gpu.params.arguments.count", "value": 10},
+        {"path": "blocks.gpu.params.arguments.speed_kmh", "value": 15},
+        {"path": "blocks.gpu.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.gpu.params.arguments.cost_per_hour", "value": 12},
+        {"path": "blocks.gpu.params.arguments.drive_kw", "value": 35},
+        {"path": "blocks.gpu.params.arguments.battery_kwh", "value": 250},
+        {"path": "blocks.gpu.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.gpu.params.preset", "value": "GPU electric"},
+        {"path": "chargers.GSE chargers.points", "value": 20},
+        {"path": "fixed_costs.Vehicles.amount", "value": 3190000},
+        {"path": "fixed_costs.Chargers.amount", "value": 700000}
+      ]
+    },
+    {
+      "name": "Electric GSE, opportunity charging, with spares",
+      "description": "Opportunity charging with 2 more belt loaders, 2 more tugs and 2 more GPUs.",
+      "overrides": [
+        {"path": "blocks.pushback.params.arguments.count", "value": 6},
+        {"path": "blocks.pushback.params.arguments.speed_kmh", "value": 25},
+        {"path": "blocks.pushback.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.pushback.params.arguments.cost_per_hour", "value": 60},
+        {"path": "blocks.pushback.params.arguments.drive_kw", "value": 80},
+        {"path": "blocks.pushback.params.arguments.battery_kwh", "value": 120},
+        {"path": "blocks.pushback.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.pushback.params.preset", "value": "Pushback tractor electric"},
+        {"path": "blocks.belts.params.arguments.count", "value": 10},
+        {"path": "blocks.belts.params.arguments.speed_kmh", "value": 15},
+        {"path": "blocks.belts.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.belts.params.arguments.cost_per_hour", "value": 18},
+        {"path": "blocks.belts.params.arguments.drive_kw", "value": 8},
+        {"path": "blocks.belts.params.arguments.battery_kwh", "value": 50},
+        {"path": "blocks.belts.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.belts.params.preset", "value": "Belt loader electric"},
+        {"path": "blocks.tugs.params.arguments.count", "value": 10},
+        {"path": "blocks.tugs.params.arguments.speed_kmh", "value": 25},
+        {"path": "blocks.tugs.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.tugs.params.arguments.cost_per_hour", "value": 20},
+        {"path": "blocks.tugs.params.arguments.drive_kw", "value": 10},
+        {"path": "blocks.tugs.params.arguments.battery_kwh", "value": 30},
+        {"path": "blocks.tugs.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.tugs.params.preset", "value": "Baggage tug electric"},
+        {"path": "blocks.catering.params.arguments.count", "value": 8},
+        {"path": "blocks.catering.params.arguments.speed_kmh", "value": 30},
+        {"path": "blocks.catering.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.catering.params.arguments.cost_per_hour", "value": 30},
+        {"path": "blocks.catering.params.arguments.drive_kw", "value": 30},
+        {"path": "blocks.catering.params.arguments.battery_kwh", "value": 100},
+        {"path": "blocks.catering.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.catering.params.preset", "value": "Catering truck electric"},
+        {"path": "blocks.gpu.params.arguments.count", "value": 12},
+        {"path": "blocks.gpu.params.arguments.speed_kmh", "value": 15},
+        {"path": "blocks.gpu.params.arguments.fuel_kw", "value": 0},
+        {"path": "blocks.gpu.params.arguments.cost_per_hour", "value": 12},
+        {"path": "blocks.gpu.params.arguments.drive_kw", "value": 35},
+        {"path": "blocks.gpu.params.arguments.battery_kwh", "value": 250},
+        {"path": "blocks.gpu.params.arguments.charging", "value": "opportunity"},
+        {"path": "blocks.gpu.params.preset", "value": "GPU electric"},
+        {"path": "chargers.GSE chargers.points", "value": 20},
+        {"path": "fixed_costs.Vehicles.amount", "value": 3762500},
+        {"path": "fixed_costs.Chargers.amount", "value": 700000}
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "id": "KL1000",
+      "release": 0,
+      "due": 65,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1007",
+      "release": 3,
+      "due": 68,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S02"}
+    },
+    {
+      "id": "KL1014",
+      "release": 3,
+      "due": 68,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S04"}
+    },
+    {
+      "id": "KL1021",
+      "release": 4,
+      "due": 69,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1028",
+      "release": 4,
+      "due": 69,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S07"}
+    },
+    {
+      "id": "KL1035",
+      "release": 5,
+      "due": 70,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1042",
+      "release": 5,
+      "due": 105,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S10"}
+    },
+    {
+      "id": "KL1049",
+      "release": 6,
+      "due": 71,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1056",
+      "release": 7,
+      "due": 72,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1063",
+      "release": 7,
+      "due": 107,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S09"}
+    },
+    {
+      "id": "KL1070",
+      "release": 78,
+      "due": 143,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1077",
+      "release": 78,
+      "due": 143,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S06"}
+    },
+    {
+      "id": "KL1084",
+      "release": 79,
+      "due": 144,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1091",
+      "release": 80,
+      "due": 145,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S07"}
+    },
+    {
+      "id": "KL1098",
+      "release": 82,
+      "due": 147,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S04"}
+    },
+    {
+      "id": "KL1105",
+      "release": 83,
+      "due": 148,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1112",
+      "release": 85,
+      "due": 150,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1119",
+      "release": 86,
+      "due": 151,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S08"}
+    },
+    {
+      "id": "KL1126",
+      "release": 117,
+      "due": 217,
+      "quantity": 1,
+      "attributes": {"aircraft": "B787", "stand": "S09"}
+    },
+    {
+      "id": "KL1133",
+      "release": 120,
+      "due": 220,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S10"}
+    },
+    {
+      "id": "KL1140",
+      "release": 155,
+      "due": 220,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S06"}
+    },
+    {
+      "id": "KL1147",
+      "release": 155,
+      "due": 220,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S07"}
+    },
+    {
+      "id": "KL1154",
+      "release": 156,
+      "due": 221,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S02"}
+    },
+    {
+      "id": "KL1161",
+      "release": 156,
+      "due": 221,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1168",
+      "release": 158,
+      "due": 223,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1175",
+      "release": 159,
+      "due": 224,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S04"}
+    },
+    {
+      "id": "KL1182",
+      "release": 161,
+      "due": 226,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1189",
+      "release": 161,
+      "due": 226,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1196",
+      "release": 227,
+      "due": 327,
+      "quantity": 1,
+      "attributes": {"aircraft": "B787", "stand": "S09"}
+    },
+    {
+      "id": "KL1203",
+      "release": 232,
+      "due": 297,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S02"}
+    },
+    {
+      "id": "KL1210",
+      "release": 234,
+      "due": 299,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S06"}
+    },
+    {
+      "id": "KL1217",
+      "release": 234,
+      "due": 299,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S07"}
+    },
+    {
+      "id": "KL1224",
+      "release": 234,
+      "due": 334,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S10"}
+    },
+    {
+      "id": "KL1231",
+      "release": 235,
+      "due": 300,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1238",
+      "release": 235,
+      "due": 300,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S04"}
+    },
+    {
+      "id": "KL1245",
+      "release": 235,
+      "due": 300,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1252",
+      "release": 237,
+      "due": 302,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1259",
+      "release": 240,
+      "due": 305,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S03"}
+    },
+    {
+      "id": "KL1266",
+      "release": 392,
+      "due": 457,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1273",
+      "release": 392,
+      "due": 457,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1280",
+      "release": 392,
+      "due": 492,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S10"}
+    },
+    {
+      "id": "KL1287",
+      "release": 394,
+      "due": 459,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S07"}
+    },
+    {
+      "id": "KL1294",
+      "release": 396,
+      "due": 461,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S04"}
+    },
+    {
+      "id": "KL1301",
+      "release": 396,
+      "due": 461,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S05"}
+    },
+    {
+      "id": "KL1308",
+      "release": 397,
+      "due": 462,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1315",
+      "release": 398,
+      "due": 463,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S08"}
+    },
+    {
+      "id": "KL1322",
+      "release": 399,
+      "due": 464,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1329",
+      "release": 400,
+      "due": 500,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S09"}
+    },
+    {
+      "id": "KL1336",
+      "release": 468,
+      "due": 533,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1343",
+      "release": 470,
+      "due": 535,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1350",
+      "release": 470,
+      "due": 535,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S07"}
+    },
+    {
+      "id": "KL1357",
+      "release": 471,
+      "due": 536,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S04"}
+    },
+    {
+      "id": "KL1364",
+      "release": 472,
+      "due": 537,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S01"}
+    },
+    {
+      "id": "KL1371",
+      "release": 476,
+      "due": 541,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1378",
+      "release": 476,
+      "due": 541,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S05"}
+    },
+    {
+      "id": "KL1385",
+      "release": 476,
+      "due": 541,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1392",
+      "release": 504,
+      "due": 604,
+      "quantity": 1,
+      "attributes": {"aircraft": "B787", "stand": "S10"}
+    },
+    {
+      "id": "KL1399",
+      "release": 510,
+      "due": 610,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S09"}
+    },
+    {
+      "id": "KL1406",
+      "release": 543,
+      "due": 608,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S06"}
+    },
+    {
+      "id": "KL1413",
+      "release": 546,
+      "due": 611,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S03"}
+    },
+    {
+      "id": "KL1420",
+      "release": 549,
+      "due": 614,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S04"}
+    },
+    {
+      "id": "KL1427",
+      "release": 549,
+      "due": 614,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S07"}
+    },
+    {
+      "id": "KL1434",
+      "release": 550,
+      "due": 615,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1441",
+      "release": 553,
+      "due": 618,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S05"}
+    },
+    {
+      "id": "KL1448",
+      "release": 554,
+      "due": 619,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1455",
+      "release": 556,
+      "due": 621,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1462",
+      "release": 614,
+      "due": 714,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S10"}
+    },
+    {
+      "id": "KL1469",
+      "release": 620,
+      "due": 720,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S09"}
+    },
+    {
+      "id": "KL1476",
+      "release": 622,
+      "due": 687,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1483",
+      "release": 622,
+      "due": 687,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1490",
+      "release": 625,
+      "due": 690,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S01"}
+    },
+    {
+      "id": "KL1497",
+      "release": 628,
+      "due": 693,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S04"}
+    },
+    {
+      "id": "KL1504",
+      "release": 628,
+      "due": 693,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S07"}
+    },
+    {
+      "id": "KL1511",
+      "release": 629,
+      "due": 694,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1518",
+      "release": 631,
+      "due": 696,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1525",
+      "release": 632,
+      "due": 697,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S08"}
+    },
+    {
+      "id": "KL1532",
+      "release": 781,
+      "due": 881,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S09"}
+    },
+    {
+      "id": "KL1539",
+      "release": 783,
+      "due": 848,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S07"}
+    },
+    {
+      "id": "KL1546",
+      "release": 783,
+      "due": 883,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S10"}
+    },
+    {
+      "id": "KL1553",
+      "release": 784,
+      "due": 849,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1560",
+      "release": 785,
+      "due": 850,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S04"}
+    },
+    {
+      "id": "KL1567",
+      "release": 785,
+      "due": 850,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1574",
+      "release": 786,
+      "due": 851,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S02"}
+    },
+    {
+      "id": "KL1581",
+      "release": 787,
+      "due": 852,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S03"}
+    },
+    {
+      "id": "KL1588",
+      "release": 788,
+      "due": 853,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1595",
+      "release": 789,
+      "due": 854,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1602",
+      "release": 861,
+      "due": 926,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S07"}
+    },
+    {
+      "id": "KL1609",
+      "release": 861,
+      "due": 926,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S08"}
+    },
+    {
+      "id": "KL1616",
+      "release": 862,
+      "due": 927,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1623",
+      "release": 863,
+      "due": 928,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S04"}
+    },
+    {
+      "id": "KL1630",
+      "release": 865,
+      "due": 930,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S03"}
+    },
+    {
+      "id": "KL1637",
+      "release": 866,
+      "due": 931,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1644",
+      "release": 867,
+      "due": 932,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S05"}
+    },
+    {
+      "id": "KL1651",
+      "release": 868,
+      "due": 933,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1658",
+      "release": 891,
+      "due": 991,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S09"}
+    },
+    {
+      "id": "KL1665",
+      "release": 897,
+      "due": 997,
+      "quantity": 1,
+      "attributes": {"aircraft": "B787", "stand": "S10"}
+    },
+    {
+      "id": "KL1672",
+      "release": 937,
+      "due": 1002,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S07"}
+    },
+    {
+      "id": "KL1679",
+      "release": 941,
+      "due": 1006,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S06"}
+    },
+    {
+      "id": "KL1686",
+      "release": 941,
+      "due": 1006,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1693",
+      "release": 942,
+      "due": 1007,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1700",
+      "release": 942,
+      "due": 1007,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S04"}
+    },
+    {
+      "id": "KL1707",
+      "release": 943,
+      "due": 1008,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S02"}
+    },
+    {
+      "id": "KL1714",
+      "release": 945,
+      "due": 1010,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1721",
+      "release": 947,
+      "due": 1012,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S05"}
+    },
+    {
+      "id": "KL1728",
+      "release": 1004,
+      "due": 1104,
+      "quantity": 1,
+      "attributes": {"aircraft": "A330", "stand": "S09"}
+    },
+    {
+      "id": "KL1735",
+      "release": 1007,
+      "due": 1107,
+      "quantity": 1,
+      "attributes": {"aircraft": "B777", "stand": "S10"}
+    },
+    {
+      "id": "KL1742",
+      "release": 1014,
+      "due": 1079,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S07"}
+    },
+    {
+      "id": "KL1749",
+      "release": 1018,
+      "due": 1083,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S03"}
+    },
+    {
+      "id": "KL1756",
+      "release": 1018,
+      "due": 1083,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S04"}
+    },
+    {
+      "id": "KL1763",
+      "release": 1019,
+      "due": 1084,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S08"}
+    },
+    {
+      "id": "KL1770",
+      "release": 1020,
+      "due": 1085,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S01"}
+    },
+    {
+      "id": "KL1777",
+      "release": 1021,
+      "due": 1086,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S02"}
+    },
+    {
+      "id": "KL1784",
+      "release": 1021,
+      "due": 1086,
+      "quantity": 1,
+      "attributes": {"aircraft": "A320", "stand": "S06"}
+    },
+    {
+      "id": "KL1791",
+      "release": 1027,
+      "due": 1092,
+      "quantity": 1,
+      "attributes": {"aircraft": "B737-800", "stand": "S05"}
+    }
+  ],
+  "resources": [
+    {
+      "name": "AP Ramp crew",
+      "capacity": 6,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0
+    },
+    {"name": "AP Stand", "capacity": 1, "discipline": "FIFO", "cost_busy": 0.0, "cost_idle": 0.0}
+  ],
+  "schedules": [
+    {
+      "name": "Ramp shifts",
+      "kind": "capacity",
+      "repeat": true,
+      "points": [[120, 14], [480, 18], [480, 16], [360, 14]]
+    },
+    {"name": "Night", "kind": "capacity", "repeat": true, "points": [[1080, 0], [360, 1]]}
+  ],
+  "tables": [
+    {
+      "name": "AP Turnaround",
+      "description": "Turnaround task minutes by aircraft type; ESTIMATES with the GPU branch on the critical path, gpu + pushback = the AP Aircraft turnaround_min benchmark.",
+      "keys": ["A320", "B737-800", "A330", "B777", "B787"],
+      "columns": [
+        "deboard",
+        "clean",
+        "board",
+        "unload",
+        "load",
+        "fuel",
+        "catering",
+        "gpu",
+        "pushback"
+      ],
+      "values": [
+        [10, 12, 20, 15, 20, 18, 15, 45, 5],
+        [11, 13, 22, 16, 22, 20, 16, 50, 5],
+        [15, 20, 35, 25, 35, 35, 30, 75, 5],
+        [18, 22, 40, 30, 40, 40, 35, 85, 5],
+        [14, 18, 33, 24, 32, 32, 28, 70, 5]
+      ],
+      "key_mode": "exact",
+      "column_mode": "exact"
+    }
+  ],
+  "variables": [{"name": "ap_turn_seq", "initial": 0.0}],
+  "entities": [{"name": "FLIGHT", "shape": "circle", "color": "BLACK"}],
+  "timeseries_inputs": [
+    {
+      "name": "Airport tariff",
+      "description": "Illustrative import price, EUR/kWh, by hour from 04:00.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.12,
+        0.12,
+        0.18,
+        0.18,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.3,
+        0.3,
+        0.3,
+        0.3,
+        0.18,
+        0.18,
+        0.12,
+        0.12,
+        0.12,
+        0.12,
+        0.12
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Airport grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour from 04:00.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.34,
+        0.33,
+        0.31,
+        0.28,
+        0.25,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.36,
+        0.4,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Nrg tariff",
+      "description": "Illustrative time-of-use import price, EUR/kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.25,
+        0.15,
+        0.15
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Nrg flat tariff",
+      "description": "A flat import price, EUR/kWh: one value, held for the whole run.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "hold",
+      "values": [0.25],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Nrg grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day: cleaner around midday, dirtier at the evening peak.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.34,
+        0.32,
+        0.3,
+        0.27,
+        0.24,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.38,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35
+      ],
+      "time_unit": "hours"
+    }
+  ],
+  "flows": [
+    {
+      "name": "Nrg import",
+      "description": "Whatever the site could not cover itself, up to the connection limit, kW.",
+      "rate": "min(max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\"), 0), import_limit_kw)",
+      "price": "TS(import_profile)",
+      "emission_factor": "TS(intensity_profile)",
+      "tag": "import",
+      "peak_price": 0.0,
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg unserved",
+      "description": "Demand the connection limit could not deliver, kW.",
+      "rate": "max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\") - FLOW(\"$Nrg import\"), 0)",
+      "tag": "unserved",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg export",
+      "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
+      "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
+      "price": "-export_price",
+      "tag": "export",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg curtailed",
+      "description": "Generation that was neither used, stored nor exported, kW.",
+      "rate": "max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\") - FLOW(\"$Nrg export\"), 0)",
+      "tag": "curtailed",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Charging draw",
+      "description": "Grid power the GSE chargers draw, kW: the grid connection's demand.",
+      "rate": "POWER(\"GSE chargers\")",
+      "tag": "demand",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Diesel",
+      "description": "Fuel burnt by the ground support equipment, kW of fuel (1 l/h = 10 kW); priced per kWh of fuel and emitting its CO2. Zero once a fleet is electric.",
+      "rate": "POWER(\"pushback/AP GSE fleet\") + POWER(\"belts/AP GSE fleet\") + POWER(\"tugs/AP GSE fleet\") + POWER(\"fuel/AP GSE fleet\") + POWER(\"catering/AP GSE fleet\") + POWER(\"gpu/AP GSE fleet\")",
+      "price": 0.16,
+      "emission_factor": 0.268,
+      "rate_time_unit": "hours"
+    }
+  ],
+  "fixed_costs": [
+    {
+      "name": "Vehicles",
+      "description": "Price of the electric vehicles over the diesel ones they replace.",
+      "amount": 0,
+      "category": "Capital",
+      "capex": true
+    },
+    {
+      "name": "Chargers",
+      "description": "Charge points and the grid connection work.",
+      "amount": 0,
+      "category": "Capital",
+      "capex": true
+    }
+  ],
+  "fleets": [
+    {
+      "name": "AP GSE fleet",
+      "kind": "worker",
+      "count": 2,
+      "speed": 15.0,
+      "home": "",
+      "power": {"busy": 30.0},
+      "cost_busy": 20.0,
+      "cost_idle": 20.0,
+      "battery": {"capacity_kwh": 0.0, "low": 0.25, "target": 0.9, "strategy": "threshold"},
+      "speed_unit": "km/h"
+    }
+  ],
+  "chargers": [
+    {
+      "name": "GSE chargers",
+      "node": "gse_depot",
+      "kind": "charge",
+      "points": 1,
+      "power_kw": 100.0,
+      "efficiency": 0.92
+    }
+  ],
+  "network": {
+    "nodes": [
+      {"name": "gse_depot", "x": -150.0, "y": 40.0},
+      {"name": "lane_0", "x": 0.0, "y": 40.0},
+      {"name": "lane_1", "x": 50.0, "y": 40.0},
+      {"name": "lane_2", "x": 100.0, "y": 40.0},
+      {"name": "lane_3", "x": 150.0, "y": 40.0},
+      {"name": "lane_4", "x": 200.0, "y": 40.0},
+      {"name": "lane_5", "x": 250.0, "y": 40.0},
+      {"name": "lane_6", "x": 300.0, "y": 40.0},
+      {"name": "lane_7", "x": 350.0, "y": 40.0},
+      {"name": "lane_8", "x": 400.0, "y": 40.0},
+      {"name": "lane_9", "x": 450.0, "y": 40.0},
+      {"name": "stand_1/stand", "x": 0.0, "y": 0.0},
+      {"name": "stand_2/stand", "x": 50.0, "y": 0.0},
+      {"name": "stand_3/stand", "x": 100.0, "y": 0.0},
+      {"name": "stand_4/stand", "x": 150.0, "y": 0.0},
+      {"name": "stand_5/stand", "x": 200.0, "y": 0.0},
+      {"name": "stand_6/stand", "x": 250.0, "y": 0.0},
+      {"name": "stand_7/stand", "x": 300.0, "y": 0.0},
+      {"name": "stand_8/stand", "x": 350.0, "y": 0.0},
+      {"name": "stand_9/stand", "x": 400.0, "y": 0.0},
+      {"name": "stand_10/stand", "x": 450.0, "y": 0.0}
+    ],
+    "segments": [
+      {"from": "gse_depot", "to": "lane_0", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_0", "to": "lane_1", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_1", "to": "lane_2", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_2", "to": "lane_3", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_3", "to": "lane_4", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_4", "to": "lane_5", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_5", "to": "lane_6", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_6", "to": "lane_7", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_7", "to": "lane_8", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_8", "to": "lane_9", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_0", "to": "stand_1/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_1", "to": "stand_2/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_2", "to": "stand_3/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_3", "to": "stand_4/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_4", "to": "stand_5/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_5", "to": "stand_6/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_6", "to": "stand_7/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_7", "to": "stand_8/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_8", "to": "stand_9/stand", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "lane_9", "to": "stand_10/stand", "length_unit": "meters", "speed_unit": "m/min"}
+    ]
+  },
+  "submodels": {
+    "GSE fleet": {
+      "info": {
+        "description": "One type of ground support equipment, owned by this instance: placed as \"belts\", the fleet is \"belts/AP GSE fleet\", and the Turnaround's matching equipment parameter (belt loader, baggage tug, fuel truck, catering truck, GPU, pushback) is pointed at that name. Place one per equipment type. The vehicles start at the home node, the GSE depot; a Turnaround task calls one, it drives empty to the stand over the apron network and is busy there until the task ends, then waits at that stand for its next call. A diesel type counts its fuel burn as power while busy (fuel_kw, 1 l/h = 10 kW of fuel), so the energy summary shows what the fleet burns; nothing is counted while parked. An electric type (Fuel burn 0) carries a battery that its drive kW drains; after a task is released and below a quarter it drives to a charger and works again at 90 %. Place Charger assets (Logistics library) at the GSE depot, sized from the row's charger kW; their grid energy is the fleet's.",
+        "library": {"library": "airport", "asset": "gse_fleet", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "count",
+            "type": "int",
+            "default": 2,
+            "unit": "",
+            "label": "Vehicles",
+            "help": "Vehicles of this type in the fleet.",
+            "group": "Equipment",
+            "min": 1,
+            "max": 200,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_kmh",
+            "type": "number",
+            "default": 15.0,
+            "unit": "km/h",
+            "label": "Driving speed",
+            "help": "Driving speed on the apron network, empty or not.",
+            "group": "Equipment",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "fuel_kw",
+            "type": "number",
+            "default": 30.0,
+            "unit": "kW",
+            "label": "Fuel burn while working",
+            "help": "Fuel as kW of fuel energy, 1 l/h of diesel = 10 kW, counted while a vehicle drives to a task and works it. 0 for an electric type.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "drive_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kW",
+            "label": "Electric power while working",
+            "help": "Read only when Fuel burn is 0.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "battery_kwh",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kWh",
+            "label": "Battery capacity",
+            "help": "Read only when Fuel burn is 0; 0 draws the drive kW straight from the grid, with no battery.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "charging",
+            "type": "choice",
+            "default": "threshold",
+            "unit": "",
+            "label": "Charging",
+            "help": "How a battery type charges, always after a task is released: threshold below a quarter up to 90 %; opportunity whenever it is free and below its opportunity level; scheduled in the charger's open hours; swap at a Battery swap station.",
+            "group": "Energy",
+            "min": null,
+            "max": null,
+            "choices": ["threshold", "opportunity", "scheduled", "swap"],
+            "refers_to": ""
+          },
+          {
+            "name": "opportunity_below",
+            "type": "number",
+            "default": 0.6,
+            "unit": "",
+            "label": "Top up below",
+            "help": "Opportunity only: a vehicle below this state of charge charges whenever a point is free.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "charge_schedule",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Charging schedule",
+            "help": "Scheduled only: the name of a capacity schedule; vehicles charge while its value is above 0 (for example the night).",
+            "group": "Energy",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_per_hour",
+            "type": "number",
+            "default": 20.0,
+            "unit": "currency per hour",
+            "label": "Cost per vehicle hour",
+            "help": "Charged for every hour a vehicle is in the fleet, working or parked.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "home_node",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Home node (GSE depot)",
+            "help": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model.",
+            "group": "Place",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "AP GSE",
+          "label": "Equipment",
+          "group": "Equipment",
+          "map": {
+            "speed_kmh": "speed_kmh",
+            "fuel_kw": "fuel_kw",
+            "cost_per_hour": "cost_per_hour",
+            "drive_kw": "drive_kw",
+            "battery_kwh": "battery_kwh"
+          },
+          "rows": [
+            "Pushback tractor diesel",
+            "Baggage tug diesel",
+            "Belt loader diesel",
+            "GPU diesel",
+            "Catering truck diesel",
+            "Fuel truck diesel",
+            "Passenger stairs diesel",
+            "Pushback tractor electric",
+            "Baggage tug electric",
+            "Belt loader electric",
+            "GPU electric",
+            "Catering truck electric",
+            "Passenger stairs electric"
+          ],
+          "units": {
+            "speed_kmh": "km/h",
+            "fuel_kw": "kW of fuel",
+            "cost_per_hour": "currency per hour",
+            "capex": "currency",
+            "drive_kw": "kW",
+            "battery_kwh": "kWh",
+            "charger_kw": "kW"
+          },
+          "values": {
+            "Pushback tractor diesel": {
+              "speed_kmh": 25,
+              "fuel_kw": 150.0,
+              "cost_per_hour": 70,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "Baggage tug diesel": {
+              "speed_kmh": 25,
+              "fuel_kw": 40.0,
+              "cost_per_hour": 25,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "Belt loader diesel": {
+              "speed_kmh": 15,
+              "fuel_kw": 30.0,
+              "cost_per_hour": 20,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "GPU diesel": {
+              "speed_kmh": 15,
+              "fuel_kw": 60.0,
+              "cost_per_hour": 15,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "Catering truck diesel": {
+              "speed_kmh": 30,
+              "fuel_kw": 80.0,
+              "cost_per_hour": 35,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "Fuel truck diesel": {
+              "speed_kmh": 30,
+              "fuel_kw": 100.0,
+              "cost_per_hour": 40,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "Passenger stairs diesel": {
+              "speed_kmh": 15,
+              "fuel_kw": 30.0,
+              "cost_per_hour": 12,
+              "drive_kw": 0,
+              "battery_kwh": 0
+            },
+            "Pushback tractor electric": {
+              "speed_kmh": 25,
+              "fuel_kw": 0,
+              "cost_per_hour": 60,
+              "drive_kw": 80,
+              "battery_kwh": 120
+            },
+            "Baggage tug electric": {
+              "speed_kmh": 25,
+              "fuel_kw": 0,
+              "cost_per_hour": 20,
+              "drive_kw": 10,
+              "battery_kwh": 30
+            },
+            "Belt loader electric": {
+              "speed_kmh": 15,
+              "fuel_kw": 0,
+              "cost_per_hour": 18,
+              "drive_kw": 8,
+              "battery_kwh": 25
+            },
+            "GPU electric": {
+              "speed_kmh": 15,
+              "fuel_kw": 0,
+              "cost_per_hour": 12,
+              "drive_kw": 35,
+              "battery_kwh": 250
+            },
+            "Catering truck electric": {
+              "speed_kmh": 30,
+              "fuel_kw": 0,
+              "cost_per_hour": 30,
+              "drive_kw": 30,
+              "battery_kwh": 100
+            },
+            "Passenger stairs electric": {
+              "speed_kmh": 15,
+              "fuel_kw": 0,
+              "cost_per_hour": 10,
+              "drive_kw": 6,
+              "battery_kwh": 20
+            }
+          },
+          "sources": {
+            "Pushback tractor diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "Baggage tug diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "Belt loader diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "GPU diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "Catering truck diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "Fuel truck diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "Passenger stairs diesel": "estimate: typical ramp equipment, order of magnitude (diesel: fuel l/h x 10 kW)",
+            "Pushback tractor electric": "estimate: typical ramp equipment, order of magnitude (electric)",
+            "Baggage tug electric": "estimate: typical ramp equipment, order of magnitude (electric)",
+            "Belt loader electric": "estimate: typical ramp equipment, order of magnitude (electric)",
+            "GPU electric": "estimate: average draw of a narrow-body turn (about 35 kW, not the 60 kW peak) on a large battery, as a battery GPU needs to last a shift",
+            "Catering truck electric": "estimate: typical ramp equipment, order of magnitude (electric)",
+            "Passenger stairs electric": "estimate: typical ramp equipment, order of magnitude (electric)"
+          }
+        },
+        "owns": {"fleets": ["AP GSE fleet"]}
+      },
+      "parameters": [
+        {
+          "name": "count",
+          "default": 2,
+          "type": "int",
+          "description": "Vehicles of this type in the fleet."
+        },
+        {
+          "name": "speed_kmh",
+          "default": 15.0,
+          "type": "number",
+          "description": "Driving speed on the apron network, empty or not."
+        },
+        {
+          "name": "fuel_kw",
+          "default": 30.0,
+          "type": "number",
+          "description": "Fuel as kW of fuel energy, 1 l/h of diesel = 10 kW, counted while a vehicle drives to a task and works it. 0 for an electric type."
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Read only when Fuel burn is 0."
+        },
+        {
+          "name": "battery_kwh",
+          "default": 0.0,
+          "type": "number",
+          "description": "Read only when Fuel burn is 0; 0 draws the drive kW straight from the grid, with no battery."
+        },
+        {
+          "name": "charging",
+          "default": "threshold",
+          "type": "choice",
+          "description": "How a battery type charges, always after a task is released: threshold below a quarter up to 90 %; opportunity whenever it is free and below its opportunity level; scheduled in the charger's open hours; swap at a Battery swap station."
+        },
+        {
+          "name": "opportunity_below",
+          "default": 0.6,
+          "type": "number",
+          "description": "Opportunity only: a vehicle below this state of charge charges whenever a point is free."
+        },
+        {
+          "name": "charge_schedule",
+          "default": "",
+          "type": "name",
+          "description": "Scheduled only: the name of a capacity schedule; vehicles charge while its value is above 0 (for example the night)."
+        },
+        {
+          "name": "cost_per_hour",
+          "default": 20.0,
+          "type": "number",
+          "description": "Charged for every hour a vehicle is in the fleet, working or parked."
+        },
+        {
+          "name": "home_node",
+          "default": "",
+          "type": "name",
+          "description": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model."
+        }
+      ],
+      "scoped": {
+        "fleets": {
+          "AP GSE fleet": {
+            "count": {"$arg": "count"},
+            "speed": "speed_kmh",
+            "home": {"$arg": "home_node"},
+            "power.busy": "fuel_kw if fuel_kw > 0 else drive_kw",
+            "cost_busy": "cost_per_hour",
+            "cost_idle": "cost_per_hour",
+            "battery.capacity_kwh": "battery_kwh if fuel_kw == 0 else 0",
+            "battery.strategy": {"$arg": "charging"},
+            "battery.opportunity_below": "opportunity_below",
+            "battery.schedule": {"$arg": "charge_schedule"}
+          }
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Handling crew": {
+      "info": {
+        "description": "A pool of ramp agents, \"AP Ramp crew\", owned by this instance: placed as \"crew\", the pool is \"crew/AP Ramp crew\", and a Turnaround's \"Ramp crew\" parameter is pointed at that name. The cabin and hold tasks each take one agent for the task's duration. The shift schedule, when given, sets how many agents are on duty over the day; without one the pool is always at its full size. Place one per crew that works its own stands or rota. Skills are not modelled: every agent can do every task.",
+        "library": {"library": "airport", "asset": "handling_crew", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "agents",
+            "type": "int",
+            "default": 6,
+            "unit": "",
+            "label": "Agents",
+            "help": "Ramp agents in the pool, the most on duty at once.",
+            "group": "Crew",
+            "min": 1,
+            "max": 500,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "shift_schedule",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Shift schedule",
+            "help": "A capacity-kind schedule of agents on duty. An agent going off shift finishes the task in hand first. Empty: the whole pool all day.",
+            "group": "Availability",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "schedule"
+          }
+        ],
+        "owns": {"resources": ["AP Ramp crew"]}
+      },
+      "parameters": [
+        {
+          "name": "agents",
+          "default": 6,
+          "type": "int",
+          "description": "Ramp agents in the pool, the most on duty at once."
+        },
+        {
+          "name": "shift_schedule",
+          "default": "",
+          "type": "name",
+          "refers_to": "schedule",
+          "description": "A capacity-kind schedule of agents on duty. An agent going off shift finishes the task in hand first. Empty: the whole pool all day."
+        }
+      ],
+      "scoped": {
+        "resources": {
+          "AP Ramp crew": {"capacity": "agents", "capacity_schedule": {"$arg": "shift_schedule"}}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Flight schedule": {
+      "info": {
+        "description": "The day's flights. Each row of the model's order book is one flight: its id is the flight id, release is the on-block time, due is the scheduled off-block time, and the free attributes `aircraft` (a type from the AP Aircraft catalogue) and `stand` say what lands and where it parks. The flight leaves by \"out\" as a FLIGHT entity stamped with entity.flight_id (the order id), so later steps can join their work to one flight. Lateness against the due date is the on-time departure KPI. The book lives in the model (Orders tab, CSV import), not in the asset, so one asset serves any day's schedule. No input port.",
+        "library": {"library": "airport", "asset": "flight_schedule", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "flight_type",
+            "type": "name",
+            "default": "FLIGHT",
+            "unit": "",
+            "label": "Flight entity type",
+            "help": "The entity type a flight gets unless its order names another.",
+            "group": "Flights",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          }
+        ],
+        "owns": {"entities": ["FLIGHT"]}
+      },
+      "parameters": [
+        {
+          "name": "flight_type",
+          "default": "FLIGHT",
+          "type": "name",
+          "refers_to": "entity",
+          "description": "The entity type a flight gets unless its order names another."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "arrive",
+          "type": "CREATE",
+          "description": "Flights on block",
+          "position": [0.0, 0.0],
+          "params": {
+            "e_type": {"$arg": "flight_type"},
+            "arrival_mode": "Orders",
+            "time_unit": "minutes"
+          }
+        },
+        {
+          "name": "stamp",
+          "type": "ASSIGN",
+          "description": "Flight id",
+          "position": [200.0, 0.0],
+          "params": {"assignments": [{"target": "entity.flight_id", "expr": "entity.order_id"}]}
+        },
+        {"name": "out", "type": "SUB_EXIT", "description": "Flights", "position": [400.0, 0.0]}
+      ],
+      "links": [{"source": "arrive", "target": "stamp"}, {"source": "stamp", "target": "out"}],
+      "annotations": []
+    },
+    "Stand": {
+      "info": {
+        "description": "One aircraft stand. A flight arrives by \"in\", takes the stand (capacity 1: a second flight waits on the apron until pushback) and leaves by \"turn_out\" for the turnaround; it comes back by \"turn_in\" when its ground handling is done, frees the stand and leaves by \"out\". Place one per stand and route flights to it by their `stand` attribute (a DECIDE or ROUTE on entity.stand against the station name). The stand is a STATION and brings its own network node, so put it where the stand really is and draw a taxiway or apron road to it.",
+        "library": {"library": "airport", "asset": "stand", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "station_name",
+            "type": "name",
+            "default": "Stand",
+            "unit": "",
+            "label": "Station name",
+            "help": "The name a routing step uses for this stand, for example the value of the schedule's `stand` attribute. It must be unique in the model.",
+            "group": "Routing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {"nodes": [{"name": "stand", "dx": 0.0, "dy": 0.0, "attach": true}]},
+        "owns": {"resources": ["AP Stand"]}
+      },
+      "parameters": [
+        {
+          "name": "station_name",
+          "default": "Stand",
+          "type": "name",
+          "description": "The name a routing step uses for this stand, for example the value of the schedule's `stand` attribute. It must be unique in the model."
+        }
+      ],
+      "scoped": {"resources": {"AP Stand": {"capacity": 1}}},
+      "blocks": [
+        {
+          "name": "in",
+          "type": "SUB_ENTRY",
+          "description": "Flights arriving",
+          "position": [0.0, 0.0]
+        },
+        {
+          "name": "at_stand",
+          "type": "STATION",
+          "description": "Stand",
+          "position": [200.0, 0.0],
+          "params": {"station": {"$arg": "station_name"}, "node": "$stand"}
+        },
+        {
+          "name": "block_in",
+          "type": "SEIZE",
+          "description": "Take the stand",
+          "position": [400.0, 0.0],
+          "params": {"time_unit": "minutes", "resource_name": "$AP Stand"}
+        },
+        {
+          "name": "turn_out",
+          "type": "SUB_EXIT",
+          "description": "To the turnaround",
+          "position": [600.0, 0.0],
+          "params": {"port": "turn_out"}
+        },
+        {
+          "name": "turn_in",
+          "type": "SUB_ENTRY",
+          "description": "Turnaround done",
+          "position": [600.0, 100.0],
+          "params": {"port": "turn_in"}
+        },
+        {
+          "name": "pushback",
+          "type": "RELEASE",
+          "description": "Free the stand",
+          "position": [800.0, 100.0],
+          "params": {"time_unit": "minutes", "resource_name": "$AP Stand"}
+        },
+        {
+          "name": "out",
+          "type": "SUB_EXIT",
+          "description": "Flights off block",
+          "position": [1000.0, 100.0]
+        }
+      ],
+      "links": [
+        {"source": "in", "target": "at_stand"},
+        {"source": "at_stand", "target": "block_in"},
+        {"source": "block_in", "target": "turn_out"},
+        {"source": "turn_in", "target": "pushback"},
+        {"source": "pushback", "target": "out"}
+      ],
+      "annotations": []
+    },
+    "Turnaround": {
+      "info": {
+        "description": "The ground handling of one flight at its stand, between the stand's \"turn_out\" and \"turn_in\". Five task branches run in parallel: cabin (deboard, clean, board; ramp crew), hold (a belt loader for the whole branch, a baggage tug and crew to unload, then load), fuel (fuel truck), catering (catering truck) and ground power (a GPU for the whole turn but the pushback). The flight is pushed back once all five of its OWN branches are done: they rejoin on entity.flight_id, so neighbours never swap tasks. A task waits for its vehicle, which drives empty to the stand node, and for its crew. Durations in minutes come from the table, one row per aircraft type (entity.aircraft) and one column per task; the shipped rows put the GPU branch on the critical path so a turn without waiting equals the aircraft's benchmark. Ceiling: the task graph is fixed; a different precedence means editing the asset (upgrade path: a precedence table read by a generic block). Each task branch leaves a task entity (AP_CABIN, AP_HOLD, AP_FUEL, AP_CATERING) that is disposed at the join.",
+        "library": {"library": "airport", "asset": "turnaround", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "stand_node",
+            "type": "name",
+            "default": "stand",
+            "unit": "",
+            "label": "Stand node",
+            "help": "The network node of the stand, where every vehicle drives to (a Stand asset's node is \"<instance>/stand\").",
+            "group": "Place",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "table",
+            "type": "name",
+            "default": "AP Turnaround",
+            "unit": "",
+            "label": "Task times",
+            "help": "Task minutes by aircraft type (rows) and task (columns: deboard, clean, board, unload, load, fuel, catering, gpu, pushback).",
+            "group": "Timing",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "table"
+          },
+          {
+            "name": "crew",
+            "type": "name",
+            "default": "AP Ramp crew",
+            "unit": "",
+            "label": "Ramp crew",
+            "help": "The crew pool the cabin and hold tasks take one agent from.",
+            "group": "Crew",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "belt_loader_fleet",
+            "type": "name",
+            "default": "AP Belt loader",
+            "unit": "",
+            "label": "Belt loader",
+            "help": "The worker fleet that sends the belt loader; it drives empty to the stand.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          },
+          {
+            "name": "baggage_tug_fleet",
+            "type": "name",
+            "default": "AP Baggage tug",
+            "unit": "",
+            "label": "Baggage tug",
+            "help": "The worker fleet that sends the baggage tug; it drives empty to the stand.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          },
+          {
+            "name": "fuel_fleet",
+            "type": "name",
+            "default": "AP Fuel truck",
+            "unit": "",
+            "label": "Fuel truck",
+            "help": "The worker fleet that sends the fuel truck; it drives empty to the stand.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          },
+          {
+            "name": "catering_fleet",
+            "type": "name",
+            "default": "AP Catering truck",
+            "unit": "",
+            "label": "Catering truck",
+            "help": "The worker fleet that sends the catering truck; it drives empty to the stand.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          },
+          {
+            "name": "gpu_fleet",
+            "type": "name",
+            "default": "AP GPU",
+            "unit": "",
+            "label": "GPU",
+            "help": "The worker fleet that sends the GPU; it drives empty to the stand.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          },
+          {
+            "name": "pushback_fleet",
+            "type": "name",
+            "default": "AP Pushback",
+            "unit": "",
+            "label": "Pushback tractor",
+            "help": "The worker fleet that sends the pushback tractor; it drives empty to the stand.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          }
+        ],
+        "owns": {
+          "resources": ["AP Ramp crew"],
+          "tables": ["AP Turnaround"],
+          "variables": ["ap_turn_seq"]
+        }
+      },
+      "parameters": [
+        {
+          "name": "stand_node",
+          "default": "stand",
+          "type": "name",
+          "description": "The network node of the stand, where every vehicle drives to (a Stand asset's node is \"<instance>/stand\")."
+        },
+        {
+          "name": "table",
+          "default": "AP Turnaround",
+          "type": "name",
+          "refers_to": "table",
+          "description": "Task minutes by aircraft type (rows) and task (columns: deboard, clean, board, unload, load, fuel, catering, gpu, pushback)."
+        },
+        {
+          "name": "crew",
+          "default": "AP Ramp crew",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The crew pool the cabin and hold tasks take one agent from."
+        },
+        {
+          "name": "belt_loader_fleet",
+          "default": "AP Belt loader",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The worker fleet that sends the belt loader; it drives empty to the stand."
+        },
+        {
+          "name": "baggage_tug_fleet",
+          "default": "AP Baggage tug",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The worker fleet that sends the baggage tug; it drives empty to the stand."
+        },
+        {
+          "name": "fuel_fleet",
+          "default": "AP Fuel truck",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The worker fleet that sends the fuel truck; it drives empty to the stand."
+        },
+        {
+          "name": "catering_fleet",
+          "default": "AP Catering truck",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The worker fleet that sends the catering truck; it drives empty to the stand."
+        },
+        {
+          "name": "gpu_fleet",
+          "default": "AP GPU",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The worker fleet that sends the GPU; it drives empty to the stand."
+        },
+        {
+          "name": "pushback_fleet",
+          "default": "AP Pushback",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The worker fleet that sends the pushback tractor; it drives empty to the stand."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "in",
+          "type": "SUB_ENTRY",
+          "description": "Flights on stand",
+          "position": [0.0, 200.0]
+        },
+        {
+          "name": "split",
+          "type": "DUPLICATE",
+          "description": "Five task branches",
+          "position": [150.0, 200.0],
+          "params": {"number_of_duplicates": 5}
+        },
+        {
+          "name": "number",
+          "type": "ASSIGN",
+          "description": "Number the branch",
+          "position": [300.0, 200.0],
+          "params": {
+            "assignments": [
+              {"target": "entity.turn_branch", "expr": "VAR(\"$ap_turn_seq\")"},
+              {"target": "$ap_turn_seq", "expr": "(VAR(\"$ap_turn_seq\") + 1) % 5"}
+            ]
+          }
+        },
+        {
+          "name": "branch",
+          "type": "DECIDE",
+          "description": "Which task",
+          "position": [450.0, 200.0],
+          "params": {
+            "mode": "Condition",
+            "conditions": [
+              "entity.turn_branch == 1",
+              "entity.turn_branch == 2",
+              "entity.turn_branch == 3",
+              "entity.turn_branch == 4"
+            ]
+          }
+        },
+        {
+          "name": "as_cabin",
+          "type": "ASSIGN",
+          "description": "Task AP_CABIN",
+          "position": [600.0, 0.0],
+          "params": {"assignments": [{"target": "entity.e_type", "expr": "\"AP_CABIN\""}]}
+        },
+        {
+          "name": "deboard",
+          "type": "PROCESS",
+          "description": "Deboard",
+          "position": [750.0, 0.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"deboard\")"},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crew"}
+          }
+        },
+        {
+          "name": "clean",
+          "type": "PROCESS",
+          "description": "Clean cabin",
+          "position": [900.0, 0.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"clean\")"},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crew"}
+          }
+        },
+        {
+          "name": "board",
+          "type": "PROCESS",
+          "description": "Board",
+          "position": [1050.0, 0.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"board\")"},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crew"}
+          }
+        },
+        {
+          "name": "as_hold",
+          "type": "ASSIGN",
+          "description": "Task AP_HOLD",
+          "position": [600.0, 100.0],
+          "params": {"assignments": [{"target": "entity.e_type", "expr": "\"AP_HOLD\""}]}
+        },
+        {
+          "name": "get_belt",
+          "type": "SEIZE",
+          "description": "Belt loader to the hold",
+          "position": [750.0, 100.0],
+          "params": {
+            "time_unit": "minutes",
+            "resource_name": "",
+            "worker_fleet": {"$arg": "belt_loader_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "unload",
+          "type": "PROCESS",
+          "description": "Unload bags",
+          "position": [900.0, 100.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"unload\")"},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crew"},
+            "worker_fleet": {"$arg": "baggage_tug_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "load",
+          "type": "PROCESS",
+          "description": "Load bags",
+          "position": [1050.0, 100.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"load\")"},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crew"},
+            "worker_fleet": {"$arg": "baggage_tug_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "free_belt",
+          "type": "RELEASE",
+          "description": "Belt loader away",
+          "position": [1200.0, 100.0],
+          "params": {"time_unit": "minutes", "resource_name": {"$arg": "belt_loader_fleet"}}
+        },
+        {
+          "name": "as_fuel",
+          "type": "ASSIGN",
+          "description": "Task AP_FUEL",
+          "position": [600.0, 200.0],
+          "params": {"assignments": [{"target": "entity.e_type", "expr": "\"AP_FUEL\""}]}
+        },
+        {
+          "name": "fuel",
+          "type": "PROCESS",
+          "description": "Refuel",
+          "position": [750.0, 200.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"fuel\")"},
+            "time_unit": "minutes",
+            "worker_fleet": {"$arg": "fuel_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "as_catering",
+          "type": "ASSIGN",
+          "description": "Task AP_CATERING",
+          "position": [600.0, 300.0],
+          "params": {"assignments": [{"target": "entity.e_type", "expr": "\"AP_CATERING\""}]}
+        },
+        {
+          "name": "cater",
+          "type": "PROCESS",
+          "description": "Catering",
+          "position": [750.0, 300.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"catering\")"},
+            "time_unit": "minutes",
+            "worker_fleet": {"$arg": "catering_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "gpu",
+          "type": "PROCESS",
+          "description": "Ground power",
+          "position": [750.0, 400.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"gpu\")"},
+            "time_unit": "minutes",
+            "worker_fleet": {"$arg": "gpu_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "join",
+          "type": "MATCH",
+          "description": "All tasks of the flight done",
+          "position": [1350.0, 200.0],
+          "params": {"number_to_match": 5, "match_on": "flight_id"}
+        },
+        {
+          "name": "flight",
+          "type": "DECIDE",
+          "description": "Flight or task",
+          "position": [1500.0, 200.0],
+          "params": {"mode": "Condition", "conditions": ["entity.turn_branch == 0"]}
+        },
+        {
+          "name": "pushback",
+          "type": "PROCESS",
+          "description": "Pushback",
+          "position": [1650.0, 200.0],
+          "params": {
+            "dist_params": {"value": "TABLE(table, entity.aircraft, \"pushback\")"},
+            "time_unit": "minutes",
+            "worker_fleet": {"$arg": "pushback_fleet"},
+            "node": {"$arg": "stand_node"}
+          }
+        },
+        {
+          "name": "out",
+          "type": "SUB_EXIT",
+          "description": "Flights pushed back",
+          "position": [1800.0, 200.0]
+        },
+        {
+          "name": "done",
+          "type": "DISPOSE",
+          "description": "Task records",
+          "position": [1650.0, 300.0]
+        }
+      ],
+      "links": [
+        {"source": "in", "target": "split"},
+        {"source": "split", "target": "number"},
+        {"source": "number", "target": "branch"},
+        {"source": "branch", "target": "as_cabin"},
+        {"source": "branch", "target": "as_hold"},
+        {"source": "branch", "target": "as_fuel"},
+        {"source": "branch", "target": "as_catering"},
+        {"source": "branch", "target": "gpu"},
+        {"source": "as_cabin", "target": "deboard"},
+        {"source": "deboard", "target": "clean"},
+        {"source": "clean", "target": "board"},
+        {"source": "board", "target": "join"},
+        {"source": "as_hold", "target": "get_belt"},
+        {"source": "get_belt", "target": "unload"},
+        {"source": "unload", "target": "load"},
+        {"source": "load", "target": "free_belt"},
+        {"source": "free_belt", "target": "join"},
+        {"source": "as_fuel", "target": "fuel"},
+        {"source": "fuel", "target": "join"},
+        {"source": "as_catering", "target": "cater"},
+        {"source": "cater", "target": "join"},
+        {"source": "gpu", "target": "join"},
+        {"source": "join", "target": "flight"},
+        {"source": "flight", "target": "pushback"},
+        {"source": "flight", "target": "done"},
+        {"source": "pushback", "target": "out"}
+      ],
+      "annotations": []
+    },
+    "Grid connection": {
+      "info": {
+        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.3.0"},
+        "parameters": [
+          {
+            "name": "import_profile",
+            "type": "name",
+            "default": "Nrg tariff",
+            "unit": "",
+            "label": "Import tariff",
+            "help": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile.",
+            "group": "Prices",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "export_price",
+            "type": "number",
+            "default": 0.05,
+            "unit": "EUR/kWh",
+            "label": "Export price",
+            "help": "Paid for every exported kWh: it enters Total Cost as a negative cost.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "intensity_profile",
+            "type": "name",
+            "default": "Nrg grid intensity",
+            "unit": "",
+            "label": "Grid carbon intensity",
+            "help": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead.",
+            "group": "Emissions",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "import_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Import limit",
+            "help": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "export_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Export limit",
+            "help": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "demand_charge_per_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "EUR/kW",
+            "label": "Demand charge",
+            "help": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Nrg tariffs",
+          "label": "Tariff",
+          "group": "Prices",
+          "map": {"import_profile": "import_profile", "export_price": "export_price"},
+          "rows": ["Flat", "Time of use", "Time of use, no export"],
+          "units": {"export_price": "EUR/kWh"},
+          "values": {
+            "Flat": {"import_profile": "Nrg flat tariff", "export_price": 0.05},
+            "Time of use": {"import_profile": "Nrg tariff", "export_price": 0.05},
+            "Time of use, no export": {"import_profile": "Nrg tariff", "export_price": 0.0}
+          },
+          "sources": {
+            "Flat": "Illustrative starting point (Naga); not market data.",
+            "Time of use": "Illustrative starting point (Naga); not market data.",
+            "Time of use, no export": "Illustrative starting point (Naga); not market data."
+          }
+        },
+        "owns": {
+          "timeseries_inputs": ["Nrg tariff", "Nrg flat tariff", "Nrg grid intensity"],
+          "flows": ["Nrg import", "Nrg unserved", "Nrg export", "Nrg curtailed"]
+        }
+      },
+      "parameters": [
+        {
+          "name": "import_profile",
+          "default": "Nrg tariff",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile."
+        },
+        {
+          "name": "export_price",
+          "default": 0.05,
+          "type": "number",
+          "description": "Paid for every exported kWh: it enters Total Cost as a negative cost."
+        },
+        {
+          "name": "intensity_profile",
+          "default": "Nrg grid intensity",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead."
+        },
+        {
+          "name": "import_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied."
+        },
+        {
+          "name": "export_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for."
+        },
+        {
+          "name": "demand_charge_per_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
+          "Nrg unserved": {},
+          "Nrg export": {},
+          "Nrg curtailed": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "info": {
+    "title": "Hub day: electrifying the ground support equipment",
+    "category": "Logistics",
+    "description": "The hub day of the turnaround workload model with its ground support equipment's energy priced and counted: diesel as it is, the same fleets electric at the same counts charging in a night window or whenever a vehicle is free, and the latter with spares. The question it answers: what do energy cost, CO2 and the grid's peak become, do departures stay on time, and does the extra capital pay back? Read on_time_departure, the flow summary (fuel and grid kWh, peak kW), the battery summary (depleted events) and the investment case across scenarios. Illustrative figures.",
+    "author": "Naga example"
+  },
+  "data_sources": [
+    {
+      "name": "flights",
+      "kind": "csv",
+      "location": "data/airport_flight_schedule.csv",
+      "description": "One row per flight: id, aircraft type, stand, on-block and off-block minute"
+    }
+  ],
+  "data_bindings": [
+    {
+      "name": "flight_schedule",
+      "source": "flights",
+      "transform": "orders",
+      "target": "orders",
+      "map": {"id": "flight_id", "release": "on_block", "due": "off_block"},
+      "enabled": true,
+      "description": "The day's flights; swap the file for tomorrow's"
+    }
+  ],
+  "simulation": {"time_limit": 1440, "warmup": 0, "replications": 1, "timeseries_interval": 60},
+  "investment": {
+    "baseline": "",
+    "horizon_years": 10,
+    "discount_rate": 0.08,
+    "operating_hours_per_year": 8760.0,
+    "margin_per_part": 0.0,
+    "throughput": ""
+  },
+  "outputs": {},
+  "dashboard": {
+    "widgets": [
+      {
+        "name": "grid_kw",
+        "kind": "kpi",
+        "title": "Grid draw now",
+        "unit": "kW",
+        "expr": "FLOW(\"grid_connection_1/Nrg import\")"
+      },
+      {
+        "name": "diesel_kw",
+        "kind": "kpi",
+        "title": "Fuel burn now",
+        "unit": "kW",
+        "expr": "FLOW(\"Diesel\")"
+      },
+      {
+        "name": "power",
+        "kind": "line",
+        "title": "Energy by source, kW",
+        "series": [
+          {"label": "Grid", "expr": "FLOW(\"grid_connection_1/Nrg import\")"},
+          {"label": "Diesel", "expr": "FLOW(\"Diesel\")"}
+        ]
+      }
+    ],
+    "inputs": [
+      {
+        "path": "chargers.GSE chargers.points",
+        "label": "Charge points",
+        "kind": "number",
+        "min": 4,
+        "max": 60
+      }
+    ],
+    "results": [
+      {"kpi": "user/on_time_departure", "label": "On-time departures", "better": "higher"},
+      {"kpi": "flow/Diesel/Total", "label": "Fuel burnt", "unit": "kWh", "better": "lower"},
+      {"kpi": "flow/grid_connection_1/Nrg import/Total", "label": "Grid energy", "unit": "kWh"},
+      {"kpi": "system/Total Impact", "label": "CO2", "unit": "kg", "better": "lower"},
+      {"kpi": "system/Total Flow Cost", "label": "Energy cost", "unit": "EUR", "better": "lower"},
+      {
+        "kpi": "charger/GSE chargers/Peak kW",
+        "label": "Charger peak",
+        "unit": "kW",
+        "better": "lower"
+      }
+    ]
+  }
+}

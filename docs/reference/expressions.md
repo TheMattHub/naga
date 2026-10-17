@@ -42,8 +42,8 @@
 | `DISC` | 2..n | value/prob pairs (>= 1 pair), probs must sum to 1 |
 | `DISTANCE` | 2 |  |
 | `EXPO` | 1 | exponential(mean), sampled from the calling block's own rng |
-| `FLOW` | 1 | FLOW("name"): the rate flow NAME moves right now, after saturation |
-| `FLOWSUM` | 1..2 |  |
+| `FLOW` | 1 | FLOW("name"): the rate flow NAME moves right now, after saturation, per its rate_time_unit |
+| `FLOWSUM` | 1..2 | FLOWSUM("tag"[, p]): the rates of every flow tagged TAG (priority below p), per their rate_time_unit |
 | `FORECAST` | 3 |  |
 | `FRACTION` | 2 |  |
 | `IDLE` | 1 | free units of resource NAME: nothing holds them now (AVAILABLE minus the seized) |
@@ -77,6 +77,7 @@
 | `NS` | 1 | items currently in store NAME (a Hold/Batch/Match store, by block or store name) |
 | `PATCH` | 1..3 | PATCH("name"[, dx, dy]): the patch value at self's grid cell (or an offset from it); 0 off a bounded grid |
 | `PI` | 0 | PI(): 3.14159... |
+| `POWER` | 1 | POWER("name"): kW resource, fleet or charger NAME draws now, from its "power" per state; a flow it feeds takes rate_time_unit hours |
 | `PROD` | 1 |  |
 | `PULSE` | 3 | PULSE(h, t0, w): h on [t0, t0 + w), else 0 |
 | `RAD` | 1 | degrees to radians: COS(RAD(self.heading)) |

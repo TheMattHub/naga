@@ -258,7 +258,8 @@ def _defs() -> dict:
                            "parameter lists.",
             "additionalProperties": {
                 "anyOf": [{"type": "number"}, {"type": "string"},
-                          {"type": "array", "items": {"type": "number"}}],
+                          {"type": "array", "items": {"type": "number"}},
+                          {"$ref": "#/$defs/structural_argument"}],
             },
         },
         "duration": {
@@ -622,7 +623,9 @@ def _defs() -> dict:
                                           "the flow backwards instead of being clamped to 0. "
                                           "Both ends must be outside the model or levels with "
                                           "\"min\": null and no capacity or power limit."},
-                "rate_time_unit": _time_unit("Unit the rate is per."),
+                "rate_time_unit": _time_unit("Unit the rate is per. FLOW(), FLOWSUM(), Avg Rate, "
+                                             "Peak Rate, rate thresholds and peak_price read "
+                                             "the flow in it too."),
                 "efficiency": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1,
                                "description": "out = in * efficiency; the rest is a loss."},
                 "price": {"type": ["string", "number"],
@@ -641,8 +644,9 @@ def _defs() -> dict:
                                             "devices dispatched before this one actually took."},
                 "peak_price": {"type": "number", "default": 0,
                                "description": "Demand charge: money per unit of the "
-                                              "flow's Peak Rate, billed ONCE at the end of the "
-                                              "run. A time-varying tariff is \"price\"."},
+                                              "flow's Peak Rate (per its rate_time_unit), billed "
+                                              "ONCE at the end of the run. A time-varying tariff "
+                                              "is \"price\"."},
                 "min_rate": {"type": "number", "minimum": 0,
                              "description": "Minimum load: the flow runs at 0 or at "
                                             "least this rate, never in between. The gate is "
@@ -1539,11 +1543,14 @@ def _defs() -> dict:
                                             "(default 2.4)."},
                 "battery": {
                     "type": "object",
-                    "description": "Each vehicle carries a battery: it drains at the "
-                                   "fleet's `power` kW per state and recharges at a charger. "
+                    "description": "Each unit (vehicle, worker or gantry crane) carries "
+                                   "a battery: it drains at the fleet's `power` kW per state "
+                                   "and recharges at a charger once its job is done. "
                                    "State of charge (SoC) values are fractions, 0 to 1.",
                     "properties": {
-                        "capacity_kwh": {"type": "number", "exclusiveMinimum": 0},
+                        "capacity_kwh": {"type": "number", "minimum": 0,
+                                         "description": "Usable kWh per vehicle; 0 means no "
+                                                        "battery."},
                         "initial": {"type": "number", "minimum": 0, "maximum": 1, "default": 1.0,
                                     "description": "SoC at the start of the run."},
                         "low": {"type": "number", "minimum": 0, "maximum": 1,

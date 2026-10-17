@@ -2,16 +2,50 @@
 
 ## Unreleased
 
+## 0.10.0 (2026-10-17)
+
+A model can now be drafted from an event log, and energy reaches every fleet. `naga discover`
+turns a CSV or XES log into a model with a report of how far to trust it; `POWER()` and
+batteries on any fleet price and bill equipment power; the debugger steps back exactly. A
+minor version, because flow rates are now read in their own time unit and a tag mixing
+units is refused (see the behaviour changes below).
+
 - Added: `naga discover LOG` drafts a model from an event log (CSV or XES): arrivals, activity
   times, routing by chance or by variant, resources at their observed peak, and a report with a
   check of the log and next steps; `--check` reads a log without drafting. The agent tool
   `import_event_log` does the same in a workspace. A sample log (`job_shop_log`) and a tutorial
   come with it; the event-log page says how accurate drafts are on three public real logs.
+- Event logs: suspend and resume are read, so suspended hours no longer count as service time;
+  `--idle-waits` adds a modelled wait before activities that wait long at mostly idle
+  resources; `--check` warns when a log starts empty.
+- Added: `POWER("name")` reads the kW a resource, fleet or charger draws, so energy flows can
+  price, peak-bill and emit equipment power. Any vehicle, worker or gantry fleet can carry a
+  battery; `capacity_kwh` 0 switches it off.
+- Added: four bundled models, a container terminal from quay to yard, electrifying the terminal,
+  an airport hub day and electrifying ground support.
+- Debugger: a block stop may carry a `when` condition or one entity, can be switched off and
+  counts its hits; `debug_run(back=True)` steps back exactly (a replay from the seed);
+  `debug_run(scope=)` steps inside one submodel instance.
+- Scenarios take an optional `goal` (text), shown in the HTML report's scenario table.
+- Submodels: a `dist_params` value can take `{"$arg": "<parameter>"}`; a block-less asset (a crew
+  pool, a vehicle fleet) owns the resources and fleets it names under `scoped`.
+- Orders bindings keep extra columns as order attributes; a column named like an order's own
+  field or that is no attribute name is skipped with a `W_ORDER_FIELD` warning.
+- Behaviour change: where a flow's `rate_time_unit` differs from the simulation's time unit,
+  `FLOW()`, `FLOWSUM()`, Avg/Peak Rate, thresholds and the `peak_price` demand charge now read per
+  that flow's unit, and a conversion with its own `time_unit` reports `CONV()` per that unit.
+  Validation warns (`W_RATE_UNIT_CHANGED`, `W_RATE_UNIT_READ`); flows sharing a tag in two time
+  units are refused.
+- Behaviour change: a battery fleet with an idle draw now charges while standing idle, and such
+  a run ends at its time limit.
 - Builder: `results.kpi("system/Total Entities Completed")` reads one KPI's mean; a block's
   name may be given as `name=`; an `add_<item>` keyword the record does not have raises, as a
   block method's does.
 - Added: the bundled model `order_priority_shop`, an order shop whose cutter ranks jobs on
-  priority, so `expedite` shows its effect (WO-3 finishes at 7 instead of 11).
+  priority, so `expedite` shows its effect.
+- Fixed: a reality check using `FLOW()` or `FLOWSUM()` no longer crashes, and one using `CONV()`,
+  `FRACTION()` or `POWER()` says to read it through an auxiliary; `POWER()` after a shift change
+  and in a flow price or a conversion feed.
 
 ## 0.9.1 (2026-10-16)
 

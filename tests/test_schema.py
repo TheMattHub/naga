@@ -855,3 +855,15 @@ def test_the_schema_and_validate_cli_modes_work(tmp_path, capsys):
     assert launcher_main(["validate", str(broken), "--json"]) == 1
     problems = json.loads(capsys.readouterr().out.strip())
     assert "E_LINK_UNKNOWN_BLOCK" in {p["code"] for p in problems}
+
+
+def test_dist_params_value_may_be_a_structural_argument():
+    """A library asset's PROCESS binds a duration to a definition argument:
+    {"dist_params": {"value": {"$arg": "cycle"}}} must validate."""
+    schema = build_json_schema()
+    assert {"$ref": "#/$defs/structural_argument"} in schema["$defs"]["dist_params"][
+        "additionalProperties"]["anyOf"]
+    jsonschema = pytest.importorskip("jsonschema")
+    validator = jsonschema.Draft202012Validator(
+        {"$defs": schema["$defs"], "$ref": "#/$defs/dist_params"})
+    assert not list(validator.iter_errors({"value": {"$arg": "cycle"}}))

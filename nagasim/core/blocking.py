@@ -296,6 +296,7 @@ def _notify_bottleneck_blocked(block) -> None:
     runs whether or not anything is watching the animation. It reports the
     node's blocked LEVEL (units), keyed by node, so a multi-unit station or
     two blocking blocks on one resource net out correctly (#190)."""
+    block.ctx.wake_power()       # a "blocked" kW of its own changes POWER() (D600)
     tracker = getattr(block.ctx, "bottleneck_tracker", None)
     if tracker is None:
         return

@@ -649,12 +649,15 @@ _document_args("import_event_log",
                routing="\"auto\" (a test on the log picks), \"markov\" (chances to the next "
                        "activity) or \"variants\" (one routing per observed sequence).",
                time_unit="The draft's time unit: seconds, minutes, hours or days. A numeric "
-                         "timestamp is taken as already in it.")
+                         "timestamp is taken as already in it.",
+               idle_waits="true: each activity that waits long at mostly idle resources gets "
+                          "a DELAY before it, fitted to its waits (a modelled wait, not a "
+                          "queue); false (default): no such delay.")
 
 
 @tool()
 def import_event_log(path: str, name: str | None = None, routing: str = "auto",
-                   time_unit: str = "minutes") -> dict:
+                   time_unit: str = "minutes", idle_waits: bool = False) -> dict:
     """Draft a model from an event log: what happened to each case, activity by activity.
 
     The log needs a case id, an activity and a timestamp per row (CSV), or XES traces;
@@ -673,8 +676,10 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
     "activities_total", "resources_total", "assumptions", "dropped", "check": {"verdict",
     "findings": [{"level", "what", "means"}]} (is the log good enough, and what each gap
     means for the draft), "next_steps": {"check", "never"} (what to check in the draft, and
-    what this log cannot tell), "observed", "errors", "warnings", "problems"}. The two lists are cut to fit one reply; the totals say how many
-    there are, and the open model has them all.
+    what this log cannot tell), "observed", "errors", "warnings", "problems"}, and with
+    *idle_waits* "idle_waits": [{"block", "delay"}] (the activities that got a modelled wait).
+    The two lists are cut to fit one reply; the totals say how many there are, and the open
+    model has them all.
     """
     from nagasim import discover
 
@@ -684,7 +689,8 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
         raise ToolError("E_MODEL_EXISTS", f"a model named '{handle}' is already open",
                         "pick another name, or edit the existing one")
     try:
-        layout, report = discover.discover(full, routing=routing, time_unit=time_unit)
+        layout, report = discover.discover(full, routing=routing, time_unit=time_unit,
+                                           idle_waits=bool(idle_waits))
     except discover.LogError as exc:
         raise ToolError("E_DISCOVER_LOG", str(exc),
                         "fix the log (or name its columns) and try again") from None
@@ -710,6 +716,9 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
                        "findings": [{k: f[k] for k in ("level", "what", "means")}
                                     for f in report["check"]["findings"]]},
              "next_steps": report["next_steps"],
+             **({"idle_waits": [{k: w[k] for k in ("block", "delay")}
+                                for w in report["idle_waits"][:MAX_ROWS]]}
+                if idle_waits else {}),
              "observed": {k: report["observed"][k] for k in ("cases", "throughput",
                                                               "cycle_time")},
              "errors": sum(1 for p in problems if p.severity == "error"),

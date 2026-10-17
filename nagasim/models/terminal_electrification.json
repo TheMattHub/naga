@@ -1,0 +1,2203 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "vessel_calls_1",
+      "type": "SUBMODEL",
+      "description": "Vessel calls",
+      "position": [0.0, 100.0],
+      "layout_position": [0.0, -60.0],
+      "params": {"definition": "Vessel calls"}
+    },
+    {
+      "name": "quay_crane_1",
+      "type": "SUBMODEL",
+      "description": "Quay crane",
+      "position": [200.0, 100.0],
+      "layout_position": [0.0, -30.0],
+      "params": {"definition": "Quay crane"}
+    },
+    {
+      "name": "truck_gate_1",
+      "type": "SUBMODEL",
+      "description": "Truck gate",
+      "position": [1100.0, 400.0],
+      "layout_position": [1300.0, 0.0],
+      "params": {
+        "definition": "Truck gate",
+        "arguments": {
+          "yard_fleet": "yard_block_1/CT RTG",
+          "yard_block": "yard_block_1",
+          "yard_transfer": "yard_block_1/transfer"
+        }
+      }
+    },
+    {
+      "name": "yard_block_1",
+      "type": "SUBMODEL",
+      "description": "Yard block",
+      "position": [1100.0, 40.0],
+      "layout_position": [700.0, 40.0],
+      "params": {
+        "definition": "Yard block",
+        "arguments": {
+          "home_node": "yard_block_1/transfer",
+          "bays": 6,
+          "hoist_s": 18,
+          "reshuffle_p": 0.1
+        }
+      }
+    },
+    {
+      "name": "yard_block_2",
+      "type": "SUBMODEL",
+      "description": "Yard block",
+      "position": [1100.0, 160.0],
+      "layout_position": [1000.0, 40.0],
+      "params": {
+        "definition": "Yard block",
+        "arguments": {
+          "home_node": "yard_block_2/transfer",
+          "bays": 6,
+          "hoist_s": 18,
+          "reshuffle_p": 0.1
+        }
+      }
+    },
+    {
+      "name": "horizontal_transport_1",
+      "type": "SUBMODEL",
+      "description": "Horizontal transport",
+      "position": [600.0, 100.0],
+      "layout_position": [0.0, 0.0],
+      "params": {
+        "definition": "Horizontal transport",
+        "arguments": {
+          "speed_kmh": 30,
+          "lift_time_s": 30,
+          "fuel_kw": 250,
+          "drive_kw": 0,
+          "battery_kwh": 0,
+          "cost_per_hour": 85,
+          "vehicles": 9,
+          "home_node": "quay",
+          "destination": "Quay load",
+          "battery_strategy": "threshold",
+          "opportunity_below": 0.6,
+          "idle_share": 0.3
+        },
+        "preset": "Straddle carrier diesel"
+      }
+    },
+    {
+      "name": "Quay",
+      "type": "STATION",
+      "position": [450.0, 100.0],
+      "params": {"station": "Quay", "node": "quay"}
+    },
+    {
+      "name": "Yard A in",
+      "type": "STATION",
+      "position": [900.0, 40.0],
+      "params": {"station": "Yard A in", "node": "yard_block_1/transfer"}
+    },
+    {
+      "name": "Yard B in",
+      "type": "STATION",
+      "position": [900.0, 160.0],
+      "params": {"station": "Yard B in", "node": "yard_block_2/transfer"}
+    },
+    {
+      "name": "Quay load",
+      "type": "STATION",
+      "position": [1700.0, 160.0],
+      "params": {"station": "Quay load", "node": "quay"}
+    },
+    {
+      "name": "to_a",
+      "type": "TRANSPORT",
+      "position": [750.0, 40.0],
+      "params": {"fleet": "horizontal_transport_1/CT Vehicles", "destination": "Yard A in"}
+    },
+    {
+      "name": "to_b",
+      "type": "TRANSPORT",
+      "position": [750.0, 160.0],
+      "params": {"fleet": "horizontal_transport_1/CT Vehicles", "destination": "Yard B in"}
+    },
+    {"name": "split", "type": "DECIDE", "position": [600.0, 100.0], "params": {"probs": [0.5, 0.5]}},
+    {
+      "name": "export",
+      "type": "DECIDE",
+      "position": [200.0, 300.0],
+      "params": {"probs": [0.5, 0.5]}
+    },
+    {
+      "name": "by_type",
+      "type": "DECIDE",
+      "position": [100.0, 200.0],
+      "params": {"mode": "Condition", "conditions": ["entity.e_type == 'CONTAINER_40'"]}
+    },
+    {
+      "name": "Yard out",
+      "type": "DECIDE",
+      "position": [1300.0, 100.0],
+      "params": {"mode": "Condition", "conditions": ["entity.e_type == 'CONTAINER_40'"]}
+    },
+    {
+      "name": "done",
+      "type": "DISPOSE",
+      "description": "The carriers' own exit, never used: they always have a destination",
+      "position": [1600.0, 260.0]
+    },
+    {
+      "name": "stacked",
+      "type": "DISPOSE",
+      "description": "Discharged containers in the stack",
+      "position": [1500.0, 40.0]
+    },
+    {
+      "name": "loaded",
+      "type": "DISPOSE",
+      "description": "Containers on the vessel",
+      "position": [1900.0, 160.0]
+    },
+    {
+      "name": "grid_connection_1",
+      "type": "SUBMODEL",
+      "description": "Grid connection",
+      "position": [1500.0, 600.0],
+      "layout_position": [1300.0, 100.0],
+      "params": {
+        "definition": "Grid connection",
+        "arguments": {
+          "import_profile": "Terminal tariff",
+          "intensity_profile": "Terminal grid intensity",
+          "import_limit_kw": 20000.0,
+          "demand_charge_per_kw": 2.3
+        }
+      }
+    }
+  ],
+  "links": [
+    {"source": "vessel_calls_1", "target": "by_type", "source_port": "out"},
+    {"source": "by_type", "target": "quay_crane_1", "target_port": "discharge_in"},
+    {"source": "by_type", "target": "export"},
+    {"source": "export", "target": "Yard A in"},
+    {"source": "export", "target": "Yard B in"},
+    {"source": "quay_crane_1", "target": "Quay", "source_port": "discharge_out"},
+    {"source": "Quay", "target": "split"},
+    {"source": "split", "target": "to_a"},
+    {"source": "split", "target": "to_b"},
+    {"source": "to_a", "target": "Yard A in"},
+    {"source": "to_b", "target": "Yard B in"},
+    {"source": "Yard A in", "target": "yard_block_1", "target_port": "in"},
+    {"source": "yard_block_1", "target": "Yard out", "source_port": "out"},
+    {"source": "Yard B in", "target": "yard_block_2", "target_port": "in"},
+    {"source": "yard_block_2", "target": "Yard out", "source_port": "out"},
+    {"source": "Yard out", "target": "stacked"},
+    {"source": "horizontal_transport_1", "target": "done", "source_port": "done"},
+    {"source": "Yard out", "target": "horizontal_transport_1", "target_port": "in"},
+    {"source": "Quay load", "target": "quay_crane_1", "target_port": "load_in"},
+    {"source": "quay_crane_1", "target": "loaded", "source_port": "load_out"}
+  ],
+  "scenarios": [
+    {
+      "name": "Battery straddle carriers",
+      "description": "Battery straddle carriers topping up whenever idle and a point is free.",
+      "overrides": [
+        {"path": "blocks.horizontal_transport_1.params.arguments.fuel_kw", "value": 0.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.drive_kw", "value": 90.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.battery_kwh", "value": 300.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.cost_per_hour", "value": 90.0},
+        {
+          "path": "blocks.horizontal_transport_1.params.arguments.battery_strategy",
+          "value": "opportunity"
+        },
+        {"path": "blocks.horizontal_transport_1.params.arguments.opportunity_below", "value": 0.8},
+        {"path": "blocks.horizontal_transport_1.params.arguments.idle_share", "value": 0.05},
+        {"path": "blocks.horizontal_transport_1.params.arguments.vehicles", "value": 9},
+        {"path": "blocks.horizontal_transport_1.params.preset", "value": "Straddle carrier battery"},
+        {"path": "chargers.Quay chargers.points", "value": 6},
+        {"path": "chargers.Swap station.points", "value": 1},
+        {"path": "fixed_costs.Vehicles.amount", "value": 3600000},
+        {"path": "fixed_costs.Chargers.amount", "value": 780000}
+      ]
+    },
+    {
+      "name": "AGV with swap",
+      "description": "AGVs that swap their pack at the quay instead of charging.",
+      "overrides": [
+        {"path": "blocks.horizontal_transport_1.params.arguments.fuel_kw", "value": 0.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.drive_kw", "value": 60.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.battery_kwh", "value": 150.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.cost_per_hour", "value": 45.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.speed_kmh", "value": 21.0},
+        {"path": "blocks.horizontal_transport_1.params.arguments.battery_strategy", "value": "swap"},
+        {"path": "blocks.horizontal_transport_1.params.arguments.idle_share", "value": 0.02},
+        {"path": "blocks.horizontal_transport_1.params.arguments.vehicles", "value": 12},
+        {"path": "blocks.horizontal_transport_1.params.preset", "value": "AGV Li-ion"},
+        {"path": "chargers.Quay chargers.points", "value": 4},
+        {"path": "chargers.Swap station.points", "value": 2},
+        {"path": "fixed_costs.Vehicles.amount", "value": 9600000},
+        {"path": "fixed_costs.Chargers.amount", "value": 1400000}
+      ]
+    }
+  ],
+  "orders": [
+    {"id": "MV01-D", "release": 120, "due": 1320, "quantity": 700, "entity_type": "container_40"},
+    {"id": "MV01-L", "release": 120, "due": 1320, "quantity": 500, "entity_type": "export_40"},
+    {"id": "MV02-D", "release": 1560, "due": 3120, "quantity": 900, "entity_type": "container_40"},
+    {"id": "MV02-L", "release": 1560, "due": 3120, "quantity": 700, "entity_type": "export_40"},
+    {"id": "MV03-D", "release": 3480, "due": 4440, "quantity": 500, "entity_type": "container_40"},
+    {"id": "MV03-L", "release": 3480, "due": 4440, "quantity": 400, "entity_type": "export_40"},
+    {"id": "MV04-D", "release": 5040, "due": 6720, "quantity": 1000, "entity_type": "container_40"},
+    {"id": "MV04-L", "release": 5040, "due": 6720, "quantity": 900, "entity_type": "export_40"},
+    {"id": "MV05-D", "release": 7200, "due": 8280, "quantity": 600, "entity_type": "container_40"},
+    {"id": "MV05-L", "release": 7200, "due": 8280, "quantity": 500, "entity_type": "export_40"},
+    {"id": "MV06-D", "release": 8640, "due": 10080, "quantity": 800, "entity_type": "container_40"},
+    {"id": "MV06-L", "release": 8640, "due": 10080, "quantity": 700, "entity_type": "export_40"}
+  ],
+  "resources": [
+    {
+      "name": "CT Quay cranes",
+      "capacity": 3,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0
+    },
+    {
+      "name": "CT Gate lanes",
+      "capacity": 4,
+      "discipline": "FIFO",
+      "cost_busy": 0.0,
+      "cost_idle": 0.0
+    }
+  ],
+  "entities": [
+    {"name": "container_40", "shape": "square", "color": "BLUE"},
+    {"name": "export_40", "shape": "square", "color": "ORANGE"},
+    {"name": "truck", "shape": "square", "color": "GRAY"}
+  ],
+  "timeseries_inputs": [
+    {
+      "name": "CT Truck arrivals",
+      "description": "Illustrative weekday gate profile, trucks per hour by hour of the day: a morning and an afternoon peak, quiet nights. Replace it with your gate's counts.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        1.2,
+        0.9,
+        0.9,
+        0.9,
+        1.5,
+        3.0,
+        6.0,
+        9.0,
+        10.2,
+        9.6,
+        8.4,
+        7.8,
+        7.2,
+        7.8,
+        9.0,
+        9.6,
+        8.4,
+        6.0,
+        3.6,
+        2.4,
+        1.8,
+        1.5,
+        1.5,
+        1.2
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Terminal tariff",
+      "description": "Illustrative import price, EUR/kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.12,
+        0.12,
+        0.12,
+        0.12,
+        0.12,
+        0.12,
+        0.18,
+        0.18,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.3,
+        0.3,
+        0.3,
+        0.3,
+        0.18,
+        0.18,
+        0.12
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Terminal grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.33,
+        0.3,
+        0.27,
+        0.24,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.36,
+        0.4,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Nrg tariff",
+      "description": "Illustrative time-of-use import price, EUR/kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.25,
+        0.15,
+        0.15
+      ],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Nrg flat tariff",
+      "description": "A flat import price, EUR/kWh: one value, held for the whole run.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "hold",
+      "values": [0.25],
+      "time_unit": "hours"
+    },
+    {
+      "name": "Nrg grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day: cleaner around midday, dirtier at the evening peak.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.34,
+        0.32,
+        0.3,
+        0.27,
+        0.24,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.38,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35
+      ],
+      "time_unit": "hours"
+    }
+  ],
+  "flows": [
+    {
+      "name": "Nrg import",
+      "description": "Whatever the site could not cover itself, up to the connection limit, kW.",
+      "rate": "min(max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\"), 0), import_limit_kw)",
+      "price": "TS(import_profile)",
+      "emission_factor": "TS(intensity_profile)",
+      "tag": "import",
+      "peak_price": 0.0,
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg unserved",
+      "description": "Demand the connection limit could not deliver, kW.",
+      "rate": "max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\") - FLOW(\"$Nrg import\"), 0)",
+      "tag": "unserved",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg export",
+      "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
+      "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
+      "price": "-export_price",
+      "tag": "export",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Nrg curtailed",
+      "description": "Generation that was neither used, stored nor exported, kW.",
+      "rate": "max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\") - FLOW(\"$Nrg export\"), 0)",
+      "tag": "curtailed",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Charging draw",
+      "description": "Grid power the chargers and the swap station draw, kW: the grid connection's demand.",
+      "rate": "POWER(\"Quay chargers\") + POWER(\"Swap station\")",
+      "tag": "demand",
+      "rate_time_unit": "hours"
+    },
+    {
+      "name": "Diesel",
+      "description": "Fuel burnt by the carriers, kW of fuel (1 l/h = 10 kW); priced per kWh of fuel and emitting its CO2. Zero once the fleet has a battery.",
+      "rate": "POWER(\"horizontal_transport_1/CT Vehicles\")",
+      "price": 0.16,
+      "emission_factor": 0.268,
+      "rate_time_unit": "hours"
+    }
+  ],
+  "fixed_costs": [
+    {
+      "name": "Vehicles",
+      "description": "Price of the electric fleet over the diesel one it replaces.",
+      "amount": 0,
+      "category": "Capital",
+      "capex": true
+    },
+    {
+      "name": "Chargers",
+      "description": "Charging points, swap station and the grid connection work.",
+      "amount": 0,
+      "category": "Capital",
+      "capex": true
+    }
+  ],
+  "fleets": [
+    {
+      "name": "CT RTG",
+      "count": 1,
+      "motion": "gantry",
+      "speed": 8.0,
+      "speed_empty": 8.0,
+      "speed_x": 8.0,
+      "speed_y": 4.0,
+      "hoist_time": 30.0,
+      "load_time": "entity.ct_reshuffle_s",
+      "unload_time": "0",
+      "home": "",
+      "park": "stay",
+      "dispatch": "fifo",
+      "select": "nearest",
+      "cost_busy": 70.0,
+      "cost_idle": 70.0,
+      "cost_per_use": 0.0,
+      "power": {"busy": 150.0, "idle": 45.0},
+      "speed_unit": "km/h",
+      "time_unit": "seconds"
+    },
+    {
+      "name": "CT Vehicles",
+      "count": 6,
+      "speed": 30.0,
+      "speed_empty": 30.0,
+      "load_time": "30",
+      "unload_time": "30",
+      "home": "",
+      "park": "stay",
+      "dispatch": "nearest",
+      "select": "nearest",
+      "cost_busy": 85.0,
+      "cost_idle": 85.0,
+      "cost_per_use": 0.0,
+      "power": {"busy": 250.0, "idle": 75.0},
+      "battery": {"capacity_kwh": 0.0, "low": 0.25, "target": 0.9, "strategy": "threshold"},
+      "speed_unit": "km/h",
+      "time_unit": "seconds"
+    }
+  ],
+  "chargers": [
+    {
+      "name": "Quay chargers",
+      "node": "quay",
+      "kind": "charge",
+      "points": 4,
+      "power_kw": 150.0,
+      "efficiency": 0.92
+    },
+    {
+      "name": "Swap station",
+      "node": "quay",
+      "kind": "swap",
+      "points": 1,
+      "power_kw": 100.0,
+      "efficiency": 0.92,
+      "swap_time": "6",
+      "spare_packs": 12
+    }
+  ],
+  "network": {
+    "nodes": [
+      {"name": "quay", "x": 0.0, "y": 0.0},
+      {"name": "block_a", "x": 700.0, "y": 0.0},
+      {"name": "block_b", "x": 1000.0, "y": 0.0},
+      {"name": "gate", "x": 1300.0, "y": 0.0},
+      {"name": "truck_gate_1/gate", "x": 1300.0, "y": 0.0},
+      {"name": "yard_block_1/transfer", "x": 700.0, "y": 40.0},
+      {"name": "yard_block_1/bay1", "x": 706.5, "y": 48.0},
+      {"name": "yard_block_1/bay2", "x": 713.0, "y": 48.0},
+      {"name": "yard_block_1/bay3", "x": 719.5, "y": 48.0},
+      {"name": "yard_block_1/bay4", "x": 726.0, "y": 48.0},
+      {"name": "yard_block_1/bay5", "x": 732.5, "y": 48.0},
+      {"name": "yard_block_1/bay6", "x": 739.0, "y": 48.0},
+      {"name": "yard_block_1/bay7", "x": 745.5, "y": 48.0},
+      {"name": "yard_block_1/bay8", "x": 752.0, "y": 48.0},
+      {"name": "yard_block_1/bay9", "x": 758.5, "y": 48.0},
+      {"name": "yard_block_1/bay10", "x": 765.0, "y": 48.0},
+      {"name": "yard_block_1/bay11", "x": 771.5, "y": 48.0},
+      {"name": "yard_block_1/bay12", "x": 778.0, "y": 48.0},
+      {"name": "yard_block_1/bay13", "x": 784.5, "y": 48.0},
+      {"name": "yard_block_1/bay14", "x": 791.0, "y": 48.0},
+      {"name": "yard_block_1/bay15", "x": 797.5, "y": 48.0},
+      {"name": "yard_block_1/bay16", "x": 804.0, "y": 48.0},
+      {"name": "yard_block_1/bay17", "x": 810.5, "y": 48.0},
+      {"name": "yard_block_1/bay18", "x": 817.0, "y": 48.0},
+      {"name": "yard_block_1/bay19", "x": 823.5, "y": 48.0},
+      {"name": "yard_block_1/bay20", "x": 830.0, "y": 48.0},
+      {"name": "yard_block_1/bay21", "x": 836.5, "y": 48.0},
+      {"name": "yard_block_1/bay22", "x": 843.0, "y": 48.0},
+      {"name": "yard_block_1/bay23", "x": 849.5, "y": 48.0},
+      {"name": "yard_block_1/bay24", "x": 856.0, "y": 48.0},
+      {"name": "yard_block_1/bay25", "x": 862.5, "y": 48.0},
+      {"name": "yard_block_1/bay26", "x": 869.0, "y": 48.0},
+      {"name": "yard_block_1/bay27", "x": 875.5, "y": 48.0},
+      {"name": "yard_block_1/bay28", "x": 882.0, "y": 48.0},
+      {"name": "yard_block_1/bay29", "x": 888.5, "y": 48.0},
+      {"name": "yard_block_1/bay30", "x": 895.0, "y": 48.0},
+      {"name": "yard_block_2/transfer", "x": 1000.0, "y": 40.0},
+      {"name": "yard_block_2/bay1", "x": 1006.5, "y": 48.0},
+      {"name": "yard_block_2/bay2", "x": 1013.0, "y": 48.0},
+      {"name": "yard_block_2/bay3", "x": 1019.5, "y": 48.0},
+      {"name": "yard_block_2/bay4", "x": 1026.0, "y": 48.0},
+      {"name": "yard_block_2/bay5", "x": 1032.5, "y": 48.0},
+      {"name": "yard_block_2/bay6", "x": 1039.0, "y": 48.0},
+      {"name": "yard_block_2/bay7", "x": 1045.5, "y": 48.0},
+      {"name": "yard_block_2/bay8", "x": 1052.0, "y": 48.0},
+      {"name": "yard_block_2/bay9", "x": 1058.5, "y": 48.0},
+      {"name": "yard_block_2/bay10", "x": 1065.0, "y": 48.0},
+      {"name": "yard_block_2/bay11", "x": 1071.5, "y": 48.0},
+      {"name": "yard_block_2/bay12", "x": 1078.0, "y": 48.0},
+      {"name": "yard_block_2/bay13", "x": 1084.5, "y": 48.0},
+      {"name": "yard_block_2/bay14", "x": 1091.0, "y": 48.0},
+      {"name": "yard_block_2/bay15", "x": 1097.5, "y": 48.0},
+      {"name": "yard_block_2/bay16", "x": 1104.0, "y": 48.0},
+      {"name": "yard_block_2/bay17", "x": 1110.5, "y": 48.0},
+      {"name": "yard_block_2/bay18", "x": 1117.0, "y": 48.0},
+      {"name": "yard_block_2/bay19", "x": 1123.5, "y": 48.0},
+      {"name": "yard_block_2/bay20", "x": 1130.0, "y": 48.0},
+      {"name": "yard_block_2/bay21", "x": 1136.5, "y": 48.0},
+      {"name": "yard_block_2/bay22", "x": 1143.0, "y": 48.0},
+      {"name": "yard_block_2/bay23", "x": 1149.5, "y": 48.0},
+      {"name": "yard_block_2/bay24", "x": 1156.0, "y": 48.0},
+      {"name": "yard_block_2/bay25", "x": 1162.5, "y": 48.0},
+      {"name": "yard_block_2/bay26", "x": 1169.0, "y": 48.0},
+      {"name": "yard_block_2/bay27", "x": 1175.5, "y": 48.0},
+      {"name": "yard_block_2/bay28", "x": 1182.0, "y": 48.0},
+      {"name": "yard_block_2/bay29", "x": 1188.5, "y": 48.0},
+      {"name": "yard_block_2/bay30", "x": 1195.0, "y": 48.0}
+    ],
+    "segments": [
+      {"from": "quay", "to": "block_a", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "block_a", "to": "block_b", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "block_b", "to": "gate", "length_unit": "meters", "speed_unit": "m/min"},
+      {"from": "gate", "to": "truck_gate_1/gate", "length_unit": "meters", "speed_unit": "m/min"},
+      {
+        "from": "block_a",
+        "to": "yard_block_1/transfer",
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "block_b",
+        "to": "yard_block_2/transfer",
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      }
+    ]
+  },
+  "submodels": {
+    "Vessel calls": {
+      "info": {
+        "description": "The vessel calls of the week. Each call is two rows of the model's order book, <call>-D (discharge moves) and <call>-L (load moves): release is the berthing time, due is the planned departure, quantity is the number of container moves, and the free attribute `direction` is D or L. The containers leave by \"out\" stamped with entity.order_id, so the vessel turn time is the order's release-to-last-completion time in the order summary. The book lives in the model (Orders tab, CSV import), not in the asset, so one asset serves any schedule. Berth allocation is not modelled: the schedule says where and when each vessel berths. No input port.",
+        "library": {"library": "container_terminals", "asset": "vessel_calls", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "container_type",
+            "type": "name",
+            "default": "container_40",
+            "unit": "",
+            "label": "Container entity type",
+            "help": "The entity type a move gets unless its order names another.",
+            "group": "Calls",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "entity"
+          },
+          {
+            "name": "start_time",
+            "type": "time",
+            "default": 0.0,
+            "unit": "minutes",
+            "label": "First release",
+            "help": "No call is released before this time, whatever its release says.",
+            "group": "Calls",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {"entities": ["container_40"]}
+      },
+      "parameters": [
+        {
+          "name": "container_type",
+          "default": "container_40",
+          "type": "name",
+          "refers_to": "entity",
+          "description": "The entity type a move gets unless its order names another."
+        },
+        {
+          "name": "start_time",
+          "default": 0.0,
+          "type": "time",
+          "description": "No call is released before this time, whatever its release says."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "arrive",
+          "type": "CREATE",
+          "description": "Containers of the vessel calls",
+          "position": [0.0, 0.0],
+          "params": {
+            "e_type": {"$arg": "container_type"},
+            "arrival_mode": "Orders",
+            "time_unit": "minutes",
+            "start_time": {"$arg": "start_time"}
+          }
+        },
+        {
+          "name": "out",
+          "type": "SUB_EXIT",
+          "description": "Containers to the quay",
+          "position": [250.0, 0.0]
+        }
+      ],
+      "links": [{"source": "arrive", "target": "out"}],
+      "annotations": []
+    },
+    "Quay crane": {
+      "info": {
+        "description": "A berth's ship-to-shore cranes as one pool. A container to discharge enters by \"discharge_in\", takes one crane for a cycle, is set down on the apron, a finite space of \"Apron slots\", and leaves by \"discharge_out\"; a container to load enters by \"load_in\", takes a crane for a cycle and leaves by \"load_out\". When the apron is full the crane stays blocked, holding the container, until a carrier takes one: 1 slot approximates coupled AGV operation, 3-4 slots decoupled straddle carriers. The pool (default \"Quay cranes\", capacity = cranes at the berth) is shared by both directions, so a crane works either one. The default cycle averages 1.7 minutes (about 35 gross moves per hour per crane); a constant 1.5 gives exactly 40.",
+        "library": {"library": "container_terminals", "asset": "quay_crane", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "cycle",
+            "type": "name",
+            "default": "TRIA(1.2, 1.5, 2.4)",
+            "unit": "minutes",
+            "label": "Crane cycle",
+            "help": "Time of one gross move, any expression in minutes, read afresh at every move so TRIA() or EXPO() draw each time. 1.5 minutes is 40 moves per hour; the catalogue's Quay crane row says 90 seconds.",
+            "group": "Crane",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "apron_slots",
+            "type": "int",
+            "default": 4,
+            "unit": "",
+            "label": "Apron slots",
+            "help": "Containers that fit between crane and carriers. 1 is the AGV-coupled case, 3-4 decoupled straddle carriers.",
+            "group": "Crane",
+            "min": 1,
+            "max": 1000,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "crane_pool",
+            "type": "name",
+            "default": "CT Quay cranes",
+            "unit": "",
+            "label": "Crane pool",
+            "help": "The pool one crane is taken from. Two quay_crane instances naming the same pool really share its cranes.",
+            "group": "Crane",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          }
+        ],
+        "owns": {"resources": ["CT Quay cranes"], "entities": ["container_40"]}
+      },
+      "parameters": [
+        {
+          "name": "cycle",
+          "default": "TRIA(1.2, 1.5, 2.4)",
+          "type": "name",
+          "description": "Time of one gross move, any expression in minutes, read afresh at every move so TRIA() or EXPO() draw each time. 1.5 minutes is 40 moves per hour; the catalogue's Quay crane row says 90 seconds."
+        },
+        {
+          "name": "apron_slots",
+          "default": 4,
+          "type": "int",
+          "description": "Containers that fit between crane and carriers. 1 is the AGV-coupled case, 3-4 decoupled straddle carriers."
+        },
+        {
+          "name": "crane_pool",
+          "default": "CT Quay cranes",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The pool one crane is taken from. Two quay_crane instances naming the same pool really share its cranes."
+        }
+      ],
+      "blocks": [
+        {
+          "name": "discharge_in",
+          "type": "SUB_ENTRY",
+          "description": "Containers from the vessel",
+          "position": [0.0, 0.0],
+          "params": {"port": "discharge_in"}
+        },
+        {
+          "name": "lift_d",
+          "type": "PROCESS",
+          "description": "Discharge cycle",
+          "position": [200.0, 0.0],
+          "params": {
+            "dist_params": {"value": {"$arg": "cycle"}},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crane_pool"}
+          }
+        },
+        {
+          "name": "apron",
+          "type": "BUFFER",
+          "description": "Apron",
+          "position": [400.0, 0.0],
+          "params": {"capacity": {"$arg": "apron_slots"}}
+        },
+        {
+          "name": "discharge_out",
+          "type": "SUB_EXIT",
+          "description": "Containers to the carriers",
+          "position": [600.0, 0.0],
+          "params": {"port": "discharge_out"}
+        },
+        {
+          "name": "load_in",
+          "type": "SUB_ENTRY",
+          "description": "Containers from the carriers",
+          "position": [0.0, 150.0],
+          "params": {"port": "load_in"}
+        },
+        {
+          "name": "lift_l",
+          "type": "PROCESS",
+          "description": "Load cycle",
+          "position": [200.0, 150.0],
+          "params": {
+            "dist_params": {"value": {"$arg": "cycle"}},
+            "time_unit": "minutes",
+            "resource_name": {"$arg": "crane_pool"}
+          }
+        },
+        {
+          "name": "load_out",
+          "type": "SUB_EXIT",
+          "description": "Containers onto the vessel",
+          "position": [600.0, 150.0],
+          "params": {"port": "load_out"}
+        }
+      ],
+      "links": [
+        {"source": "discharge_in", "target": "lift_d"},
+        {"source": "lift_d", "target": "apron"},
+        {"source": "apron", "target": "discharge_out"},
+        {"source": "load_in", "target": "lift_l"},
+        {"source": "lift_l", "target": "load_out"}
+      ],
+      "annotations": []
+    },
+    "Truck gate": {
+      "info": {
+        "description": "The landside: trucks arrive at the rate of an hourly profile (trucks per hour), queue for a gate lane, are checked in, then drive to a yard block where its crane fetches a container from a bay drawn uniformly over the block's bays and sets it on the truck at the block's transfer point; the truck then leaves. The crane is the yard block's own fleet, named by \"Yard crane\" (<yard instance>/CT RTG), so trucks and carriers from the quay queue for the same crane. The truck turn time, from arrival at the gate to departure, is recorded per truck as the statistic \"<instance>/truck turn time\". Arrivals read the profile when each truck arrives, so a rate that jumps within one gap is seen late. No ports: trucks come and go here; the \"gate\" node marks the gate on the plan. The drive between gate and block is not modelled, every truck collects one container (no drop-offs or dual cycles yet), and a truck's container is never under another one (no reshuffles landside). The four Yard parameters must name one yard block and Bays used must not exceed that block's Bays; nothing checks that they agree.",
+        "library": {"library": "container_terminals", "asset": "truck_gate", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "profile",
+            "type": "name",
+            "default": "CT Truck arrivals",
+            "unit": "",
+            "label": "Arrival profile",
+            "help": "Trucks per hour, read hour by hour.",
+            "group": "Trucks",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "lanes",
+            "type": "int",
+            "default": 4,
+            "unit": "",
+            "label": "Gate lanes",
+            "help": "",
+            "group": "Gate",
+            "min": 1,
+            "max": 100,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "gate_time",
+            "type": "name",
+            "default": "TRIA(1, 2, 4)",
+            "unit": "minutes",
+            "label": "Gate time",
+            "help": "Check-in at the lane, any expression in minutes, drawn per truck.",
+            "group": "Gate",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "yard_fleet",
+            "type": "name",
+            "default": "yard_1/CT RTG",
+            "unit": "",
+            "label": "Yard crane",
+            "help": "The crane fleet of the yard block the trucks are served at: <yard instance>/CT RTG.",
+            "group": "Yard",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "fleet"
+          },
+          {
+            "name": "yard_block",
+            "type": "name",
+            "default": "yard_1",
+            "unit": "",
+            "label": "Yard block",
+            "help": "That yard block's instance name; its bays are <name>/bay1, bay2, ...",
+            "group": "Yard",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "yard_transfer",
+            "type": "name",
+            "default": "yard_1/transfer",
+            "unit": "",
+            "label": "Yard transfer node",
+            "help": "Where the trucks are served: that block's <name>/transfer node.",
+            "group": "Yard",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "yard_bays",
+            "type": "int",
+            "default": 30,
+            "unit": "",
+            "label": "Bays used",
+            "help": "",
+            "group": "Yard",
+            "min": 1,
+            "max": 30,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {"nodes": [{"name": "gate", "dx": 0.0, "dy": 0.0, "attach": true}]},
+        "owns": {
+          "resources": ["CT Gate lanes"],
+          "timeseries_inputs": ["CT Truck arrivals"],
+          "entities": ["truck"]
+        }
+      },
+      "parameters": [
+        {
+          "name": "profile",
+          "default": "CT Truck arrivals",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Trucks per hour, read hour by hour."
+        },
+        {"name": "lanes", "default": 4, "type": "int"},
+        {
+          "name": "gate_time",
+          "default": "TRIA(1, 2, 4)",
+          "type": "name",
+          "description": "Check-in at the lane, any expression in minutes, drawn per truck."
+        },
+        {
+          "name": "yard_fleet",
+          "default": "yard_1/CT RTG",
+          "type": "name",
+          "refers_to": "fleet",
+          "description": "The crane fleet of the yard block the trucks are served at: <yard instance>/CT RTG."
+        },
+        {
+          "name": "yard_block",
+          "default": "yard_1",
+          "type": "name",
+          "description": "That yard block's instance name; its bays are <name>/bay1, bay2, ..."
+        },
+        {
+          "name": "yard_transfer",
+          "default": "yard_1/transfer",
+          "type": "name",
+          "description": "Where the trucks are served: that block's <name>/transfer node."
+        },
+        {"name": "yard_bays", "default": 30, "type": "int"}
+      ],
+      "scoped": {"resources": {"CT Gate lanes": {"capacity": "lanes"}}},
+      "blocks": [
+        {
+          "name": "arrive",
+          "type": "CREATE",
+          "description": "Trucks",
+          "position": [0.0, 0.0],
+          "params": {
+            "e_type": "truck",
+            "dist_params": {"value": "EXPO(60 / max(TS(profile), 0.01))"},
+            "time_unit": "minutes"
+          }
+        },
+        {
+          "name": "gate",
+          "type": "PROCESS",
+          "description": "Gate lane",
+          "position": [200.0, 0.0],
+          "params": {
+            "dist_params": {"value": {"$arg": "gate_time"}},
+            "time_unit": "minutes",
+            "resource_name": "$CT Gate lanes"
+          }
+        },
+        {
+          "name": "pick_bay",
+          "type": "ASSIGN",
+          "description": "The container's bay",
+          "position": [400.0, 0.0],
+          "params": {
+            "assignments": [
+              {"target": "entity.ct_bay", "expr": "1 + int(RAND() * yard_bays)"},
+              {"target": "entity.ct_reshuffle_s", "expr": "0"},
+              {"target": "entity.station", "expr": "yard_block + '/bay%d' % entity.ct_bay"}
+            ]
+          }
+        },
+        {
+          "name": "crane",
+          "type": "TRANSPORT",
+          "description": "Crane loads the truck",
+          "position": [600.0, 0.0],
+          "params": {"fleet": {"$arg": "yard_fleet"}, "destination": "$lane"}
+        },
+        {
+          "name": "lane",
+          "type": "STATION",
+          "description": "Truck lane at the block",
+          "position": [800.0, 0.0],
+          "params": {"station": "$lane", "node": {"$arg": "yard_transfer"}}
+        },
+        {
+          "name": "turn",
+          "type": "RECORD",
+          "description": "Truck turn time",
+          "position": [1000.0, 0.0],
+          "params": {
+            "stat_name": "$truck turn time",
+            "kind": "tally",
+            "expr": "TNOW - entity.creation_time"
+          }
+        },
+        {
+          "name": "leave",
+          "type": "DISPOSE",
+          "description": "Trucks leave",
+          "position": [1200.0, 0.0]
+        }
+      ],
+      "links": [
+        {"source": "arrive", "target": "gate"},
+        {"source": "gate", "target": "pick_bay"},
+        {"source": "pick_bay", "target": "crane"},
+        {"source": "crane", "target": "lane"},
+        {"source": "lane", "target": "turn"},
+        {"source": "turn", "target": "leave"}
+      ],
+      "annotations": []
+    },
+    "Yard block": {
+      "info": {
+        "description": "One yard block served by one gantry crane (an RTG by default). A container enters by \"in\" and is given a bay drawn uniformly from the first \"Bays\" of the block; the crane travels from wherever it stands to that bay, picks the container, travels back to the block's transfer point (its \"transfer\" node, where the carriers and trucks are served) and sets it down, and the container leaves by \"out\". Each travel is the gantry's own hop: the longer of the gantry run along the block and the trolley run across it, plus the hoist time. With probability \"Reshuffle share\" the container is under another one and the crane hoists once more. The same cycle stands for stacking a container (transfer to bay) and retrieving one. The geometry lays out 30 bays 6.5 m apart (one TEU bay each), 8 m across from the truck lane; move the bay nodes for another block. Set \"Home node\" to this block's transfer node, <instance>/transfer, so the crane starts there. The crane is the fleet <instance>/CT RTG, which a Truck gate names to share it. The crane's pick time reads the container's ct_reshuffle_s (seconds), which this block and the Truck gate set: any other TRANSPORT on this crane must set it too. Ceilings: no stack positions (a bay is a point, not rows and tiers); one crane per block, since two gantries on one runway do not see each other; a warm start does not carry where the crane stands.",
+        "library": {"library": "container_terminals", "asset": "yard_block", "version": "0.1.0"},
+        "parameters": [
+          {
+            "name": "bays",
+            "type": "int",
+            "default": 30,
+            "unit": "",
+            "label": "Bays",
+            "help": "Containers are spread over bays 1 to this one.",
+            "group": "Block",
+            "min": 1,
+            "max": 30,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reshuffle_p",
+            "type": "number",
+            "default": 0.3,
+            "unit": "",
+            "label": "Reshuffle share",
+            "help": "Share of moves that first lift a container off the one wanted.",
+            "group": "Block",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "home_node",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Home node",
+            "help": "Where the crane starts: this block's <instance>/transfer. Empty takes the model's first node.",
+            "group": "Crane",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "gantry_kmh",
+            "type": "number",
+            "default": 8.0,
+            "unit": "km/h",
+            "label": "Gantry speed",
+            "help": "Travel along the block.",
+            "group": "Crane",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "trolley_kmh",
+            "type": "number",
+            "default": 4.0,
+            "unit": "km/h",
+            "label": "Trolley speed",
+            "help": "Travel across the block. 0 (a vehicle row of the catalogue) takes the gantry speed.",
+            "group": "Crane",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "hoist_s",
+            "type": "number",
+            "default": 30.0,
+            "unit": "seconds",
+            "label": "Hoist time",
+            "help": "Added to every travel: the lift or set-down at its end.",
+            "group": "Crane",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "fuel_kw",
+            "type": "number",
+            "default": 150.0,
+            "unit": "kW",
+            "label": "Fuel power while working",
+            "help": "1 l/h = 10 kW. 0 for an electric crane.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "drive_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kW",
+            "label": "Electric power while working",
+            "help": "Read only when Fuel power is 0.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "idle_share",
+            "type": "number",
+            "default": 0.3,
+            "unit": "",
+            "label": "Idle share",
+            "help": "Power while waiting, as a share of the working power.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_per_hour",
+            "type": "number",
+            "default": 70.0,
+            "unit": "currency per hour",
+            "label": "Cost per crane hour",
+            "help": "",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "geometry": {
+          "nodes": [
+            {"name": "transfer", "dx": 0.0, "dy": 0.0, "attach": true},
+            {"name": "bay1", "dx": 6.5, "dy": 8.0},
+            {"name": "bay2", "dx": 13.0, "dy": 8.0},
+            {"name": "bay3", "dx": 19.5, "dy": 8.0},
+            {"name": "bay4", "dx": 26.0, "dy": 8.0},
+            {"name": "bay5", "dx": 32.5, "dy": 8.0},
+            {"name": "bay6", "dx": 39.0, "dy": 8.0},
+            {"name": "bay7", "dx": 45.5, "dy": 8.0},
+            {"name": "bay8", "dx": 52.0, "dy": 8.0},
+            {"name": "bay9", "dx": 58.5, "dy": 8.0},
+            {"name": "bay10", "dx": 65.0, "dy": 8.0},
+            {"name": "bay11", "dx": 71.5, "dy": 8.0},
+            {"name": "bay12", "dx": 78.0, "dy": 8.0},
+            {"name": "bay13", "dx": 84.5, "dy": 8.0},
+            {"name": "bay14", "dx": 91.0, "dy": 8.0},
+            {"name": "bay15", "dx": 97.5, "dy": 8.0},
+            {"name": "bay16", "dx": 104.0, "dy": 8.0},
+            {"name": "bay17", "dx": 110.5, "dy": 8.0},
+            {"name": "bay18", "dx": 117.0, "dy": 8.0},
+            {"name": "bay19", "dx": 123.5, "dy": 8.0},
+            {"name": "bay20", "dx": 130.0, "dy": 8.0},
+            {"name": "bay21", "dx": 136.5, "dy": 8.0},
+            {"name": "bay22", "dx": 143.0, "dy": 8.0},
+            {"name": "bay23", "dx": 149.5, "dy": 8.0},
+            {"name": "bay24", "dx": 156.0, "dy": 8.0},
+            {"name": "bay25", "dx": 162.5, "dy": 8.0},
+            {"name": "bay26", "dx": 169.0, "dy": 8.0},
+            {"name": "bay27", "dx": 175.5, "dy": 8.0},
+            {"name": "bay28", "dx": 182.0, "dy": 8.0},
+            {"name": "bay29", "dx": 188.5, "dy": 8.0},
+            {"name": "bay30", "dx": 195.0, "dy": 8.0}
+          ]
+        },
+        "catalogue": {
+          "catalogue": "CT Terminal vehicles",
+          "label": "Crane class",
+          "group": "Crane",
+          "map": {
+            "speed_kmh": "gantry_kmh",
+            "trolley_kmh": "trolley_kmh",
+            "lift_time_s": "hoist_s",
+            "fuel_kw": "fuel_kw",
+            "drive_kw": "drive_kw",
+            "cost_per_hour": "cost_per_hour"
+          },
+          "rows": [
+            "Straddle carrier diesel",
+            "Straddle carrier hybrid",
+            "Straddle carrier battery",
+            "AGV lead-acid",
+            "AGV Li-ion",
+            "Terminal tractor",
+            "Reach stacker",
+            "RTG",
+            "ASC",
+            "Quay crane"
+          ],
+          "units": {
+            "speed_kmh": "km/h (gantry travel for cranes)",
+            "trolley_kmh": "km/h (crane trolley, 0 for vehicles)",
+            "lift_time_s": "seconds (pick or set down; crane: full gross cycle)",
+            "teu": "TEU per lift",
+            "battery_kwh": "kWh",
+            "drive_kw": "kW (electric drive, average while working)",
+            "charger_kw": "kW",
+            "fuel_kw": "kW of diesel fuel (1 l/h = 10 kW)",
+            "cost_per_hour": "currency per hour, operator included"
+          },
+          "values": {
+            "Straddle carrier diesel": {
+              "gantry_kmh": 30,
+              "trolley_kmh": 0,
+              "hoist_s": 30,
+              "fuel_kw": 250,
+              "drive_kw": 0,
+              "cost_per_hour": 85
+            },
+            "Straddle carrier hybrid": {
+              "gantry_kmh": 30,
+              "trolley_kmh": 0,
+              "hoist_s": 30,
+              "fuel_kw": 160,
+              "drive_kw": 60,
+              "cost_per_hour": 85
+            },
+            "Straddle carrier battery": {
+              "gantry_kmh": 30,
+              "trolley_kmh": 0,
+              "hoist_s": 30,
+              "fuel_kw": 0,
+              "drive_kw": 90,
+              "cost_per_hour": 90
+            },
+            "AGV lead-acid": {
+              "gantry_kmh": 21,
+              "trolley_kmh": 0,
+              "hoist_s": 30,
+              "fuel_kw": 0,
+              "drive_kw": 60,
+              "cost_per_hour": 35
+            },
+            "AGV Li-ion": {
+              "gantry_kmh": 21,
+              "trolley_kmh": 0,
+              "hoist_s": 30,
+              "fuel_kw": 0,
+              "drive_kw": 60,
+              "cost_per_hour": 45
+            },
+            "Terminal tractor": {
+              "gantry_kmh": 25,
+              "trolley_kmh": 0,
+              "hoist_s": 60,
+              "fuel_kw": 150,
+              "drive_kw": 0,
+              "cost_per_hour": 55
+            },
+            "Reach stacker": {
+              "gantry_kmh": 25,
+              "trolley_kmh": 0,
+              "hoist_s": 45,
+              "fuel_kw": 300,
+              "drive_kw": 0,
+              "cost_per_hour": 90
+            },
+            "RTG": {
+              "gantry_kmh": 8,
+              "trolley_kmh": 4,
+              "hoist_s": 30,
+              "fuel_kw": 150,
+              "drive_kw": 0,
+              "cost_per_hour": 70
+            },
+            "ASC": {
+              "gantry_kmh": 14,
+              "trolley_kmh": 7,
+              "hoist_s": 40,
+              "fuel_kw": 0,
+              "drive_kw": 120,
+              "cost_per_hour": 40
+            },
+            "Quay crane": {
+              "gantry_kmh": 3,
+              "trolley_kmh": 5,
+              "hoist_s": 90,
+              "fuel_kw": 0,
+              "drive_kw": 400,
+              "cost_per_hour": 250
+            }
+          },
+          "sources": {
+            "Straddle carrier diesel": "estimate",
+            "Straddle carrier hybrid": "estimate",
+            "Straddle carrier battery": "estimate",
+            "AGV lead-acid": "estimate",
+            "AGV Li-ion": "estimate",
+            "Terminal tractor": "estimate",
+            "Reach stacker": "estimate",
+            "RTG": "estimate",
+            "ASC": "estimate",
+            "Quay crane": "Liftech: about 40 gross moves/h practical; cycle 90 s = 40 moves/h"
+          }
+        },
+        "owns": {"fleets": ["CT RTG"], "entities": ["container_40"]}
+      },
+      "parameters": [
+        {
+          "name": "bays",
+          "default": 30,
+          "type": "int",
+          "description": "Containers are spread over bays 1 to this one."
+        },
+        {
+          "name": "reshuffle_p",
+          "default": 0.3,
+          "type": "number",
+          "description": "Share of moves that first lift a container off the one wanted."
+        },
+        {
+          "name": "home_node",
+          "default": "",
+          "type": "name",
+          "description": "Where the crane starts: this block's <instance>/transfer. Empty takes the model's first node."
+        },
+        {
+          "name": "gantry_kmh",
+          "default": 8.0,
+          "type": "number",
+          "description": "Travel along the block."
+        },
+        {
+          "name": "trolley_kmh",
+          "default": 4.0,
+          "type": "number",
+          "description": "Travel across the block. 0 (a vehicle row of the catalogue) takes the gantry speed."
+        },
+        {
+          "name": "hoist_s",
+          "default": 30.0,
+          "type": "number",
+          "description": "Added to every travel: the lift or set-down at its end."
+        },
+        {
+          "name": "fuel_kw",
+          "default": 150.0,
+          "type": "number",
+          "description": "1 l/h = 10 kW. 0 for an electric crane."
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Read only when Fuel power is 0."
+        },
+        {
+          "name": "idle_share",
+          "default": 0.3,
+          "type": "number",
+          "description": "Power while waiting, as a share of the working power."
+        },
+        {"name": "cost_per_hour", "default": 70.0, "type": "number"}
+      ],
+      "scoped": {
+        "fleets": {
+          "CT RTG": {
+            "speed": "gantry_kmh",
+            "speed_empty": "gantry_kmh",
+            "speed_x": "gantry_kmh",
+            "speed_y": "trolley_kmh if trolley_kmh > 0 else gantry_kmh",
+            "hoist_time": "hoist_s",
+            "home": {"$arg": "home_node"},
+            "power.busy": "fuel_kw if fuel_kw > 0 else drive_kw",
+            "power.idle": "idle_share * (fuel_kw if fuel_kw > 0 else drive_kw)",
+            "cost_busy": "cost_per_hour",
+            "cost_idle": "cost_per_hour"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "type": "SUB_ENTRY",
+          "description": "Containers to stack or retrieve",
+          "position": [0.0, 0.0]
+        },
+        {
+          "name": "pick_bay",
+          "type": "ASSIGN",
+          "description": "Draw the container's bay",
+          "position": [200.0, 0.0],
+          "params": {
+            "assignments": [
+              {"target": "entity.ct_bay", "expr": "1 + int(RAND() * bays)"},
+              {
+                "target": "entity.ct_reshuffle_s",
+                "expr": "DISC(hoist_s, reshuffle_p, 0, 1 - reshuffle_p)"
+              },
+              {"target": "entity.station", "expr": "'$bay%d' % entity.ct_bay"}
+            ]
+          }
+        },
+        {
+          "name": "crane",
+          "type": "TRANSPORT",
+          "description": "Crane move",
+          "position": [400.0, 0.0],
+          "params": {"fleet": "$CT RTG", "destination": "$transfer"}
+        },
+        {
+          "name": "transfer",
+          "type": "STATION",
+          "description": "Transfer point",
+          "position": [600.0, 0.0],
+          "params": {"station": "$transfer", "node": "$transfer"}
+        },
+        {
+          "name": "out",
+          "type": "SUB_EXIT",
+          "description": "Containers at the transfer point",
+          "position": [800.0, 0.0]
+        }
+      ],
+      "links": [
+        {"source": "in", "target": "pick_bay"},
+        {"source": "pick_bay", "target": "crane"},
+        {"source": "crane", "target": "transfer"},
+        {"source": "transfer", "target": "out"}
+      ],
+      "annotations": []
+    },
+    "Horizontal transport": {
+      "info": {
+        "description": "The vehicles that carry containers between the quay and the yard: straddle carriers, AGVs, terminal tractors or reach stackers, picked from the Terminal vehicles catalogue. A container enters by \"in\" from the STATION it waits at; a vehicle drives to it on the path network, lifts it, drives it to the \"Destination\" STATION and sets it down, and the container goes on from that station. \"done\" is used only when Destination is empty and the container's routing has finished. Lift and set-down each take the class's lift time. Energy: a diesel or hybrid class draws its fuel kW while working and \"Idle share\" of it while waiting (1 l/h = 10 kW); an electric class (Fuel power 0) carries a battery of \"Battery capacity\" that its drive kW drains; below a quarter it drives to the nearest charger and works again at 90 %. \"Charging strategy\" adds topping up when idle (opportunity) or a pack swap at a swap station. Place Charger assets (Logistics library) for it, sized from the class's charger kW; their grid energy is the fleet's. A hybrid class counts as diesel: its battery is refilled by the engine, not a charger.",
+        "library": {
+          "library": "container_terminals",
+          "asset": "horizontal_transport",
+          "version": "0.1.0"
+        },
+        "parameters": [
+          {
+            "name": "vehicles",
+            "type": "int",
+            "default": 6,
+            "unit": "",
+            "label": "Vehicles",
+            "help": "",
+            "group": "Vehicles",
+            "min": 1,
+            "max": 500,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "speed_kmh",
+            "type": "number",
+            "default": 30.0,
+            "unit": "km/h",
+            "label": "Speed",
+            "help": "Loaded and empty alike.",
+            "group": "Vehicles",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "lift_time_s",
+            "type": "number",
+            "default": 30.0,
+            "unit": "seconds",
+            "label": "Lift time",
+            "help": "To pick a container up, and again to set it down.",
+            "group": "Vehicles",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "home_node",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Home node",
+            "help": "The network node the vehicles start at. Empty takes the first node in the model.",
+            "group": "Vehicles",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "destination",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Destination",
+            "help": "The STATION the containers are carried to (the yard block's or the quay's). Empty follows the container's routing.",
+            "group": "Dispatching",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "fuel_kw",
+            "type": "number",
+            "default": 250.0,
+            "unit": "kW",
+            "label": "Fuel power while working",
+            "help": "Diesel burnt by one vehicle while working, 1 l/h = 10 kW. 0 for an electric class.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "drive_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kW",
+            "label": "Electric power while working",
+            "help": "Read only when Fuel power is 0.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "battery_kwh",
+            "type": "number",
+            "default": 0.0,
+            "unit": "kWh",
+            "label": "Battery capacity",
+            "help": "Read only when Fuel power is 0; 0 draws the drive kW straight from the grid.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "battery_strategy",
+            "type": "choice",
+            "default": "threshold",
+            "unit": "",
+            "label": "Charging strategy",
+            "help": "Read only with a battery. Threshold: charge below a quarter. Opportunity: also top up whenever idle below the share below and a point is free. Swap: exchange the pack at a swap station.",
+            "group": "Energy",
+            "min": null,
+            "max": null,
+            "choices": ["threshold", "opportunity", "swap"],
+            "refers_to": ""
+          },
+          {
+            "name": "opportunity_below",
+            "type": "number",
+            "default": 0.6,
+            "unit": "",
+            "label": "Top up below",
+            "help": "Opportunity only: an idle vehicle below this state of charge charges when a point is free.",
+            "group": "Energy",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "idle_share",
+            "type": "number",
+            "default": 0.3,
+            "unit": "",
+            "label": "Idle share",
+            "help": "Power while waiting, as a share of the working power (an idling engine).",
+            "group": "Energy",
+            "min": 0.0,
+            "max": 1.0,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "cost_per_hour",
+            "type": "number",
+            "default": 85.0,
+            "unit": "currency per hour",
+            "label": "Cost per vehicle hour",
+            "help": "Charged for every hour a vehicle is on the terminal, working or not.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "CT Terminal vehicles",
+          "label": "Vehicle class",
+          "group": "Vehicles",
+          "map": {
+            "speed_kmh": "speed_kmh",
+            "lift_time_s": "lift_time_s",
+            "fuel_kw": "fuel_kw",
+            "drive_kw": "drive_kw",
+            "battery_kwh": "battery_kwh",
+            "cost_per_hour": "cost_per_hour"
+          },
+          "rows": [
+            "Straddle carrier diesel",
+            "Straddle carrier hybrid",
+            "Straddle carrier battery",
+            "AGV lead-acid",
+            "AGV Li-ion",
+            "Terminal tractor",
+            "Reach stacker",
+            "RTG",
+            "ASC",
+            "Quay crane"
+          ],
+          "units": {
+            "speed_kmh": "km/h (gantry travel for cranes)",
+            "trolley_kmh": "km/h (crane trolley, 0 for vehicles)",
+            "lift_time_s": "seconds (pick or set down; crane: full gross cycle)",
+            "teu": "TEU per lift",
+            "battery_kwh": "kWh",
+            "drive_kw": "kW (electric drive, average while working)",
+            "charger_kw": "kW",
+            "fuel_kw": "kW of diesel fuel (1 l/h = 10 kW)",
+            "cost_per_hour": "currency per hour, operator included"
+          },
+          "values": {
+            "Straddle carrier diesel": {
+              "speed_kmh": 30,
+              "lift_time_s": 30,
+              "fuel_kw": 250,
+              "drive_kw": 0,
+              "battery_kwh": 0,
+              "cost_per_hour": 85
+            },
+            "Straddle carrier hybrid": {
+              "speed_kmh": 30,
+              "lift_time_s": 30,
+              "fuel_kw": 160,
+              "drive_kw": 60,
+              "battery_kwh": 30,
+              "cost_per_hour": 85
+            },
+            "Straddle carrier battery": {
+              "speed_kmh": 30,
+              "lift_time_s": 30,
+              "fuel_kw": 0,
+              "drive_kw": 90,
+              "battery_kwh": 300,
+              "cost_per_hour": 90
+            },
+            "AGV lead-acid": {
+              "speed_kmh": 21,
+              "lift_time_s": 30,
+              "fuel_kw": 0,
+              "drive_kw": 60,
+              "battery_kwh": 200,
+              "cost_per_hour": 35
+            },
+            "AGV Li-ion": {
+              "speed_kmh": 21,
+              "lift_time_s": 30,
+              "fuel_kw": 0,
+              "drive_kw": 60,
+              "battery_kwh": 150,
+              "cost_per_hour": 45
+            },
+            "Terminal tractor": {
+              "speed_kmh": 25,
+              "lift_time_s": 60,
+              "fuel_kw": 150,
+              "drive_kw": 0,
+              "battery_kwh": 0,
+              "cost_per_hour": 55
+            },
+            "Reach stacker": {
+              "speed_kmh": 25,
+              "lift_time_s": 45,
+              "fuel_kw": 300,
+              "drive_kw": 0,
+              "battery_kwh": 0,
+              "cost_per_hour": 90
+            },
+            "RTG": {
+              "speed_kmh": 8,
+              "lift_time_s": 30,
+              "fuel_kw": 150,
+              "drive_kw": 0,
+              "battery_kwh": 0,
+              "cost_per_hour": 70
+            },
+            "ASC": {
+              "speed_kmh": 14,
+              "lift_time_s": 40,
+              "fuel_kw": 0,
+              "drive_kw": 120,
+              "battery_kwh": 0,
+              "cost_per_hour": 40
+            },
+            "Quay crane": {
+              "speed_kmh": 3,
+              "lift_time_s": 90,
+              "fuel_kw": 0,
+              "drive_kw": 400,
+              "battery_kwh": 0,
+              "cost_per_hour": 250
+            }
+          },
+          "sources": {
+            "Straddle carrier diesel": "estimate",
+            "Straddle carrier hybrid": "estimate",
+            "Straddle carrier battery": "estimate",
+            "AGV lead-acid": "estimate",
+            "AGV Li-ion": "estimate",
+            "Terminal tractor": "estimate",
+            "Reach stacker": "estimate",
+            "RTG": "estimate",
+            "ASC": "estimate",
+            "Quay crane": "Liftech: about 40 gross moves/h practical; cycle 90 s = 40 moves/h"
+          }
+        },
+        "owns": {"fleets": ["CT Vehicles"], "entities": ["container_40"]}
+      },
+      "parameters": [
+        {"name": "vehicles", "default": 6, "type": "int"},
+        {
+          "name": "speed_kmh",
+          "default": 30.0,
+          "type": "number",
+          "description": "Loaded and empty alike."
+        },
+        {
+          "name": "lift_time_s",
+          "default": 30.0,
+          "type": "number",
+          "description": "To pick a container up, and again to set it down."
+        },
+        {
+          "name": "home_node",
+          "default": "",
+          "type": "name",
+          "description": "The network node the vehicles start at. Empty takes the first node in the model."
+        },
+        {
+          "name": "destination",
+          "default": "",
+          "type": "name",
+          "description": "The STATION the containers are carried to (the yard block's or the quay's). Empty follows the container's routing."
+        },
+        {
+          "name": "fuel_kw",
+          "default": 250.0,
+          "type": "number",
+          "description": "Diesel burnt by one vehicle while working, 1 l/h = 10 kW. 0 for an electric class."
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Read only when Fuel power is 0."
+        },
+        {
+          "name": "battery_kwh",
+          "default": 0.0,
+          "type": "number",
+          "description": "Read only when Fuel power is 0; 0 draws the drive kW straight from the grid."
+        },
+        {
+          "name": "battery_strategy",
+          "default": "threshold",
+          "type": "choice",
+          "description": "Read only with a battery. Threshold: charge below a quarter. Opportunity: also top up whenever idle below the share below and a point is free. Swap: exchange the pack at a swap station."
+        },
+        {
+          "name": "opportunity_below",
+          "default": 0.6,
+          "type": "number",
+          "description": "Opportunity only: an idle vehicle below this state of charge charges when a point is free."
+        },
+        {
+          "name": "idle_share",
+          "default": 0.3,
+          "type": "number",
+          "description": "Power while waiting, as a share of the working power (an idling engine)."
+        },
+        {
+          "name": "cost_per_hour",
+          "default": 85.0,
+          "type": "number",
+          "description": "Charged for every hour a vehicle is on the terminal, working or not."
+        }
+      ],
+      "scoped": {
+        "fleets": {
+          "CT Vehicles": {
+            "count": {"$arg": "vehicles"},
+            "speed": "speed_kmh",
+            "speed_empty": "speed_kmh",
+            "load_time": "lift_time_s",
+            "unload_time": "lift_time_s",
+            "home": {"$arg": "home_node"},
+            "power.busy": "fuel_kw if fuel_kw > 0 else drive_kw",
+            "power.idle": "idle_share * (fuel_kw if fuel_kw > 0 else drive_kw)",
+            "battery.capacity_kwh": "battery_kwh if fuel_kw == 0 else 0",
+            "battery.strategy": {"$arg": "battery_strategy"},
+            "battery.opportunity_below": "opportunity_below",
+            "cost_busy": "cost_per_hour",
+            "cost_idle": "cost_per_hour"
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "type": "SUB_ENTRY",
+          "description": "Containers to move",
+          "position": [0.0, 0.0]
+        },
+        {
+          "name": "carry",
+          "type": "TRANSPORT",
+          "description": "Carry to the destination",
+          "position": [200.0, 0.0],
+          "params": {"fleet": "$CT Vehicles", "destination": {"$arg": "destination"}}
+        },
+        {
+          "name": "done",
+          "type": "SUB_EXIT",
+          "description": "Routing finished",
+          "position": [400.0, 0.0],
+          "params": {"port": "done"}
+        }
+      ],
+      "links": [{"source": "in", "target": "carry"}, {"source": "carry", "target": "done"}],
+      "annotations": []
+    },
+    "Grid connection": {
+      "info": {
+        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.3.0"},
+        "parameters": [
+          {
+            "name": "import_profile",
+            "type": "name",
+            "default": "Nrg tariff",
+            "unit": "",
+            "label": "Import tariff",
+            "help": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile.",
+            "group": "Prices",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "export_price",
+            "type": "number",
+            "default": 0.05,
+            "unit": "EUR/kWh",
+            "label": "Export price",
+            "help": "Paid for every exported kWh: it enters Total Cost as a negative cost.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "intensity_profile",
+            "type": "name",
+            "default": "Nrg grid intensity",
+            "unit": "",
+            "label": "Grid carbon intensity",
+            "help": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead.",
+            "group": "Emissions",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "import_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Import limit",
+            "help": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "export_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Export limit",
+            "help": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "demand_charge_per_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "EUR/kW",
+            "label": "Demand charge",
+            "help": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Nrg tariffs",
+          "label": "Tariff",
+          "group": "Prices",
+          "map": {"import_profile": "import_profile", "export_price": "export_price"},
+          "rows": ["Flat", "Time of use", "Time of use, no export"],
+          "units": {"export_price": "EUR/kWh"},
+          "values": {
+            "Flat": {"import_profile": "Nrg flat tariff", "export_price": 0.05},
+            "Time of use": {"import_profile": "Nrg tariff", "export_price": 0.05},
+            "Time of use, no export": {"import_profile": "Nrg tariff", "export_price": 0.0}
+          },
+          "sources": {
+            "Flat": "Illustrative starting point (Naga); not market data.",
+            "Time of use": "Illustrative starting point (Naga); not market data.",
+            "Time of use, no export": "Illustrative starting point (Naga); not market data."
+          }
+        },
+        "owns": {
+          "timeseries_inputs": ["Nrg tariff", "Nrg flat tariff", "Nrg grid intensity"],
+          "flows": ["Nrg import", "Nrg unserved", "Nrg export", "Nrg curtailed"]
+        }
+      },
+      "parameters": [
+        {
+          "name": "import_profile",
+          "default": "Nrg tariff",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile."
+        },
+        {
+          "name": "export_price",
+          "default": 0.05,
+          "type": "number",
+          "description": "Paid for every exported kWh: it enters Total Cost as a negative cost."
+        },
+        {
+          "name": "intensity_profile",
+          "default": "Nrg grid intensity",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead."
+        },
+        {
+          "name": "import_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied."
+        },
+        {
+          "name": "export_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for."
+        },
+        {
+          "name": "demand_charge_per_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
+          "Nrg unserved": {},
+          "Nrg export": {},
+          "Nrg curtailed": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "info": {
+    "title": "Container terminal: electrification",
+    "category": "Logistics",
+    "description": "The quay-to-yard terminal with its straddle carriers' energy priced and counted: diesel as it is, battery straddle carriers charging opportunistically, and AGVs on pack swap. The question it answers: what do energy cost, CO2 and the grid's peak become, and does the extra capital pay back? Read the flow summary (fuel and grid kWh, peak kW), the cost summary, and the investment case across scenarios. Illustrative figures."
+  },
+  "data_sources": [
+    {
+      "name": "vessel calls",
+      "kind": "csv",
+      "location": "data/terminal_vessel_calls.csv",
+      "description": "One row per order: a call's discharge and load moves"
+    }
+  ],
+  "data_bindings": [
+    {
+      "name": "call book",
+      "source": "vessel calls",
+      "transform": "orders",
+      "target": "orders",
+      "enabled": true,
+      "description": "The vessel calls of the week, from the CSV"
+    }
+  ],
+  "simulation": {"time_limit": 10080.0, "warmup": 0, "replications": 1},
+  "investment": {
+    "baseline": "",
+    "horizon_years": 10,
+    "discount_rate": 0.08,
+    "operating_hours_per_year": 8760.0,
+    "margin_per_part": 0.0,
+    "throughput": ""
+  },
+  "outputs": {},
+  "dashboard": {
+    "widgets": [
+      {
+        "name": "grid_kw",
+        "kind": "kpi",
+        "title": "Grid draw now",
+        "unit": "kW",
+        "expr": "FLOW(\"grid_connection_1/Nrg import\")"
+      },
+      {
+        "name": "diesel_kw",
+        "kind": "kpi",
+        "title": "Fuel burn now",
+        "unit": "kW",
+        "expr": "FLOW(\"Diesel\")"
+      },
+      {
+        "name": "power",
+        "kind": "line",
+        "title": "Energy by source, kW",
+        "series": [
+          {"label": "Grid", "expr": "FLOW(\"grid_connection_1/Nrg import\")"},
+          {"label": "Diesel", "expr": "FLOW(\"Diesel\")"}
+        ]
+      }
+    ],
+    "inputs": [
+      {
+        "path": "blocks.horizontal_transport_1.params.arguments.vehicles",
+        "label": "Carriers",
+        "kind": "number",
+        "min": 6,
+        "max": 16
+      },
+      {
+        "path": "chargers.Quay chargers.points",
+        "label": "Charging points",
+        "kind": "number",
+        "min": 2,
+        "max": 12
+      }
+    ],
+    "results": [
+      {"kpi": "resource/CT Quay cranes/Total Seizes", "label": "Gross moves", "better": "higher"},
+      {"kpi": "flow/Diesel/Total", "label": "Fuel burnt", "unit": "kWh", "better": "lower"},
+      {"kpi": "flow/grid_connection_1/Nrg import/Total", "label": "Grid energy", "unit": "kWh"},
+      {"kpi": "system/Total Impact", "label": "CO2", "unit": "kg", "better": "lower"},
+      {"kpi": "system/Total Flow Cost", "label": "Energy cost", "unit": "EUR", "better": "lower"},
+      {
+        "kpi": "charger/Quay chargers/Peak kW",
+        "label": "Charger peak",
+        "unit": "kW",
+        "better": "lower"
+      }
+    ]
+  }
+}

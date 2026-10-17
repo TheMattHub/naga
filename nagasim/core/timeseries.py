@@ -98,7 +98,7 @@ def _take_sample(ctx, t: float, warmup: float) -> list[tuple]:
         # sampled series to check exactly like LEVEL()/AUX() already have.
         for flow in ctx.level_system.flows:
             if not flow.hidden:
-                rows.append((t, f"flow/{flow.name}", float(flow.actual), warm))
+                rows.append((t, f"flow/{flow.name}", float(flow.actual * flow.per), warm))
 
     # Agent counts per state (PHASE5 AB-1): piecewise constant, read as is.
     if ctx.agent_system is not None:

@@ -95,7 +95,9 @@ import numpy as np
 import pandas as pd
 
 from nagasim import api, experiments
+from nagasim.core import submodels
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
+from nagasim.core.levels import LevelSystem
 from nagasim.core.stats import ci95
 
 __all__ = ["Result", "check", "assert_model", "main", "run_reality_checks", "RESULT_COLUMNS"]
@@ -260,7 +262,21 @@ def _with_probe(layout: dict, constraint_text: str, when) -> dict:
                 {"name": _PROBE, "expr": f"DELAY({probe})"}]}
 
 
-def _row_scope(t: float, row: dict) -> ExpressionScope:
+# A sampled row holds levels, flows and auxiliaries only (#687): these read state it has not.
+_UNSAMPLED = ("CONV", "FRACTION", "POWER")
+
+
+def _bus(layout: dict) -> dict:
+    """tag -> [(flow name, priority)] of the flattened layout, for FLOWSUM on a row."""
+    tagged: dict = {}
+    for flow in submodels.flatten(layout).get("flows") or []:
+        if isinstance(flow, dict) and flow.get("tag"):
+            tagged.setdefault(str(flow["tag"]), []).append(
+                (str(flow.get("name")), float(flow.get("priority") or 0.0)))
+    return tagged
+
+
+def _row_scope(t: float, row: dict, bus: dict | None = None) -> ExpressionScope:
     """A scope for LEVEL()/AUX()/FLOW()/TNOW backed by one sampled row of the
     "timeseries" frame instead of a live run.
 
@@ -274,11 +290,17 @@ def _row_scope(t: float, row: dict) -> ExpressionScope:
     """
     levels = {name[len("level/"):]: SimpleNamespace(level=value)
              for name, value in row.items() if name.startswith("level/")}
-    flows = {name[len("flow/"):]: SimpleNamespace(actual=value)
+    # The trace already holds each flow per its own rate_time_unit, so `per` is 1.
+    flows = {name[len("flow/"):]: SimpleNamespace(actual=value, per=1.0)
             for name, value in row.items() if name.startswith("flow/")}
     aux_memo = {name[len("aux/"):]: value for name, value in row.items() if name.startswith("aux/")}
     system = SimpleNamespace(levels=levels, flow_index=flows, _last_t=t,
-                             env=SimpleNamespace(now=t))
+                             env=SimpleNamespace(now=t), _initialising=False, _sums={},
+                             tagged={tag: [SimpleNamespace(actual=row.get(f"flow/{n}", 0.0),
+                                                           per=1.0, priority=p)
+                                           for n, p in members]
+                                     for tag, members in (bus or {}).items()})
+    system.flow_sum = lambda tag, below=None: LevelSystem.flow_sum(system, tag, below)
     ctx = SimpleNamespace(now=t, level_system=system, aux_memo=aux_memo, variables=None)
     return ExpressionScope(ctx=ctx)
 
@@ -294,6 +316,10 @@ def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dic
         constraint = compile_expression(constraint_text)
     except ExpressionError as exc:
         raise ValueError(f"reality check '{name}': {exc}") from None
+    unsampled = sorted(constraint.calls & set(_UNSAMPLED))
+    if unsampled:
+        raise ValueError(f"reality check '{name}': {', '.join(unsampled)}() is not sampled; "
+                         f"read it through an auxiliary and check AUX(\"<name>\")")
 
     when = entry.get("when", "always")
     layout = experiments.apply_overrides(base, _overrides(name, entry.get("inputs")))
@@ -308,6 +334,7 @@ def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dic
                          f"(simulation.timeseries_points, or a run length)")
 
     pivot = df.pivot(index="Time", columns="Series", values="Value").sort_index()
+    bus = _bus(layout) if "FLOWSUM" in constraint.calls else None
     column = f"aux/{_PROBE}"
     live = pivot.pop(column).dropna() if column in pivot else None
     first = float(live.iloc[-1]) if live is not None and len(live) else -1.0
@@ -319,7 +346,7 @@ def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dic
             continue
         row = pivot.loc[t].dropna().to_dict()
         try:
-            passed = bool(constraint.evaluate(_row_scope(float(t), row)))
+            passed = bool(constraint.evaluate(_row_scope(float(t), row, bus)))
         except ExpressionError as exc:
             raise ValueError(f"reality check '{name}': {exc}") from None
         if not passed:

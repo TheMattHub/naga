@@ -72,10 +72,16 @@ COLUMN_NAMES = {
                  "completed"),
 }
 # XES lifecycle (IEEE 1849): schedule/assign mark when the work became ready. A missing
-# transition is "complete", as XES's own default is.
+# transition is "complete", as XES's own default is. suspend/resume bracket a pause in the
+# work, taken out of its service time (D631). An abort or a withdraw ends its instance,
+# which is dropped and counted (#641: left open, it took the next instance's events).
 _LIFECYCLE = {"schedule": "ready", "assign": "ready", "start": "start", "complete": "complete",
-              "": "complete"}
-_RANK = {"ready": 0, "start": 1, "complete": 2}
+              "suspend": "suspend", "resume": "resume", "ate_abort": "abort",
+              "pi_abort": "abort", "abort": "abort", "withdraw": "withdraw", "": "complete"}
+# suspend and resume share a rank: at one instant the file's order says which came first
+# (#642: either fixed order lost a pause when a resume and a re-suspend shared a second).
+_RANK = {"ready": 0, "start": 1, "suspend": 2, "resume": 2, "abort": 3, "withdraw": 3,
+         "complete": 4}
 _DOCTYPE_RE = re.compile(r"<!\s*(doctype|entity)\b", re.IGNORECASE)   # as sdimport's
 _TIME_UNITS = ("seconds", "minutes", "hours", "days")
 _SECONDS = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400}
@@ -90,7 +96,8 @@ class Event:
     case: str
     activity: str
     time: float             # model time units since the log's first instant
-    lifecycle: str          # "ready", "start" or "complete"
+    lifecycle: str          # "ready", "start", "suspend", "resume", "abort", "withdraw"
+                            # or "complete"
     resource: str = ""
 
 
@@ -146,7 +153,7 @@ class _Reader:
             return
         stage = _LIFECYCLE.get((lifecycle or "").strip().lower())
         if stage is None:
-            self.dropped["lifecycle not schedule/assign/start/complete"] += 1
+            self.dropped["lifecycle not one that is read"] += 1
             return
         t = self.instant(when)
         if t is None:
@@ -383,6 +390,8 @@ class _Instance:
     ready: float | None = None
     start: float | None = None
     end: float | None = None
+    paused: float = 0.0             # suspended time, between start and end (D631)
+    since: float | None = None      # when the current suspension began
 
     @property
     def first(self) -> float:
@@ -391,9 +400,14 @@ class _Instance:
 
 def _cases(events) -> tuple[dict[str, list[_Instance]], Counter]:
     """Per case, its activity instances in order (D548), and what was dropped. Per (case,
-    activity) two FIFO queues, ready-but-not-started and started, so pairing is O(1) an
-    event (#563): a start takes the oldest ready instance, a complete the oldest started
-    one, else the oldest ready one, else a new one."""
+    activity) three FIFO queues, ready-but-not-started, started and suspended, so pairing is
+    O(1) an event (#563): a start takes the oldest ready instance, a suspend the oldest
+    started one, a resume the oldest suspended one (back to started), a complete the oldest
+    started one, else suspended, else ready, else a new one. An abort ends the oldest
+    suspended instance, else started, else ready; a withdraw the oldest ready one, else
+    started, else suspended; either is dropped and counted. A suspend or resume with nothing
+    to pair is ignored and counted, as is a suspend never resumed (its time stays in the
+    service time, D631)."""
     by_case: dict[str, list[tuple]] = defaultdict(list)
     for i, e in enumerate(events):
         by_case[e.case].append((e.time, _RANK[e.lifecycle], i, e))
@@ -402,6 +416,7 @@ def _cases(events) -> tuple[dict[str, list[_Instance]], Counter]:
         rows.sort(key=lambda r: r[:3])
         pending: dict[str, deque] = defaultdict(deque)
         started: dict[str, deque] = defaultdict(deque)
+        suspended: dict[str, deque] = defaultdict(deque)
         seen: set = set()
         done: list[_Instance] = []
         for _t, _r, _i, e in rows:
@@ -416,12 +431,41 @@ def _cases(events) -> tuple[dict[str, list[_Instance]], Counter]:
                 inst = pending[a].popleft() if pending[a] else _Instance(a)
                 inst.start, inst.resource = e.time, e.resource or inst.resource
                 started[a].append(inst)
+            elif e.lifecycle == "suspend":
+                if not started[a]:
+                    dropped["suspend with no running instance (ignored)"] += 1
+                    continue
+                inst = started[a].popleft()
+                inst.since = e.time
+                suspended[a].append(inst)
+            elif e.lifecycle == "resume":
+                if not suspended[a]:
+                    dropped["resume with no suspended instance (ignored)"] += 1
+                    continue
+                inst = suspended[a].popleft()
+                inst.paused += e.time - inst.since
+                inst.since = None
+                started[a].append(inst)
+            elif e.lifecycle in ("abort", "withdraw"):
+                if e.lifecycle == "abort":
+                    order = (suspended, started, pending)
+                else:
+                    order = (pending, started, suspended)
+                queue = next((q[a] for q in order if q[a]), None)
+                if queue:
+                    queue.popleft()
+                    dropped["activity instance aborted or withdrawn"] += 1
+                else:
+                    dropped["abort or withdraw with nothing to end (ignored)"] += 1
             else:
-                queue = started[a] or pending[a]
+                queue = started[a] or suspended[a] or pending[a]
                 inst = queue.popleft() if queue else _Instance(a)
+                if inst.since is not None:
+                    dropped["suspend never resumed (its time kept in the service)"] += 1
+                    inst.since = None
                 inst.end, inst.resource = e.time, inst.resource or e.resource
                 done.append(inst)
-        left = sum(map(len, pending.values())) + sum(map(len, started.values()))
+        left = sum(len(q) for qs in (pending, started, suspended) for q in qs.values())
         if left:
             dropped["activity instance never completed"] += left
         if done:
@@ -436,7 +480,8 @@ def _case_arrival(instances: list[_Instance]) -> float:
 
 def _samples(cases) -> dict:
     """Per activity: service, wait, sojourn and gap samples, and the overlap count."""
-    out = defaultdict(lambda: {"service": [], "wait": [], "sojourn": [], "gap": [], "count": 0})
+    out = defaultdict(lambda: {"service": [], "wait": [], "sojourn": [], "gap": [],
+                               "suspended": [], "count": 0})
     overlaps = 0
     for instances in cases.values():
         prev_end = None
@@ -446,7 +491,9 @@ def _samples(cases) -> dict:
             if prev_end is not None and inst.first < prev_end - 1e-9:
                 overlaps += 1
             if inst.start is not None:
-                s["service"].append(max(0.0, inst.end - inst.start))
+                s["service"].append(max(0.0, inst.end - inst.start - inst.paused))
+                if inst.paused > 0:
+                    s["suspended"].append(inst.paused)
                 origin = inst.ready if inst.ready is not None else (
                     prev_end if prev_end is not None else inst.start)
                 s["wait"].append(max(0.0, inst.start - origin))
@@ -647,6 +694,7 @@ def _resources(cases, activities, span) -> tuple[list, list, dict, set]:
     their report, {activity: the names it seizes} and the names taken."""
     wanted = set(activities)
     intervals: dict[tuple, list] = defaultdict(list)
+    paused: Counter = Counter()
     keys_of: dict[str, set] = defaultdict(set)
     for v in cases.values():
         for x in v:
@@ -655,6 +703,7 @@ def _resources(cases, activities, span) -> tuple[list, list, dict, set]:
             # Keyed by kind and name, so a resource named like an activity stays its own.
             key = ("resource", x.resource) if x.resource else ("activity", x.activity)
             intervals[key].append((x.start, x.end))
+            paused[key] += x.paused
             keys_of[x.activity].add(key)
     used: set = set()
     name_of: dict[tuple, str] = {}
@@ -662,8 +711,10 @@ def _resources(cases, activities, span) -> tuple[list, list, dict, set]:
     for key, spans in intervals.items():
         own = key[0] == "activity"
         name = name_of[key] = _name(key[1], used)
+        # ponytail: the peak counts a suspended instance as in service; split its interval
+        # if that ever sets a capacity too high.
         cap = _peak(spans)
-        busy = sum(e - s for s, e in spans)
+        busy = sum(e - s for s, e in spans) - paused[key]
         resources.append({"name": name, "capacity": cap, "discipline": "FIFO"})
         report.append({"name": name, "original": key[1],
                        "capacity": cap, "basis": "observed peak in service (a lower bound)"
@@ -684,6 +735,9 @@ def _activity_blocks(activities, samples, block_of, names_of, used_res):
         block = {"name": block_of[a], "description": _label(a) or block_of[a]}
         entry = {"original": a, "block": block_of[a], "count": s["count"],
                  "mean_wait": _mean(s["wait"]), "mean_gap": _mean(s["gap"])}
+        if s["suspended"]:
+            entry["suspended"] = {"instances": len(s["suspended"]),
+                                  "mean": _mean(s["suspended"])}
         if s["service"]:
             fit = _fit(s["service"])
             names = names_of[a]
@@ -845,9 +899,74 @@ def _busiest_share(seconds, period: float, bins: int, window: int) -> float:
     return float(np.convolve(ring, np.ones(window), "valid").max() / counts.sum())
 
 
-def _check(cases, info, dropped, time_unit) -> dict:
+def _idle_waits(cases, samples, span) -> list[tuple[float, str]]:
+    """(mean wait, activity), longest first, for each activity that waits long (over twice
+    its service) at resources busy under half the time. Such a wait is not a queue:
+    calendars, deliberate scheduling, priorities or waiting on the customer. The draft's
+    resources make waits only by being busy, so it reproduces none of it (BPI 2012, D593)."""
+    _res, res_report, names_of, _used = _resources(cases, list(samples), span)
+    busy = {r["name"]: r["utilisation"] or 0.0 for r in res_report}
+    return sorted(
+        ((_mean(s["wait"]), a) for a, s in samples.items()
+         if s["service"] and s["wait"] and _mean(s["wait"]) > 2 * _mean(s["service"])
+         and max(busy[name] for name in names_of[a]) < 0.5), reverse=True)
+
+
+def _idle_wait_delays(flagged, samples, block_of, used_blocks, blocks, links) -> list:
+    """D630: a DELAY before each activity the check flagged (*flagged*, from `_idle_waits`),
+    fitted to its observed waits, every link into the activity redirected through it.
+    Returns the report entries.
+
+    ponytail: the DELAY takes the whole observed wait, and the queue behind it still adds
+    its own; at resources under half busy that is small. Fit the DELAY to the wait less a
+    queue's own if a draft ever runs these resources busy."""
+    report = []
+    for _wait, a in sorted(flagged, key=lambda w: w[1]):
+        if a not in block_of:               # not in the routing: no block to wait before
+            continue
+        b = block_of[a]
+        name = _name(f"idle_wait_{b}", used_blocks)
+        fit = _fit(samples[a]["wait"])
+        for link in links:
+            if link["target"] == b:
+                link["target"] = name
+        blocks.append({"name": name, "type": "DELAY",
+                       "description": f"Modelled wait before {b}, not a queue: fitted to "
+                                      "the log's waits at a mostly idle resource",
+                       "params": {"distribution": fit["distribution"],
+                                  "dist_params": fit["dist_params"]}})
+        links.append({"source": name, "target": b})
+        report.append({"activity": a, "block": b, "delay": name, "wait": fit})
+    return report
+
+
+def _ramp_up(cases, arrivals, cycle) -> float | None:
+    """D632: mean work in progress over the log's first mean cycle time, as a share of that
+    over the next one; None when it cannot tell: fewer than 30 cases arrive in that first
+    cycle time (a small count swings the ratio from 0.1 to 2, seed to seed, measured), the
+    log's arrivals stop before two cycle times (the cases then drain, not ramp), or a case
+    has fewer than 5 activity instances on average (#643: a running case enters the log at
+    its first event, so with two or three a case a log begun running read about 0.55; with
+    five, 0.85, measured). A log begun with the system running is near 1, one begun empty
+    about 0.5 (0.5 for equal cycle times, 0.48 for exponential ones)."""
+    t0, last = float(arrivals[0]), float(arrivals[-1])
+    if cycle <= 0 or t0 + 2 * cycle > last or np.searchsorted(arrivals, t0 + cycle, "right") < 30 \
+            or sum(map(len, cases.values())) < 5 * len(cases):
+        return None
+    a = np.array([_case_arrival(v) for v in cases.values()])
+    e = np.array([max(x.end for x in v) for v in cases.values()])
+
+    def wip(t1, t2):            # the time-average of cases open in [t1, t2]
+        return float(np.clip(np.minimum(e, t2) - np.maximum(a, t1), 0, None).sum()) / (t2 - t1)
+
+    later = wip(t0 + cycle, t0 + 2 * cycle)
+    return wip(t0, t0 + cycle) / later if later > 0 else None
+
+
+def _check(cases, info, dropped, time_unit) -> tuple[dict, list]:
     """What the log holds and what each gap means for the draft: columns, lifecycle coverage,
-    cases, span, censoring, arrivals over the day and the week, and the rows dropped."""
+    cases, span, censoring, arrivals over the day and the week, and the rows dropped. Also
+    returns the activities flagged for idle waits, so the draft uses the check's own list."""
     instances = [x for v in cases.values() for x in v]
     n, k = len(instances), len(cases)
     started = sum(x.start is not None for x in instances)
@@ -867,15 +986,7 @@ def _check(cases, info, dropped, time_unit) -> dict:
                    and later[v[0].activity] < 0.05 * usual)
     counts = Counter(x.activity for x in instances)
     samples, overlaps = _samples(cases)
-    _res, res_report, names_of, _used = _resources(cases, list(counts), span)
-    busy = {r["name"]: r["utilisation"] or 0.0 for r in res_report}
-    # A long wait in front of a resource that is mostly idle is not a queue: calendars,
-    # deliberate scheduling, priorities or waiting on the customer. The draft's resources
-    # make waits only by being busy, so it reproduces none of it (found on BPI 2012, D593).
-    idle_waits = sorted(
-        ((_mean(s["wait"]), a) for a, s in samples.items()
-         if s["service"] and s["wait"] and _mean(s["wait"]) > 2 * _mean(s["service"])
-         and max(busy[name] for name in names_of[a]) < 0.5), reverse=True)
+    idle_waits = _idle_waits(cases, samples, span)
     findings: list[dict] = []
 
     def note(code, level, what, means):
@@ -928,6 +1039,14 @@ def _check(cases, info, dropped, time_unit) -> dict:
              f"{at_start} cases near the log's start begin with an activity that is rarely first",
              "they were probably running when the log began: each arrives at its first event, "
              "a few extra arrivals with short cycles")
+    ramp = _ramp_up(cases, arrivals, cycle) if k >= 50 else None
+    if ramp is not None and ramp < 0.6:
+        weight = cycle / float(arrivals[-1] - arrivals[0])
+        note("ramp_up", "warn" if weight >= 0.05 else "ok",
+             f"the log starts empty: work in progress over its first mean cycle time is "
+             f"{ramp:.0%} of that over the next one",
+             "its start is a ramp-up, not the steady state: the draft's first window (and a "
+             "draft from the log's first part) under-states the load")
     gaps = np.diff(arrivals)
     if k >= 50 and arrivals[-1] > arrivals[0]:
         mid = (arrivals[0] + arrivals[-1]) / 2
@@ -961,6 +1080,12 @@ def _check(cases, info, dropped, time_unit) -> dict:
             if week >= 0.95:
                 note("weekly", "warn", f"{week:.0%} of cases arrive on the busiest 5 days of the "
                      "week", "the draft spreads them over all 7")
+    paused = [v for s in samples.values() for v in s["suspended"]]
+    if paused:
+        note("suspended", "ok", f"{len(paused)} activity instances were suspended (mean "
+             f"{_mean(paused):.3g} suspended)",
+             "the suspended time is left out of their service time and not modelled: the "
+             "draft's cycle times come out shorter by it")
     if overlaps:
         note("overlap", "warn" if overlaps > 0.05 * n else "ok",
              f"{overlaps} activity instances overlap the previous one in their case",
@@ -990,7 +1115,7 @@ def _check(cases, info, dropped, time_unit) -> dict:
             "instances": {"total": n, "with_start": started, "with_schedule": ready,
                           "with_resource": named},
             "censored": {"at_start": at_start, "at_end": at_end},
-            "findings": findings}
+            "findings": findings}, idle_waits
 
 
 # What to do about a finding, in the draft (D591).
@@ -1007,6 +1132,9 @@ _ACTIONS = {
                   "yourself (a DELAY before the activity, or the calendar that causes them): "
                   "no queue in the draft will make them",
     "short_log": "draft again from a log spanning many cycle times",
+    "ramp_up": "give the draft a warm-up (simulation.warmup) of a few mean cycle times before "
+               "comparing it with a steady stretch, or draft from a later part of the log: "
+               "its start is a ramp-up from empty",
     "censored_start": "cut the log's first cycle time off, or the draft gets a few extra "
                       "arrivals with short cycles",
     "arrival_trend": "draft from a steady stretch of the log, or give the CREATE a schedule "
@@ -1019,8 +1147,12 @@ _ACTIONS = {
                "MATCH",
 }
 
+_IDLE_MODELLED = ("check the idle_wait_* DELAYs against what causes the waits (a calendar, a "
+                  "choice, the customer): they are fitted to the log and do not grow with the "
+                  "load, as a queue would")
 
-def _next_steps(check, mode) -> dict:
+
+def _next_steps(check, mode, idle_delays: bool = False) -> dict:
     """What to check in the draft, and what a log never tells, tailored to this log (D591)."""
     codes = {f["code"] for f in check["findings"]}
     steps = ["run the draft (naga run) and compare its throughput and cycle time with the "
@@ -1031,8 +1163,9 @@ def _next_steps(check, mode) -> dict:
                  if mode == "variants" else
                  "read each DECIDE's chances: they are the log's frequencies, not the rule "
                  "that chose")
-    steps += [_ACTIONS[f["code"]] for f in check["findings"]
-              if f["code"] in _ACTIONS and f["level"] != "ok"]
+    actions = _ACTIONS | ({"idle_waits": _IDLE_MODELLED} if idle_delays else {})
+    steps += [actions[f["code"]] for f in check["findings"]
+              if f["code"] in actions and f["level"] != "ok"]
     never = [
         ("shifts: the log shows when work happened, not the shift pattern or the breaks"
          if "shifts" in codes else
@@ -1071,17 +1204,19 @@ def check_log(source, *, time_unit: str = "minutes", columns: dict | None = None
     if not cases:
         raise LogError("no completed activity instance in the log")
     dropped.update(info.get("dropped") or {})
-    return _check(cases, info, dropped, time_unit)
+    return _check(cases, info, dropped, time_unit)[0]
 
 
 # ============================================================ the draft
 
 def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
              columns: dict | None = None, fmt: str | None = None,
-             title: str | None = None) -> tuple[dict, dict]:
+             title: str | None = None, idle_waits: bool = False) -> tuple[dict, dict]:
     """A draft model and its report from an event log: *source* is a log's path or a list
-    of `Event`s (`log_from_trace`). Raises `LogError` for a log refused outright. The log is
-    read whole into memory, bounded by the ceilings (D554)."""
+    of `Event`s (`log_from_trace`). With *idle_waits*, each activity the check flags as
+    waiting long at mostly idle resources gets a DELAY before it, fitted to its waits
+    (D630); off, the draft has none. Raises `LogError` for a log refused outright. The log
+    is read whole into memory, bounded by the ceilings (D554)."""
     from nagasim.core import schema
     from nagasim.core.document import ModelDocument
     from nagasim.core.layout_tools import auto_layout
@@ -1103,7 +1238,7 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
     if len(resources_seen) > MAX_RESOURCES:
         raise LogError(f"{len(resources_seen)} resources, over the {MAX_RESOURCES} ceiling")
     dropped.update(info.get("dropped") or {})
-    check = _check(cases, info, dropped, time_unit)        # before the routing drops its own
+    check, flagged = _check(cases, info, dropped, time_unit)  # before routing drops its own
     assumptions: list[str] = []
 
     arrivals, arrival_fit = _arrivals(cases, assumptions)
@@ -1127,6 +1262,10 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
     if overlaps:
         assumptions.append(f"{overlaps} activity instances overlap the previous one in their "
                            "case (parallel work): the draft runs them one after the other")
+    if any(s["suspended"] for s in samples.values()):
+        assumptions.append("a suspended activity's service time is its start to complete less "
+                           "the suspended time; the suspended time itself is reported, not "
+                           "modelled, so the draft's cycle times are shorter by it")
     used_blocks = {"arrivals", "first_step", "done", "pick_variant", "route"}
     block_of = {a: _name(a, used_blocks) for a in activities}
     span = log_end - arrivals[0]
@@ -1160,6 +1299,13 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
         sequences_section = _wire_variants(route["kept"], activities, block_of, gaps_of,
                                            used_blocks, blocks, links)
         transfer = {}               # per transition is first-order's; reported as travel
+    waits = _idle_wait_delays(flagged, samples, block_of, used_blocks, blocks,
+                              links) if idle_waits else []
+    if waits:
+        assumptions.append("a long wait at a mostly idle resource is a modelled DELAY before "
+                           "its activity (idle_wait_*), fitted to the log's waits: it stands "
+                           "for a calendar, a choice or the customer, not a queue, so it does "
+                           "not grow with the load")
 
     layout = {"blocks": blocks, "links": links, "resources": resources,
               "info": {"title": _label(title or "Draft from an event log"),
@@ -1195,8 +1341,10 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
         "dropped": dict(dropped),
         "observed": _kpis(cases),
         "problems": [p.as_dict() for p in problems],
-        "next_steps": _next_steps(check, route["mode"]),
+        "next_steps": _next_steps(check, route["mode"], bool(waits)),
     }
+    if idle_waits:
+        report["idle_waits"] = waits
     return layout, report
 
 
@@ -1241,6 +1389,8 @@ def report_text(report: dict) -> str:
     for r in report["resources"]:
         lines.append(f"  resource {r['name']}: capacity {r['capacity']} (observed peak), "
                      f"utilisation {_num(r['utilisation'])}")
+    lines += [f"idle wait: {w['delay']} before {w['block']}, {w['wait']['distribution']} "
+              f"(mean {_num(w['wait']['mean'])})" for w in report.get("idle_waits", [])]
     lines += [f"assumed: {a}" for a in report["assumptions"]]
     lines += [f"dropped: {n} ({why})" for why, n in report["dropped"].items()]
     lines += [f"{p['severity']}: {p['code']} {p['message']}" for p in report["problems"]]
@@ -1263,7 +1413,7 @@ def sample_path(value: str) -> str:
 
 
 def main(argv=None) -> int:
-    """`naga discover LOG [-o model.json] [--report report.json] [--check]`."""
+    """`naga discover LOG [-o model.json] [--report report.json] [--check] [--idle-waits]`."""
     from nagasim._cli import setup_cli
     from nagasim.modelfmt import dumps
 
@@ -1286,6 +1436,9 @@ def main(argv=None) -> int:
     parser.add_argument("--routing", default="auto", choices=("auto", "markov", "variants"),
                         help="markov: chances to the next activity; variants: one routing "
                              "per observed sequence; auto picks by a test on the log")
+    parser.add_argument("--idle-waits", action="store_true",
+                        help="give each activity that waits long at mostly idle resources a "
+                             "DELAY before it, fitted to its waits (off: no such delay)")
     for role in COLUMN_NAMES:
         parser.add_argument(f"--{role}", metavar="COLUMN",
                             help=f"the CSV column holding the {role} (default: found by name)")
@@ -1300,7 +1453,7 @@ def main(argv=None) -> int:
         sys.stdout.write(check_text(check, args.time_unit) + "\n")
         return 0
     layout, report = discover(log, time_unit=args.time_unit, routing=args.routing,
-                              columns=columns, fmt=args.format)
+                              columns=columns, fmt=args.format, idle_waits=args.idle_waits)
     text = dumps(layout)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8", newline="\n")

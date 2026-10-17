@@ -178,6 +178,8 @@ def test_drain_per_state_for_a_known_trip():
     = 6 kWh -> released t=6 at 0.8 - 0.025 - 0.3 = 0.475. Total drain 10.5 kWh."""
     doc = model(bat(capacity_kwh=20.0, low=0.25), [charger("c1", "dock")], arrivals=2, gap=3.0,
                 power={"busy": 2.0, "idle": 0.5}, handle="0.5")
+    # The run ends with the work: left idle, the unit would cross low at t=15 and charge (#679).
+    doc["simulation"]["time_limit"] = 6.0
     results, rec = run(doc)
     batt = ev(rec, "battery")
     assert ts(batt) == pytest.approx([2.0, 6.0])

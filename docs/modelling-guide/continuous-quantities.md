@@ -98,6 +98,13 @@ metered purchase is.
 `efficiency` is the loss: `out = in * efficiency`. `rate` is the quantity drawn per time unit at
 the *source* side.
 
+That time unit is the flow's `rate_time_unit`, the model's own when it is left out. Everything the
+engine reports about the flow's rate uses the same unit: `FLOW()`, `FLOWSUM()`, the flow's trace,
+Avg Rate, Peak Rate, a rate threshold, `min_rate` and `peak_price`. A flow written in kW with
+`"rate_time_unit": "hours"` therefore reads and reports kW, even in a model that counts minutes.
+A rate that reads `FLOW()`, `FLOWSUM()` or `CONV()` of something per another time unit takes the
+number unconverted, so validation warns about it (`W_RATE_UNIT_READ`).
+
 ## What the engine enforces: saturation
 
 You never have to write "and stop when it is full". At every re-evaluation the engine scales flows
@@ -126,7 +133,9 @@ three loads, a battery someone adds later -- give the flows a **tag** and read t
 | `FLOWSUM("generation")` | the realised rates of every flow tagged `generation`, added up |
 | `FLOWSUM("storage_in", 2)` | only those with `priority` **below** 2 -- what the devices ahead of you in the merit order actually took |
 
-An unknown tag is `0`, not an error: a site with no generator has no generation. That is the whole
+Each flow counts in its own `rate_time_unit`, so the flows sharing a tag must share that unit; a
+tag whose flows use two different time units is a validation error. An unknown tag is `0`, not an error: a site
+with no generator has no generation. That is the whole
 mechanism behind the bundled energy models: each device adds its power to a
 named tag, the dispatchable assets read the totals, and a second battery with a higher merit number
 sees exactly the surplus the first one left. Nothing is wired and nothing is renamed.
@@ -179,6 +188,7 @@ history of what went in, per feedstock. It is its own section, `conversions`.
 | Field | Meaning |
 |---|---|
 | `feed` | the substrate's feed RATE, an expression -- usually `FLOW("<feeder>")` |
+| `feed_time_unit` | the unit `feed` is per; give it the feeder flow's `rate_time_unit` |
 | `yield` | product per unit of feed (200 Nm3 of biogas per tonne) |
 | `curve` | the release curve as `[age, CUMULATIVE share]` knots, ending at 1.0 |
 | `half_life` | instead of a curve: a first-order release, cut into `steps` equal-width steps |
@@ -188,10 +198,11 @@ history of what went in, per feedstock. It is its own section, `conversions`.
 
 The product is read by `CONV("name")` and enters the model as an ordinary flow's rate, which is
 what gives it a destination level, saturation and spill when that level is full, a bus tag, a price
-and an impact factor for free:
+and an impact factor for free. `CONV()` and the conversion's Avg and Peak Rate are per the
+conversion's `time_unit`, so the reading flow takes the same `rate_time_unit`:
 
 ```json
-{"name": "Biogas", "to": "Gas holder", "rate": "CONV(\"Digester\")"}
+{"name": "Biogas", "to": "Gas holder", "rate": "CONV(\"Digester\")", "rate_time_unit": "hours"}
 ```
 
 Mass leaving the source in the product is the same pattern: a second flow out of the digester level

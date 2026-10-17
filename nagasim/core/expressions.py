@@ -134,6 +134,13 @@ def _resource(scope, name):
     return res
 
 
+def _power(scope, name):
+    """POWER("name") (D600): the kW a resource, fleet or charger draws now. The
+    import is deferred because this module imports nothing from the engine."""
+    from nagasim.core.outputs import power_now
+    return power_now(_ctx(scope), name)
+
+
 def _table(scope, name, *keys):
     """TABLE("name", k1[, k2]): a value out of the model's lookup tables
     (PHASE4 A1, `core/tables.py`). The tables are built once per run into
@@ -173,19 +180,21 @@ def _level(scope, name):
 def _flow(scope, name):
     """FLOW("name"): a flow's rate in effect right now, AFTER saturation -- so
     an accounting flow (a grid import) can be written in terms of what a
-    physical one actually managed to move."""
+    physical one actually managed to move. Per the flow's own `rate_time_unit`
+    (#678), like FLOWSUM."""
     system = getattr(_ctx(scope), "level_system", None)
     flow = None if system is None else system.flow_index.get(name)
     if flow is None:
         raise ExpressionError(f"unknown flow '{name}'")
     if system._initialising:        # the level-initial pass (DEVLOG #161)
-        return float(flow.rate_expr.evaluate(flow.scope or system._scope))
-    return flow.actual
+        return float(flow.rate_expr.evaluate(flow.scope or system._scope)) * flow.per
+    return flow.actual * flow.per
 
 
 def _flowsum(scope, tag, below=None):
     """FLOWSUM("tag"[, priority]): the realised rates of every flow carrying
-    *tag*, summed (PHASE4 D3, ARCHITECTURE D62). That is the site BUS: an asset
+    *tag*, summed (PHASE4 D3, ARCHITECTURE D62), each per its own
+    `rate_time_unit` (#678). That is the site BUS: an asset
     adds its generation or its demand to a named tag, and every other asset
     reads the total without naming a single instance. With a second argument,
     only the flows whose own `priority` is strictly lower are summed -- the
@@ -209,12 +218,13 @@ def _conversion(scope, name):
     Piecewise constant between cohort closings and curve-step boundaries, so it
     is an ordinary flow rate: `{"rate": "CONV(\"Digester\")", "to": "Gas holder"}`
     feeds the gas into a level, where saturation and spill handle a full holder.
+    Per the conversion's own `time_unit`, as FLOW() is per a flow's.
     """
     system = getattr(_ctx(scope), "level_system", None)
     conversion = None if system is None else system.conversion_index.get(name)
     if conversion is None:
         raise ExpressionError(f"unknown conversion '{name}'")
-    return conversion.rate
+    return conversion.rate * conversion.per       # per its own time_unit (#678)
 
 
 def _fraction(scope, name, component):
@@ -398,6 +408,8 @@ FUNCTIONS = {
     # Units nothing holds right now: AVAILABLE minus what entities have seized.
     "IDLE": (lambda s, name: float(_resource(s, name).free), True, 1, 1),
     "NS": (lambda s, name: len(_store(s, name).items), True, 1, 1),
+    # kW drawn now (D600): what a flow rate reads to price, peak-bill and emit it.
+    "POWER": (_power, True, 1, 1),
     # A model variable by name, including a per-instance `<instance>/name` (D72).
     "VAR": (_variable, True, 1, 1),
     # Lookup tables (PHASE4 A1): TABLE("name", k1) or TABLE("name", k1, k2).
@@ -645,6 +657,9 @@ TRAITS = {
     "LINKED": ("named_lookup", "population", "link"),
     **dict.fromkeys(("NQ", "NR", "MR", "AVAILABLE", "IDLE"), ("held", "resource_state")),
     "NS": ("held", "store_state"),
+    # Not resource_state: a HOLD would wait on ("res", name), which a charger
+    # never touches, so a condition reading POWER keeps its scan.
+    "POWER": ("held", "named_lookup"),
     "FLOWSUM": ("bus", "held"),
     "FRACTION": ("dynamic", "held"),
     "RAMP": ("dynamic",),
@@ -691,6 +706,8 @@ def name_sections(function: str) -> tuple:
     tags = TRAITS.get(function, ())
     if "resource_state" in tags:
         return ("resources", "resource_sets")
+    if function == "POWER":
+        return ("resources", "fleets", "chargers")
     if "store_state" in tags:
         return ("blocks",)          # a Hold's or a Batch's store, under the block's name
     if "population" in tags:
@@ -1458,11 +1475,13 @@ FUNCTION_NOTES: dict[str, str] = {
     "MR": "units currently scheduled at resource/set NAME (net of capacity-schedule/failure blockers)",
     "AVAILABLE": "capacity in force at resource NAME, seized units NOT deducted (free units: IDLE)",
     "IDLE": "free units of resource NAME: nothing holds them now (AVAILABLE minus the seized)",
+    "POWER": "POWER(\"name\"): kW resource, fleet or charger NAME draws now, from its \"power\" per state; a flow it feeds takes rate_time_unit hours",
     "NS": "items currently in store NAME (a Hold/Batch/Match store, by block or store name)",
     "VAR": "VAR(\"name\"): model variable NAME, for a name a bare name cannot spell",
     "TS": "TS(\"name\"[, t]): time-series input NAME now, or at time t",
     "LEVEL": "LEVEL(\"name\"): the current value of level NAME",
-    "FLOW": "FLOW(\"name\"): the rate flow NAME moves right now, after saturation",
+    "FLOW": "FLOW(\"name\"): the rate flow NAME moves right now, after saturation, per its rate_time_unit",
+    "FLOWSUM": "FLOWSUM(\"tag\"[, p]): the rates of every flow tagged TAG (priority below p), per their rate_time_unit",
     "MODULO": "MODULO(a, b): the remainder of a / b with the sign of a",
     "ZIDZ": "ZIDZ(a, b): a / b, or 0 when b is 0",
     "XIDZ": "XIDZ(a, b[, x]): a / b, or x (default 0) when b is 0",

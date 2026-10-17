@@ -411,16 +411,22 @@ def _curated(kpi: str) -> bool:
 def _experiment_html(layout: dict, experiment) -> str:
     parts = ["<section><h2>Scenarios</h2>"]
 
+    scenarios = layout.get("scenarios", [])
+    # D578: the goal column exists only when a scenario has one, so reports without goals do not change.
+    with_goal = any(str(e.get("goal") or "").strip() for e in scenarios)
     scenario_rows = []
-    for entry in layout.get("scenarios", []):
+    for entry in scenarios:
         name = entry.get("name", "")
+        goal = str(entry.get("goal") or "").strip()[:500]
         overrides = entry.get("overrides", []) or [{}]
         for i, ov in enumerate(overrides):
-            scenario_rows.append([_esc(name) if i == 0 else "", _esc(ov.get("path", "-")),
-                                  _esc(ov.get("value", "-"))])
+            row = [_esc(name) if i == 0 else "", _esc(ov.get("path", "-")), _esc(ov.get("value", "-"))]
+            if with_goal:
+                row.append(_esc(goal) if i == 0 else "")
+            scenario_rows.append(row)
     parts.append("<h3>Scenario definitions</h3>" +
-                _table(["Scenario", "Override path", "Value"], scenario_rows,
-                       empty="No overrides declared (Baseline only)"))
+                _table(["Scenario", "Override path", "Value"] + (["Goal"] if with_goal else []),
+                       scenario_rows, empty="No overrides declared (Baseline only)"))
 
     comparison = experiment.comparison() if experiment.results else pd.DataFrame()
     curated = comparison[comparison["KPI"].apply(_curated)] if not comparison.empty else comparison

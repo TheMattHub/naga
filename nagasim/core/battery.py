@@ -11,6 +11,19 @@ import math
 _BUSY_STATES = ("empty", "loaded", "handling")
 
 
+def battery_of(fleet: dict) -> dict:
+    """A fleet's `battery` record, or {} when it has none (D601): no record, or a
+    `capacity_kwh` <= 0 -- which lets a catalogue preset switch the battery off
+    with a number. A non-numeric capacity is kept, for validation to report."""
+    battery = fleet.get("battery") if isinstance(fleet, dict) else None
+    if not isinstance(battery, dict) or not battery:
+        return {}
+    capacity = battery.get("capacity_kwh")
+    if isinstance(capacity, (int, float)) and not isinstance(capacity, bool) and capacity <= 0:
+        return {}
+    return battery
+
+
 def drain_kw(power: dict | None, state: str) -> float:
     """kW a vehicle draws in *state*, from its fleet's resource `power` map."""
     if not power or state == "charging":

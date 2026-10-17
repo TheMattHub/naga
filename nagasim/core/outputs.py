@@ -13,6 +13,7 @@ from dataclasses import asdict, is_dataclass
 from collections import Counter
 
 from nagasim.core import blocking, bottleneck
+from nagasim.core.expressions import ExpressionError
 from nagasim.core.levels import visible
 from nagasim.core.resource_manager import ENERGY_STATES
 from nagasim.core.stats import _t_quantile, ci95, created_in_window
@@ -944,7 +945,7 @@ def summarize_flows(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -
     _, t1 = observed_window(env, warmup)
     rows = [{"Run": run_id, "Flow": flow.name,
              "From": flow.src.name if flow.src else "", "To": flow.dst.name if flow.dst else "",
-             "Total": flow.total, "Avg Rate": flow.avg_rate(t1), "Peak Rate": flow.peak,
+             "Total": flow.total, "Avg Rate": flow.avg_rate(t1), "Peak Rate": flow.peak_rate,
              "Time Limited %": 100.0 * flow.limited_fraction(t1),
              "Cost": flow.cost, "Impact": flow.impact, "Starts": flow.starts}
             for flow in visible(system.flows)]
@@ -970,8 +971,9 @@ def summarize_conversions(env, *, warmup: float = 0.0,
     rows = [{"Run": run_id, "Conversion": f"{conversion.name}/{substrate.name}",
              "Substrate": substrate.name, "Unit": conversion.unit,
              "Total In": substrate.fed, "Produced": substrate.produced,
-             "Unreleased": substrate.unreleased, "Avg Rate": substrate.avg_rate(t1),
-             "Peak Rate": substrate.peak}
+             "Unreleased": substrate.unreleased,
+             "Avg Rate": substrate.avg_rate(t1) * conversion.per,
+             "Peak Rate": substrate.peak * conversion.per}
             for conversion in system.conversions for substrate in conversion.substrates]
     return pd.DataFrame(rows, columns=_CONVERSION_SUMMARY_COLS)
 
@@ -1271,6 +1273,47 @@ def _blocked_area_by_resource(env, t1: float) -> dict[str, float]:
     return out
 
 
+def _energy_states(full: float, available: float, busy_all: float, blocked: float,
+                   down: float) -> dict[str, float]:
+    """Split a resource's units over the five ENERGY_STATES. The same split
+    serves unit-time areas (`_resource_energy_rows`) and unit counts now
+    (`power_now`), so a flow fed by POWER() integrates to energy_summary's kWh."""
+    blocked = min(blocked, busy_all)
+    unavailable = max(full - available, 0.0)
+    down = min(down, unavailable)
+    return {"busy": max(busy_all - blocked, 0.0), "idle": max(available - busy_all, 0.0),
+            "blocked": blocked, "down": down, "off_shift": max(unavailable - down, 0.0)}
+
+
+def _state_kw(power: dict, state: str) -> float:
+    """kW per unit in *state*; an absent state is 0, except blocked: busy's."""
+    return float(power.get(state, power.get("busy", 0.0) if state == "blocked" else 0.0))
+
+
+def power_now(ctx, name: str) -> float:
+    """POWER("name") (D600): the kW resource, fleet or charger *name* draws now.
+
+    A resource or fleet: kW per state x its units in that state now. A battery
+    fleet declares no power of its own (its chargers draw), so it is 0, as is
+    anything without "power". A charger: its sessions' grid kW."""
+    charger = ctx.chargers.get(name)
+    if charger is not None:
+        # ponytail: zero-order hold of a tapering charger overstates kWh between events;
+        # integrate power_at if a model needs it exact
+        return charger.grid_kw(ctx.now)
+    res = ctx.resource_manager.get(name)
+    if res is None:
+        raise ExpressionError(f"unknown resource, fleet or charger '{name}'")
+    power = res.power
+    if not power:
+        return 0.0
+    blocked = sum(node.blocked.level for node in ctx.blocking_nodes.values()
+                  if blocking.resource_name_of(node) == name)
+    units = _energy_states(res.capacity, res.scheduled_capacity, res.busy.level, blocked,
+                           res.down_units.level)
+    return sum(_state_kw(power, state) * count for state, count in units.items())
+
+
 def _resource_energy_rows(env, t0: float, t1: float) -> list[dict]:
     """One dict per resource/fleet declaring "power" (M1, D112): the five
     states' unit-time partition, kWh and cost.
@@ -1297,22 +1340,11 @@ def _resource_energy_rows(env, t0: float, t1: float) -> list[dict]:
         power = getattr(res, "power", None)
         if not power:
             continue
-        capacity_time = res.available_area(t1)
-        busy_all = res.busy.area(t1)
-        blocked = min(blocked_by_res.get(name, 0.0), busy_all)
-        busy = max(busy_all - blocked, 0.0)
-        idle = max(capacity_time - busy_all, 0.0)
-        unavailable = max(res.capacity * (t1 - t0) - capacity_time, 0.0)
-        down = min(res.down_units.area(t1), unavailable)
-        off_shift = max(unavailable - down, 0.0)
-
-        state_time = {"busy": busy, "idle": idle, "blocked": blocked,
-                     "down": down, "off_shift": off_shift}
-        kwh = {}
-        for state in ENERGY_STATES:
-            default_kw = power.get("busy", 0.0) if state == "blocked" else 0.0
-            kw = float(power.get(state, default_kw))
-            kwh[state] = kw * state_time[state] * hours_per_base
+        state_time = _energy_states(res.capacity * (t1 - t0), res.available_area(t1),
+                                    res.busy.area(t1), blocked_by_res.get(name, 0.0),
+                                    res.down_units.area(t1))
+        kwh = {state: _state_kw(power, state) * state_time[state] * hours_per_base
+               for state in ENERGY_STATES}
         total_kwh = sum(kwh.values())
         rows.append({
             "Resource": name,

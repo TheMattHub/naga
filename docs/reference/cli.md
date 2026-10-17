@@ -464,8 +464,8 @@ options:
 usage: naga discover [-h] [--check] [-o OUTPUT] [--report REPORT]
                      [--format {csv,xes}]
                      [--time-unit {seconds,minutes,hours,days}]
-                     [--routing {auto,markov,variants}] [--case COLUMN]
-                     [--activity COLUMN] [--timestamp COLUMN]
+                     [--routing {auto,markov,variants}] [--idle-waits]
+                     [--case COLUMN] [--activity COLUMN] [--timestamp COLUMN]
                      [--lifecycle COLUMN] [--resource COLUMN] [--start COLUMN]
                      [--complete COLUMN]
                      log
@@ -493,6 +493,9 @@ options:
                         markov: chances to the next activity; variants: one
                         routing per observed sequence; auto picks by a test on
                         the log
+  --idle-waits          give each activity that waits long at mostly idle
+                        resources a DELAY before it, fitted to its waits (off:
+                        no such delay)
   --case COLUMN         the CSV column holding the case (default: found by
                         name)
   --activity COLUMN     the CSV column holding the activity (default: found by

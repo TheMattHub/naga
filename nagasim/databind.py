@@ -117,6 +117,7 @@ import pandas as pd
 from nagasim import api, experiments, inputfit, netguard, sources
 from nagasim._cli import setup_cli
 from nagasim.core import schema
+from nagasim.core.orders import clashing_names, scalar_cell
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.timeunits import factor
@@ -163,6 +164,7 @@ class BindingRecord:
     rows: int = 0
     source_time: str | None = None
     problem: Problem | None = None
+    warnings: list = field(default_factory=list)   # applied, but with something skipped
 
     @property
     def ok(self) -> bool:
@@ -533,7 +535,7 @@ def _numbers(series: pd.Series) -> np.ndarray:
 
 # ---------------------------------------------------------------- transforms
 def _transform(binding: dict, frame: pd.DataFrame, base_unit: str,
-               layout: dict | None = None) -> list[tuple[str, object]]:
+               layout: dict | None = None, warnings: list | None = None) -> list[tuple[str, object]]:
     """(override path, value) pairs one binding produces -- two for a
     distribution-writing transform, one for everything else. *layout* is the
     model as earlier bindings left it, which a `table:` binding reads its
@@ -549,7 +551,7 @@ def _transform(binding: dict, frame: pd.DataFrame, base_unit: str,
     if name.startswith("series:"):
         return _series_points(name, binding, frame)
     if name == "orders":
-        return [(target, _orders(binding, frame))]
+        return [(target, _orders(binding, frame, warnings))]
 
     series = _column(frame, column)
     if name == "value":
@@ -684,7 +686,7 @@ _ORDER_FIELDS = ("id", "release", "due", "quantity", "entity_type", "sequence", 
 _ORDER_NUMBERS = ("release", "due", "quantity", "priority")
 
 
-def _orders(binding: dict, frame: pd.DataFrame) -> list:
+def _orders(binding: dict, frame: pd.DataFrame, warnings: list | None = None) -> list:
     """The whole "orders" section, one order per source row (PHASE4 A3).
 
     Orders are the main thing an MES feeds a twin, and a work-order export is
@@ -692,7 +694,8 @@ def _orders(binding: dict, frame: pd.DataFrame) -> list:
     REPLACES a section rather than writing one value. The binding's `map`
     renames columns onto the order fields; a field with no mapping falls back
     to a source column of the same name, so a file that already uses the
-    field names needs no `map` at all.
+    field names needs no `map` at all. Every other column becomes a free attribute of the
+    order, as `orders_from_csv` does.
     """
     if binding.get("target") != "orders":
         raise _BindingError("E_DATA_BINDING_TARGET",
@@ -710,6 +713,20 @@ def _orders(binding: dict, frame: pd.DataFrame) -> list:
                                             f"'{columns['id']}'",
                             "map it with {\"id\": \"<the source's id column>\"}")
     present = {field: column for field, column in columns.items() if column in frame.columns}
+    # Any other column is a free attribute, as in orders_from_csv (#677).
+    extras = [c for c in frame.columns if c not in present.values() and c != "time_unit"]
+    # #681: a column named like an entity field is dropped; #682: so is one that is no
+    # attribute name ("Customer Name", "Unnamed: 0", "__class__"), which validation refuses.
+    skipped = sorted(set(clashing_names(extras)) | {
+        str(c) for c in extras if not str(c).isidentifier() or str(c).startswith("_")})
+    if skipped and warnings is not None:
+        warnings.append(problem(
+            "W_ORDER_FIELD", f"binding '{binding.get('name', '')}': column(s) "
+            f"{', '.join(skipped)} skipped: each names a field of the entity itself or is "
+            f"no valid attribute name", "/data_bindings",
+            hint="rename it with the binding's map; an attribute is a Python identifier "
+                 "not starting with _"))
+    extras = [c for c in extras if str(c) not in skipped]
     entries = []
     for _, row in frame.iterrows():
         oid = str(row[present["id"]]).strip()
@@ -727,6 +744,10 @@ def _orders(binding: dict, frame: pd.DataFrame) -> list:
                 entry[field] = int(number) if field == "quantity" else number
             else:
                 entry[field] = str(value)
+        attributes = {str(c): scalar_cell(row[c]) for c in extras
+                      if not pd.isna(row[c]) and str(row[c]).strip()}
+        if attributes:
+            entry["attributes"] = attributes
         entries.append(entry)
     if not entries:
         raise _BindingError("E_DATA_EMPTY", "the source holds no order row after filtering",
@@ -854,7 +875,7 @@ def resolve_bindings(layout: dict, base_dir=None, *, network: netguard.NetworkPo
             frame, stamp = frames[source_name]
             filtered = _apply_filter(frame, binding.get("filter"))
             record.rows, record.source_time = int(len(filtered)), stamp
-            pairs = _transform(binding, filtered, base_unit, current)
+            pairs = _transform(binding, filtered, base_unit, current, record.warnings)
             if source.get("kind") in schema.CONNECTION_SOURCE_KINDS \
                     and binding.get("transform") == "value" and isinstance(pairs[0][1], str):
                 # What a plant sends is data (D225): a text from one is never written into
@@ -910,7 +931,7 @@ def main(argv=None) -> int:
 
     frame = report.frame()
     print(frame.to_string(index=False) if not frame.empty else "no enabled data bindings")
-    for entry in report.problems:
+    for entry in report.problems + [w for r in report.records for w in r.warnings]:
         print(f"{entry.code}: {entry.message}")
     if args.write:
         Path(args.write).write_text(json.dumps(resolved, indent=2))

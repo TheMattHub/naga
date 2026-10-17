@@ -1,5 +1,6 @@
 """Batteries and charging (automation sub-project 2, D164-D166)."""
 import copy
+import math
 
 import pytest
 
@@ -85,13 +86,12 @@ def test_a_valid_battery_model_has_no_problems():
 
 
 @pytest.mark.parametrize("fleet, chargers, code", [
-    (amr(capacity_kwh=0), [dock()], "E_BATTERY"),
+    (amr(capacity_kwh="big"), [dock()], "E_BATTERY"),
     (amr(low=0.9, target=0.8), [dock()], "E_BATTERY"),
     (amr(initial=1.5), [dock()], "E_BATTERY"),
     (amr(strategy="opportunity"), [dock()], "E_BATTERY"),
     (amr(strategy="solar"), [dock()], "E_BATTERY"),
     (amr(strategy="scheduled"), [dock()], "E_BATTERY"),
-    ({**amr(), "kind": "worker"}, [dock()], "E_BATTERY"),
     (amr(), [dock(node="nowhere")], "E_CHARGER"),
     (amr(), [dock(points=0)], "E_CHARGER"),
     (amr(), [dock(power_kw=0)], "E_CHARGER"),
@@ -326,6 +326,22 @@ def test_a_fleet_without_a_battery_reports_what_it_always_did():
     assert energy[energy["Resource"] == "AMR"].iloc[0].to_dict() == NO_BATTERY_ENERGY
 
 
+@pytest.mark.parametrize("capacity", [0, 0.0, -1.0])
+def test_capacity_zero_is_no_battery(capacity):
+    """D601: `capacity_kwh` <= 0 is a fleet without a battery -- it validates without a
+    charger and runs exactly like the same fleet with no `battery` key (its kW on the
+    grid through `power`, no charge trips), which is what lets a catalogue preset switch
+    the battery off with a number."""
+    fleet = {**NO_BATTERY, "battery": {"capacity_kwh": capacity, "low": 0.3}}
+    doc = model(fleet, [], jobs=5, every=1.5, run=20.0)
+    assert not {c for c in codes(doc) if c.startswith(("E_BATTERY", "W_NO_CHARGER"))}
+    results = api.run_model(doc, replications=1)
+    assert results["fleet_summary"].iloc[0].to_dict() == NO_BATTERY_ROW
+    energy = results["energy_summary"]
+    assert energy[energy["Resource"] == "AMR"].iloc[0].to_dict() == NO_BATTERY_ENERGY
+    assert results["battery_summary"].empty and results["charging_summary"].empty
+
+
 # -- Task 4: the frames ------------------------------------------------------------
 
 CHARGING_COLS = ["Run", "Charger", "Kind", "Points", "Sessions", "Utilization %", "Avg Wait",
@@ -413,3 +429,140 @@ def test_a_battery_fleet_charges_at_a_cloned_charger():
     frame = api.run_model(bays(("bay_1", 1), jobs=4, every=2.0, run=40.0),
                           replications=1)["charging_summary"]
     assert list(frame["Charger"]) == ["bay_1/dock"] and frame["Sessions"].iloc[0] >= 1
+
+
+# -- #679: an idle unit charges when its idle drain crosses its trigger ------------
+
+IDLE = {"busy": 2.0, "idle": 1.0}      # 1 kW idle: 0.1 SoC per hour on a 10 kWh battery
+NIGHT_LATE = {"name": "night", "kind": "capacity", "points": [[50, 0], [4, 1], [100, 0]]}
+
+
+@pytest.mark.parametrize("battery, chargers, sections, first", [
+    # 0.5 at t=5, then A -> C (2 h at 2 kW): 0.1 at t=7.
+    ({"low": 0.5, "target": 0.9}, [dock()], {}, (7.0, 0.1)),
+    ({"low": 0.5, "strategy": "swap"}, [dock(kind="swap", swap_time="0.5")], {}, (7.0, 0.1)),
+    # 0.8 at t=2: 0.4 at C at t=4.
+    ({"low": 0.2, "strategy": "opportunity", "opportunity_below": 0.8}, [dock()], {},
+     (4.0, 0.4)),
+    # Below low at t=5, long before the window opens at t=50.
+    ({"low": 0.5, "strategy": "scheduled", "schedule": "night"}, [dock()],
+     {"schedules": [NIGHT_LATE]}, (7.0, 0.1)),
+], ids=["threshold", "swap", "opportunity", "scheduled"])
+def test_679_an_idle_unit_charges_with_every_strategy(battery, chargers, sections, first):
+    doc = model(amr(power=IDLE, **battery), chargers, jobs=1, start=1000.0, **sections)
+    fleet, _chargers, events = run(doc)
+    assert at(events, "charge_start")[0] == (pytest.approx(first[0]), pytest.approx(first[1]))
+    totals = fleet.battery_totals(100.0)
+    assert totals["depleted"] == 0 and totals["min_soc"] > 0 and totals["charge_trips"] >= 2
+
+
+def test_679_energy_balances_over_work_and_idle_charges():
+    doc = model(amr(power=IDLE, low=0.5, target=0.9), [dock()], jobs=8, every=7.0)
+    fleet, chargers, events = run(doc)
+    totals = fleet.battery_totals(100.0)
+    charged = sum(c.energy(100.0) * c.efficiency for c in chargers.values())
+    assert fleet.movers[0].trips == 8
+    assert len(at(events, "charge_start")) == totals["charge_trips"] >= 3
+    assert totals["drain_kwh"] == pytest.approx(
+        charged + (fleet.initial_soc - totals["final_soc"]) * fleet.capacity_kwh)
+
+
+def test_679_a_release_replaces_the_trigger_armed_before_it():
+    # Armed for t=5 at the start; the job (A -> B, 0.8 at t=1) re-arms it for t=4, and
+    # the stale t=5 trigger does nothing: one charge, from B, 0.3 at C at t=5.
+    fleet, chargers, events = run(model(amr(power=IDLE, low=0.5, target=0.9), [dock()],
+                                        jobs=1), run_len=8.0)
+    assert at(events, "charge_start") == [(pytest.approx(5.0), pytest.approx(0.3))]
+    assert len(at(events, "charge_end")) == 1 and fleet._free == fleet.movers
+    assert fleet.resource.count == 0 and chargers["dock"].points.count == 0
+
+
+def test_679_a_job_due_at_the_crossing_instant_and_the_trigger_never_both_take_the_unit():
+    # Low is crossed at t=5, when the job comes: whichever goes first, the unit
+    # either charges then carries, or carries then charges -- once each.
+    fleet, chargers, events = run(model(amr(power=IDLE, low=0.5, target=0.9), [dock()],
+                                        jobs=1, start=5.0), run_len=40.0)
+    mover = fleet.movers[0]
+    starts, ends = at(events, "charge_start"), at(events, "charge_end")
+    assert mover.trips == 1 and len(starts) == len(ends) >= 1 and mover.depleted == 0
+    assert all(s[0] < e[0] for s, e in zip(starts, ends))
+    assert all(e[0] <= s[0] for e, s in zip(ends, starts[1:]))
+    assert fleet._free == [mover] and fleet.resource.count == 0
+    assert chargers["dock"].points.count == 0
+
+
+def test_679_a_job_pulls_an_idle_opportunity_charge_off_the_charger():
+    # Charging from t=4 at 0.4; the job at t=4.5 takes it off with 0.4 + 2.5 kWh.
+    fleet, chargers, events = run(model(
+        amr(power=IDLE, low=0.2, strategy="opportunity", opportunity_below=0.8), [dock()],
+        jobs=1, start=4.5), run_len=6.0)
+    assert at(events, "charge_start") == [(pytest.approx(4.0), pytest.approx(0.4))]
+    assert at(events, "charge_end") == [(4.5, pytest.approx(0.65))]
+    assert fleet.movers[0].trips == 1 and chargers["dock"].points.count == 0
+
+
+def test_679_a_full_unit_stays_parked_until_it_crosses_a_trigger():
+    # opportunity_below = target = 1.0: a full unit must not chase its own drain.
+    fleet, _chargers, events = run(model(
+        amr(power=IDLE, low=0.5, target=1.0, strategy="opportunity", opportunity_below=1.0),
+        [dock()], jobs=1, start=1000.0), run_len=4.9)
+    mover = fleet.movers[0]
+    assert at(events, "charge_start") == [] and mover.node == "A" and mover.homing is None
+    assert fleet.battery_totals(4.9)["final_soc"] == pytest.approx(0.51)
+
+
+def test_679_no_idle_draw_changes_nothing():
+    fleet, _chargers, events = run(model(amr(low=0.5), [dock()], jobs=1, start=1000.0))
+    assert at(events, "charge_start") == [] and fleet.movers[0].soc == 1.0
+
+
+def test_679_a_unit_back_from_a_shift_below_low_charges_at_once():
+    # 20 kWh, 0.05 SoC per hour idle: low 0.5 is crossed at t=10, while off shift (2 -> 12).
+    # Back at t=12 with 0.4: it plans at once, at C at t=14 with 0.2.
+    shift = {"name": "shift", "kind": "capacity", "points": [[2, 1], [10, 0], [1000, 1]]}
+    spec = {**amr(power=IDLE, capacity_kwh=20.0, low=0.5, target=0.9),
+            "capacity_schedule": "shift"}
+    fleet, _chargers, events = run(model(spec, [dock()], jobs=1, start=1000.0,
+                                         schedules=[shift]), run_len=30.0)
+    assert at(events, "charge_start")[0] == (pytest.approx(14.0), pytest.approx(0.2))
+    assert fleet.battery_totals(30.0)["depleted"] == 0
+
+
+def test_679_an_idle_unit_a_state_puts_back_below_low_charges_at_once():
+    doc = model(amr(power=IDLE, low=0.5, target=0.9), [dock()], jobs=1, start=1000.0)
+    doc["initial_state"] = {"clock": 9.0,
+                            "fleets": {"AMR": {"vehicles": [{"node": "A", "soc": 0.45}]}}}
+    fleet, _chargers, events = run(doc, run_len=30.0)
+    assert at(events, "charge_start")[0] == (pytest.approx(11.0), pytest.approx(0.05))
+    assert fleet.battery_totals(30.0)["depleted"] == 0
+
+
+def test_679_a_held_idle_plan_with_no_slot_tries_again_when_one_frees():
+    from nagasim.core.sim_runner import setup_run, step_until
+    doc = model(amr(power=IDLE, low=0.5, target=0.9), [dock()], jobs=1, start=1000.0)
+    env, _model = setup_run(doc, seed=0, run_len=30.0, warmup=0.0)
+    fleet = env.ctx.fleets["AMR"]
+    slot = fleet.resource._core.request(priority=(-math.inf, 0))   # a slot held, no unit named
+    # The full run length, as a session passes it: a shorter one restates the horizon.
+    step_until(env, 30.0, should_stop=lambda: env.peek() > 6.0)
+    mover = fleet.movers[0]
+    assert fleet._wants_charge == {mover} and mover.charger is None    # crossed at t=5
+    fleet.resource.release_blocker(slot)      # the real order: give_unit, then the release
+    step_until(env, 30.0)
+    assert fleet._wants_charge == set() and mover.charge_trips >= 3
+    assert fleet.battery_totals(30.0)["depleted"] == 0
+
+
+def test_679_a_battery_fleet_with_idle_draw_runs_to_its_time_limit():
+    # The job ends at t=1 and the last idle timer is far off: the run still ends at 100.
+    for chargers in ([dock()], [dock(node="island")]):
+        env, _model = run_env(model(amr(power=IDLE, low=0.5, target=0.9), chargers, jobs=1),
+                              100.0)
+        assert env.ctx.sim_end_time == 100.0
+
+
+def test_679_an_idle_crossing_of_low_zero_counts_one_depletion():
+    fleet, _chargers, events = run(model(amr(power=IDLE, low=0.0, target=0.9), [dock()],
+                                         jobs=1, start=1000.0), run_len=12.0)
+    assert at(events, "charge_start")[0][0] == pytest.approx(12.0)
+    assert fleet.movers[0].depleted == 1

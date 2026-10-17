@@ -74,13 +74,15 @@ from __future__ import annotations
 import logging
 import math
 
+import numpy as np
 import simpy
 from simpy.core import BoundClass
 from simpy.resources.resource import PriorityRequest, SortedQueue
 
-from nagasim.core.battery import drain_kw
+from nagasim.core.base_process import deterministic_hash
+from nagasim.core.battery import battery_of, drain_kw
 from nagasim.core.block_spec import WORKER_BLOCKED_MODES
-from nagasim.core.expressions import ExpressionError, compile_expression
+from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.problems import problem
 from nagasim.core.resource_manager import ENERGY_STATES, _Resource, capacity_controller
 from nagasim.core.seizing import QUEUEING_BLOCK_TYPES
@@ -281,7 +283,7 @@ class Mover:
                  "distance_empty", "distance_loaded", "trips", "idle_since",
                  "homing", "trip", "name", "skills", "home", "pos",
                  "soc", "min_soc", "depleted", "drain_kwh", "charge_trips", "charger", "session",
-                 "leg", "until", "task")
+                 "leg", "until", "task", "watch")
 
     def __init__(self, fleet: "MoverFleet", unit: int, node: str, t: float,
                  name: str = "", skills=(), home: str = ""):
@@ -318,6 +320,7 @@ class Mover:
         # while it drives a path in one go, `until` when its handling or charge ends,
         # `task` is `(stage, job, unload time)` of the TRANSPORT trip it is on.
         self.leg = self.until = self.task = None
+        self.watch = 0         # #679: the idle trigger armed last; an older one is stale
 
     def __repr__(self):
         return f"<Mover {self.fleet.name}#{self.unit} at {self.node} {self.state}>"
@@ -485,11 +488,11 @@ class MoverFleet:
         if not home:
             home = next(iter(network.nodes), "")
         self.home = home
-        # Battery (D164-D166). `capacity_kwh` 0 means the fleet has none, and
-        # nothing below is read. Vehicles drain at the fleet's `power` kW per
+        # Battery (D164-D166). `capacity_kwh` <= 0 means the fleet has none
+        # (D601, `battery_of`), and nothing below is read. Vehicles drain at the fleet's `power` kW per
         # state; the GRID sees the chargers instead, so a battery fleet's
         # resource carries no power of its own (no double count).
-        battery = spec.get("battery") or {}
+        battery = battery_of(spec)
         self.power = spec.get("power")
         self.capacity_kwh = float(battery.get("capacity_kwh", 0.0))
         self.initial_soc = float(battery.get("initial", 1.0))
@@ -502,6 +505,9 @@ class MoverFleet:
         self.charge_schedule = (env.ctx.schedules.get(battery.get("schedule"))
                                 if self.strategy == "scheduled" else None)
         self.hours = conversion_factor("time", model_units.time, "hours")  # per model time unit
+        # A swap no block ordered (an idle unit's, #679) draws its swap time from here.
+        self._rng = np.random.default_rng(np.random.SeedSequence(
+            [env.ctx.seed, deterministic_hash(f"fleet:{self.name}")])) if battery else None
         self._warned: set[str] = set()
         if self.charge_schedule is not None:
             env.process(self._watch_windows())
@@ -537,6 +543,13 @@ class MoverFleet:
             self.movers = [Mover(self, i, self.home, t) for i in range(self.count)]
         self._free = list(self.movers)
         self._down: list[Mover] = []
+        self._wants_charge: set[Mover] = set()     # #679: a held idle plan found no slot
+        for mover in self.movers:
+            self._watch_idle(mover, start=True)
+        if self.capacity_kwh and drain_kw(self.power, "idle") > 0 and env.ctx.sim_horizon:
+            # #679: idle timers may outlast the work; one no-op event AT the horizon makes
+            # such a run end there, never at whichever stale timer happens to fire last.
+            env.timeout(max(env.ctx.sim_horizon - t, 0.0))
         self._cursor = -1
         self._stood = 0            # requests a state put back, counted: their order (D385)
         # Per-segment traversals, keyed by the segment's reported name.
@@ -655,7 +668,13 @@ class MoverFleet:
         """A repair finished or a shift started: the vehicle comes back where
         it was left."""
         if self._down:
-            self._free.append(self._down.pop(0))
+            mover = self._down.pop(0)
+            self._free.append(mover)
+            # It may have crossed a trigger while out: below one, it plans at once.
+            self._watch_idle(mover, start=True)
+        if self._wants_charge:
+            # `release_blocker` frees the slot only after this returns: retry one event later.
+            self.env.timeout(0).callbacks.append(lambda _event: self._retry_wanted())
 
     # -- the trip ------------------------------------------------------------
     def acquire(self, block, entity, origin: str, priority: int = 0, skill: str | None = None,
@@ -976,6 +995,7 @@ class MoverFleet:
         if mover.homing is not None:            # it made it home undisturbed
             mover.homing = None
             mover.enter("idle", self.env.now)
+            self._watch_idle(mover)
 
     def handle(self, mover: Mover, seconds: float, until=None):
         """Generator: load or unload for *seconds* (the vehicle is busy, still), or, put
@@ -998,17 +1018,21 @@ class MoverFleet:
         have; otherwise an opportunity charge leaves it free and dispatchable."""
         mover.enter("idle", self.env.now)
         mover.task = None
+        self._wants_charge.discard(mover)
         plan = self._charge_plan(mover) if self.capacity_kwh else None
         held = plan is not None and plan[1]
         if not held:
             self._free.append(mover)
             self.resource.release(request)
+            self._retry_wanted()
         if block is not None:
             block.emit("entity_released", entity=entity, resource=self.name)
         self._moved(block, mover, (mover.node,), 0.0, "idle")
         if self.capacity_kwh:
             self._emit("battery", mover, self.name)
         if plan is None:
+            if self.capacity_kwh:
+                self._watch_idle(mover)
             return
         mover.charger, _held, until = plan
         if held:
@@ -1137,7 +1161,9 @@ class MoverFleet:
             charger.occupy(arrived)
             mover.enter("charging", started)
             self._emit("charge_start", mover, charger.name)
-            yield env.timeout(charger.swap_time(block.expression_scope(entity)))
+            scope = (block.expression_scope(entity) if block is not None
+                     else ExpressionScope(ctx=env.ctx, rng=self._rng))
+            yield env.timeout(charger.swap_time(scope))
             env.process(charger.recharge(self.capacity_kwh, mover.soc))
             mover.soc, mover.charger = 1.0, None
             charger.leave(point, started)
@@ -1154,6 +1180,8 @@ class MoverFleet:
         self.resource.release(request)
         self._moved(block, mover, (mover.node,), 0.0, "idle")
         self.park_home(mover, block)
+        self._watch_idle(mover)
+        self._retry_wanted()
 
     # -- put back by a state (D384) --------------------------------------------
     def claim(self, mover: Mover):
@@ -1210,6 +1238,9 @@ class MoverFleet:
             point.mover = mover
             mover.idle_since = float(arrived)
             env.process(self._resume_charge(request, mover, point))
+        for mover in self.movers:              # #679: as of the SoC the state put back
+            # A busy unit never plans at once: `Transport.resume` claims it after this.
+            self._watch_idle(mover, start=mover.unit not in busy)
 
     def _resume_drive_to_charge(self, request, mover: Mover, started: float):
         yield request
@@ -1243,6 +1274,7 @@ class MoverFleet:
         mover.homing = mover.charger = None
         mover.enter("idle", self.env.now)
         self.park_home(mover, None)
+        self._watch_idle(mover)
 
     def _charge_free(self, mover: Mover, until: float, block, started=None):
         """Generator: an opportunity charge. The vehicle is FREE throughout,
@@ -1265,6 +1297,83 @@ class MoverFleet:
         mover.homing = mover.charger = None
         mover.enter("idle", self.env.now)
         self.park_home(mover, block)
+        self._watch_idle(mover)
+
+    def _watch_idle(self, mover: Mover, start: bool = False) -> None:
+        """#679: a FREE unit standing idle plans a charge, as a release does
+        (`_charge_plan`), at the exact instant its idle drain takes its SoC below a
+        trigger: `low`, or `opportunity_below` (a scheduled window's opening is
+        `_watch_windows`'s). One closed-form timer per idle stretch; a newer one, or
+        the unit moving on, makes it a no-op. Only a trigger strictly below the SoC
+        now is armed, so a unit that has just charged to it, or found no charger,
+        never chases its own drain in zero time. *start*: the run's first instant,
+        where a unit already below a trigger plans at once."""
+        kw = drain_kw(self.power, "idle") if self.capacity_kwh else 0.0
+        horizon = self.env.ctx.sim_horizon
+        # ponytail: a run with no length (a model that drains on its own) arms nothing,
+        # since an idle drain-and-charge cycle would never let it end.
+        if kw <= 0 or horizon is None or mover.state != "idle":
+            return
+        mover.watch += 1
+        now, token = self.env.now, mover.watch
+        rate = kw * self.hours / self.capacity_kwh            # SoC per model time unit
+        soc = mover.soc - rate * (now - mover._since)
+        triggers = [self.low]
+        if self.opportunity_below is not None:
+            triggers.append(min(self.opportunity_below, self.target))
+        ahead = [s for s in triggers if s < soc]
+        if start and len(ahead) < len(triggers):
+            trigger, delay = None, 0.0
+        elif ahead:
+            trigger = max(ahead)
+            delay = (soc - trigger) / rate
+        else:
+            return
+        if now + delay <= horizon:
+            self.env.timeout(delay).callbacks.append(
+                lambda _event: self._idle_due(mover, token, trigger))
+
+    def _idle_due(self, mover: Mover, token: int, trigger) -> None:
+        """An idle trigger fires: plan the charge a release would, if the unit has
+        stood idle and free since it was armed."""
+        if (mover.watch != token or mover.state != "idle" or mover.homing is not None
+                or mover.charger is not None or mover not in self._free):
+            return
+        mover.settle(self.env.now)
+        if trigger is not None:
+            # Crossed right now: rounding must not leave it a hair above the trigger.
+            before = mover.soc
+            mover.soc = min(mover.soc, math.nextafter(trigger, -math.inf))
+            mover.min_soc = min(mover.min_soc, mover.soc)
+            if before > 0 >= mover.soc:        # low 0: this is the crossing `settle` counts
+                mover.depleted += 1
+                self.warn_once("W_BATTERY_DEPLETED", f"a battery ran empty at "
+                               f"t={self.env.now:g}; the vehicle carries on with a negative "
+                               "charge")
+        plan = self._charge_plan(mover)
+        if plan is None:
+            self._watch_idle(mover)
+            return
+        mover.charger, held, until = plan
+        if not held:
+            mover.homing = self.env.process(self._charge_free(mover, until, None))
+            return
+        # Held, it keeps a slot as a released unit does: busy, but no seize and no wait.
+        request = self.resource.request(priority=-math.inf, counted=False, charged=False)
+        if not request.triggered:          # every free slot is taken this instant
+            self.resource.cancel(request)
+            mover.charger = None
+            # Tried again when a slot frees, not at once: that could loop in one instant.
+            self._wants_charge.add(mover)
+            return
+        self._free.remove(mover)
+        self.env.process(self._charge_held(request, mover, until, None, None))
+
+    def _retry_wanted(self) -> None:
+        """A slot has freed: the units whose held idle plan found none try again."""
+        for mover in sorted(self._wants_charge, key=lambda m: m.unit):
+            self._wants_charge.discard(mover)
+            self._idle_due(mover, mover.watch, None)
 
     def _watch_windows(self):
         """Generator (scheduled strategy): when a charging window opens, each

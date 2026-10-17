@@ -40,7 +40,7 @@ doubling per step so an optimistic first estimate cannot blow the budget in one 
 A scenario is a named set of parameter overrides on the base model, stored in the model file
 itself (so it travels with the model it belongs to). An optional `goal` (up to 500 characters)
 states the question the scenario answers, for example "Can we meet the 2 h service target with one
-picker fewer?"; Present mode and the Studies window show it, and it does not enter a run. An override addresses a model parameter by
+picker fewer?"; Present mode, the Studies window and the HTML report (a Goal column in the scenario definitions) show it, and it does not enter a run. The browser viewer lists no stored scenarios, so it shows none. An override addresses a model parameter by
 path -- `resources.Server.capacity`, `blocks.Cutting.params.dist_params.rate`,
 `variables.rework_count.initial`, and so on; it can only change a value the model already has,
 never invent a new one. A table's values are one value in this grammar, replaced whole. `conversions` (yields and release curves) is overridable too, since those change the

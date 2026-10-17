@@ -306,6 +306,14 @@ class SimulationContext:
             event.succeed()
         self.signals[name] = self.env.event()
 
+    def wake_power(self) -> None:
+        """A resource's or a charger's draw just changed: re-evaluate the flow
+        rates now, only when one reads POWER() (D600), so every other model keeps
+        its event count."""
+        system = self.level_system
+        if system is not None and system.reads_power:
+            system.trigger()
+
     def touch(self, key) -> None:
         """*key* just changed: wake every HOLD condition that reads it."""
         event = self.watched.pop(key, None)

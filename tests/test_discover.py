@@ -102,6 +102,52 @@ def test_xes_reads_traces_events_and_lifecycle(tmp_path):
     assert report["activities"][0]["service"]["mean"] == pytest.approx(20.0)
 
 
+def test_suspended_time_is_taken_out_of_the_service_time(tmp_path):
+    """D631: start 0, suspend 2, resume 10, complete 13: service 5, 8 suspended, reported;
+    unmatched and out-of-order pairs are counted, never a crash; an abort ends its instance,
+    dropped and counted; an unknown lifecycle row is dropped."""
+    rows = ["case,activity,timestamp,lifecycle,resource"]
+    for i in range(30):
+        t = 20.0 * i
+        rows += [f"c{i},Call,{t},start,Ann", f"c{i},Call,{t + 2},suspend,Ann",
+                 f"c{i},Call,{t + 10},resume,Ann", f"c{i},Call,{t + 13},complete,Ann"]
+    rows += ["x1,Call,700,resume,Ann", "x1,Call,701,start,Ann", "x1,Call,702,complete,Ann",
+             "x2,Call,710,suspend,Ann",                              # nothing running
+             "x3,Call,720,start,Ann", "x3,Call,721,suspend,Ann", "x3,Call,725,complete,Ann",
+             "x4,Call,730,start,Ann", "x4,Call,731,ate_abort,Ann",      # ends x4's Call
+             "x5,Call,740,start,Ann", "x5,Call,741,reassign,Ann", "x5,Call,742,complete,Ann"]
+    layout, report = d.discover(_write(tmp_path, "\n".join(rows) + "\n"))
+    assert not _errors(layout)
+    (call,) = report["activities"]
+    assert call["service"]["n"] == 33
+    assert call["suspended"] == {"instances": 30, "mean": pytest.approx(8.0)}
+    assert d.log_kpis(d.read_log(tmp_path / "log.csv"))["activities"]["Call"]["service"] == \
+        pytest.approx((30 * 5 + 1 + 5 + 2) / 33)        # x3's suspend is never resumed: kept
+    assert report["dropped"].items() >= {
+        "resume with no suspended instance (ignored)": 1,
+        "suspend with no running instance (ignored)": 1,
+        "suspend never resumed (its time kept in the service)": 1,
+        "activity instance aborted or withdrawn": 1,
+        "lifecycle not one that is read": 1}.items()
+    codes = {f["code"]: f for f in report["check"]["findings"]}
+    assert codes["suspended"]["level"] == "ok" and "30 activity instances" in codes["suspended"]["what"]
+    assert any("suspended time" in a for a in report["assumptions"])
+    assert report["resources"][0]["utilisation"] == pytest.approx((30 * 5 + 8) / 742, rel=0.01)
+
+
+def test_suspend_rows_keep_the_ceilings(tmp_path, monkeypatch):
+    """A suspend/resume flood is rows like any other: the event ceiling still refuses it."""
+    rows = ["case,activity,timestamp,lifecycle"] + [
+        f"c,A,{k},{('suspend', 'resume')[k % 2]}" for k in range(80)]
+    path = _write(tmp_path, "\n".join(rows) + "\n")
+    monkeypatch.setattr(d, "MAX_EVENTS", 50)
+    with pytest.raises(d.LogError, match="50 events"):
+        d.read_log(path)
+    monkeypatch.setattr(d, "MAX_EVENTS", 10**6)
+    with pytest.raises(d.LogError, match="no completed"):
+        d.log_kpis(d.read_log(path))
+
+
 def test_a_large_sample_keeps_its_own_mean():
     """Past FIT_SAMPLE values the family is picked on a sample but fitted on all of them:
     the sample's mean alone moved a round trip's throughput by 2%."""
@@ -278,6 +324,116 @@ def test_a_long_wait_at_an_idle_resource_is_flagged_not_a_queue():
     assert "idle_waits" in {f["code"] for f in report["check"]["findings"]}
     assert any("no queue in the draft" in s for s in report["next_steps"]["check"])
     assert "idle_waits" not in {f["code"] for f in d.check_log(SAMPLE)["findings"]}
+
+
+def _idle_office_events():
+    """Review waits 30 minutes at Ann, busy a minute an hour; Pack follows at once at Bob."""
+    return [e for i in range(60) for e in (
+        d.Event(f"c{i}", "Review", 60.0 * i, "ready", "Ann"),
+        d.Event(f"c{i}", "Review", 60.0 * i + 25 + i % 11, "start", "Ann"),
+        d.Event(f"c{i}", "Review", 60.0 * i + 36 + i % 11, "complete", "Ann"),
+        d.Event(f"c{i}", "Pack", 60.0 * i + 36 + i % 11, "start", "Bob"),
+        d.Event(f"c{i}", "Pack", 60.0 * i + 38 + i % 11, "complete", "Bob"))]
+
+
+def test_idle_waits_option_models_a_delay_before_the_flagged_activity():
+    """D630: on, the flagged activity gets a fitted DELAY before it, every link into it
+    goes through the DELAY and the report names it; off (the default), nothing changes."""
+    events = _idle_office_events()
+    plain = d.discover(events)
+    assert d.discover(events, idle_waits=False) == plain
+    assert "idle_waits" not in plain[1]
+    layout, report = d.discover(events, idle_waits=True)
+    assert not _errors(layout)
+    (wait,) = report["idle_waits"]
+    assert (wait["block"], wait["delay"]) == ("Review", "idle_wait_Review")
+    assert wait["wait"]["mean"] == pytest.approx(30.0, rel=0.01)
+    blocks = {b["name"]: b for b in layout["blocks"]}
+    assert blocks["idle_wait_Review"]["type"] == "DELAY"
+    assert "not a queue" in blocks["idle_wait_Review"]["description"]
+    into = [l["source"] for l in layout["links"] if l["target"] == "Review"]
+    assert into == ["idle_wait_Review"]
+    assert any("idle_wait_" in s for s in report["next_steps"]["check"])
+    assert layout == minimal(layout)
+    # The draft's run gives the wait back: arrival to the Review start, about 30.
+    rec = TraceRecorder()
+    run_model(layout, replications=1, seed=1, trace=rec, run_length=3600, warmup=0)
+    made = {e.entity_id: e.t for e in rec.events if e.kind == "entity_created"}
+    starts = [e.t - made[e.entity_id] for e in rec.events
+              if e.kind == "entity_seized" and e.block == "Review"]
+    assert sum(starts) / len(starts) == pytest.approx(30.0, rel=0.15)
+
+
+@pytest.mark.parametrize("routing", ["markov", "variants"])
+def test_idle_wait_delay_sits_on_every_path_into_its_activity(routing):
+    """After Intake, half the cases go to Review (a long wait at an idle clerk), half to
+    Pack: the DECIDE branch (markov) or the STATION (variants) into Review goes through
+    the DELAY, and nothing else reaches Review."""
+    events = []
+    for i in range(80):
+        t, c = 60.0 * i, f"c{i}"
+        nxt = ("Review", "Ann", 30.0) if i % 2 else ("Pack", "Bob", 0.0)
+        events += [d.Event(c, "Intake", t, "start", "Bob"),
+                   d.Event(c, "Intake", t + 2, "complete", "Bob"),
+                   d.Event(c, nxt[0], t + 2 + nxt[2] + i % 5, "start", nxt[1]),
+                   d.Event(c, nxt[0], t + 4 + nxt[2] + i % 5, "complete", nxt[1])]
+    layout, report = d.discover(events, routing=routing, idle_waits=True)
+    assert not _errors(layout)
+    assert [w["block"] for w in report["idle_waits"]] == ["Review"]
+    types = {b["name"]: b["type"] for b in layout["blocks"]}
+    into_wait = [l["source"] for l in layout["links"] if l["target"] == "idle_wait_Review"]
+    assert [l["source"] for l in layout["links"] if l["target"] == "Review"] == \
+        ["idle_wait_Review"]
+    assert [types[s] for s in into_wait] == (["DECIDE"] if routing == "markov" else ["STATION"])
+
+
+def test_idle_waits_cli_and_tool_flag(tmp_path, capsys):
+    from nagasim import agent_tools as T
+    rows = ["case,activity,timestamp,lifecycle,resource"] + [
+        f"{e.case},{e.activity},{e.time},{ {'ready': 'schedule'}.get(e.lifecycle, e.lifecycle)},"
+        f"{e.resource}" for e in _idle_office_events()]
+    log = _write(tmp_path, "\n".join(rows) + "\n")
+    out = tmp_path / "m.json"
+    assert d.main([str(log), "-o", str(out), "--idle-waits"]) == 0
+    assert "idle wait: idle_wait_Review before Review" in capsys.readouterr().out
+    assert "idle_wait_Review" in out.read_text(encoding="utf-8")
+    T.use_workspace(T.Workspace(tmp_path))
+    assert "idle_waits" not in T.call("import_event_log", path="log.csv", name="off")
+    on = T.call("import_event_log", path="log.csv", name="on", idle_waits=True)
+    assert on["idle_waits"] == [{"block": "Review", "delay": "idle_wait_Review"}]
+
+
+def _office_log(running: bool):
+    """A case a minute through five steps of about 20 minutes each, 100 cases in progress:
+    begun empty, or with the cases already running at its start (cut at time 0, as a log
+    exported from a running system is)."""
+    import numpy as np
+    rng = np.random.default_rng(5)
+    events = []
+    for i in range(1500):
+        t = float(i - 600 if running else i)
+        for k, took in enumerate(rng.exponential(20.0, 5)):
+            for when, lc in ((t, "start"), (t + took, "complete")):
+                if when >= 0:
+                    events.append(d.Event(f"c{i}", f"Step{k}", when, lc, ""))
+            t += took
+    return events
+
+
+def test_a_log_that_starts_empty_is_flagged_as_a_ramp_up():
+    """D632: the check flags a start from empty only when it can tell (30 cases arriving in
+    the first mean cycle time); the sample and the round trips' short logs never trip it."""
+    empty = {f["code"]: f for f in d.check_log(_office_log(False))["findings"]}
+    assert "ramp_up" in empty and "starts empty" in empty["ramp_up"]["what"]
+    assert d.discover(_office_log(False))[1]["next_steps"]["check"].count(d._ACTIONS["ramp_up"]) == 1
+    assert "ramp_up" not in {f["code"] for f in d.check_log(_office_log(True))["findings"]}
+    assert "ramp_up" not in {f["code"] for f in d.check_log(SAMPLE)["findings"]}
+    for model in ("job_shop_jackson.json", "job_shop_routed.json", "single_server.json"):
+        rec = TraceRecorder(max_events=10**8)
+        run_model(str(MODELS / model), replications=1, seed=1, trace=rec, run_length=3000,
+                  warmup=0)
+        assert "ramp_up" not in {f["code"] for f in
+                                 d.check_log(d.log_from_trace(rec))["findings"]}, model
 
 
 def test_cli_check_writes_no_model_and_names_a_bundled_sample(tmp_path, capsys, monkeypatch):

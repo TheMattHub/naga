@@ -527,6 +527,7 @@ class LoggedSimpyResource:
         """Count one grant, unless this request is a preempted job resuming."""
         self.busy.add(1, self.env.now)
         self._notify_bottleneck(self.env.now)
+        self.env.ctx.wake_power()
         # `if self._uncharged` keeps the common model (no preemption anywhere)
         # off the set lookup entirely.
         if self._uncharged and req in self._uncharged:
@@ -557,6 +558,7 @@ class LoggedSimpyResource:
         else:
             self.busy.add(-1, t)
             self._notify_bottleneck(t)
+            self.env.ctx.wake_power()
         result = self._core.release(req)
         self.log_usage(t, event_type="release")
         return result
@@ -1010,6 +1012,7 @@ class CapacityArbiter:
         res._down_blockers.add(blocker)
         if blocker.triggered:
             res.down_units.add(1, res.env.now)
+            res.env.ctx.wake_power()    # off_shift -> down: POWER() moves (#651)
         self._held.append(blocker)
 
     def set_schedule(self, value) -> None:

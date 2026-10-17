@@ -95,8 +95,9 @@ PROBLEM_CODES: dict[str, str] = {
     "E_FLOW_LEVEL": "A flow's \"from\" or \"to\" names no declared level.",
     "E_FLOW_EFFICIENCY": "A flow's efficiency is outside (0, 1].",
     "E_FLOW_UNKNOWN": "A FLOW(\"name\") call names a flow the model does not declare.",
+    "E_POWER_UNKNOWN": "A POWER(\"name\") call names no declared resource, fleet or charger.",
     "E_FLOW_TAG": "A flow's bus \"tag\" is not a string, or its \"priority\" is not a number "
-                  "(flows sharing a tag are summed by FLOWSUM).",
+                  "(flows sharing a tag are summed by FLOWSUM, so one tag must not mix time units).",
     "E_FLOW_PEAK_PRICE": "A flow's \"peak_price\" is not a number (a demand charge "
                          "is a tariff per unit of Peak Rate, billed once at the end of the run).",
     "E_TRANSFER_MODE": "A TRANSFER block's or an agent transfer action's mode is neither "
@@ -106,6 +107,11 @@ PROBLEM_CODES: dict[str, str] = {
                      "method or time_unit is unknown.",
     "E_SD_RK4_RANDOM": "A dynamic flow rate draws random numbers under RK4, which evaluates it "
                        "four times per step.",
+    "W_RATE_UNIT_READ": "A flow rate or a conversion feed reads FLOW(), FLOWSUM() or CONV() of a "
+                        "rate written per another time unit, and takes it unconverted.",
+    "W_RATE_UNIT_CHANGED": "Since 0.10.0 a flow's peak_price, thresholds and reported rates, and "
+                           "a conversion's CONV() and rates, are per their own time unit, not "
+                           "the base one.",
     "W_SD_RK4_BUS": "A dynamic flow rate reads FLOW()/FLOWSUM() under RK4, whose stages ignore "
                     "saturation.",
     "W_FLOW_CLOCK_NO_GRID": "A flow rate reads TNOW in a model with no simulation.sd step grid, so "
@@ -315,6 +321,8 @@ PROBLEM_CODES: dict[str, str] = {
                      "non-scalar free attribute.",
     "E_ORDER_ENTITY_TYPE": "An order names an entity type the model does not declare.",
     "E_ORDER_SOURCE": "An order's `source` is not a CREATE block in \"Orders\" arrival mode.",
+    "W_ORDER_FIELD": "An order attribute (or a bound/CSV order column) is named like a field of "
+                     "the entity itself and is skipped.",
     "W_ORDER_DUE_BEFORE_RELEASE": "An order's due date is before its release time.",
     "W_ORDERS_NOT_CONSUMED": "Orders are declared but no CREATE block is in \"Orders\" mode.",
     "W_CREATE_NO_ORDERS": "A CREATE block is in \"Orders\" mode but no order names it.",
@@ -667,7 +675,7 @@ PROBLEM_CODES: dict[str, str] = {
                         "accel <= 0, a bad payload_max/payload_derate/collaborative_speed, or "
                         "lacks the collaborative_speed an HRC block needs.",
     # -- batteries and charging (automation sub-project 2, D164-D166) -----------
-    "E_BATTERY": "A fleet's battery has capacity_kwh <= 0, a fraction outside 0-1, low >= target, "
+    "E_BATTERY": "A fleet's battery has a non-numeric capacity_kwh, a fraction outside 0-1, low >= target, "
                  "an unknown strategy, or lacks a field its strategy needs.",
     "E_CHARGER": "A charger has an empty, duplicate or already used name, an unknown node or "
                  "kind, points < 1, "

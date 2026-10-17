@@ -3,7 +3,174 @@
 
 # Logistics
 
-2 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+6 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+
+## Hub day: electrifying the ground support equipment
+
+The hub day of the turnaround workload model with its ground support equipment's energy priced and counted: diesel as it is, the same fleets electric at the same counts charging in a night window or whenever a vehicle is free, and the latter with spares. The question it answers: what do energy cost, CO2 and the grid's peak become, do departures stay on time, and does the extra capital pay back? Read on_time_departure, the flow summary (fuel and grid kWh, peak kW), the battery summary (depleted events) and the investment case across scenarios. Illustrative figures.
+
+```console
+naga run gse_electrification
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 570 |  |
+| `system/Avg Throughput Time` | 57.1 |  |
+| `system/Avg Queue Length` | 7.71 |  |
+| `system/Avg Resource Usage %` | 41.2 |  |
+| `user/on_time_departure` | 0.868 |  |
+| `user/turnaround_wide_min` | 86 |  |
+| `user/turnaround_narrow_min` | 56.7 |  |
+| `system/Total Cost` | 39,900 |  |
+
+## Container terminal: electrification
+
+The quay-to-yard terminal with its straddle carriers' energy priced and counted: diesel as it is, battery straddle carriers charging opportunistically, and AGVs on pack swap. The question it answers: what do energy cost, CO2 and the grid's peak become, and does the extra capital pay back? Read the flow summary (fuel and grid kWh, peak kW), the cost summary, and the investment case across scenarios. Illustrative figures.
+
+```console
+naga run terminal_electrification
+```
+
+```mermaid
+flowchart LR
+    b0["vessel_calls_1 (SUBMODEL)"]
+    b1["quay_crane_1 (SUBMODEL)"]
+    b2["truck_gate_1 (SUBMODEL)"]
+    b3["yard_block_1 (SUBMODEL)"]
+    b4["yard_block_2 (SUBMODEL)"]
+    b5["horizontal_transport_1 (SUBMODEL)"]
+    b6["Quay (STATION)"]
+    b7["Yard A in (STATION)"]
+    b8["Yard B in (STATION)"]
+    b9["Quay load (STATION)"]
+    b10["to_a (TRANSPORT)"]
+    b11["to_b (TRANSPORT)"]
+    b12["split (DECIDE)"]
+    b13["export (DECIDE)"]
+    b14["by_type (DECIDE)"]
+    b15["Yard out (DECIDE)"]
+    b16["done (DISPOSE)"]
+    b17["stacked (DISPOSE)"]
+    b18["loaded (DISPOSE)"]
+    b19["grid_connection_1 (SUBMODEL)"]
+    b0 --> b14
+    b14 --> b1
+    b14 --> b13
+    b13 --> b7
+    b13 --> b8
+    b1 --> b6
+    b6 --> b12
+    b12 --> b10
+    b12 --> b11
+    b10 --> b7
+    b11 --> b8
+    b7 --> b3
+    b3 --> b15
+    b8 --> b4
+    b4 --> b15
+    b15 --> b17
+    b5 --> b16
+    b15 --> b5
+    b9 --> b1
+    b1 --> b18
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 9,030 |  |
+| `system/Avg Throughput Time` | 544 |  |
+| `system/Avg Queue Length` | 482 |  |
+| `system/Avg Resource Usage %` | 35.2 |  |
+| `user/truck_gate_1/truck turn time` | 130 |  |
+| `system/Total Cost` | 182,000 |  |
+
+## Container terminal: quay to yard
+
+One berth with three quay cranes, straddle carriers between the quay and two yard blocks with an RTG each, a truck gate, and a week of synthetic vessel calls. The question it answers: how many straddle carriers per crane keep the cranes at their target moves per hour? In the results, read the crane pool's seizes (gross moves), the order summary (vessel turn time per call), the fleet summary (carrier utilisation and waiting) and the truck turn time. Illustrative figures.
+
+```console
+naga run terminal_quay_to_yard
+```
+
+```mermaid
+flowchart LR
+    b0["vessel_calls_1 (SUBMODEL)"]
+    b1["quay_crane_1 (SUBMODEL)"]
+    b2["truck_gate_1 (SUBMODEL)"]
+    b3["yard_block_1 (SUBMODEL)"]
+    b4["yard_block_2 (SUBMODEL)"]
+    b5["horizontal_transport_1 (SUBMODEL)"]
+    b6["Quay (STATION)"]
+    b7["Yard A in (STATION)"]
+    b8["Yard B in (STATION)"]
+    b9["Quay load (STATION)"]
+    b10["to_a (TRANSPORT)"]
+    b11["to_b (TRANSPORT)"]
+    b12["split (DECIDE)"]
+    b13["export (DECIDE)"]
+    b14["by_type (DECIDE)"]
+    b15["Yard out (DECIDE)"]
+    b16["done (DISPOSE)"]
+    b17["stacked (DISPOSE)"]
+    b18["loaded (DISPOSE)"]
+    b0 --> b14
+    b14 --> b1
+    b14 --> b13
+    b13 --> b7
+    b13 --> b8
+    b1 --> b6
+    b6 --> b12
+    b12 --> b10
+    b12 --> b11
+    b10 --> b7
+    b11 --> b8
+    b7 --> b3
+    b3 --> b15
+    b8 --> b4
+    b4 --> b15
+    b15 --> b17
+    b5 --> b16
+    b15 --> b5
+    b9 --> b1
+    b1 --> b18
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 9,030 |  |
+| `system/Avg Throughput Time` | 544 |  |
+| `system/Avg Queue Length` | 482 |  |
+| `system/Avg Resource Usage %` | 35.2 |  |
+| `user/truck_gate_1/truck turn time` | 130 |  |
+| `system/Total Cost` | 152,000 |  |
+
+## Hub day: turnaround workload (crews, ground equipment, on-time departures)
+
+A synthetic hub day for a ground handler: about 114 flights in three banks on ten stands (eight contact for narrow-bodies, two remote for wide-bodies). Each turnaround draws on one ramp crew on three shifts and on diesel ground equipment, one fleet per type. The flights are read from data/airport_flight_schedule.csv at run time, so tomorrow's file replaces today's. In the results, read on_time_departure (share of flights off block by their scheduled time), the turnaround times by aircraft class, the hourly crew and equipment series, and the request wait of each equipment fleet. Time 0 is 04:00. Synthetic data; the task times are estimates.
+
+```console
+naga run turnaround_workload
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 570 |  |
+| `system/Avg Throughput Time` | 57.1 |  |
+| `system/Avg Queue Length` | 7.71 |  |
+| `system/Avg Resource Usage %` | 41.2 |  |
+| `user/on_time_departure` | 0.868 |  |
+| `user/turnaround_wide_min` | 86 |  |
+| `user/turnaround_narrow_min` | 56.7 |  |
+| `system/Total Cost` | 36,700 |  |
 
 ## Warehouse with forklifts (floor plan)
 

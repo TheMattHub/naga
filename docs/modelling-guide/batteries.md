@@ -11,7 +11,7 @@ Add a `battery` to a fleet, as the fleet's `battery` key:
 |---|---|
 | `capacity_kwh` | kWh, > 0 |
 | `initial` | state of charge (SoC) at the start, 0-1, default 1.0 |
-| `low` | SoC below which a freed vehicle goes to charge |
+| `low` | SoC below which a freed or idle vehicle goes to charge |
 | `target` | SoC charged to, > `low`, default 1.0 |
 | `strategy` | `threshold` (default), `opportunity`, `swap` or `scheduled` |
 | `opportunity_below` | opportunity only: an idle vehicle below it charges when a point is free |
@@ -53,6 +53,18 @@ Declare chargers in the model's `chargers`:
   idle vehicles start an interruptible charge when a window opens. Outside
   windows the threshold rule still applies.
 
+A vehicle standing idle charges too, not only one just released. At the exact
+instant its `idle` draw takes its SoC below `low`, or below the lower of
+`opportunity_below` and `target` under opportunity, it plans its charge as if it
+had just been released: the same strategy, the same charger choice, and a held
+charge keeps its fleet slot. A vehicle that starts the run, comes back from a
+failure or a shift, or is put back by a state already below one of them plans at
+once; one that finds no charger waits for the next one down, and a held charge
+that finds every slot taken tries again when one frees. A run with an idle draw
+and a time limit runs to that limit; a run without one plans no idle charges,
+since they would keep it running for ever. With a time limit and a reachable
+charger, a fleet with an idle draw so never runs flat just by waiting for work.
+
 A vehicle picks the charger with the least drive time plus expected wait (its place
 in line behind the vehicles on a point, waiting or on their way, times the mean
 stay), ties by name. It never stops mid-job: the SoC may go below zero, which counts
@@ -74,6 +86,16 @@ simply never charge.
   `battery/<fleet>/Charging %` and the other columns.
 - Playback shows a charger at its node with its occupied points, and a SoC bar on
   each vehicle.
+
+## Workers and gantry cranes
+
+Every fleet kind takes the same `battery`: vehicles, workers (`kind: "worker"`) and
+gantry cranes (`motion: "gantry"`). A worker drains walking to a station, working
+there and standing idle, and goes to charge once its work item is released or while it
+stands idle, never in the middle of one; all four strategies apply. A gantry crane
+reaches a charger by a direct hop to the charger node's coordinates, so the charger
+needs no path. Set `capacity_kwh` to 0 to switch the battery off again: the fleet then
+runs as it did without one.
 
 A charger inside a submodel definition is a template (node `$base` or `$bay`): each instance
 gets its own copy, `<instance>/<name>`, which is what the results show.

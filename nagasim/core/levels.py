@@ -397,7 +397,7 @@ class Flow:
                  "tag", "priority", "scope", "peak_price", "min_rate", "comp_exprs",
                  "comp_frac", "thresholds",
                  "desired", "actual", "price", "impact_factor", "total", "cost", "impact",
-                 "peak", "limited_time", "starts", "_rate_before", "_start")
+                 "peak", "limited_time", "starts", "_rate_before", "_start", "per")
 
     def __init__(self, name, src, dst, rate_expr, efficiency=1.0,
                  price_expr=None, impact_expr=None, tag="", priority=0.0, scope=None,
@@ -442,6 +442,11 @@ class Flow:
         self.thresholds = tuple(thresholds)
         self.desired = self.actual = self.price = self.impact_factor = 0.0
         self._rate_before = 0.0
+        # Base time units per `rate_time_unit` (#678): the engine integrates in
+        # the base unit, but every rate it hands back -- FLOW(), FLOWSUM(), the
+        # trace, Avg/Peak Rate, the demand charge -- is `actual * per`, in the
+        # unit the flow's own rate is written in. Set by `build_level_system`.
+        self.per = 1.0
         self.reset_stats(0.0)
 
     def reset_stats(self, t: float) -> None:
@@ -451,7 +456,11 @@ class Flow:
 
     def avg_rate(self, t_end: float) -> float:
         span = t_end - self._start
-        return self.total / span if span > 0 else 0.0
+        return self.total / span * self.per if span > 0 else 0.0
+
+    @property
+    def peak_rate(self) -> float:
+        return self.peak * self.per
 
     def limited_fraction(self, t_end: float) -> float:
         span = t_end - self._start
@@ -460,7 +469,7 @@ class Flow:
     @property
     def peak_cost(self) -> float:
         """The demand charge: peak rate held x the tariff (PHASE4 D5)."""
-        return self.peak * self.peak_price
+        return self.peak_rate * self.peak_price
 
     def __repr__(self):
         return f"<Flow {self.name!r} rate={self.actual:g}>"
@@ -805,6 +814,13 @@ class LevelSystem:
         for flow in flows:
             if flow.tag:
                 self.tagged.setdefault(flow.tag, []).append(flow)
+        # FLOWSUM adds each flow per its own rate_time_unit (#678), so a sum
+        # over two units would be meaningless: refuse it rather than mix them.
+        for tag, members in self.tagged.items():
+            if len({flow.per for flow in members}) > 1:
+                raise LevelError(f"flows tagged '{tag}' have different rate_time_units "
+                                 f"({', '.join(flow.name for flow in members)}); "
+                                 "FLOWSUM needs one unit per tag")
         self._last_t = float(env.now)
         self._wake = env.event()
         self._series = ()           # filled by build_level_system, read for next_change
@@ -829,6 +845,15 @@ class LevelSystem:
         self._thresholded_levels = tuple(l for l in levels.values() if l.thresholds)
         # System dynamics grid (SD-1, D89-D91): off until `set_sd` turns it on.
         self._dynamic = tuple(r for r in self._rates if is_dynamic(r[0].rate_expr, auxes))
+        # A rate, price, emission factor or conversion feed reads POWER() (D600, #685):
+        # seizes, releases and charger sessions then wake this process
+        # (`ctx.wake_power`); no other model gets those events.
+        watched = [e for f in flows for e in (f.rate_expr, f.price_expr, f.impact_expr)
+                   if e is not None]
+        watched += [s.feed_expr for c in self.conversions for s in c.substrates
+                    if s.feed_expr is not None]
+        self.reads_power = any("POWER" in e.calls for x in watched
+                               for e in sd.reach(x, auxes))
         self.dt = None
         self.rk4 = False
         self._later = self._later_grid = self._varying_rates
@@ -958,10 +983,10 @@ class LevelSystem:
         if not flows:
             total = 0.0
         elif below is None:
-            total = math.fsum(flow.actual for flow in flows)
+            total = math.fsum(flow.actual * flow.per for flow in flows)
         else:
             limit = float(below)
-            total = math.fsum(flow.actual for flow in flows if flow.priority < limit)
+            total = math.fsum(flow.actual * flow.per for flow in flows if flow.priority < limit)
         self._sums[key] = total
         return total
 
@@ -1217,8 +1242,8 @@ class LevelSystem:
                     continue
                 if after > before:
                     flow.starts += 1
-                if threshold.variable:
-                    ctx.variables[threshold.variable] = after
+                if threshold.variable:     # the rate per the flow's own unit (#678)
+                    ctx.variables[threshold.variable] = after * flow.per
                     ctx.touch(("var", threshold.variable))      # PHASE5 O4
                 if threshold.signal:
                     ctx.raise_signal(threshold.signal)
@@ -1228,7 +1253,7 @@ class LevelSystem:
                 if ctx.bus.has_subscribers:
                     ctx.bus.emit("flow_threshold", block=None, t=env.now, resource=flow.name,
                                  state=threshold.signal or threshold.variable or "threshold",
-                                 value=after)
+                                 value=after * flow.per)
 
     def _component_rates(self) -> None:
         """Per-level component in/out rates (Bio-1 G2).
@@ -1678,8 +1703,8 @@ def build_level_system(env, layout: dict, series: dict) -> LevelSystem | None:
         name = str(entry.get("name", ""))
         if not name:
             raise LevelError("a flow has no name")
-        scale = base_factor("rate", entry.get("rate_time_unit", "base") or "base",
-                            ModelUnits(base_unit))
+        unit = entry.get("rate_time_unit", "base") or "base"
+        scale = base_factor("rate", unit, ModelUnits(base_unit))
         # A `$`-cloned flow carries its instance's submodel parameters, exactly
         # as an expanded BLOCK does (PHASE4 D3), so an asset's rate can read
         # its own typed parameters: "TS(profile) * kwp * pr".
@@ -1698,10 +1723,11 @@ def build_level_system(env, layout: dict, series: dict) -> LevelSystem | None:
             min_rate=_scaled(entry.get("min_rate"), scale),
             comp_exprs={str(key): _expr(value, names)
                         for key, value in (entry.get("components") or {}).items()},
-            thresholds=[_threshold(t) for t in entry.get("thresholds") or []],
+            thresholds=[_threshold(t, scale) for t in entry.get("thresholds") or []],
             scope=(ExpressionScope(ctx=env.ctx, locals=dict(locals_)) if locals_ else None),
             biflow=entry.get("biflow", False), hidden=entry.get("hidden", False),
             leak=_leak_of(entry.get("leak"), names)))
+        flows[-1].per = base_factor("time", unit, ModelUnits(base_unit))
 
     auxes = {name: expression for name, (expression, _locals)
              in (getattr(env.ctx, "auxiliaries", None) or {}).items()}
@@ -1816,8 +1842,9 @@ def _start_initials(system: LevelSystem, env, section: list, variables: set, aux
     system._before = {level: level.level for level in system.levels.values()}
 
 
-def _threshold(entry: dict) -> _Threshold:
-    return _Threshold(entry.get("value", 0.0), entry.get("direction", "falling"),
+def _threshold(entry: dict, scale: float = 1.0) -> _Threshold:
+    """*scale* turns a flow threshold's rate into the base unit (#678)."""
+    return _Threshold(float(entry.get("value", 0.0) or 0.0) * scale, entry.get("direction", "falling"),
                       entry.get("signal"), entry.get("variable"),
                       entry.get("cost", 0.0), entry.get("cost_item", ""),
                       entry.get("category", ""))

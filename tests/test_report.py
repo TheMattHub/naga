@@ -209,6 +209,18 @@ def test_report_no_experiment_section_when_not_given(single_server):
     assert "Scenario definitions" not in single_server[2]
 
 
+def test_scenario_goal_column_only_when_a_goal_exists_and_is_escaped():
+    from types import SimpleNamespace
+    from nagasim.report import _experiment_html
+    exp = SimpleNamespace(results={}, crn=True)
+    plain = {"scenarios": [{"name": "A", "overrides": [{"path": "p", "value": 1}]}]}
+    assert "<th>Goal</th>" not in _experiment_html(plain, exp)
+    hostile = {"scenarios": [{"name": "A", "goal": "<script>alert(1)</script>",
+                              "overrides": [{"path": "p", "value": 1}]}]}
+    doc = _experiment_html(hostile, exp)
+    assert "Goal" in doc and "<script>" not in doc and "&lt;script&gt;alert(1)&lt;/script&gt;" in doc
+
+
 # ---------------------------------------------------------------- svgcharts unit tests
 def test_nice_ticks_edge_cases():
     assert svgcharts.nice_ticks(5.0, 5.0)                       # constant series

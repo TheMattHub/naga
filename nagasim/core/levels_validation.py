@@ -7,6 +7,7 @@ any of this runs.
 """
 from __future__ import annotations
 
+import ast
 import math
 
 from nagasim.core import sd
@@ -14,7 +15,7 @@ from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.levels import (DEFAULT_BLEND_TOLERANCE, SD_METHODS, THRESHOLD_DIRECTIONS,
                                   _BUS_CALLS, _CLOCK_NAMES, _SAMPLER_CALLS, _half_up, is_dynamic)
 from nagasim.core.problems import problem
-from nagasim.core.timeunits import UNITS
+from nagasim.core.timeunits import UNITS, ModelUnits, base_factor
 from nagasim.core.utils import is_number as _is_number
 
 __all__ = ["validate_levels_structured", "LEAK_KINDS"]
@@ -149,7 +150,109 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
     _check_sd(problems, layout)
     _check_clock_rates(problems, layout)
     _check_conveyors(problems, layout)
+    _check_rate_units(problems, layout)
     return problems, levels, flows
+
+
+def _check_rate_units(problems: list, layout: dict) -> None:
+    """FLOW(), FLOWSUM() and CONV() give a rate per the flow's or conversion's own
+    time unit (#678), so a tag must have one unit, and a rate or feed that reads
+    one in another unit takes it unconverted: an error and a warning."""
+    units = ModelUnits((layout.get("simulation") or {}).get("time_unit") or "minutes")
+
+    def per(unit):
+        try:
+            return base_factor("time", unit or "base", units)
+        except (ValueError, KeyError):
+            return None                 # an unknown unit is reported elsewhere
+
+    hours = per("hours")
+    flows = [e for e in layout.get("flows") or [] if isinstance(e, dict)]
+    flow_per = {str(e.get("name")): per(e.get("rate_time_unit")) for e in flows}
+    conv_per = {str(e.get("name")): per(e.get("time_unit"))
+                for e in layout.get("conversions") or [] if isinstance(e, dict)}
+    tags: dict = {}
+    for index, entry in enumerate(flows):
+        if entry.get("tag") and isinstance(entry.get("tag"), str):
+            tags.setdefault(entry["tag"], []).append((index, entry))
+    tag_per = {}
+    for tag, members in tags.items():
+        pers = {flow_per[str(e.get("name"))] for _, e in members} - {None}
+        if len(pers) == 1:
+            tag_per[tag] = pers.pop()
+        if len(pers) < 2:
+            continue
+        first = flow_per[str(members[0][1].get("name"))]
+        odd = next(i for i, e in members if flow_per[str(e.get("name"))] != first)
+        listed = ", ".join(f"{e.get('name')}: {e.get('rate_time_unit') or 'base'}"
+                           for _, e in members)
+        problems.append(problem(
+            "E_FLOW_TAG", f"flows tagged '{tag}' have different rate_time_units ({listed})",
+            f"/flows/{odd}/rate_time_unit",
+            hint=f"set the same \"rate_time_unit\" on every flow tagged '{tag}' (the Energy "
+                 f"library uses \"hours\")"))
+
+    def check(text, own, who, at):
+        if own is None:
+            return
+        try:
+            expression = compile_expression(str(text), None)
+        except ExpressionError:
+            return                      # reported as E_EXPRESSION by the expression checks
+        reads = [(f'FLOW("{n}")', flow_per.get(n)) for n in expression.refs.get("FLOW", ())]
+        reads += [(f'CONV("{n}")', conv_per.get(n)) for n in expression.refs.get("CONV", ())]
+        # The literal tags, even beside a computed one (`bus_reads` is then None).
+        reads += [(f'FLOWSUM("{node.args[0].value}")', tag_per.get(node.args[0].value))
+                  for node in ast.walk(ast.parse(str(text), mode="eval"))
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == "FLOWSUM" and node.args
+                  and isinstance(node.args[0], ast.Constant)
+                  and isinstance(node.args[0].value, str)]
+        if "POWER" in expression.calls:         # kW: a rate per hour
+            reads.append(("POWER()", hours))
+        for call, other in reads:
+            if other is not None and other != own:
+                problems.append(problem(
+                    "W_RATE_UNIT_READ",
+                    f"{who}: {call} is per another time unit than this rate, and is read "
+                    f"unconverted", at,
+                    hint="give both the same time unit, or convert in the expression"))
+
+    # #683: a 0.10.0 change notice. A model from 0.9.x whose rates are written per another
+    # unit than the base one now prices, thresholds and reports them per that unit. A
+    # submodel instance's record (`<instance>/name`) is left out: a library asset wrote its
+    # numbers per its own unit, which is how 0.10.0 now reads them.
+    base = (layout.get("simulation") or {}).get("time_unit") or "minutes"
+    for index, entry in enumerate(flows):
+        unit = entry.get("rate_time_unit")
+        if "/" not in str(entry.get("name")) and flow_per[str(entry.get("name"))] not in (
+                None, 1.0) and (
+                entry.get("peak_price") or entry.get("thresholds")):     # 0 bills nothing
+            problems.append(problem(
+                "W_RATE_UNIT_CHANGED",
+                f"flow '{entry.get('name')}': since 0.10.0 this flow's peak_price/thresholds "
+                f"and reported rates are per {unit}, not per {base}; check the numbers",
+                f"/flows/{index}/rate_time_unit",
+                hint="a 0.9.x model gave them per the base time unit"))
+    for index, entry in enumerate(layout.get("conversions") or []):
+        if isinstance(entry, dict) and "/" not in str(entry.get("name"))                 and conv_per.get(str(entry.get("name"))) not in (None, 1.0):
+            problems.append(problem(
+                "W_RATE_UNIT_CHANGED",
+                f"conversion '{entry.get('name')}': since 0.10.0 its CONV() and reported "
+                f"rates are per {entry.get('time_unit')}, not per {base}; check the numbers",
+                f"/conversions/{index}/time_unit",
+                hint="a 0.9.x model gave them per the base time unit"))
+    for index, entry in enumerate(flows):
+        check(entry.get("rate") or "0", flow_per[str(entry.get("name"))],
+              f"flow '{entry.get('name')}'", f"/flows/{index}/rate")
+    for c_index, entry in enumerate(layout.get("conversions") or []):
+        if not isinstance(entry, dict):
+            continue
+        for s_index, spec in enumerate(entry.get("substrates") or []):
+            if isinstance(spec, dict):
+                check(spec.get("feed", "0"), per(spec.get("feed_time_unit")),
+                      f"conversion '{entry.get('name')}', substrate '{spec.get('name')}'",
+                      f"/conversions/{c_index}/substrates/{s_index}/feed")
 
 
 LEAK_KINDS = ("linear", "exponential")

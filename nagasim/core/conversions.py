@@ -163,10 +163,13 @@ class Conversion:
     the conversion itself needs none of it.
     """
 
-    __slots__ = ("name", "unit", "interval", "substrates", "index", "scope")
+    __slots__ = ("name", "unit", "interval", "substrates", "index", "scope", "per")
 
-    def __init__(self, name, interval, substrates, unit="", scope=None):
+    def __init__(self, name, interval, substrates, unit="", scope=None, per=1.0):
         self.name = name
+        # Base time units per the conversion's `time_unit` (#678): CONV() and the
+        # Avg/Peak Rate report the product per that unit, like a flow's rate.
+        self.per = float(per)
         self.unit = unit
         self.interval = float(interval)
         self.substrates = list(substrates)
@@ -271,7 +274,7 @@ def build_conversions(env, layout: dict, variables) -> list[Conversion]:
                                        scope or ExpressionScope(ctx=env.ctx))
                       for spec in entry.get("substrates") or []]
         conversion = Conversion(name, interval, substrates, str(entry.get("unit", "") or ""),
-                                scope)
+                                scope, per=unit_factor)
         for substrate, spec in zip(substrates, entry.get("substrates") or []):
             _seed_inventory(substrate, spec, interval)
         out.append(conversion)

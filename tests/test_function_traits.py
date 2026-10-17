@@ -18,7 +18,7 @@ def test_derived_sets_match_the_snapshot():
                                      "MEAN", *_NEAR, "KNN_SUM", "KNN_MEAN"}
     assert agents._SAMPLER_CALLS == levels._SAMPLER_CALLS
     assert agents._HELD_CALLS == {"LEVEL", "FLOW", "FLOWSUM", "CONV", "FRACTION", "AUX", "DELAY",
-                                  "NQ", "NR", "MR", "AVAILABLE", "IDLE", "NS"}
+                                  "NQ", "NR", "MR", "AVAILABLE", "IDLE", "NS", "POWER"}
     assert agents._GRID_CALLS == {"PATCH", "NEIGHBOURS", "NEIGHBOUR_SUM", "NEIGHBOUR_MEAN", "CELL_COUNT"}
     assert agents._LINK_CALLS == {"LINKED", "LINK_SUM", "LINK_MEAN", "IS_LINKED"}
     assert agents._PER_AGENT == (levels._SAMPLER_CALLS | agents._GRID_CALLS | agents._LINK_CALLS
@@ -39,7 +39,7 @@ def test_derived_sets_match_the_snapshot():
     assert expressions._NAMED_LOOKUPS == (
         "TS", "LEVEL", "FLOW", "CONV", "VAR", "AUX", "DELAY", "COUNT", "SUM", "MEAN", "AGENT",
         *_NEAR, "KNN_SUM", "KNN_MEAN", "NEIGHBOURS", "NEIGHBOUR_SUM",
-        "NEIGHBOUR_MEAN", "CELL_COUNT", "LINKED")
+        "NEIGHBOUR_MEAN", "CELL_COUNT", "LINKED", "POWER")
     assert expressions._STATE_LOOKUPS == ("NQ", "NR", "MR", "AVAILABLE", "IDLE", "NS")
     # schema.validate_layout_structured's population tuple, as it was spelled out.
     assert expressions.functions_with("population") == (

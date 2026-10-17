@@ -1,0 +1,13 @@
+id,release,due,quantity,entity_type
+MV01-D,120,1320,700,container_40
+MV01-L,120,1320,500,export_40
+MV02-D,1560,3120,900,container_40
+MV02-L,1560,3120,700,export_40
+MV03-D,3480,4440,500,container_40
+MV03-L,3480,4440,400,export_40
+MV04-D,5040,6720,1000,container_40
+MV04-L,5040,6720,900,export_40
+MV05-D,7200,8280,600,container_40
+MV05-L,7200,8280,500,export_40
+MV06-D,8640,10080,800,container_40
+MV06-L,8640,10080,700,export_40

@@ -1421,13 +1421,13 @@ class Model(Level):
         to: Level fed; omit for a sink outside the model.
         rate: Quantity per time unit: an expression over variables, TS(), TABLE(), LEVEL() and FLOW(). A negative value is clamped to 0 -- declare the reverse flow instead, or set "biflow".
         biflow: Bi-directional: a negative rate runs the flow backwards instead of being clamped to 0. Both ends must be outside the model or levels with "min": null and no capacity or power limit.
-        rate_time_unit: Unit the rate is per.
+        rate_time_unit: Unit the rate is per. FLOW(), FLOWSUM(), Avg Rate, Peak Rate, rate thresholds and peak_price read the flow in it too.
         efficiency: out = in * efficiency; the rest is a loss.
         price: Money per unit moved; integrated exactly into the flow's Cost and the model's Total Cost.
         emission_factor: Impact per unit moved (emissions, water, waste), integrated into Total Impact.
         tag: Bus tag: every flow carrying it is summed by FLOWSUM("tag"), so a site's generation or demand is one number however many assets contribute to it.
         priority: Merit order within a tag: FLOWSUM("tag", p) sums only the flows with a priority below p -- what the devices dispatched before this one actually took.
-        peak_price: Demand charge: money per unit of the flow's Peak Rate, billed ONCE at the end of the run. A time-varying tariff is "price".
+        peak_price: Demand charge: money per unit of the flow's Peak Rate (per its rate_time_unit), billed ONCE at the end of the run. A time-varying tariff is "price".
         min_rate: Minimum load: the flow runs at 0 or at least this rate, never in between. The gate is applied to the rate the expression ASKED for, before saturation, so it adds no event of its own and cannot chatter.
         components: Share of what this flow moves that is each component, a number or an expression. Omit a component to carry the SOURCE level's own blend.
         leak: A conveyor's leakage outflow; set "rate": "" and "from" the conveyor.
@@ -1539,7 +1539,7 @@ class Model(Level):
         power: kW per vehicle while busy/idle/blocked/down/off_shift; absent keys are 0, "blocked" defaults to "busy" (a blocked vehicle is seized).
         graphic: Inline SVG vehicle picture (24 x 24 artboard, facing east) drawn for each unit on the floor plan; the editor's generic vehicle when absent.
         length_m: Vehicle length in metres for the floor-plan marker (default 2.4).
-        battery: Each vehicle carries a battery: it drains at the fleet's `power` kW per state and recharges at a charger. State of charge (SoC) values are fractions, 0 to 1.
+        battery: Each unit (vehicle, worker or gantry crane) carries a battery: it drains at the fleet's `power` kW per state and recharges at a charger once its job is done. State of charge (SoC) values are fractions, 0 to 1.
         """
 
     def add_motion_profile(

@@ -15,7 +15,7 @@ from nagasim.core.conversions import (validate_conversion_expressions,
                                       validate_conversions_structured)
 from nagasim.core.costs import validate_energy_price_structured, validate_fixed_costs_structured
 from nagasim.core.expressions import (LOOKUP_SECTION, RESERVED_NAMES, ExpressionError, functions_with,
-                                      is_variable_name, parse_target)
+                                      is_variable_name, name_sections, parse_target)
 from nagasim.core.initial_state import validate_initial_state_structured
 from nagasim.core.levels import TRANSFER_MODES
 from nagasim.core.levels_validation import validate_levels_structured
@@ -901,7 +901,12 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
             # DISTANCE("a", "b") names a station, an alias or a node (PHASE4 E1).
             "DISTANCE": (places, "E_DISTANCE_UNKNOWN", LOOKUP_SECTION["DISTANCE"], "place"),
             "AUX": (aux_names, "E_AUX_UNKNOWN", LOOKUP_SECTION["AUX"], "auxiliary"),     # PHASE5 SD-2
-            "DELAY": (delay_names, "E_DELAY_UNKNOWN", LOOKUP_SECTION["DELAY"], "delay")}
+            "DELAY": (delay_names, "E_DELAY_UNKNOWN", LOOKUP_SECTION["DELAY"], "delay"),
+            # POWER("name") (D600): the hint's section reads "resources", "fleets" or "chargers".
+            "POWER": ({str(r.get("name")) for key in name_sections("POWER")
+                       for r in layout.get(key) or [] if isinstance(r, dict) and r.get("name")},
+                      "E_POWER_UNKNOWN", 'resources", "fleets" or "chargers',
+                      "resource, fleet or charger")}
     # COUNT/SUM/MEAN("population", ...) (PHASE5 AB-1): population -> its type
     # entry, so `_check_expression` also checks a literal state/attribute (#134).
     agent_types = {e.get("name"): e for e in layout.get("agent_types") or [] if isinstance(e, dict)}

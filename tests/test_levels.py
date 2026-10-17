@@ -761,3 +761,73 @@ def test_levels_validation_lives_in_its_own_module():
 
     assert not hasattr(levels, "validate_levels_structured")
     assert levels_validation.LEAK_KINDS == ("linear", "exponential")
+
+
+# ============================================== a flow's own rate_time_unit (#678)
+def _per_hour(*flows):
+    return _minimal(flows=list(flows),
+                    simulation={"time_limit": 60.0, "replications": 1, "time_unit": "minutes"})
+
+
+def test_flow_rates_read_and_report_in_their_own_rate_time_unit():
+    """In a minutes model a flow written per hour is read per hour by FLOW() and
+    FLOWSUM(), reported per hour as Avg/Peak Rate, and its threshold is per hour."""
+    env = _run(_per_hour(
+        {"name": "a", "rate": "6", "tag": "bus", "rate_time_unit": "hours",
+         "thresholds": [{"value": 5, "direction": "rising", "variable": "a_rate"}]},
+        {"name": "b", "rate": "4", "tag": "bus", "rate_time_unit": "hours"},
+        {"name": "sum", "rate": 'FLOWSUM("bus")', "rate_time_unit": "hours"},
+        {"name": "base", "rate": 'FLOW("a")'}), 60.0)
+    a, total, base = _flow(env, "a"), _flow(env, "sum"), _flow(env, "base")
+    assert a.total == pytest.approx(6.0)                # one hour at 6 per hour
+    assert total.total == pytest.approx(10.0)
+    assert base.total == pytest.approx(360.0)           # FLOW("a") = 6, read per minute here
+    assert a.avg_rate(60.0) == pytest.approx(6.0)
+    assert total.peak_rate == pytest.approx(10.0)
+    assert a.starts == 1
+    assert env.ctx.variables["a_rate"] == pytest.approx(6.0)     # written per hour too
+
+
+def test_a_tag_mixing_rate_time_units_is_refused():
+    from nagasim.core.schema.migrate import ModelValidationError
+    with pytest.raises(ModelValidationError, match="rate_time_unit"):
+        _run(_per_hour({"name": "a", "rate": "6", "tag": "bus", "rate_time_unit": "hours"},
+                       {"name": "b", "rate": "1", "tag": "bus"}), 60.0)
+
+
+def _codes(layout):
+    from nagasim.core.schema import validate_layout_structured
+    return [(p.code, p.path) for p in validate_layout_structured(layout)
+            if p.code in ("E_FLOW_TAG", "W_RATE_UNIT_READ")]
+
+
+def test_validation_names_a_tag_mixing_rate_time_units():
+    from nagasim.core.schema import validate_layout_structured
+    layout = _per_hour({"name": "a", "rate": "6", "tag": "bus", "rate_time_unit": "hours"},
+                       {"name": "b", "rate": "1", "tag": "bus"})
+    found = [p for p in validate_layout_structured(layout) if p.code == "E_FLOW_TAG"]
+    assert [p.path for p in found] == ["/flows/1/rate_time_unit"]
+    assert "a: hours, b: base" in found[0].message and "Energy" in found[0].hint
+
+
+def test_validation_warns_a_read_across_time_units():
+    layout = _per_hour(
+        {"name": "a", "rate": "6", "tag": "bus", "rate_time_unit": "hours"},
+        {"name": "same", "rate": 'FLOWSUM("bus") + FLOW("a")', "rate_time_unit": "hours"},
+        {"name": "other", "rate": 'FLOWSUM("bus")'})
+    layout["conversions"] = [{"name": "D", "time_unit": "hours", "substrates": [
+        {"name": "s", "feed": 'FLOW("a")', "yield": 1.0, "curve": [[1, 1.0]]}]}]
+    layout["flows"].append({"name": "gas", "rate": 'CONV("D")', "rate_time_unit": "hours"})
+    assert _codes(layout) == [("W_RATE_UNIT_READ", "/flows/2/rate"),
+                              ("W_RATE_UNIT_READ", "/conversions/0/substrates/0/feed")]
+
+
+def test_validation_warns_power_outside_hours_and_literal_tags_beside_computed_ones():
+    layout = _per_hour(
+        {"name": "a", "rate": "6", "tag": "bus", "rate_time_unit": "hours"},
+        {"name": "kw", "rate": 'POWER("M")'},
+        {"name": "kwh", "rate": 'POWER("M")', "rate_time_unit": "hours"},
+        {"name": "mixed", "rate": 'FLOWSUM("bus") + FLOWSUM("b" + "us")'})
+    layout["resources"] = [{"name": "M", "capacity": 1, "power": {"busy": 10}}]
+    assert _codes(layout) == [("W_RATE_UNIT_READ", "/flows/1/rate"),
+                              ("W_RATE_UNIT_READ", "/flows/3/rate")]

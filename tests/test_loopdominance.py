@@ -76,3 +76,12 @@ def test_agent_tool_returns_loops_with_dominant_intervals(tmp_path):
     assert out["loop_count"] == 1 and out["truncated"] is False
     assert out["loops"][0]["loop"] == "R1" and out["loops"][0]["dominant"] == [[1.0, 3.0]]
     assert T.call("run_loop_dominance", model="flat")["error"]["code"] == "E_LOOP_GRID"
+
+
+@pytest.mark.parametrize("path", sorted(
+    p for p in MODELS.glob("*.json")
+    if "sd" in (json.loads(p.read_text(encoding="utf-8")).get("simulation") or {})),
+    ids=lambda p: p.stem)
+def test_every_bundled_sd_model_analyses(path):
+    """#678: FLOW() reads a flow's `per`, so the loop-dominance flow stand-ins carry one."""
+    assert len(loopdominance.analyse(str(path))["loops"]) > 0

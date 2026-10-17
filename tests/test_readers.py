@@ -433,7 +433,9 @@ def test_rest_over_tls_is_verified_and_a_token_never_goes_out_in_plain_text(rest
 
 def test_what_a_live_source_sends_is_data_and_only_data(rest_plant, tmp_path):
     """D225: a text from a plant is never written into a model field (it could be read as
-    a name or an expression); a number, a true/false value and an order book are."""
+    a name or an expression); a number, a true/false value and an order book are. A column
+    beyond the order fields rides along as an order attribute (#677): a value an expression
+    reads, never one it evaluates."""
     rows = [{"id": "WO-1", "quantity": 4, "unit": "__import__('os')", "ok": True,
              "entity_type": "Widget", "due": 480}]
     port, _seen = rest_plant({"/api/v2/orders": rows})
@@ -450,7 +452,8 @@ def test_what_a_live_source_sends_is_data_and_only_data(rest_plant, tmp_path):
     assert report.ok and resolved["simulation"]["replications"] == 4
     resolved, report = bind(transform="orders", target="orders", column="")
     assert report.ok and resolved["orders"] == [
-        {"id": "WO-1", "due": 480.0, "quantity": 4, "entity_type": "Widget"}]
+        {"id": "WO-1", "due": 480.0, "quantity": 4, "entity_type": "Widget",
+         "attributes": {"unit": "__import__('os')", "ok": "True"}}]
 
 
 def test_a_cycle_reads_its_live_sources_from_its_own_feed(rest_plant, tmp_path):

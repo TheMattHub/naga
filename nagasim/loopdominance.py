@@ -313,7 +313,7 @@ def analyse(layout, *, seed: int = 0, run_length=None, limit: int = 1000) -> dic
     system, memo = ctx.level_system, ctx.aux_memo
     base_unit = (lay.get("simulation") or {}).get("time_unit", "minutes")
 
-    setters, recorded, computed = [], [], {}
+    setters, recorded, computed, to_base = [], [], {}, {}
     for j, (section, name) in enumerate(order):
         column = None
         if section == "levels":
@@ -321,10 +321,16 @@ def analyse(layout, *, seed: int = 0, run_length=None, limit: int = 1000) -> dic
             setters.append(lambda v, o=stub: setattr(o, "level", v))
             column = f"level/{name}"
         elif section == "flows":
-            stub = system.flow_index[name] = SimpleNamespace(actual=0.0)
+            # Values here are base-unit rates; FLOW() and the trace are per the
+            # flow's own rate_time_unit (#678), so the stub carries `per` and a
+            # recorded column is turned back into the base unit.
+            per = base_factor("time", flows[name].get("rate_time_unit", "base") or "base",
+                              ModelUnits(base_unit))
+            stub = system.flow_index[name] = SimpleNamespace(actual=0.0, per=per)
             setters.append(lambda v, o=stub: setattr(o, "actual", v))
             if flows[name].get("from") in conveyors:
                 column = f"flow/{name}"
+                to_base[j] = 1.0 / per
             else:
                 computed[j] = _flow_eval(flows[name], ctx, base_unit)
         elif section == "delays":
@@ -344,7 +350,7 @@ def analyse(layout, *, seed: int = 0, run_length=None, limit: int = 1000) -> dic
         if column is not None:
             if column not in pivot:
                 raise ValueError(f"loop dominance: the run recorded no '{column}'")
-            values[j] = pivot[column].to_numpy(dtype=float)
+            values[j] = pivot[column].to_numpy(dtype=float) * to_base.get(j, 1.0)
             recorded.append(j)
 
     deps = {j: set() for j in computed}

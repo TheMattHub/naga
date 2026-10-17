@@ -362,3 +362,26 @@ def test_the_demo_chp_starts_are_counted_charged_and_bounded(demo):
     # The hysteresis band (two level thresholds writing chp_gate) keeps the
     # cycling to a few per day over 30 days, not one per event.
     assert 0 < chp["Starts"] < 30 * 12
+
+
+def test_an_hours_conversion_in_a_minutes_model_conserves_mass():
+    """#678: an hours feed into an hours conversion, read back by an hours flow, in a
+    model that counts minutes: one tonne in, the whole 100 Nm3 out, rates per hour."""
+    from nagasim.core.outputs import summarize_conversions
+    layout = _hourly(
+        conversions=[{"name": "D", "cohort_interval": 1, "time_unit": "hours", "substrates": [
+            {"name": "s", "feed": 'FLOW("feeding")', "feed_time_unit": "hours",
+             "yield": 100.0, "curve": [[4, 0.4], [10, 1.0]]}]}],
+        levels=[{"name": "Gas", "capacity": 1000, "initial": 0}],
+        flows=[{"name": "feeding", "rate": "1 if TNOW < 60 else 0", "rate_time_unit": "hours"},
+               {"name": "gas", "to": "Gas", "rate": 'CONV("D")', "rate_time_unit": "hours"}],
+        simulation={"time_limit": None, "warmup": 0, "replications": 1, "time_unit": "minutes"})
+
+    env = _run(layout, 20 * 60)
+    substrate = _substrate(env, "D", "s")
+    gas = env.ctx.level_system.flow_index["gas"]
+    assert substrate.fed == pytest.approx(1.0)
+    assert gas.total == pytest.approx(100.0) == substrate.produced
+    assert gas.peak_rate == pytest.approx(10.0)             # 0.4 x 100 Nm3 over 4 h
+    row = summarize_conversions(env).iloc[0]
+    assert row["Peak Rate"] == pytest.approx(10.0)

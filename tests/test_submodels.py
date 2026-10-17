@@ -1244,3 +1244,28 @@ def test_count_agent_send_spawn_and_a_send_block_inside_an_instance_name_its_own
     assert tell["params"]["to"] == {"population": "epi150/People"}
     assert [p for p in schema.validate_model_structured(model) if p.severity == "error"] == []
     api.run_model(model, seed=1)                  # every scoped name resolves at run time
+
+
+def test_a_blockless_definition_owns_resources_and_fleets_named_under_scoped():
+    """D615: a block-less asset has no `$` reference to trigger a clone, so
+    naming a resource or fleet under `scoped` is the trigger, as for a level
+    (item 9). Each instance gets its own copy, a failure follows its resource,
+    and the fleet template is consumed."""
+    pool = {"parameters": [{"name": "n", "default": 1}], "blocks": [], "links": [],
+            "scoped": {"resources": {"Crew": {"capacity": "n"}},
+                       "fleets": {"Tugs": {"count": "n"}}}}
+    flat = submodels.flatten(layout(
+        [block("a", "SUBMODEL", definition="Pool", arguments={"n": 2}),
+         block("b", "SUBMODEL", definition="Pool", arguments={"n": 5})],
+        [], {"Pool": pool},
+        resources=[{"name": "Crew", "capacity": 1}],
+        fleets=[{"name": "Tugs", "count": 1, "speed": 1.0, "home": "depot"}],
+        failures=[{"name": "sick", "resources": ["Crew"],
+                   "uptime": {"distribution": "Constant", "dist_params": {"value": 9.0}},
+                   "downtime": {"distribution": "Constant", "dist_params": {"value": 1.0}}}],
+    ))
+    assert {r["name"]: r["capacity"] for r in flat["resources"]} == {
+        "Crew": 1, "a/Crew": 2, "b/Crew": 5}
+    assert {f["name"]: f["count"] for f in flat["fleets"]} == {"a/Tugs": 2, "b/Tugs": 5}
+    assert {f["name"]: f["resources"] for f in flat["failures"]} == {
+        "sick": ["Crew"], "a/sick": ["a/Crew"], "b/sick": ["b/Crew"]}

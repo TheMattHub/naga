@@ -10,7 +10,7 @@ minutes](event-log-tutorial.md) walks through the bundled sample log, `job_shop_
 ## Draft a model
 
 A log is one row per event: the case, the activity, an instant and, when the log has them,
-the lifecycle (`schedule`, `start`, `complete`) and the resource.
+the lifecycle (`schedule`, `start`, `suspend`, `resume`, `complete`) and the resource.
 
 ```csv title="orders.csv"
 case,activity,timestamp,lifecycle,resource
@@ -51,6 +51,7 @@ and `naga export --python draft.json` turns it into builder code.
 | start and complete | service time (complete - start) and the wait before it |
 | schedule too | the wait before a case's first activity, and transfer times between activities |
 | complete only | the time since the case's previous event: a DELAY with no resource |
+| suspend and resume | the service time less the suspended time; the suspended time is reported, not modelled |
 | a resource column | the resources, each with the most it ever had in service at once |
 | one row per instance, with start and complete columns | the same as start and complete |
 
@@ -66,6 +67,15 @@ depends on the one before (a test on the log), and a few variants cover the case
 routes each variant as its own sequence instead (a ROUTE and STATION blocks). `--routing
 markov` or `--routing variants` forces one.
 
+**Idle waits.** Some work waits a long time at people or machines that are mostly free,
+because of a calendar, a choice or the customer, and no queue in a draft makes that wait. With
+`--idle-waits` (`idle_waits=True` in Python and in the agent tool), each activity the check
+flags as waiting long at mostly idle resources gets a DELAY before it, named
+`idle_wait_<activity>` and fitted to the log's waits the same way service times are. The
+report's `idle_waits` lists the activities that got one. Such a delay is a modelled wait, not a
+queue: it does not grow when the load does. The option is off by default, and then the draft
+is exactly as without it.
+
 ## Is my log good enough?
 
 `naga discover LOG --check` reads the log and writes no model. It names the columns it
@@ -80,9 +90,23 @@ naga discover job_shop_log --check
 
 The findings are the ones that move a draft's numbers: too few cases, complete events only,
 no `schedule` events, no resource, a log spanning few cycle times, cases running at its start
-or end, arrivals that drift over the log, crowd into working hours or into weekdays, work
-done in shifts, cases arriving in batches, overlapping activities, and rows dropped. The same
-check heads every report, so a draft always says what its log was like.
+or end, a log that starts empty, arrivals that drift over the log, crowd into working hours
+or into weekdays, work done in shifts, cases arriving in batches, overlapping activities, and
+rows dropped. The same check heads every report, so a draft always says what its log was like.
+
+A log that starts empty is told by its work in progress. The check compares the mean number
+of cases open over the log's first mean cycle time with that over the next one: a log begun
+with the system running gives about 1, one begun empty about 0.5, and under 0.6 is flagged.
+The finding is a warning when one mean cycle time is at least 5% of the time cases arrive
+over, and `ok` below that, where the ramp-up weighs little. Then the log's start is a ramp-up,
+so give the draft a warm-up before comparing it with a steady stretch, or draft from a later
+part of the log. The check says nothing when it cannot tell: fewer than 30 cases arrive in
+that first cycle time (a smaller count swings the ratio from 0.1 to 2), or a case has fewer
+than five activity instances on average (a running case enters the log at its first event,
+so with two or three a case a log begun running reads about 0.55). The bundled sample and
+short logs of our own models fall under the first rule, so they are never flagged. A log of
+complete cases, such as the three public ones below, starts empty by construction: no case
+began before its window.
 
 ## Next steps
 
@@ -124,43 +148,63 @@ the second half, with the drift in brackets.
 |---|---|---|---|---|---|
 | Sepsis Cases (a hospital) | whole log: 1,050 cases, 15,214 events, complete only | -5% (-17%) | +50% (+60%) | - | - |
 | BPI Challenge 2012 (loan applications) | first 9,372 of 13,087 cases: 190,000 of 262,200 events | +13% (-3%) | -97% (-12%) | 25% (24%) | -100% (11%) |
-| BPI Challenge 2017 (loan applications) | first 4,901 of 31,509 cases: 190,000 of 1.2 M events | -20% (-64%) | -8% (+8%) | 18% (22%) | -100% (13%) |
+| the same, `--idle-waits` | | +12% (-3%) | -16% (-12%) | 24% (24%) | 7% (11%) |
+| BPI Challenge 2017 (loan applications) | first 4,901 of 31,509 cases: 190,000 of 1.2 M events | -17% (-64%) | -14% (+8%) | 24% (27%) | -100% (35%) |
+| the same, `--idle-waits` | | -18% (-64%) | -13% (+8%) | 24% (27%) | 62% (35%) |
 
-Service and wait are the median gap over the activities with a start seen 30 times or more.
-The two BPI logs are over the 200,000 event ceiling, so each was cut to the cases in arrival
-order that fit 190,000 events; the ceiling was not raised. Three seeds each, the first half's
-window as warm-up. The scripts are in `benchmarks/eventlog/` and the numbers in its
-`results.json`.
+Service and wait are the median gap over the activities with a start seen 30 times or more;
+-100% means every wait came back as zero. The two BPI logs are over the 200,000 event
+ceiling, so each was cut to the cases in arrival order that fit 190,000 events; the ceiling
+was not raised. Three seeds each, the first half's window as warm-up. Sepsis has no idle
+waits, so `--idle-waits` changes nothing there. The scripts are in `benchmarks/eventlog/` and
+the numbers in its `results.json`.
 
-**Throughput is close, within or near the log's own drift.** In Sepsis the draft is 5% off
-while the halves differ by 17%; the publisher randomised each case's timestamps (keeping the
-times within it), so the arrivals there test the fit and nothing more. BPI 2017 starts empty
-on 1 January 2016, so its first half holds the ramp-up and the halves differ by 64%; a draft
-from that half runs at its arrival rate and comes out 20% short of the second. BPI 2012's
-13% follows from its cycle time, below: the draft's cases leave within hours, so its
-completions follow its arrivals at once, while the log's lag them by weeks.
+**Throughput follows the arrival rate of the half the draft came from.** In Sepsis the
+draft is 5% off while the halves differ by 17%; the publisher randomised each case's
+timestamps (keeping the times within it), so the arrivals there test the fit and nothing
+more. In BPI 2012 the draft's CREATE runs at the first half's 3.69 cases an hour, while the
+second half's cases arrive at 3.26, and the draft comes out 12% to 13% over the second half's
+completions. Against its own half it is 16% over, because that half completes fewer cases in
+its window than arrive in it; the empty start the check flags would do that, but it is not
+measured. In BPI 2017 the halves differ by 64%. The draft's CREATE runs at the first half's
+3.10 cases an hour, 9% under the second half's 3.40, and with 89% of the measured window's
+cases finished it comes out 17% to 18% short. Against its own half it is 128% over, as that
+half completes few of its cases within its window. So a draft takes its half's arrival rate,
+and in BPI 2017 it has not caught up with it within the measured window; the arrival rates
+are in `results.json`, and why each half completes fewer cases than arrive in its window is
+not measured.
 
-**Service times are right where the log shows them, and waits are not.** Drafted and run on
-the same half, BPI 2012's service times come back within 1.4% (median); against the other
-half the gap, 25%, is the log's own drift. In BPI 2017 the reader drops 73,675 rows whose
-lifecycle it does not read (suspend, resume, abort, withdraw), so a service time there
-includes the suspended hours and the times are heavy-tailed. The waits, however, come back as
-zero in both: in these offices a work item waits tens of hours (72 h on average for a
-follow-up call on an offer) at clerks who are busy 2% of the time or less. That is a calendar, a choice or the customer, not a queue, and a
-draft whose resources are free makes no queue. The check now names this ("activities wait
-long while the resources are mostly idle"), and the next steps say to model those waits by
-hand.
+**Service times are right where the log shows them.** Drafted and run on the same half, the
+service times come back within 1.4% (median) in BPI 2012 and within 4.7% in BPI 2017, where
+they were 19% off before suspend and resume were read. Against the other half the gaps, 25% and
+24%, are the log's own drift (24% and 27%). BPI 2017 has 58,771 suspend and resume rows: each
+pair's interval now leaves the service time (4,534 suspended instances, 51 hours suspended on
+average), and 550 repeated suspends with nothing running are ignored and counted. Its 14,904
+abort and withdraw rows each end their instance, which is dropped and counted; left open, an
+aborted instance took the next one's resume. So the service times are the log's own; what is
+left between the halves is the log changing.
 
-**Cycle time follows from where the log keeps its time.** BPI 2017 keeps most of a case's
-time in complete-only steps (waiting on the customer), which the draft runs as delays, so its
-cycle time is 8% off, inside the drift. BPI 2012 keeps it in the waits above, and the draft's
-cases finish in hours instead of weeks: 97% short. Sepsis's draft is 6% off the half it was
-drawn from and 50% off the other, as the halves themselves differ by 60%: its long tail of
-cases returning months later (416 of 1,050 cases arrive within the last 99th-percentile cycle
+**Waits come back with `--idle-waits`, and only then.** In these offices a work item waits
+tens of hours at clerks who are busy 2% of the time or less. That is a calendar, a choice or
+the customer, not a queue, so a draft whose resources are free gives every wait back as zero.
+With `--idle-waits` the check's flagged activities get a delay fitted to their waits: in BPI
+2012, all six activities with a start, and the median wait gap falls from 100% to 7%, inside
+the log's own 11%. In BPI 2017 the check flags two of the four, so the median gap only falls to
+62%: the two it does not flag still wait close to nothing. The delays are fitted to the log and do
+not grow with the load, so they suit a draft run at the log's load, not a what-if with more
+work.
+
+**Cycle time follows from where the log keeps its time.** BPI 2012 keeps it in the waits
+above: without the option the draft's cases finish in hours instead of weeks, 97% short;
+with it, 16% short against a drift of 12%. BPI 2017 keeps most of a case's time in
+complete-only steps (waiting on the customer), which the draft runs as delays, so its cycle
+time is 13% to 14% short with or without the option. Sepsis's draft is 6% off the half it was drawn
+from and 50% off the other, as the halves themselves differ by 60%: its long tail of cases
+returning months later (416 of 1,050 cases arrive within the last 99th-percentile cycle
 time) does not repeat from half to half. So run `--check` first: on these logs it flagged
-the idle waits, the dropped rows, the office hours and the cases cut at the end before a
-draft was made. Two causes it cannot see: a log that starts with an empty system (BPI 2017's
-ramp-up) and timestamps changed by the publisher (Sepsis).
+the idle waits, the empty start of all three, the office hours and the cases cut at the end
+before a draft was made. One cause it cannot see is timestamps changed by the publisher
+(Sepsis).
 
 The logs are from 4TU.ResearchData and are not shipped with Naga: Sepsis Cases (doi
 [10.4121/uuid:915d2bfb-7e84-49ad-a286-dc35f063a460](https://doi.org/10.4121/uuid:915d2bfb-7e84-49ad-a286-dc35f063a460)),
@@ -177,6 +221,15 @@ as their capacity, which is a lower bound; parallel work in one case is run one 
 the other; entity types, priorities, batching and decisions by data are not inferred. Without
 `schedule` events, a case is taken to arrive when its first activity starts, so the queue in
 front of it is not in the log.
+
+Suspended work is read but not modelled. A `suspend` and the `resume` after it take their
+interval out of the activity's service time, and the report gives each activity's suspended
+instances and mean suspended time (`activities[].suspended`, and an `[ok]` line in the check).
+The draft has no block for that time, so its cycle times come out shorter by it. A suspend
+with nothing running, a resume with nothing suspended, and a suspend never resumed (its time
+stays in the service time) are counted under `dropped`. An `abort` (`ate_abort`, `pi_abort`)
+or a `withdraw` ends its activity instance, which is dropped and counted, and one with
+nothing to end is ignored and counted; a row with any other lifecycle is dropped and counted.
 
 A log is treated as untrusted data. It is read whole into memory, not streamed, so its size is
 capped: a file over 50 MB, 200 000 events, 200 activities or 1000 resources is refused (a log

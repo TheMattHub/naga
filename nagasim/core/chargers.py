@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import simpy
 
-from nagasim.core.battery import charge_hours, power_at, soc_after
+from nagasim.core.battery import battery_of, charge_hours, power_at, soc_after
 from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.network import build_network
 from nagasim.core.problems import problem
@@ -95,6 +95,7 @@ class Charger:
         session = [capacity, s0, self.env.now, cap]
         self.running.append(session)
         self.peak_kw = max(self.peak_kw, self._power(self.env.now))
+        self.env.ctx.wake_power()
         return session
 
     def unplug(self, session: list) -> float:
@@ -103,7 +104,12 @@ class Charger:
         s1 = self.soc(session, self.env.now)
         self.running.remove(session)
         self.grid_kwh += session[0] * (s1 - session[1]) / self.efficiency
+        self.env.ctx.wake_power()
         return s1
+
+    def grid_kw(self, t: float) -> float:
+        """kW drawn from the grid at *t*: the batteries' charging power over the efficiency."""
+        return self._power(t) / self.efficiency
 
     def energy(self, t: float) -> float:
         """Grid kWh up to *t*: the sessions ended plus what the running ones
@@ -227,8 +233,8 @@ def _validate_batteries(layout: dict, chargers: dict, nodes: set, problems: list
     network = None
     for index, fleet in enumerate(layout.get("fleets") or []):
         battery = fleet.get("battery") if isinstance(fleet, dict) else None
-        if battery is None:
-            continue
+        if battery is None or (isinstance(battery, dict) and not battery_of(fleet)):
+            continue          # D601: capacity_kwh <= 0 is a fleet without a battery
         at = f"/fleets/{index}/battery"
         name = fleet.get("name", index)
 
@@ -239,9 +245,6 @@ def _validate_batteries(layout: dict, chargers: dict, nodes: set, problems: list
         if not isinstance(battery, dict):
             bad("E_BATTERY", "", "must be an object", "{\"capacity_kwh\": 2.0, \"low\": 0.25}")
             continue
-        if fleet.get("kind") == "worker":
-            bad("E_BATTERY", "", "a worker fleet has no battery",
-                "drop battery, or use kind \"vehicle\"")
         if not (_number(battery.get("capacity_kwh")) or 0) > 0:
             bad("E_BATTERY", "capacity_kwh", "capacity_kwh must be a number > 0",
                 "the usable energy of one vehicle's battery")

@@ -103,8 +103,9 @@ flow: each instance gets its own copy, priced on its own parameters.
 ### A peak charge: a flow's `peak_price`
 
 A demand charge is peak imported power times a tariff. A flow already tracks the highest rate it
-actually *held* (`Peak Rate`); `peak_price` is a plain number, money per unit of that peak, billed
-once at the end of the run. A tariff that varies over time is a flow `price`, not a peak price.
+actually *held* (`Peak Rate`); `peak_price` is a plain number, money per unit of that peak in the
+flow's own `rate_time_unit` (per kW for a kW flow written per hour), billed once at the end of the
+run. A tariff that varies over time is a flow `price`, not a peak price.
 
 ## Energy
 
@@ -121,6 +122,10 @@ evaluated once at run start) prices the total as cost kind `"energy"`, joining `
 `cost_summary` like any other cost. The `energy_summary` frame gives kWh per state, total kWh,
 average kW and energy cost, one row per resource (fleets included); it resets at warm-up like any
 other statistic and stays empty for a model with no `power` declared.
+
+`POWER("name")` reads a resource's, fleet's or charger's draw right now, in kW. A flow fed by it is
+therefore written per hour, `"rate": "POWER(\"Press\")", "rate_time_unit": "hours"`, and meters
+kWh in a model of any time unit.
 
 ## Material flow and bottlenecks
 

@@ -4,9 +4,33 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.9: a twin that follows the plant's orders
+## 0.10: from an event log to a model, energy on every fleet
 
 <!-- --8<-- [start:latest] -->
+- **Draft a model from an event log.** `naga discover` reads a CSV or XES log and writes a model
+  with arrivals, activity times, routing and resources, and a report that says how far to trust
+  it. `--check` tells you first whether the log is good enough. See
+  [Event log to model](event-log-to-model.md).
+
+```console
+naga discover job_shop_log --check
+naga discover job_shop_log -o draft.json --idle-waits
+```
+
+- **Energy on every fleet.** `POWER("name")` reads the kW a resource, fleet or charger draws, so an
+  energy flow can price, peak-bill and emit equipment power, and any vehicle, worker or gantry
+  fleet can carry a battery. Four new bundled models show it on a container terminal and an
+  airport apron.
+- **A debugger that steps back.** An agent's `debug_run` stops on a condition or one entity,
+  steps back exactly to the previous point and steps inside one submodel instance.
+- **Before you upgrade:** where a flow's `rate_time_unit` differs from the model's time unit, its
+  rates, thresholds and demand charge are now read per the flow's own unit, so those numbers
+  change (validation warns with `W_RATE_UNIT_CHANGED`), and flows sharing a tag in two units are
+  refused. A battery fleet with an idle draw now charges while idle.
+<!-- --8<-- [end:latest] -->
+
+## 0.9: a twin that follows the plant's orders
+
 - **The plant's orders in a forecast.** A plant mapping's `order` signal reads one row per order
   (product, quantity, due date, priority, release, status) from any MES or ERP, and links each job
   on the floor to its order. A forecast then releases the plant's own orders, each once, and never
@@ -20,7 +44,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 - **Before you upgrade:** a state now refuses a key the engine does not know, instead of ignoring
   it. A model file that stores a Live page, or a state that carries an order book, needs 0.9:
   0.8 refuses the first and silently ignores the book in the second.
-<!-- --8<-- [end:latest] -->
 
 ## 0.8: write a model without an editor
 

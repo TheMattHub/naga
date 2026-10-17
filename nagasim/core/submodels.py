@@ -89,7 +89,8 @@ Flattening rules, as built
    {"Machine": {"capacity": "servers"}}, "schedules": {...}, "failures": {...}}`
    -- per-field overrides applied to a CLONED `$` record at flatten time, once
    the record exists (so a definition with no `$Machine` reference anywhere is
-   unaffected even if it declares an override for one). Each value is a
+   unaffected even if it declares an override for one -- unless it has no
+   blocks at all, item 9). Each value is a
    number or an expression string, evaluated ONCE in the instance's own
    locals (the same scope PARAMETERS use); a field the record needs as an
    integer (a resource's `capacity`) is cast to int after evaluation.
@@ -127,7 +128,9 @@ Flattening rules, as built
    reference anywhere to trigger item 6. A level or flow the definition names
    under `scoped` is cloned for the instance for that reason alone:
    `"scoped": {"flows": {"Nrg PV": {}}}` says "this flow is mine", overrides or
-   not. A cloned flow carries the instance's parameters as `locals`, exactly as
+   not. Resources and fleets (D615) follow the same rule, so a block-less
+   crew pool or vehicle fleet asset owns its record, failures included.
+   A cloned flow carries the instance's parameters as `locals`, exactly as
    an expanded block does, so its `rate`/`price`/`emission_factor` expressions
    read them (`TS(profile) * kwp * pr`) and a `$name` inside one is scoped the
    same way it is inside a block param. Threshold signals and variables scope
@@ -627,7 +630,7 @@ class _Flattener:
             return
         inner_locals = self._arguments(definition, block, name, scope_locals)
         self._scoped[name] = (definition.get("scoped") or {}, inner_locals)
-        self._clone_scoped_records(name)
+        self._clone_scoped_records(name, blockless=not definition.get("blocks"))
         self._expand(definition.get("blocks", []), definition.get("links", []),
                      prefix=f"{name}/", scope_locals=inner_locals,
                      stack=stack + (definition_name,))
@@ -1222,13 +1225,17 @@ class _Flattener:
                                    f"{scope}/"))
         return clone_name
 
-    def _clone_scoped_records(self, scope: str) -> None:
-        """Clone the levels and flows the definition names under `scoped`.
+    def _clone_scoped_records(self, scope: str, blockless: bool = False) -> None:
+        """Clone the records the definition names under `scoped` (item 9).
 
         A continuous asset (a PV array, a grid connection) has NO blocks, so
         there is no `$` reference anywhere to trigger item 6. Naming the record
         under `scoped` is that trigger: `"scoped": {"flows": {"Nrg PV": {}}}`
         says "this flow is mine", with or without field overrides.
+
+        Resources and fleets follow the same rule in a *blockless* definition
+        only (D615, #684): one with blocks makes its own with `$Machine`, and a
+        `scoped` override there must not add a phantom copy of the shared one.
         """
         scoped_defs, _locals = self._scoped.get(scope, ({}, {}))
         for name in scoped_defs.get("levels") or {}:
@@ -1261,6 +1268,17 @@ class _Flattener:
         for name in scoped_defs.get("populations") or {}:
             if name in self.populations:
                 self._clone_population(name, scope)
+        # D615: a block-less asset (a crew pool, a vehicle fleet) owns its
+        # resource or fleet the same way; last, so a record a `$` reference
+        # above already cloned keeps its place in the flattened order.
+        if not blockless:
+            return
+        for name in scoped_defs.get("resources") or {}:
+            if name in self.resources:
+                self._clone_resource(name, scope)
+        for name in scoped_defs.get("fleets") or {}:
+            if name in self.fleets:
+                self._clone_fleet(name, scope)
 
     def _clone_failures_for(self, name: str, new_name: str, scope: str) -> None:
         """Every top-level failure naming the template resource just cloned as
