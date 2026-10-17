@@ -49,10 +49,6 @@ def _stream(seed, population, i):
     return AgentStream(seed, population, i)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 # ---------------------------------------------------------------- oracles
 def test_recovery_time_is_the_agents_own_rebuilt_stream():
     """CRN: agent i's recovery is `t_inf + EXPO(10)` drawn from ITS stream, after
@@ -169,7 +165,7 @@ def test_scan_rechecks_a_level_reading_condition_on_its_grid():
     layout = _model(watcher, A.Population("P", "W", 1), time_limit=20)
     layout.update(levels=[{"name": "Tank", "capacity": 100}],
                   flows=[{"name": "fill", "rate": "1", "to": "Tank"}])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     assert _run(layout).by_name["P"].entered[0] == 5.5
     del layout["agent_types"][0]["transitions"][0]["scan"]
     assert "W_AGENT_SCAN" in problem_codes(layout, severity=None)
@@ -238,7 +234,7 @@ def test_data_driven_population_problem_codes(count, tables, code):
     kind = dict(_TYPE, attributes=[{"name": "x", "init": {"column": "age"}}])
     layout = {"blocks": [], "links": [], "agent_types": [kind],
              "populations": [dict(_POP, count=count)], "tables": tables}
-    assert code in _codes(layout)
+    assert code in problem_codes(layout)
 
 
 def test_data_driven_population_json_schema_and_record_round_trip():
@@ -293,16 +289,16 @@ def _with(transition=None, **type_keys):
 ])
 def test_every_agent_problem_code(code, types, pops):
     layout = {"blocks": [], "links": [], "agent_types": types, "populations": pops}
-    assert _codes(layout) == {code}
+    assert problem_codes(layout) == {code}
 
 
 def test_a_valid_agent_model_has_no_problems_and_self_stays_inside_agents():
-    assert _codes({"blocks": [], "links": [], "agent_types": [_TYPE], "populations": [_POP]}) \
+    assert problem_codes({"blocks": [], "links": [], "agent_types": [_TYPE], "populations": [_POP]}) \
         == set()
-    assert not _codes(_sir())
+    assert not problem_codes(_sir())
     block = {"name": "A", "type": "ASSIGN",
              "params": {"assignments": [{"target": "entity.v", "expr": "self.x"}]}}
-    assert "E_EXPRESSION" in _codes({"blocks": [block], "links": []})
+    assert "E_EXPRESSION" in problem_codes({"blocks": [block], "links": []})
 
 
 # ---------------------------------------------------------------- format and API
@@ -426,7 +422,7 @@ def test_enter_then_send_block_answers_the_agent_that_made_the_entity():
     layout = _model(worker, A.Population("W", "Worker", 3), time_limit=10)
     layout["blocks"] = [delay("wait", 2), _block("tell", "SEND", message="done"), dispose("out")]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     w = _run(layout).by_name["W"]
     assert list(w.entered) == [3, 4, 5] and list(w.state) == [2, 2, 2]
     entities = w.system.env.ctx.all_entities
@@ -471,7 +467,7 @@ def test_every_ab2_problem_code(code, action, trigger):
     kind = _with(dict(trigger, actions=[action]))
     layout = {"blocks": [], "links": [], "agent_types": [kind], "populations": [_POP],
               "levels": [{"name": "Stock"}]}
-    assert _codes(layout) == {code}
+    assert problem_codes(layout) == {code}
 
 
 def test_payload_is_valid_in_a_message_transition_and_misuse_is_reported():
@@ -486,7 +482,7 @@ def test_payload_is_valid_in_a_message_transition_and_misuse_is_reported():
     assign = _block("a", "ASSIGN", assignments=[{"target": "self.x", "expr": "1"}])
     layout["blocks"] = [create("c"), send, assign, dispose("d")]
     layout["links"] = chain(*layout["blocks"])
-    assert _codes(layout) == {"E_SEND_TARGET", "E_ASSIGN_TARGET"}
+    assert problem_codes(layout) == {"E_SEND_TARGET", "E_ASSIGN_TARGET"}
 
 
 def test_action_records_round_trip_and_the_json_schema_accepts_every_action():
@@ -578,12 +574,12 @@ def test_every_ab3_space_problem_code(code, kind_keys, pop_keys):
     kind = _with({"timeout": "1"}, space=kind_keys)
     pop = dict(_POP, **pop_keys)
     layout = {"blocks": [], "links": [], "agent_types": [kind], "populations": [pop]}
-    assert _codes(layout) == {code}
+    assert problem_codes(layout) == {code}
 
 
 def test_a_valid_space_and_placement_have_no_problems():
     layout = _walker_model(placement={"kind": "table", "points": [[0, 0]]})
-    assert not _codes(layout)
+    assert not problem_codes(layout)
 
 
 def test_move_to_action_round_trips_and_the_json_schema_accepts_it():
@@ -715,7 +711,7 @@ def _spawn_layout(action, **pop_keys):
     ("E_POPULATION_COUNT", {"remove": "self"}, {"max_count": 2}),
 ])
 def test_every_c5_problem_code(code, action, pop_keys):
-    assert _codes(_spawn_layout(action, **pop_keys)) == {code}
+    assert problem_codes(_spawn_layout(action, **pop_keys)) == {code}
 
 
 def test_spawn_and_remove_round_trip_and_the_json_schema_accepts_them():
@@ -730,7 +726,7 @@ def test_spawn_and_remove_round_trip_and_the_json_schema_accepts_them():
     for action in (spawn.to_dict(), {"spawn": "P", "count": 1},    # a literal int count too
                    {"remove": {"population": "P", "where": "self.x > 1"}}):
         layout = _spawn_layout(action)
-        assert not _codes(layout)
+        assert not problem_codes(layout)
         errors = list(jsonschema.Draft202012Validator(build_json_schema()).iter_errors(
             migrate(dict(layout, simulation={"time_limit": 5}))))
         assert not errors, errors[0].message

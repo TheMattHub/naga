@@ -6767,10 +6767,10 @@
           "minLength": 1
         },
         "capacity": {
+          "x-quantity": "count",
           "type": "integer",
           "minimum": 0,
-          "default": 1,
-          "x-quantity": "count"
+          "default": 1
         },
         "discipline": {
           "type": "string",
@@ -6798,24 +6798,24 @@
           "description": "Name of a \"capacity\" schedule staffing this resource."
         },
         "cost_busy": {
+          "x-quantity": "rate",
+          "x-unit-key": "cost_time_unit",
           "type": "number",
           "minimum": 0,
-          "default": 0.0,
-          "x-quantity": "rate",
-          "x-unit-key": "cost_time_unit"
+          "default": 0.0
         },
         "cost_idle": {
+          "x-quantity": "rate",
+          "x-unit-key": "cost_time_unit",
           "type": "number",
           "minimum": 0,
-          "default": 0.0,
-          "x-quantity": "rate",
-          "x-unit-key": "cost_time_unit"
+          "default": 0.0
         },
         "cost_per_use": {
+          "x-quantity": "money",
           "type": "number",
           "minimum": 0,
-          "default": 0.0,
-          "x-quantity": "money"
+          "default": 0.0
         },
         "cost_time_unit": {
           "type": "string",
@@ -6921,12 +6921,12 @@
           "description": "Inline SVG token (24 x 24 artboard), usually copied from a library's entity preset; checked by core/svgsafe before it is drawn."
         },
         "holding_cost": {
-          "type": "number",
-          "minimum": 0,
-          "default": 0.0,
           "description": "WIP cost per entity per base time unit.",
           "x-quantity": "rate",
-          "x-unit-key": "holding_cost_time_unit"
+          "x-unit-key": "holding_cost_time_unit",
+          "type": "number",
+          "minimum": 0,
+          "default": 0.0
         },
         "holding_cost_time_unit": {
           "type": "string",
@@ -6970,6 +6970,10 @@
             }
           ],
           "default": 0
+        },
+        "trace": {
+          "type": "boolean",
+          "description": "Written by flattening for a variable an asset's picture follows; not authored by hand."
         }
       },
       "required": [
@@ -7055,9 +7059,9 @@
           }
         },
         "off_value": {
+          "description": "Value outside every band of a weekday schedule.",
           "type": "number",
-          "default": 0,
-          "description": "Value outside every band of a weekday schedule."
+          "default": 0.0
         },
         "exceptions": {
           "type": "array",
@@ -7220,10 +7224,10 @@
             "number",
             "string"
           ],
-          "default": 0,
           "description": "Time of the first sample of a regular series. An ISO timestamp instead of a number dates the series against \"simulation.calendar\".",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "default": 0.0
         },
         "timestamps": {
           "type": "array",
@@ -7234,11 +7238,11 @@
           "description": "Real ISO sample instants instead of \"times\"; converted once at build."
         },
         "step": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "Spacing of a regular series; exclusive with \"times\".",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "time_unit": {
           "type": "string",
@@ -7350,36 +7354,36 @@
             "number",
             "null"
           ],
-          "default": 0,
-          "description": "Lower bound; null for a stock unbounded below ."
+          "description": "Lower bound; null for a stock unbounded below .",
+          "default": 0.0
         },
         "initial": {
           "type": [
             "number",
             "string"
           ],
-          "default": 0,
-          "description": "Value at t=0, inside [min, capacity]; or an expression, evaluated once in dependency order ."
+          "description": "Value at t=0, inside [min, capacity]; or an expression, evaluated once in dependency order .",
+          "default": 0.0
         },
         "max_inflow": {
           "type": [
             "number",
             "null"
           ],
-          "minimum": 0,
           "description": "Largest total rate that may be ADDED to the level (a charge-power limit).",
           "x-quantity": "rate",
-          "x-unit-key": "rate_time_unit"
+          "x-unit-key": "rate_time_unit",
+          "minimum": 0
         },
         "max_outflow": {
           "type": [
             "number",
             "null"
           ],
-          "minimum": 0,
           "description": "Largest total rate that may be REMOVED from it (a discharge-power limit).",
           "x-quantity": "rate",
-          "x-unit-key": "rate_time_unit"
+          "x-unit-key": "rate_time_unit",
+          "minimum": 0
         },
         "rate_time_unit": {
           "type": "string",
@@ -7468,11 +7472,11 @@
           }
         },
         "blend_tolerance": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "default": 0.005,
           "description": "How far the fraction may drift from the value the outflows are drawing at before the engine re-evaluates. The crossing instant is solved in closed form; the component is conserved exactly whatever this is set to.",
-          "x-quantity": "ratio"
+          "x-quantity": "ratio",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "conveyor": {
           "type": "object",
@@ -7539,6 +7543,10 @@
             "transit_time"
           ],
           "additionalProperties": false
+        },
+        "locals": {
+          "type": "object",
+          "description": "Submodel parameter bindings, written by flattening; not authored by hand."
         }
       },
       "required": [
@@ -7600,7 +7608,8 @@
           ],
           "description": "Quantity per time unit: an expression over variables, TS(), TABLE(), LEVEL() and FLOW(). A negative value is clamped to 0 -- declare the reverse flow instead, or set \"biflow\".",
           "x-quantity": "rate",
-          "x-unit-key": "rate_time_unit"
+          "x-unit-key": "rate_time_unit",
+          "default": "0"
         },
         "biflow": {
           "type": "boolean",
@@ -7624,12 +7633,12 @@
           "description": "Unit the rate is per. FLOW(), FLOWSUM(), Avg Rate, Peak Rate, rate thresholds and peak_price read the flow in it too."
         },
         "efficiency": {
+          "description": "out = in * efficiency; the rest is a loss.",
+          "x-quantity": "ratio",
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1,
-          "default": 1,
-          "description": "out = in * efficiency; the rest is a loss.",
-          "x-quantity": "ratio"
+          "default": 1.0
         },
         "price": {
           "type": [
@@ -7637,36 +7646,38 @@
             "number"
           ],
           "description": "Money per unit moved; integrated exactly into the flow's Cost and the model's Total Cost.",
-          "x-quantity": "money"
+          "x-quantity": "money",
+          "default": "0"
         },
         "emission_factor": {
           "type": [
             "string",
             "number"
           ],
-          "description": "Impact per unit moved (emissions, water, waste), integrated into Total Impact."
+          "description": "Impact per unit moved (emissions, water, waste), integrated into Total Impact.",
+          "default": "0"
         },
         "tag": {
           "type": "string",
           "description": "Bus tag: every flow carrying it is summed by FLOWSUM(\"tag\"), so a site's generation or demand is one number however many assets contribute to it."
         },
         "priority": {
+          "description": "Merit order within a tag: FLOWSUM(\"tag\", p) sums only the flows with a priority below p -- what the devices dispatched before this one actually took.",
           "type": "number",
-          "default": 0,
-          "description": "Merit order within a tag: FLOWSUM(\"tag\", p) sums only the flows with a priority below p -- what the devices dispatched before this one actually took."
+          "default": 0
         },
         "peak_price": {
-          "type": "number",
           "default": 0,
           "description": "Demand charge: money per unit of the flow's Peak Rate (per its rate_time_unit), billed ONCE at the end of the run. A time-varying tariff is \"price\".",
-          "x-quantity": "money"
+          "x-quantity": "money",
+          "type": "number"
         },
         "min_rate": {
-          "type": "number",
-          "minimum": 0,
           "description": "Minimum load: the flow runs at 0 or at least this rate, never in between. The gate is applied to the rate the expression ASKED for, before saturation, so it adds no event of its own and cannot chatter.",
           "x-quantity": "rate",
-          "x-unit-key": "rate_time_unit"
+          "x-unit-key": "rate_time_unit",
+          "type": "number",
+          "minimum": 0
         },
         "components": {
           "type": "object",
@@ -7754,6 +7765,10 @@
           },
           "x-quantity": "rate",
           "x-unit-key": "rate_time_unit"
+        },
+        "locals": {
+          "type": "object",
+          "description": "Submodel parameter bindings, written by flattening; not authored by hand."
         }
       },
       "required": [
@@ -7778,12 +7793,12 @@
           "description": "Label for the product, e.g. Nm3."
         },
         "cohort_interval": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "default": 1,
           "description": "Feed accumulated over this interval closes into one cohort and releases from its CLOSE, so the mean delay is longer by up to half an interval. Curve knots round onto the same grid.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0
         },
         "time_unit": {
           "type": "string",
@@ -7818,7 +7833,8 @@
                 ],
                 "description": "Feed rate of this substrate: an expression, usually FLOW of its feeder.",
                 "x-quantity": "rate",
-                "x-unit-key": "feed_time_unit"
+                "x-unit-key": "feed_time_unit",
+                "default": "0"
               },
               "feed_time_unit": {
                 "type": "string",
@@ -7896,6 +7912,10 @@
             ],
             "additionalProperties": false
           }
+        },
+        "locals": {
+          "type": "object",
+          "description": "Submodel parameter bindings, written by flattening; not authored by hand."
         }
       },
       "required": [
@@ -7921,7 +7941,8 @@
             "number"
           ],
           "description": "A number, or an expression over the model's variables and data evaluated once at run start.",
-          "x-quantity": "money"
+          "x-quantity": "money",
+          "default": "0"
         },
         "category": {
           "type": "string",
@@ -7931,6 +7952,10 @@
           "type": "boolean",
           "default": false,
           "description": "An upfront investment: the investment case keeps it out of operating cost. Read by `nagasim.investment` only; Total Cost and every frame of a run are unchanged."
+        },
+        "locals": {
+          "type": "object",
+          "description": "Submodel parameter bindings, written by flattening; not authored by hand."
         }
       },
       "required": [
@@ -7949,29 +7974,29 @@
           "description": "A scenario name; empty is the model as saved."
         },
         "horizon_years": {
+          "description": "Years the saving is counted over; a fraction counts its last year pro rata.",
           "type": "number",
           "exclusiveMinimum": 0,
-          "default": 5,
-          "description": "Years the saving is counted over; a fraction counts its last year pro rata."
+          "default": 5
         },
         "discount_rate": {
-          "type": "number",
-          "default": 0.08,
           "description": "Per year, for the NPV.",
           "x-quantity": "ratio",
-          "minimum": 0
+          "type": "number",
+          "minimum": 0,
+          "default": 0.08
         },
         "operating_hours_per_year": {
+          "description": "The observed window is scaled to this.",
           "type": "number",
           "exclusiveMinimum": 0,
-          "default": 4000,
-          "description": "The observed window is scaled to this."
+          "default": 4000
         },
         "margin_per_part": {
-          "type": "number",
-          "default": 0,
           "description": "Money per extra good part; 0 is a pure cost case.",
-          "x-quantity": "money"
+          "x-quantity": "money",
+          "type": "number",
+          "default": 0.0
         },
         "throughput": {
           "type": "string",
@@ -8070,9 +8095,17 @@
           "type": "string"
         },
         "expr": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Any flow-rate expression; may call AUX() of another auxiliary (no cycles) and the inline delays."
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ],
+          "description": "A number, or any flow-rate expression; may call AUX() of another auxiliary (no cycles) and the inline delays.",
+          "default": "0"
         },
         "unit": {
           "type": "string",
@@ -8081,6 +8114,10 @@
         "diagram": {
           "type": "object",
           "description": "Position in the stock-and-flow view; ignored by the engine."
+        },
+        "locals": {
+          "type": "object",
+          "description": "Submodel parameter bindings, written by flattening; not authored by hand."
         }
       },
       "required": [
@@ -8123,7 +8160,8 @@
             "string",
             "number"
           ],
-          "description": "What is delayed: a rate for a material delay, a value otherwise; the sampled value for \"sample\" (required for every kind but \"noise\")."
+          "description": "What is delayed: a rate for a material delay, a value otherwise; the sampled value for \"sample\" (required for every kind but \"noise\").",
+          "default": "0"
         },
         "delay_time": {
           "type": [
@@ -8132,7 +8170,8 @@
           ],
           "description": "tau, in the model's base time unit (> 0); a pipeline reads it once at run start. Required for material/information/pipeline only.",
           "x-quantity": "time",
-          "x-unit-key": "delay_time_unit"
+          "x-unit-key": "delay_time_unit",
+          "default": "1"
         },
         "delay_time_unit": {
           "type": "string",
@@ -8162,11 +8201,11 @@
           "default": "material"
         },
         "order": {
+          "description": "Number of stages (material/information).",
+          "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1,
-          "description": "Number of stages (material/information).",
-          "x-quantity": "count"
+          "default": 1
         },
         "initial": {
           "type": [
@@ -8218,6 +8257,10 @@
         "diagram": {
           "type": "object",
           "description": "Position in the stock-and-flow view; ignored by the engine."
+        },
+        "locals": {
+          "type": "object",
+          "description": "Submodel parameter bindings, written by flattening; not authored by hand."
         }
       },
       "required": [
@@ -8641,10 +8684,10 @@
       "description": "A fixed-step schedule, ticks at phase + k * dt (k an integer, strictly after the run start). synchronous: every agent reads the tick-start state (on_tick for all, then tick transitions for all); random: a fresh permutation per tick; sequential: index order. A population's keys override its type's.",
       "properties": {
         "dt": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "activation": {
           "type": "string",
@@ -8656,11 +8699,11 @@
           "default": "synchronous"
         },
         "phase": {
-          "type": "number",
-          "minimum": 0,
-          "default": 0,
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "default": 0.0,
+          "minimum": 0
         },
         "time_unit": {
           "type": "string",
@@ -8796,11 +8839,11 @@
           "type": "string"
         },
         "scan": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "Re-check a rate or condition every scan time units (for inputs that move outside the agents).",
           "x-quantity": "time",
-          "x-unit-key": "scan_unit"
+          "x-unit-key": "scan_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "scan_unit": {
           "type": "string",
@@ -9056,11 +9099,11 @@
                   }
                 },
                 "patch_tick": {
-                  "type": "number",
-                  "exclusiveMinimum": 0,
                   "description": "Grid only: every patch diffuses, evaporates, then grows at k * patch_tick.",
                   "x-quantity": "time",
-                  "x-unit-key": "time_unit"
+                  "x-unit-key": "time_unit",
+                  "type": "number",
+                  "exclusiveMinimum": 0
                 },
                 "time_unit": {
                   "type": "string",
@@ -9091,10 +9134,10 @@
             "string",
             "number"
           ],
-          "default": "1",
           "description": "An expression (self, parameters, constants) a move_to evaluates once, in the space's own units per time unit.",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "default": "1"
         },
         "speed_unit": {
           "type": "string",
@@ -9172,13 +9215,14 @@
               "additionalProperties": false
             }
           ],
-          "x-quantity": "count"
+          "x-quantity": "count",
+          "default": 0
         },
         "max_count": {
-          "type": "integer",
-          "minimum": 0,
           "description": "The most agents alive at once when spawn actions add some (>= count); default count.",
-          "x-quantity": "count"
+          "x-quantity": "count",
+          "type": "integer",
+          "minimum": 0
         },
         "tick": {
           "$ref": "#/$defs/agent_tick"
@@ -9375,11 +9419,11 @@
       "description": "The path network: nodes at real layout coordinates and the segments joining them. Travel between two places is the shortest path along the segments, so a distance is geometry, not a guess.",
       "properties": {
         "length_factor": {
+          "description": "Multiplies the straight-line distance when a segment declares no explicit length. 1.0 is straight aisles.",
+          "x-quantity": "ratio",
           "type": "number",
           "exclusiveMinimum": 0,
-          "default": 1.0,
-          "description": "Multiplies the straight-line distance when a segment declares no explicit length. 1.0 is straight aisles.",
-          "x-quantity": "ratio"
+          "default": 1.0
         },
         "nodes": {
           "type": "array",
@@ -9429,10 +9473,10 @@
                   "number",
                   "null"
                 ],
-                "exclusiveMinimum": 0,
                 "description": "Null takes the straight-line distance x length_factor.",
                 "x-quantity": "length",
-                "x-unit-key": "length_unit"
+                "x-unit-key": "length_unit",
+                "exclusiveMinimum": 0
               },
               "length_unit": {
                 "type": "string",
@@ -9455,10 +9499,10 @@
                   "number",
                   "null"
                 ],
-                "exclusiveMinimum": 0,
                 "description": "Speed LIMIT on this segment; it changes travel time, never the route chosen.",
                 "x-quantity": "speed",
-                "x-unit-key": "speed_unit"
+                "x-unit-key": "speed_unit",
+                "exclusiveMinimum": 0
               },
               "speed_unit": {
                 "type": "string",
@@ -9471,9 +9515,9 @@
                   "integer",
                   "null"
                 ],
-                "minimum": 1,
                 "description": "Vehicles allowed on it at once (zone control, both directions of a two-way segment together); null is unlimited .",
-                "x-quantity": "count"
+                "x-quantity": "count",
+                "minimum": 1
               }
             },
             "required": [
@@ -9507,11 +9551,12 @@
           "default": "robot"
         },
         "speed": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "m/s.",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0
         },
         "speed_unit": {
           "type": "string",
@@ -9520,19 +9565,20 @@
           "description": "Unit `speed` and `collaborative_speed` are in."
         },
         "accel": {
+          "description": "m/s^2.",
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "m/s^2."
+          "default": 1.0
         },
         "payload_max": {
           "type": [
             "number",
             "null"
           ],
-          "exclusiveMinimum": 0,
           "description": "kg; null or absent = no payload derating.",
           "x-quantity": "mass",
-          "x-unit-key": "payload_unit"
+          "x-unit-key": "payload_unit",
+          "exclusiveMinimum": 0
         },
         "payload_unit": {
           "type": "string",
@@ -9550,21 +9596,21 @@
             "number",
             "null"
           ],
-          "exclusiveMinimum": 0,
-          "maximum": 1,
           "default": 1.0,
           "description": "Speed fraction at payload_max, linear from 1.0 at 0 kg.",
-          "x-quantity": "ratio"
+          "x-quantity": "ratio",
+          "exclusiveMinimum": 0,
+          "maximum": 1
         },
         "collaborative_speed": {
           "type": [
             "number",
             "null"
           ],
-          "exclusiveMinimum": 0,
           "description": "m/s; required when a block uses hrc \"collaborative\" or \"separation\".",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "exclusiveMinimum": 0
         }
       },
       "required": [
@@ -9586,10 +9632,10 @@
           "type": "string"
         },
         "count": {
+          "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1,
-          "x-quantity": "count"
+          "default": 1
         },
         "kind": {
           "type": "string",
@@ -9610,26 +9656,26 @@
           "description": "\"gantry\" travels directly between two nodes' coordinates (`speed_x`/`speed_y`/`hoist_time`), ignoring the path network and segment capacity; cannot be kind \"worker\"."
         },
         "speed_x": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "Gantry only: speed along x, distance per model time unit.",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "speed_y": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "Gantry only: speed along y, distance per model time unit.",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "hoist_time": {
-          "type": "number",
-          "minimum": 0,
-          "default": 0,
           "description": "Gantry only: fixed time added to every hop (raising and lowering the load), in `time_unit`.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "minimum": 0,
+          "default": 0.0
         },
         "units": {
           "type": "array",
@@ -9661,11 +9707,11 @@
           }
         },
         "loads": {
+          "description": "Entities one vehicle may carry on a tour: up to loads - 1 waiting TRANSPORTs ride with the one granted the vehicle. 1 on a worker fleet.",
+          "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1,
-          "description": "Entities one vehicle may carry on a tour: up to loads - 1 waiting TRANSPORTs ride with the one granted the vehicle. 1 on a worker fleet.",
-          "x-quantity": "count"
+          "default": 1
         },
         "arm": {
           "type": "string",
@@ -9677,11 +9723,11 @@
           "description": "Arm fleets only: a second holding place, so a cobot arriving loaded at a machine that holds a finished part picks it, places its own and carries the finished one on."
         },
         "speed": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "Loaded speed, distance per model time unit.",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "speed_unit": {
           "type": "string",
@@ -9690,23 +9736,31 @@
           "description": "Unit of every speed of the fleet."
         },
         "speed_empty": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "Speed when driving to a pick-up; defaults to `speed`.",
           "x-quantity": "speed",
-          "x-unit-key": "speed_unit"
+          "x-unit-key": "speed_unit",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "load_time": {
-          "type": "string",
-          "description": "Expression, in `time_unit`.",
+          "type": [
+            "number",
+            "string"
+          ],
+          "description": "Number or expression, in `time_unit`.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "default": "0"
         },
         "unload_time": {
-          "type": "string",
-          "description": "Expression, in `time_unit`.",
+          "type": [
+            "number",
+            "string"
+          ],
+          "description": "Number or expression, in `time_unit`.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "default": "0"
         },
         "time_unit": {
           "type": "string",
@@ -9760,21 +9814,24 @@
           "description": "Which idle vehicle serves a granted request."
         },
         "cost_busy": {
-          "type": "number",
           "x-quantity": "rate",
           "x-unit-key": "cost_time_unit",
-          "minimum": 0
+          "type": "number",
+          "minimum": 0,
+          "default": 0.0
         },
         "cost_idle": {
-          "type": "number",
           "x-quantity": "rate",
           "x-unit-key": "cost_time_unit",
-          "minimum": 0
+          "type": "number",
+          "minimum": 0,
+          "default": 0.0
         },
         "cost_per_use": {
-          "type": "number",
           "x-quantity": "money",
-          "minimum": 0
+          "type": "number",
+          "minimum": 0,
+          "default": 0.0
         },
         "cost_time_unit": {
           "type": "string",
@@ -9824,10 +9881,10 @@
           "description": "Inline SVG vehicle picture (24 x 24 artboard, facing east) drawn for each unit on the floor plan; the editor's generic vehicle when absent."
         },
         "length_m": {
-          "type": "number",
-          "minimum": 0,
           "description": "Vehicle length in metres for the floor-plan marker (default 2.4).",
-          "x-quantity": "length"
+          "x-quantity": "length",
+          "type": "number",
+          "minimum": 0
         },
         "battery": {
           "type": "object",
@@ -9929,44 +9986,47 @@
           "default": "charge"
         },
         "points": {
+          "description": "Vehicles served at once.",
+          "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1,
-          "description": "Vehicles served at once.",
-          "x-quantity": "count"
+          "default": 1
         },
         "power_kw": {
-          "type": "number",
-          "exclusiveMinimum": 0,
           "description": "kW per point; for \"swap\", the rate a removed pack recharges at.",
-          "x-quantity": "power"
+          "x-quantity": "power",
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "knee": {
+          "description": "Above this SoC the power falls linearly.",
+          "x-quantity": "ratio",
           "type": "number",
           "minimum": 0,
           "maximum": 1,
-          "default": 0.8,
-          "description": "Above this SoC the power falls linearly.",
-          "x-quantity": "ratio"
+          "default": 0.8
         },
         "taper_floor": {
+          "description": "Share of `power_kw` left at 100 %.",
+          "x-quantity": "ratio",
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1,
-          "default": 0.1,
-          "description": "Share of `power_kw` left at 100 %.",
-          "x-quantity": "ratio"
+          "default": 0.1
         },
         "efficiency": {
+          "description": "Grid kWh = battery kWh / efficiency.",
+          "x-quantity": "ratio",
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1,
-          "default": 1.0,
-          "description": "Grid kWh = battery kWh / efficiency.",
-          "x-quantity": "ratio"
+          "default": 1.0
         },
         "swap_time": {
-          "type": "string",
+          "type": [
+            "string",
+            "number"
+          ],
           "description": "Swap only: expression, in `swap_time_unit`.",
           "x-quantity": "time",
           "x-unit-key": "swap_time_unit",
@@ -9993,9 +10053,9 @@
             "integer",
             "null"
           ],
-          "minimum": 1,
           "description": "Swap only: charged packs in stock at the start; a swap waits for one. Absent = unlimited.",
-          "x-quantity": "count"
+          "x-quantity": "count",
+          "minimum": 1
         }
       },
       "required": [
@@ -10837,11 +10897,11 @@
             "number",
             "string"
           ],
-          "default": 0,
           "description": "When the order is released into the model. An ISO timestamp instead of a number needs a calendar.",
           "x-quantity": "time",
           "x-unit-key": "time_unit",
-          "minimum": 0
+          "minimum": 0,
+          "default": 0.0
         },
         "due": {
           "type": [
@@ -10920,10 +10980,10 @@
       "description": "Warm start: what is already in the system at t=0.",
       "properties": {
         "time": {
-          "type": "number",
           "description": "Timestamp of the snapshot this state came from; recorded for the report, never shifts the clock.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number"
         },
         "time_unit": {
           "type": "string",
@@ -11169,11 +11229,12 @@
                 "type": "object"
               },
               "age": {
-                "type": "number",
-                "minimum": 0,
                 "description": "Time already spent in the system before t=0.",
                 "x-quantity": "time",
-                "x-unit-key": "age_unit"
+                "x-unit-key": "age_unit",
+                "type": "number",
+                "minimum": 0,
+                "default": 0.0
               },
               "age_unit": {
                 "type": "string",
@@ -11384,11 +11445,11 @@
                   "number",
                   "string"
                 ],
-                "default": 0,
                 "description": "When the order is released into the model. An ISO timestamp instead of a number needs a calendar.",
                 "x-quantity": "time",
                 "x-unit-key": "time_unit",
-                "minimum": 0
+                "minimum": 0,
+                "default": 0.0
               },
               "due": {
                 "type": [
@@ -11498,18 +11559,18 @@
           "minimum": 0
         },
         "warmup": {
-          "type": "number",
-          "minimum": 0,
-          "default": 0,
           "description": "Statistics are reset at this time.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "minimum": 0,
+          "default": 0.0
         },
         "replications": {
+          "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1,
-          "x-quantity": "count"
+          "default": 1
         },
         "deterministic": {
           "type": "boolean",
@@ -11556,18 +11617,18 @@
               "type": "string"
             }
           ],
-          "default": 0,
           "description": "Money per kWh, a number or an expression, evaluated once at run start. Prices every resource/fleet's \"power\".",
-          "x-quantity": "money"
+          "x-quantity": "money",
+          "default": 0
         },
         "entity_log_limit": {
           "type": [
             "integer",
             "null"
           ],
-          "minimum": 0,
           "description": "Cap on retained entity-log rows.",
-          "x-quantity": "count"
+          "x-quantity": "count",
+          "minimum": 0
         },
         "record_logs": {
           "type": "boolean",
@@ -11579,19 +11640,20 @@
             "integer",
             "null"
           ],
-          "minimum": 0,
           "description": "How many samples the time-series OUTPUT sampler takes over a time-limited run (default 200).",
-          "x-quantity": "count"
+          "x-quantity": "count",
+          "minimum": 0,
+          "default": 200
         },
         "timeseries_interval": {
           "type": [
             "number",
             "null"
           ],
-          "exclusiveMinimum": 0,
           "description": "Fixed sampling interval for a draining run, which has no horizon to divide.",
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "minimum": 0
         },
         "timeseries_counts": {
           "type": "array",
@@ -11608,11 +11670,11 @@
           "description": "OPTIONAL system-dynamics step grid. Absent, rates change only at events. Present, every rate reading LEVEL(), FRACTION() or TNOW is re-integrated at each multiple of \"dt\"; static rates and events inside a step stay exact.",
           "properties": {
             "dt": {
-              "type": "number",
-              "exclusiveMinimum": 0,
               "description": "Step, in \"time_unit\".",
               "x-quantity": "time",
-              "x-unit-key": "time_unit"
+              "x-unit-key": "time_unit",
+              "type": "number",
+              "exclusiveMinimum": 0
             },
             "method": {
               "type": "string",

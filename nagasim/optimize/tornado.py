@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nagasim import experiments
+from nagasim.core.schema import load_layout
 import numpy as np
 import pandas as pd
 from . import evaluation
@@ -26,7 +26,7 @@ def tornado(layout, factors, kpi: str, seed: int = 0, replications: int = 1,
     by Swing descending, the order a tornado chart's bars want.
     """
     factors = list(factors)
-    base_layout = evaluation.study_layout(experiments._as_layout(layout), [kpi], record_logs)
+    base_layout = evaluation.study_layout(load_layout(layout), [kpi], record_logs)
     seeds = list(range(seed, seed + max(int(replications), 1)))
     point = {f.name: f.from_unit(0.5) for f in factors}
 

@@ -214,11 +214,11 @@ def test_lookup_section_covers_what_sd_and_sd_loops_use():
     from nagasim.core.expressions import LOOKUP_SECTION, lookup_sections
     from nagasim.core import sd_loops
 
-    assert LOOKUP_SECTION["LEVEL"] == "levels"
-    assert LOOKUP_SECTION["FLOW"] == "flows"
-    assert LOOKUP_SECTION["FRACTION"] == "levels"
-    assert LOOKUP_SECTION["AUX"] == "auxiliaries"
-    assert LOOKUP_SECTION["DELAY"] == "delays"
+    assert LOOKUP_SECTION["LEVEL"] == ("levels",)
+    assert LOOKUP_SECTION["FLOW"] == ("flows",)
+    assert LOOKUP_SECTION["FRACTION"] == ("levels",)
+    assert LOOKUP_SECTION["AUX"] == ("auxiliaries",)
+    assert LOOKUP_SECTION["DELAY"] == ("delays",)
     assert sd._LOOKUP_SECTION == lookup_sections("LEVEL", "FRACTION", "FLOW", "AUX", "DELAY")
     assert sd_loops._FUNC_SECTION == lookup_sections("LEVEL", "AUX", "DELAY")
 
@@ -230,3 +230,11 @@ def test_resource_state_functions_are_nq_nr_mr_available_idle():
     from nagasim.core.expressions import functions_with
 
     assert functions_with("resource_state") == ("NQ", "NR", "MR", "AVAILABLE", "IDLE")
+
+
+def test_every_function_has_a_note():
+    """The expression reference and the agent format guide print FUNCTION_NOTES,
+    so a function without one prints nothing (B3: 15 had none)."""
+    from nagasim.core.expressions import FUNCTION_NOTES, FUNCTIONS
+
+    assert sorted(set(FUNCTIONS) - set(FUNCTION_NOTES)) == []

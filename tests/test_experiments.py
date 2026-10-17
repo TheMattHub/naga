@@ -24,7 +24,7 @@ CALL_CENTRE = MODELS_DIR / "call_centre_day.json"
 
 @pytest.fixture
 def mm1():
-    return experiments._as_layout(SINGLE_SERVER)
+    return api.load_layout(SINGLE_SERVER)
 
 
 def deterministic_layout(max_arrivals=20):
@@ -54,7 +54,7 @@ def deterministic_layout(max_arrivals=20):
 
 def test_every_addressable_section_can_be_overridden():
     """One override per section of the grammar, applied in one call."""
-    layout = experiments._as_layout(CALL_CENTRE)
+    layout = api.load_layout(CALL_CENTRE)
     layout["resource_sets"] = [{"name": "Pool", "members": ["Agents"], "rule": "PreferredOrder"}]
     layout["variables"] = [{"name": "target_sl", "initial": 20}]
     layout["failures"] = [{"name": "outage", "resources": ["Agents"],
@@ -360,7 +360,7 @@ def test_a_scenario_set_is_the_same_run_over_design_points(worker_pool):
     """PHASE4 T3: with ONE replication per scenario there is nothing to spread
     within a scenario -- the tasks are (scenario, replication) pairs, and the
     numbers must not move."""
-    layout = experiments._as_layout(SINGLE_SERVER)
+    layout = api.load_layout(SINGLE_SERVER)
     layout["scenarios"] = [{"name": f"cap {c}", "overrides": [
         {"path": "resources.Server.capacity", "value": c}]} for c in (2, 3, 4)]
 
@@ -514,11 +514,11 @@ def test_scenarios_survive_a_save_and_load_round_trip(tmp_path, mm1):
                          "overrides": [{"path": "resources.Server.capacity", "value": 2}]}]
     path = tmp_path / "m.json"
     path.write_text(json.dumps(mm1))
-    assert experiments._as_layout(path)["scenarios"] == mm1["scenarios"]
+    assert api.load_layout(path)["scenarios"] == mm1["scenarios"]
 
 
 def test_the_call_centre_example_ships_two_runnable_scenarios():
-    layout = experiments._as_layout(CALL_CENTRE)
+    layout = api.load_layout(CALL_CENTRE)
     names = [s["name"] for s in layout["scenarios"]]
     assert names == ["One more agent on the peak shift", "Faster handling"]
 

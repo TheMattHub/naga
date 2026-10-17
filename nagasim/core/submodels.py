@@ -207,12 +207,13 @@ import re
 
 from nagasim.core import sections
 from nagasim.core.block_registry import BLOCK_REGISTRY
-from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
+from nagasim.core.expressions import LOOKUP_SECTION, ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.problems import Problem, problem
+from nagasim.core.quantities import SECTION_FIELDS
 
 __all__ = ["SUBMODEL", "SUB_ENTRY", "SUB_EXIT", "PORT_TYPES", "ARG_KEY", "LITERAL_TYPES",
-           "REFERS_SECTIONS", "RECORD_SECTIONS", "SubmodelError", "flatten", "has_submodels",
-           "definition_ports", "port_block_name", "definition_references",
+           "REFERS_SECTIONS", "RECORD_SECTIONS", "LOCALS_SECTIONS", "SubmodelError", "flatten",
+           "has_submodels", "definition_ports", "port_block_name", "definition_references",
            "argument_names", "merge_definition", "merge_named", "resolve_extends"]
 
 SUBMODEL = "SUBMODEL"
@@ -233,7 +234,7 @@ REFERS_SECTIONS = {
     "conversion": ("conversions",),
     # PHASE4 D3: a profile an energy asset reads (TS()), picked by name in the
     # instance form exactly as a schedule or a table is.
-    "timeseries_input": ("timeseries_inputs",),
+    "timeseries_input": LOOKUP_SECTION["TS"],
     "table": ("tables",),
     "sequence": ("sequences",),
     "entity": ("entities",),
@@ -250,6 +251,33 @@ _CONTINUOUS_SECTIONS = sections.CONTINUOUS_SECTIONS
 
 # A quoted `$name` inside an expression: NQ("$Machine") -> NQ("cell_1/Machine").
 _QUOTED_SCOPED = re.compile(r"(['\"])\$([^'\"]*)\1")
+
+# The sections a `$name` clones from, tried in this order (a name in two takes the first).
+_BY_REFERENCE = ("populations", "agent_types", "resource_sets", "resources", "schedules",
+                 "levels", "fleets", "variables", "auxiliaries", "delays", "motion_profiles")
+# The sections a definition's `scoped` entry clones, in this order: the flattened record order.
+_SCOPED_ORDER = ("levels", "flows", "fixed_costs", "conversions", "chargers", "variables",
+                 "auxiliaries", "delays", "agent_types", "populations")
+# Records whose expressions read the instance's parameters by name: a clone carries them as
+# `locals` (a level only when its `initial` is an expression). The published schema declares
+# `locals` on exactly these and on a block (#694).
+LOCALS_SECTIONS = ("levels", "flows", "fixed_costs", "conversions", "auxiliaries", "delays")
+
+
+def _expression_fields(section: str) -> tuple:
+    """(child, field) of every expression field of *section*'s records in the field table,
+    child "" for the record's own field ("levels.conveyor" gives ("conveyor", "transit_time"))."""
+    return tuple((key.partition(".")[2], spec.name) for key, fields in SECTION_FIELDS.items()
+                 if key.partition(".")[0] == section
+                 for spec in fields if "expression" in spec.field_kinds)
+
+
+# From the field table (core/quantities.py), so a new field needs no edit here: the fields
+# whose `$` names a clone scopes (#695), and the integer fields a bound argument or a scoped
+# override is cast to (#696). A LEVEL's capacity is kWh or tonnes: never cast (DEVLOG #92).
+_EXPRESSIONS = {section: _expression_fields(section) for section in _CLONABLE_SECTIONS}
+_INT_FIELDS = {key: frozenset(spec.name for spec in fields if spec.type is int)
+               for key, fields in SECTION_FIELDS.items()}
 
 
 _BAD = object()     # "this argument does not fit the target type"
@@ -481,42 +509,10 @@ class _Flattener:
     def __init__(self, layout: dict):
         self.layout = layout
         self.definitions, extends_problems = resolve_extends(layout.get("submodels") or {})
-        self.resources = {r.get("name"): r for r in layout.get("resources", [])}
-        self.sets = {s.get("name"): s for s in layout.get("resource_sets", [])}
-        self.schedules = {s.get("name"): s for s in layout.get("schedules", [])}
-        self.failures = {f.get("name"): f for f in layout.get("failures", [])}
-        # PHASE4 D1: levels clone like resources, and their flows follow them
-        # like a failure follows its resource.
-        self.levels = {v.get("name"): v for v in layout.get("levels", []) or []}
-        self.flows = {f.get("name"): f for f in layout.get("flows", []) or []}
-        # PHASE4 D5: a fixed cost clones exactly like a flow -- an asset's
-        # capex reads that instance's own sizing parameters.
-        self.fixed_costs = {c.get("name"): c for c in layout.get("fixed_costs", []) or []}
-        # Bio-1: a digester clones per asset instance exactly as a flow does --
-        # two digesters are two independent cohort pipelines.
-        self.conversions = {c.get("name"): c for c in layout.get("conversions", []) or []}
-        # PHASE4 E2: a fleet clones like a resource -- which is what it IS
-        # (D68) -- so a forklift pool and an AGV pool are two instances of one
-        # asset with their own counts, speeds and home nodes.
-        self.fleets = {f.get("name"): f for f in layout.get("fleets", []) or []}
-        # D167: a charger clones like a fleet, at a node of its own instance.
-        self.chargers = {c.get("name"): c for c in layout.get("chargers", []) or []}
-        # D174: a motion profile clones like a resource, so each robot asset
-        # instance has its own speeds.
-        self.motion_profiles = {p.get("name"): p
-                                for p in layout.get("motion_profiles", []) or []}
-        # D72: a variable clones per instance like a resource, so two holders
-        # or two batteries each get their own hysteresis gate or setpoint.
-        self.variables = {v.get("name"): v for v in layout.get("variables", []) or []}
-        # PHASE5 SD-2: an auxiliary clones like a fixed cost -- an SD asset's
-        # "birth_rate" reads that instance's own parameters.
-        self.auxiliaries = {a.get("name"): a for a in layout.get("auxiliaries", []) or []}
-        # DEVLOG #123: a delay clones like an auxiliary. flatten runs before
-        # sd.expand, so a clone "cell_1/d" gets stages "cell_1/d~s1..n".
-        self.delays = {d.get("name"): d for d in layout.get("delays", []) or []}
-        # PHASE6 C1: a population clones like a level and brings its type.
-        self.agent_types = {t.get("name"): t for t in layout.get("agent_types", []) or []}
-        self.populations = {p.get("name"): p for p in layout.get("populations", []) or []}
+        # Every clonable section's template records, by name: what a `$name`
+        # or a `scoped` entry clones per instance (item 7, D72).
+        self.templates = {section: {r.get("name"): r for r in layout.get(section) or []}
+                          for section in _CLONABLE_SECTIONS}
         # Names a `refers_to` argument may point at (item 8), by section.
         self.declared = {section: {str(r.get("name", "")) for r in layout.get(section, []) or []
                                    if isinstance(r, dict)}
@@ -541,6 +537,9 @@ class _Flattener:
         # expression-valued overrides in). Filled in _expand_instance, read by
         # _apply_scoped when a $ record is cloned for that instance's scope.
         self._scoped: dict[str, tuple[dict, dict]] = {}
+        # `<instance>/<name>` of every instance whose asset picture follows a state
+        # source: a variable among them is marked `trace` (D608).
+        self._state_sources: set[str] = set()
 
     # -- entry point --------------------------------------------------------
     def run(self) -> dict:
@@ -562,6 +561,9 @@ class _Flattener:
             kept = [r for r in out.get(section, [])
                     if str(r.get("name", "")) not in templates.get(section, ())]
             out[section] = kept + list(self.clones[section].values())
+        for record in out.get("variables") or []:
+            if record.get("name") in self._state_sources:
+                record["trace"] = True
         return out
 
     def _continuous_templates(self) -> dict[str, set]:
@@ -576,7 +578,7 @@ class _Flattener:
             scoped = definition.get("scoped") or {}
             for section in _CONTINUOUS_SECTIONS:
                 out[section].update(name for name in (scoped.get(section) or {})
-                                    if name in getattr(self, section))
+                                    if name in self.templates[section])
         return out
 
     # -- phase 1: recursive expansion ---------------------------------------
@@ -630,6 +632,9 @@ class _Flattener:
             return
         inner_locals = self._arguments(definition, block, name, scope_locals)
         self._scoped[name] = (definition.get("scoped") or {}, inner_locals)
+        source = ((definition.get("info") or {}).get("graphics") or {}).get("state_source")
+        if source:
+            self._state_sources.add(f"{name}/{source}")
         self._clone_scoped_records(name, blockless=not definition.get("blocks"))
         self._expand(definition.get("blocks", []), definition.get("links", []),
                      prefix=f"{name}/", scope_locals=inner_locals,
@@ -829,148 +834,115 @@ class _Flattener:
         return out
 
     def _clone(self, name: str, scope: str) -> None:
-        if name in self.populations:
-            self._clone_population(name, scope)
-        elif name in self.agent_types:
-            self._clone_agent_type(name, scope)
-        elif name in self.sets:
-            self._clone_set(name, scope)
-        elif name in self.resources:
-            self._clone_resource(name, scope)
-        elif name in self.schedules:
-            self._clone_schedule(name, scope)
-        elif name in self.levels:
-            self._clone_level(name, scope)
-        elif name in self.fleets:
-            self._clone_fleet(name, scope)
-        elif name in self.variables:
-            self._clone_variable(name, scope)
-        elif name in self.auxiliaries:
-            self._clone_auxiliary(name, scope)
-        elif name in self.delays:
-            self._clone_delay(name, scope)
-        elif name in self.motion_profiles:
-            self._clone_motion_profile(name, scope)
+        section = next((s for s in _BY_REFERENCE if name in self.templates[s]), None)
         # Anything else (a signal, a user statistic, a store/block name) has no
         # top-level record: the scoped name is all it needs.
+        if section is not None:
+            self._clone_record(section, name, scope)
 
-    def _clone_resource(self, name: str, scope: str) -> str:
+    def _clone_record(self, section: str, name: str, scope: str) -> str:
+        """A per-instance copy `<scope>/<name>` of the template record *name*
+        of *section*, made once: the instance's `scoped` overrides and `$arg`s
+        applied, its parameters as `locals` where the section reads them, every
+        `$` name in an expression field scoped (and cloned in turn), then the
+        section's own step from `_AFTER`. A continuous template is consumed:
+        it leaves the flattened layout (item 9)."""
         new_name = f"{scope}/{name}"
-        if new_name in self.clones["resources"]:
+        if new_name in self.clones[section]:
             return new_name
-        record = copy.deepcopy(self.resources[name])
+        record = copy.deepcopy(self.templates[section][name])
         record["name"] = new_name
-        self.clones["resources"][new_name] = record        # before recursing: cycle-safe
-        bound = self._apply_scoped(record, "resources", name, scope)
-        schedule = record.get("capacity_schedule")
-        if schedule and schedule in self.schedules and "capacity_schedule" not in bound:
-            record["capacity_schedule"] = self._clone_schedule(schedule, scope)
-        self._clone_failures_for(name, new_name, scope)
+        self.clones[section][new_name] = record     # before recursing: cycle-safe
+        if section in self.consumed:
+            self.consumed[section].add(name)
+        bound = self._apply_scoped(record, section, name, scope)
+        _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
+        if locals_ and section in LOCALS_SECTIONS:
+            record["locals"] = dict(locals_)
+        for child, field in _EXPRESSIONS.get(section, ()):
+            holders = record.get(child) if child else [record]
+            for holder in holders if isinstance(holders, list) else [holders]:
+                if isinstance(holder, dict) and isinstance(holder.get(field), str) \
+                        and "$" in holder[field]:
+                    holder[field] = self._rewrite(holder[field], f"{scope}/")
+        after = self._AFTER.get(section)
+        if after is not None:
+            after(self, record, name, scope, bound)
         return new_name
 
-    def _clone_fleet(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template FLEET (PHASE4 E2).
-
-        A fleet IS a resource (D68), so this is `_clone_resource` with one
-        difference: the TEMPLATE is consumed. An idle resource template costs
-        nothing, but a leftover fleet would register vehicles of its own, take
-        a row in the resource and fleet frames, and need a home node that only
-        an instance knows.
-        """
-        new_name = f"{scope}/{name}"
-        if new_name in self.clones["fleets"]:
-            return new_name
-        record = copy.deepcopy(self.fleets[name])
-        record["name"] = new_name
-        self.clones["fleets"][new_name] = record        # before recursing: cycle-safe
-        self.consumed["fleets"].add(name)
-        bound = self._apply_scoped(record, "fleets", name, scope)
+    # -- the sections' own clone steps ----------------------------------------
+    # A field in `bound` came from an argument: a BINDING to a record someone
+    # else owns, never a trigger for a clone of its own (item 11, D73).
+    def _after_resource(self, record, name, scope, bound) -> None:
+        """A resource, or a fleet (a fleet IS a resource, D68): its schedule,
+        a fleet's `$` arm profile (D174) and its failures are the instance's."""
         schedule = record.get("capacity_schedule")
-        if schedule and schedule in self.schedules and "capacity_schedule" not in bound:
-            record["capacity_schedule"] = self._clone_schedule(schedule, scope)
+        if schedule and schedule in self.templates["schedules"] \
+                and "capacity_schedule" not in bound:
+            record["capacity_schedule"] = self._clone_record("schedules", schedule, scope)
         arm = record.get("arm")
-        if isinstance(arm, str) and arm[1:] in self.motion_profiles and arm.startswith("$"):
-            record["arm"] = self._clone_motion_profile(arm[1:], scope)
-        self._clone_failures_for(name, new_name, scope)
-        return new_name
+        if isinstance(arm, str) and arm.startswith("$") \
+                and arm[1:] in self.templates["motion_profiles"]:
+            record["arm"] = self._clone_record("motion_profiles", arm[1:], scope)
+        self._clone_failures_for(name, record["name"], scope)
 
-    def _clone_motion_profile(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template MOTION PROFILE (D174). The
-        template is left in place, like a resource's: an unused profile is
-        inert."""
-        new_name = f"{scope}/{name}"
-        if new_name not in self.clones["motion_profiles"]:
-            record = copy.deepcopy(self.motion_profiles[name])
-            record["name"] = new_name
-            self.clones["motion_profiles"][new_name] = record
-            self._apply_scoped(record, "motion_profiles", name, scope)
-        return new_name
+    def _after_set(self, record, name, scope, bound) -> None:
+        record["members"] = [self._clone_record("resources", m, scope)
+                             if m in self.templates["resources"] else m
+                             for m in record.get("members", [])]
 
-    def _clone_charger(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template CHARGER (D167).
+    def _after_charger(self, record, name, scope, bound) -> None:
+        """`"node": "$bay"` is the instance's own geometry node (D167)."""
+        node = record.get("node")
+        if isinstance(node, str) and node.startswith("$"):
+            record["node"] = f"{scope}/{node[1:]}"
 
-        Reached only through `scoped.chargers`: no block names a charger. The
-        template is consumed, like a fleet's -- left in place it would be a
-        real charger at a node only an instance has. `"node": "$bay"` is the
-        instance's own geometry node, `<instance>/bay`.
-        """
-        new_name = f"{scope}/{name}"
-        if new_name not in self.clones["chargers"]:
-            record = copy.deepcopy(self.chargers[name])
-            record["name"] = new_name
-            self.clones["chargers"][new_name] = record
-            self.consumed["chargers"].add(name)
-            self._apply_scoped(record, "chargers", name, scope)
-            node = record.get("node")
-            if isinstance(node, str) and node.startswith("$"):
-                record["node"] = f"{scope}/{node[1:]}"
-        return new_name
+    def _after_level(self, record, name, scope, bound) -> None:
+        """Only an expression `initial` reads the parameters (PHASE5 SD-2); a
+        `$` signal or variable on a threshold is per-instance, so two
+        warehouses do not share one reorder signal (item 9); and every flow
+        touching the level is cloned with it (PHASE4 D1, the failure rule)."""
+        if not isinstance(record.get("initial"), str):
+            record.pop("locals", None)
+        if record.get("thresholds"):
+            record["thresholds"] = self._rewrite(record["thresholds"], f"{scope}/")
+        for flow_name, entry in self.templates["flows"].items():
+            if name in (entry.get("from"), entry.get("to")):
+                self._clone_record("flows", flow_name, scope)
 
-    def _clone_variable(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template VARIABLE (item 10, D72).
+    def _after_flow(self, record, name, scope, bound) -> None:
+        """A `$` end is scoped; a literal level name is the asset's OWN level and
+        clones with it, unless it came through an argument: then it belongs to
+        someone else and is bound as given -- two feeders on one store (D73)."""
+        for side in ("from", "to"):
+            end = record.get(side)
+            if not isinstance(end, str) or not end:
+                continue
+            if end.startswith("$"):
+                record[side] = self._rewrite(end, f"{scope}/")
+            elif end in self.templates["levels"] and side not in bound:
+                record[side] = self._clone_record("levels", end, scope)
 
-        The TEMPLATE is left in place, like a resource template and unlike a
-        level: an unwritten variable is inert -- it costs one row and drives
-        nothing -- and a hand-written model may still read the bare name.
-        """
-        new_name = f"{scope}/{name}"
-        if new_name not in self.clones["variables"]:
-            record = copy.deepcopy(self.variables[name])
-            record["name"] = new_name
-            self._apply_scoped(record, "variables", name, scope)
-            self.clones["variables"][new_name] = record
-        return new_name
+    def _after_population(self, record, name, scope, bound) -> None:
+        """A population brings its type unless `type` is a binding (PHASE6 C1)."""
+        if record.get("type") in self.templates["agent_types"] and "type" not in bound:
+            record["type"] = self._clone_record("agent_types", record["type"], scope)
+        self._after_agent_type(record, name, scope, bound)
 
-    def _clone_set(self, name: str, scope: str) -> str:
-        new_name = f"{scope}/{name}"
-        if new_name in self.clones["resource_sets"]:
-            return new_name
-        record = copy.deepcopy(self.sets[name])
-        record["name"] = new_name
-        self.clones["resource_sets"][new_name] = record
-        record["members"] = [self._clone_resource(m, scope) if m in self.resources
-                             else m for m in record.get("members", [])]
-        return new_name
+    def _after_agent_type(self, record, name, scope, bound) -> None:
+        """Every `$` name, not only the expression fields: statechart actions
+        (`{"spawn": "$People"}`) and counts (`COUNT("$People")`) too."""
+        record.update(self._rewrite({k: v for k, v in record.items() if k not in bound},
+                                    f"{scope}/"))
 
-    def _clone_schedule(self, name: str, scope: str) -> str:
-        new_name = f"{scope}/{name}"
-        if new_name not in self.clones["schedules"]:
-            record = copy.deepcopy(self.schedules[name])
-            record["name"] = new_name
-            self._apply_scoped(record, "schedules", name, scope)
-            self.clones["schedules"][new_name] = record
-        return new_name
+    _AFTER = {"resources": _after_resource, "fleets": _after_resource,
+              "resource_sets": _after_set, "chargers": _after_charger, "levels": _after_level,
+              "flows": _after_flow, "populations": _after_population,
+              "agent_types": _after_agent_type}
 
     # -- scoped field overrides (item 7) and failure cloning (item 6) -------
-    # Fields a record needs as an integer, cast after evaluation, PER SECTION:
-    # a resource's capacity is a unit count, a LEVEL's capacity is kWh or
-    # tonnes and casting it truncated a 10.5 kWh battery to 10 (DEVLOG #92).
-    _INT_FIELDS = {"resources": frozenset({"capacity"}), "fleets": frozenset({"count"}),
-                   "populations": frozenset({"count", "max_count"}),
-                   "chargers": frozenset({"points", "spare_packs"})}
-
     def _int_field(self, section: str, field: str) -> bool:
-        return field in self._INT_FIELDS.get(section, ())
+        return field in _INT_FIELDS.get(section, ())
 
     def _resolve_record(self, record: dict, locals_: dict, scope: str, section: str) -> dict:
         """The record's own `{"$arg": ...}` fields, resolved for this instance."""
@@ -1037,194 +1009,6 @@ class _Flattener:
                 target[leaf] = int(value) if self._int_field(section, leaf) else value
         return bound
 
-    def _clone_level(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template LEVEL, plus a copy of every flow
-        that touches it (PHASE4 D1) -- the failure rule of item 6, applied to
-        the continuous side."""
-        new_name = f"{scope}/{name}"
-        if new_name in self.clones["levels"]:
-            return new_name
-        record = copy.deepcopy(self.levels[name])
-        record["name"] = new_name
-        self.clones["levels"][new_name] = record        # before recursing: cycle-safe
-        self.consumed["levels"].add(name)
-        self._apply_scoped(record, "levels", name, scope)
-        if isinstance(record.get("initial"), str):      # an expression (PHASE5 SD-2)
-            _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
-            if locals_:
-                record["locals"] = dict(locals_)
-            if "$" in record["initial"]:
-                record["initial"] = self._rewrite(record["initial"], f"{scope}/")
-        if record.get("thresholds"):
-            # A `$signal` / `$variable` on a threshold is per-instance too, so
-            # two warehouses do not share one reorder signal (item 9).
-            record["thresholds"] = self._rewrite(record["thresholds"], f"{scope}/")
-        for flow_name, entry in self.flows.items():
-            if name in (entry.get("from"), entry.get("to")):
-                self._clone_flow(flow_name, scope)
-        return new_name
-
-    def _clone_flow(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template FLOW (PHASE4 D3, item 9).
-
-        Reached two ways: the flow touches a `$` level (item 6), or the
-        definition names it under `scoped.flows` -- which is how a purely
-        CONTINUOUS asset, with no blocks at all to carry a `$` reference, still
-        gets its own accounting flows. The clone carries the instance's
-        parameters as `locals`, so its rate, price and impact expressions read
-        them the way an expanded block's expressions do.
-        """
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["flows"]:
-            return clone_name
-        clone = copy.deepcopy(self.flows[name])
-        clone["name"] = clone_name
-        self.clones["flows"][clone_name] = clone        # before recursing: cycle-safe
-        self.consumed["flows"].add(name)
-        bound = self._apply_scoped(clone, "flows", name, scope)
-        _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
-        if locals_:
-            clone["locals"] = dict(locals_)
-        for field in ("rate", "price", "emission_factor"):
-            if isinstance(clone.get(field), str) and "$" in clone[field]:
-                clone[field] = self._rewrite(clone[field], f"{scope}/")
-        for side in ("from", "to"):
-            end = clone.get(side)
-            if not isinstance(end, str) or not end:
-                continue
-            if end.startswith("$"):
-                clone[side] = self._rewrite(end, f"{scope}/")
-            elif end in self.levels and side not in bound:
-                # Not `bound`: a literal level name inside the definition is the
-                # asset's OWN level and clones with it. A name that arrived
-                # through a `name` parameter belongs to someone else and is
-                # bound exactly as given -- two feeders on one store (D73).
-                clone[side] = self._clone_level(end, scope)
-        return clone_name
-
-    def _clone_fixed_cost(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template FIXED COST (PHASE4 D5).
-
-        Reached only through `scoped.fixed_costs`: a capex has no level and no
-        block to carry a `$` reference. The clone carries the instance's
-        parameters as `locals`, so "capacity_kwh * capex_per_kwh * rate" reads
-        that instance's sizing -- the cloned-flow rule, unchanged.
-        """
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["fixed_costs"]:
-            return clone_name
-        clone = copy.deepcopy(self.fixed_costs[name])
-        clone["name"] = clone_name
-        self.clones["fixed_costs"][clone_name] = clone
-        self.consumed["fixed_costs"].add(name)
-        self._apply_scoped(clone, "fixed_costs", name, scope)
-        _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
-        if locals_:
-            clone["locals"] = dict(locals_)
-        if isinstance(clone.get("amount"), str) and "$" in clone["amount"]:
-            clone["amount"] = self._rewrite(clone["amount"], f"{scope}/")
-        return clone_name
-
-    def _clone_conversion(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template CONVERSION (Bio-1 G1).
-
-        Reached through `scoped.conversions` or a `$` reference, like a fixed
-        cost: a conversion has no level and no block of its own. The clone
-        carries the instance's parameters as `locals`, so a substrate's feed
-        expression reads that digester's own feeder flow and its yield reads
-        that instance's catalogue row.
-        """
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["conversions"]:
-            return clone_name
-        clone = copy.deepcopy(self.conversions[name])
-        clone["name"] = clone_name
-        self.clones["conversions"][clone_name] = clone
-        self.consumed["conversions"].add(name)
-        self._apply_scoped(clone, "conversions", name, scope)
-        _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
-        if locals_:
-            clone["locals"] = dict(locals_)
-        for substrate in clone.get("substrates") or []:
-            for field in ("feed",):
-                if isinstance(substrate.get(field), str) and "$" in substrate[field]:
-                    substrate[field] = self._rewrite(substrate[field], f"{scope}/")
-        return clone_name
-
-    def _clone_auxiliary(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template AUXILIARY (PHASE5 SD-2), reached
-        through `scoped.auxiliaries` or an `AUX("$name")` reference: the fixed
-        cost rule -- the clone carries the instance's parameters as `locals`
-        and its own `$` references are scoped (and cloned) in turn."""
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["auxiliaries"]:
-            return clone_name
-        clone = copy.deepcopy(self.auxiliaries[name])
-        clone["name"] = clone_name
-        self.clones["auxiliaries"][clone_name] = clone      # before recursing: cycle-safe
-        self.consumed["auxiliaries"].add(name)
-        self._apply_scoped(clone, "auxiliaries", name, scope)
-        _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
-        if locals_:
-            clone["locals"] = dict(locals_)
-        if isinstance(clone.get("expr"), str) and "$" in clone["expr"]:
-            clone["expr"] = self._rewrite(clone["expr"], f"{scope}/")
-        return clone_name
-
-    def _clone_delay(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template DELAY (DEVLOG #123): the
-        auxiliary rule, over the delay's three expression fields."""
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["delays"]:
-            return clone_name
-        clone = copy.deepcopy(self.delays[name])
-        clone["name"] = clone_name
-        self.clones["delays"][clone_name] = clone           # before recursing: cycle-safe
-        self.consumed["delays"].add(name)
-        self._apply_scoped(clone, "delays", name, scope)
-        _scoped_defs, locals_ = self._scoped.get(scope, ({}, {}))
-        if locals_:
-            clone["locals"] = dict(locals_)
-        for field in ("input", "delay_time", "initial"):
-            if isinstance(clone.get(field), str) and "$" in clone[field]:
-                clone[field] = self._rewrite(clone[field], f"{scope}/")
-        return clone_name
-
-    def _clone_population(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template POPULATION (PHASE6 C1, item 12):
-        its type is cloned with it unless `type` came from an argument (a
-        binding, item 11), and every `$` name in it is scoped."""
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["populations"]:
-            return clone_name
-        clone = copy.deepcopy(self.populations[name])
-        clone["name"] = clone_name
-        self.clones["populations"][clone_name] = clone      # before recursing: cycle-safe
-        self.consumed["populations"].add(name)
-        bound = self._apply_scoped(clone, "populations", name, scope)
-        if clone.get("type") in self.agent_types and "type" not in bound:
-            clone["type"] = self._clone_agent_type(clone["type"], scope)
-        clone.update(self._rewrite({k: v for k, v in clone.items() if k not in bound},
-                                   f"{scope}/"))
-        return clone_name
-
-    def _clone_agent_type(self, name: str, scope: str) -> str:
-        """A per-instance copy of a template AGENT TYPE (PHASE6 C1): parameters
-        take the instance's `scoped` overrides, and every `$` name in its
-        expressions and actions (`COUNT("$People")`, `{"spawn": "$People"}`)
-        is scoped -- and cloned -- in turn."""
-        clone_name = f"{scope}/{name}"
-        if clone_name in self.clones["agent_types"]:
-            return clone_name
-        clone = copy.deepcopy(self.agent_types[name])
-        clone["name"] = clone_name
-        self.clones["agent_types"][clone_name] = clone      # before recursing: cycle-safe
-        self.consumed["agent_types"].add(name)
-        bound = self._apply_scoped(clone, "agent_types", name, scope)
-        clone.update(self._rewrite({k: v for k, v in clone.items() if k not in bound},
-                                   f"{scope}/"))
-        return clone_name
-
     def _clone_scoped_records(self, scope: str, blockless: bool = False) -> None:
         """Clone the records the definition names under `scoped` (item 9).
 
@@ -1236,62 +1020,21 @@ class _Flattener:
         Resources and fleets follow the same rule in a *blockless* definition
         only (D615, #684): one with blocks makes its own with `$Machine`, and a
         `scoped` override there must not add a phantom copy of the shared one.
+        They come last, so a record a `$` reference above already cloned keeps
+        its place in the flattened order.
         """
         scoped_defs, _locals = self._scoped.get(scope, ({}, {}))
-        for name in scoped_defs.get("levels") or {}:
-            if name in self.levels:
-                self._clone_level(name, scope)
-        for name in scoped_defs.get("flows") or {}:
-            if name in self.flows:
-                self._clone_flow(name, scope)
-        for name in scoped_defs.get("fixed_costs") or {}:
-            if name in self.fixed_costs:
-                self._clone_fixed_cost(name, scope)
-        for name in scoped_defs.get("conversions") or {}:
-            if name in self.conversions:
-                self._clone_conversion(name, scope)
-        for name in scoped_defs.get("chargers") or {}:
-            if name in self.chargers:
-                self._clone_charger(name, scope)
-        for name in scoped_defs.get("variables") or {}:
-            if name in self.variables:
-                self._clone_variable(name, scope)
-        for name in scoped_defs.get("auxiliaries") or {}:
-            if name in self.auxiliaries:
-                self._clone_auxiliary(name, scope)
-        for name in scoped_defs.get("delays") or {}:
-            if name in self.delays:
-                self._clone_delay(name, scope)
-        for name in scoped_defs.get("agent_types") or {}:
-            if name in self.agent_types:
-                self._clone_agent_type(name, scope)
-        for name in scoped_defs.get("populations") or {}:
-            if name in self.populations:
-                self._clone_population(name, scope)
-        # D615: a block-less asset (a crew pool, a vehicle fleet) owns its
-        # resource or fleet the same way; last, so a record a `$` reference
-        # above already cloned keeps its place in the flattened order.
-        if not blockless:
-            return
-        for name in scoped_defs.get("resources") or {}:
-            if name in self.resources:
-                self._clone_resource(name, scope)
-        for name in scoped_defs.get("fleets") or {}:
-            if name in self.fleets:
-                self._clone_fleet(name, scope)
+        for section in _SCOPED_ORDER + (("resources", "fleets") if blockless else ()):
+            for name in scoped_defs.get(section) or {}:
+                if name in self.templates[section]:
+                    self._clone_record(section, name, scope)
 
     def _clone_failures_for(self, name: str, new_name: str, scope: str) -> None:
         """Every top-level failure naming the template resource just cloned as
         *new_name* gets its own per-instance clone: the resource list is
         rewritten to the instance's copy, under a distinct per-instance name."""
-        for failure_name, entry in self.failures.items():
-            if name not in entry.get("resources", []):
-                continue
-            clone_name = f"{scope}/{failure_name}"
-            clone = self.clones["failures"].get(clone_name)
-            if clone is None:
-                clone = copy.deepcopy(entry)
-                clone["name"] = clone_name
-                self.clones["failures"][clone_name] = clone
-                self._apply_scoped(clone, "failures", failure_name, scope)
-            clone["resources"] = [new_name if r == name else r for r in clone["resources"]]
+        for failure_name, entry in self.templates["failures"].items():
+            if name in entry.get("resources", []):
+                clone = self.clones["failures"][self._clone_record("failures", failure_name,
+                                                                   scope)]
+                clone["resources"] = [new_name if r == name else r for r in clone["resources"]]

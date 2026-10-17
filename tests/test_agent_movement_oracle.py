@@ -1,4 +1,4 @@
-"""Independent oracle tests for PHASE5 AB-3 (docs/PHASE5_PLAN.md, "Phase 5B:
+"""Independent oracle tests for PHASE5 AB-3 (docs/history/PHASE5_PLAN.md, "Phase 5B:
 agent-based modelling", the AB-3 milestone row: "space, cKDTree, movement,
 trace and 2D/3D playback; tests: arrival at dist/speed, NEAR vs brute force,
 network move time, trace_limit"), plus the "Design refinements" section

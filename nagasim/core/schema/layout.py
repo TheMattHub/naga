@@ -15,8 +15,8 @@ from nagasim.core.conversions import (validate_conversion_expressions,
                                       validate_conversions_structured)
 from nagasim.core.costs import validate_energy_price_structured, validate_fixed_costs_structured
 from nagasim.core.expressions import (LOOKUP_SECTION, RESERVED_NAMES, ExpressionError, functions_with,
-                                      is_variable_name, name_sections, parse_target)
-from nagasim.core.initial_state import validate_initial_state_structured
+                                      is_variable_name, parse_target)
+from nagasim.core.initial_state_validation import validate_initial_state_structured
 from nagasim.core.levels import TRANSFER_MODES
 from nagasim.core.levels_validation import validate_levels_structured
 from nagasim.core.movers import validate_fleets_structured, validate_workers_structured
@@ -36,8 +36,15 @@ from nagasim.core.sequences import validate_sequences_structured
 from nagasim.core.stats import RECORD_KINDS
 from nagasim.core.tables import validate_tables_structured
 from nagasim.core.timeseries_inputs import validate_timeseries_inputs_structured
-from nagasim.core.quantities import check_units
+from nagasim.core.quantities import check_bounds, check_units
 from nagasim.core.timeunits import LENGTH_UNITS, UNITS
+
+
+def _hint_sections(function: str) -> str:
+    """The section names a lookup function reads, spelled for the unknown-name
+    hint (inside the quotes the hint adds): `levels`, or `resources", "fleets" or "chargers`."""
+    names = LOOKUP_SECTION[function]
+    return '", "'.join(names[:-1]) + '" or "' + names[-1] if len(names) > 1 else names[0]
 
 
 def _validate_variables(layout: dict, problems: list) -> set[str]:
@@ -902,20 +909,20 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                                                             schedule_kinds)
     problems.extend(fleet_problems)
     places = set(block_nodes(layout))
-    refs = {"TS": (series_names, "E_SERIES_UNKNOWN", LOOKUP_SECTION["TS"], "time series"),
-            "LEVEL": (level_names, "E_LEVEL_UNKNOWN", LOOKUP_SECTION["LEVEL"], "level"),
-            "FLOW": (flow_names, "E_FLOW_UNKNOWN", LOOKUP_SECTION["FLOW"], "flow"),
-            "CONV": (conversion_names, "E_CONVERSION_UNKNOWN", LOOKUP_SECTION["CONV"], "conversion"),
+    refs = {"TS": (series_names, "E_SERIES_UNKNOWN", _hint_sections("TS"), "time series"),
+            "LEVEL": (level_names, "E_LEVEL_UNKNOWN", _hint_sections("LEVEL"), "level"),
+            "FLOW": (flow_names, "E_FLOW_UNKNOWN", _hint_sections("FLOW"), "flow"),
+            "CONV": (conversion_names, "E_CONVERSION_UNKNOWN", _hint_sections("CONV"), "conversion"),
             # VAR("name") reads a variable the bare name cannot spell (D72).
-            "VAR": (variables, "E_VARIABLE_UNKNOWN", LOOKUP_SECTION["VAR"], "variable"),
+            "VAR": (variables, "E_VARIABLE_UNKNOWN", _hint_sections("VAR"), "variable"),
             # DISTANCE("a", "b") names a station, an alias or a node (PHASE4 E1).
-            "DISTANCE": (places, "E_DISTANCE_UNKNOWN", LOOKUP_SECTION["DISTANCE"], "place"),
-            "AUX": (aux_names, "E_AUX_UNKNOWN", LOOKUP_SECTION["AUX"], "auxiliary"),     # PHASE5 SD-2
-            "DELAY": (delay_names, "E_DELAY_UNKNOWN", LOOKUP_SECTION["DELAY"], "delay"),
+            "DISTANCE": (places, "E_DISTANCE_UNKNOWN", _hint_sections("DISTANCE"), "place"),
+            "AUX": (aux_names, "E_AUX_UNKNOWN", _hint_sections("AUX"), "auxiliary"),     # PHASE5 SD-2
+            "DELAY": (delay_names, "E_DELAY_UNKNOWN", _hint_sections("DELAY"), "delay"),
             # POWER("name") (D600): the hint's section reads "resources", "fleets" or "chargers".
-            "POWER": ({str(r.get("name")) for key in name_sections("POWER")
+            "POWER": ({str(r.get("name")) for key in LOOKUP_SECTION["POWER"]
                        for r in layout.get(key) or [] if isinstance(r, dict) and r.get("name")},
-                      "E_POWER_UNKNOWN", 'resources", "fleets" or "chargers',
+                      "E_POWER_UNKNOWN", _hint_sections("POWER"),
                       "resource, fleet or charger")}
     # COUNT/SUM/MEAN("population", ...) (PHASE5 AB-1): population -> its type
     # entry, so `_check_expression` also checks a literal state/attribute (#134).
@@ -1053,6 +1060,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                          f"{', '.join(sorted(names)) or '(no blocks)'}"))
 
     _validate_link_delays(layout, problems)
+    check_bounds(layout, problems)       # last: a section its own check refused is left to it
 
     return problems
 

@@ -13,7 +13,7 @@ a `nagasim.experiments.ExperimentResult` and adds the scenario section.
 
 Every model-provided string (block/resource/entity/statistic names,
 descriptions, expressions, validation messages) is HTML-escaped before it goes
-into the page -- see `_esc`, used everywhere such a string is embedded.
+into the page -- see `esc`, used everywhere such a string is embedded.
 """
 from __future__ import annotations
 
@@ -33,17 +33,17 @@ from nagasim.core.calendar import date_ticks, run_horizon
 from nagasim.core.stats import ci95
 from nagasim import svgcharts
 
-__all__ = ["build_report", "has_costs"]
+__all__ = ["build_report", "has_costs", "esc", "fmt", "table"]     # the last three: for `extra_sections`
 
 _HIST_BINS = 20
 _MAX_QUEUE_CHARTS = 6
 
 
-def _esc(value) -> str:
+def esc(value) -> str:
     return html.escape(str(value))
 
 
-def _fmt(value) -> str:
+def fmt(value) -> str:
     """The one number formatter used by every table and the header (ROADMAP 1.8
     PART 0 b): an integer or an integer-valued float (e.g. a replication-mean
     count that happens to land exactly on a whole number) prints with a
@@ -57,7 +57,7 @@ def _fmt(value) -> str:
     try:
         xf = float(value)
     except (TypeError, ValueError):
-        return _esc(value)
+        return esc(value)
     if not math.isfinite(xf):
         return "-"
     if xf == int(xf) and abs(xf) < 1e15:
@@ -84,14 +84,14 @@ def _kpi_label(kpi: str) -> str:
 
 def _kpi_cell(kpi: str) -> str:
     """Table cell showing the readable label with the raw key as a tooltip."""
-    return f'<span title="{_esc(kpi)}">{_esc(_kpi_label(kpi))}</span>'
+    return f'<span title="{esc(kpi)}">{esc(_kpi_label(kpi))}</span>'
 
 
-def _table(headers: list[str], rows: list[list[str]], *, empty="No data") -> str:
-    head = "".join(f"<th>{_esc(h)}</th>" for h in headers)
+def table(headers: list[str], rows: list[list[str]], *, empty="No data") -> str:
+    head = "".join(f"<th>{esc(h)}</th>" for h in headers)
     if not rows:
         return (f'<table><thead><tr>{head}</tr></thead><tbody><tr>'
-                f'<td colspan="{len(headers)}">{_esc(empty)}</td></tr></tbody></table>')
+                f'<td colspan="{len(headers)}">{esc(empty)}</td></tr></tbody></table>')
     body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
     return f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'
 
@@ -174,35 +174,35 @@ def _model_summary_html(layout: dict) -> str:
     for block in layout.get("blocks", []):
         btype = block.get("type", "?")
         counts[btype] = counts.get(btype, 0) + 1
-    block_rows = [[_esc(t), str(n)] for t, n in sorted(counts.items())]
-    parts.append("<h3>Blocks</h3>" + _table(["Type", "Count"], block_rows))
+    block_rows = [[esc(t), str(n)] for t, n in sorted(counts.items())]
+    parts.append("<h3>Blocks</h3>" + table(["Type", "Count"], block_rows))
 
     res_rows = []
     for r in layout.get("resources", []):
-        res_rows.append([_esc(r.get("name", "")), _fmt(r.get("capacity")),
-                         _esc(r.get("discipline", "FIFO")), _esc(r.get("capacity_schedule") or "-")])
+        res_rows.append([esc(r.get("name", "")), fmt(r.get("capacity")),
+                         esc(r.get("discipline", "FIFO")), esc(r.get("capacity_schedule") or "-")])
     parts.append("<h3>Resources</h3>" +
-                _table(["Name", "Capacity", "Discipline", "Capacity schedule"], res_rows))
+                table(["Name", "Capacity", "Discipline", "Capacity schedule"], res_rows))
 
-    sched_rows = [[_esc(s.get("name", "")), _esc(s.get("kind", "")),
+    sched_rows = [[esc(s.get("name", "")), esc(s.get("kind", "")),
                   str(bool(s.get("repeat"))), str(len(s.get("points", [])))]
                  for s in layout.get("schedules", [])]
     if sched_rows:
         parts.append("<h3>Schedules</h3>" +
-                    _table(["Name", "Kind", "Repeats", "Points"], sched_rows))
+                    table(["Name", "Kind", "Repeats", "Points"], sched_rows))
 
-    fail_rows = [[_esc(f.get("name", "")), _esc(", ".join(f.get("resources", []))),
-                 _esc(f.get("uptime", {}).get("distribution", "-")),
-                 _esc(f.get("downtime", {}).get("distribution", "-"))]
+    fail_rows = [[esc(f.get("name", "")), esc(", ".join(f.get("resources", []))),
+                 esc(f.get("uptime", {}).get("distribution", "-")),
+                 esc(f.get("downtime", {}).get("distribution", "-"))]
                 for f in layout.get("failures", [])]
     if fail_rows:
         parts.append("<h3>Failures</h3>" +
-                    _table(["Name", "Resources", "Uptime", "Downtime"], fail_rows))
+                    table(["Name", "Resources", "Uptime", "Downtime"], fail_rows))
 
-    var_rows = [[_esc(v.get("name", "")), _esc(v.get("initial", 0))]
+    var_rows = [[esc(v.get("name", "")), esc(v.get("initial", 0))]
                for v in layout.get("variables", [])]
     if var_rows:
-        parts.append("<h3>Variables</h3>" + _table(["Name", "Initial value"], var_rows))
+        parts.append("<h3>Variables</h3>" + table(["Name", "Initial value"], var_rows))
 
     return "".join(parts)
 
@@ -213,7 +213,7 @@ def _validation_html(layout: dict) -> str:
     warnings = [p for p in schema.validate_model_structured(layout) if p.severity == "warning"]
     if not warnings:
         return ""
-    items = "".join(f"<li>{_esc(m)}</li>" for m in schema.format_problems(warnings))
+    items = "".join(f"<li>{esc(m)}</li>" for m in schema.format_problems(warnings))
     return f'<section><h2>Validation warnings</h2><ul class="warnings">{items}</ul></section>'
 
 
@@ -324,11 +324,11 @@ def _plan_risk_html(df: pd.DataFrame) -> str:
     def pct(v):
         return "-" if pd.isna(v) else f"{v:.2f}"
 
-    rows = [[_esc(r["Order"]), _fmt(r["Due"]), _fmt(r["Planned End"]), pct(r["P(On Time)"]),
-             _fmt(r["Mean Lateness"]), _fmt(r["P90 Lateness"]), _fmt(r["Mean End"])]
+    rows = [[esc(r["Order"]), fmt(r["Due"]), fmt(r["Planned End"]), pct(r["P(On Time)"]),
+             fmt(r["Mean Lateness"]), fmt(r["P90 Lateness"]), fmt(r["Mean End"])]
             for _, r in df.iterrows()]
     return ("<section><h2>Plan risk</h2>" +
-           _table(["Order", "Due", "Planned End", "P(On Time)", "Mean Lateness", "P90 Lateness",
+           table(["Order", "Due", "Planned End", "P(On Time)", "Mean Lateness", "P90 Lateness",
                    "Mean End"], rows) + "</section>")
 
 
@@ -342,32 +342,32 @@ def _bottleneck_html(results: dict) -> str:
     frame = results.get("bottleneck_summary")
     if frame is None or frame.empty:
         return ""
-    rows = [[_esc(name), *[_fmt(v) for v in vals]]
+    rows = [[esc(name), *[fmt(v) for v in vals]]
             for name, *vals in _pivot_means(frame, "Resource", _BOTTLENECK_KPIS)]
     return ("<section><h2>Bottleneck analysis</h2>"
            '<p class="note">Roser active-period method: a resource is ACTIVE while working, in '
            "changeover or under repair. Sole is time it alone holds the longest active period; "
            "Shifting is the wall-clock overlap with the resource that takes over next, credited to "
            "both.</p>"
-           + _table(["Resource"] + _BOTTLENECK_KPIS, rows) + "</section>")
+           + table(["Resource"] + _BOTTLENECK_KPIS, rows) + "</section>")
 
 
 # ---------------------------------------------------------------- costs section
 def _costs_html(results: dict, currency: str) -> str:
-    parts = [f"<section><h2>Costs ({_esc(currency)})</h2>"]
+    parts = [f"<section><h2>Costs ({esc(currency)})</h2>"]
 
     sys_rows_by_metric = dict((m, (mean, half)) for m, mean, half, _, _ in _system_rows(results))
-    totals_rows = [[_esc(m), _fmt(sys_rows_by_metric.get(m, (float("nan"), float("nan")))[0]),
-                   _fmt(sys_rows_by_metric.get(m, (float("nan"), float("nan")))[1])]
+    totals_rows = [[esc(m), fmt(sys_rows_by_metric.get(m, (float("nan"), float("nan")))[0]),
+                   fmt(sys_rows_by_metric.get(m, (float("nan"), float("nan")))[1])]
                   for m in _SYSTEM_COST_METRICS]
     parts.append("<h3>System totals</h3>" +
-                _table(["Metric", "Mean", "95% CI half-width"], totals_rows))
+                table(["Metric", "Mean", "95% CI half-width"], totals_rows))
 
     res_sum = results.get("resource_summary")
-    resource_rows = [[_esc(name), *[_fmt(v) for v in vals]]
+    resource_rows = [[esc(name), *[fmt(v) for v in vals]]
                      for name, *vals in _pivot_means(res_sum, "Resource", _RESOURCE_COST_KPIS)]
     parts.append("<h3>Cost per resource</h3>" +
-                _table(["Resource"] + _RESOURCE_COST_KPIS, resource_rows))
+                table(["Resource"] + _RESOURCE_COST_KPIS, resource_rows))
 
     if res_sum is not None and not res_sum.empty:
         means = _pivot_means(res_sum, "Resource", ["Busy Cost", "Idle Cost", "Usage Cost"])
@@ -378,11 +378,11 @@ def _costs_html(results: dict, currency: str) -> str:
              "Usage": [r[3] for r in means]}, "Cost")
         parts.append(f'<div class="chart-grid"><div class="chart">{chart}</div></div>')
 
-    entity_rows = [[_esc(name), *[_fmt(v) for v in vals]]
+    entity_rows = [[esc(name), *[fmt(v) for v in vals]]
                   for name, *vals in _pivot_means(results.get("entity_summary"),
                                                    "Entity Type", _ENTITY_COST_KPIS)]
     parts.append("<h3>Cost per entity type</h3>" +
-                _table(["Entity type"] + _ENTITY_COST_KPIS, entity_rows))
+                table(["Entity type"] + _ENTITY_COST_KPIS, entity_rows))
 
     # Lump-sum, fixed and peak costs (PHASE4 D5): shown only when the model has
     # some, and as the mean over replications -- a fixed amount is the same in
@@ -391,8 +391,8 @@ def _costs_html(results: dict, currency: str) -> str:
     if lump:
         kinds = _cost_kinds(results)
         parts.append("<h3>Fixed and lump-sum costs</h3>" +
-                    _table(["Item", "Kind", "Amount"],
-                           [[_esc(str(name)), _esc(kinds.get(name, "")), _fmt(vals[0])]
+                    table(["Item", "Kind", "Amount"],
+                           [[esc(str(name)), esc(kinds.get(name, "")), fmt(vals[0])]
                             for name, *vals in lump]))
 
     parts.append("</section>")
@@ -420,12 +420,12 @@ def _experiment_html(layout: dict, experiment) -> str:
         goal = str(entry.get("goal") or "").strip()[:500]
         overrides = entry.get("overrides", []) or [{}]
         for i, ov in enumerate(overrides):
-            row = [_esc(name) if i == 0 else "", _esc(ov.get("path", "-")), _esc(ov.get("value", "-"))]
+            row = [esc(name) if i == 0 else "", esc(ov.get("path", "-")), esc(ov.get("value", "-"))]
             if with_goal:
-                row.append(_esc(goal) if i == 0 else "")
+                row.append(esc(goal) if i == 0 else "")
             scenario_rows.append(row)
     parts.append("<h3>Scenario definitions</h3>" +
-                _table(["Scenario", "Override path", "Value"] + (["Goal"] if with_goal else []),
+                table(["Scenario", "Override path", "Value"] + (["Goal"] if with_goal else []),
                        scenario_rows, empty="No overrides declared (Baseline only)"))
 
     comparison = experiment.comparison() if experiment.results else pd.DataFrame()
@@ -433,13 +433,13 @@ def _experiment_html(layout: dict, experiment) -> str:
     comp_rows = []
     for _, row in curated.iterrows():
         marker = " *" if row["Significant"] else ""
-        comp_rows.append([_kpi_cell(row["KPI"]), _esc(row["Scenario"]) + marker, _fmt(row["Mean"]),
-                          _fmt(row["LB"]), _fmt(row["UB"]), _fmt(row["Diff vs baseline"]),
-                          _fmt(row["Diff LB"]), _fmt(row["Diff UB"])])
+        comp_rows.append([_kpi_cell(row["KPI"]), esc(row["Scenario"]) + marker, fmt(row["Mean"]),
+                          fmt(row["LB"]), fmt(row["UB"]), fmt(row["Diff vs baseline"]),
+                          fmt(row["Diff LB"]), fmt(row["Diff UB"])])
     parts.append("<h3>Comparison</h3>"
                 "<p class=\"note\">* marks a difference whose confidence interval excludes zero "
                 f"({'paired, common random numbers' if experiment.crn else 'independent samples'}).</p>" +
-                _table(["KPI", "Scenario", "Mean", "LB", "UB", "Diff vs baseline", "Diff LB", "Diff UB"],
+                table(["KPI", "Scenario", "Mean", "LB", "UB", "Diff vs baseline", "Diff LB", "Diff UB"],
                        comp_rows))
 
     charts = []
@@ -453,7 +453,7 @@ def _experiment_html(layout: dict, experiment) -> str:
             charts.append((kpi, svgcharts.bar_chart(label, categories, values, label, err=err)))
     if charts:
         parts.append("<h3>System KPIs by scenario</h3><div class=\"chart-grid\">" +
-                    "".join(f'<div class="chart" title="{_esc(kpi)}">{c}</div>' for kpi, c in charts) +
+                    "".join(f'<div class="chart" title="{esc(kpi)}">{c}</div>' for kpi, c in charts) +
                     "</div>")
 
     parts.append("</section>")
@@ -468,9 +468,9 @@ _MAX_HISTORY_ROWS = 60
 def _frame_table(frame: pd.DataFrame, columns=None, limit: int | None = None) -> str:
     """A DataFrame straight into the report's own table style."""
     columns = list(columns or frame.columns)
-    rows = [[_fmt(row[c]) if isinstance(row[c], (int, float)) else _esc(row[c]) for c in columns]
+    rows = [[fmt(row[c]) if isinstance(row[c], (int, float)) else esc(row[c]) for c in columns]
             for _, row in (frame.head(limit) if limit else frame).iterrows()]
-    return _table(columns, rows)
+    return table(columns, rows)
 
 
 def _main_effects_chart(effects: pd.DataFrame, factor: str, response: str) -> str:
@@ -503,14 +503,14 @@ def _design_html(design) -> str:
 
     for response in design.responses[:_MAX_REPORT_RESPONSES]:
         effects = design.main_effects(response)
-        parts.append(f"<h3>Main effects: {_esc(_kpi_label(response))}</h3>"
+        parts.append(f"<h3>Main effects: {esc(_kpi_label(response))}</h3>"
                      + _frame_table(effects))
         charts = [_main_effects_chart(effects, name, response) for name in factor_names]
         parts.append('<div class="chart-grid">'
                      + "".join(f'<div class="chart">{c}</div>' for c in charts) + "</div>")
     if len(design.responses) > _MAX_REPORT_RESPONSES:
         rest = design.responses[_MAX_REPORT_RESPONSES:]
-        parts.append(f'<p class="note">Also measured: {_esc(", ".join(rest))}</p>')
+        parts.append(f'<p class="note">Also measured: {esc(", ".join(rest))}</p>')
     parts.append("</section>")
     return "".join(parts)
 
@@ -522,9 +522,9 @@ def _surrogate_html(surrogate, design) -> str:
     lack_of_fit = (" -- LACK OF FIT: the surface misses structure the replication noise "
                    "does not explain" if surrogate.lack_of_fit else "")
     parts = ["<section><h2>Response surface</h2>",
-            f'<p class="note">Surrogate: {_esc(surrogate.kind)} for '
-            f'{_esc(_kpi_label(surrogate.response))}. R2={_fmt(surrogate.r2)}, '
-            f'adjusted R2={_fmt(surrogate.r2_adj)}, k-fold CV RMSE={_fmt(surrogate.cv_rmse)}'
+            f'<p class="note">Surrogate: {esc(surrogate.kind)} for '
+            f'{esc(_kpi_label(surrogate.response))}. R2={fmt(surrogate.r2)}, '
+            f'adjusted R2={fmt(surrogate.r2_adj)}, k-fold CV RMSE={fmt(surrogate.cv_rmse)}'
             f'{lack_of_fit}.</p>']
     if len(surrogate.coefficients):
         parts.append("<h3>Coefficients</h3>" + _frame_table(surrogate.coefficients))
@@ -560,14 +560,14 @@ def _optimization_html(optimization) -> str:
     parts = ["<section><h2>Optimization</h2>"]
     goal = "minimise" if optimization.goal == "min" else "maximise"
     parts.append(f'<p class="note">Goal: {goal} '
-                 f'{_esc(_kpi_label(optimization.response))}. '
+                 f'{esc(_kpi_label(optimization.response))}. '
                  f'{optimization.budget_used} replications spent; '
                  f'{"converged" if optimization.converged else "stopped on the budget or step limit"}'
                  f'{"" if optimization.feasible else "; NO FEASIBLE POINT FOUND"}.</p>')
 
-    best_rows = [[_esc(name), _fmt(value)] for name, value in optimization.best.items()]
-    best_rows.append([_esc(_kpi_label(optimization.response)), _fmt(optimization.best_mean)])
-    parts.append("<h3>Best point</h3>" + _table(["Factor", "Value"], best_rows))
+    best_rows = [[esc(name), fmt(value)] for name, value in optimization.best.items()]
+    best_rows.append([esc(_kpi_label(optimization.response)), fmt(optimization.best_mean)])
+    parts.append("<h3>Best point</h3>" + table(["Factor", "Value"], best_rows))
 
     history = optimization.history
     if not history.empty:
@@ -589,7 +589,7 @@ def _optimization_html(optimization) -> str:
                   "probability statement does not apply")
         parts.append("<h3>Ranking and selection</h3>"
                      f'<p class="note">KN (Kim and Nelson 2001) at {selection.confidence:.0%} '
-                     f'confidence with an indifference zone of {_fmt(selection.indifference)}'
+                     f'confidence with an indifference zone of {fmt(selection.indifference)}'
                      f'{capped}.</p>'
                      + _frame_table(selection.table))
     parts.append("</section>")
@@ -608,7 +608,7 @@ def _data_inputs_html(results: dict) -> str:
     frame = results.get("data_inputs")
     if frame is None or getattr(frame, "empty", True):
         return ""
-    rows = [[_esc(row[c]) if c != "Rows" else _fmt(row[c]) for c in _DATA_INPUT_COLUMNS]
+    rows = [[esc(row[c]) if c != "Rows" else fmt(row[c]) for c in _DATA_INPUT_COLUMNS]
             for _, row in frame.iterrows()]
     failed = int((frame["Problem"].astype(str) != "").sum()) if "Problem" in frame else 0
     note = ('<p class="note">Every parameter below was read from data at run time; a binding with '
@@ -616,7 +616,7 @@ def _data_inputs_html(results: dict) -> str:
             if failed else
             '<p class="note">Every parameter below was read from data at run time.</p>')
     return ("<section><h2>Data inputs</h2>" + note +
-            _table(_DATA_INPUT_COLUMNS, rows) + "</section>")
+            table(_DATA_INPUT_COLUMNS, rows) + "</section>")
 
 
 def _calibration_html(calibration) -> str:
@@ -624,31 +624,31 @@ def _calibration_html(calibration) -> str:
     observed-against-simulated bar chart."""
     parts = ["<section><h2>Calibration</h2>"]
     verdict = "every target within tolerance" if calibration.passed else "NOT every target met"
-    parts.append(f'<p class="note">Objective {_fmt(calibration.objective)} '
+    parts.append(f'<p class="note">Objective {fmt(calibration.objective)} '
                  f'(weighted sum of squared relative errors and series payoffs, per replication); '
                  f'{calibration.budget_used} replications spent; {verdict}.</p>')
 
-    best_rows = [[_esc(name), _fmt(value)] for name, value in calibration.best.items()]
-    parts.append("<h3>Fitted parameters</h3>" + _table(["Factor", "Value"], best_rows))
+    best_rows = [[esc(name), fmt(value)] for name, value in calibration.best.items()]
+    parts.append("<h3>Fitted parameters</h3>" + table(["Factor", "Value"], best_rows))
 
-    table = calibration.table
+    fit_table = calibration.table
     rows = []
-    for _, row in table.iterrows():
+    for _, row in fit_table.iterrows():
         passed = row["Pass"]
-        rows.append([_kpi_cell(row["KPI"]), _fmt(row["Observed"]), _fmt(row["Simulated"]),
-                     _fmt(row["LB"]), _fmt(row["UB"]), _fmt(row["Error"]),
-                     _fmt(row["Tolerance"]),
+        rows.append([_kpi_cell(row["KPI"]), fmt(row["Observed"]), fmt(row["Simulated"]),
+                     fmt(row["LB"]), fmt(row["UB"]), fmt(row["Error"]),
+                     fmt(row["Tolerance"]),
                      "-" if passed is None else ("pass" if passed else "FAIL")])
     parts.append("<h3>Targets</h3>" +
-                 _table(["KPI", "Observed", "Simulated", "LB", "UB", "Error", "Tolerance",
+                 table(["KPI", "Observed", "Simulated", "LB", "UB", "Error", "Tolerance",
                          "Verdict"], rows))
 
-    if not table.empty:
+    if not fit_table.empty:
         # One chart with the pair interleaved, not two charts side by side: a
         # shared y axis is what makes "observed against simulated" readable,
         # and two independently scaled charts would not be a comparison at all.
         categories, values, err = [], [], []
-        for _, row in table.iterrows():
+        for _, row in fit_table.iterrows():
             label = _kpi_label(str(row["KPI"]))
             categories += [f"{label} obs", f"{label} sim"]
             values += [float(row["Observed"]), float(row["Simulated"])]
@@ -692,7 +692,7 @@ def _forecast_html(result) -> str:
     low, high = result.quantiles
     parts = ["<section><h2>Forecast</h2>",
              f'<p class="note">{result.replications} replications over a terminating horizon of '
-             f'{_fmt(result.horizon)} base time units, no warm-up. The shaded band is the '
+             f'{fmt(result.horizon)} base time units, no warm-up. The shaded band is the '
              f'EMPIRICAL {low:.0%}-{high:.0%} range across replications -- a prediction band for '
              f'a single future run, NOT a confidence interval of the mean (that interval is in '
              f'the KPI table\'s LB/UB columns and narrows with more replications; this band does '
@@ -707,36 +707,36 @@ def _forecast_html(result) -> str:
 
     kpis = result.kpis
     curated = kpis[kpis["KPI"].apply(_curated)] if not kpis.empty else kpis
-    rows = [[_kpi_cell(row["KPI"]), _fmt(row["Mean"]), _fmt(row["LB"]), _fmt(row["UB"]),
-             _fmt(row["Q05"]), _fmt(row["Q95"]), _fmt(row["Min"]), _fmt(row["Max"])]
+    rows = [[_kpi_cell(row["KPI"]), fmt(row["Mean"]), fmt(row["LB"]), fmt(row["UB"]),
+             fmt(row["Q05"]), fmt(row["Q95"]), fmt(row["Min"]), fmt(row["Max"])]
             for _, row in curated.iterrows()]
     parts.append("<h3>End of horizon</h3>" +
-                 _table(["KPI", "Mean", "CI LB", "CI UB", f"Q{low:.0%}", f"Q{high:.0%}",
+                 table(["KPI", "Mean", "CI LB", "CI UB", f"Q{low:.0%}", f"Q{high:.0%}",
                          "Min", "Max"], rows))
 
-    event_rows = [[_esc(row["Event"]), _kpi_cell(row["KPI"]), _esc(row["Condition"]),
+    event_rows = [[esc(row["Event"]), _kpi_cell(row["KPI"]), esc(row["Condition"]),
                    f'{row["Probability"]:.1%}' if math.isfinite(row["Probability"]) else "-",
                    f'{row["Wilson LB"]:.1%}', f'{row["Wilson UB"]:.1%}',
-                   _fmt(row["Replications"])]
+                   fmt(row["Replications"])]
                   for _, row in result.events.iterrows()]
     parts.append('<h3>Events</h3><p class="note">Share of replications in which the condition '
                  'held, with a Wilson score interval.</p>' +
-                 _table(["Event", "KPI", "Condition", "Probability", "LB", "UB", "Replications"],
+                 table(["Event", "KPI", "Condition", "Probability", "LB", "UB", "Replications"],
                         event_rows, empty="No events declared"))
 
     orders = getattr(result, "orders", None)
     if orders is not None and not orders.empty:
-        order_rows = [[_esc(row["Order"]), _fmt(row["Due"]), _fmt(row["Median Completion"]),
-                       _fmt(row["Q05"]), _fmt(row["Q95"]),
+        order_rows = [[esc(row["Order"]), fmt(row["Due"]), fmt(row["Median Completion"]),
+                       fmt(row["Q05"]), fmt(row["Q95"]),
                        f'{row["P(late)"]:.1%}' if math.isfinite(row["P(late)"]) else "-",
                        f'{row["Wilson LB"]:.1%}', f'{row["Wilson UB"]:.1%}',
-                       _fmt(row["Completed Reps"])]
+                       fmt(row["Completed Reps"])]
                       for _, row in orders.iterrows()]
         parts.append('<h3>Orders</h3><p class="note">Per order: the empirical spread of its '
                      'completion time over the replications where it finished, and the '
                      'probability it misses its due date, with a Wilson score interval. An '
                      'order still unfinished at the end of the horizon counts as late.</p>' +
-                     _table(["Order", "Due", "Median completion", f"Q{low:.0%}", f"Q{high:.0%}",
+                     table(["Order", "Due", "Median completion", f"Q{low:.0%}", f"Q{high:.0%}",
                              "P(late)", "LB", "UB", "Completed reps"], order_rows))
     parts.append("</section>")
     return "".join(parts)
@@ -777,62 +777,6 @@ def _orders_html(results: dict) -> str:
     return "".join(parts)
 
 
-def _twin_html(result) -> str:
-    """The MES twin cycle: what the plant looked like, what is at risk, where
-    the bottleneck is going, and how the LAST cycle's predictions scored
-    (PHASE4 4F). The forecast section above carries the statistics; this one
-    carries the advice."""
-    rows = [[_esc(o["order"]), _esc(o["due_at"]), _esc(o["completion_at"] or "-"),
-             _fmt(o["slack"]), f'{o["p_late"]:.2f}',
-             f'[{o["wilson_lb"]:.2f}, {o["wilson_ub"]:.2f}]']
-            for o in result.orders_at_risk[:_MAX_REPORT_ORDERS]]
-    bottleneck_rows = [[_esc(b["work_centre"]), f'{b["utilisation"] * 100:.1f}',
-                        _fmt(b["queue_avg"]), _fmt(b["queue_max"]),
-                        _fmt(b["queue_first_half"]), _fmt(b["queue_second_half"]),
-                        "yes" if b.get("becomes_bottleneck") else ""]
-                       for b in result.bottlenecks]
-    alert_rows = [[_esc(a["rule"]), _esc(a["severity"]), _esc(a["subject"]), _esc(a["message"])]
-                  for a in result.alerts]
-    sync_rows = [[_esc(r.get("feed", "")), _esc(r.get("target", "")), _esc(r.get("value", "")),
-                  _esc(r.get("samples", "")), _esc(r.get("window", "")), _esc(r.get("note", ""))]
-                 for r in result.sync_report]
-    accuracy = result.accuracy or {}
-    reliability_rows = [[_esc(r["bin"]), f'{r["predicted"]:.2f}', f'{r["observed"]:.2f}',
-                         f'[{r["lb"]:.2f}, {r["ub"]:.2f}]', str(r["n"])]
-                        for r in accuracy.get("reliability", [])]
-
-    parts = [f'<section><h2>MES twin cycle</h2>'
-             f'<p class="note">Snapshot {_esc(result.snapshot)}; horizon {_fmt(result.horizon)} '
-             f'over {result.replications} replications. Model time 0 is the snapshot instant. '
-             f'This cycle is READ-ONLY advice: nothing was written to the MES.</p>',
-             "<h3>Orders at risk</h3>",
-             _table(["Order", "Due", "Median completion", "Slack", "P(late)", "Wilson 95%"], rows,
-                    empty="No orders in the horizon"),
-             "<h3>Bottleneck outlook</h3>",
-             _table(["Work centre", "Utilization %", "Queue avg", "Queue max", "Queue 1st half",
-                     "Queue 2nd half", "Becomes bottleneck"], bottleneck_rows,
-                    empty="No mapped work centre"),
-             "<h3>Alerts</h3>",
-             _table(["Rule", "Severity", "Subject", "What fired it"], alert_rows,
-                    empty="Nothing above its threshold"),
-             "<h3>What the MES supplied</h3>",
-             _table(["Feed", "Target", "Value", "Samples", "Window", "Note"], sync_rows,
-                    empty="Nothing written")]
-    if accuracy.get("scored"):
-        parts += [f'<h3>Accuracy of the previous cycle</h3>'
-                  f'<p class="note">{accuracy["scored"]} order(s) of the cycle at '
-                  f'{_esc(accuracy.get("snapshot") or "-")} have since completed. Mean absolute '
-                  f'completion error {_fmt(accuracy.get("mean_abs_error"))} '
-                  f'{_esc(accuracy.get("unit", ""))}; signed mean '
-                  f'{_fmt(accuracy.get("mean_error"))} (positive: the twin was optimistic). The '
-                  f'reliability table asks whether a forecast P(late) of 0.8 really was late '
-                  f'80% of the time.</p>',
-                  _table(["P(late) bin", "Predicted", "Observed", "Wilson 95%", "n"],
-                         reliability_rows, empty="Nothing scored yet")]
-    parts.append("</section>")
-    return "".join(parts)
-
-
 # ---------------------------------------------------------------- header / footer
 def _header_html(layout: dict, results: dict, title: str) -> str:
     sim = layout.get("simulation", {})
@@ -841,16 +785,16 @@ def _header_html(layout: dict, results: dict, title: str) -> str:
     seed = int(sys_df["Run"].min()) if sys_df is not None and not sys_df.empty else "-"
     calendar = calendar_of(layout)
     run_length = run_horizon(layout, calendar)
-    run_length_text = _fmt(run_length) if run_length else "until the model drains"
+    run_length_text = fmt(run_length) if run_length else "until the model drains"
 
     rows = [
-        ("Model", _esc(title)),
-        ("Naga version", _esc(__version__)),
-        ("Date", _esc(datetime.date.today().isoformat())),
-        ("Base time unit", _esc(sim.get("time_unit", "minutes"))),
+        ("Model", esc(title)),
+        ("Naga version", esc(__version__)),
+        ("Date", esc(datetime.date.today().isoformat())),
+        ("Base time unit", esc(sim.get("time_unit", "minutes"))),
         ("Replications", str(replications)),
         ("Run length", run_length_text),
-        ("Warm-up", _fmt(sim.get("warmup", 0))),
+        ("Warm-up", fmt(sim.get("warmup", 0))),
         ("Base seed", str(seed)),
     ]
     if calendar is not None:
@@ -858,11 +802,11 @@ def _header_html(layout: dict, results: dict, title: str) -> str:
         window = calendar.label(0, "%a %d %b %Y %H:%M")
         if run_length:
             window += " to " + calendar.label(run_length, "%a %d %b %Y %H:%M")
-        rows.insert(4, ("Calendar", f"{_esc(window)} ({_esc(getattr(calendar.tz, 'key', 'UTC'))})"))
+        rows.insert(4, ("Calendar", f"{esc(window)} ({esc(getattr(calendar.tz, 'key', 'UTC'))})"))
     items = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
     description = layout.get("info", {}).get("description", "")
-    desc_html = f'<p class="description">{_esc(description)}</p>' if description else ""
-    return f'<header><h1>{_esc(title)}</h1>{desc_html}<dl class="meta">{items}</dl></header>'
+    desc_html = f'<p class="description">{esc(description)}</p>' if description else ""
+    return f'<header><h1>{esc(title)}</h1>{desc_html}<dl class="meta">{items}</dl></header>'
 
 
 _METHODS_NOTE = (
@@ -904,7 +848,7 @@ footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line);
 
 
 def build_report(layout: dict, results: dict, *, experiment=None, design=None, optimization=None,
-                 calibration=None, forecast=None, surrogate=None, twin=None, plan_risk=None,
+                 calibration=None, forecast=None, surrogate=None, extra_sections=(), plan_risk=None,
                  title: str | None = None, path=None) -> str:
     """Return one self-contained HTML report; write it to *path* when given.
 
@@ -918,9 +862,9 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     results carry a "data_inputs" frame
     (`api.run_model(bind_data=True)`, ROADMAP 3.4a) also gets a "Data inputs"
     section in the header: what was read, from where, and when -- the
-    provenance a twin's answer has to carry. *twin* is a `twin.TwinResult`
-    (PHASE4 4F): the MES cycle's order risk, bottleneck outlook, alerts and the
-    accuracy of the previous cycle. *plan_risk* is an "order_risk" DataFrame
+    provenance a twin's answer has to carry. *extra_sections* are finished HTML
+    sections a caller adds after the others (the product's MES twin cycle, built
+    with `esc`, `fmt` and `table`). *plan_risk* is an "order_risk" DataFrame
     (`planning.plan_risk`, PHASE6 W4 P3/P5, ARCHITECTURE D121/D123): the plan
     CLI's `--risk N` result, shown beside the Schedule section that
     `results["schedule_log"]` already draws (D120).
@@ -929,25 +873,25 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     sim = layout.get("simulation", {})
     warmup = float(sim.get("warmup") or 0.0)
 
-    sys_rows = [[_esc(m), _fmt(mean), _fmt(half), _fmt(mn), _fmt(mx)]
+    sys_rows = [[esc(m), fmt(mean), fmt(half), fmt(mn), fmt(mx)]
                for m, mean, half, mn, mx in _system_rows(results)]
 
-    resource_rows = [[_esc(name), *[_fmt(v) for v in vals]]
+    resource_rows = [[esc(name), *[fmt(v) for v in vals]]
                      for name, *vals in _pivot_means(results.get("resource_summary"),
                                                       "Resource", _RESOURCE_KPIS)]
-    store_rows = [[_esc(name), *[_fmt(v) for v in vals]]
+    store_rows = [[esc(name), *[fmt(v) for v in vals]]
                  for name, *vals in _pivot_means(results.get("store_summary"), "Store", _STORE_KPIS)]
-    entity_rows = [[_esc(name), *[_fmt(v) for v in vals]]
+    entity_rows = [[esc(name), *[fmt(v) for v in vals]]
                   for name, *vals in _pivot_means(results.get("entity_summary"),
                                                    "Entity Type", _ENTITY_KPIS)]
     kinds = _user_kinds(results)
-    user_rows = [[_esc(name), _esc(kinds.get(name, "-")), *[_fmt(v) for v in vals]]
+    user_rows = [[esc(name), esc(kinds.get(name, "-")), *[fmt(v) for v in vals]]
                 for name, *vals in _pivot_means(results.get("user_summary"), "Statistic", _USER_KPIS)]
 
     timeseries_mean = outputs.timeseries_mean(results)   # once per report
     calendar = calendar_of(layout)               # None unless the model is dated
     queue_charts, overflow = _queue_charts(timeseries_mean, calendar)
-    overflow_note = (f'<p class="note">Also queued: {_esc(", ".join(overflow))}</p>'
+    overflow_note = (f'<p class="note">Also queued: {esc(", ".join(overflow))}</p>'
                      if overflow else "")
 
     body = [
@@ -956,14 +900,14 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
         f'<section><h2>Model summary</h2>{_model_summary_html(layout)}</section>',
         _validation_html(layout),
         "<section><h2>System KPIs</h2>" +
-        _table(["Metric", "Mean", "95% CI half-width", "Min", "Max"], sys_rows) + "</section>",
+        table(["Metric", "Mean", "95% CI half-width", "Min", "Max"], sys_rows) + "</section>",
         "<section><h2>Resources</h2>" +
-        _table(["Resource"] + _RESOURCE_KPIS, resource_rows) + "</section>",
-        "<section><h2>Stores</h2>" + _table(["Store"] + _STORE_KPIS, store_rows) + "</section>",
+        table(["Resource"] + _RESOURCE_KPIS, resource_rows) + "</section>",
+        "<section><h2>Stores</h2>" + table(["Store"] + _STORE_KPIS, store_rows) + "</section>",
         "<section><h2>Entities</h2>" +
-        _table(["Entity type"] + _ENTITY_KPIS, entity_rows) + "</section>",
+        table(["Entity type"] + _ENTITY_KPIS, entity_rows) + "</section>",
         "<section><h2>User statistics</h2>" +
-        _table(["Statistic", "Kind"] + _USER_KPIS, user_rows) + "</section>",
+        table(["Statistic", "Kind"] + _USER_KPIS, user_rows) + "</section>",
         "<section><h2>Charts</h2>"
         f'<div class="chart-grid"><div class="chart">{_utilization_chart(results)}</div>'
         f'<div class="chart">{_wip_chart(timeseries_mean, warmup, calendar)}</div></div>'
@@ -993,12 +937,11 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
         body.append(_calibration_html(calibration))
     if forecast is not None:
         body.append(_forecast_html(forecast))
-    if twin is not None:
-        body.append(_twin_html(twin))
-    body.append(f"<footer><h2>Methods</h2><p>{_esc(_METHODS_NOTE)}</p></footer>")
+    body += extra_sections
+    body.append(f"<footer><h2>Methods</h2><p>{esc(_METHODS_NOTE)}</p></footer>")
 
     head = (f'<meta charset="utf-8"><meta name="viewport" content="width=device-width, '
-           f'initial-scale=1"><title>{_esc(title)}</title><style>{_CSS}</style>')
+           f'initial-scale=1"><title>{esc(title)}</title><style>{_CSS}</style>')
     doc = f"<!doctype html><html lang=\"en\"><head>{head}</head><body>{''.join(body)}</body></html>"
 
     if path is not None:

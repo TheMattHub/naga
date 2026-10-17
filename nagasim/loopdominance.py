@@ -34,7 +34,7 @@ scored step, kept at 0.1% of partition mass at some step, 200 reported.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
+from nagasim._cli import add_model_argument
 
 import argparse
 import json
@@ -48,7 +48,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from nagasim import api, experiments
+from nagasim import api
 from nagasim.core import sd, sd_loops, submodels
 from nagasim.core.calendar import model_calendar
 from nagasim.core.expressions import ExpressionScope, compile_expression
@@ -262,7 +262,7 @@ def analyse(layout, *, seed: int = 0, run_length=None, limit: int = 1000) -> dic
     "truncated" (True when the strongest-path search replaced enumeration),
     "step" (the scoring interval), "problems" (W_LOOP_HYBRID)}.
     Raises LoopDominanceError (E_LOOP_GRID) without `simulation.sd`."""
-    base = experiments._as_layout(layout)
+    base = api.load_layout(layout)
     if not ((base.get("simulation") or {}).get("sd") or {}).get("dt"):
         raise LoopDominanceError(problem(
             "E_LOOP_GRID", "loop dominance needs the SD step grid (simulation.sd)",
@@ -530,7 +530,7 @@ def main(argv=None) -> int:
         prog="naga loops",
         description="Loop dominance (Loops That Matter) of an SD model: which feedback loop "
                     "drives the behaviour and when. Needs simulation.sd.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run-length", type=float, default=None,
                         help="run length in base time units (default: the model's own)")

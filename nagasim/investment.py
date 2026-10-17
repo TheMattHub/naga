@@ -26,21 +26,19 @@ Top-level beside `experiments.py` because it needs pandas.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import argparse
 import math
-import sys
 
 import numpy as np
 import pandas as pd
 
 from nagasim import api
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core.problems import problem
 from nagasim.core.stats import paired_diff_ci, welch_diff_ci
 from nagasim.core.submodels import flatten
 from nagasim.core.timeunits import conversion_factor
+from nagasim.core.utils import is_finite_number
 from nagasim.experiments import (BASELINE, KPI_PREFIXES, ExperimentResult, apply_overrides,
                                  flatten_kpis, run_scenarios, scenarios_of)
 
@@ -172,11 +170,6 @@ def investment_case(result: ExperimentResult, layout) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- validation
-def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) \
-        and abs(value) <= sys.float_info.max        # an int too large for a float is none (#373)
-
-
 def validate_investment(layout: dict, problems: list) -> None:
     """The `investment` section (a `core/sections.py` hook); nothing without one."""
     section = layout.get("investment")
@@ -201,7 +194,7 @@ def validate_investment(layout: dict, problems: list) -> None:
                             ("operating_hours_per_year", lambda v: v > 0, "> 0"),
                             ("discount_rate", lambda v: v >= 0, ">= 0"),
                             ("margin_per_part", lambda v: True, "")):
-        if not (_number(settings[field]) and ok(settings[field])):
+        if not (is_finite_number(settings[field]) and ok(settings[field])):
             bad("E_INVESTMENT", field, f"{field} must be a number {rule}".rstrip(),
                 f"default {DEFAULTS[field]}")
     key = settings["throughput"]
@@ -229,7 +222,7 @@ def main(argv=None) -> int:
         prog="naga invest",
         description="Run every scenario and print payback, NPV and ROI against the baseline "
                     "of the model's investment section.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--replications", type=int, default=None,
                         help="default: the model's own 'simulation.replications'")
     parser.add_argument("--seed", type=int, default=0)

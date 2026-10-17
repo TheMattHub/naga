@@ -506,9 +506,9 @@ def test_the_setup_scenario_makes_cutting_measurably_busier():
     and the other two resources stay under 0.9 points apart against a 2.0
     tolerance.
     """
-    from nagasim import experiments
+    from nagasim import api, experiments
 
-    layouts = experiments._scenario_layouts(experiments._as_layout(str(ROUTED_SHOP)), None)
+    layouts = experiments._scenario_layouts(api.load_layout(str(ROUTED_SHOP)), None)
     usage = {}
     for scenario, lay in layouts.items():           # one run per (scenario, seed)
         rows = [run_single_simulation(lay, seed=seed, run_len=1000, warmup=200)["resource_summary"]

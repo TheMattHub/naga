@@ -134,3 +134,55 @@ def test_block_place_takes_the_node_then_the_belt_then_the_blocks_own_position()
     assert block_place({"from_node": "a", "to_node": "b"}, None, nodes) == (4.0, 6.0)
     assert block_place({"from_node": "a", "to_node": "gone"}, [1, 2], nodes) == (1, 2)
     assert block_place({}, None, nodes) is None
+
+
+# -- a scoped variable as the asset's state source (D608) -----------------------------
+def _lamp_layout() -> dict:
+    """One `lamp` asset whose picture follows its own variable `$on_kw`: switched to
+    5 at t=0 and back to 0 at t=10 by the one entity passing through."""
+    lamp = {"info": {"graphics": {"state_source": "on_kw"}, "owns": {"variables": ["on_kw"]}},
+            "blocks": [
+                {"name": "src", "type": "CREATE", "position": [0, 0],
+                 "params": {"e_type": "Job", "distribution": "Constant",
+                            "dist_params": {"value": 2.0}, "max_arrivals": 1}},
+                {"name": "on", "type": "ASSIGN", "position": [100, 0],
+                 "params": {"assignments": [{"target": "$on_kw", "expr": "5"}]}},
+                {"name": "wait", "type": "DELAY", "position": [200, 0],
+                 "params": {"distribution": "Constant", "dist_params": {"value": 10.0}}},
+                {"name": "off", "type": "ASSIGN", "position": [300, 0],
+                 "params": {"assignments": [{"target": "$on_kw", "expr": "0"}]}},
+                {"name": "end", "type": "DISPOSE", "position": [400, 0], "params": {}}],
+            "links": [{"source": "src", "target": "on"}, {"source": "on", "target": "wait"},
+                      {"source": "wait", "target": "off"}, {"source": "off", "target": "end"}]}
+    return {"simulation": {"run_length": 20},
+            "variables": [{"name": "on_kw", "initial": 0}],
+            "blocks": [{"name": "lamp_1", "type": "SUBMODEL", "position": [0, 0],
+                        "params": {"definition": "lamp"}}],
+            "links": [], "submodels": {"lamp": lamp}}
+
+
+def test_a_scoped_variable_drives_the_asset_picture_busy_while_above_zero():
+    from conftest import run_env
+    from nagasim.core.trace import TraceRecorder
+
+    layout = _lamp_layout()
+    sources = playback.asset_state_sources(layout)
+    assert sources == {"lamp_1": ("lamp_1/on_kw", None)}
+    recorder = TraceRecorder()
+    run_env(layout, 20, subscribers=(recorder,))
+    changes = [(e.t, e.value) for e in recorder.events if e.kind == "variable_changed"]
+    assert changes == [(0.0, 0.0), (0.0, 5.0), (10.0, 0.0)]   # the baseline, then each write
+    timeline = playback.Timeline(recorder.events)
+    assert [playback.asset_states(timeline.state_at(t), sources)["lamp_1"]
+            for t in (0, 9, 10, 19)] == ["busy", "busy", "idle", "idle"]
+
+
+def test_a_variable_no_asset_shows_is_not_traced():
+    from conftest import run_env
+    from nagasim.core.trace import TraceRecorder
+
+    layout = _lamp_layout()
+    del layout["submodels"]["lamp"]["info"]["graphics"]
+    recorder = TraceRecorder()
+    run_env(layout, 20, subscribers=(recorder,))
+    assert not [e for e in recorder.events if e.kind == "variable_changed"]

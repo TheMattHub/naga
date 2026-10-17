@@ -54,18 +54,13 @@ from nagasim.core.schema import validate_model_structured
 from nagasim.core.sim_runner import initialize_sim_env, prepare_model, step_until
 
 from conftest import layout as make_layout, problem_codes
+from conftest import sd_layout as _sd_layout
 
 
 # --------------------------------------------------------------- run helpers
 def _sim(time_limit, dt, method="euler"):
     return {"time_limit": time_limit, "warmup": 0, "replications": 1,
             "sd": {"dt": dt, "method": method}}
-
-
-def _sd_layout(**sections):
-    """A blockless model: pure SD (levels + flows only), no CREATE/DISPOSE
-    (same convention as test_sd_oracles.py's `_sd_layout`)."""
-    return make_layout([], [], **sections)
 
 
 def _prepare(layout_dict):

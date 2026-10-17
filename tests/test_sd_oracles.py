@@ -1,4 +1,4 @@
-"""Independent oracle tests for PHASE5 SD-1 (docs/PHASE5_PLAN.md, "Phase 5A:
+"""Independent oracle tests for PHASE5 SD-1 (docs/history/PHASE5_PLAN.md, "Phase 5A:
 system dynamics", D89-D91 and the SD-1 milestone row).
 
 Written from the SPEC, not from `core/levels.py`: every expected value is a
@@ -14,6 +14,7 @@ import math
 import pytest
 
 from conftest import chain, create, delay, dispose, layout as make_layout, problem_codes, run_env
+from conftest import sd_layout as _sd_layout
 
 
 # --------------------------------------------------------------- run helpers
@@ -33,13 +34,6 @@ def _sim(time_limit, dt=None, method="euler"):
     if dt is not None:
         section["sd"] = {"dt": dt, "method": method}
     return section
-
-
-def _sd_layout(**sections):
-    """A blockless continuous-only model: a pure SD model has no CREATE or
-    DISPOSE, only levels and flows (PHASE5_PLAN "Blockless models must
-    validate")."""
-    return make_layout([], [], **sections)
 
 
 # ============================================================ reference loops

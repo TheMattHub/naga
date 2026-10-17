@@ -45,6 +45,9 @@ _RECORDED_EVENTS = {
     # Automation sub-project 3 (D169): a cobot's pick or place cycle starting
     # at a station; read by 3D, sub-project 5.
     "tend",
+    # D608: a variable an asset's picture follows, at each write (`resource` its
+    # name, `value` its new value).
+    "variable_changed",
 }
 _AGENT_EVENTS = ("agent_state", "agent_moved", "agent_removed", "agent_linked", "agent_unlinked")
 
@@ -159,7 +162,7 @@ class TraceRecorder:
                 t=t, kind=name, entity_id=entity.id, e_type=getattr(entity, "e_type", "Unknown"),
                 block=block.name, target=None, duration=duration, state=state, value=value))
             return
-        if name in ("resource_state", "level_changed"):
+        if name in ("resource_state", "level_changed", "variable_changed"):
             # Both are emitted with block=None (core/resource_manager.py,
             # core/levels.py): no entity, no block, just the record named by
             # `resource` and its new state or value.

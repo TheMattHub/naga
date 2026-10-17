@@ -26,9 +26,6 @@ pending, the event queue drains (`terminated`), or the next event would cross
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
-
 import numpy as np
 
 from nagasim import api
@@ -341,13 +338,13 @@ def main(argv=None) -> int:
     --episodes N --horizon T`; prints the mean return and KPI digest of the last episode."""
     import argparse
 
-    from nagasim._cli import setup_cli
+    from nagasim._cli import add_model_argument, setup_cli
 
     setup_cli(level=None)
 
     parser = argparse.ArgumentParser(prog="naga policy-eval",
                                      description="Evaluate a controller against a Policy-mode DECIDE.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--policy", required=True, help="decision-point name")
     parser.add_argument("--controller", required=True, choices=sorted(_BUILTIN_CONTROLLERS),
                         help="built-in controller to evaluate")

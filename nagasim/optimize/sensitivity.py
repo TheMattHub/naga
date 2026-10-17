@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nagasim import api, experiments
+from nagasim import api
 import pandas as pd
 from .designs import latin_hypercube
 from .evaluation import _candidate_layout
@@ -25,7 +25,7 @@ def sensitivity(layout, factors, n: int, seed: int = 0, quantiles=(0.05, 0.5, 0.
     """
     from nagasim import forecast
 
-    base = experiments._as_layout(layout)
+    base = api.load_layout(layout)
     design = latin_hypercube(factors, n, seed)
     total = len(design)
     frames = []

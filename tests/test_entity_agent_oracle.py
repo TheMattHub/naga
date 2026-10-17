@@ -54,10 +54,6 @@ def _model(*records, time_limit=10):
     return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _run(layout, seed=1):
     """Run headless; hand back (env, model) so a test can read both the
     agent system and the DES block instances (e.g. Dispose.disposed_entities)."""
@@ -87,7 +83,7 @@ def test_reads_entity_agent_attribute_and_state():
     ]
     layout["links"] = chain(*layout["blocks"])
     layout["variables"] = [{"name": "checked_state", "initial": 0}, {"name": "checked_score", "initial": 0}]
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout)
     assert env.ctx.variables["checked_state"] is True
     assert env.ctx.variables["checked_score"] == 42
@@ -113,7 +109,7 @@ def test_assign_to_entity_agent_wakes_the_agent_system_at_the_same_instant():
         dispose("out"),
     ]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout)
     pop = env.ctx.agent_system.by_name["F"]
     assert pop.state[0] == pop.type.index["Done"]
@@ -146,7 +142,7 @@ def test_decide_on_entity_agent_state_routes_by_the_same_instant_condition():
         {"source": "route", "target": "out_true"},
         {"source": "route", "target": "out_false"},
     ]
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout)
     assert model.blocks["out_true"].disposed_entities == 2
     assert model.blocks["out_false"].disposed_entities == 1
@@ -168,7 +164,7 @@ def test_writing_entity_agent_state_is_a_validation_error():
         dispose("out"),
     ]
     layout["links"] = chain(*layout["blocks"])
-    assert _codes(layout)                # at least one error (code unspecified -- see GUESS)
+    assert problem_codes(layout)                # at least one error (code unspecified -- see GUESS)
 
 
 def test_reading_a_removed_agents_attribute_raises_at_runtime():
@@ -190,6 +186,6 @@ def test_reading_a_removed_agents_attribute_raises_at_runtime():
     ]
     layout["links"] = chain(*layout["blocks"])
     layout["variables"] = [{"name": "seen", "initial": 0}]
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     with pytest.raises(Exception):
         _run(layout)

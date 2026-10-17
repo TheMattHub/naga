@@ -19,6 +19,7 @@ from nagasim.core.problems import problem
 from nagasim.core.schema.common import _check_expression, _link_pairs
 from nagasim.core.schema.migrate import CONSENT_KEYS
 from nagasim.core.sequences import station_blocks
+from nagasim.core.utils import is_finite_number
 
 
 # ROADMAP 3.4a. "csv"/"xlsx"/"sqlite" read a file beside the model; "sql" needs
@@ -274,9 +275,8 @@ def _whole(value) -> bool:
 
 
 def _number(value) -> bool:
-    """A finite number within the ceiling (NaN fails every comparison)."""
-    return (isinstance(value, (int, float)) and not isinstance(value, bool)
-            and abs(value) <= DASHBOARD_LIMITS["magnitude"])
+    """A finite number within the ceiling."""
+    return is_finite_number(value) and abs(value) <= DASHBOARD_LIMITS["magnitude"]
 
 
 def _text(value, limit: str = "text", empty: bool = False) -> bool:

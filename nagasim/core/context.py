@@ -283,6 +283,9 @@ class SimulationContext:
     # ("store", name), ("level", name). EMPTY unless a HOLD is waiting, so a
     # writer pays one truth test on an empty dict.
     watched: dict = field(default_factory=dict)
+    # Variables an asset's picture follows (D608): flattening marks them `trace`, and
+    # every write to one is a `variable_changed` trace event. Empty for most models.
+    traced_variables: frozenset = frozenset()
     # An RK4 stage's clock offset (PHASE5 SD-1, D90): `levels._rk4_rates` sets
     # it to c*h while it evaluates a stage, so TNOW and TS() read the stage's
     # time; 0.0 at every other moment, and `x + 0.0 == x`.
@@ -319,6 +322,20 @@ class SimulationContext:
         event = self.watched.pop(key, None)
         if event is not None:
             event.succeed()
+
+    def wrote_variable(self, name) -> None:
+        """Variable *name* was just written: wake the HOLD conditions that read it
+        and, for one an asset's picture follows (D608), record its new value."""
+        if self.watched:
+            self.touch(("var", name))
+        if name in self.traced_variables:
+            self.trace_variable(name)
+
+    def trace_variable(self, name) -> None:
+        value = self.variables.get(name)
+        if self.bus.has_subscribers and isinstance(value, (int, float)):
+            self.bus.emit("variable_changed", block=None, t=self.env.now, resource=name,
+                          value=float(value))
 
 
 def build_context(seed: int = 0, clock: float = 0.0) -> SimulationContext:

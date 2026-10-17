@@ -26,10 +26,6 @@ def _pop(env, name):
     return env.ctx.agent_system.by_name[name]
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _grid(**extra):
     return A.Space("grid", size=[5, 5], **extra)
 
@@ -195,7 +191,7 @@ def _bad(space=None, on_tick=(), transitions=(), placement=None, attributes=()):
     kind = A.AgentType("G", attributes=list(attributes) or [A.Attribute("x")],
                        states=["S", "T"], space=space, transitions=list(transitions),
                        tick={"dt": 1} if on_tick else None, on_tick=list(on_tick))
-    return _codes(_model(kind, A.Population("Gs", "G", 2, placement=placement)))
+    return problem_codes(_model(kind, A.Population("Gs", "G", 2, placement=placement)))
 
 
 GOOD = {"kind": "grid", "size": [4, 4], "patches": [{"name": "food", "init": "cx + cy",

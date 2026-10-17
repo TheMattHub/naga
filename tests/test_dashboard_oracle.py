@@ -214,10 +214,6 @@ def test_dashboard_section_never_changes_other_results():
 
 
 # ------------------------------------------------------------ case 4: validation
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _minimal_layout(dashboard):
     c, d = create("c", max_arrivals=1), dispose("d")
     return make_layout([c, d], chain(c, d), dashboard=dashboard)
@@ -232,7 +228,7 @@ _VALID_DASHBOARD = {"widgets": [
 
 
 def test_valid_dashboard_raises_no_dashboard_error():
-    assert not ({c for c in _codes(_minimal_layout(_VALID_DASHBOARD)) if c.startswith("E_DASHBOARD")})
+    assert not ({c for c in problem_codes(_minimal_layout(_VALID_DASHBOARD)) if c.startswith("E_DASHBOARD")})
 
 
 def test_duplicate_widget_name_is_e_dashboard_name():
@@ -240,26 +236,26 @@ def test_duplicate_widget_name_is_e_dashboard_name():
         {"name": "a", "kind": "kpi", "expr": "TNOW"},
         {"name": "a", "kind": "kpi", "expr": "TNOW"},
     ]}
-    assert "E_DASHBOARD_NAME" in _codes(_minimal_layout(dashboard))
+    assert "E_DASHBOARD_NAME" in problem_codes(_minimal_layout(dashboard))
 
 
 def test_unknown_kind_is_e_dashboard_kind():
     dashboard = {"widgets": [{"name": "a", "kind": "pie", "expr": "TNOW"}]}
-    assert "E_DASHBOARD_KIND" in _codes(_minimal_layout(dashboard))
+    assert "E_DASHBOARD_KIND" in problem_codes(_minimal_layout(dashboard))
 
 
 def test_expression_that_does_not_compile_is_e_dashboard_expr():
     dashboard = {"widgets": [{"name": "a", "kind": "kpi", "expr": "NQ("}]}
-    assert "E_DASHBOARD_EXPR" in _codes(_minimal_layout(dashboard))
+    assert "E_DASHBOARD_EXPR" in problem_codes(_minimal_layout(dashboard))
 
 
 def test_out_of_bounds_series_count_is_e_dashboard_series():
     dashboard = {"widgets": [{"name": "a", "kind": "line", "series": [
         {"label": f"s{i}", "expr": "TNOW"} for i in range(5)   # max is 4
     ]}]}
-    assert "E_DASHBOARD_SERIES" in _codes(_minimal_layout(dashboard))
+    assert "E_DASHBOARD_SERIES" in problem_codes(_minimal_layout(dashboard))
 
 
 def test_gauge_missing_max_is_e_dashboard_gauge():
     dashboard = {"widgets": [{"name": "a", "kind": "gauge", "expr": "TNOW"}]}   # no "max"
-    assert "E_DASHBOARD_GAUGE" in _codes(_minimal_layout(dashboard))
+    assert "E_DASHBOARD_GAUGE" in problem_codes(_minimal_layout(dashboard))

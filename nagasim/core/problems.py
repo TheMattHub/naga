@@ -48,6 +48,7 @@ PROBLEM_CODES: dict[str, str] = {
     "W_UNKNOWN_KEY": "A key the model file format does not have (write_model): the document drops it.",
     "E_PARAM_TYPE": "A param has the wrong Python type for its ParamSpec.",
     "E_PARAM_MISSING": "A param the block type declares as required is absent.",
+    "E_FIELD_RANGE": "A numeric field of a section (a fleet, a charger, a level, a series, ...) is outside the bounds the field table and the published schema state.",
     "E_DUPLICATE_BLOCK": "Two blocks share a name.",
     # -- distributions ------------------------------------------------------
     "E_UNKNOWN_DISTRIBUTION": "A distribution name that is in no registry entry.",
@@ -82,6 +83,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SERIES_MODE": "A time series' interpolation or beyond-the-end mode is unknown.",
     "E_SERIES_UNKNOWN": "A TS(\"name\") call names a time series the model does not declare.",
     "E_SERIES_NO_CALENDAR": "A time series uses real timestamps but the model has no calendar.",
+    "W_REF_UNSET": "A POWER(), TS() or other named read takes its name from an asset parameter "
+                   "left empty, so the run would fail on it.",
     "W_SERIES_PERIOD_UNUSED": "A time series has a period but does not repeat, so the period is never read.",
     "W_SERIES_BEFORE_START": "A dated time series starts before, or ends after, the run window.",
     # -- levels and flows (PHASE4 D1) ----------------------------------------

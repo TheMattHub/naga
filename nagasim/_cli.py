@@ -8,7 +8,9 @@ from __future__ import annotations
 import logging
 import sys
 
-__all__ = ["setup_cli"]
+from nagasim.examples import model_path
+
+__all__ = ["setup_cli", "add_model_argument"]
 
 
 def setup_cli(level=logging.WARNING) -> None:
@@ -24,3 +26,9 @@ def setup_cli(level=logging.WARNING) -> None:
         sys.stdout.reconfigure(encoding="utf-8")
     if level is not None:
         logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
+
+
+def add_model_argument(parser, help="path to the model JSON, or a bundled model's name (naga examples)",
+                       **kwargs) -> None:
+    """The `model` argument of a command: a path, or the name of a bundled model."""
+    parser.add_argument("model", type=model_path, help=help, **kwargs)

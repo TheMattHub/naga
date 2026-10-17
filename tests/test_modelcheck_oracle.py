@@ -51,6 +51,7 @@ import pytest
 import yaml
 
 from conftest import chain, create, dispose, layout, process
+from conftest import resource_record as _resource
 
 # -- adapters: the one place that knows modelcheck's real call shape --------
 
@@ -95,12 +96,6 @@ def _require_cli(token):
 
 
 # -- shared model fixtures (wire format: docs/ARCHITECTURE.md section 7) ---
-
-def _resource(name, capacity=1):
-    return {"name": name, "capacity": capacity, "discipline": "FIFO",
-            "cost_busy": 0.0, "cost_idle": 0.0, "cost_per_use": 0.0,
-            "cost_time_unit": "hours"}
-
 
 def _md1_layout(assertions):
     """M/D/1: Exponential(rate=0.5) arrivals (mean interarrival 2), Constant(1.0)

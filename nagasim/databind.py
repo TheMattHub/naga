@@ -98,8 +98,6 @@ it was given.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import argparse
 import json
 import logging
@@ -115,7 +113,7 @@ import numpy as np
 import pandas as pd
 
 from nagasim import api, experiments, inputfit, netguard, sources
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import schema
 from nagasim.core.orders import clashing_names, scalar_cell
 from nagasim.core.problems import Problem, problem
@@ -919,7 +917,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="naga bind",
         description="Resolve a model's data bindings and show what each one read.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     netguard.add_arguments(parser)
     parser.add_argument("--write", help="write the resolved model here")
     args = parser.parse_args(argv)

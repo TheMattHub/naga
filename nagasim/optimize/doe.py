@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from nagasim.core.stats import ci95
 from dataclasses import dataclass
-from nagasim import experiments
+from nagasim.core.schema import load_layout
 import numpy as np
 import pandas as pd
 from .evaluation import _Evaluator
@@ -134,7 +134,7 @@ def run_design(layout, factors, design, *, responses=None, replications: int = 5
     estimates are paired and the shared sampling noise cancels; without it each
     point gets its own disjoint seed block.
     """
-    base = experiments._as_layout(layout)
+    base = load_layout(layout)
     factors = list(factors)
     points = design.reset_index(drop=True)
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,

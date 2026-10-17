@@ -56,7 +56,7 @@ COMMANDS = {
     "bind": ("databind", "main", "resolve a model's data bindings and show what each one read"),
     "watch": ("live", "main", "print what a model's live data sources send, as it arrives"),
     "state": ("state", "main",
-              "take a model's state from a run or from a plant, and check one before a start"),
+              "take a model's state from a run, and check one before a start"),
     "plant": ("plant", "main",
               "map what a plant sends into an observed timeline: check, replay a log, watch"),
     "twin": ("twin", "main",

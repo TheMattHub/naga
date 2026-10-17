@@ -214,10 +214,6 @@ def _model(*records, time_limit):
     return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _run(layout, seed, run_len):
     return run_env(layout, run_len, seed=seed)
 
@@ -251,7 +247,7 @@ def _doctor_agents_layout(rerank):
 
 
 def _service_order_by_agent(layout, seed, time_limit):
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     results = run_single_simulation(layout, seed=seed, run_len=time_limit, warmup=0)
     log = results["entity_log"].sort_values("Exited At")
     # Drop the trigger entity (no agent -> blank "agent" column, H2's convention).

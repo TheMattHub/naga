@@ -53,10 +53,6 @@ def _model(*records, time_limit=10):
     return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _dispose(name="out", remove_agent=None):
     block = dispose(name)
     if remove_agent is not None:
@@ -102,7 +98,7 @@ def test_create_population_births_one_agent_per_entity_and_dispose_removes_them(
     layout = _model(item, A.Population("Pop", "Item", 0, max_count=5), time_limit=10)
     layout["blocks"] = [_create("c", 5, population="Pop"), delay("wait", 2), _dispose("out", True)]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout, until=3.5)
     pop = env.ctx.agent_system.by_name["Pop"]
     assert pop.births == 4 and pop.live == 2             # born so far: 0,1,2,3; #0,#1 already removed
@@ -118,7 +114,7 @@ def test_dispose_without_remove_agent_leaves_every_born_agent_alive():
     layout = _model(item, A.Population("Pop", "Item", 0, max_count=5), time_limit=10)
     layout["blocks"] = [_create("c", 5, population="Pop"), delay("wait", 2), _dispose("out")]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout)
     pop = env.ctx.agent_system.by_name["Pop"]
     assert pop.births == 5 and pop.live == 5
@@ -132,7 +128,7 @@ def test_dispose_remove_agent_is_a_noop_without_a_live_agent():
     layout = _model(time_limit=5)
     layout["blocks"] = [_create("c", 3, population=None), delay("wait", 1), _dispose("out", True)]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout)
     assert model.blocks["out"].disposed_entities == 3
 
@@ -149,7 +145,7 @@ def test_born_agents_statechart_runs_from_birth():
     layout = _model(ticker, A.Population("Pop", "Ticker", 0, max_count=5), time_limit=10)
     layout["blocks"] = [_create("c", 5, population="Pop"), delay("wait", 1), _dispose("out")]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env, model = _run(layout, until=5)
     system = env.ctx.agent_system
     assert system.count("Pop", "Old") == 3
@@ -166,7 +162,7 @@ def test_entity_log_agent_column_matches_birth_order():
     layout = _model(item, A.Population("Pop", "Item", 0, max_count=3), time_limit=10)
     layout["blocks"] = [_create("c", 3, population="Pop"), delay("wait", 1), _dispose("out")]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     results = run_single_simulation(layout, seed=1, run_len=10, warmup=0)
     log = results["entity_log"].sort_values("Created At")
     assert list(log["Agent"]) == ["Pop:0", "Pop:1", "Pop:2"]     # GUESS: column named "agent" (reconciled: "Agent", Title Case like its siblings)
@@ -178,7 +174,7 @@ def test_entity_log_agent_column_blank_without_population():
     layout = _model(time_limit=5)
     layout["blocks"] = [_create("c", 2, population=None), delay("wait", 1), _dispose("out")]
     layout["links"] = chain(*layout["blocks"])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     results = run_single_simulation(layout, seed=1, run_len=5, warmup=0)
     log = results["entity_log"]
     assert (log["Agent"] == "").all() and len(log) == 2
@@ -190,4 +186,4 @@ def test_unknown_population_on_create_is_a_validation_error():
     layout = _model(item, A.Population("Pop", "Item", 0, max_count=1), time_limit=5)
     layout["blocks"] = [_create("c", 1, population="Nope"), delay("wait", 1), _dispose("out")]
     layout["links"] = chain(*layout["blocks"])
-    assert _codes(layout)                # at least one error (code unspecified -- see GUESS)
+    assert problem_codes(layout)                # at least one error (code unspecified -- see GUESS)

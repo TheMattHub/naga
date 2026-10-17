@@ -40,6 +40,8 @@ class ParamSpec:
     min: float | None = None
     max: float | None = None
     unit_key: str | None = None
+    # True when `min` itself is refused (a speed, a step: "> 0"); the schema's exclusiveMinimum.
+    min_exclusive: bool = False
 
     @property
     def field_kinds(self) -> tuple:

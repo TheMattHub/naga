@@ -373,7 +373,7 @@ def run_reality_checks(layout, *, seed: int = 0, run_length=None, warmup=None,
     "Snapshot" (that instant's LEVEL()/AUX()/FLOW() values, None when passed).
     A model with no "reality_checks" returns an empty frame.
     """
-    base = experiments._as_layout(layout)
+    base = api.load_layout(layout)
     rows = []
     for entry in base.get("reality_checks") or []:
         if should_stop is not None and should_stop():
@@ -392,7 +392,7 @@ def check(layout, *, workers: int = 1) -> list[Result]:
     them), so N assertions at 5 replications each cost 5 runs total, not 5N.
     `workers` is passed straight through to that run.
     """
-    base = experiments._as_layout(layout)
+    base = api.load_layout(layout)
     results: list[Result] = []
 
     by_reps: dict[int, list[dict]] = {}

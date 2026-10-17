@@ -41,10 +41,6 @@ def _run(layout, seed=1):
     return env
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 # ------------------------------------------------ (1) synchronous vs sequential
 def _ring(activation, time_limit):
     cell = A.AgentType("Cell", attributes=[A.Attribute("v", "10 * (self.id + 1)")], states=["S"],
@@ -60,7 +56,7 @@ def _ring(activation, time_limit):
 ])
 def test_ring_copy_left_neighbour(activation, after1, after2):
     layout = _ring(activation, 1.5)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     assert _run(layout).ctx.agent_system.by_name["Ring"].attrs["v"].tolist() == after1
     assert _run(_ring(activation, 2.5)).ctx.agent_system.by_name["Ring"].attrs["v"].tolist() \
         == after2
@@ -79,7 +75,7 @@ def test_random_activation_is_the_documented_permutation():
     for ticks in (1, 2):
         layout = _model(kind, A.Population("Pop", "R", n), time_limit=ticks + 0.5,
                         variables=[{"name": "order", "initial": 0}])
-        assert not _codes(layout)
+        assert not problem_codes(layout)
         rank = _run(layout, seed).ctx.agent_system.by_name["Pop"].attrs["rank"]
         expected = np.zeros(n)
         expected[perm(ticks)] = np.arange(1, n + 1) + n * (ticks - 1)
@@ -144,7 +140,7 @@ def test_ticks_coexist_with_events_and_an_sd_level():
                     A.Population("W", "Watch", 1), A.Population("Clock", "Clock", 1),
                     time_limit=5.5, levels=[{"name": "Lit"}],
                     flows=[{"name": "glow", "rate": 'COUNT("Lamps", "On")', "to": "Lit"}])
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env = _run(layout)
     system = env.ctx.agent_system
     # Agent j turns on at the tick t = j + 1: COUNT On = 0, 1, 2, 3 on [0, 4), 4 on [4, 5.5].
@@ -198,14 +194,14 @@ def test_bad_tick_specs(patch, code):
     layout["agent_types"][0].update(patch)
     if layout["agent_types"][0]["tick"] is None:
         del layout["agent_types"][0]["tick"]
-    assert code in _codes(layout)
+    assert code in problem_codes(layout)
 
 
 def test_population_tick_overrides_the_type():
     layout = _ring("synchronous", 1.5)
     del layout["agent_types"][0]["tick"]
     layout["populations"][0]["tick"] = {"dt": 1, "activation": "sequential"}
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     assert _run(layout).ctx.agent_system.by_name["Ring"].attrs["v"].tolist() == [30, 30, 30]
 
 

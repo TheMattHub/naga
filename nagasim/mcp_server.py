@@ -34,6 +34,7 @@ import threading
 from pathlib import Path
 
 from nagasim import __version__, agent_tools, examples, netguard
+from nagasim.assistant import COMPACT_TOOL_NAMES
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 
@@ -55,9 +56,9 @@ INSTRUCTIONS = (
 )
 # `naga mcp --tools compact` (D397): what building and running a model needs, and the file
 # tools around it. Every tool's description is part of each turn an agent pays for, so a
-# client that only builds models is better served by eight tools than by every one.
-COMPACT_TOOLS = frozenset({"get_model_format", "write_model", "update_block", "run_model",
-                           "get_kpi_table", "open_model", "get_model_json", "save_model"})
+# client that only builds models is better served by eight tools than by every one. The
+# five are a local model's compact list (`assistant`), the three are the file tools.
+COMPACT_TOOLS = COMPACT_TOOL_NAMES | {"open_model", "get_model_json", "save_model"}
 
 
 class MCPUnavailable(ImportError):

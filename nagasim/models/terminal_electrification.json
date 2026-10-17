@@ -178,6 +178,20 @@
           "demand_charge_per_kw": 2.3
         }
       }
+    },
+    {
+      "name": "equipment_draw_1",
+      "type": "SUBMODEL",
+      "description": "Equipment draw",
+      "position": [1500.0, 800.0],
+      "params": {"definition": "Equipment draw", "arguments": {"source": "Quay chargers"}}
+    },
+    {
+      "name": "equipment_draw_2",
+      "type": "SUBMODEL",
+      "description": "Equipment draw",
+      "position": [1500.0, 1000.0],
+      "params": {"definition": "Equipment draw", "arguments": {"source": "Swap station"}}
     }
   ],
   "links": [
@@ -501,9 +515,9 @@
       "rate_time_unit": "hours"
     },
     {
-      "name": "Charging draw",
-      "description": "Grid power the chargers and the swap station draw, kW: the grid connection's demand.",
-      "rate": "POWER(\"Quay chargers\") + POWER(\"Swap station\")",
+      "name": "Nrg equipment",
+      "description": "The kW the named equipment draws now, tagged demand so the grid connection serves it.",
+      "rate": "POWER(source)",
       "tag": "demand",
       "rate_time_unit": "hours"
     },
@@ -2106,6 +2120,40 @@
           "Nrg curtailed": {}
         }
       },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    },
+    "Equipment draw": {
+      "info": {
+        "description": "Puts the kW a resource, fleet or charger draws on the site bus, so the grid connection prices it. Name the equipment in Source: its busy, idle and other states come from the power it declares, and the draw follows those states through the run. Set Source before running; a name the model does not declare is reported as an unknown resource, fleet or charger. No ports: this is a continuous asset.",
+        "library": {"library": "energy", "asset": "equipment_draw", "version": "1.5.0"},
+        "parameters": [
+          {
+            "name": "source",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Equipment",
+            "help": "The resource, fleet or charger whose power draw goes on the bus. Type its name exactly as the model declares it.",
+            "group": "Equipment",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {"flows": ["Nrg equipment"]}
+      },
+      "parameters": [
+        {
+          "name": "source",
+          "default": "",
+          "type": "name",
+          "description": "The resource, fleet or charger whose power draw goes on the bus. Type its name exactly as the model declares it."
+        }
+      ],
+      "scoped": {"flows": {"Nrg equipment": {}}},
       "blocks": [],
       "links": [],
       "annotations": []

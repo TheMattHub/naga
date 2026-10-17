@@ -1,6 +1,6 @@
-"""EN1 `berth_shore_power` (Energy phase 3, task 4): every scenario validates, shore power cuts
-CO2, the hotel loads sit in the published benchmarks, a bigger connection never supplies
-less, the investment case pays back, and the four weeks run in under a minute."""
+"""`berth_shore_power`: every scenario validates, shore power cuts CO2, the hotel loads sit in
+the published benchmarks, a bigger connection never supplies less, the investment case pays
+back, and the four weeks run in under a minute."""
 import csv
 import time
 from pathlib import Path
@@ -21,7 +21,7 @@ SCENARIOS = ["Shore power, 2 MW", "Shore power, 6 MW", "Shore power, every ship 
 
 
 @pytest.fixture(scope="module")
-def en1():
+def berth():
     """The four scenarios of the model's own four weeks, one seed."""
     layout = api.load_layout(BERTH)
     return layout, experiments.run_scenarios(layout, replications=1, seed=0)
@@ -37,7 +37,7 @@ def _share(result, name):
     return shore / (shore + aux)
 
 
-def test_en1_every_scenario_validates():
+def test_berth_every_scenario_validates():
     layout = api.load_layout(BERTH)
     names = ["Baseline"] + [s["name"] for s in layout["scenarios"]]
     assert names == ["Baseline"] + SCENARIOS
@@ -47,8 +47,8 @@ def test_en1_every_scenario_validates():
         assert validate_layout_structured(flat) == [], name
 
 
-def test_en1_shore_power_cuts_co2(en1):
-    _, result = en1
+def test_berth_shore_power_cuts_co2(berth):
+    _, result = berth
 
     def tonnes(name):
         return result.results[name]["system"].set_index("Metric")["Value"]["Total Impact"] / 1000
@@ -57,7 +57,7 @@ def test_en1_shore_power_cuts_co2(en1):
         assert tonnes(name) < tonnes("Baseline"), name
 
 
-def test_en1_container_hotel_load_in_benchmark():
+def test_berth_container_hotel_load_in_benchmark():
     with (MODELS / "data" / "berth_calls.csv").open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert 55 <= len(rows) <= 65
@@ -69,30 +69,30 @@ def test_en1_container_hotel_load_in_benchmark():
                                                             "Tanker", "Ro-ro"}
 
 
-def test_en1_bigger_connection_never_supplies_less(en1):
-    _, result = en1
+def test_berth_bigger_connection_never_supplies_less(berth):
+    _, result = berth
     assert _share(result, "Shore power, 6 MW") >= _share(result, "Shore power, 2 MW")
     assert _share(result, "Shore power, 2 MW") > 0
     assert _flows(result, "Baseline").loc[SHORE, "Total"] == 0
 
 
-def test_en1_like_for_like_calls(en1):
+def test_berth_like_for_like_calls(berth):
     """Every scenario serves the same calls: berth energy (shore + auxiliary) is the same,
     only who supplies it differs."""
-    _, result = en1
+    _, result = berth
     totals = {n: _flows(result, n).loc[SHORE, "Total"] + _flows(result, n).loc[AUX, "Total"]
               for n in ["Baseline"] + SCENARIOS}
     assert max(totals.values()) == pytest.approx(min(totals.values()), rel=1e-9)
 
 
-def test_en1_investment_case_has_payback(en1):
-    layout, result = en1
+def test_berth_investment_case_has_payback(berth):
+    layout, result = berth
     row = investment.investment_case(result, layout).set_index("Scenario").loc["Shore power, 6 MW"]
     assert row["Extra Capex"] > 0 and row["Pays Back"]
     assert 8 < row["Payback Years"] < 16          # the tutorial quotes 12.6 years
 
 
-def test_en1_doe_connection_and_readiness_raise_the_shore_share():
+def test_berth_doe_connection_and_readiness_raise_the_shore_share():
     """A 3 x 2 design over the connection and the ready share (seed 0): the shore share is the
     shore energy over the berth energy, and neither factor lowers it."""
     layout = api.load_layout(BERTH)
@@ -115,20 +115,20 @@ def test_en1_doe_connection_and_readiness_raise_the_shore_share():
         assert share[high] >= share[low]
 
 
-def test_en1_runs_under_a_minute():
+def test_berth_runs_under_a_minute():
     start = time.perf_counter()
     api.run_model(BERTH, replications=1, seed=0)
     assert time.perf_counter() - start < 60
 
 
-def test_en1_ready_ships_at_60_percent_are_nested_in_the_full_set():
+def test_berth_ready_ships_at_60_percent_are_nested_in_the_full_set():
     layout = api.load_layout(BERTH)
     draws = [o["attributes"]["ready_u"] for o in layout["orders"]]
     ready60 = {u for u in draws if u < 0.6}
     assert ready60 and ready60 <= {u for u in draws if u < 1.0} == set(draws)
 
 
-def test_en1_sensitivity_dearer_auxiliary_energy_shortens_the_payback():
+def test_berth_sensitivity_dearer_auxiliary_energy_shortens_the_payback():
     """The tutorial's sensitivity table: at 0.30 EUR/kWh the 2 MW case pays back in about 1.8 years."""
     layout = api.load_layout(BERTH)
     for block in layout["blocks"]:

@@ -793,7 +793,7 @@ def test_a_twin_of_the_bundled_line_with_buffers_forecasts_from_its_plant_and_is
     assert doc["forecast"]["status"] == "ok", doc["problems"]
     taken, _problems = state.from_plant(model, dict(source.mapper.snapshot(), at=doc["at"]))
     assert doc["forecast"]["state"] == taken["hash"]
-    flat = state.schema.prepare(state._model(model))[0]
+    flat = state.schema.prepare(api.load_layout(model))[0]
     buffers = {b["name"] for b in flat["blocks"] if b["type"] == "BUFFER"}
     assert sum(e["count"] for e in taken["state"]["entities"]
                if e["block"] in buffers or e.get("held_by") in buffers) >= 4

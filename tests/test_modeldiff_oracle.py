@@ -23,6 +23,7 @@ import json
 import pytest
 
 from conftest import chain, create, delay, dispose, layout, process
+from conftest import resource_record as _resource
 
 # Our chosen reading of the CLI's default visibility rule (see module
 # docstring) -- named here so it reads as a decision, not a magic bool.
@@ -75,12 +76,6 @@ def _require_cli():
 
 
 # -- shared model fixtures (wire format: docs/ARCHITECTURE.md section 7) ---
-
-def _resource(name, capacity=1):
-    return {"name": name, "capacity": capacity, "discipline": "FIFO",
-            "cost_busy": 0.0, "cost_idle": 0.0, "cost_per_use": 0.0,
-            "cost_time_unit": "hours"}
-
 
 def _base_layout():
     c, p, d = create(), process(), dispose()

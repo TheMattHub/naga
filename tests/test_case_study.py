@@ -1,4 +1,4 @@
-"""Phase 1 exit criterion (ROADMAP.md): one complete study, end to end, whose
+"""Phase 1 exit criterion (history/ROADMAP.md): one complete study, end to end, whose
 every headline number is verifiable against exact theory.
 
 nagasim/models/job_shop_jackson.json (built by tools/build_job_shop_example.py)

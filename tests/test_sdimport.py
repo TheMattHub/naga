@@ -1,4 +1,4 @@
-"""PHASE5 SD-5: `nagasim.sdimport` (docs/PHASE5_PLAN.md "Import" paragraph,
+"""PHASE5 SD-5: `nagasim.sdimport` (docs/history/PHASE5_PLAN.md "Import" paragraph,
 ARCHITECTURE 5.24). Covers: the hand-written fixture imports equal to its
 JSON twin, the expression translator's precedence and function coverage, every
 refused-construct code, the DOCTYPE/ENTITY and size-cap security refusals, and

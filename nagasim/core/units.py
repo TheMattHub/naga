@@ -1,4 +1,4 @@
-"""Unit checking for system dynamics (PHASE5 SD-3, PHASE5_PLAN.md Phase 5A
+"""Unit checking for system dynamics (PHASE5 SD-3, docs/history/PHASE5_PLAN.md Phase 5A
 Constructs row "Units"). Pure/stdlib: `parse` turns a unit string into a
 canonical `Unit` (base symbol -> exponent), `infer` walks an expression's own
 AST to guess its unit, `check` compares a layout's declared level/flow/aux

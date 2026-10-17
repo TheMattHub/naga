@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 from pathlib import Path
 from nagasim import api, experiments
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 import argparse
 import pandas as pd
 import sys
@@ -93,7 +91,7 @@ def _write_table(frame: pd.DataFrame, out: str, sheet: str) -> None:
 
 
 def _common_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--factor", action="append", dest="factors", default=None,
                         required=True, help=_FACTOR_HELP)
     parser.add_argument("--response", required=True,
@@ -150,7 +148,7 @@ def main(argv=None, command: str = "doe") -> int:
     args = parser.parse_args(argv)
 
     factors = [parse_factor(spec) for spec in args.factors]
-    layout = experiments._as_layout(args.model)
+    layout = api.load_layout(args.model)
 
     if command == "doe":
         design = build_design(args.design, factors, args.seed)

@@ -23,17 +23,18 @@ Pandas and numpy are loaded only when a comparison runs.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import math
 import re
-import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim import outbox
+from nagasim.core.schema import load_layout
 from nagasim.core.problems import Problem, problem
+from nagasim.live import iso
+from nagasim.plant import flat_layout
+from nagasim.core.utils import canonical_json, is_finite_number, sha256_text
 
 __all__ = ["FORMAT", "KIND", "VERBS", "BUILT", "ORDER_VERBS", "LEVEL", "LIMITS", "REASONS",
            "Refused", "load", "check_action", "override_of", "applied", "effects", "RECORD_KIND",
@@ -112,7 +113,7 @@ def _value_ok(verb, value) -> bool:
     if verb in ("reroute", "resequence"):
         return isinstance(value, str) and 0 < len(value) <= LIMITS["name"] and value.isprintable()
     if verb == "expedite":
-        return _number(value) and abs(value) <= LIMITS["priority"]
+        return is_finite_number(value) and abs(value) <= LIMITS["priority"]
     if verb in ("hold", "release"):
         return value is True
     return verb == "set_capacity" and _whole(value) and 1 <= value <= LIMITS["value"]
@@ -180,21 +181,13 @@ def applied(model: dict, action: dict) -> dict:
     return new
 
 
-def _flat(model: dict) -> dict:
-    """The model as a run sees it: migrated, every asset instance expanded."""
-    from nagasim.core import schema, submodels
-
-    model = schema.migrate(schema.read_layout(model))
-    return submodels.flatten(model) if submodels.has_submodels(model) else model
-
-
 def _orders_answerable(action: dict, model: dict, flat: dict | None = None) -> None:
     """D487, what the model says: an order verb needs a CREATE that releases orders, and
     `expedite` something that reads a job's priority (a ranked queue, a condition), or the
     forecast could not see it. *flat*: the model's `_flat`, when the caller has it."""
     from nagasim.core import orders
 
-    verb, flat = action["verb"], _flat(model) if flat is None else flat
+    verb, flat = action["verb"], flat_layout(model) if flat is None else flat
     if not orders.orders_mode_creates(flat):
         raise Refused("E_CANDIDATES", f"{verb}: the model releases no orders (no CREATE in "
                       f"\"Orders\" mode)", "an order verb acts on the orders a model releases")
@@ -219,7 +212,7 @@ def _order_verb(action: dict, model: dict) -> dict:
     def refuse(text, hint=None):
         return Refused("E_CANDIDATES", f"{verb}: {text}", hint)
 
-    flat = _flat(model)     # once: migrating and flattening is what a candidate costs
+    flat = flat_layout(model)     # once: migrating and flattening is what a candidate costs
     _orders_answerable(action, model, flat)
     state = copy.deepcopy(model.get("initial_state") or {})
     clock = float(state.get("clock") or 0.0)
@@ -377,7 +370,7 @@ def load(path, model) -> dict:
     """The caller's candidates file, checked against *model*: `{"kpi", "better", "expires"
     (seconds, or None for one horizon), "actions"}`. Raises `Refused`. The file is data: it
     selects no code, no path and no sink."""
-    from nagasim import state, twin
+    from nagasim import twin
 
     def refuse(text, hint="see the candidates file in the twin's documentation"):
         return Refused("E_CANDIDATES", text, hint)
@@ -411,7 +404,7 @@ def load(path, model) -> dict:
     if not (isinstance(listed, list) and 0 < len(listed) <= LIMITS["candidates"]):
         raise refuse(f"\"candidates\" is a list of 1 to {LIMITS['candidates']} actions",
                      "each candidate is one more forecast at every forecast")
-    migrated = state._model(model)
+    migrated = load_layout(model)
     actions = [check_action(action, migrated) for action in listed]
     if len({json.dumps(a, sort_keys=True) for a in actions}) < len(actions):
         raise refuse("two candidates are the same action")
@@ -490,12 +483,8 @@ def effects(model, actions, *, kpi: str, better: str, horizon: float, replicatio
 
 
 # ---------------------------------------------------------------- the record (D228)
-def _canonical(value) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
 def _sha(value) -> str:
-    return hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
+    return sha256_text(canonical_json(value))
 
 
 def identity(mapping) -> str | None:
@@ -523,12 +512,6 @@ def record_id(model: str, scenario: str, state: str, seed: int, action: dict, kp
     return _sha([model, scenario, state, seed, action, kpi, float(horizon)])
 
 
-def _number(value) -> bool:
-    # Finite, and an int a float can hold (#373): `math.isfinite` raises on a larger one.
-    return isinstance(value, (int, float)) and not isinstance(value, bool) \
-        and abs(value) <= sys.float_info.max
-
-
 def _count(value) -> bool:
     """A count read back: whole, not negative, and one a float holds exactly (#373)."""
     return _whole(value) and 0 <= value <= 2 ** 53
@@ -545,7 +528,7 @@ def check(record) -> bool:
     try:
         if not (isinstance(record, dict) and set(record) == _RECORD_KEYS
                 and record["format"] == FORMAT and record["kind"] == RECORD_KIND
-                and len(_canonical(record)) <= outbox.LIMITS["record_bytes"]):
+                and len(canonical_json(record)) <= outbox.LIMITS["record_bytes"]):
             return False
         action, expected, state, model = (record[k] for k in ("action", "expected", "state",
                                                                "model"))
@@ -557,16 +540,16 @@ def check(record) -> bool:
             and isinstance(expected, dict) and set(expected) == _EXPECTED_KEYS
             and isinstance(expected["kpi"], str) and len(expected["kpi"]) <= LIMITS["kpi"]
             and expected["better"] in BETTER and expected["level"] == LEVEL
-            and all(_number(expected[k]) for k in _EXPECTED_KEYS - {"kpi", "better"})
-            and _number(record["confidence"]) and _whole(record["rank"])
+            and all(is_finite_number(expected[k]) for k in _EXPECTED_KEYS - {"kpi", "better"})
+            and is_finite_number(record["confidence"]) and _whole(record["rank"])
             and isinstance(state, dict) and set(state) == {"hash", "at", "stamp", "cursors"}
-            and _hex(state["hash"]) and _number(state["at"])
+            and _hex(state["hash"]) and is_finite_number(state["at"])
             and (state["stamp"] is None or _stamp(state["stamp"]) is not None)
             and isinstance(state["cursors"], dict) and len(state["cursors"]) <= 50
             and all(isinstance(k, str) and isinstance(v, str) and len(k) + len(v) <= 400
                     for k, v in state["cursors"].items())
             and _whole(record["seed"]) and _whole(record["replications"])
-            and 2 <= record["replications"] and _number(record["horizon"])
+            and 2 <= record["replications"] and is_finite_number(record["horizon"])
             and record["horizon"] > 0
             and isinstance(model, dict) and set(model) == {"name", "hash"}
             and isinstance(model["name"], str) and len(model["name"]) <= 200
@@ -586,10 +569,6 @@ def _stamp(value) -> float | None:
     from nagasim.live import stamp
 
     return stamp(value) if isinstance(value, str) and len(value) <= 64 else None
-
-
-def _iso(seconds: float) -> str:
-    return datetime.fromtimestamp(seconds, timezone.utc).isoformat(timespec="seconds")
 
 
 # ---------------------------------------------------------------- the cycle's part
@@ -754,17 +733,17 @@ class Advisor:
         """In the forecast's thread: the candidates against *baseline*, the forecast just
         made of *model* on `pending["seed"]`. None when the cycle was stopped."""
         began = self._monotonic()
-        taken = [_canonical(s["action"]) for s in standing]
-        actions = [a for a in self.actions if _canonical(a) not in taken]
+        taken = [canonical_json(s["action"]) for s in standing]
+        actions = [a for a in self.actions if canonical_json(a) not in taken]
         rows, reason = effects(
             model, actions, kpi=self.kpi, better=self.better, horizon=pending["horizon"],
             replications=pending["replications"], seed=pending["seed"], workers=workers,
             should_stop=should_stop, runner=runner, baseline=baseline)
         if rows is None:
             return None
-        ids = {_canonical(s["action"]): s["id"] for s in standing}
-        rows += [{"action": a, "verdict": "standing", "id": ids[_canonical(a)]}
-                 for a in self.actions if _canonical(a) in taken]
+        ids = {canonical_json(s["action"]): s["id"] for s in standing}
+        rows += [{"action": a, "verdict": "standing", "id": ids[canonical_json(a)]}
+                 for a in self.actions if canonical_json(a) in taken]
         return {"rows": rows, "reason": reason, "took": round(self._monotonic() - began, 3)}
 
     def none(self, reason: str = "no_forecast") -> None:
@@ -799,8 +778,8 @@ class Advisor:
             item = {k: v for k, v in row.items() if k != "replications"}
             if row["verdict"] == "better":
                 record = {
-                    "format": FORMAT, "kind": RECORD_KIND, "created": _iso(made),
-                    "expires": _iso(made + self.lifetime), "action": row["action"],
+                    "format": FORMAT, "kind": RECORD_KIND, "created": iso(made),
+                    "expires": iso(made + self.lifetime), "action": row["action"],
                     "expected": {"kpi": self.kpi, "better": self.better, "level": LEVEL,
                                  **{k: row[k] for k in ("baseline", "with_action", "effect",
                                                         "low", "high", "q05", "q95")}},
@@ -881,7 +860,7 @@ class Advisor:
         entry = self._entry(reply["id"])
         at = None
         try:
-            at = None if reply["at"] is None else _iso(reply["at"])
+            at = None if reply["at"] is None else iso(reply["at"])
         except (OverflowError, OSError, ValueError):
             pass
         if reply["decision"] == "ended":
@@ -893,7 +872,7 @@ class Advisor:
             if ends:
                 entry["stands"] = False
                 entry["ended"] = {"at": at, "by": reply["by"], "note": reply["note"],
-                                  "read": _iso(present)}
+                                  "read": iso(present)}
             return
         kind = "unknown" if entry is None else "repeated" if "reply" in entry \
             else "early" if entry["status"] in ("proposed", "dropped") \
@@ -906,7 +885,7 @@ class Advisor:
         # `by` and `note` are someone's free text: kept here, in the ledger, and in no
         # result, page or tool answer (D309).
         entry["reply"] = {"decision": kind, "at": at, "by": reply["by"], "note": reply["note"],
-                          "read": _iso(present)}
+                          "read": iso(present)}
         entry["status"] = kind
         if kind == "taken":
             action = entry["record"]["action"]
@@ -926,7 +905,7 @@ class Advisor:
         if series is None or series not in cumulative:
             return {"status": "not_observable"}
         value, now = (seen.get("observed") or {}).get(series), seen.get("at")
-        if not (_number(value) and _number(now)):
+        if not (is_finite_number(value) and is_finite_number(now)):
             return {"status": "lost"}       # no reading at this step: no start to count from
         return {"status": "waiting", "series": series, "from": float(now),
                 "until": float(now) + record["horizon"],
@@ -940,7 +919,7 @@ class Advisor:
         now = seen.get("at")
         for entry in self._entries:
             effect = entry.get("effect") or {}
-            if effect.get("status") != "waiting" or not _number(now) or now < effect["until"]:
+            if effect.get("status") != "waiting" or not is_finite_number(now) or now < effect["until"]:
                 continue
             expected = entry["record"]["expected"]
             if now - effect["until"] > entry["record"]["horizon"] / 6:
@@ -960,7 +939,7 @@ class Advisor:
     def _deliver(self, wall: float) -> None:
         if self.sink is None or self._state[0] == "stopped":
             return
-        mono, today = self._monotonic(), _iso(wall)[:10]
+        mono, today = self._monotonic(), iso(wall)[:10]
         if self._day[0] != today:
             self._day = [today, 0]
         began = time.monotonic()
@@ -992,7 +971,7 @@ class Advisor:
                 entry["error"] = str(exc)[:40]
                 self._turn("failing", str(exc)[:40])
             else:
-                entry.update(status="delivered", delivered=_iso(wall))
+                entry.update(status="delivered", delivered=iso(wall))
                 entry.pop("error", None)
                 self._retry.pop(ident, None)
                 self._day[1] += 1
@@ -1073,13 +1052,13 @@ def _sound_effect(effect) -> bool:
     if not (isinstance(effect, dict) and effect.get("status") in _EFFECTS):
         return False
     if effect["status"] == "measured" and not (
-            _number(effect.get("observed")) and isinstance(effect.get("inside_interval"), bool)):
+            is_finite_number(effect.get("observed")) and isinstance(effect.get("inside_interval"), bool)):
         return False
     base = effect.get("base")
     return effect["status"] != "waiting" or (
-        isinstance(effect.get("series"), str) and _number(effect.get("from"))
-        and _number(effect.get("until")) and isinstance(base, list) and len(base) == 2
-        and _number(base[0]))
+        isinstance(effect.get("series"), str) and is_finite_number(effect.get("from"))
+        and is_finite_number(effect.get("until")) and isinstance(base, list) and len(base) == 2
+        and is_finite_number(base[0]))
 
 
 def nagasim_version() -> str:
@@ -1120,7 +1099,7 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
     # One baseline a set: the records of one state, seed and standing actions.
     for entry in entries:
         record = entry["record"]
-        key = _canonical([record["state"]["hash"], record["seed"], record["replications"],
+        key = canonical_json([record["state"]["hash"], record["seed"], record["replications"],
                           record["horizon"], record["expected"]["kpi"],
                           record["expected"]["better"], entry["standing"], entry["counts"]])
         groups.setdefault(key, []).append(entry)
@@ -1151,7 +1130,7 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
             clock = (kept.get("state") or {}).get("clock") if isinstance(
                 kept.get("state"), dict) else None
             started, problems = state.start(
-                model, kept, until=(clock if _number(clock) else 0.0) + first["horizon"])
+                model, kept, until=(clock if is_finite_number(clock) else 0.0) + first["horizon"])
         if started is None:
             differs(f"{said}: {problems[0].code}: {problems[0].message}")
             continue
@@ -1170,10 +1149,10 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
         except Exception as exc:
             differs(f"{said}: it could not be computed again ({type(exc).__name__})")
             continue
-        again = {_canonical(row["action"]): row for row in rows}
+        again = {canonical_json(row["action"]): row for row in rows}
         for entry in group:
             record = entry["record"]
-            action, row = record["action"], again.get(_canonical(record["action"]), {})
+            action, row = record["action"], again.get(canonical_json(record["action"]), {})
             name = f"{record['id'][:12]} {action['verb']} {action['target'][:60]} = {action['value']}"
             note = "" if record["engine"] == version else \
                 f" (computed by engine {record['engine']}, this is {version})"

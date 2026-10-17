@@ -687,16 +687,18 @@ def functions_with(*traits: str) -> tuple:
 # `core/sd_loops.py` (a subscript owner / a dependency-graph edge's origin
 # section) and `ui/sdview.py` (an SD-diagram influence arrow's origin) used to
 # hand-map three separate times over.
-LOOKUP_SECTION = {"TS": "timeseries_inputs", "LEVEL": "levels", "FLOW": "flows",
-                  "FRACTION": "levels", "CONV": "conversions", "VAR": "variables",
-                  "DISTANCE": "network", "AUX": "auxiliaries", "DELAY": "delays"}
+LOOKUP_SECTION = {"TS": ("timeseries_inputs",), "LEVEL": ("levels",), "FLOW": ("flows",),
+                  "FRACTION": ("levels",), "CONV": ("conversions",), "VAR": ("variables",),
+                  "DISTANCE": ("network",), "AUX": ("auxiliaries",), "DELAY": ("delays",),
+                  "POWER": ("resources", "fleets", "chargers")}
 
 
 def lookup_sections(*names: str) -> dict:
-    """`LOOKUP_SECTION` filtered to *names* -- the subset a caller treats as
-    an origin (not every named-lookup function is one, e.g. a population
-    lookup resolves against "populations" generically, not this map)."""
-    return {name: LOOKUP_SECTION[name] for name in names}
+    """`LOOKUP_SECTION` filtered to *names*, each to its one section -- the
+    subset a caller treats as an origin (not every named-lookup function is
+    one, e.g. a population lookup resolves against "populations" generically,
+    not this map)."""
+    return {name: LOOKUP_SECTION[name][0] for name in names}
 
 
 def name_sections(function: str) -> tuple:
@@ -706,16 +708,14 @@ def name_sections(function: str) -> tuple:
     tags = TRAITS.get(function, ())
     if "resource_state" in tags:
         return ("resources", "resource_sets")
-    if function == "POWER":
-        return ("resources", "fleets", "chargers")
     if "store_state" in tags:
         return ("blocks",)          # a Hold's or a Batch's store, under the block's name
     if "population" in tags:
         return ("populations",)
     if function in ("TABLE", "TABLE_EXTRAPOLATE"):
         return ("tables",)
-    section = LOOKUP_SECTION.get(function)
-    return (section,) if section and section != "network" else ()
+    sections = LOOKUP_SECTION.get(function, ())
+    return () if sections == ("network",) else sections
 
 
 _NAMED_LOOKUPS = functions_with("named_lookup")
@@ -1487,6 +1487,13 @@ FUNCTION_NOTES: dict[str, str] = {
     "ZIDZ": "ZIDZ(a, b): a / b, or 0 when b is 0",
     "XIDZ": "XIDZ(a, b[, x]): a / b, or x (default 0) when b is 0",
     "TABLE": "a value from the model's lookup table NAME, by 1 or 2 keys",
+    "TABLE_EXTRAPOLATE": "TABLE_EXTRAPOLATE(\"name\", k1[, k2]): like TABLE, but a linear axis "
+                         "continues past its ends along its last slope instead of clamping",
+    "CONV": "CONV(\"name\"): the product rate of delayed conversion NAME right now, per its time_unit",
+    "FRACTION": "FRACTION(\"name\", \"component\"): the share of blended level (or conversion) NAME "
+                "that is COMPONENT",
+    "DISTANCE": "DISTANCE(\"a\", \"b\"): shortest path along the path network between two nodes, "
+                "stations or aliases",
     # System dynamics (PHASE5 SD-2, ARCHITECTURE 5.24).
     "AUX": "auxiliary NAME, evaluated on read",
     "DELAY": "output of delay NAME",
@@ -1511,6 +1518,20 @@ FUNCTION_NOTES: dict[str, str] = {
            "(in that state)",
     "MEAN": "MEAN(x): SUM(x) divided by the element count (subscripts); MEAN(\"pop\", "
             "\"attr\"[, \"state\"]): an attribute's mean over a population (in that state; 0 if none)",
+    "PROD": "PROD(x): x multiplied over every element its \"[*]\" index runs over (subscripts)",
+    "VMIN": "VMIN(x): the smallest x over every element its \"[*]\" index runs over (subscripts)",
+    "VMAX": "VMAX(x): the largest x over every element its \"[*]\" index runs over (subscripts)",
+    "INITIAL": "INITIAL(x): the value x had at t=0, held for the whole run",
+    "ACTIVE_INITIAL": "ACTIVE_INITIAL(x, init): x while running, init when initial values are set up",
+    "SAMPLE_IF_TRUE": "SAMPLE_IF_TRUE(cond, x, init): the last x read while cond was true, init before "
+                      "the first true reading",
+    "TREND": "TREND(x, avg_time[, init]): fractional rate of change of x against its "
+             "avg_time-smoothed value (init: the starting trend, default 0)",
+    "FORECAST": "FORECAST(x, avg_time, horizon): x extrapolated horizon ahead along its TREND",
+    "NPV": "NPV(stream, rate, init, factor): present value of a stream discounted at rate, from "
+           "init, times factor; needs simulation.sd for the step",
+    "NOISE_NORMAL": "NOISE_NORMAL(mean, sd, lo, hi): a normal draw clipped to [lo, hi], redrawn at "
+                    "each re-evaluation, fixed per call site and seed",
     # Agents (PHASE5 AB-1, ARCHITECTURE 5.25).
     "COUNT": "COUNT(\"pop\"[, \"state\"][, \"attr\", \"value\"]): a population's live agents, "
              "those in a state (O(1)), or those whose categorical attribute holds that "
@@ -1536,6 +1557,8 @@ FUNCTION_NOTES: dict[str, str] = {
                "agents of pop to self (state-filtered first, ties by ascending index); 0 if none",
     "KNN_MEAN": "KNN_MEAN(\"pop\", \"attr\", k[, \"state\"]): attr's mean over the k nearest "
                 "agents of pop to self (state-filtered first, ties by ascending index); 0 if none",
+    "NEAR_HEADING": "NEAR_HEADING(\"pop\", r[, \"state\"]): the circular mean heading of the agents "
+                    "NEAR counts; NaN if none",
     # Grid space (PHASE6 A4): self's cell on a grid space.
     "PATCH": "PATCH(\"name\"[, dx, dy]): the patch value at self's grid cell (or an offset "
              "from it); 0 off a bounded grid",

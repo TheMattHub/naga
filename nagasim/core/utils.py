@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import sys
 
 from dataclasses import dataclass
 from heapq import heappush
@@ -11,7 +14,8 @@ from simpy.events import NORMAL
 
 log = logging.getLogger(__name__)
 
-__all__ = ["ResourceSnapshot", "StoreSnapshot", "timeout_at", "is_number"]
+__all__ = ["ResourceSnapshot", "StoreSnapshot", "timeout_at", "is_number", "is_finite_number",
+           "canonical_json", "sha256_text"]
 
 # Last-used paths are stored via QSettings in the Qt UI (product/ui/main_window.py),
 # not here -- this file used to hold a JSON-file equivalent for the original editor.
@@ -25,6 +29,23 @@ def is_number(value) -> bool:
     core/levels.py, core/orders.py, core/tables.py, core/timeseries_inputs.py)
     plus core/initial_state.py's identically-bodied `_number`."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def is_finite_number(value) -> bool:
+    """`is_number` and finite: no NaN, no infinity, and an int a float can hold
+    (`math.isfinite` raises on a larger one, #373). The one copy of what a
+    dozen modules spelled out for a value read from a file."""
+    return is_number(value) and abs(value) <= sys.float_info.max
+
+
+def canonical_json(value) -> str:
+    """*value* as the one JSON text two equal values share (sorted keys, no spaces,
+    no NaN): what a hash is taken over."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 # -------- generic log structures --------
 @dataclass(slots=True)

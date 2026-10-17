@@ -41,15 +41,25 @@ _OLD_MIGRATE = {"resource_sets": [], "links": [], "resources": [], "entities": [
                 "schema_version": schema.CURRENT_VERSION}
 
 
-def test_table_matches_the_old_hand_lists():
-    assert sections.RECORD_SECTIONS == submodels.RECORD_SECTIONS == _OLD_RECORD
-    assert set(submodels._CLONABLE_SECTIONS) == _OLD_CLONABLE
-    assert set(submodels._CONTINUOUS_SECTIONS) == _OLD_CONTINUOUS
-    assert set(experiments._NAMED_SECTIONS) == _OLD_NAMED
+def test_table_still_holds_the_old_hand_lists():
+    """The old lists are frozen above; a new section may extend the table
+    (its own row is covered by the schema round trip below), but nothing the
+    old lists named may drop out or change."""
+    assert [s for s in sections.RECORD_SECTIONS if s in _OLD_RECORD] == list(_OLD_RECORD)
+    assert sections.RECORD_SECTIONS == submodels.RECORD_SECTIONS
+    assert _OLD_CLONABLE <= set(submodels._CLONABLE_SECTIONS)
+    assert _OLD_CONTINUOUS <= set(submodels._CONTINUOUS_SECTIONS)
+    assert _OLD_NAMED <= set(experiments._NAMED_SECTIONS)
     assert experiments._ID_SECTIONS == ("orders",)
-    assert set(experiments._SECTIONS) == _OLD_NAMED | {"orders", "links"}
-    assert set(agent_tools._BINDABLE) == _OLD_BINDABLE
-    assert schema.migrate({"schema_version": schema.CURRENT_VERSION}) == _OLD_MIGRATE
+    assert _OLD_NAMED | {"orders", "links"} <= set(experiments._SECTIONS)
+    assert _OLD_BINDABLE <= set(agent_tools._BINDABLE)
+    migrated = schema.migrate({"schema_version": schema.CURRENT_VERSION})
+    for key, old in _OLD_MIGRATE.items():
+        got = migrated[key]
+        if isinstance(old, dict) and old:     # a new default key may join `simulation`
+            assert old.items() <= got.items(), key
+        else:
+            assert got == old, key
 
 
 def test_every_section_is_in_the_json_schema_and_back():
@@ -124,7 +134,7 @@ def test_headings_match_the_editors_old_tab_lists():
     """D202: `Section.tab` is the heading a client lists a section under,
     here as the editor's own lists had it; C13: every heading in one of the
     families, sections sharing a heading in the same one, none without."""
-    assert {s.name: s.tab for s in sections.SECTIONS if s.tab} == _OLD_TABS
+    assert _OLD_TABS.items() <= {s.name: s.tab for s in sections.SECTIONS if s.tab}.items()
     assert {s.group for s in sections.SECTIONS if s.tab} == set(sections.FAMILIES)
     assert all(s.group == "" for s in sections.SECTIONS if not s.tab)
 

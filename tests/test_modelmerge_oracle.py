@@ -25,6 +25,7 @@ import copy
 import pytest
 
 from conftest import chain, create, delay, dispose, layout, process
+from conftest import resource_record as _resource
 
 
 # -- adapters: the one place that knows modeldiff's real call shape --------
@@ -98,12 +99,6 @@ def _assert_layouts_equal(expected, merged):
 
 
 # -- shared model fixtures (wire format: docs/ARCHITECTURE.md section 7) ---
-
-def _resource(name, capacity=1):
-    return {"name": name, "capacity": capacity, "discipline": "FIFO",
-            "cost_busy": 0.0, "cost_idle": 0.0, "cost_per_use": 0.0,
-            "cost_time_unit": "hours"}
-
 
 def _write(tmp_path, name, doc):
     import json

@@ -26,8 +26,6 @@ with none is refused (`E_DATA_CONNECTION`) and no socket opens.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import logging
 import math
 import random
@@ -100,6 +98,11 @@ def _data(value) -> bool:
         return all(isinstance(k, str) and isinstance(v, _SCALARS) and _fits(v) and _finite(v)
                    for k, v in value.items())
     return isinstance(value, _SCALARS) and _finite(value)
+
+
+def iso(seconds: float) -> str:
+    """Epoch *seconds* as the UTC ISO-8601 text a record file carries."""
+    return datetime.fromtimestamp(seconds, timezone.utc).isoformat(timespec="seconds")
 
 
 def _finite(value) -> bool:
@@ -481,14 +484,14 @@ def main(argv=None) -> int:
     from pathlib import Path
 
     from nagasim import api
-    from nagasim._cli import setup_cli
+    from nagasim._cli import add_model_argument, setup_cli
 
     setup_cli()
     parser = argparse.ArgumentParser(
         prog="naga watch",
         description="Print what a model's live data sources (rest, mqtt, opcua) send, as it "
                     "arrives, with a summary per source. Read-only: nothing is sent to a plant.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--connections", required=True, metavar="FILE",
                         help="your connections file: where each connection a source names may "
                              "connect, and with which credential")

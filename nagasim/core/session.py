@@ -29,7 +29,7 @@ snapshots leaves the run bit-identical to a plain one.
 
 Game mode (G4): `apply_control` maps a dashboard control onto the call above
 (logged as that call, so replay is unchanged), and a `trace=` recorder lets
-the UI stream the new trace events (`take_events`) into its playback Timeline.
+the UI subscribe a recorder from the first event on (`ui/game.py` streams its own).
 """
 from __future__ import annotations
 
@@ -80,7 +80,6 @@ class SimSession:
         self._controllers = {name: PausingController(ids) for name in sorted(policies)}
         self.controls = {c["name"]: c for c in (flat.get("dashboard") or {}).get("controls") or []}
         self.trace = trace
-        self._taken = 0             # trace events already handed out by take_events()
         self.env, self.model = setup_run(flat, seed=self.seed, run_len=self.horizon,
                                          warmup=self.warmup, controllers=self._controllers,
                                          # *subscribers*: further listeners from the first
@@ -214,15 +213,6 @@ class SimSession:
                  "options": [p.name for p in self.model.blocks[req.block].next_process]}
                 for rid, req, _controller in self._requests()]
 
-    def take_events(self) -> list:
-        """The trace events recorded since the last call (G4: the live canvas
-        appends them to its Timeline, in time order); [] without a trace."""
-        if self.trace is None:
-            return []
-        events = self.trace.events[self._taken:]
-        self._taken = len(self.trace.events)
-        return events
-
     def snapshot(self) -> dict:
         """{"t", "widgets": {name: value | {label: value}}}: the dashboard now,
         with the sampler's own evaluation (no rng, a failed read is NaN).
@@ -255,8 +245,7 @@ class SimSession:
             raise ValueError(f"unknown variable '{name}'")
         self._log("set_variable", name, value)
         self.ctx.variables[name] = value
-        if self.ctx.watched:        # an event-driven HOLD reads it (O4)
-            self.ctx.touch(("var", name))
+        self.ctx.wrote_variable(name)       # a HOLD (O4), a picture (D608)
         self._rates_changed()
 
     def set_constant(self, name: str, value) -> None:

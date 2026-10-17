@@ -23,6 +23,7 @@ import numpy as np
 import pytest
 
 from conftest import layout as make_layout
+from conftest import sd_layout as _sd_layout
 
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 
@@ -31,12 +32,6 @@ MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 def _sim(time_limit, dt, method="euler"):
     return {"time_limit": time_limit, "warmup": 0, "replications": 1,
             "sd": {"dt": dt, "method": method}}
-
-
-def _sd_layout(**sections):
-    """A blockless SD-only model: the pattern tests/test_sd_oracles.py uses
-    (a pure SD model has no CREATE/DISPOSE, only levels/flows/auxiliaries)."""
-    return make_layout([], [], **sections)
 
 
 def _analyse(layout, **kw):

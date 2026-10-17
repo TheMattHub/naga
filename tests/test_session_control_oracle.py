@@ -110,33 +110,18 @@ from conftest import chain, create, dispose, layout, process
 from nagasim.core import session
 from nagasim.core.schema import validate_model_structured
 from nagasim.core.sim_runner import run_single_simulation
+from conftest import decide as _decide
+from conftest import entity_count as _entity_count
+from conftest import block as _block
 
 
 # ---------------------------------------------------------------- block helpers
 # Same shapes as tests/test_session_oracle.py / tests/test_game_oracle.py (already
 # committed), reproduced here rather than imported, so this file has no
 # import-time dependency on either.
-def _block(name, btype, params, position=None):
-    return {"name": name, "description": name, "type": btype,
-            "position": position or [0, 0], "params": params}
-
-
 def _assign_type(name, e_type, position=None):
     return _block(name, "ASSIGN", {"assignments": [{"target": "entity.e_type", "expr": repr(e_type)}]},
                   position)
-
-
-def _decide(name, mode, **params):
-    base = {"mode": mode, "probs": [], "conditions": [], "policy": "", "observation": [],
-            "fallback": "first", "queue_exprs": []}
-    base.update(params)
-    return _block(name, "DECIDE", base)
-
-
-def _entity_count(kpi, e_type):
-    df = kpi["entity_summary"]
-    rows = df[df["Entity Type"] == e_type]
-    return int(rows["Total Created"].iloc[0]) if not rows.empty else 0
 
 
 def _exit_times_by_creation(kpi):

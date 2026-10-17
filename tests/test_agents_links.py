@@ -32,10 +32,6 @@ def _run(layout, seed=1, recorder=None):
     return env.ctx.agent_system
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _network_stream(seed, pop):
     return np.random.default_rng(agent_seed(seed, pop, deterministic_hash("network")))
 
@@ -266,7 +262,7 @@ def _with_network(network, count=10, tables=None):
     {"kind": "table", "table": "Nope"}, {"kind": "none", "p": 0.1},
     {"kind": "random", "p": 0.1, "directed": "yes"}])
 def test_bad_networks_are_refused(network):
-    assert "E_AGENT_NETWORK" in _codes(_with_network(network))
+    assert "E_AGENT_NETWORK" in problem_codes(_with_network(network))
 
 
 def test_good_networks_validate():
@@ -274,7 +270,7 @@ def test_good_networks_validate():
     for network in ({"kind": "random", "mean_degree": 9}, {"kind": "small_world", "k": 8},
                     {"kind": "scale_free", "m": 9, "link_on_spawn": True},
                     {"kind": "table", "table": "Edges", "directed": True}, {"kind": "none"}):
-        assert not _codes(_with_network(network, tables=tables))
+        assert not problem_codes(_with_network(network, tables=tables))
 
 
 @pytest.mark.parametrize("text, code", [
@@ -287,21 +283,21 @@ def test_bad_link_reads_are_refused(text, code):
                        states=["S", "T"],
                        transitions=[A.Transition("S", "T", "timeout", "0",
                                                  actions=[A.Action.set("self.c", text)])])
-    assert code in _codes(_model(kind, A.Population("People", "Person", 3)))
+    assert code in problem_codes(_model(kind, A.Population("People", "Person", 3)))
 
 
 def test_link_reads_and_targets_in_the_wrong_place():
     rate = A.AgentType("Person", states=["S", "I"],
                        transitions=[A.Transition("S", "I", "rate", '0.1 * LINKED("People", "I")')])
-    assert "E_AGENT_RATE_FORM" in _codes(_model(rate, A.Population("People", "Person", 3)))
+    assert "E_AGENT_RATE_FORM" in problem_codes(_model(rate, A.Population("People", "Person", 3)))
     bad = A.AgentType("Person", states=["S"], transitions=[A.Transition("S", "S", "timeout", "1",
                       actions=[A.Action.link(True), A.Action.send("x", {"links": False})])])
-    codes = _codes(_model(bad, A.Population("People", "Person", 3)))
+    codes = problem_codes(_model(bad, A.Population("People", "Person", 3)))
     assert {"E_AGENT_ACTION", "E_SEND_TARGET"} <= codes
     block = _model(A.AgentType("Person", states=["S"]), A.Population("People", "Person", 3))
     block["blocks"] = [{"name": "Tell", "type": "SEND",
                         "params": {"message": "x", "to": "links"}}]
-    assert "E_SEND_TARGET" in _codes(block)
+    assert "E_SEND_TARGET" in problem_codes(block)
 
 
 def test_python_api_round_trip():
@@ -322,4 +318,4 @@ def test_the_json_schema_accepts_networks_and_link_actions():
     layout = migrate(_model(kind, A.Population("People", "Person", 5, network=A.Network(
         "small_world", k=2, beta=0.1, link_on_spawn=True))))
     assert not list(jsonschema.Draft202012Validator(build_json_schema()).iter_errors(layout))
-    assert not _codes(layout)
+    assert not problem_codes(layout)

@@ -70,8 +70,8 @@ class Assign(BaseProcess):
                 else:
                     self.ctx.variables[name] = value
                     wrote_variable = True
-                    if self.ctx.watched:        # an event-driven HOLD reads it (O4)
-                        self.ctx.touch(("var", name))
+                    if self.ctx.watched or self.ctx.traced_variables:   # a HOLD (O4), a picture (D608)
+                        self.ctx.wrote_variable(name)
             except (ExpressionError, ValueError) as exc:
                 raise ExpressionError(f"Assign block '{self.name}': {target} = {expr}: {exc}") from None
         # A flow rate may read a model variable (PHASE4 D1), so writing one is

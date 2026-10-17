@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nagasim import experiments
+from nagasim.core.schema import load_layout
 import math
 import numpy as np
 import pandas as pd
@@ -59,7 +59,7 @@ def sobol(layout, factors, kpi: str, n: int = 256, seed: int = 0, replications: 
     k = len(factors)
     if k == 0:
         raise ValueError("sobol needs at least one factor")
-    base = experiments._as_layout(layout)
+    base = load_layout(layout)
     seeds = list(range(seed, seed + max(int(replications), 1)))
     exponent = max(int(np.ceil(np.log2(max(int(n), 2)))), 1)
     unit = qmc.Sobol(d=2 * k, scramble=True, seed=seed).random_base2(exponent)

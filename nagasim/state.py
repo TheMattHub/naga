@@ -8,8 +8,8 @@ A state is the `initial_state` section (`core/initial_state.py`) inside a docume
      "state": {"clock": 480.0, "entities": [...], "arrivals": {...}, ...},
      "hash": "<sha256>"}
 
-* `take` runs a model to a time and reads its state out; `observe` reads it from a plant
-  through the model's own data bindings; `start` puts one into a model, checked.
+* `take` runs a model to a time and reads its state out; `from_plant` reads it from a plant's
+  observed timeline (D258); `start` puts one into a model, checked.
 * THE REPRODUCTION RULE (D233). A run started from a state taken at t gives the results of
   the uninterrupted run with a warm-up of t: exactly when nothing random is drawn after t,
   in distribution otherwise. Stream positions are not state (a plant has none), entity ids
@@ -23,25 +23,24 @@ A state file is data: it is read like any other input and selects no code.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import collections
 import copy
-import hashlib
 import json
 import math
 import re
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim.core import blocking, initial_state, orders, schema, tending
+from nagasim.core import blocking, initial_state, initial_state_validation, orders, schema, tending
 from nagasim.core.block_registry import queueing_types
+from nagasim.core.network import build_network
 from nagasim.core.problems import Problem, problem
 from nagasim.core.session import SimSession
+from nagasim.core.timeunits import units_of
+from nagasim.core.utils import canonical_json, sha256_text
 from nagasim.live import stamp as stamp_seconds
 
-__all__ = ["FORMAT", "MAX_BYTES", "MAX_ENTITIES", "StateError", "Tap", "take", "observe", "from_plant",
+__all__ = ["FORMAT", "MAX_BYTES", "MAX_ENTITIES", "StateError", "Tap", "take", "from_plant",
            "refused_kind", "coverage",
            "document", "model_hash", "start", "check", "read", "main"]
 
@@ -80,36 +79,23 @@ def _unsupported(kind: str, what: str) -> StateError:
 
 
 # ---------------------------------------------------------------- identity
-def _canonical(value) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _model(layout) -> dict:
-    """The migrated layout: what is hashed, and what a state is put into."""
-    return schema.migrate(schema.read_layout(layout))
-
-
 def model_hash(layout) -> str:
     """SHA-256 of the model without its `initial_state` (D237): a state belongs to the model
     file it was taken for, whatever state that file itself carries."""
-    model = _model(layout)
-    return _sha(_canonical({k: v for k, v in model.items() if k != initial_state.SECTION}))
+    model = schema.load_layout(layout)
+    return sha256_text(canonical_json({k: v for k, v in model.items() if k != initial_state.SECTION}))
 
 
 def document(layout, state: dict, *, name: str | None = None, **taken) -> dict:
     """The document of *state* for the model *layout*; *taken* is recorded, not hashed."""
-    model = _model(layout)
+    model = schema.load_layout(layout)
     digest = model_hash(model)
     from nagasim import __version__         # D389: which version wrote it, not hashed
 
     return {"format": FORMAT,
             "model": {"name": name or (model.get("info") or {}).get("name") or "", "hash": digest},
             "taken": {**taken, "engine": __version__}, "state": state,
-            "hash": _sha(_canonical([digest, state]))}
+            "hash": sha256_text(canonical_json([digest, state]))}
 
 
 # ---------------------------------------------------------------- out of a run
@@ -150,7 +136,7 @@ def take(layout, at: float, seed: int = 0, *, name: str | None = None) -> dict:
                            f"take the state before it")
     taken = _read(session, tap)
     # D484: a run started from a book has the book's orders, which no run changes.
-    book = (_model(layout).get(initial_state.SECTION) or {}).get("order_book")
+    book = (schema.load_layout(layout).get(initial_state.SECTION) or {}).get("order_book")
     if book is not None:
         taken["order_book"] = copy.deepcopy(book)
     return document(layout, taken, name=name, source="run", at=float(at), seed=int(seed))
@@ -245,7 +231,7 @@ def _attributes(entity) -> dict:
             value = {k: _plain(v) for k, v in value.items()
                      if isinstance(_plain(v), (str, int, float, type(None)))}
         try:
-            _canonical(value)
+            canonical_json(value)
         except (TypeError, ValueError):
             raise _unsupported("an attribute that is not plain data",
                                f"entity {entity.id}.{key}") from None
@@ -745,7 +731,7 @@ def _read(session, tap: Tap) -> dict:
     if entities:
         state["entities"] = entities
     try:
-        _canonical(state)
+        canonical_json(state)
     except (TypeError, ValueError):
         raise _unsupported("a value that is not plain data", "a variable or a level") from None
     return state
@@ -766,44 +752,11 @@ _KINDS = (
 )
 
 
-def observe(layout, base_dir=None, *, network=None, confine_to=None, feed=None,
-            name: str | None = None):
-    """(document, problems): the state a plant reports NOW, read through the model's own
-    data bindings into `initial_state.*` (D236), with the caller's policy, connections and
-    feed. The latest values only: no state is rebuilt from a history (that is 7.11).
-
-    A binding that fails is its own problem and then nothing is written: half an
-    observation is not a state. A kind the model has and the state says nothing about is
-    `W_STATE_NOT_COVERED` and starts as the model declares it. `taken.stamp` is the oldest
-    stamp among the sources read, None when one has none."""
-    from nagasim import databind        # pandas: loaded only when a plant is read
-
-    model = _model(layout)
-    resolved, report = databind.resolve_bindings(model, base_dir, network=network,
-                                                 confine_to=confine_to, feed=feed)
-    mine = [r for r in report.records if str(r.target).startswith(initial_state.SECTION + ".")]
-    problems = [r.problem for r in mine if r.problem is not None]
-    stamps = [stamp_seconds(r.source_time) for r in mine]
-    state, stamp = {}, None
-    if not problems:
-        state = resolved.get(initial_state.SECTION) or {}
-        if stamps and None not in stamps:
-            stamp = datetime.fromtimestamp(min(stamps), timezone.utc).isoformat(
-                timespec="seconds")
-    for kind, has, key in _KINDS:
-        if has(model) and (key is None or not state.get(key)):
-            problems.append(problem(
-                "W_STATE_NOT_COVERED", f"the observed state says nothing about {kind}: "
-                f"they start as the model declares them", f"/{initial_state.SECTION}",
-                hint="bind an observed value into initial_state, or accept the model's start"))
-    return document(model, state, name=name, source="observed", stamp=stamp), problems
-
-
 def from_plant(layout, seen: dict, *, name: str | None = None):
     """(document, problems): the state of a plant's OBSERVED TIMELINE now (PHASE7 7.11,
     D258). *seen* is `plant.Mapper.snapshot()`: where each entity is and in which order,
     what holds each resource, the levels, and the model time `at` they were last told.
-    Unlike `observe` it has a clock, and entities one by one.
+    It has a clock, and entities one by one.
 
     It carries what 7.10's vocabulary holds and no more. The plant does not say when a
     service ends, so one in progress is drawn afresh; a fleet, a vehicle or an agent starts
@@ -811,7 +764,7 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
     with the section's own code. Units reported busy with nobody named in service: when ONE
     block seizes the resource its longest-waiting entities are the ones in service
     (`W_PLANT_SERVICE_INFERRED`); otherwise nothing is chosen and `start` refuses."""
-    model = _model(layout)
+    model = schema.load_layout(layout)
     flat = schema.prepare(model)[0]
     blocks = {b.get("name"): b for b in flat.get("blocks") or []}
     seizes: dict[str, list] = {}
@@ -882,7 +835,7 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
         while len(incoming.get(name, ())) == 1 and name not in seen:
             seen.add(name)
             name = incoming[name][0]
-            if kind_of(name) == "BUFFER" and initial_state._places(blocks[name]):
+            if kind_of(name) == "BUFFER" and initial_state_validation.places_of(blocks[name]):
                 return name
             if kind_of(name) not in blocking.TRANSPARENT_TYPES and kind_of(name) != "BUFFER":
                 return None
@@ -891,7 +844,7 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
     inside: dict = {}               # buffer -> the places its parts have: those further on first
     for entity in entities:
         name = entity["block"]
-        entity["kind"], entity["places"] = kind_of(name), initial_state._places(blocks.get(name, {}))
+        entity["kind"], entity["places"] = kind_of(name), initial_state_validation.places_of(blocks.get(name, {}))
         waits = not entity["serving"] and entity["kind"] in _QUEUEING and not entity["places"]
         entity["behind"] = behind(name) if waits else None
         if entity["behind"] is not None:
@@ -1204,7 +1157,7 @@ def _plant_tending(spec, said, records, busy, waits, entities, routes, clock, ca
         node = (station.get("params") or {}).get("node")
         units = [u for u in range(len(records)) if u not in busy and said[u]["node"] == node
                  and (said[u].get("cycle") or [None])[0] == which]
-        fixed = initial_state._tending_seconds(routes.flat, station, which, arm)
+        fixed = initial_state_validation.tending_seconds(routes.flat, station, which, arm)
         return (units[0], fixed[0]) if units and len(fixed) == 1 else (None, None)
 
     def start(unit, cycle) -> float:
@@ -1278,9 +1231,9 @@ def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
     later than its ride ended, else at the end stop) and the others are packed behind it.
     Beyond the cells a part waits for one. What does not fit is said and left out, and
     `start` refuses it."""
-    units = initial_state.units_of(flat.get("simulation"))
+    units = units_of(flat.get("simulation"))
     try:
-        network = initial_state.build_network(flat.get("network"), units)
+        network = build_network(flat.get("network"), units)
     except Exception:       # a broken network is the network section's own problem
         network = None
     out, entries = {}, {}
@@ -1289,7 +1242,7 @@ def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
         if _kind(block) != "CONVEYOR" or not on:
             continue
         params = block.get("params") or {}
-        geometry = initial_state._geometry(params, units, network)
+        geometry = initial_state_validation.geometry_of(params, units, network)
         if params.get("accumulating", True) is False or geometry is None \
                 or any(e["since"] is None for e in on):
             continue        # `start` refuses them with the section's own code
@@ -1342,7 +1295,7 @@ class _Routes:
 
     def __init__(self, flat, blocks, out_links, incoming):
         self.flat, self.blocks, self.out, self.incoming = flat, blocks, out_links, incoming
-        self.tended = initial_state._tended(blocks)     # station alias -> its block (D446)
+        self.tended = initial_state_validation.tended_stations(blocks)     # station alias -> its block (D446)
         self.stations = {}          # station name and block name -> (block name, node)
         for name, block in blocks.items():
             if _kind(block) == "STATION":
@@ -1387,7 +1340,7 @@ class _Routes:
     def machine(self, alias):
         """The block that works a part placed at the tending station *alias*, or None."""
         name = self.tended.get(alias) if isinstance(alias, str) else None
-        return initial_state._machine(self.blocks, self.flat, name) if name else None
+        return initial_state_validation.machine_of(self.blocks, self.flat, name) if name else None
 
     def _steps(self, e_type, sequence=None):
         """(the routing, its stations): the job's order's (D483), else the one sequence
@@ -1479,11 +1432,11 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
             and isinstance(doc.get("state"), dict) and isinstance(doc.get("model"), dict)
             and isinstance(doc.get("hash"), str) and isinstance(doc["model"].get("hash"), str)):
         return refused("E_STATE_FORMAT", "this is not a state document of format 1",
-                       "write one with `naga state take` or `naga state observe`")
+                       "write one with `naga state take`")
     state = doc["state"]
     entities = state.get("entities")
     try:
-        text = _canonical(state)
+        text = canonical_json(state)
     except (TypeError, ValueError, RecursionError):
         return refused("E_STATE_FORMAT", "the state holds a value that is not plain data",
                        "numbers must be finite; no value may nest without end")
@@ -1496,9 +1449,9 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
         return refused("E_STATE_SIZE", f"the state is over the bound of {MAX_BYTES} bytes or "
                        f"{MAX_ENTITIES} entities",
                        "a state this large is not one a run can start from")
-    if doc["hash"] != _sha(_canonical([doc["model"]["hash"], state])):
+    if doc["hash"] != sha256_text(canonical_json([doc["model"]["hash"], state])):
         return refused("E_STATE_HASH", "the state does not match its own hash",
-                       "it was edited after it was written; take or observe it again")
+                       "it was edited after it was written; take it again")
     mine = model_hash(layout)
     if doc["model"]["hash"] != mine:
         return refused("E_STATE_MODEL", f"the state was taken for model "
@@ -1513,7 +1466,7 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
         if age is None or age > max_age:
             return refused("E_STATE_STALE", "the observed state has no time stamp" if age is None
                            else f"the observed state is {age:.0f} s old, over the {max_age:g} s "
-                                f"asked for", "observe it again, or allow an older state")
+                                f"asked for", "write it again, or allow an older state")
     return []
 
 
@@ -1521,7 +1474,7 @@ def coverage(layout, doc) -> list:
     """Warnings for what the model has and the state *doc* says nothing about (D389): a
     fleet, or parts in a buffer, of a state written before these were carried or observed
     without them. They start as the model declares them."""
-    flat = schema.prepare(_model(layout))[0]
+    flat = schema.prepare(schema.load_layout(layout))[0]
     said = doc.get("state") if isinstance(doc, dict) and isinstance(doc.get("state"), dict) else {}
     taken = doc.get("taken") if isinstance(doc, dict) and isinstance(doc.get("taken"), dict) else {}
     # The document is untrusted: only a short, plain version text reaches the console.
@@ -1529,7 +1482,7 @@ def coverage(layout, doc) -> list:
     writer = "a version before 0.6.2" if engine is None else f"nagasim {engine}" \
         if isinstance(engine, str) and re.fullmatch(r"[A-Za-z0-9.+-]{1,40}", engine) \
         else "an unnamed version"
-    places = any(initial_state._places(b) for b in flat.get("blocks") or [])
+    places = any(initial_state_validation.places_of(b) for b in flat.get("blocks") or [])
     buffers = [b.get("name") for b in flat.get("blocks") or []
                if str(b.get("type", "")).upper() == "BUFFER"]
     held = any(isinstance(e, dict) and (e.get("held_by") or e.get("block") in buffers)
@@ -1541,7 +1494,7 @@ def coverage(layout, doc) -> list:
     return [problem("W_STATE_NOT_COVERED", f"the state (written by {writer}) says "
                     f"nothing about {kind}: they start as the model declares them",
                     f"/{initial_state.SECTION}",
-                    hint="take or observe the state again with this version")
+                    hint="take the state again with this version")
             for kind in missing]
 
 
@@ -1555,7 +1508,7 @@ def start(layout, doc, *, max_age: float | None = None, now: float | None = None
     problems = check(layout, doc, max_age=max_age, now=now)
     if problems:
         return None, problems
-    model = _model(layout)
+    model = schema.load_layout(layout)
     model[initial_state.SECTION] = copy.deepcopy(doc["state"])
     if until is not None:
         model["simulation"] = dict(model.get("simulation") or {}, time_limit=float(until))
@@ -1586,7 +1539,7 @@ def read(path) -> tuple:
     except (OSError, ValueError, RecursionError) as exc:
         return None, [problem("E_STATE_FORMAT", f"the state file cannot be read "
                               f"({type(exc).__name__})", "/initial_state",
-                              hint="write one with `naga state take` or `naga state observe`")]
+                              hint="write one with `naga state take`")]
 
 
 def _report(problems) -> int:
@@ -1606,34 +1559,26 @@ def _write(doc: dict, out) -> None:
 
 
 def main(argv=None) -> int:
-    """`naga state take | observe | check`."""
+    """`naga state take | check`."""
     import argparse
 
-    from nagasim import netguard
-    from nagasim._cli import setup_cli
+    from nagasim._cli import add_model_argument, setup_cli
 
     setup_cli()
     parser = argparse.ArgumentParser(
         prog="naga state",
-        description="A model's state as a document: taken from a run, observed from a plant "
-                    "through the model's data bindings, and checked before a run starts "
-                    "from it (naga run MODEL --state FILE). Read-only.")
+        description="A model's state as a document: taken from a run, and checked before a "
+                    "run starts from it (naga run MODEL --state FILE). Read-only.")
     verbs = parser.add_subparsers(dest="verb", required=True)
     take_ = verbs.add_parser("take", help="run the model to a time and write its state")
-    take_.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(take_)
     take_.add_argument("--at", type=float, required=True, metavar="T",
                        help="the model time, in the model's base time unit")
     take_.add_argument("--seed", type=int, default=0)
     take_.add_argument("--out", default=None, metavar="FILE", help="default: print it")
-    observe_ = verbs.add_parser("observe", help="read the state a plant reports now, through "
-                                               "the model's bindings into initial_state")
-    observe_.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
-    observe_.add_argument("--connections", default=None, metavar="FILE",
-                          help="your connections file, for a model with live sources")
-    observe_.add_argument("--out", default=None, metavar="FILE", help="default: print it")
     check_ = verbs.add_parser("check", help="say whether a run of this model may start from "
                                            "this state; exit 1 with the reasons when not")
-    check_.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(check_)
     check_.add_argument("state", help="path to the state document")
     check_.add_argument("--max-age", type=float, default=None, metavar="SECONDS",
                         help="refuse an observed state older than this")
@@ -1647,14 +1592,6 @@ def main(argv=None) -> int:
             return _report([exc.problem])
         _write(doc, args.out)
         return 0
-    if args.verb == "observe":
-        policy = netguard.NetworkPolicy(connections=netguard.load_connections(args.connections)) \
-            if args.connections else None
-        doc, problems = observe(args.model, Path(args.model).parent, network=policy, name=name)
-        failed = _report(problems)
-        if not failed:
-            _write(doc, args.out)
-        return failed
     doc, problems = read(args.state)
     problems = problems or start(args.model, doc, max_age=args.max_age)[1]
     if not problems:

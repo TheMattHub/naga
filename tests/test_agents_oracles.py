@@ -1,4 +1,4 @@
-"""Independent oracle tests for PHASE5 AB-1 (docs/PHASE5_PLAN.md, "Phase 5B:
+"""Independent oracle tests for PHASE5 AB-1 (docs/history/PHASE5_PLAN.md, "Phase 5B:
 agent-based modelling", the AB-1 milestone row and the "Design refinements"
 section). Every expected value is a hand derivation or a tiny standalone
 reference computation, independent of the engine's own integrated-hazard-heap

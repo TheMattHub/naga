@@ -46,8 +46,6 @@ already runs. There is nothing for a bespoke scheduler in this package to add.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import argparse
 import logging
 from dataclasses import dataclass, field
@@ -57,7 +55,7 @@ import numpy as np
 import pandas as pd
 
 from nagasim import api, experiments, netguard
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core.stats import ci95, wilson_interval
 
 __all__ = ["ForecastResult", "forecast", "bands", "parse_event", "series_extreme_kpis",
@@ -252,7 +250,7 @@ def forecast(layout, *, horizon: float, replications: int = 100, kpis=None, even
     `{"name", "kpi", "op", "value"}` dicts, each answered as a probability with
     a Wilson interval.
     """
-    base = experiments._as_layout(layout)
+    base = api.load_layout(layout)
     if not horizon or float(horizon) <= 0:
         raise ValueError("forecast needs a positive horizon")
 
@@ -303,7 +301,7 @@ def main(argv=None) -> int:
         description="Forecast a short horizon from the model's current state, with prediction "
                     "bands and event probabilities. Schedule repeated runs with the OS scheduler "
                     "(Task Scheduler, cron); this command is the unit of work, not a daemon.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--horizon", type=float, required=True,
                         help="run length in base time units")
     parser.add_argument("--replications", type=int, default=100)

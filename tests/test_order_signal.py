@@ -311,8 +311,8 @@ def test_an_order_verb_migrates_and_flattens_the_model_once(monkeypatch):
     """A candidate's cost with a big book: one `_flat` per override, not three."""
     started = started_at(ranked_shop(), 0.5)
     calls = []
-    flat = recommend._flat
-    monkeypatch.setattr(recommend, "_flat", lambda model: calls.append(1) or flat(model))
+    flat = recommend.flat_layout
+    monkeypatch.setattr(recommend, "flat_layout", lambda model: calls.append(1) or flat(model))
     recommend.override_of(act("expedite", "WO-3", 0), started)
     assert len(calls) == 1
 

@@ -25,10 +25,6 @@ def _run(layout, seed=1):
     return env.ctx.agent_system
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 CATS = ["red", "blue", "green"]
 
 
@@ -153,12 +149,12 @@ def _layout(attributes=(), pop_extra=None, transitions=()):
     ([{"name": "c", "init": "0"}], {"color_by": "c"}, (), "E_AGENT_ATTRIBUTE"),  # color_by numeric
 ])
 def test_every_category_problem_code(attributes, pop_extra, transitions, code):
-    assert code in _codes(_layout(attributes, pop_extra, transitions))
+    assert code in problem_codes(_layout(attributes, pop_extra, transitions))
 
 
 def test_a_valid_categorical_model_has_no_problems():
     attrs = [{"name": "c", "kind": "category", "categories": ["red", "blue"], "init": '"red"'}]
-    assert not _codes(_layout(attrs, {"color_by": "c", "colors": {"red": "RED"}},
+    assert not problem_codes(_layout(attrs, {"color_by": "c", "colors": {"red": "RED"}},
                               [{"from": "S", "to": "S",
                                "condition": 'COUNT("People", "S", "c", "red") >= 0'}]))
 

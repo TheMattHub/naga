@@ -93,13 +93,6 @@ naga state check model.json state.json --max-age 300     # may this model start 
 naga run model.json --state state.json                   # start from it
 ```
 
-`naga state observe` writes the same document from a plant, through the model's bindings (with
-no binding that says a state, as here, the document says so and covers nothing):
-
-```console
-naga state observe model.json --out state.json
-```
-
 - **The clock.** A state taken at t carries `"clock": t`: the run starts at that model time, so
   shifts, dated series and order releases need no shifting, and its statistics cover the run from
   there, as after a warm-up of that length. The system results say `Started From State At`, so
@@ -158,8 +151,7 @@ naga state observe model.json --out state.json
 - **From a plant.** A data binding may target `initial_state.variables.<name>`,
   `initial_state.levels.<name>`, `initial_state.resources.<name>.down_until` or `.busy`, and
   `initial_state.entities.<block>.count` or `.in_service`; with the `last` transform it writes the
-  latest value a source holds. `naga state observe` reads them all and writes the document.
-  An observation the model cannot hold is refused, never repaired: more in service than the
+  latest value a source holds when a run binds its data. An observation the model cannot hold is refused, never repaired: more in service than the
   resource has units (`E_INITIAL_IN_SERVICE`), more waiting than the queue holds
   (`E_INITIAL_QUEUE_CAPACITY`), a resource reported busy with no entity in service
   (`E_INITIAL_BUSY`), a state older than `--max-age` (`E_STATE_STALE`). What no binding reports

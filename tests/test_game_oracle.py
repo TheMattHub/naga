@@ -1,6 +1,6 @@
 """Independent oracle for milestone G4 (PHASE6 depth bucket G, engine parts):
 dashboard "controls" validation (E_DASHBOARD_CONTROL), `SimSession.
-apply_control`, `Timeline.append`, and `SimSession(trace=...)`/`take_events`.
+apply_control`, `Timeline.append`, and `SimSession(trace=...)`.
 
 Written from the task's fixed SPEC only. Unlike test_session_oracle.py/
 test_dashboard_oracle.py, the modules this milestone extends (nagasim.core.session,
@@ -60,7 +60,6 @@ RESOLVED AMBIGUITIES (GUESS):
     directly from the spec text ("value outside [min, max] raises
     ValueError"), not a guess.
 """
-import inspect
 import random
 
 import pytest
@@ -71,18 +70,17 @@ import nagasim.core.schema as schema_mod
 from nagasim.core import playback, session
 from nagasim.core.sim_runner import run_single_simulation
 from nagasim.core.trace import TraceEvent, TraceRecorder
+from conftest import decide as _decide
+from conftest import entity_count as _entity_count
+from conftest import block as _block
 
 # -- feature gates (G4 not landed yet: every check below is currently False) --
 _HAS_APPLY_CONTROL = hasattr(session.SimSession, "apply_control")
-_HAS_TRACE_KWARG = "trace" in inspect.signature(session.SimSession.__init__).parameters
-_HAS_TAKE_EVENTS = hasattr(session.SimSession, "take_events")
 _HAS_TIMELINE_APPEND = hasattr(playback.Timeline, "append")
 _HAS_DASHBOARD_CONTROL_CODE = "E_DASHBOARD_CONTROL" in schema_mod.PROBLEM_CODES
 
 _skip_control_api = pytest.mark.skipif(not _HAS_APPLY_CONTROL,
                                        reason="G4 not landed: SimSession.apply_control")
-_skip_trace_api = pytest.mark.skipif(not (_HAS_TRACE_KWARG and _HAS_TAKE_EVENTS),
-                                     reason="G4 not landed: SimSession(trace=...)/take_events")
 _skip_timeline_append = pytest.mark.skipif(not _HAS_TIMELINE_APPEND,
                                            reason="G4 not landed: Timeline.append")
 _skip_dashboard_control = pytest.mark.skipif(not _HAS_DASHBOARD_CONTROL_CODE,
@@ -92,27 +90,9 @@ _skip_dashboard_control = pytest.mark.skipif(not _HAS_DASHBOARD_CONTROL_CODE,
 # ---------------------------------------------------------------- block helpers
 # Same shapes as tests/test_session_oracle.py's own (committed, G3), reproduced here
 # rather than imported, so this file has no import-time dependency on it.
-def _block(name, btype, params, position=None):
-    return {"name": name, "description": name, "type": btype,
-            "position": position or [0, 0], "params": params}
-
-
 def _assign_type(name, e_type, position=None):
     return _block(name, "ASSIGN", {"assignments": [{"target": "entity.e_type", "expr": repr(e_type)}]},
                   position)
-
-
-def _decide(name, mode, **params):
-    base = {"mode": mode, "probs": [], "conditions": [], "policy": "", "observation": [],
-            "fallback": "first", "queue_exprs": []}
-    base.update(params)
-    return _block(name, "DECIDE", base)
-
-
-def _entity_count(kpi, e_type):
-    df = kpi["entity_summary"]
-    rows = df[df["Entity Type"] == e_type]
-    return int(rows["Total Created"].iloc[0]) if not rows.empty else 0
 
 
 def _exit_times_by_creation(kpi):
@@ -147,10 +127,6 @@ def _controls_layout(controls):
                   simulation={"time_limit": 8, "warmup": 0, "replications": 1})
 
 
-def _codes(lay):
-    return problem_codes(lay)
-
-
 _VALID_CONTROLS = [
     {"name": "cap", "kind": "slider", "target": {"capacity": "Server"}, "min": 0, "max": 3},
     {"name": "rate_slider", "kind": "slider", "target": {"variable": "rate"}, "min": 0, "max": 10,
@@ -161,66 +137,66 @@ _VALID_CONTROLS = [
 
 @_skip_dashboard_control
 def test_valid_control_set_raises_no_dashboard_control_error():
-    assert "E_DASHBOARD_CONTROL" not in _codes(_controls_layout(_VALID_CONTROLS))
+    assert "E_DASHBOARD_CONTROL" not in problem_codes(_controls_layout(_VALID_CONTROLS))
 
 
 @_skip_dashboard_control
 def test_missing_control_name_is_e_dashboard_control():
     controls = [{"kind": "slider", "target": {"variable": "rate"}, "min": 0, "max": 10}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_duplicate_control_name_is_e_dashboard_control():
     one = {"name": "x", "kind": "slider", "target": {"variable": "rate"}, "min": 0, "max": 10}
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout([one, dict(one)]))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout([one, dict(one)]))
 
 
 @_skip_dashboard_control
 def test_unknown_control_kind_is_e_dashboard_control():
     controls = [{"name": "x", "kind": "knob", "target": {"variable": "rate"}, "min": 0, "max": 10}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_unknown_control_target_is_e_dashboard_control():
     # GUESS: only the "undeclared variable" half of this rule is exercised.
     controls = [{"name": "x", "kind": "slider", "target": {"variable": "ghost"}, "min": 0, "max": 10}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_min_not_less_than_max_is_e_dashboard_control():
     controls = [{"name": "x", "kind": "slider", "target": {"variable": "rate"}, "min": 5, "max": 5}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_non_positive_step_is_e_dashboard_control():
     controls = [{"name": "x", "kind": "slider", "target": {"variable": "rate"}, "min": 0, "max": 10,
                 "step": 0}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_capacity_slider_max_above_declared_capacity_is_e_dashboard_control():
     # GUESS: only the "max above capacity" half of this rule is exercised, not "min < 0".
     controls = [{"name": "x", "kind": "slider", "target": {"capacity": "Server"}, "min": 0, "max": 99}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_decision_policy_with_no_policy_decide_is_e_dashboard_control():
     # decide_1's own policy is "route", not "ghost".
     controls = [{"name": "x", "kind": "decision", "policy": "ghost", "options": ["A", "B"]}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 @_skip_dashboard_control
 def test_decision_options_count_mismatch_is_e_dashboard_control():
     # decide_1 ("route") has 2 outgoing links; 3 options is a mismatch.
     controls = [{"name": "x", "kind": "decision", "policy": "route", "options": ["A", "B", "C"]}]
-    assert "E_DASHBOARD_CONTROL" in _codes(_controls_layout(controls))
+    assert "E_DASHBOARD_CONTROL" in problem_codes(_controls_layout(controls))
 
 
 # ==================================================== 2. apply_control parity
@@ -438,30 +414,3 @@ def test_timeline_append_rejects_out_of_order_events_within_one_call():
     tl = playback.Timeline([])
     with pytest.raises(ValueError):
         tl.append([_event(5.0), _event(3.0)])
-
-
-# ================================================== 4. take_events / trace
-def _one_shot_layout():
-    c, p, d = create(max_arrivals=6), process("station", "Server", 0.7), dispose()
-    return layout([c, p, d], chain(c, p, d),
-                  resources=[{"name": "Server", "capacity": 1, "discipline": "FIFO"}],
-                  simulation={"time_limit": 8, "warmup": 0, "replications": 1})
-
-
-@_skip_trace_api
-def test_take_events_concatenation_equals_one_shot_trace():
-    doc = _one_shot_layout()
-
-    full_recorder = TraceRecorder()
-    run_single_simulation(doc, seed=0, run_len=8, warmup=0, subscribers=[full_recorder])
-    full_events = list(full_recorder.events)
-
-    s = session.SimSession(doc, seed=0, trace=TraceRecorder())
-    collected = []
-    for to in (1.5, 3.3, 6.0):
-        s.advance(to=to)
-        collected += s.take_events()
-    s.finish()
-    collected += s.take_events()
-
-    assert collected == full_events

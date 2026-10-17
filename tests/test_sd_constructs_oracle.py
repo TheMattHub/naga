@@ -1,4 +1,4 @@
-"""Independent oracle tests for PHASE5 SD-2 (docs/PHASE5_PLAN.md, "Phase 5A:
+"""Independent oracle tests for PHASE5 SD-2 (docs/history/PHASE5_PLAN.md, "Phase 5A:
 system dynamics", Constructs table SD-2 row and "Design refinements": Delay
 records, inline SMOOTH/DELAY1/DELAY3/DELAYN/DELAYP shorthand, auxiliaries,
 STEP/PULSE/RAMP/IF, level `initial` as an expression).

@@ -7,7 +7,7 @@ compatible server, Anthropic's API) are `nagasim.llm`; the loop sees only its pl
 `anthropic` is an OPTIONAL extra (`pip install "nagasim[assistant]"`), imported lazily by
 `nagasim.llm`, so the rest of the engine works without it.
 
-Design (docs/ROADMAP.md 3.3):
+Design (docs/history/ROADMAP.md 3.3):
 
 * `WorkspaceAdapter` maps one live `ModelDocument` into an `agent_tools.Workspace`
   under a FIXED model id, confined to the model's own folder (or a fresh temp
@@ -35,7 +35,7 @@ Design (docs/ROADMAP.md 3.3):
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
+from nagasim._cli import add_model_argument
 
 import argparse
 import copy
@@ -347,7 +347,7 @@ def main(argv=None, *, provider=None, app: str = "Naga", extra_tools: tuple = ()
     parser = argparse.ArgumentParser(
         prog=prog, description="Run one assistant turn against a model file, with a local "
                                "model or your own API key.")
-    parser.add_argument("model", type=_bundled, help="path to the model .json file, or a bundled model's name (naga examples)")
+    add_model_argument(parser, help="path to the model .json file, or a bundled model's name (naga examples)")
     parser.add_argument("prompt", help="what to ask the assistant to do")
     parser.add_argument("--provider", choices=("anthropic", "openai"), default=None,
                         help="anthropic, or openai for any OpenAI-compatible server (Ollama, "

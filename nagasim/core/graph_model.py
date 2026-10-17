@@ -153,6 +153,11 @@ class GraphModel:
         # Model variables start each replication at their declared initial value
         # (the context is rebuilt per replication, so this is the whole reset).
         env.ctx.variables = {v["name"]: v.get("initial", 0) for v in layout.get("variables", [])}
+        # The ones an asset's picture follows (D608) start their trace at the initial value.
+        env.ctx.traced_variables = frozenset(
+            v["name"] for v in layout.get("variables", []) if v.get("trace"))
+        for name in sorted(env.ctx.traced_variables):
+            env.ctx.trace_variable(name)
 
         # Lookup tables (PHASE4 A1): built once here, read by TABLE() in any
         # expression through ctx.tables.

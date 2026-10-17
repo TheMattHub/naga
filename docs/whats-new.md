@@ -4,9 +4,30 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.11: shore power at a berth
+## 0.12: one source of truth for a model's fields
 
 <!-- --8<-- [start:latest] -->
+- **Schema and engine agree.** The published JSON schema is generated from the same field table
+  the engine validates and flattens with, so an editor or an agent checking a model against the
+  schema sees what `naga validate` sees.
+
+```console
+naga validate berth_shore_power
+```
+
+- **Out-of-range numbers caught at validation.** A number outside its field's bounds, such as a
+  zero fleet speed or a negative level inflow, is reported when the model is checked instead of
+  failing or crashing the run.
+- **Expanded assets save cleanly.** A library asset expanded in place saves a model that
+  validates against the schema, with its variables in the same order every time.
+- **Before you upgrade:** a model with a number outside its field's bounds is now refused;
+  `naga state observe` is removed (a plant's state comes from `naga twin`); and the Python names
+  `costs.COST_KINDS`, `SimSession.take_events`, `ModelDocument.set_description_text` and
+  `api.run_replication` are gone.
+<!-- --8<-- [end:latest] -->
+
+## 0.11: shore power at a berth
+
 - **Shore power at a berth.** A new bundled model feeds ships' hotel loads from the grid up to
   the shore connection and leaves the rest on their auxiliary engines, priced and emitting as
   marine fuel. Four like-for-like scenarios (no shore power, 2 MW, 6 MW, every ship ready) end in
@@ -20,7 +41,6 @@ naga run berth_shore_power
   `POWER(source)` or `TS(profile)`, is now checked when the model is validated.
 - **Before you upgrade:** a model whose submodel parameter names an equipment, series or level
   that does not exist is now refused at validation; it failed when run before.
-<!-- --8<-- [end:latest] -->
 
 ## 0.10: from an event log to a model, energy on every fleet
 

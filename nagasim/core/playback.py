@@ -48,7 +48,8 @@ def _attribute(events, view: str) -> list:
     ones that belong to another instance."""
     out = []
     for event in events:
-        if event.kind in ("resource_state", "mover_moved", "level_changed", "agent_state",
+        if event.kind in ("resource_state", "mover_moved", "level_changed", "variable_changed",
+                          "agent_state",
                           "agent_moved", "agent_removed", "agent_linked", "agent_unlinked",
                           "battery", "charge_start", "charge_end", "tend"):
             # None is a block-hierarchy path: a resource, a fleet, a level and
@@ -319,6 +320,8 @@ class Timeline:
 
         `levels` (PHASE4 T2, D75) is each level's value at t, interpolated
         linearly between its recorded breakpoints -- see `level_at`.
+        `variables` (D608) is the last value of each variable an asset's
+        picture follows (flattening marks them `trace`).
 
         `resources` (ROADMAP 2.3 part C) is built from `entity_seized`/
         `entity_released` (busy count) and `resource_state` events (capacity/
@@ -383,6 +386,7 @@ class Timeline:
                             for unit, (t0, span, station, which) in self._tends.items()
                             if t < t0 + span},
                 "levels": {name: self.level_at(name, t) for name in self._levels},
+                "variables": dict(self._variables),
                 "agents": self._agents_state(t),
                 "agent_links": sorted(self._agent_links),
                 "entity_agents": self._entity_agents_state()}
@@ -482,6 +486,7 @@ class Timeline:
         self._agent_categories: dict[tuple, str] = {}   # PHASE6 A2: color_by's current value
         self._agent_links: set[tuple] = set()           # PHASE6 A5: (population, i, j)
         self._entity_agents: dict[int, tuple] = {}      # PHASE6 H4: entity id -> (population, index)
+        self._variables: dict[str, float] = {}          # D608: a traced variable's last value
         # Live mode only (PHASE6 L1): running totals instead of the sorted
         # timestamp lists `created_until`/`disposed_until` bisect over, this
         # chunk's moves, and a raw-event counter for `__len__` -- see
@@ -534,6 +539,8 @@ class Timeline:
             arms[e.entity_id] = (e.t, e.duration, e.state, int(e.value), slot)
             if e.state == "place":
                 self._placed[e.block] = self._placed.get(e.block, 0) + 1
+        elif e.kind == "variable_changed":
+            self._variables[e.resource] = e.value
         elif e.kind == "tend":
             self._tends[(e.target, e.entity_id)] = (e.t, e.duration, e.resource, e.state)
         elif e.kind == "agent_moved":
@@ -740,8 +747,9 @@ def asset_state_sources(layout: dict, owns=None, *, level: str = "") -> dict:
     """{instance block -> (flattened source name, own chargers or None)} for
     every submodel instance whose asset graphic nominates a `state_source`.
 
-    The source is the asset's own resource, charger or fleet, told apart by
-    what the name is among the records the definition owns. `$Machine`
+    The source is the asset's own resource, charger, fleet or variable, told
+    apart by what the name is among the records the definition owns (a
+    variable carries None, like a resource, and is read from `variables`). `$Machine`
     inside a definition flattens to `<instance>/Machine` (core/submodels.py
     item 6), which is exactly the name the trace reports it under -- so the
     mapping is built once here and a frame costs one lookup per asset.
@@ -782,11 +790,16 @@ def asset_states(state: dict, sources: dict) -> dict[str, str]:
     down while failed, off while its capacity schedule is zero). A charger
     is busy while a point is occupied. A fleet is down/off with its own
     resource state, else busy only while a vehicle charges at the fleet
-    asset's OWN charger -- vehicles out on jobs are not "busy" here."""
+    asset's OWN charger -- vehicles out on jobs are not "busy" here. A
+    variable (D608) is busy while above zero, else idle."""
     resources = state.get("resources") or {}
     occupied = state.get("chargers") or {}
+    variables = state.get("variables") or {}
     out: dict[str, str] = {}
     for block, (source, chargers) in sources.items():
+        if source in variables:
+            out[block] = "busy" if variables[source] > 0 else "idle"
+            continue
         info = resources.get(source)
         if chargers is None:
             if info is not None:

@@ -1,4 +1,5 @@
 """Fixture tests for schema versioning and validation (DEVLOG #33, #78)."""
+import copy
 import json
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 
 from nagasim.core import schema as S
 from nagasim.core.problems import PROBLEM_CODES
+from nagasim.core.sections import MISSING, SECTIONS
 from nagasim.core.schema import (
     CURRENT_VERSION, ModelValidationError, migrate, validate_graph_structured,
     validate_layout_structured, validate_model,
@@ -25,23 +27,21 @@ def _v28(layout: dict) -> dict:
     return fill_units(out)
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "nagasim" / "models"
-# Every migration from an older file gains these empty sections -- three for
-# v12 -> v13 (ROADMAP 3.4), "tables" for v13 -> v14 (PHASE4 A1), "sequences"
-# for v14 -> v15 (PHASE4 A2), "orders" for v15 -> v16 (PHASE4 A3), the three
-# continuous ones for v16 -> v17 (PHASE4 D1/D2) and "fixed_costs" for
-# v17 -> v18 (PHASE4 D5), and "network"/"fleets" for v19 -> v20 (PHASE4 E1), and
-# "auxiliaries"/"delays"/"subscripts" for v20 -> v21 (PHASE5 SD-2/SD-3),
-# "reality_checks" for v22 -> v23 (PHASE6 S8) and "assertions" for v24 -> v25
-# (PHASE6 W7 Q3), and "motion_profiles" (D157, no version bump: migrate adds
-# any missing record section)
-# -- so the exact-equality assertions below spread
-# them in.
-_V17_SECTIONS = {"timeseries_inputs": [], "levels": [], "flows": [], "fixed_costs": [],
-                 "conversions": [], "network": None, "fleets": [], "motion_profiles": [], "chargers": [],
-                 "auxiliaries": [], "delays": [], "subscripts": [],
-                 "agent_types": [], "populations": [], "reality_checks": [], "assertions": []}
-_V13_SECTIONS = {"data_sources": [], "data_bindings": [], "initial_state": {}, "tables": [],
-                 "sequences": [], "orders": [], **_V17_SECTIONS}
+# Every migration from an older file gains the empty sections it lacks. The
+# expected defaults come from the section table (a new section needs no edit
+# here); only the frozen sets of what older fixtures already carry are listed.
+_PRE_V13 = {"links", "scenarios", "resources", "resource_sets", "schedules", "failures",
+            "variables", "entities", "annotations", "submodels", "background", "info",
+            "simulation"}
+_V13_NEW = {"data_sources", "data_bindings", "initial_state", "tables", "sequences", "orders"}
+# What a migrated file has carried since before v13, written out: a changed default of one of
+# these is a change of every old file, so it must fail here, not follow the table.
+_PRE_V13_DEFAULTS = {"links": [], "resources": [], "resource_sets": [], "entities": [],
+                     "variables": [], "schedules": [], "failures": [], "scenarios": [],
+                     "annotations": [], "submodels": {}, "background": None, "info": {}}
+_ALL_DEFAULTS = {s.name: copy.deepcopy(s.default) for s in SECTIONS if s.default is not MISSING}
+_V13_SECTIONS = {k: v for k, v in _ALL_DEFAULTS.items() if k not in _PRE_V13}
+_V17_SECTIONS = {k: v for k, v in _V13_SECTIONS.items() if k not in _V13_NEW}
 CURATED_EXAMPLES = ["single_server.json", "decide_routing.json", "hold_signal_flow.json",
                     "priority_rework.json"]
 
@@ -137,17 +137,7 @@ def test_current_version_layout_passes_through_unchanged():
         "schema_version": CURRENT_VERSION,
         "blocks": [{"name": "dispose_1", "description": "d", "type": "DISPOSE", "position": [50, 40],
                     "params": {}}],
-        "links": [],
-        "resources": [], "resource_sets": [], "entities": [], "variables": [],
-        "schedules": [], "failures": [], "scenarios": [], "annotations": [], "submodels": {},
-        "background": None, "info": {},
-        "data_sources": [], "data_bindings": [], "initial_state": {}, "tables": [],
-        "sequences": [], "orders": [], "timeseries_inputs": [], "levels": [], "flows": [],
-        "fixed_costs": [],
-        "conversions": [], "network": None, "fleets": [], "motion_profiles": [], "chargers": [],
-        "auxiliaries": [], "delays": [],
-        "subscripts": [], "agent_types": [], "populations": [], "reality_checks": [],
-        "assertions": [],
+        **copy.deepcopy(_PRE_V13_DEFAULTS), **copy.deepcopy(_V13_SECTIONS),
         "simulation": {"time_limit": None, "warmup": 0, "replications": 1, "time_unit": "minutes",
                        "currency": "EUR", "energy_price": 0},
     }

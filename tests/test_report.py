@@ -9,7 +9,7 @@ import pytest
 
 from nagasim import api, experiments
 from nagasim.core import schema
-from nagasim.report import _fmt, _kpi_label, build_report
+from nagasim.report import fmt as _fmt, _kpi_label, build_report
 from nagasim import svgcharts
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "nagasim" / "models"

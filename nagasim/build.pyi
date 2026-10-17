@@ -1287,11 +1287,18 @@ class Model(Level):
         steps
         """
 
-    def add_variable(self, *, name: str = ..., initial: float | str | bool = ...) -> Any:
+    def add_variable(
+        self,
+        *,
+        name: str = ...,
+        initial: float | str | bool = ...,
+        trace: bool = ...,
+    ) -> Any:
         """Add one entry to `variables` and return its name. Model-level variables, read and written by expressions; reset to `initial` each replication.
 
         name
         initial
+        trace: Written by flattening for a variable an asset's picture follows; not authored by hand.
         """
 
     def add_entity(
@@ -1365,6 +1372,7 @@ class Model(Level):
         components: list[Any] = ...,
         blend_tolerance: float = ...,
         conveyor: dict[str, Any] = ...,
+        locals: dict[str, Any] = ...,
     ) -> Any:
         """Add one entry to `levels` and return its name. Continuous quantities with bounds (battery energy, tank volume, an inventory position), read by LEVEL("name").
 
@@ -1384,6 +1392,7 @@ class Model(Level):
         components: Named components the level's content is tracked in: a gas holder's ch4. Each inflow carries a share, each outflow draws at the level's own blend, and the component is conserved exactly. Read by FRACTION(name, component).
         blend_tolerance: How far the fraction may drift from the value the outflows are drawing at before the engine re-evaluates. The crossing instant is solved in closed form; the component is conserved exactly whatever this is set to.
         conveyor: Makes the stock a Stella conveyor: material rides round(transit_time/dt) slats of the SD grid (euler only), leaves as the one primary outflow (rate "") and may leak on the way through "leak" flows. The stock is the sum of the slats and changes only at grid points.
+        locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
     def add_flow(
@@ -1408,6 +1417,7 @@ class Model(Level):
         components: dict[str, Any] = ...,
         leak: dict[str, Any] = ...,
         thresholds: list[Any] = ...,
+        locals: dict[str, Any] = ...,
         **fields: Any,
     ) -> Any:
         """Add one entry to `flows` and return its name. Rate-based transfers between levels, re-evaluated at events.
@@ -1432,6 +1442,7 @@ class Model(Level):
         components: Share of what this flow moves that is each component, a number or an expression. Omit a component to carry the SOURCE level's own blend.
         leak: A conveyor's leakage outflow; set "rate": "" and "from" the conveyor.
         thresholds: Realised-rate values that fire discrete logic when crossed : a signal, a variable, and a lump cost per crossing -- a generator's start cost. Rising crossings are counted as the flow's Starts.
+        locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
     def add_conversion(
@@ -1443,6 +1454,7 @@ class Model(Level):
         cohort_interval: float = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] = ...,
         substrates: list[Any] = ...,
+        locals: dict[str, Any] = ...,
     ) -> Any:
         """Add one entry to `conversions` and return its name. Delayed conversions with a yield curve: feed in, product released over the following hours or days.
 
@@ -1452,6 +1464,7 @@ class Model(Level):
         cohort_interval: Feed accumulated over this interval closes into one cohort and releases from its CLOSE, so the mean delay is longer by up to half an interval. Curve knots round onto the same grid.
         time_unit: Unit the cohort interval and the curve ages are in.
         substrates
+        locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
     def add_fixed_cost(
@@ -1462,6 +1475,7 @@ class Model(Level):
         amount: str | float = ...,
         category: str = ...,
         capex: bool = ...,
+        locals: dict[str, Any] = ...,
     ) -> Any:
         """Add one entry to `fixed_costs` and return its name. Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter.
 
@@ -1470,6 +1484,7 @@ class Model(Level):
         amount: A number, or an expression over the model's variables and data evaluated once at run start.
         category: Grouping shown in the cost_summary frame.
         capex: An upfront investment: the investment case keeps it out of operating cost. Read by `nagasim.investment` only; Total Cost and every frame of a run are unchanged.
+        locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
     def add_fleet(
@@ -1490,8 +1505,8 @@ class Model(Level):
         speed: float = ...,
         speed_unit: Literal['base', 'mm/ms', 'mm/s', 'mm/min', 'mm/h', 'mm/day', 'mm/week', 'mm/month', 'mm/year', 'cm/ms', 'cm/s', 'cm/min', 'cm/h', 'cm/day', 'cm/week', 'cm/month', 'cm/year', 'm/ms', 'm/s', 'm/min', 'm/h', 'm/day', 'm/week', 'm/month', 'm/year', 'km/ms', 'km/s', 'km/min', 'km/h', 'km/day', 'km/week', 'km/month', 'km/year'] = ...,
         speed_empty: float = ...,
-        load_time: str = ...,
-        unload_time: str = ...,
+        load_time: float | str = ...,
+        unload_time: float | str = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] = ...,
         home: str = ...,
         park: str = ...,
@@ -1524,8 +1539,8 @@ class Model(Level):
         speed: Loaded speed, distance per model time unit.
         speed_unit: Unit of every speed of the fleet.
         speed_empty: Speed when driving to a pick-up; defaults to `speed`.
-        load_time: Expression, in `time_unit`.
-        unload_time: Expression, in `time_unit`.
+        load_time: Number or expression, in `time_unit`.
+        unload_time: Number or expression, in `time_unit`.
         time_unit: Unit the load and unload times are in.
         home: Node the vehicles start at, and return to under `park: "home"`.
         park
@@ -1582,7 +1597,7 @@ class Model(Level):
         knee: float = ...,
         taper_floor: float = ...,
         efficiency: float = ...,
-        swap_time: str = ...,
+        swap_time: str | float = ...,
         swap_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] = ...,
         spare_packs: int | None = ...,
     ) -> Any:
@@ -1609,9 +1624,10 @@ class Model(Level):
         dims: list[Any] = ...,
         elements: dict[str, Any] = ...,
         description: str = ...,
-        expr: str = ...,
+        expr: float | str = ...,
         unit: str = ...,
         diagram: dict[str, Any] = ...,
+        locals: dict[str, Any] = ...,
     ) -> Any:
         """Add one entry to `auxiliaries` and return its name. Named expressions read by AUX("name"), evaluated on read.
 
@@ -1619,9 +1635,10 @@ class Model(Level):
         dims: Subscripts this record runs over: it is flattened into one record per element, named "Name[north]" ("Name[north,young]" for two). Inside, "x[dim]" in a LEVEL/FLOW/AUX/DELAY name reads the same element, and SUM(x)/MEAN(x) aggregate over "x[*]".
         elements: Per-element equations: {"north": "2", "a,x": "3"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma.
         description
-        expr: Any flow-rate expression; may call AUX() of another auxiliary (no cycles) and the inline delays.
+        expr: A number, or any flow-rate expression; may call AUX() of another auxiliary (no cycles) and the inline delays.
         unit: Label only.
         diagram: Position in the stock-and-flow view; ignored by the engine.
+        locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
     def add_delay(
@@ -1644,6 +1661,7 @@ class Model(Level):
         hi: str | float = ...,
         unit: str = ...,
         diagram: dict[str, Any] = ...,
+        locals: dict[str, Any] = ...,
     ) -> Any:
         """Add one entry to `delays` and return its name. Delays read by DELAY("name"): input, delay time, kind and order.
 
@@ -1664,6 +1682,7 @@ class Model(Level):
         hi: "noise" only: clip ceiling.
         unit: Label only.
         diagram: Position in the stock-and-flow view; ignored by the engine.
+        locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
     def add_subscript(

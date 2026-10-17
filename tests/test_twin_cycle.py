@@ -761,7 +761,7 @@ def test_naga_twin_once_and_status_on_a_mock_plant(tmp_path, capsys):
     capsys.readouterr()
     assert twin.main(["status", str(out)]) == 0
     said = capsys.readouterr().out
-    assert "model 'line'" in said and "source plant: live" in said and "forecast: ok" in said
+    assert "model 'line'" in said and "source plant: live" in said and "Status: ok" in said
     assert twin.main(["status", str(tmp_path / "nowhere")]) == 1
     assert "E_TWIN_RESULT" in capsys.readouterr().out
     # A refusal is an error in the result, and the command's exit code.

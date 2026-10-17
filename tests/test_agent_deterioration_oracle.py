@@ -111,10 +111,6 @@ def _model(*records, time_limit):
     return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _run(layout, seed, run_len):
     return run_env(layout, run_len, seed=seed)
 
@@ -165,7 +161,7 @@ def test_mm1_deterioration_probability_matches_the_competing_clock_lst():
     p_hats = []
     for seed in range(REPLICATIONS):
         layout, time_limit = _mm1_deteriorating_model(ARRIVALS_PER_REP)
-        assert not _codes(layout)
+        assert not problem_codes(layout)
         env, model = _run(layout, seed, time_limit)
         n_total = env.ctx.variables["n_total_starts"]
         assert n_total == ARRIVALS_PER_REP, (
@@ -218,7 +214,7 @@ def test_dd1_deterioration_count_matches_the_hand_lindley_recursion():
     layout["links"] = chain(create, seize, count, service, release, out)
     layout["variables"] = [dict(v) for v in COUNTERS]
     layout["resources"] = list(RESOURCE)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
 
     env, model = _run(layout, seed=0, run_len=time_limit)
     assert env.ctx.variables["n_total_starts"] == N_DD1

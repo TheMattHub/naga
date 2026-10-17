@@ -3,11 +3,9 @@
     from nagasim.api import run_model
     results = run_model("models/single_server.json", replications=5, run_length=1000)
 
-Also a CLI:  PY -m product.api model.json --replications 5 --run-length 1000 --out results.xlsx
+Also a CLI:  PY -m nagasim.api model.json --replications 5 --run-length 1000 --out results.xlsx
 """
 from __future__ import annotations
-
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
 
 import argparse
 import logging
@@ -19,10 +17,10 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from nagasim import __version__
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import initial_state, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
-from nagasim.core.export import concat_runs, export_workbook
+from nagasim.core.export import concat_runs
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.sim_runner import run_single_simulation
 from nagasim.core.trace import TraceRecorder
@@ -33,26 +31,6 @@ from nagasim.results import Results
 # The one "path or dict -> migrated layout" reader (Wave A2), re-exported
 # for the top-level modules that spell it `api.load_layout`.
 load_layout = schema.load_layout
-
-
-def run_replication(task):
-    """One replication in a worker process: (layout, seed, run_len, warmup,
-    controllers) -> KPIs.
-
-    Module level and picklable on purpose (ROADMAP 1.6): a ProcessPoolExecutor
-    pickles its callable by qualified name, so a closure or a bound method
-    cannot be the pool task. `layout` may equally be a path -- both are what
-    `run_single_simulation` already accepts, and both pickle. *controllers*
-    (ROADMAP 3.7 A) must pickle too -- `run_model` checks that before ever
-    reaching a pool.
-    """
-    # ROADMAP 2.4 B: on Windows (spawn) each pool worker is a fresh
-    # interpreter -- plugin blocks/distributions registered in the parent
-    # process are not there until this runs again here.
-    load_plugins()
-    layout, seed, run_len, warmup, controllers = task
-    return run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warmup,
-                                 controllers=controllers)
 
 
 class _Collect(logging.Handler):
@@ -70,16 +48,31 @@ class _Collect(logging.Handler):
 
 
 def _pool_replication(task):
-    """`run_replication` as the pool runs it: `(KPIs, what it logged)`.
+    """One replication in a worker process: `(KPIs, what it logged)`.
+
+    `task` is (layout, seed, run_len, warmup, controllers). Module level and
+    picklable on purpose (ROADMAP 1.6): a ProcessPoolExecutor pickles its
+    callable by qualified name, so a closure or a bound method cannot be the
+    pool task. `layout` may equally be a path -- both are what
+    `run_single_simulation` accepts, and both pickle. *controllers*
+    (ROADMAP 3.7 A) must pickle too -- `run_model` checks that before ever
+    reaching a pool.
 
     A worker process has no console of its own once the editor is started from
     an icon, and no handler of the parent's either, so its warnings travel back
     with the result and `run_jobs` logs them again in the parent."""
+    layout, seed, run_len, warmup, controllers = task
     handler = _Collect()
     root = logging.getLogger()
     root.addHandler(handler)
     try:
-        return run_replication(task), handler.records
+        # ROADMAP 2.4 B: on Windows (spawn) each pool worker is a fresh
+        # interpreter -- plugin blocks/distributions registered in the parent
+        # process are not there until this runs again here.
+        load_plugins()
+        kpis = run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warmup,
+                                     controllers=controllers)
+        return kpis, handler.records
     finally:
         root.removeHandler(handler)
 
@@ -505,7 +498,7 @@ def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(prog="naga run", description="Run a Naga model headless.")
     parser.add_argument("--version", action="version", version=f"nagasim {__version__}")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--replications", type=int, default=None,
                         help="default: the model's own 'simulation.replications'")
     parser.add_argument("--seed", type=int, default=0)
@@ -537,7 +530,7 @@ def main(argv=None) -> int:
                              "self-contained file that replays the run in a browser, with no "
                              "server (the same as --export player:PATH)")
     parser.add_argument("--state", default=None, metavar="FILE",
-                        help="start from this state document (`naga state take` or `observe`): "
+                        help="start from this state document (`naga state take`): "
                              "the run's clock starts where the state was taken and its "
                              "statistics cover the run from there")
     parser.add_argument("--no-logs", action="store_true",
@@ -560,7 +553,10 @@ def main(argv=None) -> int:
             print(f"--state: {found.code}: {found.message}")
         if problems:
             return 1
-    exports = args.export + ([f"player:{args.player}"] if args.player else [])
+    # --out, --report and --player are the registry's xlsx, html and player writers by name.
+    exports = [*([f"xlsx:{args.out}"] if args.out else []),
+               *([f"html:{args.report}"] if args.report else []), *args.export,
+               *([f"player:{args.player}"] if args.player else [])]
     # D201: an exporter drawn from the run's trace needs the first replication recorded.
     # (`python -m nagasim.api` loads no plugins before this: a plugin's needs_trace is not seen)
     recorder = TraceRecorder() if _needs_trace(exports) else None
@@ -569,14 +565,6 @@ def main(argv=None) -> int:
                         record_logs=False if args.no_logs else None, trace=recorder)
     print(results["system"].to_string(index=False))
     layout = model if isinstance(model, dict) else None
-    if args.out:
-        print(f"Workbook written to "
-              f"{export_workbook(results, args.out, layout=_layout(layout, args.model))}")
-    if args.report:
-        from nagasim.report import build_report
-        build_report(_layout(layout, args.model), results, title=Path(args.model).stem,
-                     path=args.report)
-        print(f"Report written to {args.report}")
     for spec in exports:
         try:
             _run_export(spec, results, args.model, layout, recorder)

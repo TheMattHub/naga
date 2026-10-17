@@ -29,7 +29,7 @@
 | [`naga viewer`](#naga-viewer) | one HTML file in which the engine re-runs a model in a browser |
 | [`naga bind`](#naga-bind) | resolve a model's data bindings and show what each one read |
 | [`naga watch`](#naga-watch) | print what a model's live data sources send, as it arrives |
-| [`naga state`](#naga-state) | take a model's state from a run or from a plant, and check one before a start |
+| [`naga state`](#naga-state) | take a model's state from a run, and check one before a start |
 | [`naga plant`](#naga-plant) | map what a plant sends into an observed timeline: check, replay a log, watch |
 | [`naga twin`](#naga-twin) | an operational twin: monitor a plant, forecast from its state, compare, report |
 | [`naga calibrate`](#naga-calibrate) | fit model parameters to observed KPIs |
@@ -97,9 +97,9 @@ options:
                         here: one self-contained file that replays the run in
                         a browser, with no server (the same as --export
                         player:PATH)
-  --state FILE          start from this state document (`naga state take` or
-                        `observe`): the run's clock starts where the state was
-                        taken and its statistics cover the run from there
+  --state FILE          start from this state document (`naga state take`):
+                        the run's clock starts where the state was taken and
+                        its statistics cover the run from there
   --no-logs             do not record the per-event entity/resource/store
                         logs: faster and much smaller on a long run, and every
                         summary statistic is unchanged -- only the three flat
@@ -631,22 +631,19 @@ options:
 ## naga state
 
 ```text
-usage: naga state [-h] {take,observe,check} ...
+usage: naga state [-h] {take,check} ...
 
-A model's state as a document: taken from a run, observed from a plant through
-the model's data bindings, and checked before a run starts from it (naga run
-MODEL --state FILE). Read-only.
+A model's state as a document: taken from a run, and checked before a run
+starts from it (naga run MODEL --state FILE). Read-only.
 
 positional arguments:
-  {take,observe,check}
-    take                run the model to a time and write its state
-    observe             read the state a plant reports now, through the
-                        model's bindings into initial_state
-    check               say whether a run of this model may start from this
-                        state; exit 1 with the reasons when not
+  {take,check}
+    take        run the model to a time and write its state
+    check       say whether a run of this model may start from this state;
+                exit 1 with the reasons when not
 
 options:
-  -h, --help            show this help message and exit
+  -h, --help    show this help message and exit
 ```
 
 ## naga plant

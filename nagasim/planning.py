@@ -15,8 +15,6 @@ PySide6): `ui -> planning -> core`, nothing in `core` imports it.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import argparse
 import json
 import sys
@@ -25,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 
 __all__ = ["plan_export", "plan_risk", "main"]
 
@@ -148,7 +146,7 @@ def main(argv=None) -> int:
         prog="naga plan",
         description="What is the plan, is there a better one, and how risky is it -- the "
                     "deterministic schedule, an optional CP-SAT proposal, and optional risk.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--orders", help="CSV replacing the model's \"orders\" section")
     parser.add_argument("--propose", choices=cpsat.OBJECTIVES, default=None,
                         help="propose a plan with CP-SAT instead of the as-is layout "

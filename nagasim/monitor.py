@@ -32,6 +32,7 @@ from nagasim import player
 from nagasim.core import tape
 from nagasim.core.playback import Timeline
 from nagasim.core.timeunits import UNITS
+from nagasim.core.utils import is_finite_number
 from nagasim.live import stamp
 
 __all__ = ["KEPT", "PER_STEP", "PAGE_FILE", "APPROXIMATE", "IN_DISTRIBUTION", "COUNTED", "SCORED",
@@ -119,9 +120,7 @@ def _text(value) -> str:
 
 
 def _number(value):
-    ok = isinstance(value, (int, float)) and not isinstance(value, bool) \
-        and abs(value) <= 1.7976931348623157e308    # finite, and an int a float can hold (#373)
-    return value if ok else None
+    return value if is_finite_number(value) else None
 
 
 def _g(value) -> str:

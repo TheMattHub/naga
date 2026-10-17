@@ -3,7 +3,7 @@ from __future__ import annotations
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95
 from dataclasses import dataclass
-from nagasim import experiments
+from nagasim.core.schema import load_layout
 import itertools
 import numpy as np
 import pandas as pd
@@ -101,7 +101,7 @@ def select_best(layout, candidates, *, response: str, goal: str = "min", confide
     entries = _candidates(candidates)
     if not entries:
         raise ValueError("select_best needs at least one candidate")
-    base = experiments._as_layout(layout) if layout is not None else {}
+    base = load_layout(layout) if layout is not None else {}
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
                                         workers=workers, record_logs=record_logs,
                                         kpis=[response])

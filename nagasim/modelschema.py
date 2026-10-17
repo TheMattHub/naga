@@ -1,8 +1,10 @@
 """JSON Schema (draft 2020-12) for the model file format (ROADMAP 3.1 item 2).
 
-Hand-written in `_defs()` for model sections; generated from live registries for
-blocks and distributions, so a plugin's block or distribution appears in the
-schema the moment `nagasim.plugins.load_plugins()` has run.
+Hand-written in `_defs()` for the shape of model sections (descriptions, enums,
+nesting); a section field's numeric type, default, bounds and unit come from the
+field table `core/quantities.SECTION_FIELDS` (`_annotate_sections`), and blocks
+and distributions from their live registries, so a plugin's block or distribution
+appears in the schema the moment `nagasim.plugins.load_plugins()` has run.
 
     from nagasim.modelschema import build_json_schema
     schema = build_json_schema()          # a plain dict, ready for json.dumps
@@ -14,8 +16,8 @@ Pure Python (stdlib only, no pandas, no PySide6): a top-level module rather
 than one under `core/` because it is a contract for outside consumers -- the
 MCP server, an editor's autocomplete, a CI check -- not something the engine
 reads. `core/schema/` stays the runtime validator; this file only describes
-the file format, and the two cannot drift because both are generated from (or
-check against) the same registries.
+the file format. The field table follows what the validators accept (#697), and
+`test_697` in tests/test_regressions.py compares it with the built schema.
 
 Deliberately structural: the schema checks shapes, names and enumerations, not
 cross-references (a link naming a block that exists, a resource set's members).
@@ -25,7 +27,7 @@ give two sources of truth for one rule.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
+from nagasim._cli import add_model_argument
 
 import argparse
 import json
@@ -46,6 +48,7 @@ from nagasim.core.schema.sections_validation import (DASHBOARD_ACTIVITIES,
                                                      DASHBOARD_VIEW_MODES)
 from nagasim.core.quantities import SECTION_FIELDS
 from nagasim.core.sections import SECTIONS
+from nagasim.core.submodels import LOCALS_SECTIONS
 from nagasim.core.stats import RECORD_KINDS
 from nagasim.core.conversions import DEFAULT_STEPS, DEFAULT_TAIL
 from nagasim.core.levels import DEFAULT_BLEND_TOLERANCE, SD_METHODS, THRESHOLD_DIRECTIONS
@@ -59,6 +62,11 @@ __all__ = ["build_json_schema", "SCHEMA_ID"]
 # `"$schema"` keeps meaning the version it was written for.
 SCHEMA_ID = f"https://thematthub.github.io/naga/schema/model-v{CURRENT_VERSION}.json"
 _DRAFT = "https://json-schema.org/draft/2020-12/schema"
+
+# Submodel parameter bindings on a flattened block or on a record of
+# `submodels.LOCALS_SECTIONS`: what an expanded instance keeps, #694.
+_LOCALS = {"type": "object",
+           "description": "Submodel parameter bindings, written by flattening; not authored by hand."}
 
 # A number or an expression string: every numeric distribution parameter, and
 # several block params, accept either (ARCHITECTURE section 5.7).
@@ -114,7 +122,7 @@ def _param_schema(param, unit_quantity: str | None = None) -> dict:
     elif {"number", "integer"} & set(kinds):
         number = {"type": "number" if "number" in kinds else "integer"}
         if param.min is not None:
-            number["minimum"] = param.min
+            number["exclusiveMinimum" if param.min_exclusive else "minimum"] = param.min
         if param.max is not None:
             number["maximum"] = param.max
         out = {"anyOf": [number, {"type": "string"}]} if "expression" in kinds else number
@@ -178,9 +186,7 @@ def _block_variant(type_name: str, spec) -> dict:
                                             ", in scene units from its default "
                                             "anchor, measured in the UNROTATED frame. Absent "
                                             "means the default position. Editor-only."},
-            "locals": {"type": "object",
-                       "description": "Submodel parameter bindings, written by flattening; "
-                                      "not authored by hand."},
+            "locals": _LOCALS,
             "params": {"type": "object", "properties": properties, "required": required,
                        "additionalProperties": False},
         },
@@ -293,7 +299,7 @@ def _defs() -> dict:
             "type": "object",
             "properties": {
                 "name": {"type": "string", "minLength": 1},
-                "capacity": {"type": "integer", "minimum": 0, "default": 1},
+                "capacity": {},
                 "discipline": {"type": "string", "enum": list(DISCIPLINES), "default": "FIFO",
                                "description": "Queue order. LowestValueFirst/HighestValueFirst "
                                               "need a ranking_expr; Plan works each station's "
@@ -307,9 +313,9 @@ def _defs() -> dict:
                                          "HighestValueFirst."},
                 "capacity_schedule": {"type": "string",
                                       "description": "Name of a \"capacity\" schedule staffing this resource."},
-                "cost_busy": {"type": "number", "minimum": 0, "default": 0.0},
-                "cost_idle": {"type": "number", "minimum": 0, "default": 0.0},
-                "cost_per_use": {"type": "number", "minimum": 0, "default": 0.0},
+                "cost_busy": {},
+                "cost_idle": {},
+                "cost_per_use": {},
                 "cost_time_unit": _time_unit("Unit cost_busy/cost_idle are quoted per."),
                 "power": _power_schema("unit"),
             },
@@ -339,7 +345,7 @@ def _defs() -> dict:
                             "description": "Inline SVG token (24 x 24 artboard), usually copied "
                                            "from a library's entity preset; checked by "
                                            "core/svgsafe before it is drawn."},
-                "holding_cost": {"type": "number", "minimum": 0, "default": 0.0,
+                "holding_cost": {
                                  "description": "WIP cost per entity per base time unit."},
                 "holding_cost_time_unit": _unit_schema("time", "Unit `holding_cost` is per."),
             },
@@ -350,8 +356,10 @@ def _defs() -> dict:
             "type": "object",
             "properties": {
                 "name": {"type": "string", "minLength": 1},
-                "initial": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "boolean"}],
-                            "default": 0},
+                "initial": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "boolean"}]},
+                "trace": {"type": "boolean",
+                          "description": "Written by flattening for a variable an asset's "
+                                         "picture follows; not authored by hand."},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -384,7 +392,7 @@ def _defs() -> dict:
                         "items": {"type": "array", "minItems": 3, "maxItems": 3},
                     },
                 },
-                "off_value": {"type": "number", "default": 0,
+                "off_value": {
                               "description": "Value outside every band of a weekday schedule."},
                 "exceptions": {
                     "type": "array",
@@ -453,14 +461,14 @@ def _defs() -> dict:
                            "description": "One number per sample."},
                 "times": {"type": "array", "minItems": 1, "items": {"type": "number"},
                           "description": "Sample times, strictly increasing; exclusive with \"step\"."},
-                "start": {"type": ["number", "string"], "default": 0,
+                "start": {"type": ["number", "string"],
                           "description": "Time of the first sample of a regular series. An ISO "
                                          "timestamp instead of a number dates the series against "
                                          "\"simulation.calendar\"."},
                 "timestamps": {"type": "array", "minItems": 1, "items": {"type": "string"},
                                "description": "Real ISO sample instants instead of \"times\"; "
                                               "converted once at build."},
-                "step": {"type": "number", "exclusiveMinimum": 0,
+                "step": {
                          "description": "Spacing of a regular series; exclusive with \"times\"."},
                 "time_unit": _time_unit("Unit the sample times are expressed in."),
                 "interpolation": {"type": "string", "enum": list(INTERPOLATIONS), "default": "step",
@@ -469,7 +477,7 @@ def _defs() -> dict:
                 "beyond": {"type": "string", "enum": list(BEYOND_MODES), "default": "hold",
                            "description": "Past the last sample: hold the last value, repeat the "
                                           "series with its period, or refuse."},
-                "period": {"anyOf": [{"type": "number", "exclusiveMinimum": 0},
+                "period": {"anyOf": [{"type": "number"},
                                      {"type": "string", "enum": ["daily", "weekly", "yearly"]}],
                            "description": "Cycle length \"repeat\" wraps on; defaults to "
                                           "step * len(values), or times[-1] - times[0]. "
@@ -492,17 +500,17 @@ def _defs() -> dict:
                 "unit": {"type": "string", "description": "Label only, e.g. kWh or tonnes."},
                 "capacity": {"type": ["number", "null"],
                              "description": "Upper bound; omit for an unbounded accumulator."},
-                "min": {"type": ["number", "null"], "default": 0,
+                "min": {"type": ["number", "null"],
                         "description": "Lower bound; null for a stock unbounded below "
                                        "."},
-                "initial": {"type": ["number", "string"], "default": 0,
+                "initial": {"type": ["number", "string"],
                             "description": "Value at t=0, inside [min, capacity]; or an "
                                            "expression, evaluated once in dependency order "
                                            "."},
-                "max_inflow": {"type": ["number", "null"], "minimum": 0,
+                "max_inflow": {"type": ["number", "null"],
                                "description": "Largest total rate that may be ADDED to the level "
                                               "(a charge-power limit)."},
-                "max_outflow": {"type": ["number", "null"], "minimum": 0,
+                "max_outflow": {"type": ["number", "null"],
                                 "description": "Largest total rate that may be REMOVED from it "
                                                "(a discharge-power limit)."},
                 "rate_time_unit": _time_unit("Unit the two power limits are per."),
@@ -553,7 +561,7 @@ def _defs() -> dict:
                         "additionalProperties": False,
                     },
                 },
-                "blend_tolerance": {"type": "number", "exclusiveMinimum": 0,
+                "blend_tolerance": {
                                     "default": DEFAULT_BLEND_TOLERANCE,
                                     "description": "How far the fraction may drift from the "
                                                    "value the outflows are drawing at before the "
@@ -626,7 +634,7 @@ def _defs() -> dict:
                 "rate_time_unit": _time_unit("Unit the rate is per. FLOW(), FLOWSUM(), Avg Rate, "
                                              "Peak Rate, rate thresholds and peak_price read "
                                              "the flow in it too."),
-                "efficiency": {"type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 1,
+                "efficiency": {
                                "description": "out = in * efficiency; the rest is a loss."},
                 "price": {"type": ["string", "number"],
                           "description": "Money per unit moved; integrated exactly into the flow's "
@@ -638,16 +646,16 @@ def _defs() -> dict:
                         "description": "Bus tag: every flow carrying it is summed by "
                                        "FLOWSUM(\"tag\"), so a site's generation or demand is one "
                                        "number however many assets contribute to it."},
-                "priority": {"type": "number", "default": 0,
+                "priority": {
                              "description": "Merit order within a tag: FLOWSUM(\"tag\", p) sums "
                                             "only the flows with a priority below p -- what the "
                                             "devices dispatched before this one actually took."},
-                "peak_price": {"type": "number", "default": 0,
+                "peak_price": {"default": 0,
                                "description": "Demand charge: money per unit of the "
                                               "flow's Peak Rate (per its rate_time_unit), billed "
                                               "ONCE at the end of the run. A time-varying tariff "
                                               "is \"price\"."},
-                "min_rate": {"type": "number", "minimum": 0,
+                "min_rate": {
                              "description": "Minimum load: the flow runs at 0 or at "
                                             "least this rate, never in between. The gate is "
                                             "applied to the rate the expression ASKED for, "
@@ -720,7 +728,7 @@ def _defs() -> dict:
                 "name": {"type": "string", "minLength": 1},
                 "description": {"type": "string"},
                 "unit": {"type": "string", "description": "Label for the product, e.g. Nm3."},
-                "cohort_interval": {"type": "number", "exclusiveMinimum": 0, "default": 1,
+                "cohort_interval": {
                                     "description": "Feed accumulated over this interval closes "
                                                    "into one cohort and releases from its CLOSE, "
                                                    "so the mean delay is longer by up to half an "
@@ -818,16 +826,15 @@ def _defs() -> dict:
             "properties": {
                 "baseline": {"type": "string", "default": "",
                              "description": "A scenario name; empty is the model as saved."},
-                "horizon_years": {"type": "number", "exclusiveMinimum": 0, "default": 5,
+                "horizon_years": {
                                   "description": "Years the saving is counted over; a "
                                                  "fraction counts its last year pro rata."},
-                "discount_rate": {"type": "number", "default": 0.08,
+                "discount_rate": {
                                   "description": "Per year, for the NPV."},
-                "operating_hours_per_year": {"type": "number", "exclusiveMinimum": 0,
-                                             "default": 4000,
+                "operating_hours_per_year": {
                                              "description": "The observed window is scaled "
                                                             "to this."},
-                "margin_per_part": {"type": "number", "default": 0,
+                "margin_per_part": {
                                     "description": "Money per extra good part; 0 is a pure "
                                                    "cost case."},
                 "throughput": {"type": "string", "default": "",
@@ -882,9 +889,10 @@ def _defs() -> dict:
                 "dims": _DIMS,
                 "elements": _ELEMENTS,
                 "description": {"type": "string"},
-                "expr": {"type": "string", "minLength": 1,
-                         "description": "Any flow-rate expression; may call AUX() of another "
-                                        "auxiliary (no cycles) and the inline delays."},
+                # A number too (#694): read through str(), and a bound `$arg` is written as one.
+                "expr": {"anyOf": [{"type": "number"}, {"type": "string", "minLength": 1}],
+                         "description": "A number, or any flow-rate expression; may call AUX() "
+                                        "of another auxiliary (no cycles) and the inline delays."},
                 "unit": {"type": "string", "description": "Label only."},
                 "diagram": {"type": "object",
                             "description": "Position in the stock-and-flow view; ignored by "
@@ -927,7 +935,7 @@ def _defs() -> dict:
                 "kind": {"type": "string",
                          "enum": ["material", "information", "pipeline", "sample", "noise"],
                          "default": "material"},
-                "order": {"type": "integer", "minimum": 1, "default": 1,
+                "order": {
                           "description": "Number of stages (material/information)."},
                 "initial": {"type": ["string", "number"], "default": 0,
                             "description": "The output at t=0 (not \"noise\", which has none)."},
@@ -1083,11 +1091,11 @@ def _defs() -> dict:
                            "reads the tick-start state (on_tick for all, then tick transitions "
                            "for all); random: a fresh permutation per tick; sequential: index "
                            "order. A population's keys override its type's.",
-            "properties": {"dt": {"type": "number", "exclusiveMinimum": 0},
+            "properties": {"dt": {},
                            "activation": {"type": "string", "enum": ["synchronous", "random",
                                                                      "sequential"],
                                           "default": "synchronous"},
-                           "phase": {"type": "number", "minimum": 0, "default": 0},
+                           "phase": {},
                            "time_unit": _unit_schema("time", "Unit `dt` and `phase` are in.")},
             "additionalProperties": False,
         },
@@ -1127,7 +1135,7 @@ def _defs() -> dict:
                 "message": {"type": "string"},
                 "tick": {"type": "string"},
                 "guard": {"type": "string"},
-                "scan": {"type": "number", "exclusiveMinimum": 0,
+                "scan": {
                          "description": "Re-check a rate or condition every scan time units "
                                         "(for inputs that move outside the agents)."},
                 "scan_unit": _unit_schema("time", "Unit `scan` is in."),
@@ -1224,13 +1232,13 @@ def _defs() -> dict:
                                                  "required": ["rate"],
                                                  "additionalProperties": False}},
                                         "required": ["name"], "additionalProperties": False}},
-                        "patch_tick": {"type": "number", "exclusiveMinimum": 0,
+                        "patch_tick": {
                                        "description": "Grid only: every patch diffuses, "
                                                       "evaporates, then grows at k * patch_tick."},
                         "time_unit": _time_unit("Unit `patch_tick` is in."),
                     },
                     "required": ["kind"], "additionalProperties": False}]},
-                "speed": {"type": ["string", "number"], "default": "1",
+                "speed": {"type": ["string", "number"],
                          "description": "An expression (self, parameters, constants) a move_to "
                                         "evaluates once, in the space's own units per time unit."},
                 "speed_unit": _unit_schema("speed", "Unit `speed` is in."),
@@ -1258,14 +1266,14 @@ def _defs() -> dict:
                 "name": {"type": "string", "minLength": 1},
                 "description": {"type": "string"},
                 "type": {"type": "string", "minLength": 1},
-                "count": {"anyOf": [{"type": "integer", "minimum": 0}, {
+                "count": {"anyOf": [{"type": "integer"}, {
                     "type": "object",
                     "description": "The number of rows of a model table (one agent "
                                    "per row), or the sum of one of its columns (a group table).",
                     "properties": {"table": {"type": "string", "minLength": 1},
                                    "column": {"type": "string", "minLength": 1}},
                     "required": ["table"], "additionalProperties": False}]},
-                "max_count": {"type": "integer", "minimum": 0,
+                "max_count": {
                               "description": "The most agents alive at once when "
                                              "spawn actions add some (>= count); default count."},
                 "tick": {"$ref": "#/$defs/agent_tick"},
@@ -1374,7 +1382,6 @@ def _defs() -> dict:
                            "path along the segments, so a distance is geometry, not a guess.",
             "properties": {
                 "length_factor": {
-                    "type": "number", "exclusiveMinimum": 0, "default": 1.0,
                     "description": "Multiplies the straight-line distance when a segment declares "
                                    "no explicit length. 1.0 is straight aisles."},
                 "nodes": {
@@ -1399,16 +1406,16 @@ def _defs() -> dict:
                         "properties": {
                             "from": {"type": "string", "minLength": 1},
                             "to": {"type": "string", "minLength": 1},
-                            "length": {"type": ["number", "null"], "exclusiveMinimum": 0,
+                            "length": {"type": ["number", "null"],
                                        "description": "Null takes the straight-line distance x "
                                                       "length_factor."},
                             "length_unit": _unit_schema("length", "Unit `length` is in."),
                             "two_way": {"type": "boolean", "default": True},
-                            "speed": {"type": ["number", "null"], "exclusiveMinimum": 0,
+                            "speed": {"type": ["number", "null"],
                                       "description": "Speed LIMIT on this segment; it changes "
                                                      "travel time, never the route chosen."},
                             "speed_unit": _unit_schema("speed", "Unit `speed` is in."),
-                            "capacity": {"type": ["integer", "null"], "minimum": 1,
+                            "capacity": {"type": ["integer", "null"],
                                          "description": "Vehicles allowed on it at once (zone "
                                                         "control, both directions of a two-way "
                                                         "segment together); null is unlimited "
@@ -1431,18 +1438,18 @@ def _defs() -> dict:
                 "description": {"type": "string"},
                 "kind": {"type": "string", "enum": ["robot", "human", "mechanism"],
                          "default": "robot"},
-                "speed": {"type": "number", "exclusiveMinimum": 0, "description": "m/s."},
+                "speed": {"description": "m/s."},
                 "speed_unit": _unit_schema("speed", "Unit `speed` and `collaborative_speed` "
                                            "are in.", "m/s"),
-                "accel": {"type": "number", "exclusiveMinimum": 0, "description": "m/s^2."},
-                "payload_max": {"type": ["number", "null"], "exclusiveMinimum": 0,
+                "accel": {"description": "m/s^2."},
+                "payload_max": {"type": ["number", "null"],
                                 "description": "kg; null or absent = no payload derating."},
                 "payload_unit": _unit_schema("mass", "Unit `payload_max` is in.", "kg"),
-                "payload_derate": {"type": ["number", "null"], "exclusiveMinimum": 0,
-                                   "maximum": 1, "default": 1.0,
+                "payload_derate": {"type": ["number", "null"],
+                                   "default": 1.0,
                                    "description": "Speed fraction at payload_max, linear from "
                                                   "1.0 at 0 kg."},
-                "collaborative_speed": {"type": ["number", "null"], "exclusiveMinimum": 0,
+                "collaborative_speed": {"type": ["number", "null"],
                                         "description": "m/s; required when a block uses hrc "
                                                        "\"collaborative\" or \"separation\"."},
             },
@@ -1457,7 +1464,7 @@ def _defs() -> dict:
             "properties": {
                 "name": {"type": "string", "minLength": 1},
                 "description": {"type": "string"},
-                "count": {"type": "integer", "minimum": 1, "default": 1},
+                "count": {},
                 "kind": {"type": "string", "enum": ["vehicle", "worker"], "default": "vehicle",
                          "description": "\"worker\" lets a SEIZE/PROCESS summon a "
                                         "unit with `worker_fleet`; the pool is unchanged."},
@@ -1466,13 +1473,13 @@ def _defs() -> dict:
                                          "nodes' coordinates (`speed_x`/`speed_y`/`hoist_time`), "
                                          "ignoring the path network and segment capacity; cannot "
                                          "be kind \"worker\"."},
-                "speed_x": {"type": "number", "exclusiveMinimum": 0,
+                "speed_x": {
                            "description": "Gantry only: speed along x, distance per model time "
                                           "unit."},
-                "speed_y": {"type": "number", "exclusiveMinimum": 0,
+                "speed_y": {
                            "description": "Gantry only: speed along y, distance per model time "
                                           "unit."},
-                "hoist_time": {"type": "number", "minimum": 0, "default": 0,
+                "hoist_time": {
                               "description": "Gantry only: fixed time added to every hop (raising "
                                              "and lowering the load), in `time_unit`."},
                 "units": {
@@ -1492,7 +1499,7 @@ def _defs() -> dict:
                         "additionalProperties": False,
                     },
                 },
-                "loads": {"type": "integer", "minimum": 1, "default": 1,
+                "loads": {
                           "description": "Entities one vehicle may carry on a tour: up to "
                                          "loads - 1 waiting TRANSPORTs ride with the one granted "
                                          "the vehicle. 1 on a worker fleet."},
@@ -1507,14 +1514,17 @@ def _defs() -> dict:
                                             "a cobot arriving loaded at a machine that holds a "
                                             "finished part picks it, places its own and "
                                             "carries the finished one on."},
-                "speed": {"type": "number", "exclusiveMinimum": 0,
+                "speed": {
                           "description": "Loaded speed, distance per model time unit."},
                 "speed_unit": _unit_schema("speed", "Unit of every speed of the fleet."),
-                "speed_empty": {"type": "number", "exclusiveMinimum": 0,
+                "speed_empty": {
                                 "description": "Speed when driving to a pick-up; defaults to "
                                                "`speed`."},
-                "load_time": {"type": "string", "description": "Expression, in `time_unit`."},
-                "unload_time": {"type": "string", "description": "Expression, in `time_unit`."},
+                # A number too (#694): read through str(), and a bound `$arg` is written as one.
+                "load_time": {"type": ["number", "string"],
+                              "description": "Number or expression, in `time_unit`."},
+                "unload_time": {"type": ["number", "string"],
+                                "description": "Number or expression, in `time_unit`."},
                 "time_unit": _time_unit("Unit the load and unload times are in."),
                 "home": {"type": "string",
                          "description": "Node the vehicles start at, and return to under "
@@ -1529,16 +1539,16 @@ def _defs() -> dict:
                 "select": {"type": "string", "enum": ["nearest", "longest_idle", "cyclic"],
                            "default": "nearest",
                            "description": "Which idle vehicle serves a granted request."},
-                "cost_busy": {"type": "number"},
-                "cost_idle": {"type": "number"},
-                "cost_per_use": {"type": "number"},
+                "cost_busy": {},
+                "cost_idle": {},
+                "cost_per_use": {},
                 "cost_time_unit": {"type": "string", "enum": list(UNITS)},
                 "power": _power_schema("vehicle"),
                 "graphic": {"type": "string",
                             "description": "Inline SVG vehicle picture (24 x 24 artboard, facing "
                                            "east) drawn for each unit on the floor plan; the "
                                            "editor's generic vehicle when absent."},
-                "length_m": {"type": "number", "minimum": 0,
+                "length_m": {
                              "description": "Vehicle length in metres for the floor-plan marker "
                                             "(default 2.4)."},
                 "battery": {
@@ -1588,23 +1598,21 @@ def _defs() -> dict:
                 "description": {"type": "string"},
                 "node": {"type": "string", "description": "The network node it stands at."},
                 "kind": {"type": "string", "enum": ["charge", "swap"], "default": "charge"},
-                "points": {"type": "integer", "minimum": 1, "default": 1,
+                "points": {
                            "description": "Vehicles served at once."},
-                "power_kw": {"type": "number", "exclusiveMinimum": 0,
+                "power_kw": {
                              "description": "kW per point; for \"swap\", the rate a removed "
                                             "pack recharges at."},
-                "knee": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8,
+                "knee": {
                          "description": "Above this SoC the power falls linearly."},
-                "taper_floor": {"type": "number", "exclusiveMinimum": 0, "maximum": 1,
-                                "default": 0.1,
+                "taper_floor": {
                                 "description": "Share of `power_kw` left at 100 %."},
-                "efficiency": {"type": "number", "exclusiveMinimum": 0, "maximum": 1,
-                               "default": 1.0,
+                "efficiency": {
                                "description": "Grid kWh = battery kWh / efficiency."},
                 "swap_time": {"type": "string",
                               "description": "Swap only: expression, in `swap_time_unit`."},
                 "swap_time_unit": _time_unit("Unit `swap_time` is in."),
-                "spare_packs": {"type": ["integer", "null"], "minimum": 1,
+                "spare_packs": {"type": ["integer", "null"],
                                 "description": "Swap only: charged packs in stock at the start; "
                                                "a swap waits for one. Absent = unlimited."},
             },
@@ -2040,7 +2048,7 @@ def _defs() -> dict:
                 "id": {"type": "string", "minLength": 1,
                        "description": "Unique; the KPI frames report the order under it."},
                 "description": {"type": "string"},
-                "release": {"type": ["number", "string"], "default": 0,
+                "release": {"type": ["number", "string"],
                             "description": "When the order is released into the model. An ISO "
                                            "timestamp instead of a number needs a calendar."},
                 "due": {"type": ["number", "string", "null"],
@@ -2076,7 +2084,7 @@ def _defs() -> dict:
             "type": "object",
             "description": "Warm start: what is already in the system at t=0.",
             "properties": {
-                "time": {"type": "number",
+                "time": {
                          "description": "Timestamp of the snapshot this state came from; recorded "
                                         "for the report, never shifts the clock."},
                 "time_unit": _time_unit("Unit `time` is in."),
@@ -2193,7 +2201,7 @@ def _defs() -> dict:
                             "count": {"type": "integer", "minimum": 0},
                             "e_type": {"type": "string"},
                             "attributes": {"type": "object"},
-                            "age": {"type": "number", "minimum": 0,
+                            "age": {
                                     "description": "Time already spent in the system before t=0."},
                             "age_unit": _time_unit("Unit `age` is in."),
                             "in_service": {"type": "integer", "minimum": 0},
@@ -2315,9 +2323,9 @@ def _defs() -> dict:
                                "description": "Run length in base time units; null/0 means "
                                               "\"run until the model drains\", which only works "
                                               "for a model that can drain."},
-                "warmup": {"type": "number", "minimum": 0, "default": 0,
+                "warmup": {
                            "description": "Statistics are reset at this time."},
-                "replications": {"type": "integer", "minimum": 1, "default": 1},
+                "replications": {},
                 "deterministic": {"type": "boolean", "default": False,
                                   "description": "Deterministic run mode: "
                                                  "every distribution samples its mean, "
@@ -2334,22 +2342,22 @@ def _defs() -> dict:
                                                "new length fields and of reported lengths."},
                 "currency": {"type": "string", "default": "EUR",
                              "description": "Cost label only; never enters the arithmetic."},
-                "energy_price": {"anyOf": [{"type": "number"}, {"type": "string"}], "default": 0,
+                "energy_price": {"anyOf": [{"type": "number"}, {"type": "string"}],
                                  "description": "Money per kWh, a number or an expression, "
                                                 "evaluated once at run start. "
                                                 "Prices every resource/fleet's \"power\"."},
-                "entity_log_limit": {"type": ["integer", "null"], "minimum": 0,
+                "entity_log_limit": {"type": ["integer", "null"],
                                      "description": "Cap on retained entity-log rows."},
                 "record_logs": {"type": "boolean", "default": True,
                                 "description": "Record the per-EVENT entity/resource/store logs "
                                                ". False returns the three flat log "
                                                "frames empty and leaves every summary statistic "
                                                "exact -- what a big study wants."},
-                "timeseries_points": {"type": ["integer", "null"], "minimum": 0,
+                "timeseries_points": {"type": ["integer", "null"],
                                       "description": "How many samples the time-series OUTPUT "
                                                      "sampler takes over a time-limited run "
                                                      "(default 200)."},
-                "timeseries_interval": {"type": ["number", "null"], "exclusiveMinimum": 0,
+                "timeseries_interval": {"type": ["number", "null"],
                                         "description": "Fixed sampling interval for a draining "
                                                        "run, which has no horizon to divide."},
                 "timeseries_counts": {"type": "array", "maxItems": 1000, "uniqueItems": True,
@@ -2366,7 +2374,7 @@ def _defs() -> dict:
                                    "each multiple of \"dt\"; static rates and events inside "
                                    "a step stay exact.",
                     "properties": {
-                        "dt": {"type": "number", "exclusiveMinimum": 0,
+                        "dt": {
                                "description": "Step, in \"time_unit\"."},
                         "method": {"type": "string", "enum": list(SD_METHODS),
                                    "default": "euler",
@@ -2429,9 +2437,37 @@ def _section_props(defs: dict, key: str) -> dict:
     return node.get("properties", {})
 
 
+def _json_type(spec) -> str | None:
+    """The JSON type of a field's number: "integer", "number", or None when it takes none."""
+    if spec.type is int:
+        return "integer"
+    return "number" if spec.type is float or "number" in spec.field_kinds else None
+
+
+def _set_number(prop: dict, spec) -> None:
+    """*spec*'s numeric type and bounds onto *prop*, or onto its number branch when it is
+    an anyOf; any other alternative it allows (null, a date string, an expression) is kept."""
+    number = next((b for b in prop.get("anyOf", ()) if b.get("type") in ("number", "integer")),
+                  prop)
+    types = number.get("type", [])
+    types = [_json_type(spec) if t in ("number", "integer") else t
+             for t in ([types] if isinstance(types, str) else types)]
+    if _json_type(spec) not in types:
+        types.append(_json_type(spec))
+    number["type"] = types[0] if len(types) == 1 else types
+    for name in ("minimum", "exclusiveMinimum", "maximum"):
+        number.pop(name, None)
+    if spec.min is not None:
+        number["exclusiveMinimum" if spec.min_exclusive else "minimum"] = spec.min
+    if spec.max is not None:
+        number["maximum"] = spec.max
+
+
 def _annotate_sections(defs: dict) -> None:
-    """Section columns from `quantities.SECTION_FIELDS`: quantity, unit key,
-    bounds, and each unit key's schema from the unit tables (units spec)."""
+    """Section columns from `quantities.SECTION_FIELDS`, the one place a field's facts are
+    kept (#697): its numeric type, default, bounds, quantity and unit key, and each unit
+    key's schema from the unit tables (units spec); `locals` on the records flattening
+    gives them (#694). The hand `_defs` keep the rest: descriptions, enums, shapes."""
     for key, fields in SECTION_FIELDS.items():
         props = _section_props(defs, key)
         for spec in fields:
@@ -2442,15 +2478,18 @@ def _annotate_sections(defs: dict) -> None:
                 prop["x-quantity"] = spec.quantity
                 if spec.unit_field:
                     prop["x-unit-key"] = spec.unit_field
-            for bound, name in ((spec.min, "minimum"), (spec.max, "maximum")):
-                if bound is not None and "type" in prop and "exclusiveMinimum" not in prop:
-                    prop.setdefault(name, bound)
+            if _json_type(spec):
+                _set_number(prop, spec)
+            if spec.default is not None and not isinstance(spec.default, (list, dict)):
+                prop["default"] = spec.default
             unit = spec.unit_field
             if unit and "." not in unit and unit in props and key != "simulation":
                 sibling = next((p for p in fields if p.name == unit), None)
                 own = getattr(sibling, "default", None)
                 props[unit] = _unit_schema(spec.quantity, props[unit].get("description", ""),
                                            own if own not in (None, "", "base") else "base")
+    for section in LOCALS_SECTIONS:
+        _section_props(defs, section)["locals"] = _LOCALS
 
 
 def build_json_schema() -> dict:
@@ -2609,7 +2648,7 @@ def main_validate(argv=None) -> int:
         prog="naga validate",
         description="Validate a model file and report structured problems "
                     "(code, severity, path, hint).")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="emit the problems as a JSON array instead of one line each")
     args = parser.parse_args(argv)

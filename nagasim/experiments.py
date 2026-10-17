@@ -17,8 +17,6 @@ The implicit scenario "Baseline" (no overrides) always exists.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import argparse
 import copy
 from contextlib import nullcontext
@@ -32,7 +30,7 @@ import pandas as pd
 from scipy import stats as sp_stats
 
 from nagasim import api
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import schema, sections
 from nagasim.core.export import concat_runs
 from nagasim.core.outputs import LOG_DERIVED_COLUMNS
@@ -60,11 +58,6 @@ _SECTIONS = _NAMED_SECTIONS + _ID_SECTIONS + ("links",)
 # so EVERY instance of it moves together. An instance's own bindings are
 # reached the ordinary way: "blocks.<instance>.params.arguments.<parameter>".
 _SUBMODEL_SECTION = "submodels"
-
-
-def _as_layout(layout) -> dict:
-    """A migrated layout dict from either a layout dict or a model file path."""
-    return api.load_layout(layout)
 
 
 # ---------------------------------------------------------------- override paths
@@ -654,7 +647,7 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
     the replications of one scenario, so a five-scenario set of one replication
     each fills five workers instead of one.
     """
-    base = _as_layout(layout)
+    base = schema.load_layout(layout)
     if replications is None:
         replications = int(base.get("simulation", {}).get("replications") or 1)
     layouts = _scenario_layouts(base, scenario_names, baseline)
@@ -733,7 +726,7 @@ def record_scenarios(layout, result: ExperimentResult, *, run_length: float | No
     """
     from nagasim.core.trace import TraceRecorder
 
-    layouts = _scenario_layouts(_as_layout(layout), list(result.results))
+    layouts = _scenario_layouts(schema.load_layout(layout), list(result.results))
     recordings = {}
     for name in result.results:
         _replications, length, warm = _window(layouts[name], 1, run_length, warmup)
@@ -766,7 +759,7 @@ def run_until_precision(layout, kpi: str, *, relative: float | None = 0.05,
     Returns (results, report); report carries the replications used, the
     achieved half-width, the target and `met`.
     """
-    base = _as_layout(layout)
+    base = schema.load_layout(layout)
     sim = base.get("simulation", {})
     if run_length is None:
         run_length = sim.get("time_limit") or 0.0
@@ -904,7 +897,7 @@ def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(prog="naga scenarios",
                                      description="Run named scenarios headless and compare them.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--scenario", action="append", dest="scenarios", default=None,
                         help="scenario name to run (default: all); may repeat")
     parser.add_argument("--replications", type=int, default=None,

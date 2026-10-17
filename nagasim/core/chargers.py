@@ -22,6 +22,7 @@ from nagasim.core.problems import problem
 from nagasim.core.quantities import SECTION_FIELDS, field_factor, param, scaled
 from nagasim.core.stats import Tally, TimeWeighted
 from nagasim.core.timeunits import conversion_factor, units_of
+from nagasim.core.utils import is_number
 
 __all__ = ["CHARGER_KINDS", "BATTERY_STRATEGIES", "Charger", "build_chargers",
            "validate_chargers"]
@@ -156,12 +157,8 @@ def build_chargers(layout: dict, env) -> dict[str, Charger]:
 
 # -- validation --------------------------------------------------------------
 
-def _number(value):
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-
 def _fraction(value) -> bool:
-    return _number(value) is not None and 0 <= value <= 1
+    return is_number(value) and 0 <= value <= 1
 
 
 def validate_chargers(layout: dict, problems: list) -> None:
@@ -199,7 +196,7 @@ def validate_chargers(layout: dict, problems: list) -> None:
         points = record.get("points", 1)
         if not isinstance(points, int) or isinstance(points, bool) or points < 1:
             bad("points", "points must be an integer >= 1", "how many vehicles it serves at once")
-        if not (_number(record.get("power_kw")) or 0) > 0:
+        if not (is_number(record.get("power_kw")) and record["power_kw"] > 0):
             bad("power_kw", "power_kw must be a number > 0", "the charging power in kW")
         if not _fraction(record.get("knee", 0.8)):
             bad("knee", "knee must be between 0 and 1", "the SoC above which power tapers")
@@ -245,7 +242,7 @@ def _validate_batteries(layout: dict, chargers: dict, nodes: set, problems: list
         if not isinstance(battery, dict):
             bad("E_BATTERY", "", "must be an object", "{\"capacity_kwh\": 2.0, \"low\": 0.25}")
             continue
-        if not (_number(battery.get("capacity_kwh")) or 0) > 0:
+        if not (is_number(battery.get("capacity_kwh")) and battery["capacity_kwh"] > 0):
             bad("E_BATTERY", "capacity_kwh", "capacity_kwh must be a number > 0",
                 "the usable energy of one vehicle's battery")
         low, target = battery.get("low"), battery.get("target", 1.0)

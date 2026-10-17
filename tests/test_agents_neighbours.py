@@ -28,10 +28,6 @@ def _pop(env, name):
     return next(p for p in env.ctx.agent_system.populations if p.name == name)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 # Agent i sits at FIELD_POINTS[i] and its "value" attribute IS i -- so a
 # brute-force reduction over a set of neighbour indices reduces the indices
 # themselves, with no separate value table to keep in sync.
@@ -106,7 +102,7 @@ def test_near_aggregates_match_brute_force_including_the_boundary():
             types.append(atype)
             pops.append(pop)
     layout = _model(*types, *pops)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env = _run(layout)
     for how in ("SUM", "MEAN", "MIN", "MAX"):
         for name, point, r in combos:
@@ -124,7 +120,7 @@ def test_near_state_filter_matches_brute_force():
     busy_mask = np.arange(N) >= 4                    # 0-3 Idle, 4-7 Busy
     atype, pop = _probe("QS", point, f'NEAR_MEAN("Field", "value", {r}, "Busy")')
     layout = _model(_field_type(), _field_pop(idle=4, busy=4), atype, pop)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env = _run(layout)
     expected = _brute(point, r, state_mask=busy_mask)["MEAN"]
     assert float(_pop(env, "QS").attrs["result"][0]) == pytest.approx(expected)
@@ -142,7 +138,7 @@ def test_near_excludes_self_from_its_own_population():
                             initial_states={"A": len(RING_POINTS)},
                             placement={"kind": "table", "points": [list(p) for p in RING_POINTS]})
     layout = _model(ring_type, ring_pop)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     ring = _pop(_run(layout), "Ring")
     total = sum(range(len(RING_POINTS)))
     for i in range(len(RING_POINTS)):
@@ -176,7 +172,7 @@ def test_knn_ties_are_broken_by_ascending_index():
     q_mean_type, q_mean_pop = _probe("QMean", (0.0, 0.0), 'KNN_MEAN("Ties", "value", 2)')
     q_sum_type, q_sum_pop = _probe("QSum3", (0.0, 0.0), 'KNN_SUM("Ties", "value", 3)')
     layout = _model(tie_type, tie_pop, q_mean_type, q_mean_pop, q_sum_type, q_sum_pop)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env = _run(layout)
     assert float(_pop(env, "QMean").attrs["result"][0]) == pytest.approx(0.5)      # (0 + 1) / 2
     assert float(_pop(env, "QSum3").attrs["result"][0]) == pytest.approx(3.0)      # 0 + 1 + 2
@@ -189,7 +185,7 @@ def test_knn_matches_brute_force_and_respects_the_state_filter():
     a1, p1 = _probe("KAll", point, f'KNN_MEAN("Field", "value", {k})')
     a2, p2 = _probe("KBusy", point, f'KNN_MEAN("Field", "value", {k}, "Busy")')
     layout = _model(_field_type(), _field_pop(idle=4, busy=4), a1, p1, a2, p2)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env = _run(layout)
     assert float(_pop(env, "KAll").attrs["result"][0]) == pytest.approx(
         _knn_brute(point, k).mean())
@@ -241,7 +237,7 @@ def test_literal_validation_matches_the_a2_rules():
 
     def codes_for(expr):
         atype, pop = _probe("P", (0.0, 0.0), expr)
-        return _codes(_model(field_type, field_pop, atype, pop))
+        return problem_codes(_model(field_type, field_pop, atype, pop))
 
     assert "E_AGENT_ATTRIBUTE" in codes_for('NEAR_SUM("Field", "state", 5)')       # not a column
     assert "E_AGENT_ATTRIBUTE" in codes_for('NEAR_MEAN("Field", "tag", 5)')        # categorical

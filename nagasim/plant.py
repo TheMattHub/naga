@@ -28,24 +28,23 @@ Stdlib and `nagasim.core` only.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import json
 import math
 import re
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim.core import schema as model_schema, submodels
-from nagasim.core.initial_state import _OWN, _geometry
+from nagasim.core.initial_state_validation import OWN, geometry_of
 from nagasim.core.network import build_network
 from nagasim.core.problems import Problem, problem
 from nagasim.core.timeunits import UNITS, units_of
 from nagasim.core.trace import DEFAULT_MAX_EVENTS, TraceEvent, TraceRecorder
-from nagasim import readers
+from nagasim.core.utils import is_finite_number
+from nagasim import netguard, readers
 from nagasim.live import MAX_TEXT, SKEW_SECONDS, Feed, stamp
+from nagasim.sources import ReadError
 
 __all__ = ["FORMAT", "LIMITS", "KINDS", "STATES", "ORDER_FIELDS", "ORDER_STATES", "PlantError",
            "load", "check", "schema",
@@ -125,14 +124,14 @@ def _text(value) -> str:
     return json.dumps(value)
 
 
-def _flat(layout) -> dict:
+def flat_layout(layout) -> dict:
     """The model as a run sees it: migrated, every submodel instance expanded."""
-    model = model_schema.migrate(model_schema.read_layout(layout))
+    model = model_schema.load_layout(layout)
     return submodels.flatten(model) if submodels.has_submodels(model) else model
 
 
-def _names(layout) -> dict:
-    flat = _flat(layout)
+def layout_names(layout) -> dict:
+    flat = flat_layout(layout)
 
     def of(section):
         return [str(r["name"]) for r in flat.get(section) or [] if r.get("name")]
@@ -180,7 +179,7 @@ _CELLS = frozenset({"at", "type", "batch"})        # the scaffold's own cells of
 
 def _attribute(name) -> bool:
     """D459: an attribute a plant may set: a plain name the engine does not own."""
-    return isinstance(name, str) and bool(_NAME.fullmatch(name)) and name not in _OWN \
+    return isinstance(name, str) and bool(_NAME.fullmatch(name)) and name not in OWN \
         and name not in _ROUTING
 
 
@@ -228,7 +227,7 @@ def check(mapping, layout=None) -> list[Problem]:
     if len(signals) > LIMITS["signals"]:
         bad(f"over the bound of {LIMITS['signals']} signals", "/signals", "E_PLANTMAP_SIZE")
         return found
-    names = _names(layout) if layout is not None else None
+    names = layout_names(layout) if layout is not None else None
     drivers: dict[str, set] = {}        # resource -> what holds its units
     members: dict[str, set] = {}        # block -> how its content is told
     told: dict[str, int] = {}           # a thing only one signal may tell -> how many do
@@ -286,10 +285,10 @@ def check(mapping, layout=None) -> list[Problem]:
                     isinstance(c, (str, int, float, bool, type(None))) for c in codes):
                 bad(f"signal {index}: {name} must be a list of values", f"{at}/{name}")
         scale = signal.get("scale", 1.0)
-        if not _number(scale) or scale == 0:
+        if not is_finite_number(scale) or scale == 0:
             bad(f"signal {index}: scale must be a number other than 0", f"{at}/scale")
         roll = signal.get("rollover", 2)
-        if isinstance(roll, bool) or not _number(roll) or roll < 2 or not float(roll).is_integer():
+        if isinstance(roll, bool) or not is_finite_number(roll) or roll < 2 or not float(roll).is_integer():
             bad(f"signal {index}: rollover must be a whole number of at least 2: the value "
                 f"the counter returns to 0 at", f"{at}/rollover")
         if "leaves" in signal and not isinstance(signal["leaves"], bool):
@@ -446,7 +445,7 @@ def scaffold(layout, anonymous: bool = False, counters: bool = False) -> dict:
     own name: a file to start from, and the mapping the exit check inverts (D257).
     *anonymous*: queue lengths and unit counts instead of identities and jobs. *counters*:
     also a running total of what left each block (D288)."""
-    names = _names(layout)
+    names = layout_names(layout)
     signals = []
     for name in names["resource"]:
         signals += [
@@ -493,12 +492,6 @@ _WHOLE = 2 ** 53        # the largest count a float holds exactly
 _READING = ("value", "total", "since", "resets", "at")      # of a counter (`Mapper.readings`)
 
 
-def _number(value) -> bool:
-    """Finite. A JSON integer may be too large for a float: it is then no number (#373)."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool) \
-        and abs(value) <= sys.float_info.max
-
-
 def _whole(value) -> int:
     """A model's own count as an int (0 when it is none: the model's validation says why)."""
     return int(value) if _count(value) is not None else 0
@@ -506,7 +499,7 @@ def _whole(value) -> int:
 
 def _count(value) -> int | None:
     """A whole number of items or units within the bound, else None."""
-    if _number(value) and float(value).is_integer() and 0 <= value <= LIMITS["count"]:
+    if is_finite_number(value) and float(value).is_integer() and 0 <= value <= LIMITS["count"]:
         return int(value)
     return None
 
@@ -593,7 +586,7 @@ class Mapper:
             raise PlantError(refused)
         time = mapping["time"]
         self._epoch = stamp(time["epoch"])
-        unit = time.get("unit") or (_names(layout)["unit"] if layout is not None else "minutes")
+        unit = time.get("unit") or (layout_names(layout)["unit"] if layout is not None else "minutes")
         self._unit = float(UNITS[unit])
         self._received = time.get("stamp") == "received"
         # With a model: which blocks seize each resource (a set's members with it, a fleet
@@ -609,7 +602,7 @@ class Mapper:
         self._cells: dict[str, list] = {}           # belt -> [parts with a cell, [waiting]]
         self._segments: dict[str, int] = {}         # MOTION block -> its segment count (a step's bound)
         if layout is not None:
-            flat = _flat(layout)
+            flat = flat_layout(layout)
             units = units_of(flat.get("simulation"))
             try:
                 network = build_network(flat.get("network"), units)
@@ -617,7 +610,7 @@ class Mapper:
                 network = None
             for block in flat.get("blocks") or []:
                 params = block.get("params") or {}
-                geometry = _geometry(params, units, network) if str(block.get(
+                geometry = geometry_of(params, units, network) if str(block.get(
                     "type", "")).upper() == "CONVEYOR" and params.get("accumulating", True) \
                     is not False else None
                 if geometry is not None:
@@ -632,7 +625,7 @@ class Mapper:
                         self._seizes.setdefault(name, set()).add(block.get("name"))
             for level in flat.get("levels") or []:
                 self._bounds[level.get("name")] = tuple(
-                    level.get(key) if _number(level.get(key)) else None for key in ("min", "capacity"))
+                    level.get(key) if is_finite_number(level.get(key)) else None for key in ("min", "capacity"))
         self._exact: dict[str, list] = {}
         self._patterns: list = []
         for signal in mapping.get("signals", []):
@@ -697,7 +690,7 @@ class Mapper:
         """The feed dropped *lost* events, or its stream broke (*gap*): recorded with the
         time it happened at. The next assertions put the timeline right again; an entity
         whose leaving was missed stays until it is seen again."""
-        lost = int(lost) if _number(lost) and lost > 0 else 0
+        lost = int(lost) if is_finite_number(lost) and lost > 0 else 0
         if lost or gap:
             for index, more in enumerate((1, lost, bool(gap))):
                 self._hole_totals[index] += more
@@ -831,7 +824,7 @@ class Mapper:
             self._hold(out, t, resource, "blocked", 0)
 
     def _as_capacity(self, signal, _key, _ident, cell, _row, t, out) -> None:
-        if not _number(cell) or not 0 <= cell <= LIMITS["count"]:
+        if not is_finite_number(cell) or not 0 <= cell <= LIMITS["count"]:
             return self._drop("value")
         if self._capacity.get(signal["resource"]) != cell:
             self._capacity[signal["resource"]] = cell
@@ -950,7 +943,7 @@ class Mapper:
         for cell, name in signal["attributes"].items():
             if cell not in row:
                 continue
-            if not _number(row[cell]):
+            if not is_finite_number(row[cell]):
                 self._drop("value")
                 continue
             if entity.attributes is None:
@@ -1125,7 +1118,7 @@ class Mapper:
                     return self._drop("value")
                 said[name] = moment
         if cell("priority") is not None:
-            if not _number(cell("priority")):
+            if not is_finite_number(cell("priority")):
                 return self._drop("value")
             said["priority"] = cell("priority")
         product = cell("type")
@@ -1145,7 +1138,7 @@ class Mapper:
         return None
 
     def _as_level(self, signal, _key, _ident, cell, _row, t, out) -> None:
-        if not _number(cell):
+        if not is_finite_number(cell):
             return self._drop("value")
         said = (t, cell * signal.get("scale", 1.0))
         if self._levels.get(signal["level"]) != said:
@@ -1160,7 +1153,7 @@ class Mapper:
         """The plant's running total of what left a block (D288, D289). The first value is
         a baseline; an increase adds; a decrease wraps with `rollover` and is otherwise a
         restart that adds nothing. No event: a count is not an item."""
-        if not _number(cell) or not 0 <= cell <= _WHOLE or not float(cell).is_integer():
+        if not is_finite_number(cell) or not 0 <= cell <= _WHOLE or not float(cell).is_integer():
             return self._drop("value")      # no count, or one no float holds exactly (#373)
         held = self._counters.get(signal["block"])
         if held is None:
@@ -1185,12 +1178,12 @@ class Mapper:
         value under the carried one is then a reset, or a declared rollover, as within
         one mapper. A reset that has counted past the carried value again cannot be told
         from an increase, as between any two readings."""
-        self._carry_age = float(max_age) if _number(max_age) and max_age > 0 else 0.0
+        self._carry_age = float(max_age) if is_finite_number(max_age) and max_age > 0 else 0.0
         self._carried = {}
         for block in self._counted.intersection(readings if isinstance(readings, dict) else ()):
             said = readings[block]
             row = [said.get(key) for key in _READING] if isinstance(said, dict) else [None]
-            if all(_number(v) for v in row) and row[2] <= row[4] and all(
+            if all(is_finite_number(v) for v in row) and row[2] <= row[4] and all(
                     0 <= row[i] <= _WHOLE and float(row[i]).is_integer() for i in (0, 1, 3)):
                 self._carried[block] = [int(row[0]), int(row[1]), float(row[2]), int(row[3]),
                                         float(row[4])]
@@ -1362,7 +1355,7 @@ def in_order(mapper: "Mapper", observations) -> list:
             seq = observation.get("seq") if isinstance(observation, dict) \
                 else getattr(observation, "seq", None)
             # Within one instant the feed's own count is the order things happened in.
-            last = (last[0] if seconds is None else seconds, seq if _number(seq) else last[1])
+            last = (last[0] if seconds is None else seconds, seq if is_finite_number(seq) else last[1])
         keyed.append((*last, index))
     return [observations[key[2]] for key in sorted(keyed)]
 
@@ -1386,22 +1379,49 @@ class Watch:
         self.mapper = Mapper(mapping, layout)
         self._feed = feed
         if sources is None:
-            sources = [s.get("name") for s in _flat(layout).get("data_sources") or []
+            sources = [s.get("name") for s in flat_layout(layout).get("data_sources") or []
                        if s.get("kind") in readers.KINDS]
-        self._cursors: dict = dict.fromkeys(sources)
+        self.cursors: dict = dict.fromkeys(sources)
+        self.rows: dict[str, dict] = {}     # per source: its state and age at the last pull, and what it lost
+        self.problems: list = []            # of the last step
 
     @property
     def now(self) -> float:
         return self.mapper.now
 
-    def step(self) -> list:
-        batch: list = []
-        for name, cursor in self._cursors.items():
-            got = self._feed.changes(name, cursor)
-            self._cursors[name] = got.cursor
-            self.mapper.hole(got.lost, got.gap)
-            batch += got.events
-        # Two sources' events of one pull, by their own time: only what is late is clamped.
+    def step(self, pull: int | None = None, pulls: int = 1, tolerant: bool = False) -> list:
+        """The events of one step. A source is pulled up to *pulls* times, *pull* events each,
+        while a pull comes back full (a busy plant is caught up with, up to that ceiling, so
+        that one step always ends; `problems` says when it was reached). A source the feed
+        refuses raises, or with *tolerant* is said in `problems` and the others are still read."""
+        self.problems, batch = [], []
+        for name, cursor in self.cursors.items():
+            row = self.rows.setdefault(name, {"name": name, "state": "unopened", "age": None,
+                                              "lost": 0, "gaps": 0})
+            try:
+                for _ in range(pulls):
+                    got = self._feed.changes(name, cursor, *(() if pull is None else (pull,)))
+                    cursor = self.cursors[name] = got.cursor
+                    self.mapper.hole(got.lost, got.gap)
+                    batch += got.events
+                    self.problems += got.problems
+                    row.update(state=got.state, age=got.age, lost=row["lost"] + got.lost,
+                               gaps=row["gaps"] + bool(got.gap))
+                    if pull is None or len(got.events) < pull:
+                        break
+                else:
+                    self.problems.append(problem(
+                        "W_TWIN_CUT", f"source '{name}' had over {pulls * pull} events waiting: "
+                        f"the rest is read at the next step", f"/data_sources/{name}",
+                        hint="the view is behind the plant until the twin has caught up"))
+            except (ReadError, netguard.GuardError) as exc:
+                if not tolerant:
+                    raise
+                # Refused before any socket (no connection, a kind that is not live).
+                row["state"] = "refused"
+                self.problems.append(problem(exc.code, f"source '{name}': {exc.message}",
+                                             f"/data_sources/{name}", hint=exc.hint))
+        # Several sources' events of one pull, by their own time: only what is late is clamped.
         return self.mapper.feed(in_order(self.mapper, batch))
 
 
@@ -1426,7 +1446,7 @@ class Recorder(TraceRecorder):
             values = {}
             for key, value in vars(entity).items():
                 value = value.item() if getattr(value, "shape", None) == () else value
-                if not key.startswith("_") and _number(value):
+                if not key.startswith("_") and is_finite_number(value):
                     values[key] = value
             self.attributes[index] = values
 
@@ -1676,10 +1696,9 @@ def main(argv=None) -> int:
     import dataclasses
     import types
 
-    from nagasim import api, netguard
-    from nagasim._cli import setup_cli
+    from nagasim import api
+    from nagasim._cli import add_model_argument, setup_cli
     from nagasim.core.playback import Timeline
-    from nagasim.sources import ReadError
 
     setup_cli()
     parser = argparse.ArgumentParser(
@@ -1692,7 +1711,7 @@ def main(argv=None) -> int:
                                            "exit 1 with the reasons when not")
     init_ = verbs.add_parser("init", help="write a starter mapping that names every block, "
                                          "resource and level of the model by its own name")
-    init_.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(init_)
     init_.add_argument("--anonymous", action="store_true",
                        help="queue lengths and unit counts instead of identities and jobs")
     init_.add_argument("--counters", action="store_true",
@@ -1700,7 +1719,7 @@ def main(argv=None) -> int:
     init_.add_argument("--out", default=None, metavar="FILE", help="default: print it")
     mock_ = verbs.add_parser("mock", help="run the model and write the plant log that run would "
                                          "have left, through the mapping read backwards")
-    mock_.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(mock_)
     mock_.add_argument("--map", required=True, metavar="FILE", help="the plant mapping")
     mock_.add_argument("--out", required=True, metavar="FILE", help="the log, one JSON object a line")
     mock_.add_argument("--seed", type=int, default=0)
@@ -1710,7 +1729,7 @@ def main(argv=None) -> int:
                                            "as they send")
     for verb in (check_, replay_, watch_):
         verb.add_argument("mapping", help="path to the plant mapping")
-        verb.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+        add_model_argument(verb)
     replay_.add_argument("log", help="path to the recorded log")
     replay_.add_argument("--player", default=None, metavar="FILE",
                          help="write the observed timeline as a self-contained HTML player")
@@ -1744,7 +1763,7 @@ def main(argv=None) -> int:
     if args.verb == "check":
         print(f"the mapping reads {len(mapping.get('signals', []))} signals of this model")
         return 0
-    mapping["time"].setdefault("unit", _names(layout)["unit"])
+    mapping["time"].setdefault("unit", layout_names(layout)["unit"])
     if args.verb == "mock":
         recorder = Recorder()
         api.run_model(layout, replications=1, seed=args.seed, trace=recorder, record_logs=False)

@@ -6,6 +6,8 @@ from pathlib import Path
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 os.environ.setdefault("PYTHONUTF8", "1")
+# Headless Qt for every UI test and subprocess; set before PySide6 is imported anywhere.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 # DEVLOG #273: set BEFORE any test module imports nagasim/product, so the
 # whole session -- including a plugin-loading subprocess, which inherits
@@ -180,6 +182,54 @@ def chain(*blocks):
             for i in range(len(blocks) - 1)]
 
 
+def sd_layout(**sections):
+    """A blockless model: a pure SD model has no CREATE or DISPOSE, only
+    levels, flows and auxiliaries."""
+    return layout([], [], **sections)
+
+
+def resource_record(name, capacity=1):
+    return {"name": name, "capacity": capacity, "discipline": "FIFO",
+            "cost_busy": 0.0, "cost_idle": 0.0, "cost_per_use": 0.0,
+            "cost_time_unit": "hours"}
+
+
+def block(name, btype, params, position=None):
+    return {"name": name, "description": name, "type": btype,
+            "position": position or [0, 0], "params": params}
+
+
+def decide(name, mode, **params):
+    base = {"mode": mode, "probs": [], "conditions": [], "policy": "", "observation": [],
+            "fallback": "first", "queue_exprs": []}
+    base.update(params)
+    return block(name, "DECIDE", base)
+
+
+def entity_count(kpi, e_type):
+    df = kpi["entity_summary"]
+    rows = df[df["Entity Type"] == e_type]
+    return int(rows["Total Created"].iloc[0]) if not rows.empty else 0
+
+
+def field_rows(panel):
+    """(param_name, widget) for every row of the panel's body form."""
+    form = panel._body_layout
+    rows = []
+    for i in range(form.rowCount()):
+        label_item = form.itemAt(i, form.ItemRole.LabelRole)
+        field_item = form.itemAt(i, form.ItemRole.FieldRole)
+        if field_item is None:
+            continue
+        # properties._add_row inserts a zero-width space after each "_" so a
+        # long param name can wrap (item 5, U1.9); strip it back out here so
+        # the label still reads as the plain param name it labels.
+        label = (label_item.widget().text().replace("​", "")
+                 if label_item is not None and label_item.widget() else None)
+        rows.append((label, field_item.widget()))
+    return rows
+
+
 def agent_seed(seed, name, *words):
     """Agent-system SeedSequence, the D107 recipe restated for oracles:
     [seed, lo, hi, *words, md5("agent") % 1e4], (lo, hi) = md5(name)'s first 64 bits."""
@@ -272,7 +322,6 @@ def qapp():
     """Shared offscreen QApplication for every Qt UI test (test_ui_shell.py,
     test_ui_forms.py, ...). Skips the whole test if PySide6 is not installed."""
     pytest.importorskip("PySide6")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])

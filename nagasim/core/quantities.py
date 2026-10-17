@@ -22,7 +22,7 @@ from nagasim.core.timeunits import (ModelUnits, base_factor, conversion_factor, 
                                      is_unit, tidy, units_of)
 
 __all__ = ["SECTION_FIELDS", "param", "field_unit", "field_factor", "scaled",
-           "to_base", "switch_unit", "fill_units", "check_units", "time_expressions",
+           "to_base", "switch_unit", "fill_units", "check_units", "check_bounds", "time_expressions",
            "TIME_READERS", "TIME_CALLS"]
 
 
@@ -35,7 +35,8 @@ def _unit(name, default="base") -> ParamSpec:
 
 
 _NUMEXPR = ("number", "expression")
-_TICK = (ParamSpec("dt", float, None, quantity="time", min=0, unit_key="time_unit"),
+_TICK = (ParamSpec("dt", float, None, quantity="time", min=0, min_exclusive=True,
+                   unit_key="time_unit"),
          ParamSpec("phase", float, 0.0, quantity="time", min=0, unit_key="time_unit"),
          ParamSpec("time_unit", str, "base", quantity="none", kinds=("choice",)))
 _COSTS = (_p("cost_busy", float, 0.0, "rate", min=0, unit_key="cost_time_unit"),
@@ -58,55 +59,62 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
                     unit_key="holding_cost_time_unit"), _unit("holding_cost_time_unit")),
     "timeseries_inputs": (_p("times", list, [], "time", kinds=("table",), unit_key="time_unit"),
                           _p("start", float, 0.0, "time", unit_key="time_unit"),
-                          _p("step", float, None, "time", unit_key="time_unit"),
-                          _p("period", float, None, "time", unit_key="time_unit"),
+                          _p("step", float, None, "time", min=0, min_exclusive=True, unit_key="time_unit"),
+                          _p("period", float, None, "time", min=0, min_exclusive=True,
+                            unit_key="time_unit"),
                           _unit("time_unit")),
     "levels": (_p("capacity", float, None, "none"), _p("min", float, 0.0, "none"),
                _p("initial", float, 0.0, "none", kinds=_NUMEXPR),
-               _p("max_inflow", float, None, "rate", unit_key="rate_time_unit"),
-               _p("max_outflow", float, None, "rate", unit_key="rate_time_unit"),
-               _p("blend_tolerance", float, None, "ratio"), _unit("rate_time_unit")),
+               _p("max_inflow", float, None, "rate", min=0, unit_key="rate_time_unit"),
+               _p("max_outflow", float, None, "rate", min=0, unit_key="rate_time_unit"),
+               _p("blend_tolerance", float, None, "ratio", min=0, min_exclusive=True), _unit("rate_time_unit")),
     "levels.conveyor": (_p("transit_time", str, None, "time", kinds=_NUMEXPR, min=0,
                            unit_key="time_unit"), _unit("time_unit")),
     "flows": (_p("rate", str, "0", "rate", kinds=_NUMEXPR, unit_key="rate_time_unit"),
-              _p("efficiency", float, 1.0, "ratio"), _p("price", str, "0", "money", kinds=_NUMEXPR),
+              _p("efficiency", float, 1.0, "ratio", min=0, min_exclusive=True, max=1),
+              _p("price", str, "0", "money", kinds=_NUMEXPR),
               _p("emission_factor", str, "0", "none", kinds=_NUMEXPR),
-              _p("priority", int, 0, "none"), _p("peak_price", float, None, "money"),
-              _p("min_rate", float, None, "rate", unit_key="rate_time_unit"),
+              # A rank the engine reads as a float (levels.Flow); any number validates.
+              _p("priority", float, 0, "none"), _p("peak_price", float, None, "money"),
+              _p("min_rate", float, None, "rate", min=0, unit_key="rate_time_unit"),
               # Each threshold's "value" is a rate per the flow's unit (D603, #689).
               _p("thresholds", list, [], "rate", kinds=("table",), unit_key="rate_time_unit"),
               _unit("rate_time_unit")),
-    "conversions": (_p("cohort_interval", float, 1.0, "time", min=0, unit_key="time_unit"),
+    "auxiliaries": (_p("expr", str, "0", "none", kinds=_NUMEXPR),),      # a number too (#694)
+    "conversions": (_p("cohort_interval", float, 1.0, "time", min=0, min_exclusive=True,
+                      unit_key="time_unit"),
                     _unit("time_unit")),
     "conversions.substrates": (_p("feed", str, "0", "rate", kinds=_NUMEXPR,
                                   unit_key="feed_time_unit"), _unit("feed_time_unit")),
     "fixed_costs": (_p("amount", str, "0", "money", kinds=_NUMEXPR),),
     # Years, a yearly rate and hours by name: none follows the model's units.
-    "investment": (_p("horizon_years", float, 5, "none"),
+    "investment": (_p("horizon_years", float, 5, "none", min=0, min_exclusive=True),
                    _p("discount_rate", float, 0.08, "ratio", min=0),
-                   _p("operating_hours_per_year", float, 4000, "none"),
+                   _p("operating_hours_per_year", float, 4000, "none", min=0, min_exclusive=True),
                    _p("margin_per_part", float, 0.0, "money")),
     "fleets": (_p("count", int, 1, "count", min=1),
-               *(_p(n, float, None, "speed", min=0, unit_key="speed_unit")
+               *(_p(n, float, None, "speed", min=0, min_exclusive=True, unit_key="speed_unit")
                  for n in ("speed", "speed_empty", "speed_x", "speed_y")), _unit("speed_unit"),
                _p("hoist_time", float, 0.0, "time", min=0, unit_key="time_unit"),
                _p("load_time", str, "0", "time", kinds=_NUMEXPR, unit_key="time_unit"),
                _p("unload_time", str, "0", "time", kinds=_NUMEXPR, unit_key="time_unit"),
                _unit("time_unit"), _p("loads", int, 1, "count", min=1),
-               _p("length_m", float, None, "length", unit_key=""), *_COSTS),
-    "motion_profiles": (_p("speed", float, 1.0, "speed", min=0, unit_key="speed_unit"),
+               _p("length_m", float, None, "length", min=0, unit_key=""), *_COSTS),
+    "motion_profiles": (_p("speed", float, 1.0, "speed", min=0, min_exclusive=True,
+                           unit_key="speed_unit"),
                         _p("collaborative_speed", float, None, "speed", min=0,
-                           unit_key="speed_unit"), _unit("speed_unit", "m/s"),
-                        _p("accel", float, 1.0, "none", min=0),          # m/s^2, fixed (D157)
-                        _p("payload_max", float, None, "mass", min=0, unit_key="payload_unit"),
+                           min_exclusive=True, unit_key="speed_unit"), _unit("speed_unit", "m/s"),
+                        _p("accel", float, 1.0, "none", min=0, min_exclusive=True),          # m/s^2, fixed (D157)
+                        _p("payload_max", float, None, "mass", min=0, min_exclusive=True,
+                           unit_key="payload_unit"),
                         _unit("payload_unit", "kg"),
-                        _p("payload_derate", float, None, "ratio", min=0, max=1)),
+                        _p("payload_derate", float, None, "ratio", min=0, min_exclusive=True, max=1)),
     # power_kw is kW by name (unit_key ""); swap_time is in swap_time_unit.
     "chargers": (_p("points", int, 1, "count", min=1),
-                 _p("power_kw", float, None, "power", min=0, unit_key=""),
+                 _p("power_kw", float, None, "power", min=0, min_exclusive=True, unit_key=""),
                  _p("knee", float, 0.8, "ratio", min=0, max=1),
-                 _p("taper_floor", float, 0.1, "ratio", min=0, max=1),
-                 _p("efficiency", float, 1.0, "ratio", min=0, max=1),
+                 _p("taper_floor", float, 0.1, "ratio", min=0, min_exclusive=True, max=1),
+                 _p("efficiency", float, 1.0, "ratio", min=0, min_exclusive=True, max=1),
                  _p("swap_time", str, None, "time", kinds=_NUMEXPR, min=0,
                     unit_key="swap_time_unit"), _unit("swap_time_unit"),
                  _p("spare_packs", int, None, "count", min=1)),
@@ -124,8 +132,10 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
                                 _unit("timeout_unit"),
                                 _p("rate", str, None, "rate", kinds=_NUMEXPR, min=0),
                                 _unit("rate_unit"),
-                                _p("scan", float, None, "time", min=0), _unit("scan_unit")),
-    "agent_types.space": (_p("patch_tick", float, None, "time", min=0, unit_key="time_unit"),
+                                _p("scan", float, None, "time", min=0, min_exclusive=True),
+                                _unit("scan_unit")),
+    "agent_types.space": (_p("patch_tick", float, None, "time", min=0, min_exclusive=True,
+                             unit_key="time_unit"),
                           _unit("time_unit")),
     "agent_types.tick": _TICK,
     "populations.tick": _TICK,
@@ -135,10 +145,12 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
     "initial_state": (_p("time", float, None, "time", unit_key="time_unit"), _unit("time_unit")),
     "initial_state.entities": (_p("age", float, 0.0, "time", min=0, unit_key="age_unit"),
                                _unit("age_unit")),
-    "populations": (_p("count", int, 0, "count", min=0), _p("max_count", int, None, "count")),
-    "network": (_p("length_factor", float, 1.0, "ratio", min=0),),
-    "network.segments": (_p("length", float, None, "length", min=0), _unit("length_unit"),
-                         _p("speed", float, None, "speed", min=0), _unit("speed_unit"),
+    "populations": (_p("count", int, 0, "count", min=0), _p("max_count", int, None, "count", min=0)),
+    "network": (_p("length_factor", float, 1.0, "ratio", min=0, min_exclusive=True),),
+    "network.segments": (_p("length", float, None, "length", min=0, min_exclusive=True),
+                         _unit("length_unit"),
+                         _p("speed", float, None, "speed", min=0, min_exclusive=True),
+                         _unit("speed_unit"),
                          _p("capacity", int, None, "count", min=1)),
     # The model's own unit: these convert when the model unit changes (D160).
     "simulation": (_p("time_limit", float, None, "time", min=0, unit_key="time_unit"),
@@ -147,8 +159,9 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
                    _p("replications", int, 1, "count", min=1),
                    _p("energy_price", float, 0, "money", kinds=_NUMEXPR),
                    _p("entity_log_limit", int, None, "count", min=0),
-                   _p("timeseries_points", int, 200, "count", min=1)),
-    "simulation.sd": (_p("dt", float, None, "time", min=0, unit_key="time_unit"),
+                   _p("timeseries_points", int, 200, "count", min=0)),       # 0: no sampling
+    "simulation.sd": (_p("dt", float, None, "time", min=0, min_exclusive=True,
+                         unit_key="time_unit"),
                       _unit("time_unit")),
 }
 
@@ -391,6 +404,34 @@ def check_units(layout: dict, problems: list) -> None:
         for j, record in enumerate(_records(layout, key)):
             check(record, fields, f"{key} '{record.get('name', j)}'",
                   f"/{key.replace('.', '/')}/{j}")
+
+
+def check_bounds(layout: dict, problems: list) -> None:
+    """The bounds of every numeric section field (`min`, `max`, `min_exclusive` of the table,
+    which the published schema states too) as E_FIELD_RANGE, #699. A text value is an
+    expression and is judged when it is evaluated. A section its own validator already
+    refused is left to that validator, so a bad record is not said twice."""
+    said = [str(p.path) for p in problems if p.severity == "error"]
+    for key, fields in SECTION_FIELDS.items():
+        root = "/" + key.replace(".", "/")
+        head = "/" + key.partition(".")[0]
+        if any(path == head or path.startswith(head + "/") for path in said):
+            continue
+        for j, record in enumerate(_records(layout, key)):
+            for spec in fields:
+                value = record.get(spec.name)
+                if spec.min is None and spec.max is None or isinstance(value, bool)                         or not isinstance(value, (int, float)) or value != value:
+                    continue
+                if spec.min is not None and (value <= spec.min if spec.min_exclusive
+                                             else value < spec.min):
+                    rule = f"{'>' if spec.min_exclusive else '>='} {spec.min:g}"
+                elif spec.max is not None and value > spec.max:
+                    rule = f"<= {spec.max:g}"
+                else:
+                    continue
+                problems.append(problem(
+                    "E_FIELD_RANGE", f"{key} '{record.get('name', j)}': {spec.name} must be a "
+                    f"number {rule}", f"{root}/{j}/{spec.name}", hint=f"set {spec.name} {rule}"))
 
 
 # What reads time in the model unit and cannot be converted safely (D160's

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.12.0 (2026-10-17)
+
+One table now holds what the engine knows about each field of a model, and the published
+schema, submodel flattening and validation all read it, so they can no longer disagree. A minor
+version, because validation is stricter (a number outside its field's bounds is refused, where a
+negative level inflow used to crash the run) and a few unused commands and Python names are removed.
+
+- Validation warns when an asset reads a name from a parameter left empty, for example an **Equipment draw** with no equipment set, instead of failing when the model runs.
+- The container terminal and ground support electrification showcases put their chargers' power on the grid through the Energy **Equipment draw** asset: the `Charging draw` flow is now reported per Equipment draw (`equipment_draw_1/Nrg equipment`, ...), and every other result is unchanged.
+- Expanding a library asset in place now saves a model that validates against the published JSON schema.
+- Fixed: flattening a submodel now resolves `$` parameters in a delay's `condition`, a fleet's load and unload times, a charger's swap time and a level conveyor's transit time, and a whole-number field such as a fleet's `loads` stays a whole number (#695, #696).
+- Validation now refuses a number outside the bounds of its field, which the published schema already refused: a zero time series `period`, a zero fleet speed, a negative `length_m` or `hoist_time`, a zero charger `power_kw`, a negative level `max_inflow` or `max_outflow` (`E_FIELD_RANGE`, #699). A negative `max_inflow` or `max_outflow` used to crash the run with a ZeroDivisionError.
+- Fixed: expanding a library asset or a submodel instance writes its added variables in the same order every run (#698).
+- The published model schema takes the bounds the engine accepts: `simulation.timeseries_interval` may be 0 (no sampling) and a charger's `swap_time` may be a number. The schema's field types, defaults and bounds now come from the same table the engine reads, so the two cannot disagree (#697).
+- Removed: `naga state observe`. A state of the plant comes from `naga twin`; `naga state take` and `naga state check` stay. Hints that said "take or observe" now say "take it again" or "write it again".
+- Changed in the Python API: `report.build_report(twin=)` is now `extra_sections=` (finished HTML sections; the product builds its MES twin section with `report.esc`, `fmt` and `table`), and the values of `expressions.LOOKUP_SECTION` are tuples of sections (`"POWER"` reads three).
+- Removed from the Python API: `costs.COST_KINDS`, `SimSession.take_events`, `ModelDocument.set_description_text` (use `set_info(description=...)`) and `api.run_replication`.
+- `naga twin status` keeps its head line, source rows and view line, and now prints the forecast and the compared points in the monitor's wording (`Status: ok`, "N compared points ..."); the "forecast: ..." and "compared: ..." lines are gone, and the notes, counters, scores and recommendations follow the monitor page.
+- `naga run --out` and `--report` go through the exporters and print "xlsx written to PATH" and "html written to PATH"; the files are unchanged.
+
 ## 0.11.0 (2026-10-17)
 
 A bundled model sizes shore power at a berth, and validation catches a misspelt name passed

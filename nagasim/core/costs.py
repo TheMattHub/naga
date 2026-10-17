@@ -31,15 +31,9 @@ from dataclasses import dataclass
 from nagasim.core.expressions import (ExpressionError, ExpressionScope, compile_expression)
 from nagasim.core.problems import problem
 
-__all__ = ["CostItem", "COST_KINDS", "build_fixed_costs", "accrue",
+__all__ = ["CostItem", "build_fixed_costs", "accrue",
            "reset_event_costs", "validate_fixed_costs_structured",
            "build_energy_price", "validate_energy_price_structured"]
-
-# `cost_summary`'s Kind column. "peak" and "energy" rows are derived at report
-# time (from the flows, resp. `outputs._resource_energy_rows`), so neither
-# ever lives in `ctx.cost_items` (PHASE6 W3 M1, D112).
-COST_KINDS = ("fixed", "event", "peak", "energy")
-
 
 @dataclass
 class CostItem:

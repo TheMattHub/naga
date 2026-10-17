@@ -386,3 +386,18 @@ def input_overrides(layout: dict, values: dict) -> list[dict]:
         overrides.append({"path": path,
                           "value": _checked(entry, experiments.value_at(layout, path), value)})
     return overrides
+
+
+YOURS = "Yours"
+
+
+def what_if_layout(layout: dict, values: dict) -> tuple[dict, str]:
+    """(the layout with one more scenario holding *values* as overrides, that scenario's
+    name): what a what-if run is. The name is `YOURS`, with a `*` added until no stored
+    scenario has it. Raises ValueError as `input_overrides` does."""
+    overrides = input_overrides(layout, values)
+    stored = list(layout.get("scenarios") or [])
+    name = YOURS
+    while any(s.get("name") == name for s in stored):
+        name += "*"
+    return {**layout, "scenarios": stored + [{"name": name, "overrides": overrides}]}, name

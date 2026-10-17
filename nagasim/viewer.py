@@ -17,7 +17,7 @@ the author did not expose.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
+from nagasim._cli import add_model_argument
 
 import json
 import math
@@ -37,7 +37,6 @@ __all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_on_disk", "viewer_problems", 
 MAX_MODEL_BYTES = 5_000_000
 # Sections that do not change a run and may name a file of the author's machine.
 _NOT_SHIPPED = ("view", "background")
-_YOURS = "Yours"
 # A run in a browser against the same run here (measured: 1.3 to 2.8 times).
 _BROWSER_FACTOR = 2.5
 _HINT = "share a recording instead: `naga run MODEL --player FILE.html`"
@@ -200,7 +199,7 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
     if problems:
         raise _refused(problems)
     values = dict(values or {})
-    overrides = dashboard.input_overrides(layout, values)       # ValueError
+    made, name = dashboard.what_if_layout(layout, values)       # ValueError
     definition = dashboard.resolve_dashboard(layout)
     limits = definition["limits"]
     # The engine's own ceiling whatever the definition says: in a page the definition is
@@ -211,11 +210,6 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
         raise ValueError(f"replications must be a whole number from 1 to "
                          f"{most}, not {str(count)[:20]}")
     seed = int((layout.get("simulation") or {}).get("seed") or 0)
-    stored = list(layout.get("scenarios") or [])
-    name = _YOURS
-    while any(s.get("name") == name for s in stored):
-        name += "*"
-    made = {**layout, "scenarios": stored + [{"name": name, "overrides": overrides}]}
     started = time.perf_counter()
     result = experiments.run_scenarios(made, [name], replications=count, seed=seed,
                                        workers=1, on_progress=on_progress,
@@ -231,7 +225,7 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
         order = {kpi: index for index, kpi in enumerate(labels)}
         for row in sorted(frame.to_dict("records"), key=lambda r: order.get(r["KPI"], 0)):
             rows.append({"kpi": row["KPI"], "label": labels.get(row["KPI"], row["KPI"]),
-                         "scenario": _YOURS if row["Scenario"] == name else row["Scenario"],
+                         "scenario": dashboard.YOURS if row["Scenario"] == name else row["Scenario"],
                          "mean": _number(row["Mean"]), "lb": _number(row["LB"]),
                          "ub": _number(row["UB"]), "diff": _number(row["Diff vs baseline"]),
                          "diff_lb": _number(row["Diff LB"]), "diff_ub": _number(row["Diff UB"]),
@@ -242,9 +236,9 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
         table: dict[str, list] = {}
         for kpi, value in zip(flat["KPI"], flat["Value"]):
             table.setdefault(str(kpi), []).append(_number(value))
-        cells[_YOURS if scenario == name else scenario] = table
+        cells[dashboard.YOURS if scenario == name else scenario] = table
     return {"inputs": {path: item["value"] for path, item in
-                       zip(values, overrides)},
+                       zip(values, made["scenarios"][-1]["overrides"])},
             "replications": count, "seed": seed,
             "seeds": [int(s) for s in result.seeds.get(experiments.BASELINE, [])],
             "rows": rows, "cells": cells, "versions": _versions(), "seconds": seconds}
@@ -1012,8 +1006,7 @@ def main(argv=None) -> int:
         prog="naga viewer",
         description="Write one HTML file in which the engine runs in a browser and re-runs "
                     "the model with the inputs its dashboard definition exposes. " + _SAYS)
-    parser.add_argument("model", nargs="?", type=_bundled,
-                        help="the model file, or a bundled model's name (naga examples)")
+    add_model_argument(parser, help="the model file, or a bundled model's name (naga examples)", nargs="?")
     parser.add_argument("-o", "--output", help="the HTML file to write")
     parser.add_argument("--title", help="the page's title (default: the model file's name)")
     parser.add_argument("--runtime", metavar="DIR",

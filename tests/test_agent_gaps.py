@@ -37,10 +37,6 @@ def _run(layout, seed=1):
     return env
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 def _pop(env, name):
     return env.ctx.agent_system.by_name[name]
 
@@ -78,7 +74,7 @@ def test_a_where_reading_the_sender_equals_brute_force(monkeypatch, where):
             if (x - SENDER[0]) ** 2 + (y - SENDER[1]) ** 2 <= RADIUS ** 2]
     assert want == [0, 3, 4, 6, 7, 9, 10]    # (8, 5) sits exactly on the rim: inclusive
     layout = _pairing(where)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     assert (A.vectorise(where) is not None) == (where == DISC)
     hit = np.flatnonzero(_pop(_run(layout), "C").state == 1).tolist()
     assert hit == want
@@ -104,7 +100,7 @@ def test_the_one_to_one_claim_removes_one_candidate_drawn_from_the_actors_stream
     # Sheep 0-4 share the wolf's cell (0, 0), sheep 5-7 sit next door.
     cells = [[0, 0]] * 5 + [[1, 0]] * 3
     layout = _claim([[0, 0]], cells)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     for seed in (1, 2, 3):
         alive = _pop(_run(layout, seed), "Sheep").state >= 0
         # The wolf's own stream, rebuilt: its first draw picks among the 5.
@@ -129,12 +125,12 @@ def test_sender_is_refused_outside_a_where_and_checked_inside_one():
                                over.get("action", A.Action.remove(
                                    {"population": "P", "where": where}))])])
         return _model(kind, A.Population("P", "T", 2))
-    assert not _codes(layout())
-    assert not _codes(layout(where="self.v < sender.v and sender.id != self.id"))
-    assert "E_AGENT_ATTRIBUTE" in _codes(layout(where="sender.nope > 0"))
-    assert "E_AGENT_EXPRESSION" in _codes(layout(where="sender.v > RAND()"))      # #132 holds
-    assert "E_AGENT_EXPRESSION" in _codes(layout(action=A.Action.set("self.v", "sender.v")))
-    assert "E_AGENT_EXPRESSION" in _codes(layout(where="sender == 1"))
+    assert not problem_codes(layout())
+    assert not problem_codes(layout(where="self.v < sender.v and sender.id != self.id"))
+    assert "E_AGENT_ATTRIBUTE" in problem_codes(layout(where="sender.nope > 0"))
+    assert "E_AGENT_EXPRESSION" in problem_codes(layout(where="sender.v > RAND()"))      # #132 holds
+    assert "E_AGENT_EXPRESSION" in problem_codes(layout(action=A.Action.set("self.v", "sender.v")))
+    assert "E_AGENT_EXPRESSION" in problem_codes(layout(where="sender == 1"))
     with pytest.raises(Exception, match="sender"):
         compile_expression("sender.v").evaluate(ExpressionScope())
 
@@ -153,7 +149,7 @@ def _field(time_limit, grow):
 
 def test_grow_reaches_its_max_and_clips_exactly():
     layout = _field(3.5, {"rate": 1.5})
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     env = _start(layout)
     system = env.ctx.agent_system
     # g: cell 0 gains 3 per tick up to 7; cell 1 starts at 10, above max: left alone.
@@ -166,12 +162,12 @@ def test_grow_reaches_its_max_and_clips_exactly():
 
 @pytest.mark.parametrize("grow", [{"rate": -1}, {"rate": 1, "cap": 2}, {"max": 2}, 5])
 def test_a_bad_grow_is_refused(grow):
-    assert "E_AGENT_PATCH" in _codes(_field(1.5, grow))
+    assert "E_AGENT_PATCH" in problem_codes(_field(1.5, grow))
 
 
 def test_grow_needs_a_patch_tick():
     grid = A.Space("grid", size=[2, 1], patches=[{"name": "g", "grow": {"rate": 1}}])
-    assert "E_AGENT_PATCH" in _codes(_model(A.AgentType("E", states=["A"], space=grid),
+    assert "E_AGENT_PATCH" in problem_codes(_model(A.AgentType("E", states=["A"], space=grid),
                                             A.Population("E", "E", 1)))
 
 
@@ -199,7 +195,7 @@ def _trig():
 def test_the_numpy_path_of_the_math_calls_equals_the_loop(monkeypatch):
     assert A.vectorise(TRIG) is not None
     layout = _trig()
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     fast = _pop(_run(layout), "B")
     assert fast.type.tick_vecs                      # the columnar tick really ran
     fast = fast.attrs["u"].tolist()
@@ -220,7 +216,7 @@ def _let(activation, time_limit=3.5):
 @pytest.mark.parametrize("activation", ["synchronous", "random", "sequential"])
 def test_a_let_is_one_draw_shared_by_every_action_of_the_tick(activation):
     layout = _let(activation)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     pop = _pop(_run(layout, seed=3), "L")
     # Agent i's own stream: one uniform per tick, three ticks, nothing else
     # drawn -- so the last tick's r is its draw call 2 (D107).
@@ -239,13 +235,13 @@ def test_a_let_is_one_draw_shared_by_every_action_of_the_tick(activation):
 def test_a_bad_let_is_refused(let, code):
     kind = A.AgentType("L", parameters={"k": 1}, attributes=[A.Attribute("a")], states=["S"],
                        tick=A.Tick(1), let=let, on_tick=[A.Action.set("self.a", "1")])
-    assert code in _codes(_model(kind, A.Population("L", "L", 1)))
+    assert code in problem_codes(_model(kind, A.Population("L", "L", 1)))
 
 
 def test_a_let_is_visible_only_to_the_tick():
     kind = A.AgentType("L", attributes=[A.Attribute("a")], tick=A.Tick(1), let={"r": "1"},
                        states=[A.State("S", entry=[A.Action.set("self.a", "r")])])
-    assert "E_AGENT_EXPRESSION" in _codes(_model(kind, A.Population("L", "L", 1)))
+    assert "E_AGENT_EXPRESSION" in problem_codes(_model(kind, A.Population("L", "L", 1)))
 
 
 def test_the_json_schema_accepts_let_and_grow():

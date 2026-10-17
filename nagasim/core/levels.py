@@ -123,7 +123,6 @@ _BUS_CALLS = frozenset(functions_with("bus"))
 # A random rate must keep drawing once per pass or the RNG stream would shift,
 # so it is re-evaluated unconditionally whatever it reads.
 _SAMPLER_CALLS = frozenset(functions_with("sampler"))
-_VARYING_CALLS = _BUS_CALLS | _SAMPLER_CALLS
 # System dynamics (PHASE5 SD-1, D89-D91). A DYNAMIC rate reads something that
 # moves BETWEEN events -- a level, a blend, the clock -- so it is re-evaluated
 # on the `simulation.sd` grid; every other rate only changes at an event and is
@@ -1244,7 +1243,7 @@ class LevelSystem:
                     flow.starts += 1
                 if threshold.variable:     # the rate per the flow's own unit (#678)
                     ctx.variables[threshold.variable] = after * flow.per
-                    ctx.touch(("var", threshold.variable))      # PHASE5 O4
+                    ctx.wrote_variable(threshold.variable)      # PHASE5 O4, D608
                 if threshold.signal:
                     ctx.raise_signal(threshold.signal)
                 if threshold.cost:
@@ -1310,7 +1309,7 @@ class LevelSystem:
                     continue
                 if threshold.variable:
                     ctx.variables[threshold.variable] = after
-                    ctx.touch(("var", threshold.variable))      # PHASE5 O4
+                    ctx.wrote_variable(threshold.variable)      # PHASE5 O4, D608
                 if threshold.signal:
                     # Exactly the SIGNAL block's mechanism (core/blocks/signal.py):
                     # succeed the event, releasing every HOLD waiting on it, then

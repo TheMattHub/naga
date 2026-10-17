@@ -76,7 +76,7 @@ def _logs_flag(layout) -> bool:
 
 
 def test_study_layout_resolution():
-    layout = experiments._as_layout(SINGLE_SERVER)
+    layout = api.load_layout(SINGLE_SERVER)
     assert _logs_flag(evaluation.study_layout(layout, [KPI])) is False
     assert _logs_flag(evaluation.study_layout(layout, [KPI, LOG_KPI])) is True
     # An explicit value from the caller wins, both ways.
@@ -96,7 +96,7 @@ def _design():
 
 
 def _run(responses, **kwargs):
-    return optimize.run_design(experiments._as_layout(SINGLE_SERVER), [CAPACITY], _design(),
+    return optimize.run_design(api.load_layout(SINGLE_SERVER), [CAPACITY], _design(),
                                responses=responses, replications=3, seed=5, run_length=300,
                                warmup=30, **kwargs)
 
@@ -124,7 +124,7 @@ def test_a_study_naming_a_log_kpi_gets_real_values_equal_to_a_logs_on_run():
 
 
 def test_a_model_with_logs_off_still_gets_a_requested_log_kpi():
-    quiet = api.with_run_setting(experiments._as_layout(SINGLE_SERVER), "record_logs", False)
+    quiet = api.with_run_setting(api.load_layout(SINGLE_SERVER), "record_logs", False)
     result = optimize.run_design(quiet, [CAPACITY], _design(), responses=[LOG_KPI],
                                  replications=2, seed=5, run_length=300)
     assert np.isfinite(np.concatenate(_table(result, LOG_KPI))).all()
@@ -144,7 +144,7 @@ def _spy(monkeypatch):
 
 def test_every_entry_point_resolves_through_its_own_requested_kpis(monkeypatch):
     seen = _spy(monkeypatch)
-    layout = experiments._as_layout(SINGLE_SERVER)
+    layout = api.load_layout(SINGLE_SERVER)
     small = dict(run_length=200, warmup=20)
 
     optimize.optimize(layout, [CAPACITY], response=KPI, budget=8, replications_per_point=2, **small)

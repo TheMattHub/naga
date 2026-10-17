@@ -27,10 +27,6 @@ def _pop(system, name):
     return next(p for p in system.populations if p.name == name)
 
 
-def _codes(layout):
-    return problem_codes(layout)
-
-
 # ------------------------------------------------ (1) forward along a heading
 def test_forward_moves_along_heading_0_45_90_degrees_inside_tick():
     # Instant jump inside on_tick (NetLogo style): heading = self.id * 45 (0,
@@ -42,7 +38,7 @@ def test_forward_moves_along_heading_0_45_90_degrees_inside_tick():
     pop = A.Population("Walkers", "Walker", 3,
                        placement={"kind": "table", "points": [[50, 50]]})
     layout = _model(walker, pop, time_limit=1.5)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout), "Walkers")
     for i, heading_deg in enumerate((0, 45, 90)):
         rad = math.radians(heading_deg)
@@ -65,7 +61,7 @@ def test_turn_then_forward_commits_the_segment_at_the_firing():
                      A.Transition("Moving", "Arrived", "message", "arrived")])
     pop = A.Population("Walkers", "Walker", 1, placement={"kind": "table", "points": [[0, 0]]})
     layout = _model(walker, pop, time_limit=1)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout), "Walkers")
     rad = math.radians(30.0)
     assert float(result.heading[0]) == pytest.approx(30.0)
@@ -86,7 +82,7 @@ def test_timed_forward_arrives_at_distance_over_speed_exactly():
                      A.Transition("Moving", "Arrived", "message", "arrived")])
     pop = A.Population("Walkers", "Walker", 1, placement={"kind": "table", "points": [[0, 0]]})
     layout = _model(walker, pop, time_limit=10)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout), "Walkers")
     assert result.type.index["Arrived"] == int(result.state[0])
     assert float(result.entered[0]) == pytest.approx(5.0, abs=0.0)
@@ -101,7 +97,7 @@ def test_face_points_heading_at_a_literal_point():
                                                    actions=[A.Action.face([10, 0])])])
     pop = A.Population("Walkers", "Walker", 1, placement={"kind": "table", "points": [[0, 0]]})
     layout = _model(walker, pop, time_limit=1)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout), "Walkers")
     # face runs once, at start (t=0, an entry/transition ordering already
     # proven elsewhere) -- east is heading 0 exactly (atan2(0, 10) == 0.0).
@@ -116,7 +112,7 @@ def test_wrap_folds_position_exactly_modulo_the_span():
         tick=A.Tick(1, "synchronous"), on_tick=[A.Action.forward("20")])
     pop = A.Population("Walkers", "Walker", 1, placement={"kind": "table", "points": [[95, 50]]})
     layout = _model(walker, pop, time_limit=1.5)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout), "Walkers")
     # 95 + 20 = 115, wrapped into [0, 100) -> 15; heading unchanged by a wrap.
     assert (float(result.x1[0]), float(result.y1[0])) == (15.0, 50.0)
@@ -130,7 +126,7 @@ def test_bounce_reflects_off_the_wall_and_flips_heading():
         tick=A.Tick(1, "synchronous"), on_tick=[A.Action.forward("20")])
     pop = A.Population("Walkers", "Walker", 1, placement={"kind": "table", "points": [[95, 50]]})
     layout = _model(walker, pop, time_limit=1.5)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout), "Walkers")
     # 95 -> wall at 100 after 5, reflects back the remaining 15 -> 85; the x
     # component of heading flips (0 -> 180), y untouched (never neared a wall).
@@ -147,7 +143,7 @@ def test_random_walk_matches_the_agents_own_rebuilt_stream():
     pop = A.Population("Walkers", "Walker", 1,
                        placement={"kind": "table", "points": [[100, 100]]})
     layout = _model(walker, pop, time_limit=1.5)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     result = _pop(_run(layout, seed=7), "Walkers")
     # The agent's own stream (D107: seed, population, slot), its ONLY draw so
     # far: a normal(0, 20) turn, then an instant forward(5).
@@ -182,7 +178,7 @@ def test_near_heading_is_the_circular_mean_not_the_plain_one():
     prober = A.Population("Probers", "Prober", 1, initial_states={"A": 1},
                           placement={"kind": "table", "points": [[10, 10]]})
     layout = _model(bird, probe, birds, prober, time_limit=2)
-    assert not _codes(layout)
+    assert not problem_codes(layout)
     system = _run(layout)
     result = _pop(system, "Probers")
     # A circular distance to 0: a plain `% 360` comparison is a floating-point

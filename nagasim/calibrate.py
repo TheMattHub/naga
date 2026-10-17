@@ -54,8 +54,6 @@ an interval three times the tolerance is visible for what it is.
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import argparse
 import json
 import logging
@@ -67,7 +65,7 @@ import pandas as pd
 from scipy import stats as sp_stats
 
 from nagasim import api, experiments, optimize as optimize_mod
-from nagasim._cli import setup_cli
+from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import schema
 from nagasim.core.stats import ci95
 
@@ -349,7 +347,7 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
     default builds `optimize._Evaluator` with the calibration objective wired
     into its `extra` hook and *budget* as a hard replication cap.
     """
-    base = experiments._as_layout(layout)
+    base = api.load_layout(layout)
     wanted = _targets(targets, base)
     if not wanted:
         raise ValueError("calibrate needs at least one target")
@@ -439,7 +437,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="naga calibrate",
         description="Tune model parameters until the model reproduces observed KPIs.")
-    parser.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--factor", action="append", dest="factors", required=True,
                         help=optimize_mod._FACTOR_HELP)
     parser.add_argument("--target", action="append", dest="targets", required=True,
@@ -461,7 +459,7 @@ def main(argv=None) -> int:
                         help="write the model back here with the tuned values as a scenario")
     args = parser.parse_args(argv)
 
-    layout = experiments._as_layout(args.model)
+    layout = api.load_layout(args.model)
     result = calibrate(layout, [parse_target(s) for s in args.targets],
                        [optimize_mod.parse_factor(s) for s in args.factors],
                        budget=args.budget, replications_per_point=args.replications,

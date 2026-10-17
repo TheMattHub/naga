@@ -11,7 +11,6 @@ derated linearly with payload, from 1.0 at 0 kg to `payload_derate` at
 from __future__ import annotations
 
 import math
-import sys
 from types import SimpleNamespace
 
 from nagasim.core.distributions import StochasticDistribution
@@ -19,6 +18,7 @@ from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_e
 from nagasim.core.problems import problem
 from nagasim.core.quantities import scaled
 from nagasim.core.timeunits import base_factor, conversion_factor, factor
+from nagasim.core.utils import is_finite_number
 
 __all__ = ["SEGMENT_KINDS", "TIMED_KINDS", "PROFILE_KINDS", "HRC_MODES", "derate",
            "move_speed", "move_time", "move_seconds", "collaborative_now", "segment_seconds",
@@ -32,12 +32,7 @@ HRC_MODES = ("none", "collaborative", "separation")  # D158
 
 def _number(value) -> float | None:
     """*value* as a finite float, or None (a bool is not a number here)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    if isinstance(value, int) and abs(value) > sys.float_info.max:
-        return None                         # too large for a float (#373)
-    value = float(value)
-    return value if math.isfinite(value) else None
+    return float(value) if is_finite_number(value) else None
 
 
 def derate(profile: dict, payload_kg=0.0) -> float:

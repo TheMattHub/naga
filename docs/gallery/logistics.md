@@ -56,6 +56,8 @@ flowchart LR
     b17["stacked (DISPOSE)"]
     b18["loaded (DISPOSE)"]
     b19["grid_connection_1 (SUBMODEL)"]
+    b20["equipment_draw_1 (SUBMODEL)"]
+    b21["equipment_draw_2 (SUBMODEL)"]
     b0 --> b14
     b14 --> b1
     b14 --> b13

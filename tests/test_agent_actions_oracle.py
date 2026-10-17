@@ -1,4 +1,4 @@
-"""Independent oracle tests for PHASE5 AB-2 (docs/PHASE5_PLAN.md, "Phase 5B:
+"""Independent oracle tests for PHASE5 AB-2 (docs/history/PHASE5_PLAN.md, "Phase 5B:
 agent-based modelling", the AB-2 milestone row, its "Coupling to DES and SD"
 paragraph and the "Design refinements" section; docs/ARCHITECTURE.md 5.25
 lists the codes AB-1 shipped and names messages/SEND/enter/transfer/signal

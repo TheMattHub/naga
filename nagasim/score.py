@@ -28,8 +28,9 @@ from __future__ import annotations
 
 import json
 import math
-import sys
 from pathlib import Path
+
+from nagasim.core.utils import is_finite_number
 
 __all__ = ["LEGACY_FILE", "NOMINAL", "LEADS", "MAX_SERIES", "MAX_BYTES", "point", "of", "lead",
            "Totals", "legacy", "recompute"]
@@ -51,9 +52,7 @@ _COUNTS = (_N, _INSIDE, _MISSED, _LOST, _FRACTION)
 
 def _num(value):
     """A finite number as a float, or None. A JSON integer may be too large for one (#373)."""
-    ok = isinstance(value, (int, float)) and not isinstance(value, bool) \
-        and abs(value) <= sys.float_info.max
-    return float(value) if ok else None
+    return float(value) if is_finite_number(value) else None
 
 
 def _whole(value) -> bool:

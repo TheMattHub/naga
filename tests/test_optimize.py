@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nagasim import experiments, optimize
+from nagasim import api, experiments, optimize
 from nagasim.optimize import Factor
 
 from test_experiments import SINGLE_SERVER, deterministic_layout
@@ -170,7 +170,7 @@ def test_a_doe_over_design_points_is_the_same_run_in_parallel(worker_pool):
     every worker but one idle -- must give exactly the sequential numbers."""
     factors = [Factor(CAPACITY, "integer", 1, 2),
                Factor("simulation.warmup", "continuous", 0.0, 10.0, name="w")]
-    layout = experiments._as_layout(SINGLE_SERVER)
+    layout = api.load_layout(SINGLE_SERVER)
     design = optimize.full_factorial(factors, 2)
 
     serial = optimize.run_design(layout, factors, design, responses=[KPI], replications=1,
@@ -188,7 +188,7 @@ def test_a_doe_over_design_points_is_the_same_run_in_parallel(worker_pool):
 def test_main_effect_of_server_capacity_on_an_mmc_queue_has_the_right_sign():
     """One more server cannot make the queue slower, and with CRN the paired
     effect interval says so at 95%."""
-    layout = experiments._as_layout(SINGLE_SERVER)
+    layout = api.load_layout(SINGLE_SERVER)
     factor = Factor(CAPACITY, "integer", 1, 2)
 
     result = optimize.run_design(layout, [factor], optimize.full_factorial([factor], 2),

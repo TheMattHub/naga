@@ -435,14 +435,13 @@ def export_python(layout) -> str:
 
 def main(argv=None) -> int:
     """`naga export --python FILE [-o OUT]`."""
-    from nagasim.modelschema import _bundled
+    from nagasim._cli import add_model_argument
 
     parser = argparse.ArgumentParser(
         prog="naga export",
         description="Write a model as code that builds it again (nagasim.build). Running the "
                     "code gives the model in the form `naga fmt` writes.")
-    parser.add_argument("model", type=_bundled,
-                        help="path to the model JSON, or a bundled model's name (naga examples)")
+    add_model_argument(parser)
     parser.add_argument("--python", action="store_true", required=True,
                         help="Python code using nagasim.build (the one format so far)")
     parser.add_argument("-o", "--out", help="write the code here instead of printing it")

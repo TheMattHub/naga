@@ -100,7 +100,7 @@ def test_a_candidates_file_is_closed(tmp_path):
 def test_candidates_are_compared_on_one_seed_and_only_a_clear_gain_is_ranked():
     """D301, D302: paired on common random numbers; an interval that holds "no effect" is
     shown as such; ties and the order are the same on every machine."""
-    model = state._model(counted(busy_line()))
+    model = api.load_layout(counted(busy_line()))
     three = {"verb": "set_capacity", "target": "Server", "value": 3}
     asked_ = dict(kpi=KPI, better="higher", horizon=200.0, replications=12, seed=4)
     rows, reason = recommend.effects(model, [SPARE, three, MORE], **asked_)
@@ -122,7 +122,7 @@ def test_candidates_are_compared_on_one_seed_and_only_a_clear_gain_is_ranked():
 
 
 def test_no_recommendation_always_has_its_reason():
-    model = state._model(counted(busy_line()))
+    model = api.load_layout(counted(busy_line()))
     asked_ = dict(better="higher", horizon=50.0, replications=3, seed=1)
     assert recommend.effects(model, [MORE], kpi="system/No such", **asked_) == ([], "kpi")
     assert recommend.effects(model, [MORE], kpi=KPI, **{**asked_, "replications": 1}) \
@@ -537,7 +537,7 @@ def test_an_action_that_was_taken_stands_in_every_later_forecast(tmp_path):
     # A twin started again reads its ledger: the action still stands.
     again = recommend.Advisor(recommend.load(asked(tmp_path, MORE), model), model=model,
                               horizon=12.0, out_dir=tmp_path / "out")
-    started, standing = again.apply(state._model(model))
+    started, standing = again.apply(api.load_layout(model))
     assert [s["action"] for s in standing] == [MORE]
     assert started["resources"][0]["capacity"] == 2 and model["resources"][0]["capacity"] == 1
 
@@ -849,7 +849,7 @@ def test_a_capacity_an_instance_binds_is_refused_and_the_instances_own_is_target
     again by each instance's argument, so an override of it was accepted, changed no run
     and was shown as `no_effect`. Refused by name; the instance's resource, as it is named
     after flattening, is the instance's own argument."""
-    model = state._model(api.load_layout(BUFFERS))
+    model = api.load_layout(api.load_layout(BUFFERS))
 
     def said(target, value=2, layout=model):
         with pytest.raises(recommend.Refused) as caught:
@@ -1050,7 +1050,7 @@ def branch_line():
 
 
 def test_reroute_sends_every_item_reaching_its_branch_down_the_link_it_names():
-    model = state._model(branch_line())
+    model = api.load_layout(branch_line())
     assert recommend.check_action(FAST, model) == FAST
     # Two constants of our own, one a link: no text of the action enters an expression.
     split = next(b for b in model["blocks"] if b["name"] == "split")    # its other params kept
@@ -1066,8 +1066,8 @@ def test_reroute_sends_every_item_reaching_its_branch_down_the_link_it_names():
                              ({**FAST, "value": "True or entity"}, model, "no link"),
                              ({**FAST, "value": 2}, model, "name of a block"),
                              ({**FAST, "value": ""}, model, "name of a block"),
-                             (FAST, state._model(twice), "two links"),
-                             (FAST, state._model(lone), "no alternative")):
+                             (FAST, api.load_layout(twice), "two links"),
+                             (FAST, api.load_layout(lone), "no alternative")):
         with pytest.raises(recommend.Refused, match=said) as caught:
             recommend.check_action(action, on)
         assert caught.value.code == "E_CANDIDATES"

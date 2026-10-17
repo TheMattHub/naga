@@ -10,6 +10,7 @@ import nagasim
 from conftest import chain, create, delay, dispose, layout, metric_value, problem_codes, process
 
 from nagasim import api, experiments, state
+from nagasim.core.utils import canonical_json, sha256_text
 from nagasim.core.outputs import LOG_DERIVED_COLUMNS
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.session import SimSession
@@ -356,20 +357,6 @@ def test_what_a_state_cannot_carry_is_refused_by_name(name, at, kind):
 
 
 # ---------------------------------------------------------------- a state from a plant (D236)
-def _plant(tmp_path, rows, **sections):
-    source = tmp_path / "plant.csv"
-    source.write_text("waiting,serving,down_until,shift\n" + rows, encoding="utf-8")
-    bind = lambda column, target: {"name": column, "source": "plant", "column": column,  # noqa: E731
-                                   "transform": "last", "target": target, "enabled": True}
-    return _line(
-        variables=[{"name": "shift", "value": 1}],
-        data_sources=[{"name": "plant", "kind": "csv", "location": str(source)}],
-        data_bindings=[bind("waiting", "initial_state.entities.p.count"),
-                       bind("serving", "initial_state.entities.p.in_service"),
-                       bind("serving", "initial_state.resources.Server.busy"),
-                       bind("shift", "initial_state.variables.shift")], **sections)
-
-
 def test_an_override_path_writes_into_the_state_and_reading_one_changes_nothing():
     model = _line(variables=[{"name": "shift", "value": 1}])
     out = experiments.apply_overrides(model, [
@@ -385,62 +372,24 @@ def test_an_override_path_writes_into_the_state_and_reading_one_changes_nothing(
             experiments.apply_overrides(model, [{"path": path, "value": 1}])
 
 
-def test_the_latest_observed_values_become_a_state_a_run_starts_from(tmp_path):
-    model = _plant(tmp_path, "0,0,0,1\n3,1,0,2\n")
-    doc, problems = state.observe(model, tmp_path)
-    assert doc["state"] == {"entities": [{"block": "p", "count": 3, "in_service": 1}],
-                            "resources": {"Server": {"busy": 1}}, "variables": {"shift": 2}}
-    assert doc["taken"]["source"] == "observed" and doc["taken"]["stamp"]
-    assert _codes(problems) == ["W_STATE_NOT_COVERED"] and "arrivals" in problems[0].message
-    started, refused = state.start(model, doc)
-    assert refused == [] and started["data_bindings"] == []
-    session = SimSession(started, seed=0)
-    session.advance(to=0.5)
-    # the three observed and the arrival of t = 0, one of the three in service
-    assert len(session.ctx.live_entities) == 4 and len(session.model.blocks["p"].active_entity) == 1
-
-
-@pytest.mark.parametrize("rows, code", [("3,2,0,1\n", "E_INITIAL_IN_SERVICE"),     # 2 on 1 unit
-                                        ("9,1,0,1\n", "E_INITIAL_QUEUE_CAPACITY")])
-def test_an_observation_the_model_cannot_hold_is_refused(tmp_path, rows, code):
-    model = _plant(tmp_path, rows)
+@pytest.mark.parametrize("entities, busy, code", [
+    ({"block": "p", "count": 3, "in_service": 2}, 2, "E_INITIAL_IN_SERVICE"),       # 2 on 1 unit
+    ({"block": "p", "count": 9, "in_service": 1}, 1, "E_INITIAL_QUEUE_CAPACITY")])
+def test_a_state_the_model_cannot_hold_is_refused(entities, busy, code):
+    model = _line(variables=[{"name": "shift", "value": 1}])
     model["blocks"][1]["params"]["queue_capacity"] = 4
-    doc, _ = state.observe(model, tmp_path)
+    doc = state.document(model, {"entities": [entities], "resources": {"Server": {"busy": busy}},
+                                 "variables": {"shift": 1}}, source="observed")
     started, refused = state.start(model, doc)
     assert started is None and code in _codes(refused)
 
 
-def test_a_resource_busy_with_no_entity_is_refused(tmp_path):
-    model = _plant(tmp_path, "0,1,0,1\n")
-    model["data_bindings"] = [b for b in model["data_bindings"] if "in_service" not in b["target"]]
-    doc, _ = state.observe(model, tmp_path)
+def test_a_resource_busy_with_no_entity_is_refused():
+    model = _line(variables=[{"name": "shift", "value": 1}])
+    doc = state.document(model, {"entities": [{"block": "p", "count": 0}],
+                                 "resources": {"Server": {"busy": 1}}, "variables": {"shift": 1}},
+                         source="observed")
     assert _codes(state.start(model, doc)[1]) == ["E_INITIAL_BUSY"]
-
-
-def test_a_source_that_cannot_be_read_is_a_problem_and_no_value_is_guessed(tmp_path):
-    model = _plant(tmp_path, "3,1,0,2\n")
-    model["data_sources"][0]["location"] = str(tmp_path / "missing.csv")
-    doc, problems = state.observe(model, tmp_path)
-    assert doc["state"] == {} and doc["taken"]["stamp"] is None
-    assert {p.code for p in problems} >= {"E_DATA_READ", "W_STATE_NOT_COVERED"} \
-        or any(code.startswith("E_DATA") for code in _codes(problems))
-    assert _codes(state.start(model, doc, max_age=60)[1]) == ["E_STATE_STALE"]
-
-
-def test_a_cycle_observes_from_its_own_feed():
-    class _Feed:                # what `live.Feed.rows` answers: the latest value per key
-        def rows(self, source, settle=False):
-            return [{"key": "line/waiting", "value": 2, "source_time": None}], \
-                "2026-10-08T06:00:00+00:00"
-
-    model = _line(data_sources=[{"name": "line", "kind": "mqtt", "connection": "broker",
-                                 "location": "line/#"}],
-                  data_bindings=[{"name": "w", "source": "line", "column": "value",
-                                  "transform": "last", "target": "initial_state.entities.p.count",
-                                  "enabled": True}])
-    doc, problems = state.observe(model, feed=_Feed())
-    assert doc["state"] == {"entities": [{"block": "p", "count": 2}]}
-    assert doc["taken"]["stamp"] == "2026-10-08T06:00:00+00:00"
 
 
 # ---------------------------------------------------------------- the commands
@@ -470,15 +419,6 @@ def test_the_commands_take_check_and_start_from_a_state(tmp_path, capsys):
 def test_the_take_command_says_what_it_cannot_carry(tmp_path, capsys):
     assert state.main(["take", str(MODELS / "agents_sir_agents.json"), "--at", "5"]) == 1
     assert "E_STATE_UNSUPPORTED" in capsys.readouterr().out
-
-
-def test_the_observe_command_writes_the_state_and_its_problems(tmp_path, capsys):
-    model, out = tmp_path / "line.json", tmp_path / "state.json"
-    model.write_text(json.dumps(_plant(tmp_path, "3,1,0,2\n")), encoding="utf-8")
-    assert state.main(["observe", str(model), "--out", str(out)]) == 0
-    assert "W_STATE_NOT_COVERED" in capsys.readouterr().out
-    assert json.loads(out.read_text(encoding="utf-8"))["state"]["entities"][0]["count"] == 3
-    assert state.main(["check", str(model), str(out), "--max-age", "3600"]) == 0
 
 
 def test_the_engine_command_table_has_the_state_command():
@@ -567,7 +507,7 @@ def test_the_model_name_in_a_refusal_is_text_of_bounded_length():
     doc = state.take(model, 8.5)
     doc["model"] = {"name": ["x" * 500], "hash": "0" * 64}
     doc["hash"] = state.document(model, {}, source="run")["hash"]      # any: the model fails first
-    (found,) = state.check(_line(), {**doc, "hash": state._sha(state._canonical(
+    (found,) = state.check(_line(), {**doc, "hash": sha256_text(canonical_json(
         [doc["model"]["hash"], doc["state"]]))})
     assert found.code == "E_STATE_MODEL" and len(found.message) < 250
 
@@ -953,3 +893,11 @@ def test_a_child_of_a_split_batch_is_carried(at):
     model = layout([c, b, s, p, d], chain(c, b, s, p, d), resources=SERVER, simulation=RUN)
     taken = _carried(model, at)
     assert any("batch_info" in e["attributes"] for e in taken["entities"])
+
+
+def test_initial_state_validation_lives_in_its_own_module():
+    """ARCH-REVIEW D1: the checks of the "initial_state" section are in
+    core/initial_state_validation.py."""
+    from nagasim.core import initial_state_validation
+
+    assert initial_state_validation.validate_initial_state_structured({"blocks": []}) == []

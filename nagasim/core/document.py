@@ -19,7 +19,9 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 from nagasim.core import network, schema, sections, submodels
 from nagasim.core.block_registry import BLOCK_REGISTRY
@@ -39,6 +41,46 @@ _DEFAULT_SIMULATION = {"time_limit": None, "warmup": 0, "replications": 1, "time
                        "currency": "EUR", "energy_price": 0}
 # Definition fields kept verbatim for `extends` (core/submodels.py item 13).
 _INHERIT_KEYS = ("extends", "remove")
+
+
+class _Part(NamedTuple):
+    """One non-record section of a document, in the order a save writes it.
+
+    `default` builds the value a layout without the section gets; None = the
+    section is not reset here (the two twin lists are, with
+    `sections.DOCUMENT_LISTS`). `network`, `annotations`, `submodels` and
+    `background` are not plain rows: `_tail_layout` and `_reset_from_layout`
+    write them by hand, ahead of these. `omit` says a
+    value is left out of the save (a model without it saves byte-identical to
+    before the section existed, #226); None = always written. `blank`: an empty
+    stored value reads as the default."""
+    name: str
+    default: Callable | None
+    omit: Callable | None = None
+    blank: bool = False
+
+
+# Read by `to_layout` (via `_tail_layout`) and `_reset_from_layout`, so a new
+# plain section is added here once.
+_PARTS = (
+    _Part("info", dict),
+    _Part("data_sources", None),                  # ROADMAP 3.4: the twin sections, ui/twin.py
+    _Part("data_bindings", None),
+    _Part("initial_state", dict),
+    _Part("simulation", lambda: dict(_DEFAULT_SIMULATION)),
+    _Part("outputs", dict),                       # PHASE6 W3 M2, D113: opt-in extra output
+    _Part("investment", lambda: None,             # D172
+          omit=lambda value: value is None),
+    _Part("assertions", list, omit=lambda value: not value),                # #226
+    # G1 (D132): written only when a key holds something (the Present keys
+    # included, D242).
+    _Part("dashboard", lambda: {"widgets": []}, omit=lambda value: not any(value.values()),
+          blank=True),
+    # U3d (D155): the editor's view state, set on save only (no undo step, no
+    # dirty mark).
+    _Part("view", dict, omit=lambda value: not value, blank=True),
+)
+
 # Undo-label words for a keyed-record section: plural ("agent types") and
 # singular ("agent type") -- identifiers read as words, not as names (#291).
 _SECTION_WORDS = {s.name: s.name.replace("_", " ") for s in sections.DOCUMENT_LISTS}
@@ -162,37 +204,22 @@ class ModelDocument:
             "orders": copy.deepcopy(self.orders),
             **{section: copy.deepcopy(getattr(self, section))
                for section in sections.RECORD_SECTIONS},
-            # PHASE4 E1: the path network the layout view draws and the travel
-            # blocks measure on.
+            **self._tail_layout(),
+        }
+
+    def _tail_layout(self) -> dict:
+        out = {
+            # PHASE4 E1: the path network; an empty one is saved as null, as before.
             "network": copy.deepcopy(self.network) if self.network else None,
-            "annotations": copy.deepcopy(self.annotations),
+            "annotations": copy.deepcopy(self._level("").annotations),
             "submodels": self._submodels_layout(),
             "background": copy.deepcopy(self.background) if self.background else None,
-            "info": copy.deepcopy(self.info),
-            # ROADMAP 3.4: the twin sections, edited by ui/twin.py.
-            "data_sources": copy.deepcopy(self.data_sources),
-            "data_bindings": copy.deepcopy(self.data_bindings),
-            "initial_state": copy.deepcopy(self.initial_state),
-            "simulation": copy.deepcopy(self.simulation),
-            # PHASE6 W3 M2, ARCHITECTURE D113: opt-in extra output collection
-            # ("bottleneck" so far). Empty for every model that predates it.
-            "outputs": copy.deepcopy(self.outputs),
-            # D172: the investment case's settings; written only when present.
-            **({"investment": copy.deepcopy(self.investment)}
-               if self.investment is not None else {}),
-            # PHASE6 W7 Q3 (D126) assertions; written only when present so a
-            # model without any saves byte-identical to before (#226).
-            **({"assertions": copy.deepcopy(self.assertions)} if self.assertions else {}),
-            # PHASE6 G1 (D132) dashboard; same rule -- written only when a key of it
-            # holds something (the Present keys included, D242), so a model that
-            # never added one saves byte-identical.
-            **({"dashboard": copy.deepcopy(self.dashboard)}
-               if any(self.dashboard.values()) else {}),
-            # U3d (D155): the editor's view state, set by the editor on save
-            # only (never an edit: no undo step, no dirty mark); written only
-            # when present, so a model never saved by the editor is unchanged.
-            **({"view": copy.deepcopy(self.view)} if self.view else {}),
         }
+        for part in _PARTS:
+            value = getattr(self, part.name)
+            if part.omit is None or not part.omit(value):
+                out[part.name] = copy.deepcopy(value)
+        return out
 
     def _blocks_layout(self, scope: str) -> list[dict]:
         return [{"name": b.name, "description": b.description, "type": b.type,
@@ -243,14 +270,10 @@ class ModelDocument:
             setattr(self, section.name, copy.deepcopy(layout.get(section.name, [])))
         self.network: dict | None = copy.deepcopy(layout.get("network")) or None
         self.background: dict | None = copy.deepcopy(layout.get("background")) or None
-        self.info: dict = copy.deepcopy(layout.get("info", {}))
-        self.initial_state: dict = copy.deepcopy(layout.get("initial_state", {}))
-        self.simulation = copy.deepcopy(layout.get("simulation", dict(_DEFAULT_SIMULATION)))
-        self.outputs: dict = copy.deepcopy(layout.get("outputs", {}))
-        self.investment: dict | None = copy.deepcopy(layout.get("investment"))   # D172
-        self.assertions: list = copy.deepcopy(layout.get("assertions", []))      # #226
-        self.dashboard: dict = copy.deepcopy(layout.get("dashboard") or {"widgets": []})  # G1
-        self.view: dict = copy.deepcopy(layout.get("view") or {})      # U3d
+        for part in _PARTS:
+            if part.default is not None:
+                value = copy.deepcopy(layout.get(part.name, part.default()))
+                setattr(self, part.name, (value or part.default()) if part.blank else value)
 
     @staticmethod
     def _definition_meta(definition: dict) -> dict:
@@ -1509,6 +1532,12 @@ class ModelDocument:
         for entry in inner:
             entry["params"] = _substitute_locals(entry["params"], entry.get("locals") or {},
                                                  name, substituted, new_variables)
+            for key, value in entry["params"].items():
+                # A text param that WAS the parameter keeps its value as text (#694): a
+                # RECORD's expr "order_cost" bound to 0.0 becomes "0.0", not the number.
+                if (submodels._param_type(entry["type"], key) is str
+                        and isinstance(value, (int, float)) and not isinstance(value, bool)):
+                    entry["params"][key] = repr(value)
         cx, cy = _centre([b["position"] for b in inner])
         dx, dy = block.position[0] - cx, block.position[1] - cy
 
@@ -1542,6 +1571,9 @@ class ModelDocument:
             for section in sections.RECORD_SECTIONS:
                 extra = [r for r in flat.get(section, [])
                          if r.get("name") not in {x.get("name") for x in getattr(self, section)}]
+                for record in extra:
+                    # Flattening's mark for an asset picture (D608): the inlined copy has none.
+                    record.pop("trace", None)
                 if extra:
                     getattr(self, f"set_{section}")(getattr(self, section) + extra)
             if new_variables:
@@ -1657,9 +1689,6 @@ class ModelDocument:
         self.dirty = True
         self._notify("info", **kwargs)
 
-    def set_description_text(self, text: str) -> None:
-        self.set_info(description=text)
-
     @property
     def description_text(self) -> str:
         return self.info.get("description", "")
@@ -1721,7 +1750,8 @@ def _substitute_locals(value, locals_: dict, instance: str, substituted: dict, v
     # parameter, which no plain string param ever does in practice. Upgrade
     # path: rebuild the text from the AST if a real model ever trips on it.
     try:
-        referenced = compile_expression(value).names & set(locals_)
+        names = compile_expression(value).names
+        referenced = [name for name in locals_ if name in names]   # the definition's order (#698)
     except ExpressionError:
         return value
     for name in referenced:

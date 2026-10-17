@@ -155,16 +155,21 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
     # D1/D2), checked against the declared sections the same way.
     # #692: POWER(source) / TS(profile) with a bare name argument that is one of the
     # record's own string `locals` (an asset parameter) is checked like the literal.
-    # Direct arguments only, and an empty value means "not set" (a guarded default):
-    # folding the whole expression would flag the dead branch of an IF.
-    via_local = {}
-    strings = {k: v for k, v in (constants or {}).items() if isinstance(v, str) and v}
+    # Direct arguments only: folding the whole expression would flag the dead branch
+    # of an IF. #693: an empty one is "not set", fine where a condition on that name
+    # guards the read (a default), else a warning: the run would fail on it.
+    via_local, unset = {}, []
+    strings = {k: v for k, v in (constants or {}).items() if isinstance(v, str)}
     if strings and refs:
-        for node in ast.walk(ast.parse(str(text), mode="eval")):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in refs and node.args
-                    and isinstance(node.args[0], ast.Name) and node.args[0].id in strings):
-                via_local.setdefault(node.func.id, []).append(strings[node.args[0].id])
+        _local_refs(ast.parse(str(text), mode="eval"), refs, strings, frozenset(),
+                    via_local, unset)
+    for func, name in unset:
+        label = refs[func][3]
+        problems.append(problem(
+            "W_REF_UNSET", f"{block_name}: {text}: {func}({name}) reads '{name}', which is empty",
+            path, block=block_name,
+            hint=f"set {name} to the {label} " + ("whose power this draws" if func == "POWER"
+                                                   else "it reads")))
     for func, (declared, code, section, label) in (refs or {}).items():
         for name in (*expression.refs.get(func, ()), *via_local.get(func, ())):
             if name not in declared:
@@ -178,3 +183,38 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
         for code, message, hint in agents.literal_problems(text, pops):
             problems.append(problem(code, f"{block_name}: {text}: {message}", path,
                                     block=block_name, hint=hint))
+
+
+def _local_refs(node, refs, strings, guarded, via_local, unset) -> None:
+    """Walk *node* for `func(name)` calls (#692, #693) with *name* a string local: a set
+    one goes to *via_local*, an empty one to *unset* unless *guarded* holds it, the names
+    an enclosing IF / `x if c else y` / `and` / `or` condition reads. The guard is by
+    name: a condition on a different parameter does not silence the read."""
+    def names(test):
+        return guarded | {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
+
+    if isinstance(node, ast.IfExp):
+        _local_refs(node.test, refs, strings, guarded, via_local, unset)
+        for branch in (node.body, node.orelse):
+            _local_refs(branch, refs, strings, names(node.test), via_local, unset)
+        return
+    if isinstance(node, ast.BoolOp):
+        seen = guarded
+        for value in node.values:
+            _local_refs(value, refs, strings, seen, via_local, unset)
+            seen = seen | names(value)
+        return
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id == "IF" and len(node.args) == 3:
+            _local_refs(node.args[0], refs, strings, guarded, via_local, unset)
+            for branch in node.args[1:]:
+                _local_refs(branch, refs, strings, names(node.args[0]), via_local, unset)
+            return
+        arg = node.args[0] if node.args else None
+        if node.func.id in refs and isinstance(arg, ast.Name) and arg.id in strings:
+            if strings[arg.id]:
+                via_local.setdefault(node.func.id, []).append(strings[arg.id])
+            elif arg.id not in guarded:
+                unset.append((node.func.id, arg.id))
+    for child in ast.iter_child_nodes(node):
+        _local_refs(child, refs, strings, guarded, via_local, unset)

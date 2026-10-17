@@ -29,8 +29,6 @@ caller's result directory is the advisor's, to the outbox the caller named at st
 """
 from __future__ import annotations
 
-from nagasim.examples import model_path as _bundled  # a model argument may be a bundled name
-
 import bisect
 import copy
 import hashlib
@@ -44,14 +42,13 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim import netguard, plant, readers, score
 from nagasim.core import initial_state
 from nagasim.core.playback import Timeline, resource_rows
 from nagasim.core.problems import Problem, problem
-from nagasim.live import SKEW_SECONDS, Changes
+from nagasim.live import SKEW_SECONDS, Changes, iso
 from nagasim.sources import ReadError
 
 __all__ = ["FORMAT", "KIND", "LIMITS", "RESULT_FILE", "HISTORY_FILE", "Cycle", "PlantSource",
@@ -94,10 +91,6 @@ def parse_interval(text) -> float:
     if not match:
         raise ValueError(f"'{text}' is not an interval; write 30s, 15m, 2h or 1d")
     return float(match.group(1)) * {"s": 1, "m": 60, "h": 3600, "d": 86400}[match.group(2) or "s"]
-
-
-def _iso(seconds: float) -> str:
-    return datetime.fromtimestamp(seconds, timezone.utc).isoformat(timespec="seconds")
 
 
 def _num(value):
@@ -275,7 +268,7 @@ class Cycle:
         # told from "quiet" and one twin from the next on the same directory.
         self._cadence = {"every": None if every is None else float(every),
                          "forecast_every": self._every}
-        self._born = _iso(clock())
+        self._born = iso(clock())
         self._background = background
         self._runner = runner or forecast_from_state
         self._clock, self._monotonic = clock, monotonic
@@ -466,7 +459,7 @@ class Cycle:
             except Exception as exc:
                 compared = exc
         # How stale its start was when it could first be read: for whoever scores it (7.14).
-        pending = {**pending, "finished": _iso(self._clock()), "took": took}
+        pending = {**pending, "finished": iso(self._clock()), "took": took}
         # One reference: read by `_collect`.
         self._done = (pending, model, result, {**extra, "compared": compared})
 
@@ -587,7 +580,7 @@ class Cycle:
             problems = problems[:LIMITS["problems"] - 1] + [problem(
                 "W_TWIN_CUT", f"{len(problems) - LIMITS['problems'] + 1} more problems are "
                               f"not in the result", "/problems")]
-        doc = {"format": FORMAT, "kind": KIND, "cycle": self._n, "written": _iso(wall),
+        doc = {"format": FORMAT, "kind": KIND, "cycle": self._n, "written": iso(wall),
                "started": self._born, "cadence": dict(self._cadence),
                # `time_unit` and `epoch` (what model time 0 stands for) turn `at` and a
                # point's time into an instant; a source that has none says null.
@@ -721,11 +714,10 @@ class PlantSource:
         self._state = state
         self.model, self.name = model, name
         self.model_hash = state.model_hash(model)
-        self._feed, self._clock, self._max_age = feed, clock, max_age
+        self._clock, self._max_age = clock, max_age
         self._file = None if path is None else (Path(path), self._digest(path))
         self._refused = [p for p in plant.check(mapping, model) if p.severity == "error"]
         self._kind: str | None | bool = False       # False: not asked yet
-        self._rows: dict[str, dict] = {}
         self._held: list = []
         self._at = 0.0
         signals = [] if self._refused else mapping.get("signals", [])
@@ -740,15 +732,13 @@ class PlantSource:
         if self._refused:
             return
         # As the mapper reads them: the unit model time is in, and the instant of its 0.
-        self.time_unit = mapping["time"].get("unit") or plant._names(model)["unit"]
+        self.time_unit = mapping["time"].get("unit") or plant.layout_names(model)["unit"]
         self.epoch = mapping["time"]["epoch"]
-        self.mapper = plant.Mapper(mapping, model)
         self._timeline = Timeline([], live=True)
         if sources is None:
-            sources = getattr(feed, "sources", None) or [
-                s.get("name") for s in plant._flat(model).get("data_sources") or []
-                if s.get("kind") in readers.KINDS]
-        self._cursors: dict = dict.fromkeys(sources)
+            sources = getattr(feed, "sources", None) or None
+        self._watch = plant.Watch(mapping, model, feed, sources)
+        self.mapper = self._watch.mapper
 
     @staticmethod
     def _digest(path) -> str | None:
@@ -760,51 +750,26 @@ class PlantSource:
     def observe(self) -> dict:
         if self._refused:
             return {"ready": False, "problems": list(self._refused)}
-        problems, batch, ready = [], [], bool(self._cursors)
-        for name in self._cursors:
-            row = self._rows.setdefault(name, {"name": name, "state": "unopened", "age": None,
-                                               "lost": 0, "gaps": 0})
-            try:
-                # A full pull means more is waiting: a busy plant is caught up with in this
-                # step, up to a ceiling, so that one step always ends.
-                for _ in range(LIMITS["pulls"]):
-                    got = self._feed.changes(name, self._cursors[name], _PULL)
-                    self._cursors[name] = got.cursor
-                    self.mapper.hole(got.lost, got.gap)
-                    batch += got.events
-                    problems += got.problems
-                    row.update(state=got.state, age=got.age, lost=row["lost"] + got.lost,
-                               gaps=row["gaps"] + bool(got.gap))
-                    if len(got.events) < _PULL:
-                        break
-                else:
-                    problems.append(problem(
-                        "W_TWIN_CUT", f"source '{name}' had over {LIMITS['pulls'] * _PULL} "
-                        f"events waiting: the rest is read at the next step",
-                        f"/data_sources/{name}", hint="the view is behind the plant until "
-                                                      "the twin has caught up"))
-            except (ReadError, netguard.GuardError) as exc:
-                # Refused before any socket (no connection, a kind that is not live): said,
-                # and the other sources are still read.
-                row["state"], ready = "refused", False
-                problems.append(problem(exc.code, f"source '{name}': {exc.message}",
-                                        f"/data_sources/{name}", hint=exc.hint))
-                continue
-            if got.state != "live" or got.age is None:
+        # A full pull means more is waiting: a busy plant is caught up with in this step, up
+        # to a ceiling, so that one step always ends.
+        events = self._watch.step(_PULL, LIMITS["pulls"], tolerant=True)
+        problems, ready = list(self._watch.problems), bool(self._watch.cursors)
+        for name, row in self._watch.rows.items():
+            if row["state"] == "refused":
+                ready = False
+            elif row["state"] != "live" or row["age"] is None:
                 ready = False
                 problems.append(problem(
                     "W_TWIN_SOURCE", f"source '{name}' is down or has not answered yet: the "
                     f"view keeps its last picture and no forecast is started",
                     f"/data_sources/{name}", hint="the feed connects again by itself"))
-            elif self._max_age is not None and got.age > self._max_age:
+            elif self._max_age is not None and row["age"] > self._max_age:
                 ready = False
                 problems.append(problem(
-                    "W_TWIN_SOURCE", f"source '{name}' last spoke {got.age:.0f} s ago, over "
+                    "W_TWIN_SOURCE", f"source '{name}' last spoke {row['age']:.0f} s ago, over "
                     f"the {self._max_age:g} s of --max-age: no forecast is started",
                     f"/data_sources/{name}", hint="the view keeps its last picture; a "
                                                   "forecast starts again when the source speaks"))
-        # Several sources' events of one pull, by their own time (as `plant.Watch`).
-        events = self.mapper.feed(plant.in_order(self.mapper, batch))
         self._timeline.append(events)
         # Kept until `take`: the newest only, for a caller that observes and never takes.
         self._held = (self._held + events)[-_HELD:]
@@ -819,7 +784,7 @@ class PlantSource:
         try:
             present = float(self._clock())
             self._at = max(told, self.mapper.at(present))
-            stamp = _iso(present) if self._at > told else self.mapper.stamp()
+            stamp = iso(present) if self._at > told else self.mapper.stamp()
         except (OverflowError, OSError, ValueError):
             self._at, stamp = told, self.mapper.stamp()
         seen = self._timeline.state_at(told)
@@ -856,8 +821,8 @@ class PlantSource:
                 # count. A forecast's start is compared with a reading under the same two.
                 "cumulative": {f"block/{name}/out": [said["since"], said["resets"]]
                                for name, said in counters.items()},
-                "sources": [dict(row) for row in self._rows.values()],
-                "cursors": dict(self._cursors),     # what a record was computed from (D228)
+                "sources": [dict(row) for row in self._watch.rows.values()],
+                "cursors": dict(self._watch.cursors),     # what a record was computed from (D228)
                 # Each counter's last raw value and when it was said: what a twin started
                 # after this one continues the count from (D378).
                 "readings": cut(self.mapper.readings()),
@@ -918,40 +883,26 @@ def _show(value, limit: int = 300) -> str:
 
 
 def _summary(doc: dict) -> list[str]:
-    """A result in a few lines. Read defensively: the file is only known to be format 1."""
+    """A result in a few lines, in the monitor's one wording (D281). Read defensively: the
+    file is only known to be format 1."""
+    from nagasim import monitor
+
     def table(value):
         return value if isinstance(value, dict) else {}
-    model, view, forecast = table(doc.get("model")), table(doc.get("view")), table(doc.get("forecast"))
+    shown = monitor.summary(doc)
+    model, view = table(doc.get("model")), table(doc.get("view"))
     lines = [f"cycle {_show(doc.get('cycle'))} written {_show(doc.get('written'))}: model "
              f"'{_show(model.get('name'))}' ({_show(model.get('hash'), 12)}), plant at t = "
              f"{_show(doc.get('at'))} ({_show(doc.get('stamp'))})"]
-    for row in doc.get("sources") or []:
-        row = table(row)
-        lines.append(f"source {_show(row.get('name'))}: {_show(row.get('state'))}, age "
-                     f"{_show(row.get('age'))} s, {_show(row.get('lost'))} lost, "
-                     f"{_show(row.get('gaps'))} gaps")
+    lines += [f"source {_show(name)}: {_show(state)}, age {_show(age)} s, {_show(lost)} lost, "
+              f"{_show(gaps)} gaps" for name, state, age, lost, gaps in shown["sources"]]
     if view:
         lines.append(f"view: {_show(view.get('wip'))} in the system"
                      + (" (approximate counts)" if view.get("approximate") else "")
                      + f", {len(table(view.get('blocks')))} blocks holding items, "
                        f"{len(view.get('resources') or [])} resources")
-    line = f"forecast: {_show(forecast.get('status'))}"
-    if forecast.get("reason"):
-        line += f" ({_show(forecast['reason'])})"
-    if forecast.get("state"):
-        line += (f"; latest from t = {_show(forecast.get('from'))}, state "
-                 f"{_show(forecast['state'], 12)}, seed {_show(forecast.get('seed'))}, "
-                 f"{_show(forecast.get('replications'))} replications over "
-                 f"{_show(forecast.get('horizon'))}")
-    lines.append(line)
-    rows = [table(row) for row in doc.get("comparison") or []]
-    if rows:
-        lines.append(f"compared: {len(rows)} points, "
-                     f"{sum(1 for row in rows if row.get('inside'))} inside their interval")
-    from nagasim import monitor         # the one wording of a score and of a count (D281)
-
-    shown = monitor.summary(doc)
-    lines += [_show(said) for said in shown["forecast"]["lines"] if "taken action(s)" in said]
+    lines += [_show(note, 1000) for note in shown["notes"]]
+    lines += [_show(said, 1000) for said in shown["forecast"]["lines"]]
     if shown["counters"]:
         lines.append("counted by the plant: " + ", ".join(
             f"{_show(name, 80)} {total:g}" + (f" ({resets:g} resets)" if resets else "")
@@ -980,9 +931,7 @@ def _summary(doc: dict) -> list[str]:
                   in shown["recommend"]["rows"]]
         fold = shown["recommend"]["fold"]       # the KPI line, then effects; ADVICE is the page's
         lines += ["  basis: " + _show(fold[0], 1000)] + ["    " + _show(line, 1000) for line in fold[2:]]
-    lines += [f"{_show(table(p).get('code'))}: {_show(table(p).get('message'))}"
-              for p in doc.get("problems") or []]
-    return lines
+    return lines + [f"{_show(code)}: {_show(message)}" for _severity, code, message, _hint in shown["problems"]]
 
 
 def _failed(doc: dict) -> bool:
@@ -1003,7 +952,7 @@ def main(argv=None, *, wait=time.sleep) -> int:
     import argparse
 
     from nagasim import api
-    from nagasim._cli import setup_cli
+    from nagasim._cli import add_model_argument, setup_cli
     from nagasim.live import Feed
 
     setup_cli()
@@ -1028,7 +977,7 @@ def main(argv=None, *, wait=time.sleep) -> int:
                                            "recorded plant log; exit 1 for any difference. "
                                            "Nothing is written")
     score_.add_argument("directory", help="the --out directory of a twin")
-    score_.add_argument("model", type=_bundled, help="path to the model JSON the twin ran on, or a bundled model's name (naga examples)")
+    add_model_argument(score_, help="path to the model JSON the twin ran on, or a bundled model's name (naga examples)")
     score_.add_argument("--map", required=True, metavar="FILE", help="its plant mapping")
     score_.add_argument("--log", required=True, metavar="FILE",
                         help="the plant log of the same period (naga watch --record, or the "
@@ -1037,13 +986,13 @@ def main(argv=None, *, wait=time.sleep) -> int:
                                                 "again from their stored states and seeds; "
                                                 "exit 1 for any difference. Nothing is written")
     again_.add_argument("directory", help="the --out directory of a twin")
-    again_.add_argument("model", type=_bundled, help="path to the model JSON the twin ran on, or a bundled model's name (naga examples)")
+    add_model_argument(again_, help="path to the model JSON the twin ran on, or a bundled model's name (naga examples)")
     again_.add_argument("--id", action="append", default=None, metavar="ID",
                         help="only this recommendation (its id, or the first characters of "
                              "it); may repeat (default: every one whose state is kept)")
     again_.add_argument("--workers", type=int, default=1)
     for verb in (once_, run_):
-        verb.add_argument("model", type=_bundled, help="path to the model JSON, or a bundled model's name (naga examples)")
+        add_model_argument(verb)
         verb.add_argument("--map", required=True, metavar="FILE",
                           help="the plant mapping (*.plantmap.json; see naga plant init)")
         source = verb.add_mutually_exclusive_group(required=True)

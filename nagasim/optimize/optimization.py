@@ -3,7 +3,7 @@ from __future__ import annotations
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95, paired_diff_ci
 from dataclasses import dataclass
-from nagasim import experiments
+from nagasim.core.schema import load_layout
 import math
 import numpy as np
 import pandas as pd
@@ -177,7 +177,7 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
     candidate optima read off a fitted response surface, to be confirmed by
     the real simulation before anyone trusts them.
     """
-    base = experiments._as_layout(layout)
+    base = load_layout(layout)
     factors = list(factors)
     if not factors:
         raise ValueError("optimize needs at least one factor")

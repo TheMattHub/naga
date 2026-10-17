@@ -76,11 +76,9 @@ from conftest import create, delay, dispose, layout
 session = pytest.importorskip("nagasim.core.session")
 
 from nagasim.core.sim_runner import run_single_simulation  # noqa: E402
-
-
-def _block(name, btype, params, position=None):
-    return {"name": name, "description": name, "type": btype,
-            "position": position or [0, 0], "params": params}
+from conftest import decide as _decide
+from conftest import entity_count as _entity_count
+from conftest import block as _block
 
 
 def _assign_type(name, e_type, position=None):
@@ -88,24 +86,11 @@ def _assign_type(name, e_type, position=None):
                   position)
 
 
-def _decide(name, mode, **params):
-    base = {"mode": mode, "probs": [], "conditions": [], "policy": "", "observation": [],
-            "fallback": "first", "queue_exprs": []}
-    base.update(params)
-    return _block(name, "DECIDE", base)
-
-
 def _process(name, resource, value, position=None):
     return _block(name, "PROCESS",
                   {"action": "Seize Delay Release", "distribution": "Constant",
                    "dist_params": {"value": value}, "priority": 0, "quantity": 1,
                    "resource_name": resource}, position)
-
-
-def _entity_count(kpi, e_type):
-    df = kpi["entity_summary"]
-    rows = df[df["Entity Type"] == e_type]
-    return int(rows["Total Created"].iloc[0]) if not rows.empty else 0
 
 
 def _exit_times_by_creation(kpi):
