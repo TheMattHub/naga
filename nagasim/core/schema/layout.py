@@ -388,22 +388,26 @@ _BALK_SCOPE = frozenset({"queue_length"})
 
 def _check_block_expressions(problems: list, name: str, btype: str, params: dict,
                              variables: set[str], at: str, tables: dict | None = None,
-                             refs: dict | None = None) -> None:
+                             refs: dict | None = None, constants: dict | None = None) -> None:
     """Compile every expression a block carries, so a typo is a load-time
     problem in the Problems dock, never a crash mid-run. *tables* is
-    {name: dimensions}, checked against every literal TABLE() call."""
+    {name: dimensions}, checked against every literal TABLE() call. *constants*
+    is the block's `locals` (#692): a bare-name argument bound there is checked."""
+    def check(*args, **kwargs):
+        _check_expression(*args, constants=constants, **kwargs)
+
     if btype in blocking.PROCESS_TYPES:
         # The setup expression (PHASE4 A2) is the one place `previous_key` and
         # `key` are legal names; `setup_key` is an ordinary expression.
         if params.get("setup"):
-            _check_expression(problems, name, params["setup"], variables | _SETUP_SCOPE,
+            check(problems, name, params["setup"], variables | _SETUP_SCOPE,
                               f"{at}/setup", tables=tables, refs=refs)
         # PHASE4 T3: the changeover COST sees the same two keys as the duration.
         if params.get("setup_cost"):
-            _check_expression(problems, name, params["setup_cost"], variables | _SETUP_SCOPE,
+            check(problems, name, params["setup_cost"], variables | _SETUP_SCOPE,
                               f"{at}/setup_cost", tables=tables, refs=refs)
         if params.get("setup_key"):
-            _check_expression(problems, name, params["setup_key"], variables,
+            check(problems, name, params["setup_key"], variables,
                               f"{at}/setup_key", tables=tables, refs=refs)
     # D156: a segment's `time` is an ordinary expression (TRIA(...), a submodel
     # parameter); a move has none. A STATION's tending cycles (D169) are MOTION
@@ -415,18 +419,18 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
         for index, segment in enumerate(segments or []):
             text = segment.get("time") if isinstance(segment, dict) else None
             if isinstance(text, str) and text.strip() and segment.get("kind") != "move":
-                _check_expression(problems, name, text, variables,
+                check(problems, name, text, variables,
                                   f"{at}/{key}/{index}/time", tables=tables, refs=refs)
     if btype in QUEUEING_BLOCK_TYPES:
         # PHASE4 A4: balk_if is the one place `queue_length` is a legal name.
         if params.get("balk_if"):
-            _check_expression(problems, name, params["balk_if"], variables | _BALK_SCOPE,
+            check(problems, name, params["balk_if"], variables | _BALK_SCOPE,
                               f"{at}/balk_if", tables=tables, refs=refs)
         if params.get("renege_after"):
-            _check_expression(problems, name, params["renege_after"], variables,
+            check(problems, name, params["renege_after"], variables,
                               f"{at}/renege_after", tables=tables, refs=refs)
     if btype == "BATCH" and params.get("max_wait"):     # PHASE4 B6
-        _check_expression(problems, name, params["max_wait"], variables, f"{at}/max_wait",
+        check(problems, name, params["max_wait"], variables, f"{at}/max_wait",
                           tables=tables, refs=refs)
     if btype == "ASSIGN":
         for index, assignment in enumerate(params.get("assignments", [])):
@@ -446,28 +450,28 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
                 problems.append(problem("E_ASSIGN_TARGET", f"{name}: {target}: {exc}",
                                         f"{where}/target", block=name,
                                         hint="a target is `entity.<attr>` or a declared variable name"))
-            _check_expression(problems, name, assignment.get("expr", ""), variables,
+            check(problems, name, assignment.get("expr", ""), variables,
                               f"{where}/expr", tables=tables, refs=refs)
     elif btype in ("DECIDE", "HOLD") and params.get("mode") == "Condition":
         for index, condition in enumerate(params.get("conditions", [])):
-            _check_expression(problems, name, condition, variables, f"{at}/conditions/{index}", tables=tables, refs=refs)
+            check(problems, name, condition, variables, f"{at}/conditions/{index}", tables=tables, refs=refs)
     elif btype == "DECIDE" and params.get("mode") == "Policy":
         for index, expr in enumerate(params.get("observation", [])):
-            _check_expression(problems, name, expr, variables, f"{at}/observation/{index}", tables=tables, refs=refs)
+            check(problems, name, expr, variables, f"{at}/observation/{index}", tables=tables, refs=refs)
         if params.get("fallback", "first") == "shortest":
             for index, expr in enumerate(params.get("queue_exprs", [])):
-                _check_expression(problems, name, expr, variables,
+                check(problems, name, expr, variables,
                                   f"{at}/queue_exprs/{index}", tables=tables, refs=refs)
     elif btype == "RECORD" and params.get("kind", "count") != "time_between":
-        _check_expression(problems, name, params.get("expr", "1"), variables, f"{at}/expr", tables=tables, refs=refs)
+        check(problems, name, params.get("expr", "1"), variables, f"{at}/expr", tables=tables, refs=refs)
     elif btype == "ROUTE" and params.get("speed"):       # PHASE4 E1
-        _check_expression(problems, name, params["speed"], variables, f"{at}/speed",
+        check(problems, name, params["speed"], variables, f"{at}/speed",
                           tables=tables, refs=refs)
 
     in_scope = variables | _EXTRA_SCOPE.get(btype, frozenset())
     for key, value in params.get("dist_params", {}).items():
         if isinstance(value, str):      # an expression-valued parameter
-            _check_expression(problems, name, value, in_scope, f"{at}/dist_params/{key}", tables=tables, refs=refs)
+            check(problems, name, value, in_scope, f"{at}/dist_params/{key}", tables=tables, refs=refs)
 
 
 # validate_params problem strings -> a stable code plus a hint (ROADMAP 3.1).
@@ -735,18 +739,18 @@ def _validate_flow_expressions(layout: dict, problems: list, variables: set[str]
             text = entry.get(field)
             if text not in (None, ""):
                 _check_expression(problems, f"flow '{name}'", text, in_scope,
-                                  f"/flows/{index}/{field}", tables=tables, refs=refs)
+                                  f"/flows/{index}/{field}", tables=tables, refs=refs, constants=_locals(entry))
         # A component share may be an expression too (Bio-1 G2): a conversion's
         # live blend, a level's own fraction, a variable.
         components = entry.get("components")
         for key, text in (components.items() if isinstance(components, dict) else ()):
             if isinstance(text, str) and text:
                 _check_expression(problems, f"flow '{name}' component '{key}'", text, in_scope,
-                                  f"/flows/{index}/components/{key}", tables=tables, refs=refs)
+                                  f"/flows/{index}/components/{key}", tables=tables, refs=refs, constants=_locals(entry))
         leak = entry.get("leak")        # a conveyor's leak fraction (C1)
         if isinstance(leak, dict) and isinstance(leak.get("fraction"), str) and leak["fraction"]:
             _check_expression(problems, f"flow '{name}' leak", leak["fraction"], in_scope,
-                              f"/flows/{index}/leak/fraction", tables=tables, refs=refs)
+                              f"/flows/{index}/leak/fraction", tables=tables, refs=refs, constants=_locals(entry))
 
 
 def _validate_sd_expressions(layout: dict, problems: list, variables: set[str],
@@ -757,7 +761,7 @@ def _validate_sd_expressions(layout: dict, problems: list, variables: set[str],
     def check(who, text, entry, path):
         if isinstance(text, str) and text:
             _check_expression(problems, who, text, variables | set(_locals(entry)),
-                              path, tables=tables, refs=refs)
+                              path, tables=tables, refs=refs, constants=_locals(entry))
     for index, entry in enumerate(layout.get("auxiliaries") or []):
         check(f"auxiliary '{entry.get('name', '')}'", entry.get("expr", ""), entry,
               f"/auxiliaries/{index}/expr")
@@ -984,7 +988,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
         # "locals" (ROADMAP 2.3 part B); they are legal names in its expressions.
         in_scope = variables | set(_locals(block))
         _check_block_expressions(problems, name, btype, params, in_scope, f"{at}/params",
-                                 tables=table_dims, refs=refs)
+                                 tables=table_dims, refs=refs, constants=_locals(block))
         if btype == "TRANSFER":
             _check_transfer(problems, name, params, level_names, conveyor_names, in_scope,
                             table_dims, refs, f"{at}/params")

@@ -62,7 +62,7 @@ naga --help
 
 Python 3.11 or later. It depends on SimPy, NumPy, pandas, SciPy and openpyxl.
 
-## What's new in 0.10
+## What's new in 0.11
 
 --8<-- "docs/whats-new.md:latest"
 

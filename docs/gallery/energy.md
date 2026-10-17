@@ -3,7 +3,39 @@
 
 # Energy
 
-5 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+6 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+
+## Berth: shore power
+
+A two-berth quay over four weeks of ship calls, with each ship's hotel load and reefers met by its own engines or, when the ship is ready and the call long enough, by a shore connection priced on a tariff and a grid carbon intensity. The question it answers: how much CO2 and energy cost does shore power save, how large must the connection be, and does the capital pay back? Read the flow summary (shore and auxiliary kWh, peak kW), the cost summary, and the investment case across scenarios. Illustrative figures.
+
+```console
+naga run berth_shore_power
+```
+
+```mermaid
+flowchart LR
+    b0["shore_power_1 (SUBMODEL)"]
+    b1["grid_connection_1 (SUBMODEL)"]
+    b2["calls (CREATE)"]
+    b3["Berth (SEIZE)"]
+    b4["Berth free (RELEASE)"]
+    b5["done (DISPOSE)"]
+    b2 --> b3
+    b3 --> b0
+    b0 --> b4
+    b4 --> b5
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 60 |  |
+| `system/Avg Throughput Time` | 16.8 |  |
+| `system/Avg Queue Length` | 0.336 |  |
+| `system/Avg Resource Usage %` | 58.3 |  |
+| `system/Total Cost` | 264,000 |  |
 
 ## Biogas digester, holder and CHP
 

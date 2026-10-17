@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.11.0 (2026-10-17)
+
+A bundled model sizes shore power at a berth, and validation catches a misspelt name passed
+through a submodel parameter. A minor version, because that check can now refuse a model that
+was accepted before (it would have failed when run).
+
+- Added: a bundled model, shore power at a berth: ships' hotel loads fed from the grid up to the
+  connection and the rest on their auxiliary engines, four like-for-like scenarios and an
+  investment case that says who pays and who saves.
+- Validation: a reference function (`POWER`, `TS`, `LEVEL`, `FLOW` and the rest) whose argument
+  is a submodel parameter bound to a name is checked like a literal name, in flows, system
+  dynamics records, block expressions and `dist_params`. An unknown name is reported when the
+  model is checked instead of failing the run; an unset (empty) parameter is not flagged.
+
 ## 0.10.0 (2026-10-17)
 
 A model can now be drafted from an event log, and energy reaches every fleet. `naga discover`

@@ -3,6 +3,8 @@ expression check every section reuses, and the distribution/time-unit checks
 of a duration spec."""
 from __future__ import annotations
 
+import ast
+
 from nagasim.core import agents, sd
 from nagasim.core.distributions import (DISTRIBUTION_REGISTRY, distribution_mean,
                                         distribution_needs_finite_mean,
@@ -89,7 +91,8 @@ def _check_deterministic_mean(problems: list, deterministic: bool, dist, dist_pa
 
 def _check_expression(problems: list, block_name: str, text, variables: set[str],
                       path: str = "", tables: dict | None = None,
-                      refs: dict | None = None, allow_self: bool = False) -> None:
+                      refs: dict | None = None, allow_self: bool = False,
+                      constants: dict | None = None) -> None:
     try:
         expression = compile_expression(text, variables)
     except ExpressionError as exc:
@@ -150,8 +153,20 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
                 hint=f"TABLE(\"{name}\", {', '.join(f'k{i + 1}' for i in range(tables[name]))})"))
     # TS("name") / LEVEL("name") / FLOW("name") with a literal name (PHASE4
     # D1/D2), checked against the declared sections the same way.
+    # #692: POWER(source) / TS(profile) with a bare name argument that is one of the
+    # record's own string `locals` (an asset parameter) is checked like the literal.
+    # Direct arguments only, and an empty value means "not set" (a guarded default):
+    # folding the whole expression would flag the dead branch of an IF.
+    via_local = {}
+    strings = {k: v for k, v in (constants or {}).items() if isinstance(v, str) and v}
+    if strings and refs:
+        for node in ast.walk(ast.parse(str(text), mode="eval")):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id in refs and node.args
+                    and isinstance(node.args[0], ast.Name) and node.args[0].id in strings):
+                via_local.setdefault(node.func.id, []).append(strings[node.args[0].id])
     for func, (declared, code, section, label) in (refs or {}).items():
-        for name in expression.refs.get(func, ()):
+        for name in (*expression.refs.get(func, ()), *via_local.get(func, ())):
             if name not in declared:
                 problems.append(problem(
                     code, f"{block_name}: {text}: unknown {label} '{name}'", path,

@@ -1,0 +1,1671 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "shore_power_1",
+      "type": "SUBMODEL",
+      "description": "Shore power",
+      "position": [150.0, 100.0],
+      "params": {
+        "definition": "Shore power",
+        "arguments": {
+          "connection_kw": 2000.0,
+          "aux_fuel_price_per_kwh": 0.25,
+          "aux_emission_factor": 0.69,
+          "ready": "IF(entity.ready_u < VAR(\"ready_share\"), 1, 0)"
+        }
+      }
+    },
+    {
+      "name": "grid_connection_1",
+      "type": "SUBMODEL",
+      "description": "Grid connection",
+      "position": [600.0, 300.0],
+      "params": {
+        "definition": "Grid connection",
+        "arguments": {
+          "import_profile": "Berth tariff",
+          "intensity_profile": "Berth grid intensity",
+          "import_limit_kw": 20000.0,
+          "demand_charge_per_kw": 9.21
+        }
+      }
+    },
+    {
+      "name": "calls",
+      "type": "CREATE",
+      "description": "One ship per call of the order book",
+      "position": [0.0, 100.0],
+      "params": {"e_type": "SHIP", "arrival_mode": "Orders"}
+    },
+    {
+      "name": "Berth",
+      "type": "SEIZE",
+      "position": [80.0, 100.0],
+      "params": {"resource_name": "BERTH"}
+    },
+    {
+      "name": "Berth free",
+      "type": "RELEASE",
+      "position": [600.0, 100.0],
+      "params": {"resource_name": "BERTH"}
+    },
+    {"name": "done", "type": "DISPOSE", "position": [800.0, 100.0]}
+  ],
+  "links": [
+    {"source": "calls", "target": "Berth"},
+    {"source": "Berth", "target": "shore_power_1", "target_port": "in"},
+    {"source": "shore_power_1", "target": "Berth free", "source_port": "out"},
+    {"source": "Berth free", "target": "done"}
+  ],
+  "scenarios": [
+    {
+      "name": "Shore power, 2 MW",
+      "description": "60 % of ships are shore-ready; a 2 MW connection.",
+      "overrides": [
+        {"path": "blocks.shore_power_1.params.arguments.connection_kw", "value": 2000.0},
+        {"path": "variables.ready_share.initial", "value": 0.6},
+        {"path": "fixed_costs.Shore connection.amount", "value": 1600000.0}
+      ]
+    },
+    {
+      "name": "Shore power, 6 MW",
+      "description": "The same ships on a 6 MW connection.",
+      "overrides": [
+        {"path": "blocks.shore_power_1.params.arguments.connection_kw", "value": 6000.0},
+        {"path": "variables.ready_share.initial", "value": 0.6},
+        {"path": "fixed_costs.Shore connection.amount", "value": 4800000.0}
+      ]
+    },
+    {
+      "name": "Shore power, every ship ready",
+      "description": "Every ship can plug in; the connection the design of experiments finds enough.",
+      "overrides": [
+        {"path": "blocks.shore_power_1.params.arguments.connection_kw", "value": 5000.0},
+        {"path": "variables.ready_share.initial", "value": 1.0},
+        {"path": "fixed_costs.Shore connection.amount", "value": 4000000.0}
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "id": "S01",
+      "release": 1.0,
+      "due": 25.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 24.9,
+        "ready_u": 0.031
+      }
+    },
+    {
+      "id": "S02",
+      "release": 20.5,
+      "due": 29.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 9.0,
+        "ready_u": 0.675
+      }
+    },
+    {
+      "id": "S03",
+      "release": 22.3,
+      "due": 31.3,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 9.0,
+        "ready_u": 0.803
+      }
+    },
+    {
+      "id": "S04",
+      "release": 44.5,
+      "due": 60.6,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 16.1,
+        "ready_u": 0.66
+      }
+    },
+    {
+      "id": "S05",
+      "release": 57.9,
+      "due": 75.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 18.0,
+        "ready_u": 0.426
+      }
+    },
+    {
+      "id": "S06",
+      "release": 72.2,
+      "due": 83.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 11.7,
+        "ready_u": 0.737
+      }
+    },
+    {
+      "id": "S07",
+      "release": 105.8,
+      "due": 129.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 23.4,
+        "ready_u": 0.126
+      }
+    },
+    {
+      "id": "S08",
+      "release": 114.3,
+      "due": 122.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 7.9,
+        "ready_u": 0.212
+      }
+    },
+    {
+      "id": "S09",
+      "release": 116.7,
+      "due": 123.6,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 6.9,
+        "ready_u": 0.047
+      }
+    },
+    {
+      "id": "S10",
+      "release": 142.4,
+      "due": 163.0,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 20.6,
+        "ready_u": 0.071
+      }
+    },
+    {
+      "id": "S11",
+      "release": 160.2,
+      "due": 181.6,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 21.4,
+        "ready_u": 0.076
+      }
+    },
+    {
+      "id": "S12",
+      "release": 161.3,
+      "due": 170.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 9.2,
+        "ready_u": 0.917
+      }
+    },
+    {
+      "id": "S13",
+      "release": 163.3,
+      "due": 170.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 6.9,
+        "ready_u": 0.298
+      }
+    },
+    {
+      "id": "S14",
+      "release": 169.8,
+      "due": 176.6,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 6.8,
+        "ready_u": 0.158
+      }
+    },
+    {
+      "id": "S15",
+      "release": 177.7,
+      "due": 187.7,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.0,
+        "ready_u": 0.565
+      }
+    },
+    {
+      "id": "S16",
+      "release": 183.5,
+      "due": 200.4,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 16.9,
+        "ready_u": 0.13
+      }
+    },
+    {
+      "id": "S17",
+      "release": 186.1,
+      "due": 209.7,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 23.6,
+        "ready_u": 0.561
+      }
+    },
+    {
+      "id": "S18",
+      "release": 197.2,
+      "due": 211.0,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 13.8,
+        "ready_u": 0.851
+      }
+    },
+    {
+      "id": "S19",
+      "release": 209.3,
+      "due": 216.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 7.2,
+        "ready_u": 0.591
+      }
+    },
+    {
+      "id": "S20",
+      "release": 217.0,
+      "due": 227.4,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 10.4,
+        "ready_u": 0.218
+      }
+    },
+    {
+      "id": "S21",
+      "release": 251.1,
+      "due": 262.1,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 11.0,
+        "ready_u": 0.901
+      }
+    },
+    {
+      "id": "S22",
+      "release": 261.3,
+      "due": 272.1,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.8,
+        "ready_u": 0.461
+      }
+    },
+    {
+      "id": "S23",
+      "release": 261.9,
+      "due": 271.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 9.6,
+        "ready_u": 0.828
+      }
+    },
+    {
+      "id": "S24",
+      "release": 269.7,
+      "due": 277.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 7.8,
+        "ready_u": 0.87
+      }
+    },
+    {
+      "id": "S25",
+      "release": 272.8,
+      "due": 283.0,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.2,
+        "ready_u": 0.78
+      }
+    },
+    {
+      "id": "S26",
+      "release": 281.7,
+      "due": 292.0,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.3,
+        "ready_u": 0.623
+      }
+    },
+    {
+      "id": "S27",
+      "release": 284.9,
+      "due": 294.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 10.0,
+        "ready_u": 0.037
+      }
+    },
+    {
+      "id": "S28",
+      "release": 286.3,
+      "due": 301.8,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 15.5,
+        "ready_u": 0.2
+      }
+    },
+    {
+      "id": "S29",
+      "release": 313.8,
+      "due": 324.8,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 11.0,
+        "ready_u": 0.099
+      }
+    },
+    {
+      "id": "S30",
+      "release": 320.0,
+      "due": 344.4,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 24.4,
+        "ready_u": 0.573
+      }
+    },
+    {
+      "id": "S31",
+      "release": 331.1,
+      "due": 346.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 15.4,
+        "ready_u": 0.897
+      }
+    },
+    {
+      "id": "S32",
+      "release": 341.3,
+      "due": 348.7,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 7.4,
+        "ready_u": 0.591
+      }
+    },
+    {
+      "id": "S33",
+      "release": 348.1,
+      "due": 356.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 8.8,
+        "ready_u": 0.492
+      }
+    },
+    {
+      "id": "S34",
+      "release": 348.3,
+      "due": 360.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 11.9,
+        "ready_u": 0.938
+      }
+    },
+    {
+      "id": "S35",
+      "release": 379.1,
+      "due": 387.8,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 8.7,
+        "ready_u": 0.39
+      }
+    },
+    {
+      "id": "S36",
+      "release": 398.6,
+      "due": 420.7,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 22.1,
+        "ready_u": 0.504
+      }
+    },
+    {
+      "id": "S37",
+      "release": 401.6,
+      "due": 413.3,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 11.7,
+        "ready_u": 0.017
+      }
+    },
+    {
+      "id": "S38",
+      "release": 409.7,
+      "due": 416.6,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 6.9,
+        "ready_u": 0.612
+      }
+    },
+    {
+      "id": "S39",
+      "release": 415.0,
+      "due": 425.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.2,
+        "ready_u": 0.402
+      }
+    },
+    {
+      "id": "S40",
+      "release": 439.3,
+      "due": 454.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 15.6,
+        "ready_u": 0.281
+      }
+    },
+    {
+      "id": "S41",
+      "release": 444.1,
+      "due": 454.7,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.6,
+        "ready_u": 0.157
+      }
+    },
+    {
+      "id": "S42",
+      "release": 461.5,
+      "due": 477.1,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 15.6,
+        "ready_u": 0.858
+      }
+    },
+    {
+      "id": "S43",
+      "release": 476.6,
+      "due": 487.0,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 10.4,
+        "ready_u": 0.811
+      }
+    },
+    {
+      "id": "S44",
+      "release": 497.0,
+      "due": 514.3,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 17.3,
+        "ready_u": 0.563
+      }
+    },
+    {
+      "id": "S45",
+      "release": 503.2,
+      "due": 520.8,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 17.6,
+        "ready_u": 0.135
+      }
+    },
+    {
+      "id": "S46",
+      "release": 503.9,
+      "due": 514.4,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 10.5,
+        "ready_u": 0.429
+      }
+    },
+    {
+      "id": "S47",
+      "release": 508.5,
+      "due": 518.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 9.7,
+        "ready_u": 0.267
+      }
+    },
+    {
+      "id": "S48",
+      "release": 514.0,
+      "due": 529.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 15.5,
+        "ready_u": 0.096
+      }
+    },
+    {
+      "id": "S49",
+      "release": 526.0,
+      "due": 542.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 16.2,
+        "ready_u": 0.379
+      }
+    },
+    {
+      "id": "S50",
+      "release": 538.0,
+      "due": 555.4,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 17.4,
+        "ready_u": 0.548
+      }
+    },
+    {
+      "id": "S51",
+      "release": 548.6,
+      "due": 557.4,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 8.8,
+        "ready_u": 0.914
+      }
+    },
+    {
+      "id": "S52",
+      "release": 588.4,
+      "due": 599.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 11.5,
+        "ready_u": 0.838
+      }
+    },
+    {
+      "id": "S53",
+      "release": 594.7,
+      "due": 613.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 19.2,
+        "ready_u": 0.534
+      }
+    },
+    {
+      "id": "S54",
+      "release": 596.3,
+      "due": 614.6,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 18.3,
+        "ready_u": 0.768
+      }
+    },
+    {
+      "id": "S55",
+      "release": 601.6,
+      "due": 612.5,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 10.9,
+        "ready_u": 0.533
+      }
+    },
+    {
+      "id": "S56",
+      "release": 606.7,
+      "due": 628.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Tanker",
+        "hotel_kw": 1000.0,
+        "reefers": 0,
+        "dwell_h": 22.2,
+        "ready_u": 0.065
+      }
+    },
+    {
+      "id": "S57",
+      "release": 610.2,
+      "due": 617.9,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Ro-ro",
+        "hotel_kw": 1500.0,
+        "reefers": 0,
+        "dwell_h": 7.7,
+        "ready_u": 0.04
+      }
+    },
+    {
+      "id": "S58",
+      "release": 616.5,
+      "due": 630.2,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container large",
+        "hotel_kw": 600.0,
+        "reefers": 400,
+        "dwell_h": 13.7,
+        "ready_u": 0.133
+      }
+    },
+    {
+      "id": "S59",
+      "release": 617.3,
+      "due": 625.8,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 8.5,
+        "ready_u": 0.167
+      }
+    },
+    {
+      "id": "S60",
+      "release": 617.4,
+      "due": 626.1,
+      "quantity": 1,
+      "attributes": {
+        "ship_type": "Container feeder (1,730 TEU)",
+        "hotel_kw": 330.0,
+        "reefers": 100,
+        "dwell_h": 8.7,
+        "ready_u": 0.538
+      }
+    }
+  ],
+  "resources": [{"name": "BERTH", "capacity": 2}],
+  "variables": [
+    {"name": "ready_share", "initial": 0.0},
+    {"name": "at_berth_kw", "initial": 0.0},
+    {"name": "connected_kw", "initial": 0.0}
+  ],
+  "entities": [{"name": "SHIP", "shape": "square", "color": "BLUE"}],
+  "timeseries_inputs": [
+    {
+      "name": "Berth tariff",
+      "description": "Illustrative import price, EUR/kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.14,
+        0.14,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.22,
+        0.22,
+        0.22,
+        0.22,
+        0.14,
+        0.14,
+        0.1
+      ]
+    },
+    {
+      "name": "Berth grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.33,
+        0.3,
+        0.27,
+        0.24,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.36,
+        0.4,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35
+      ]
+    },
+    {
+      "name": "Nrg tariff",
+      "description": "Illustrative time-of-use import price, EUR/kWh, by hour of the day.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.15,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.25,
+        0.15,
+        0.15
+      ]
+    },
+    {
+      "name": "Nrg flat tariff",
+      "description": "A flat import price, EUR/kWh: one value, held for the whole run.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "hold",
+      "values": [0.25]
+    },
+    {
+      "name": "Nrg grid intensity",
+      "description": "Illustrative grid carbon intensity, kg CO2e per kWh, by hour of the day: cleaner around midday, dirtier at the evening peak.",
+      "start": 0,
+      "step": 1,
+      "interpolation": "step",
+      "beyond": "repeat",
+      "values": [
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.35,
+        0.34,
+        0.32,
+        0.3,
+        0.27,
+        0.24,
+        0.22,
+        0.2,
+        0.2,
+        0.22,
+        0.26,
+        0.31,
+        0.38,
+        0.42,
+        0.42,
+        0.4,
+        0.38,
+        0.36,
+        0.35
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "Nrg shore",
+      "description": "Shore power drawn by the ships at the berth, kW, capped at the connection limit; tagged demand so the grid connection serves it.",
+      "rate": "min(VAR(\"$connected_kw\"), connection_kw)",
+      "tag": "demand"
+    },
+    {
+      "name": "Nrg auxiliary",
+      "description": "The at-berth load the shore link does not carry, kW, from the ships' own engines.",
+      "rate": "VAR(\"$at_berth_kw\") - min(VAR(\"$connected_kw\"), connection_kw)",
+      "price": 0.2,
+      "emission_factor": 0.69
+    },
+    {
+      "name": "Nrg import",
+      "description": "Whatever the site could not cover itself, up to the connection limit, kW.",
+      "rate": "min(max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\"), 0), import_limit_kw)",
+      "price": "TS(import_profile)",
+      "emission_factor": "TS(intensity_profile)",
+      "tag": "import",
+      "peak_price": 0.0
+    },
+    {
+      "name": "Nrg unserved",
+      "description": "Demand the connection limit could not deliver, kW.",
+      "rate": "max(FLOWSUM(\"demand\") + FLOWSUM(\"storage_in\") - FLOWSUM(\"generation\") - FLOWSUM(\"storage_out\") - FLOWSUM(\"dispatchable\") - FLOW(\"$Nrg import\"), 0)",
+      "tag": "unserved"
+    },
+    {
+      "name": "Nrg export",
+      "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
+      "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
+      "price": "-export_price",
+      "tag": "export"
+    },
+    {
+      "name": "Nrg curtailed",
+      "description": "Generation that was neither used, stored nor exported, kW.",
+      "rate": "max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\") - FLOW(\"$Nrg export\"), 0)",
+      "tag": "curtailed"
+    }
+  ],
+  "fixed_costs": [
+    {
+      "name": "Shore connection",
+      "description": "Converter, cable reel and civil works, sized per MW of connection.",
+      "amount": 0,
+      "category": "Capital",
+      "capex": true
+    }
+  ],
+  "submodels": {
+    "Shore power": {
+      "info": {
+        "description": "A ship at a berth. A call enters by \"in\" with its hotel load (kW), reefer count, a ready flag and its dwell in hours, and leaves by \"out\" after that dwell. While it is at the berth its load, hotel plus reefers, counts as at-berth demand. A ready ship whose dwell is longer than connect plus disconnect time plugs in after the connect time and draws shore power until the disconnect starts; any other ship burns auxiliary power for its whole stay. Two flows show the split: \"Nrg shore\" is the shore part, tagged demand and capped at the connection limit across all ships at once, so the grid connection prices it; \"Nrg auxiliary\" is the rest, from the ships' own engines, priced and counted for emissions here. A negative dwell counts as 0, so a call never waits a negative time. The four ship attributes are expressions on the entity, so a model that names them differently (or has no reefers) passes its own.",
+        "library": {"library": "energy", "asset": "shore_power", "version": "1.5.0"},
+        "parameters": [
+          {
+            "name": "connection_kw",
+            "type": "number",
+            "default": 2000.0,
+            "unit": "kW",
+            "label": "Shore connection limit",
+            "help": "The most the shore link delivers to all ships at the berth together.",
+            "group": "Shore link",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "connect_h",
+            "type": "number",
+            "default": 0.5,
+            "unit": "hours",
+            "label": "Connect time",
+            "help": "Time from arrival to plug-in; the ship runs on auxiliaries meanwhile.",
+            "group": "Shore link",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "disconnect_h",
+            "type": "number",
+            "default": 0.5,
+            "unit": "hours",
+            "label": "Disconnect time",
+            "help": "Time before departure the ship unplugs and runs on auxiliaries again.",
+            "group": "Shore link",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reefer_kw",
+            "type": "number",
+            "default": 4.4,
+            "unit": "kW",
+            "label": "Load per reefer",
+            "help": "Electrical load of one refrigerated container.",
+            "group": "Ship",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "aux_fuel_price_per_kwh",
+            "type": "number",
+            "default": 0.2,
+            "unit": "EUR/kWh",
+            "label": "Auxiliary energy price",
+            "help": "Cost of one kWh of electricity from the ship's auxiliaries; an estimate for marine gas oil, replace it with your fuel price.",
+            "group": "Cost",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "aux_emission_factor",
+            "type": "number",
+            "default": 0.69,
+            "unit": "kg CO2e/kWh",
+            "label": "Auxiliary emission factor",
+            "help": "Impact per kWh from the auxiliaries; an estimate for marine gas oil.",
+            "group": "Emissions",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "hotel_load",
+            "type": "name",
+            "default": "entity.hotel_kw",
+            "unit": "",
+            "label": "Hotel load",
+            "help": "Expression for the ship's hotel load in kW.",
+            "group": "Ship attributes",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "reefer_count",
+            "type": "name",
+            "default": "entity.reefers",
+            "unit": "",
+            "label": "Reefers",
+            "help": "Expression for the number of reefers aboard; give 0 when the call has none.",
+            "group": "Ship attributes",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "ready",
+            "type": "name",
+            "default": "entity.shore_ready",
+            "unit": "",
+            "label": "Shore-ready flag",
+            "help": "Expression that is 1 for a ship able to take shore power and 0 for one that is not; give 1 when every ship is ready.",
+            "group": "Ship attributes",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "dwell",
+            "type": "name",
+            "default": "entity.dwell_h",
+            "unit": "",
+            "label": "Dwell",
+            "help": "Expression for the time at the berth in hours.",
+            "group": "Ship attributes",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {
+          "variables": ["at_berth_kw", "connected_kw"],
+          "flows": ["Nrg shore", "Nrg auxiliary"]
+        }
+      },
+      "parameters": [
+        {
+          "name": "connection_kw",
+          "default": 2000.0,
+          "type": "number",
+          "description": "The most the shore link delivers to all ships at the berth together."
+        },
+        {
+          "name": "connect_h",
+          "default": 0.5,
+          "type": "number",
+          "description": "Time from arrival to plug-in; the ship runs on auxiliaries meanwhile."
+        },
+        {
+          "name": "disconnect_h",
+          "default": 0.5,
+          "type": "number",
+          "description": "Time before departure the ship unplugs and runs on auxiliaries again."
+        },
+        {
+          "name": "reefer_kw",
+          "default": 4.4,
+          "type": "number",
+          "description": "Electrical load of one refrigerated container."
+        },
+        {
+          "name": "aux_fuel_price_per_kwh",
+          "default": 0.2,
+          "type": "number",
+          "description": "Cost of one kWh of electricity from the ship's auxiliaries; an estimate for marine gas oil, replace it with your fuel price."
+        },
+        {
+          "name": "aux_emission_factor",
+          "default": 0.69,
+          "type": "number",
+          "description": "Impact per kWh from the auxiliaries; an estimate for marine gas oil."
+        },
+        {
+          "name": "hotel_load",
+          "default": "entity.hotel_kw",
+          "type": "name",
+          "description": "Expression for the ship's hotel load in kW."
+        },
+        {
+          "name": "reefer_count",
+          "default": "entity.reefers",
+          "type": "name",
+          "description": "Expression for the number of reefers aboard; give 0 when the call has none."
+        },
+        {
+          "name": "ready",
+          "default": "entity.shore_ready",
+          "type": "name",
+          "description": "Expression that is 1 for a ship able to take shore power and 0 for one that is not; give 1 when every ship is ready."
+        },
+        {
+          "name": "dwell",
+          "default": "entity.dwell_h",
+          "type": "name",
+          "description": "Expression for the time at the berth in hours."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg shore": {},
+          "Nrg auxiliary": {
+            "price": {"$arg": "aux_fuel_price_per_kwh"},
+            "emission_factor": {"$arg": "aux_emission_factor"}
+          }
+        }
+      },
+      "blocks": [
+        {
+          "name": "in",
+          "type": "SUB_ENTRY",
+          "description": "Ship arrives at the berth",
+          "position": [0.0, 0.0]
+        },
+        {
+          "name": "read",
+          "type": "ASSIGN",
+          "description": "Read the call",
+          "position": [150.0, 0.0],
+          "params": {
+            "assignments": [
+              {"target": "entity.nrg_hotel_in", "expr": {"$arg": "hotel_load"}},
+              {"target": "entity.nrg_reefers_in", "expr": {"$arg": "reefer_count"}},
+              {"target": "entity.nrg_ready_in", "expr": {"$arg": "ready"}},
+              {"target": "entity.nrg_dwell", "expr": {"$arg": "dwell"}},
+              {
+                "target": "entity.nrg_berth_kw",
+                "expr": "entity.nrg_hotel_in + entity.nrg_reefers_in * reefer_kw"
+              },
+              {
+                "target": "entity.nrg_shore_kw",
+                "expr": "IF(entity.nrg_ready_in > 0 and entity.nrg_dwell > connect_h + disconnect_h, entity.nrg_berth_kw, 0)"
+              },
+              {
+                "target": "entity.nrg_t1",
+                "expr": "IF(entity.nrg_ready_in > 0 and entity.nrg_dwell > connect_h + disconnect_h, connect_h, max(entity.nrg_dwell, 0))"
+              },
+              {
+                "target": "entity.nrg_t2",
+                "expr": "IF(entity.nrg_ready_in > 0 and entity.nrg_dwell > connect_h + disconnect_h, entity.nrg_dwell - connect_h - disconnect_h, 0)"
+              },
+              {
+                "target": "entity.nrg_t3",
+                "expr": "IF(entity.nrg_ready_in > 0 and entity.nrg_dwell > connect_h + disconnect_h, disconnect_h, 0)"
+              },
+              {"target": "$at_berth_kw", "expr": "VAR(\"$at_berth_kw\") + entity.nrg_berth_kw"}
+            ]
+          }
+        },
+        {
+          "name": "connect",
+          "type": "DELAY",
+          "description": "Connect the cable",
+          "position": [300.0, 0.0],
+          "params": {"dist_params": {"value": "entity.nrg_t1"}, "time_unit": "hours"}
+        },
+        {
+          "name": "plug_in",
+          "type": "ASSIGN",
+          "description": "Plug in",
+          "position": [450.0, 0.0],
+          "params": {
+            "assignments": [
+              {"target": "$connected_kw", "expr": "VAR(\"$connected_kw\") + entity.nrg_shore_kw"}
+            ]
+          }
+        },
+        {
+          "name": "on_shore",
+          "type": "DELAY",
+          "description": "On shore power",
+          "position": [600.0, 0.0],
+          "params": {"dist_params": {"value": "entity.nrg_t2"}, "time_unit": "hours"}
+        },
+        {
+          "name": "unplug",
+          "type": "ASSIGN",
+          "description": "Unplug",
+          "position": [750.0, 0.0],
+          "params": {
+            "assignments": [
+              {"target": "$connected_kw", "expr": "VAR(\"$connected_kw\") - entity.nrg_shore_kw"}
+            ]
+          }
+        },
+        {
+          "name": "disconnect",
+          "type": "DELAY",
+          "description": "Disconnect the cable",
+          "position": [900.0, 0.0],
+          "params": {"dist_params": {"value": "entity.nrg_t3"}, "time_unit": "hours"}
+        },
+        {
+          "name": "leave",
+          "type": "ASSIGN",
+          "description": "Ship leaves the berth",
+          "position": [1050.0, 0.0],
+          "params": {
+            "assignments": [
+              {"target": "$at_berth_kw", "expr": "VAR(\"$at_berth_kw\") - entity.nrg_berth_kw"}
+            ]
+          }
+        },
+        {
+          "name": "out",
+          "type": "SUB_EXIT",
+          "description": "Ship departs",
+          "position": [1200.0, 0.0]
+        }
+      ],
+      "links": [
+        {"source": "in", "target": "read"},
+        {"source": "read", "target": "connect"},
+        {"source": "connect", "target": "plug_in"},
+        {"source": "plug_in", "target": "on_shore"},
+        {"source": "on_shore", "target": "unplug"},
+        {"source": "unplug", "target": "disconnect"},
+        {"source": "disconnect", "target": "leave"},
+        {"source": "leave", "target": "out"}
+      ],
+      "annotations": []
+    },
+    "Grid connection": {
+      "info": {
+        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.5.0"},
+        "parameters": [
+          {
+            "name": "import_profile",
+            "type": "name",
+            "default": "Nrg tariff",
+            "unit": "",
+            "label": "Import tariff",
+            "help": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile.",
+            "group": "Prices",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "export_price",
+            "type": "number",
+            "default": 0.05,
+            "unit": "EUR/kWh",
+            "label": "Export price",
+            "help": "Paid for every exported kWh: it enters Total Cost as a negative cost.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "intensity_profile",
+            "type": "name",
+            "default": "Nrg grid intensity",
+            "unit": "",
+            "label": "Grid carbon intensity",
+            "help": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead.",
+            "group": "Emissions",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "timeseries_input"
+          },
+          {
+            "name": "import_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Import limit",
+            "help": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "export_limit_kw",
+            "type": "number",
+            "default": 100.0,
+            "unit": "kW",
+            "label": "Export limit",
+            "help": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for.",
+            "group": "Connection",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "demand_charge_per_kw",
+            "type": "number",
+            "default": 0.0,
+            "unit": "EUR/kW",
+            "label": "Demand charge",
+            "help": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff.",
+            "group": "Prices",
+            "min": 0.0,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "catalogue": {
+          "catalogue": "Nrg tariffs",
+          "label": "Tariff",
+          "group": "Prices",
+          "map": {"import_profile": "import_profile", "export_price": "export_price"},
+          "rows": ["Flat", "Time of use", "Time of use, no export"],
+          "units": {"export_price": "EUR/kWh"},
+          "values": {
+            "Flat": {"import_profile": "Nrg flat tariff", "export_price": 0.05},
+            "Time of use": {"import_profile": "Nrg tariff", "export_price": 0.05},
+            "Time of use, no export": {"import_profile": "Nrg tariff", "export_price": 0.0}
+          },
+          "sources": {
+            "Flat": "Illustrative starting point (Naga); not market data.",
+            "Time of use": "Illustrative starting point (Naga); not market data.",
+            "Time of use, no export": "Illustrative starting point (Naga); not market data."
+          }
+        },
+        "owns": {
+          "timeseries_inputs": ["Nrg tariff", "Nrg flat tariff", "Nrg grid intensity"],
+          "flows": ["Nrg import", "Nrg unserved", "Nrg export", "Nrg curtailed"]
+        }
+      },
+      "parameters": [
+        {
+          "name": "import_profile",
+          "default": "Nrg tariff",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "Import price by hour of the day, EUR/kWh. A flat tariff is a one-value profile."
+        },
+        {
+          "name": "export_price",
+          "default": 0.05,
+          "type": "number",
+          "description": "Paid for every exported kWh: it enters Total Cost as a negative cost."
+        },
+        {
+          "name": "intensity_profile",
+          "default": "Nrg grid intensity",
+          "type": "name",
+          "refers_to": "timeseries_input",
+          "description": "kg CO2e per imported kWh, by hour of the day. It drives Total Impact, which is deliberately generic: use it for water, waste or any other per-unit impact instead."
+        },
+        {
+          "name": "import_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Connection capacity. Demand beyond it is recorded as unserved energy, not supplied."
+        },
+        {
+          "name": "export_limit_kw",
+          "default": 100.0,
+          "type": "number",
+          "description": "Largest power the meter may export. Surplus beyond it is curtailed, which the curtailment flow accounts for."
+        },
+        {
+          "name": "demand_charge_per_kw",
+          "default": 0.0,
+          "type": "number",
+          "description": "Billed once on the highest import power the site actually HELD (the import flow's Peak Rate), the way a network operator bills capacity. 0 for an energy-only tariff."
+        }
+      ],
+      "scoped": {
+        "flows": {
+          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
+          "Nrg unserved": {},
+          "Nrg export": {},
+          "Nrg curtailed": {}
+        }
+      },
+      "blocks": [],
+      "links": [],
+      "annotations": []
+    }
+  },
+  "info": {
+    "title": "Berth: shore power",
+    "category": "Energy",
+    "description": "A two-berth quay over four weeks of ship calls, with each ship's hotel load and reefers met by its own engines or, when the ship is ready and the call long enough, by a shore connection priced on a tariff and a grid carbon intensity. The question it answers: how much CO2 and energy cost does shore power save, how large must the connection be, and does the capital pay back? Read the flow summary (shore and auxiliary kWh, peak kW), the cost summary, and the investment case across scenarios. Illustrative figures."
+  },
+  "data_sources": [
+    {
+      "name": "berth calls",
+      "kind": "csv",
+      "location": "data/berth_calls.csv",
+      "description": "One row per ship call: type, hotel load, reefers, dwell"
+    }
+  ],
+  "data_bindings": [
+    {
+      "name": "call book",
+      "source": "berth calls",
+      "transform": "orders",
+      "target": "orders",
+      "enabled": true,
+      "description": "The ship calls of the four weeks, from the CSV"
+    }
+  ],
+  "simulation": {"time_limit": 672.0, "warmup": 0, "replications": 1, "time_unit": "hours"},
+  "investment": {
+    "baseline": "",
+    "horizon_years": 15,
+    "discount_rate": 0.08,
+    "operating_hours_per_year": 8760.0,
+    "margin_per_part": 0.0,
+    "throughput": ""
+  },
+  "outputs": {},
+  "dashboard": {
+    "widgets": [
+      {
+        "name": "shore_kw",
+        "kind": "kpi",
+        "title": "Shore power now",
+        "unit": "kW",
+        "expr": "FLOW(\"shore_power_1/Nrg shore\")"
+      },
+      {
+        "name": "aux_kw",
+        "kind": "kpi",
+        "title": "Ship engines now",
+        "unit": "kW",
+        "expr": "FLOW(\"shore_power_1/Nrg auxiliary\")"
+      },
+      {
+        "name": "power",
+        "kind": "line",
+        "title": "Berth energy by source, kW",
+        "series": [
+          {"label": "Shore", "expr": "FLOW(\"shore_power_1/Nrg shore\")"},
+          {"label": "Ship engines", "expr": "FLOW(\"shore_power_1/Nrg auxiliary\")"}
+        ]
+      }
+    ],
+    "inputs": [
+      {
+        "path": "blocks.shore_power_1.params.arguments.connection_kw",
+        "label": "Shore connection",
+        "kind": "number",
+        "min": 500,
+        "max": 10000
+      },
+      {
+        "path": "variables.ready_share.initial",
+        "label": "Ships shore-ready",
+        "kind": "number",
+        "min": 0,
+        "max": 1
+      }
+    ],
+    "results": [
+      {
+        "kpi": "flow/shore_power_1/Nrg shore/Total",
+        "label": "Shore energy",
+        "unit": "kWh",
+        "better": "higher"
+      },
+      {
+        "kpi": "flow/shore_power_1/Nrg auxiliary/Total",
+        "label": "Auxiliary energy",
+        "unit": "kWh",
+        "better": "lower"
+      },
+      {"kpi": "system/Total Impact", "label": "CO2", "unit": "kg", "better": "lower"},
+      {"kpi": "system/Total Flow Cost", "label": "Energy cost", "unit": "EUR", "better": "lower"},
+      {
+        "kpi": "flow/grid_connection_1/Nrg import/Peak Rate",
+        "label": "Grid peak",
+        "unit": "kW",
+        "better": "lower"
+      },
+      {
+        "kpi": "flow/grid_connection_1/Nrg unserved/Peak Rate",
+        "label": "Unserved",
+        "unit": "kW",
+        "better": "lower"
+      }
+    ]
+  }
+}

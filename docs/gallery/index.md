@@ -3,12 +3,12 @@
 
 # Gallery
 
-The 59 models that ship in the package, by kind. Each runs as it is.
+The 60 models that ship in the package, by kind. Each runs as it is.
 
 | Page | Models |
 |---|---|
 | [Agent-based](agent-based.md) | Boids flock (continuous, heading), Nagel-Schreckenberg traffic (ring), Schelling segregation (grid), SIR on a small-world network, Sugarscape with regrowth (grid, patches), Wolf-Sheep predation with grass (grid), Bass diffusion (agents), Machine agent with repair, Courier on a path network, Random walker (continuous space), Server busy/idle cycle (agents), SIR epidemic (agents) |
-| [Energy](energy.md) | Biogas digester, holder and CHP, Biogas plant (library assets), Depot: PV, EV charging and heat pump, PV + battery sizing and dispatch, PV + battery site (library assets) |
+| [Energy](energy.md) | Berth: shore power, Biogas digester, holder and CHP, Biogas plant (library assets), Depot: PV, EV charging and heat pump, PV + battery sizing and dispatch, PV + battery site (library assets) |
 | [Games](games.md) | Emergency department: staffing game, Supply line: order-rate management game |
 | [Logistics](logistics.md) | Hub day: electrifying the ground support equipment, Container terminal: electrification, Container terminal: quay to yard, Hub day: turnaround workload (crews, ground equipment, on-time departures), Warehouse with forklifts (floor plan), Order-driven warehouse (library assets) |
 | [Manufacturing](manufacturing.md) | Robot cell against manual assembly, Automation floor (robot cells, AMR, palletiser), Job shop (Jackson network), Job shop (routed, per-product sequences), Line with finite buffers, Machine with breakdowns, Job shop with MES digital twin, Make-to-order line (library assets), Orders, due dates and tardiness, Order shop ranked by priority, Priority jobs with rework, Two-cell line (reusable submodel) |

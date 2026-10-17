@@ -13,13 +13,13 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 
 ## Gallery
 
-- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 59 models that ship in the package, by kind.
+- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 60 models that ship in the package, by kind.
 - [Teaching](https://thematthub.github.io/naga/gallery/teaching.html): 9 of the bundled models.
 - [Manufacturing](https://thematthub.github.io/naga/gallery/manufacturing.html): 12 of the bundled models.
 - [Logistics](https://thematthub.github.io/naga/gallery/logistics.html): 6 of the bundled models.
 - [Services](https://thematthub.github.io/naga/gallery/services.html): 5 of the bundled models.
 - [Supply chain](https://thematthub.github.io/naga/gallery/supply-chain.html): 2 of the bundled models.
-- [Energy](https://thematthub.github.io/naga/gallery/energy.html): 5 of the bundled models.
+- [Energy](https://thematthub.github.io/naga/gallery/energy.html): 6 of the bundled models.
 - [System dynamics](https://thematthub.github.io/naga/gallery/system-dynamics.html): 6 of the bundled models.
 - [Agent-based](https://thematthub.github.io/naga/gallery/agent-based.html): 12 of the bundled models.
 - [Games](https://thematthub.github.io/naga/gallery/games.html): 2 of the bundled models.

@@ -4,9 +4,26 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.10: from an event log to a model, energy on every fleet
+## 0.11: shore power at a berth
 
 <!-- --8<-- [start:latest] -->
+- **Shore power at a berth.** A new bundled model feeds ships' hotel loads from the grid up to
+  the shore connection and leaves the rest on their auxiliary engines, priced and emitting as
+  marine fuel. Four like-for-like scenarios (no shore power, 2 MW, 6 MW, every ship ready) end in
+  an investment case that says who pays (the port) and who saves (the shipowners).
+
+```console
+naga run berth_shore_power
+```
+
+- **Misspelt names caught earlier.** A name passed into a submodel through a parameter, such as
+  `POWER(source)` or `TS(profile)`, is now checked when the model is validated.
+- **Before you upgrade:** a model whose submodel parameter names an equipment, series or level
+  that does not exist is now refused at validation; it failed when run before.
+<!-- --8<-- [end:latest] -->
+
+## 0.10: from an event log to a model, energy on every fleet
+
 - **Draft a model from an event log.** `naga discover` reads a CSV or XES log and writes a model
   with arrivals, activity times, routing and resources, and a report that says how far to trust
   it. `--check` tells you first whether the log is good enough. See
@@ -27,7 +44,6 @@ naga discover job_shop_log -o draft.json --idle-waits
   rates, thresholds and demand charge are now read per the flow's own unit, so those numbers
   change (validation warns with `W_RATE_UNIT_CHANGED`), and flows sharing a tag in two units are
   refused. A battery fleet with an idle draw now charges while idle.
-<!-- --8<-- [end:latest] -->
 
 ## 0.9: a twin that follows the plant's orders
 

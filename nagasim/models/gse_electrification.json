@@ -2865,7 +2865,7 @@
     "Grid connection": {
       "info": {
         "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
-        "library": {"library": "energy", "asset": "grid_connection", "version": "1.3.0"},
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.5.0"},
         "parameters": [
           {
             "name": "import_profile",
