@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs: two worked examples on the engine's site, airport ground support and a container terminal, whose numbers and charts come from runs of the bundled models; `turnaround_workload` gains scenarios with fewer ramp agents and belt loaders.
+
 ## 0.12.0 (2026-10-17)
 
 One table now holds what the engine knows about each field of a model, and the published

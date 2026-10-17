@@ -28,6 +28,8 @@ naga examples --path
 
 Some models use submodels that came from the asset libraries of a separate product; the engine runs the submodels, and that product's artwork is not in the files.
 
+Two worked examples take some of these models through a decision: [airport ground support](../worked-examples/airport-ground-support.md) and [a container terminal](../worked-examples/container-terminal.md).
+
 ## How the numbers are made
 
 `tools/gen_engine_docs.py` runs every model and writes these pages: seed 0, the model's own run length and warm-up, and as many replications as the model itself asks for, at most 3. Each number is the mean over those replications, at three significant digits, with the half-width of its 95% Student-t interval when there is more than one replication. A test regenerates every page and compares, so a number here is what the engine gives, on the version these pages were built from. Few replications make wide intervals: these are illustrations, not results to cite. The models whose answer is known exactly are compared with it on [Reference models](../reference-models.md).

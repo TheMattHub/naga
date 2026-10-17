@@ -527,6 +527,35 @@
     {"source": "turn_S10", "target": "stand_10", "source_port": "out", "target_port": "turn_in"},
     {"source": "stand_10", "target": "on time", "source_port": "out"}
   ],
+  "scenarios": [
+    {
+      "name": "2 fewer ramp agents per shift",
+      "description": "Every shift of the rota with 2 ramp agents fewer.",
+      "overrides": [
+        {
+          "path": "schedules.Ramp shifts.points",
+          "value": [[120, 12], [480, 16], [480, 14], [360, 12]]
+        },
+        {"path": "blocks.ramp_crew.params.arguments.agents", "value": 16}
+      ]
+    },
+    {
+      "name": "4 fewer ramp agents per shift",
+      "description": "Every shift of the rota with 4 ramp agents fewer.",
+      "overrides": [
+        {
+          "path": "schedules.Ramp shifts.points",
+          "value": [[120, 10], [480, 14], [480, 12], [360, 10]]
+        },
+        {"path": "blocks.ramp_crew.params.arguments.agents", "value": 14}
+      ]
+    },
+    {
+      "name": "6 belt loaders instead of 8",
+      "description": "The belt loader fleet cut to 6.",
+      "overrides": [{"path": "blocks.belts.params.arguments.count", "value": 6}]
+    }
+  ],
   "orders": [
     {
       "id": "KL1000",

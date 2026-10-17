@@ -60,6 +60,9 @@ nav:
       - Agent-based: gallery/agent-based.md
       - Games: gallery/games.md
       - Reference models: reference-models.md
+  - Worked examples:
+      - Airport ground support: worked-examples/airport-ground-support.md
+      - Container terminal: worked-examples/container-terminal.md
   - Coming from:
       - SimPy: coming-from/simpy.md
       - Arena: coming-from/arena.md

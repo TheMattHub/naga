@@ -25,6 +25,11 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 - [Games](https://thematthub.github.io/naga/gallery/games.html): 2 of the bundled models.
 - [Reference models](https://thematthub.github.io/naga/reference-models.html): Models whose answer is known exactly, from a formula found in the textbooks of the subject, beside what the engine gives when it runs them.
 
+## Worked examples
+
+- [Airport ground support](https://thematthub.github.io/naga/worked-examples/airport-ground-support.html): This page works through two decisions a ground handler at a hub faces: how many ramp agents and how much ground equipment a day's flight schedule needs, and whether that equipment can go electric and how it should charge.
+- [Container terminal](https://thematthub.github.io/naga/worked-examples/container-terminal.html): This page works through two decisions a container terminal faces: whether to electrify the fleet that carries boxes between the quay and the yard, and how large a shore power connection at a berth should be.
+
 ## Coming from
 
 - [SimPy](https://thematthub.github.io/naga/coming-from/simpy.html): Naga runs on SimPy: every block is a SimPy process and every resource a SimPy resource.

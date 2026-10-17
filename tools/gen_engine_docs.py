@@ -1,5 +1,5 @@
 """Generate the engine site's generated pages (`docs/reference/*.md`, `docs/gallery/*.md`,
-`docs/reference-models.md`, `docs/llms.txt`) from the live registries, the bundled models and the site's own nav.
+`docs/reference-models.md`, `docs/worked-examples/`, `docs/llms.txt`) from the live registries, the bundled models and the site's own nav.
 
     python tools/gen_engine_docs.py
 
@@ -859,6 +859,9 @@ def gallery_index(catalogue: dict) -> str:
               "Some models use submodels that came from the asset libraries of a separate "
               "product; the engine runs the submodels, and that product's artwork is not in "
               "the files.", "",
+              "Two worked examples take some of these models through a decision: "
+              "[airport ground support](../worked-examples/airport-ground-support.md) and "
+              "[a container terminal](../worked-examples/container-terminal.md).", "",
               "## How the numbers are made", "",
               "`tools/gen_engine_docs.py` runs every model and writes these pages: seed "
               f"{GALLERY_SEED}, the model's own run length and warm-up, and as many replications "
@@ -1237,6 +1240,452 @@ def gen_reference_models(out: Path) -> None:
     _write(out, "reference-models.md", [reference_page(rows)])
 
 
+# ---------------------------------------------------------- worked-examples/
+#
+# Two pages that walk through a decision the bundled models answer. Every number is read from
+# a run made here (seed 0, each model's own run length and replications) or from the model
+# file; the prose around it is the template below. The charts are drawn from the CSV files
+# the pages are written with, by `draw_worked_example_charts` (matplotlib, the `plot` extra).
+
+WORKED_SEED = GALLERY_SEED
+# Samples per run for the charts: every 5 minutes of the airport day, every 15 of the
+# terminal week. Sampling never changes a KPI (the sampler draws and schedules nothing).
+AIRPORT_POINTS, TERMINAL_POINTS = 288, 672
+AIRPORT_START_H = 4             # the hub day's time 0 is 04:00 local
+NIGHT_LOCAL_H = (22, 28)        # the charging window, 22:00-04:00, on the local clock
+
+
+def _scenario_runs(model: str, points: int | None = None):
+    """(layout, `run_scenarios` result, investment table or None) of a bundled model,
+    every scenario, at the worked examples' seed."""
+    import logging
+
+    from nagasim import investment
+    from nagasim.experiments import run_scenarios
+
+    layout = _layout(model)
+    if points:
+        layout = {**layout, "simulation": {**layout["simulation"], "timeseries_points": points}}
+    logging.disable(logging.WARNING)
+    try:
+        result = run_scenarios(layout, None, seed=WORKED_SEED, workers=1)
+    finally:
+        logging.disable(logging.NOTSET)
+    table = investment.investment_case(result, layout) if layout.get("investment") else None
+    return layout, result, table
+
+
+def _kpis(frames) -> dict:
+    """{KPI key: mean over the replications} of one scenario."""
+    from nagasim.experiments import flatten_kpis
+
+    return flatten_kpis(frames).groupby("KPI")["Value"].mean().to_dict()
+
+
+def _series(frames, name: str):
+    """(time, value) lists of one sampled series, first replication."""
+    ts = frames["timeseries"]
+    ts = ts[(ts["Run"] == ts["Run"].min()) & (ts["Series"] == name)].sort_values("Time")
+    return ts["Time"].tolist(), ts["Value"].tolist()
+
+
+def _energy_cost(frames) -> float:
+    """Fuel and grid energy plus the grid's demand charge, one replication's mean."""
+    k, costs = _kpis(frames), frames["cost_summary"]
+    peak = costs.loc[costs["Kind"] == "peak", "Amount"].sum() / costs["Run"].nunique()
+    return k["system/Total Flow Cost"] + peak
+
+
+def _argument(layout: dict, block: str, name: str, scenario: str | None = None):
+    """A block argument as saved, or as *scenario* overrides it."""
+    for item in layout.get("scenarios") or []:
+        if item["name"] == scenario:
+            for override in item["overrides"]:
+                if override["path"] == f"blocks.{block}.params.arguments.{name}":
+                    return override["value"]
+    return _named(layout["blocks"], block)["params"]["arguments"][name]
+
+
+def _money_row(table, name: str, horizon: bool = False) -> list[str]:
+    """Extra capital (M EUR), payback (years), NPV (M EUR) of one investment-table row."""
+    row = table[table["Scenario"] == name].iloc[0]
+    if row["Extra Capex"] == 0:
+        return ["0", "baseline", "baseline"]
+    payback = _sig(row["Payback Years"], 2) if row["Pays Back"] else "never"
+    return [_sig(row["Extra Capex"] / 1e6), payback, _sig(row["NPV"] / 1e6, 2)]
+
+
+def _table(head: list[str], rows: list[list[str]]) -> list[str]:
+    return ["| " + " | ".join(head) + " |", "|" + "---|" * len(head),
+            *("| " + " | ".join(row) + " |" for row in rows)]
+
+
+def _csv(path: Path, head: list[str], rows) -> None:
+    import csv
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(head)
+        writer.writerows(rows)
+
+
+def _clock(hour: float) -> str:
+    return f"{int(hour) % 24:02d}:{round(hour % 1 * 60):02d}"
+
+
+def airport_page(out: Path) -> str:
+    """The airport ground support page; writes its two chart CSVs into *out*/data."""
+    crew_layout, crews, _ = _scenario_runs("turnaround_workload", AIRPORT_POINTS)
+    gse_layout, gse, gse_money = _scenario_runs("gse_electrification", AIRPORT_POINTS)
+    base = crews.results["Baseline"]
+    k = _kpis(base)
+    flights = int(base["user_summary"].set_index("Statistic").loc["on_time_departure", "Count"])
+    stands = sum(1 for block in crew_layout["blocks"] if block["name"].startswith("turn_"))
+
+    # Ramp agents at work against agents on shift, on the local clock.
+    agents = "resource/ramp_crew/AP Ramp crew"
+    times, busy = _series(base, f"{agents}/in_service")
+    _, shift = _series(base, f"{agents}/capacity")
+    step = times[1] - times[0]
+    full = sum(1 for b, s in zip(busy, shift) if s > 0 and b >= s)
+    _csv(out / "data" / "airport-ramp-agents.csv", ["Local hour", "On shift", "At work"],
+         [(round(AIRPORT_START_H + t / 60, 3), int(s), int(b)) for t, s, b in zip(times, shift, busy)])
+
+    crew_rows = []
+    for name, frames in crews.results.items():
+        kk = _kpis(frames)
+        crew_rows.append(["As planned" if name == "Baseline" else name,
+                          _sig(100 * kk["user/on_time_departure"]),
+                          _sig(kk["user/turnaround_narrow_min"]), _sig(kk["user/turnaround_wide_min"])])
+    on_time = {name: 100 * _kpis(frames)["user/on_time_departure"] for name, frames in crews.results.items()}
+    names = list(crews.results)
+
+    # Electrification: the scenario table and the grid draw of the two charging strategies.
+    night, turns, spares = list(gse.results)[1:]
+    gse_rows, peak = [], {}
+    for name, frames in gse.results.items():
+        kk = _kpis(frames)
+        peak[name] = kk["flow/grid_connection_1/Nrg import/Peak Rate"]
+        gse_rows.append(["Diesel, today" if name == "Baseline" else name,
+                         _sig(100 * kk["user/on_time_departure"]),
+                         _sig(kk["system/Total Impact"] / 1000), _sig(peak[name]),
+                         *_money_row(gse_money, name)])
+    grid = "flow/grid_connection_1/Nrg import"
+    gtimes, night_kw = _series(gse.results[night], grid)
+    _, turns_kw = _series(gse.results[turns], grid)
+    _csv(out / "data" / "airport-grid-draw.csv",
+         ["Local hour", "Night charging kW", "Charging between turns kW"],
+         [(round(AIRPORT_START_H + t / 60, 3), f"{a:.1f}", f"{b:.1f}")
+          for t, a, b in zip(gtimes, night_kw, turns_kw)])
+    gse_k = {name: _kpis(frames) for name, frames in gse.results.items()}
+    settings = gse_layout["investment"]
+    diesel = _named(gse_layout["flows"], "Diesel")
+    vehicles = {"pushback": "pushback tractor", "belts": "belt loader", "tugs": "baggage tug",
+                "catering": "catering truck", "gpu": "ground power unit"}
+    hourly = ", ".join(f"{text} {_argument(gse_layout, key, 'cost_per_hour', night)} against "
+                       f"{_argument(gse_layout, key, 'cost_per_hour')}" for key, text in vehicles.items())
+    co2_cut = 100 * (1 - gse_k[turns]["system/Total Impact"] / gse_k["Baseline"]["system/Total Impact"])
+
+    lines = [
+        "# Airport ground support", "",
+        "This page works through two decisions a ground handler at a hub faces: how many ramp "
+        "agents and how much ground equipment a day's flight schedule needs, and whether that "
+        "equipment can go electric and how it should charge. Both are answered with two of the "
+        "[bundled models](../gallery/index.md), run flight by flight over one day. The hub, "
+        "its schedule and every price are illustrative; the method is what carries over to a "
+        "real one.", "",
+        "## The model", "",
+        f"The hub day has {flights} flights on {stands} stands, arriving in banks. Each "
+        "turnaround runs its cabin, hold, fuel, catering and ground power tasks in parallel; a "
+        "task waits for its vehicle, which drives from the depot to the stand, and for a ramp "
+        "agent on shift. As planned, a narrow-body turns in "
+        f"{_sig(k['user/turnaround_narrow_min'])} minutes on average and a wide-body in "
+        f"{_sig(k['user/turnaround_wide_min'])}, and {_sig(on_time['Baseline'])} % of flights "
+        "leave by their scheduled off-block time. The flights are read from a CSV file, so the "
+        "same model runs tomorrow's schedule.", "",
+        f"Every number below is from one run of each scenario at seed {WORKED_SEED}, as the "
+        "models ask, made when this page was generated. One day is one sample: the numbers "
+        "illustrate the method, they are not a forecast.", "",
+        "## Ramp agents and equipment", "",
+        "The first question is how much margin the plan has. The model's scenarios take ramp "
+        "agents off every shift, or belt loaders off the fleet, and run the same flights:", "",
+        *_table(["Scenario", "On time %", "Narrow-body turn, min", "Wide-body turn, min"], crew_rows),
+        "",
+        f"Two fewer agents per shift cost {_sig(on_time['Baseline'] - on_time[names[1]], 2)} "
+        f"points of on-time departures; four fewer cost "
+        f"{_sig(on_time['Baseline'] - on_time[names[2]], 2)}, so the loss grows faster than the "
+        f"cut. Two fewer belt loaders cost {_sig(on_time['Baseline'] - on_time[names[3]], 2)} "
+        "points, more than two fewer agents: the equipment has less slack than the crew. "
+        "This is the use of a workload model: run tomorrow's schedule and see which crew or "
+        "fleet runs short, and when.", "",
+        "![Ramp agents on shift and at work over the hub day](img/airport-ramp-agents.svg)", "",
+        "The reason is the banks. Over the day the agents are busy "
+        f"{_sig(k[f'{agents}/Usage % (snapshot)'])} % of their time on shift, but at the peaks "
+        f"the line of agents at work meets the line on shift: at {full} of the "
+        f"{len(times)} sampled instants (one every {_sig(step)} minutes) every agent on shift "
+        "is busy. An average says there is room; the day says there is none when it matters. "
+        "Chart data: [airport-ramp-agents.csv](data/airport-ramp-agents.csv).", "",
+        "## Electric ground equipment", "",
+        "The second question is whether battery ground support equipment (GSE) keeps the "
+        "schedule. The electric "
+        "scenarios keep today's fleet sizes, except where they say so, and differ in when the "
+        "vehicles charge: in the night window from 22:00 to 04:00, or whenever a vehicle is free "
+        "and its battery is low. The fuel trucks stay diesel.", "",
+        *_table(["Scenario", "On time %", "CO2 per day, t", "Grid peak, kW",
+                 "Extra capital, M EUR", "Payback, years",
+                 f"{_sig(settings['horizon_years'])}-year NPV, M EUR"], gse_rows),
+        "",
+        "Night charging alone costs "
+        f"{_sig(100 * (gse_k['Baseline']['user/on_time_departure'] - gse_k[night]['user/on_time_departure']), 2)} "
+        "points of on-time departures at today's fleet size: outside the window a vehicle that "
+        "runs low still has to charge, and is out of service while it does, which the chart "
+        "below shows as daytime draw. Charging between turns comes within "
+        f"{_sig(100 * (gse_k['Baseline']['user/on_time_departure'] - gse_k[turns]['user/on_time_departure']), 2)} "
+        f"points of diesel and cuts CO2 by {_sig(co2_cut, 2)} %. The spares lift on-time "
+        f"departures to {_sig(100 * gse_k[spares]['user/on_time_departure'])} % for the capital "
+        "in the table. Capital is the extra over the diesel fleet the hub owns, and the NPV is "
+        f"discounted at {_sig(100 * settings['discount_rate'])} %.", "",
+        "![Grid draw over the hub day, night charging against charging between turns]"
+        "(img/airport-grid-draw.svg)", "",
+        "The two strategies draw about the same energy in very different shapes. Night "
+        "charging plugs the fleet in when the window opens, which sets a grid peak of "
+        f"{_sig(peak[night])} kW; charging between turns follows the banks and peaks at "
+        f"{_sig(peak[turns])} kW, which is also the smaller connection to pay for. The lines "
+        f"are sampled every {_sig(step)} minutes; the peaks in the table are the run's exact "
+        "ones. Chart data: [airport-grid-draw.csv](data/airport-grid-draw.csv).", "",
+        "## What the result rests on", "",
+        "The payback rests mostly on one assumption: the hourly cost of each vehicle, which the "
+        "model takes from an illustrative catalogue. Electric equipment costs less an hour than "
+        f"diesel there (EUR per hour, electric against diesel: {hourly}), and over a year of "
+        "operation that difference is worth more than the energy saved. If an electric vehicle "
+        "costs the same per hour as a diesel one, most of the saving goes, and what remains is "
+        f"the fuel, priced at {_sig(diesel['price'])} EUR per kWh of fuel, against the grid "
+        "tariff, and the CO2. The investment case reports the saving as a whole, not by source: "
+        "to test the assumption, set the hourly costs in a copy of the model to your own "
+        "maintenance figures and run it again. The operational results, on-time departures and "
+        "the grid peak, do not depend on any price.", "",
+        "## Repeat it", "",
+        "Each command runs a bundled model by name and prints the numbers above, at the "
+        "command's default seed:", "",
+        "```console",
+        "naga scenarios turnaround_workload",
+        "naga scenarios gse_electrification",
+        "naga invest gse_electrification",
+        "```", "",
+        "`naga examples --path` prints the folder of the model files, to copy one and change "
+        "its schedule, fleet or prices."]
+    return "\n".join(lines)
+
+
+def terminal_page(out: Path) -> str:
+    """The container terminal page; writes its chart CSV into *out*/data."""
+    _, quay, _ = _scenario_runs("terminal_quay_to_yard")
+    layout, electric, money = _scenario_runs("terminal_electrification", TERMINAL_POINTS)
+    shore_layout, shore, shore_money = _scenario_runs("berth_shore_power")
+
+    def crane_rate(frames) -> float:
+        """Gross moves per crane-hour alongside: the moves over the cranes times the hours
+        each call is worked, from its release to its last move (orders "<call>-D", "<call>-L")."""
+        orders = frames["order_summary"]
+        orders = orders.assign(call=orders["Order"].str.split("-").str[0])
+        calls = orders.groupby(["Run", "call"]).agg(start=("Release", "min"), end=("Completion Time", "max"))
+        hours = (calls["end"] - calls["start"]).sum() / 60
+        cranes = _kpis(frames)["resource/CT Quay cranes/Scheduled Capacity Avg"]
+        return orders["Completed"].sum() / (cranes * hours)
+
+    q = _kpis(quay.results["Baseline"])
+    vessels = quay.results["Baseline"]["order_summary"]["Order"].str.split("-").str[0].nunique()
+    moves, cranes = q["resource/CT Quay cranes/Total Seizes"], q["resource/CT Quay cranes/Scheduled Capacity Avg"]
+    carriers = q["fleet/horizontal_transport_1/CT Vehicles/Vehicles"]
+
+    battery, agv = list(electric.results)[1:]
+    rows, ek = [], {}
+    rate = {name: crane_rate(frames) for name, frames in electric.results.items()}
+    for name, frames in electric.results.items():
+        kk = ek[name] = _kpis(frames)
+        kk["energy cost"] = _energy_cost(frames)
+        rows.append(["Diesel straddle carriers, today" if name == "Baseline" else name,
+                     _sig(rate[name]), _sig(kk["system/Total Impact"] / 1000),
+                     _sig(kk["energy cost"]), _sig(kk["flow/grid_connection_1/Nrg import/Peak Rate"]),
+                     *_money_row(money, name)])
+    grid = "flow/grid_connection_1/Nrg import"
+    times, battery_kw = _series(electric.results[battery], grid)
+    _, agv_kw = _series(electric.results[agv], grid)
+    _csv(out / "data" / "terminal-grid-draw.csv", ["Day", f"{battery} kW", f"{agv} kW"],
+         [(round(t / 1440, 4), f"{a:.1f}", f"{b:.1f}") for t, a, b in zip(times, battery_kw, agv_kw)])
+    step = times[1] - times[0]
+    peak = {name: ek[name]["flow/grid_connection_1/Nrg import/Peak Rate"] for name in (battery, agv)}
+    co2 = {name: 100 * (1 - ek[name]["system/Total Impact"] / ek["Baseline"]["system/Total Impact"])
+           for name in (battery, agv)}
+    carrier = "horizontal_transport_1"
+    cost = {name: _argument(layout, carrier, "cost_per_hour", name) for name in (None, battery, agv)}
+    diesel = _named(layout["flows"], "Diesel")
+    settings = layout["investment"]
+
+    # Shore power at a berth.
+    shore_rows, sk = [], {}
+    calls = int(_kpis(shore.results["Baseline"])["system/Total Entities Completed"])
+    for name, frames in shore.results.items():
+        kk = sk[name] = _kpis(frames)
+        shore_rows.append(["No shore power" if name == "Baseline" else name,
+                           _sig(kk["system/Total Impact"] / 1000), _sig(_energy_cost(frames) / calls),
+                           _sig(kk["flow/grid_connection_1/Nrg import/Peak Rate"]),
+                           *_money_row(shore_money, name)])
+    ship = "shore_power_1"
+    aux_peak = sk["Baseline"][f"flow/{ship}/Nrg auxiliary/Peak Rate"]
+    shore_settings = shore_layout["investment"]
+    shore_hours = float(shore_layout["simulation"]["time_limit"])
+
+    lines = [
+        "# Container terminal", "",
+        "This page works through two decisions a container terminal faces: whether to "
+        "electrify the fleet that carries boxes between the quay and the yard, and how large a "
+        "shore power connection at a berth should be. Both are answered with "
+        "[bundled models](../gallery/index.md), run container by container and ship by "
+        "ship. The terminal, its calls and every price are illustrative; the method is what "
+        "carries over to a real one.", "",
+        "## The model", "",
+        f"One berth with {_sig(cranes)} quay cranes, {_sig(carriers)} straddle carriers between "
+        "the quay and two yard blocks with a crane each, and a truck gate, over a week of "
+        f"vessel calls. In that week the cranes make {_sig(moves)} moves for {vessels} calls, at "
+        f"{_sig(crane_rate(quay.results['Baseline']))} gross moves per crane-hour alongside (the "
+        "moves over the cranes times the hours each call is worked), inside the 25 to 45 the "
+        "industry publishes for a quay crane. The "
+        "calls are read from a CSV file, so the same model runs next season's.", "",
+        f"Every number below is from one run of each scenario at seed {WORKED_SEED}, as the "
+        "models ask, made when this page was generated. One week is one sample: the numbers "
+        "illustrate the method, they are not a forecast.", "",
+        "## Electrifying the carriers", "",
+        "Today's diesel straddle carriers are compared with battery straddle carriers that "
+        "charge whenever they are free and low, and with automated guided vehicles (AGVs) that "
+        "swap their battery packs:", "",
+        *_table(["Scenario", "Moves per crane-hour", "CO2 per week, t", "Energy cost per week, EUR",
+                 "Grid peak, kW", "Extra capital, M EUR", "Payback, years",
+                 f"{_sig(settings['horizon_years'])}-year NPV, M EUR"], rows),
+        "",
+        f"All three move the same {_sig(moves)} containers. The battery carriers work the ships "
+        f"at {_sig(rate[battery])} moves per crane-hour against {_sig(rate['Baseline'])}, so the "
+        "ships stay alongside a little longer while carriers charge; the AGVs, swapping packs, "
+        f"keep up at {_sig(rate[agv])}. CO2 falls by {_sig(co2[battery], 2)} % "
+        f"with battery carriers and {_sig(co2[agv], 2)} % with AGVs. The battery case is "
+        "marginal at the model's fuel price; the AGV case pays, for the reason in the next "
+        "section. Energy cost includes the grid's demand charge; capital is the extra over the "
+        "diesel fleet the terminal owns, and the NPV is discounted at "
+        f"{_sig(100 * settings['discount_rate'])} %.", "",
+        "![Grid draw over the week, battery straddle carriers against AGVs with swap]"
+        "(img/terminal-grid-draw.svg)", "",
+        "Both fleets draw power in bursts while a ship is worked and little in between, so "
+        "the connection is sized by the ships, not by the average. The AGVs peak at "
+        f"{_sig(peak[agv])} kW against {_sig(peak[battery])} kW for the battery carriers: "
+        "the fleet that is cheaper to run needs the larger connection. The lines are sampled "
+        f"every {_sig(step)} minutes; the peaks in the table are the run's exact ones. Chart "
+        "data: [terminal-grid-draw.csv](data/terminal-grid-draw.csv).", "",
+        "## Shore power at a berth", "",
+        f"A second model has a two-berth quay with {calls} ship calls over "
+        f"{_sig(shore_hours / 168)} weeks. A ship that is ready for shore power, and stays long "
+        "enough, takes its hotel load and reefers from the grid up to the connection's size; "
+        "the rest comes from its own engines. Cost per call counts the ships' fuel, the grid "
+        "energy and the grid's demand charge. The scenarios run the same calls with no "
+        "connection, two sizes with most ships ready, and a connection sized for every ship "
+        "ready:", "",
+        *_table(["Scenario", "CO2 at the berth, t", "Fuel and grid cost per call, EUR",
+                 "Grid peak, kW", "Connection capital, M EUR", "Payback, years",
+                 f"{_sig(shore_settings['horizon_years'])}-year NPV, M EUR"], shore_rows),
+        "",
+        "Two of the largest ships alongside draw "
+        f"{_sig(aux_peak)} kW together, so a connection much above that buys capacity no ship "
+        "uses, and the larger connection with the same ships ready pays back far later than "
+        "the smaller one. The connection is worth sizing to the ships that will plug in, not "
+        "to the berth.", "",
+        "## What the result rests on", "",
+        "The model is exact about what happens on the quay; each business case is only as good "
+        "as the prices put into it. Three of them decide the cases above:", "",
+        f"- **Battery carriers: the diesel price.** The model prices fuel at "
+        f"{_sig(diesel['price'])} EUR per kWh of fuel, about {_sig(10 * diesel['price'], 2)} "
+        "EUR a litre. The saving is fuel against grid energy, so the payback moves with the "
+        "fuel contract.",
+        f"- **AGVs: the hourly cost.** The model costs an AGV at {_sig(cost[agv])} EUR an hour "
+        f"against {_sig(cost[None])} for a driven diesel carrier and {_sig(cost[battery])} for "
+        "a battery one; most of the AGV saving is that difference, mainly labour. The yard "
+        "works an AGV terminal needs are not in the case.",
+        "- **Shore power: who pays and who saves.** The case combines the port and the "
+        "shipowners: the port pays for the connection, the ships save the fuel, priced at "
+        f"{_sig(_argument(shore_layout, ship, 'aux_fuel_price_per_kwh'))} EUR per kWh "
+        "generated on board. The port's own return depends on the tariff that brings part of "
+        "that saving back to it. The ships' retrofit and any grid reinforcement are not in "
+        "the case.", "",
+        "The investment case reports each saving as a whole, not by source: to test an "
+        "assumption, change it in a copy of the model and run the case again.", "",
+        "## Repeat it", "",
+        "Each command runs a bundled model by name and prints the numbers above, at the "
+        "command's default seed. The electrification runs take some seconds each:", "",
+        "```console",
+        "naga run terminal_quay_to_yard",
+        "naga scenarios terminal_electrification",
+        "naga invest terminal_electrification",
+        "naga invest berth_shore_power",
+        "```", "",
+        "`naga examples --path` prints the folder of the model files, to copy one and change "
+        "its fleet, calls or prices."]
+    return "\n".join(lines)
+
+
+def gen_worked_examples(out: Path) -> None:
+    """Write both pages and their chart data into *out*."""
+    _write(out, "airport-ground-support.md", [airport_page(out)])
+    _write(out, "container-terminal.md", [terminal_page(out)])
+
+
+# The charts drawn from the data files: x axis, y axis, and the clock or the shaded window.
+CHARTS = {
+    "airport-ramp-agents": ("Local time", "Ramp agents", None),
+    "airport-grid-draw": ("Local time", "Grid draw, kW", NIGHT_LOCAL_H),
+    "terminal-grid-draw": ("Days from the start of the week", "Grid draw, kW", None),
+}
+
+
+def draw_worked_example_charts(out: Path) -> None:
+    """One SVG per CSV of *out*/data into *out*/img. Deterministic for a given matplotlib
+    and its fonts: no date, a fixed hash salt, text kept as text."""
+    import csv
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"svg.hashsalt": "naga", "svg.fonttype": "none", "font.size": 10})
+    (out / "img").mkdir(parents=True, exist_ok=True)
+    for stem, (xlabel, ylabel, shade) in CHARTS.items():
+        with (out / "data" / f"{stem}.csv").open(encoding="utf-8") as handle:
+            head, *rows = list(csv.reader(handle))
+        x = [float(row[0]) for row in rows]
+        fig, ax = plt.subplots(figsize=(8, 3.2))
+        if shade:
+            ax.axvspan(*shade, color="0.9", label="Night window, 22:00-04:00")
+        for column, label in enumerate(head[1:], 1):
+            ax.plot(x, [float(row[column]) for row in rows], label=label.removesuffix(" kW"),
+                    linewidth=1.4, drawstyle="steps-post" if stem == "airport-ramp-agents" else "default")
+        if xlabel == "Local time":
+            ticks = range(AIRPORT_START_H, AIRPORT_START_H + 25, 4)
+            ax.set_xticks(list(ticks), [_clock(h) for h in ticks])
+        else:
+            ax.set_xticks(range(8))
+        ax.set_xlim(x[0], x[-1])
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.grid(axis="y", color="0.85", linewidth=0.6)
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.yaxis.get_major_locator().set_params(integer=True)
+        ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0, 1), ncol=3)
+        fig.tight_layout()
+        fig.savefig(out / "img" / f"{stem}.svg", format="svg", metadata={"Date": None},
+                    facecolor="white")
+        plt.close(fig)
+
+
 # ------------------------------------------------------------------ llms.txt
 #
 # A map of the site for an LLM agent (llmstxt.org): every page of the nav, with its title,
@@ -1511,6 +1960,8 @@ def main() -> None:
         generate(DOCS / "reference")
     gen_gallery(DOCS / "gallery")
     gen_reference_models(DOCS)
+    gen_worked_examples(DOCS / "worked-examples")
+    draw_worked_example_charts(DOCS / "worked-examples")
     gen_llms(DOCS)
     sys.stdout.write(f"gen_engine_docs: wrote {DOCS}\n")
 
