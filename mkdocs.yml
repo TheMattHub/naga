@@ -89,6 +89,7 @@ nav:
       - Event log to model: event-log-to-model.md
       - Use from Python: python-api.md
       - Use with an agent: mcp.md
+      - Run a study with an assistant: ai-study.md
       - Digital twin:
           - Digital twin: digital-twin.md
           - A plant as a timeline: plant-timeline.md

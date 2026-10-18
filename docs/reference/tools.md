@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 71 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 78 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -115,3 +115,15 @@ The 71 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `debug_run` |  | Run one replication of a model under a debugger: start it, or continue it, until a stop, one step, a model time, a pending decision or the end. |
 | `debug_inspect` | yes | Read the state of a model's debug run where it stands, without moving it. |
+
+## study
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `study_start` |  | Start a simulation study: make its folder and say what to do first. |
+| `study_status` | yes | Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the last version's KPIs and the next step. |
+| `study_update` |  | Record what the study has learned or the person decided: set any of question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. |
+| `study_add_input` |  | Keep a source of the study in its inputs/ folder: copy a workspace file, or store text (a call transcript, notes). |
+| `study_step` |  | Test one model step: write the whole model, run it, check it, and store it as a new version (or as a draft when it fails). |
+| `study_accept` |  | Record that the person accepts the study as it stands. |
+| `study_revert` |  | Go back to an earlier version: it is recorded again as a new version, so no history is lost. |

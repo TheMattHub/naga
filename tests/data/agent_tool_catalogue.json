@@ -2271,5 +2271,216 @@
     },
     "name": "write_model",
     "read_only": false
+  },
+  {
+    "description": "Start a simulation study: make its folder and say what to do first.\n\nUse it for a decision question (\"how many cranes do we need?\"), then follow the\nnext_step in every answer. The study keeps its state in the folder; pass the returned\n`study` to the other study tools.\n\nReturns {\"study\", \"next_step\", \"plan_card\", \"effort\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "one_go",
+          "description": "one_go (plan approved first, then built) or incremental (built step by step).",
+          "type": "string"
+        },
+        "question": {
+          "description": "The decision or question the study answers, in the person's words.",
+          "type": "string"
+        },
+        "size": {
+          "default": "standard",
+          "description": "quick, standard or deep: caps on replications, steps and scenarios.",
+          "type": "string"
+        },
+        "study": {
+          "description": "Folder for the study; omit to use naga-studies/<short name of the question>.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "type": "object"
+    },
+    "name": "study_start",
+    "read_only": false
+  },
+  {
+    "description": "Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the\nlast version's KPIs and the next step. Call it first on an existing study folder.\n\nReturns {\"study\", \"question\", \"mode\", \"size\", \"sufficiency\", \"why_not_sufficient\", \"goals\",\n\"checklist\", \"last_version\", \"versions\", \"effort\", \"next_step\"}, plus \"plan_card\" until the\nplan is approved.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_status",
+    "read_only": true
+  },
+  {
+    "description": "Record what the study has learned or the person decided: set any of question,\ndecision, mode, size, plan_approved, goals, target, assumptions, sources, validation,\nexperiments, skipped. A list key replaces the whole list. Nothing here can mark the study\naccepted.\n\nReturns {\"ok\", \"next_step\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "changes": {
+          "description": "Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; a source is {id, text, input}; validation is {level: data|known_answer|expert, passed: bool, ...}.",
+          "type": "object"
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study",
+        "changes"
+      ],
+      "type": "object"
+    },
+    "name": "study_update",
+    "read_only": false
+  },
+  {
+    "description": "Keep a source of the study in its inputs/ folder: copy a workspace file, or store text\n(a call transcript, notes). Then name it with study_update(sources=[{\"id\", \"text\",\n\"input\": <the returned path>}]) so the inputs step can check it.\n\nReturns {\"input\": \"inputs/<name>\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "File name to store under inputs/ (no folders).",
+          "type": "string"
+        },
+        "path": {
+          "description": "Workspace file to copy in; give this or text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        },
+        "text": {
+          "description": "Text to store (a transcript, notes); give this or path.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "study",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "study_add_input",
+    "read_only": false
+  },
+  {
+    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Always send the complete model file and a one-line\nnote. A model that does not validate or run is stored as a draft with its problems, not\nrefused: read \"problems\", fix the model, step again.\n\nReturns {\"id\", \"kind\": \"version\"|\"draft\", \"verdict\", \"checks\", \"changes\", \"kpis\",\n\"sufficiency\", \"next_step\"}; a version also has its report at versions/<id>/report.html.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "description": "The complete model file as one JSON object (as write_model).",
+          "type": "object"
+        },
+        "note": {
+          "description": "One line: what changed in this step and why.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "Any unique string; a retried call with the same one is not recorded twice.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "First replication's seed.",
+          "type": "integer"
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study",
+        "layout",
+        "note"
+      ],
+      "type": "object"
+    },
+    "name": "study_step",
+    "read_only": false
+  },
+  {
+    "description": "Record that the person accepts the study as it stands. Call it only with the\nperson's own words, after they have explicitly accepted; never on your own judgment. It\nchanges the label, not the checks: open issues stay listed.\n\nReturns {\"sufficiency\": label}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "description": "The person's own words accepting the study.",
+          "type": "string"
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "name": "study_accept",
+    "read_only": false
+  },
+  {
+    "description": "Go back to an earlier version: it is recorded again as a new version, so no history is\nlost. Use it when a later step made things worse.\n\nReturns the new version, like study_step.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "description": "Why the study goes back to it.",
+          "type": "string"
+        },
+        "request_id": {
+          "description": "Any unique string, as for study_step.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Id of an earlier version, e.g. v002.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study",
+        "version",
+        "note"
+      ],
+      "type": "object"
+    },
+    "name": "study_revert",
+    "read_only": false
   }
 ]

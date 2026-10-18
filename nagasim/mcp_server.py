@@ -48,6 +48,8 @@ INSTALL_HINT = (
     "nagasim.agent_tools without it."
 )
 INSTRUCTIONS = (
+    "For a decision question or a simulation study, call study_start (or study_status on an "
+    "existing study folder) and follow its next_step. "
     "Build, validate, run and analyse discrete-event simulation models. To build one: "
     "get_model_format once, write_model with the whole model file, fix what its answer lists "
     "with one more write_model, run_model, save_model. run_model returns a compact KPI digest "

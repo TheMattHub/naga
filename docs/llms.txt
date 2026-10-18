@@ -36,6 +36,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [Event log to model](https://thematthub.github.io/naga/event-log-to-model.html): Most plants and offices already record what happened: which order went through which step, when it started and finished, and who did it.
 - [Use from Python](https://thematthub.github.io/naga/python-api.html): The command line is a thin layer over a few functions.
 - [Use with an agent](https://thematthub.github.io/naga/mcp.html): The engine has a set of tools an LLM agent calls to build, validate, run, debug and analyse a model: Agent tools lists every one.
+- [Run a study with an assistant](https://thematthub.github.io/naga/ai-study.html): The engine can keep a whole simulation study in a folder and test every model step, so any assistant that speaks to it (see Use with an agent) can run a study without remembering anything between calls.
 
 ## Digital twin
 
@@ -71,7 +72,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [KPIs](https://thematthub.github.io/naga/reference/kpis.html): Every result frame nagasim.api.run_model / nagasim.experiments.run_scenarios return, and every column each one carries -- probed against nagasim/models/job_shop_jackson.json so a new KPI column fails this generation until it has a definition here.
 - [Model file keys](https://thematthub.github.io/naga/reference/schema.html): Current schema version: 29 (nagasim/core/schema/migrate.py).
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 71 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 78 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 
