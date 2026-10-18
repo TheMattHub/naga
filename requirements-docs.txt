@@ -4,5 +4,6 @@ mkdocs-redirects==1.2.3
 mkdocstrings[python]==1.0.7
 mkdocstrings-python==2.0.9
 salabim==26.0.8
+greenlet==3.5.6  # salabim 26.0.8 imports it but does not declare it
 mesa==3.5.1
 networkx==3.6.1  # mesa 3.5.1 imports it but does not declare it
