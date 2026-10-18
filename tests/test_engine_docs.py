@@ -523,6 +523,8 @@ def test_every_api_entry_point_has_a_numpydoc_docstring_with_example(dotted):
 def test_the_api_docstring_examples_run(dotted):
     import doctest
 
+    if dotted.endswith(".plot"):    # matplotlib is an optional extra (nagasim[plot])
+        pytest.importorskip("matplotlib")
     flags = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
     tests = [t for t in doctest.DocTestFinder(recurse=False).find(_api_object(dotted), dotted, globs={})
              if t.examples]
