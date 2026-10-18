@@ -1,0 +1,3 @@
+1.67 minutes mean wait at the desks
+10.0 minutes until the tank holds 50 litres
+10.0 minutes, worked out by hand

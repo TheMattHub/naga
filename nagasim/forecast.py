@@ -240,15 +240,58 @@ def forecast(layout, *, horizon: float, replications: int = 100, kpis=None, even
              on_progress=None, should_stop=None) -> ForecastResult:
     """Run a short terminating horizon from the system's current state.
 
-    *horizon* is the run length in base time units and there is NO warm-up: the
-    forecast is about the transient from the initial state, which a warm-up
-    would discard. *bind_data* resolves the model's data bindings once before
-    the replications (`api.run_model`), so the run uses today's parameters.
+    There is no warm-up: a forecast is about the transient from the initial
+    state, which a warm-up would discard.
 
-    *kpis* narrows the end-of-horizon table (default: every KPI, including the
-    `timeseries/<series>/max` and `/min` peaks). *events* are
-    `{"name", "kpi", "op", "value"}` dicts, each answered as a probability with
-    a Wilson interval.
+    Parameters
+    ----------
+    layout : dict or str
+        The model, with its ``initial_state`` if it has one.
+    horizon : float
+        Run length in base time units.
+    replications : int, default 100
+        Replications behind each band.
+    kpis : list of str, optional
+        Narrows the end-of-horizon table (default: every KPI, including the
+        ``timeseries/<series>/max`` and ``/min`` peaks).
+    events : sequence of dict, default ()
+        ``{"name", "kpi", "op", "value"}`` conditions, each answered as a
+        probability with a Wilson interval.
+    bind_data : bool, default True
+        Resolve the model's data bindings once before the replications, so the
+        run uses today's parameters.
+    base_dir, network, confine_to : optional
+        As in `nagasim.api.run_model`.
+    seed : int, default 0
+        Seed of replication 0.
+    workers : int or "auto", default 1
+        Process-pool size.
+    confidence : float, default 0.95
+        Level of the intervals.
+    quantiles : tuple of float, default (0.05, 0.95)
+        The band's lower and upper quantile.
+    on_progress, should_stop : callable, optional
+        As in `nagasim.api.run_model`.
+
+    Returns
+    -------
+    ForecastResult
+        The end-of-horizon ``kpis`` with intervals, the ``bands`` of each series
+        and the answered ``events``.
+
+    See Also
+    --------
+    nagasim.api.run_model : A steady-state run, with a warm-up.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim.forecast import forecast
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> result = forecast(str(path), horizon=50, replications=5, seed=0)
+    >>> result.horizon, result.replications
+    (50.0, 5)
     """
     base = api.load_layout(layout)
     if not horizon or float(horizon) <= 0:

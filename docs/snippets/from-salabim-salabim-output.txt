@@ -1,0 +1,1 @@
+salabim: mean time in system 3.80 minutes

@@ -1,0 +1,3 @@
+     Scenario     Mean  Diff vs baseline  Significant
+     Baseline 1.407060          0.000000        False
+Faster server 0.496625         -0.910435         True

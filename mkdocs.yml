@@ -26,9 +26,28 @@ theme:
     - navigation.indexes
     - content.code.copy
 
+plugins:
+  - search
+  # A page that moved keeps its old address working. One map, for every move.
+  - redirects:
+      redirect_maps:
+        reference/api.md: reference/api/index.md
+        reference-models.md: validation/reference-models.md
+        reference/cli.md: reference/cli/index.md
+  # The API reference is the docstrings, read statically (no import of nagasim at build time).
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            show_source: false
+            members_order: source
+
 markdown_extensions:
   - tables
   - admonition
+  - attr_list
+  - md_in_html
   - toc:
       permalink: true
   - pymdownx.highlight
@@ -42,83 +61,126 @@ markdown_extensions:
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
 
+hooks:
+  # llms-full.txt and a Markdown copy of every page, written at build time.
+  - hooks/llm_copies.py
+
 # tools/gen_engine_docs.py reads this nav to write docs/llms.txt: every page is listed here.
 nav:
   - Home: index.md
-  - What's new: whats-new.md
-  - Release notes: changelog.md
-  - Quick start: quickstart.md
-  - Gallery:
-      - gallery/index.md
-      - Teaching: gallery/teaching.md
-      - Manufacturing: gallery/manufacturing.md
-      - Logistics: gallery/logistics.md
-      - Services: gallery/services.md
-      - Supply chain: gallery/supply-chain.md
-      - Energy: gallery/energy.md
-      - System dynamics: gallery/system-dynamics.md
-      - Agent-based: gallery/agent-based.md
-      - Games: gallery/games.md
-      - Reference models: reference-models.md
-  - Worked examples:
-      - Airport ground support: worked-examples/airport-ground-support.md
-      - Container terminal: worked-examples/container-terminal.md
-  - Coming from:
-      - SimPy: coming-from/simpy.md
-      - Arena: coming-from/arena.md
-      - AnyLogic: coming-from/anylogic.md
-      - Vensim: coming-from/vensim.md
-      - NetLogo: coming-from/netlogo.md
-  - Guides:
-      - Model file format: model-file-format.md
-      - System dynamics: system-dynamics.md
-      - Agent-based modelling: agent-based-modelling.md
-      - Python API: python-api.md
-      - Use with an agent: mcp.md
-      - Tools or code, an LLM case study: llm-study.md
-      - Security: security.md
-  - Modelling guide:
-      - modelling-guide/index.md
-      - Entities and attributes: modelling-guide/entities-attributes.md
-      - Expressions and variables: modelling-guide/expressions-variables.md
-      - Resources, sets and queues: modelling-guide/resources-queues.md
-      - Schedules, failures and WAIT: modelling-guide/schedules-failures.md
-      - Units: modelling-guide/units.md
-      - Time units and transfer delays: modelling-guide/time-units.md
-      - Dates and calendars: modelling-guide/dates-and-calendars.md
-      - Batching and matching: modelling-guide/batching-matching.md
-      - Submodels: modelling-guide/submodels.md
-      - Costing: modelling-guide/costing.md
-      - Continuous quantities: modelling-guide/continuous-quantities.md
-      - Layout, paths and vehicles: modelling-guide/layout-paths-vehicles.md
-      - Finite buffers and blocking: modelling-guide/finite-buffers.md
-      - Planning and scheduling: modelling-guide/planning.md
-      - Motion cycles: modelling-guide/motion.md
-      - Batteries and charging: modelling-guide/batteries.md
-      - Mobile cobots, machine tending: modelling-guide/tending.md
-      - Investment case: modelling-guide/investment.md
-  - Experiments and files:
-      - Experiments: experiments.md
+  - Learn:
+      - learn/index.md
+      - "1. One queue": learn/1-one-queue.md
+      - "2. Two servers and a schedule": learn/2-two-servers-and-a-schedule.md
+      - "3. A tank level": learn/3-a-tank-level.md
+      - "4. Agents": learn/4-agents.md
+      - "5. Replications and scenarios": learn/5-replications-and-scenarios.md
+      - "6. Reading the results": learn/6-results.md
+      - Quick start from a model file: quickstart.md
+      - "Tutorial: a log to a model in five minutes": event-log-tutorial.md
+      - Worked examples:
+          - Airport ground support: worked-examples/airport-ground-support.md
+          - Container terminal: worked-examples/container-terminal.md
+  - How-to:
+      - Compare scenarios and search: experiments.md
       - Model assertions and CI: model-assertions.md
       - Semantic diff and merge: semantic-diff.md
-      - Sharing a model (the browser viewer): sharing-a-model.md
+      - Share a model (the browser viewer): sharing-a-model.md
       - Event log to model: event-log-to-model.md
-      - "Tutorial: a log to a model in five minutes": event-log-tutorial.md
-  - Digital twin:
-      - Digital twin: digital-twin.md
-      - A plant as a timeline: plant-timeline.md
-      - Live data: live-data.md
+      - Use from Python: python-api.md
+      - Use with an agent: mcp.md
+      - Digital twin:
+          - Digital twin: digital-twin.md
+          - A plant as a timeline: plant-timeline.md
+          - Live data: live-data.md
+      - Coming from:
+          - SimPy: coming-from/simpy.md
+          - salabim: coming-from/salabim.md
+          - Mesa: coming-from/mesa.md
+          - Arena: coming-from/arena.md
+          - AnyLogic: coming-from/anylogic.md
+          - Vensim: coming-from/vensim.md
+          - NetLogo: coming-from/netlogo.md
   - Reference:
-      - Command line: reference/cli.md
+      - Command line:
+          - reference/cli/index.md
+          - Run and compare: reference/cli/run-and-compare.md
+          - Check and edit model files: reference/cli/model-files.md
+          - Build a model from data: reference/cli/build-from-data.md
+          - Digital twin: reference/cli/twin.md
+          - Plan, inspect and share: reference/cli/plan-and-share.md
+          - Agents: reference/cli/agents.md
       - Blocks: reference/blocks.md
       - Distributions: reference/distributions.md
       - Expressions: reference/expressions.md
       - KPIs: reference/kpis.md
       - Model file keys: reference/schema.md
+      - Model file format: model-file-format.md
       - Agent tools: reference/tools.md
-      - Python entry points: reference/api.md
-  - Project:
+      - Python API:
+          - reference/api/index.md
+          - run_model: reference/api/run_model.md
+          - run_scenarios: reference/api/run_scenarios.md
+          - run_until_precision: reference/api/run_until_precision.md
+          - suggest_warmup: reference/api/suggest_warmup.md
+          - flatten_kpis: reference/api/flatten_kpis.md
+          - optimize: reference/api/optimize.md
+          - calibrate: reference/api/calibrate.md
+          - forecast: reference/api/forecast.md
+          - best_fit: reference/api/best_fit.md
+          - assert_model: reference/api/assert_model.md
+          - build_json_schema: reference/api/build_json_schema.md
+          - Model: reference/api/Model.md
+          - Results: reference/api/Results.md
+          - export_python: reference/api/export_python.md
+          - minimal: reference/api/minimal.md
+          - ModelDocument: reference/api/ModelDocument.md
+      - Gallery:
+          - gallery/index.md
+          - Teaching: gallery/teaching.md
+          - Manufacturing: gallery/manufacturing.md
+          - Logistics: gallery/logistics.md
+          - Services: gallery/services.md
+          - Supply chain: gallery/supply-chain.md
+          - Energy: gallery/energy.md
+          - System dynamics: gallery/system-dynamics.md
+          - Agent-based: gallery/agent-based.md
+          - Games: gallery/games.md
+  - Background:
+      - Modelling guide:
+          - modelling-guide/index.md
+          - Entities and attributes: modelling-guide/entities-attributes.md
+          - Expressions and variables: modelling-guide/expressions-variables.md
+          - Resources, sets and queues: modelling-guide/resources-queues.md
+          - Schedules, failures and WAIT: modelling-guide/schedules-failures.md
+          - Units: modelling-guide/units.md
+          - Time units and transfer delays: modelling-guide/time-units.md
+          - Dates and calendars: modelling-guide/dates-and-calendars.md
+          - Batching and matching: modelling-guide/batching-matching.md
+          - Submodels: modelling-guide/submodels.md
+          - Costing: modelling-guide/costing.md
+          - Continuous quantities: modelling-guide/continuous-quantities.md
+          - Layout, paths and vehicles: modelling-guide/layout-paths-vehicles.md
+          - Finite buffers and blocking: modelling-guide/finite-buffers.md
+          - Planning and scheduling: modelling-guide/planning.md
+          - Motion cycles: modelling-guide/motion.md
+          - Batteries and charging: modelling-guide/batteries.md
+          - Mobile cobots, machine tending: modelling-guide/tending.md
+          - Investment case: modelling-guide/investment.md
+      - System dynamics: system-dynamics.md
+      - Agent-based modelling: agent-based-modelling.md
+      - Security: security.md
+      - Tools or code, an LLM case study: llm-study.md
+      - Stability and deprecation: stability.md
       - Contributing: contributing.md
+  - Validation:
+      - validation/index.md
+      - Reference models: validation/reference-models.md
+      - Benchmarks: validation/benchmarks.md
+      - Citing: validation/citing.md
+  - Release notes:
+      - changelog.md
+      - What's new: whats-new.md
 
 validation:
   anchors: warn

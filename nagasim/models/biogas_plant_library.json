@@ -7,7 +7,7 @@
       "type": "SUBMODEL",
       "description": "Feedstock delivery",
       "position": [-900.0, -300.0],
-      "layout_position": [3.0, 13.0],
+      "layout_position": [8.0, 14.0],
       "params": {
         "definition": "Feedstock delivery",
         "arguments": {
@@ -26,7 +26,7 @@
       "type": "SUBMODEL",
       "description": "Feedstock delivery",
       "position": [-900.0, 60.0],
-      "layout_position": [3.0, 44.0],
+      "layout_position": [8.0, 45.0],
       "params": {
         "definition": "Feedstock delivery",
         "arguments": {

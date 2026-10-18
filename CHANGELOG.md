@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs: the engine site is reorganised for four readers. The landing page opens with the install line and a runnable ten-line example whose printed output the docs build generates; a six-step Learn path grows one model from a queue to scenarios and the event log; the menu is Learn, How-to, Reference, Background, Validation and Release notes, with the reference models, benchmarks, a Citing page and a stability policy under Validation and Background. The Python API reference is generated from numpydoc docstrings whose examples run as tests; the command-line reference has one page per command group; moved pages redirect. Every page has a plain-Markdown copy and `llms-full.txt` holds the whole site for AI readers. New Coming from salabim and Mesa pages run the same model in both libraries.
+- Docs: the Python API reference's Model page lists `run`, `to_dict`, `save`, `definition`, `link` and the `add_*` list builders, and a new Results page covers `kpi`, `kpis`, `frame`, `plot` and `to_excel`; every method has a doctested example, and the Markdown copies include them.
 - Docs: two worked examples on the engine's site, airport ground support and a container terminal, whose numbers and charts come from runs of the bundled models; `turnaround_workload` gains scenarios with fewer ramp agents and belt loaders.
 
 ## 0.12.0 (2026-10-17)

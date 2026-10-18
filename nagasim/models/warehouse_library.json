@@ -7,7 +7,7 @@
       "type": "SUBMODEL",
       "description": "Truck arrivals",
       "position": [-600.0, -200.0],
-      "layout_position": [-12.0, 6.0],
+      "layout_position": [-14.0, 6.0],
       "params": {
         "definition": "Truck arrivals",
         "arguments": {
@@ -28,7 +28,7 @@
       "type": "SUBMODEL",
       "description": "Truck arrivals",
       "position": [-600.0, 0.0],
-      "layout_position": [-12.0, 16.0],
+      "layout_position": [-14.0, 16.0],
       "params": {
         "definition": "Truck arrivals",
         "arguments": {
@@ -191,7 +191,8 @@
       "type": "SUBMODEL",
       "description": "Conveyor segment",
       "position": [0.0, 340.0],
-      "layout_position": [60.0, 25.0],
+      "layout_position": [65.0, 15.0],
+      "layout_rotation": 296.57,
       "params": {
         "definition": "Conveyor segment",
         "arguments": {
@@ -1711,8 +1712,8 @@
         ],
         "geometry": {
           "nodes": [
-            {"name": "start", "dx": 0.0, "dy": 0.0, "attach": true},
-            {"name": "end", "dx": 20.0, "dy": 0.0, "attach": true}
+            {"name": "start", "dx": -10.0, "dy": 0.0, "attach": true},
+            {"name": "end", "dx": 10.0, "dy": 0.0, "attach": true}
           ]
         }
       },
@@ -2197,7 +2198,8 @@
             "AGV tugger": "Illustrative: automated, no driver, slower handling, same speed either way.",
             "Autonomous mobile robot": "Illustrative: AMR under a pallet; amortised purchase, no driver."
           }
-        }
+        },
+        "owns": {"fleets": ["Log Forklifts"], "chargers": ["Log Fleet charger"]}
       },
       "parameters": [
         {"name": "vehicles", "default": 3, "type": "int"},

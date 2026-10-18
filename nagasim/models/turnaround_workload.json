@@ -18,7 +18,8 @@
           "battery_kwh": 0,
           "count": 6,
           "home_node": "gse_depot"
-        }
+        },
+        "preset": "Pushback tractor diesel"
       }
     },
     {
@@ -37,7 +38,8 @@
           "battery_kwh": 0,
           "count": 8,
           "home_node": "gse_depot"
-        }
+        },
+        "preset": "Belt loader diesel"
       }
     },
     {
@@ -56,7 +58,8 @@
           "battery_kwh": 0,
           "count": 8,
           "home_node": "gse_depot"
-        }
+        },
+        "preset": "Baggage tug diesel"
       }
     },
     {
@@ -75,7 +78,8 @@
           "battery_kwh": 0,
           "count": 8,
           "home_node": "gse_depot"
-        }
+        },
+        "preset": "Fuel truck diesel"
       }
     },
     {
@@ -94,7 +98,8 @@
           "battery_kwh": 0,
           "count": 8,
           "home_node": "gse_depot"
-        }
+        },
+        "preset": "Catering truck diesel"
       }
     },
     {
@@ -113,7 +118,8 @@
           "battery_kwh": 0,
           "count": 10,
           "home_node": "gse_depot"
-        }
+        },
+        "preset": "GPU diesel"
       }
     },
     {
@@ -204,6 +210,7 @@
       "description": "Stand",
       "position": [700.0, 0.0],
       "layout_position": [0.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S01"}}
     },
     {
@@ -232,6 +239,7 @@
       "description": "Stand",
       "position": [700.0, 100.0],
       "layout_position": [50.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S02"}}
     },
     {
@@ -260,6 +268,7 @@
       "description": "Stand",
       "position": [700.0, 200.0],
       "layout_position": [100.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S03"}}
     },
     {
@@ -288,6 +297,7 @@
       "description": "Stand",
       "position": [700.0, 300.0],
       "layout_position": [150.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S04"}}
     },
     {
@@ -316,6 +326,7 @@
       "description": "Stand",
       "position": [700.0, 400.0],
       "layout_position": [200.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S05"}}
     },
     {
@@ -344,6 +355,7 @@
       "description": "Stand",
       "position": [700.0, 500.0],
       "layout_position": [250.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S06"}}
     },
     {
@@ -372,6 +384,7 @@
       "description": "Stand",
       "position": [700.0, 600.0],
       "layout_position": [300.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S07"}}
     },
     {
@@ -400,6 +413,7 @@
       "description": "Stand",
       "position": [700.0, 700.0],
       "layout_position": [350.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S08"}}
     },
     {
@@ -428,6 +442,7 @@
       "description": "Stand",
       "position": [700.0, 800.0],
       "layout_position": [400.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S09"}}
     },
     {
@@ -456,6 +471,7 @@
       "description": "Stand",
       "position": [700.0, 900.0],
       "layout_position": [450.0, 0.0],
+      "layout_rotation": 90.0,
       "params": {"definition": "Stand", "arguments": {"station_name": "S10"}}
     },
     {

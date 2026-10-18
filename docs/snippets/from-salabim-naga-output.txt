@@ -1,0 +1,2 @@
+Naga: mean time in system 4.35 +/- 0.76 minutes
+exact: 4.00 minutes

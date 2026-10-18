@@ -69,7 +69,7 @@
       "type": "SUBMODEL",
       "description": "Supplier",
       "position": [420.0, 320.0],
-      "layout_position": [49.0, 29.0],
+      "layout_position": [52.0, 31.0],
       "params": {
         "definition": "Supplier",
         "arguments": {

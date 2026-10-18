@@ -34,7 +34,7 @@
       "type": "SUBMODEL",
       "description": "EV charging",
       "position": [0.0, -200.0],
-      "layout_position": [24.0, 2.0],
+      "layout_position": [26.0, 2.0],
       "params": {
         "definition": "EV charging",
         "arguments": {

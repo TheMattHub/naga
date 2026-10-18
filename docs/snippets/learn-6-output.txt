@@ -1,0 +1,13 @@
+                                       mean      ci95
+metric                                               
+resource/Desks/Time in Queue Avg    1.40706  0.451300
+resource/Desks/Usage % (snapshot)  53.65450  1.054281
+ Entity ID    Type  Created At  Exited At
+         1 DEFAULT    0.000000   0.769548
+         2 WATCHER    0.000000  10.000000
+         3 DEFAULT    0.633443   1.431625
+         4 DEFAULT    0.870072   2.273541
+Resource     time  in_use  queue_length event_type
+  Server 0.000000       1             0    request
+  Server 0.000000       1             0      seize
+  Server 0.633443       1             1    request

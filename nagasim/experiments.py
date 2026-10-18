@@ -430,19 +430,47 @@ KPI_PREFIXES = ("system", "user", *dict.fromkeys(prefix for _f, _c, prefix in _O
 
 
 def flatten_kpis(results: dict) -> pd.DataFrame:
-    """The scalar KPI frames (system/resource/store/entity/user -- everything
-    but "timeseries", a curve rather than one number) as one long
-    Run / KPI / Value frame, numbers only.
+    """Flatten the scalar KPI frames of a results dict into one long table.
 
-    Stable keys, so a scenario comparison or a precision target can name a KPI
-    without knowing which frame it came from:
+    Takes the system, resource, store, entity, user and cost frames, everything
+    but ``"timeseries"`` (a curve rather than one number), numbers only. The
+    keys are stable, so a scenario comparison or a precision target can name a
+    KPI without knowing which frame it came from::
 
-        system/<Metric>              e.g. system/Avg Throughput Time
-        resource/<name>/<column>     e.g. resource/Agents/Usage % (snapshot)
+        system/<Metric>              system/Avg Throughput Time
+        resource/<name>/<column>     resource/Agents/Usage % (snapshot)
         store/<name>/<column>
         entity/<type>/<column>
         user/<statistic>             the RECORD statistic's own Value
-        cost/<item>/Amount           a fixed, per-event or peak cost (PHASE4 D5)
+        cost/<item>/Amount           a fixed, per-event or peak cost
+
+    Parameters
+    ----------
+    results : dict
+        The result of `nagasim.api.run_model`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``Run``, ``KPI`` and ``Value``.
+
+    See Also
+    --------
+    nagasim.api.run_model : Produces the results.
+    nagasim.experiments.run_until_precision : Takes one of these keys as its target.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import api, experiments
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> results = api.run_model(str(path), replications=1, run_length=200, warmup=20, seed=0)
+    >>> flat = experiments.flatten_kpis(results)
+    >>> list(flat.columns)
+    ['Run', 'KPI', 'Value']
+    >>> "system/Total Entities Completed" in set(flat["KPI"])
+    True
     """
     rows: list[tuple] = []
 
@@ -615,37 +643,66 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
                   pool=None, baseline: bool = True) -> ExperimentResult:
     """Run every named scenario (all of them by default) and return the results.
 
-    A named subset also runs the baseline, unless *baseline* is False: for a
-    caller that keeps the baseline's results from an earlier run (the result then
-    has no baseline to compare against until the caller adds it).
+    Parameters
+    ----------
+    layout : dict
+        The model, with a ``scenarios`` list of ``{"name", "overrides"}``.
+    scenario_names : list of str, optional
+        A subset to run. The baseline runs too, unless *baseline* is False.
+    replications, run_length, warmup : optional
+        Fall back to the model's own ``simulation`` section, as in
+        `nagasim.api.run_model`; run length and warm-up fall back per scenario,
+        so a scenario may override either.
+    seed : int, default 0
+        Base seed.
+    crn : bool, default True
+        Common random numbers: replication ``r`` of every scenario uses seed
+        ``seed + r``, and each block draws from its own stream, so a block a
+        scenario did not touch draws the same numbers in both runs. The
+        comparison then uses the paired t interval. With False each scenario
+        gets a disjoint seed block and the comparison uses Welch's interval.
+    workers : int or "auto", default 1
+        ``"auto"`` times the first replication of the first scenario once and
+        reuses that worker count for every scenario.
+    on_progress : callable, optional
+        ``on_progress(done, total)`` counts replications across all scenarios.
+    should_stop : callable, optional
+        Stops between replications and leaves ``completed`` False on the result.
+    pool : ProcessPoolExecutor, optional
+        A pool the caller owns and reuses across studies. Results are unchanged.
+    baseline : bool, default True
+        False skips the baseline, for a caller that keeps the baseline's results
+        from an earlier run; the result then has nothing to compare against until
+        the caller adds it.
 
-    *replications*, *run_length* and *warmup* fall back to the model's own
-    "simulation" section, exactly like `api.run_model`; run length and warm-up
-    fall back per scenario, so an override of either takes effect (#315).
+    Returns
+    -------
+    ExperimentResult
+        Per-scenario results and ``comparison(kpis=...)`` against the baseline.
 
-    With *crn* (the default) replication r of EVERY scenario uses seed
-    `seed + r`. Streams are per block name (`core/base_process.py` seeds each
-    block from `[seed, hash(name)]`), so a block a scenario did not touch draws
-    the very same numbers in both runs and the scenarios stay synchronised --
-    the comparison then uses the paired-t interval. With crn=False each
-    scenario gets a disjoint seed block and the comparison uses Welch's.
+    Notes
+    -----
+    The unit of parallel work is one (scenario, replication), so five scenarios
+    of one replication each fill five workers.
 
-    *workers* == "auto" (ROADMAP 1.7 E) decides once, timing the first
-    replication of the first scenario, then reuses that same worker count for
-    every scenario -- `api.run_model` is never itself handed "auto" here, so
-    it never re-probes per scenario.
+    See Also
+    --------
+    nagasim.api.run_model : One model, no scenarios.
+    nagasim.optimize.optimize : Search the space instead of naming the points.
 
-    `on_progress(done, total)` counts replications across all scenarios;
-    `should_stop()` stops between replications and leaves `completed` False on
-    the result.
-
-    *pool*, when given, is a `ProcessPoolExecutor` the CALLER owns and reuses
-    across many studies (`api.scenario_pool`), so a Windows spawn is paid once
-    instead of once per call. Results are unchanged either way.
-
-    Since PHASE4 T3 the unit of parallel work is (scenario, replication), not
-    the replications of one scenario, so a five-scenario set of one replication
-    each fills five workers instead of one.
+    Examples
+    --------
+    >>> import json
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import experiments
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> layout = json.loads(path.read_text(encoding="utf-8"))
+    >>> layout["scenarios"] = [{"name": "Faster server", "overrides": [
+    ...     {"path": "blocks.process_1.params.dist_params.rate", "value": 1.6}]}]
+    >>> experiment = experiments.run_scenarios(layout, replications=3, run_length=200, warmup=20, seed=0)
+    >>> sorted(experiment.results)
+    ['Baseline', 'Faster server']
     """
     base = schema.load_layout(layout)
     if replications is None:
@@ -747,17 +804,62 @@ def run_until_precision(layout, kpi: str, *, relative: float | None = 0.05,
                         n0: int = 10, max_replications: int = 200, seed: int = 0,
                         run_length: float | None = None, warmup: float | None = None,
                         workers: int = 1, on_progress=None, should_stop=None):
-    """Keep adding replications until the CI half-width on *kpi* is small enough.
+    """Keep adding replications until the confidence interval on a KPI is tight enough.
 
-    *kpi* is a `flatten_kpis` key (e.g. "system/Avg Throughput Time"). The
-    target half-width is *absolute* if given, else *relative* x |mean|. After
-    the first n0 replications the needed count is the textbook
-    n >= (t * s / h)^2 from the current sample; each step runs at most as many
-    replications again as have run so far (never more than doubling), so a
+    After the first *n0* replications the needed count is the textbook
+    ``n >= (t * s / h)**2`` from the current sample. Each step runs at most as
+    many replications again as have run so far (never more than doubling), so a
     wildly optimistic first estimate cannot blow the budget in one go.
 
-    Returns (results, report); report carries the replications used, the
-    achieved half-width, the target and `met`.
+    Parameters
+    ----------
+    layout : dict
+        The model.
+    kpi : str
+        A `flatten_kpis` key, e.g. ``"system/Avg Throughput Time"``.
+    relative : float, default 0.05
+        Target half-width as a fraction of ``|mean|``; used when *absolute* is
+        not given.
+    absolute : float, optional
+        Target half-width in the KPI's own unit; wins over *relative*.
+    confidence : float, default 0.95
+        Confidence level of the interval.
+    n0 : int, default 10
+        Replications of the first pass.
+    max_replications : int, default 200
+        Hard cap.
+    seed : int, default 0
+        Seed of replication 0.
+    run_length, warmup : float, optional
+        Fall back to the model's own settings.
+    workers : int, default 1
+        Process-pool size.
+    on_progress, should_stop : callable, optional
+        As in `nagasim.api.run_model`.
+
+    Returns
+    -------
+    tuple
+        ``(results, report)``. The report carries ``replications``, the achieved
+        ``half_width``, the ``target`` and ``met``.
+
+    See Also
+    --------
+    nagasim.api.run_model : A fixed number of replications.
+    nagasim.experiments.flatten_kpis : Where the KPI keys come from.
+
+    Examples
+    --------
+    >>> import json
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import experiments
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> layout = json.loads(path.read_text(encoding="utf-8"))
+    >>> results, report = experiments.run_until_precision(
+    ...     layout, "system/Avg Queue Length", relative=0.5, n0=3, run_length=200, warmup=20, seed=0)
+    >>> report["met"] or report["replications"] == 200
+    True
     """
     base = schema.load_layout(layout)
     sim = base.get("simulation", {})
@@ -854,28 +956,47 @@ def _mser(values: np.ndarray, batch: int) -> tuple[int, np.ndarray, bool]:
 
 
 def suggest_warmup(source, *, batch: int = 5) -> WarmupSuggestion:
-    """MSER-5 warm-up suggestion from a run's entity log.
+    """Suggest a warm-up length from a run's entity log with MSER-5.
 
-    MSER-5 (White 1997) groups the output series into batches of `batch`
-    observations and picks the truncation point d that minimises
+    MSER-5 (White 1997) groups the output series into batches of *batch*
+    observations and picks the truncation point ``d`` that minimises
+    ``sum_{i>d} (m_i - mean_{i>d})**2 / (k - d)**2`` over the batch means
+    ``m_1..m_k``: the head to drop that leaves the most precise estimate of the
+    steady-state mean. The series is the entity throughput time ordered by exit
+    time and averaged across replications.
 
-        MSER(d) = sum_{i>d} (m_i - mean_{i>d})^2 / (k - d)^2
+    Parameters
+    ----------
+    source : dict or DataFrame
+        A results dict from `nagasim.api.run_model`, or an entity-log frame with
+        the columns ``Run``, ``Exited At`` and ``Throughput Time``.
+    batch : int, default 5
+        Observations per batch.
 
-    over the batch means m_1..m_k: the amount of head to drop that leaves the
-    most precise estimate of the steady-state mean. The series used here is the
-    entity throughput time ordered by exit time and averaged across
-    replications (`_throughput_series`), and the returned `warmup` is the exit
-    time of the first observation that survives the truncation -- a time in
-    model time units, ready for the run dialog's warm-up field.
+    Returns
+    -------
+    WarmupSuggestion
+        ``warmup`` is the exit time of the first observation that survives the
+        truncation, in model time units, ready for a run's warm-up setting.
+        ``reliable`` is False when the minimum falls in the second half of the
+        batch means. With few batches left the denominator dominates, so a series
+        still drifting always looks best when truncated near the end; read such a
+        suggestion as "the run is too short to tell".
 
-    `reliable` is False when the minimum falls in the SECOND half of the batch
-    means. That is the standard MSER caveat: with few batches left the
-    denominator (k - d)^2 dominates, so a still-drifting series always "looks"
-    best when truncated near the end. Treat such a suggestion as "the run is
-    too short to tell", not as a warm-up.
+    See Also
+    --------
+    nagasim.api.run_model : Produces the results this reads.
 
-    *source* is either a results dict from `api.run_model` or an entity-log
-    frame with the columns Run / Exited At / Throughput Time.
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import api, experiments
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> results = api.run_model(str(path), replications=2, run_length=300, warmup=0, seed=0)
+    >>> suggestion = experiments.suggest_warmup(results)
+    >>> suggestion.warmup >= 0 and suggestion.reliable in (True, False)
+    True
     """
     times, values = _throughput_series(source)
     best, curve, reliable = _mser(values, batch)

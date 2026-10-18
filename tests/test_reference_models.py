@@ -1,6 +1,6 @@
 """Reference models: bundled models whose answer is known exactly, reproduced by a run.
 
-The cases, their closed forms and the page `docs/reference-models.md` are
+The cases, their closed forms and the page `docs/validation/reference-models.md` are
 `tools/gen_engine_docs.py`'s (`REFERENCE_CASES`). Each test here
 
 1. derives the case's exact value a SECOND way, sharing no formula with the generator
@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 gen = importlib.import_module("tools.gen_engine_docs")
 
-PAGE = gen.DOCS / "reference-models.md"
+PAGE = gen.DOCS / "validation" / "reference-models.md"
 CASES = {case[0]: case for case in gen.REFERENCE_CASES}
 MAX_HALF_WIDTH = 0.08       # of the exact value: a wider interval would prove little
 
@@ -52,7 +52,7 @@ def _check(name: str, second_derivation: float, rel: float = 1e-6) -> None:
     else:
         assert mean == pytest.approx(exact, rel=1e-4), f"{name}: the run gives {mean!r}"
     assert gen.reference_row(case, result) in PAGE.read_text(encoding="utf-8").splitlines(), \
-        f"{name}: docs/reference-models.md is out of date: run `python tools/gen_engine_docs.py`"
+        f"{name}: docs/validation/reference-models.md is out of date: run `python tools/gen_engine_docs.py`"
 
 
 def _blocks(model: str) -> tuple[dict, dict]:
@@ -308,7 +308,7 @@ def test_the_page_around_its_table_is_the_generators_and_shows_every_case(tmp_pa
     assert [row.split(" | ")[0][2:] for row in rows] == list(CASES)
     gen._write(tmp_path, PAGE.name, [gen.reference_page(rows)])
     assert (tmp_path / PAGE.name).read_text(encoding="utf-8") == committed, \
-        "docs/reference-models.md is out of date: run `python tools/gen_engine_docs.py`"
+        "docs/validation/reference-models.md is out of date: run `python tools/gen_engine_docs.py`"
     assert {case[1] for case in gen.REFERENCE_CASES} == {"Discrete-event", "System dynamics",
                                                          "Agent-based", "Rate-based"}
     assert all(f"naga run {case[2]}" in committed for case in gen.REFERENCE_CASES)

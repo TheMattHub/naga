@@ -1063,7 +1063,39 @@ class Level:
 
 
 class Model(Level):
-    """A model. Keywords are the run settings (`time_limit`, `warmup`, `replications`, every
+    """A model written in Python; the file it produces is the model.
+
+    Every block type is a method named after it, taking the block's parameters
+    by name; ``a >> b`` links two blocks; ``add_resource`` and the like add an
+    entry to a list of the file. Keywords are the run settings (``time_limit``,
+    ``warmup``, ``replications``, every key of ``simulation``) and the top-level
+    sections (``info``, ``network``, ``simulation``, ...).
+
+    Parameters
+    ----------
+    **top
+        Run settings and top-level sections. An unknown keyword raises
+        ``TypeError`` naming the valid ones; a run setting given both as a
+        keyword and inside ``simulation=`` raises too.
+
+    See Also
+    --------
+    nagasim.build.export_python : The reverse, a model file as builder code.
+    nagasim.modelfmt.minimal : The form ``to_dict`` returns.
+
+    Examples
+    --------
+    >>> from nagasim import build as nb
+    >>> m = nb.Model(time_limit=100, replications=2)
+    >>> m.add_resource(name="Server")
+    'Server'
+    >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+    >>> serve = m.process(resource_name="Server", distribution=nb.Exponential(rate=1.25))
+    >>> _ = arrive >> serve >> m.dispose()
+    >>> [b["type"] for b in m.to_dict()["blocks"]]
+    ['CREATE', 'PROCESS', 'DISPOSE']
+    >>> m.run(seed=0).kpi("system/Total Entities Completed") > 0
+    True
     """
     layout: dict[str, Any]
     def __init__(
@@ -1096,7 +1128,7 @@ class Model(Level):
         dashboard: dict[str, Any] = ...,
         view: dict[str, Any] = ...,
     ) -> None:
-        """A model. Keywords are the run settings (`time_limit`, `warmup`, `replications`, every key of `simulation`) and the top-level sections (`info`, `network`, `simulation`, ...).
+        """A model written in Python; the file it produces is the model.
 
         time_limit: Run length in base time units; null/0 means "run until the model drains", which only works for a model that can drain.
         warmup: Statistics are reset at this time.

@@ -333,19 +333,69 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
               seed: int = 0, workers: int = 1, run_length=None, warmup=None,
               confidence: float = 0.95, evaluator=None, on_progress=None,
               should_stop=None, record_logs=None) -> CalibrationResult:
-    """Tune *factors* until the model reproduces *targets*.
+    """Tune factors until the model reproduces observed targets.
 
-    *targets* are dicts (or `CalibrationTarget`s): `{"kpi", "observed",
-    "weight"?, "tolerance"?}`, or `{"kpi": "entity_log/Throughput Time",
-    "observed_sample": [...]}` for a distribution matched by the KS statistic,
-    or `SeriesTarget`s (or `{"series", "data", "weight"?}` dicts) for a
-    trajectory; every target's term is summed into one objective.
-    *factors* are `optimize.Factor`s, addressing the model through the same
-    override-path grammar scenarios use.
+    Every target's term is summed into one objective, which `nagasim.optimize`
+    minimises.
 
-    *evaluator* lets a caller (or a test) supply the evaluation seam; the
-    default builds `optimize._Evaluator` with the calibration objective wired
-    into its `extra` hook and *budget* as a hard replication cap.
+    Parameters
+    ----------
+    layout : dict or str
+        The model, or a path to it.
+    targets : list
+        ``CalibrationTarget`` objects or dicts: ``{"kpi", "observed", "weight"?,
+        "tolerance"?}``; ``{"kpi": "entity_log/Throughput Time",
+        "observed_sample": [...]}`` for a distribution matched by the KS
+        statistic; or ``SeriesTarget`` objects (``{"series", "data", "weight"?}``)
+        for a trajectory.
+    factors : list of Factor
+        What to tune, addressing the model through the same override paths that
+        scenarios use.
+    budget : int, default 200
+        Hard cap on replications.
+    replications_per_point : int, default 5
+        Replications of each evaluated point.
+    seed : int, default 0
+        Seed of replication 0.
+    workers : int, default 1
+        Process-pool size.
+    run_length, warmup : optional
+        Fall back to the model's own settings.
+    confidence : float, default 0.95
+        Level of the intervals used by the search.
+    evaluator : optional
+        The evaluation seam, for a caller or a test that supplies its own. The
+        default builds the optimizer's evaluator with the calibration objective
+        wired in and *budget* as its cap.
+    on_progress, should_stop : callable, optional
+        As in `nagasim.api.run_model`.
+    record_logs : bool, optional
+        As in `nagasim.api.run_model`.
+
+    Returns
+    -------
+    CalibrationResult
+        The fitted factor values and the fit of each target.
+
+    See Also
+    --------
+    nagasim.optimize.optimize : The search it is built on.
+    nagasim.inputfit.best_fit : Fit one input distribution to a sample.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim.calibrate import calibrate
+    >>> from nagasim.optimize import Factor
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> factor = Factor(path="blocks.process_1.params.dist_params.rate",
+    ...                 kind="continuous", low=1.1, high=2.0, name="rate")
+    >>> target = {"kpi": "system/Avg Queue Length", "observed": 2.0}
+    >>> fit = calibrate(str(path), [target], [factor], budget=12,
+    ...                 replications_per_point=2, run_length=200, warmup=20, seed=0)
+    >>> type(fit).__name__
+    'CalibrationResult'
     """
     base = api.load_layout(layout)
     wanted = _targets(targets, base)

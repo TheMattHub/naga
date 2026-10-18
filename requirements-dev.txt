@@ -6,3 +6,4 @@ pyyaml>=6            # tests/test_hygiene.py parses the GitHub workflows
 jsonschema>=4        # tests/test_schema.py validates bundled models against the JSON schema
 cryptography>=42     # tests/conftest.py makes the TLS certificate the live-reader tests use
 ortools>=9.10        # optional at run time: nagasim/cpsat.py imports it lazily; listed so CI runs its tests
+cascadio==0.1.1      # optional at run time (the `cad` extra): STEP/IGES import; listed so CI runs tests/test_meshimport.py in full

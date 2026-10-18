@@ -118,7 +118,36 @@ def _ordered(layout: dict) -> dict:
 
 
 def minimal(layout) -> dict:
-    """The shortest form of *layout* (a path or a dict) that migrates to the same model."""
+    """Return the shortest form of a model that migrates to the same model.
+
+    This is the form ``naga fmt`` writes: defaults the loader would fill in are
+    left out.
+
+    Parameters
+    ----------
+    layout : str or dict
+        A path or a layout dict.
+
+    Returns
+    -------
+    dict
+        The minimal layout.
+
+    See Also
+    --------
+    nagasim.build.Model : Its ``to_dict`` returns this form.
+    nagasim.modelschema.build_json_schema : What the form is checked against.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim.modelfmt import minimal
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> short = minimal(str(path))
+    >>> "blocks" in short and "links" in short
+    True
+    """
     full = schema.migrate(schema.read_layout(layout))
     # A library or a mesmap migrates too (to an empty model with its own keys kept): the
     # schema's top level admits no key it does not name, so neither does fmt.

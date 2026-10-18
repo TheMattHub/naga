@@ -1,0 +1,3 @@
+ Agent State  Avg Count  Entries
+Team/Working   3.516323       15
+Team/OnBreak   0.483677       15

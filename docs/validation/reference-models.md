@@ -3,7 +3,7 @@
 
 # Reference models
 
-Models whose answer is known exactly, from a formula found in the textbooks of the subject, beside what the engine gives when it runs them. Every model here is one of the [bundled models](gallery/index.md), so each line can be repeated with one command.
+Models whose answer is known exactly, from a formula found in the textbooks of the subject, beside what the engine gives when it runs them. Every model here is one of the [bundled models](../gallery/index.md), so each line can be repeated with one command.
 
 | Case | Method | Model | Quantity | Exact | Naga | 95% interval | Exact inside | Replications | Seed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -147,4 +147,4 @@ The same run as the line above.
 
 ## What this does not show
 
-Agreement on these cases says the engine's clock, queues, random streams, integrators and statistics are right where a formula can check them. It says nothing about a model that has no formula, which is most models: for those, see [Model assertions](model-assertions.md) and [Experiments](experiments.md).
+Agreement on these cases says the engine's clock, queues, random streams, integrators and statistics are right where a formula can check them. It says nothing about a model that has no formula, which is most models: for those, see [Model assertions](../model-assertions.md) and [Experiments](../experiments.md).

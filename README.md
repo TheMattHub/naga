@@ -162,7 +162,7 @@ again. They are what you hand to the people who asked the question.
 
 ## Example models
 
-The package holds about fifty models: queues with a known analytical answer, job shops,
+The package holds about sixty models: queues with a known analytical answer, job shops,
 warehouses with forklifts, an energy site, a biogas plant, a supply chain, system-dynamics
 classics, agent-based classics. Each runs as it is, and the documentation has a gallery of them
 with numbers from a run:

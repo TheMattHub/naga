@@ -159,6 +159,39 @@ class _Level:
 
 
 class ModelDocument:
+    """An in-memory model, edited only through this API.
+
+    Every mutation pushes one undo snapshot, clears redo, marks the document
+    dirty and notifies subscribers. A document holds the model's own canvas plus
+    one per submodel definition; every block, link and annotation method takes a
+    ``scope`` (default ``""``, the model itself; otherwise a definition name).
+    It depends on the standard library, the schema and the block registry only,
+    so it needs no Qt, pandas or simpy.
+
+    Parameters
+    ----------
+    layout : dict, optional
+        The model to start from. None starts a new, empty model.
+
+    See Also
+    --------
+    nagasim.build.Model : Write a model as code instead of editing a document.
+    nagasim.modelfmt.minimal : The shortest saved form.
+
+    Examples
+    --------
+    >>> from nagasim.core.document import ModelDocument
+    >>> doc = ModelDocument()
+    >>> doc.add_block("CREATE", (0, 0), name="arrivals")
+    'arrivals'
+    >>> doc.add_block("DISPOSE", (200, 0), name="exit")
+    'exit'
+    >>> _ = doc.add_link("arrivals", "exit")
+    >>> doc.links
+    [('arrivals', 'exit')]
+    >>> doc.undo() is not None and doc.links
+    []
+    """
     def __init__(self, layout: dict | None = None):
         self.path: Path | None = None
         self.dirty = False

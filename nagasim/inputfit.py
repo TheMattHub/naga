@@ -401,11 +401,37 @@ def fit_candidates(values, *, candidates: list[str] | None = None, shift: bool =
 
 # ============================================================ empirical fallback
 def best_fit(values, *, candidates: list[str] | None = None, shift: bool = False):
-    """The winner of `fit_candidates` -- best AIC, ties broken by KS -- or None
-    when no family could be fit at all.
+    """Fit candidate distributions to a sample and return the winner.
 
-    The ONE place that criterion is applied, so the `fit` data binding
-    (`databind.py`) and the MES parameter feed (`mes.py`) cannot drift apart.
+    The winner is the best by AIC, ties broken by the KS statistic. This is the
+    one place the criterion is applied, so the ``fit`` data binding and the MES
+    parameter feed cannot drift apart.
+
+    Parameters
+    ----------
+    values : sequence of float
+        The observed sample.
+    candidates : list of str, optional
+        Distribution families to try (default: all that can be fit).
+    shift : bool, default False
+        Allow a location shift.
+
+    Returns
+    -------
+    Fit or None
+        The winning fit (``distribution``, ``dist_params``, ``aic``, ``ks_stat``
+        and more), or None when no family could be fit at all.
+
+    See Also
+    --------
+    nagasim.calibrate.calibrate : Tune a model rather than fit an input.
+
+    Examples
+    --------
+    >>> from nagasim.inputfit import best_fit
+    >>> fit = best_fit([1.0, 1.4, 0.7, 2.2, 1.1, 0.9, 1.6, 3.0, 0.8, 1.2])
+    >>> isinstance(fit.distribution, str) and fit.aic == fit.aic
+    True
     """
     fits = fit_candidates(values, candidates=candidates, shift=shift)
     return fits[0] if fits else None

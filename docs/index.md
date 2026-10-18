@@ -1,21 +1,66 @@
 # Naga
 
-Naga is a simulation engine for Python, built on [SimPy](https://simpy.readthedocs.io/), for
-people who have a question about how a system behaves and want an answer they can show their
-work for. You describe the system once, as a model file of blocks, resources and expressions,
-and Naga runs it as a discrete-event, system-dynamics or agent-based model, or as all three on
-one clock. Around each run it puts what turns a single run into evidence: replications with
-confidence intervals, scenarios compared on the same random numbers, designed experiments,
-optimisation and calibration. The result is an answer a team can inspect and repeat, because
-the model stays a file that anyone can read, compare and run again.
+Naga is a simulation engine for Python, built on [SimPy](https://simpy.readthedocs.io/): you
+describe a system as a model file, and it runs the model and gives back an answer with its
+confidence interval. Python 3.11 or later; the `naga` command comes with it.
+
+```console
+pip install nagasim
+```
+
+Ten lines build the textbook single-server queue, run it twenty times and set the result beside
+the exact answer:
+
+```python
+--8<-- "docs/snippets/landing-example.py"
+```
+
+```text
+--8<-- "docs/snippets/landing-output.txt"
+```
+
+The simulated interval brackets the exact value, which is what a trustworthy simulator does and
+what the [reference models](validation/reference-models.md) page checks against known answers. It also shows the
+point of Naga: the same clock runs discrete-event processes, system dynamics, agents and
+continuous levels with exact crossing times, so one model can hold all four.
 
 ![What goes into the engine, what it does, and what comes out](img/overview.svg)
 
-The picture reads from left to right. On the left is what you bring: a model file, the data it
-draws on and, if you have one, a plant to follow. In the middle the engine runs the model on a
-single clock and wraps the run in statistics, experiments or a twin; on the right come results
-and a report, pages you can send to someone else, and a twin's forecasts and proposals. Along the
-top are the three ways in, and each gives the same answer from the same file.
+<div class="grid cards" markdown>
+
+-   **Python modeller**
+
+    ---
+
+    Build a model in code, run replications, read the results.
+
+    [Learning path](learn/index.md), [Quick start](quickstart.md) and the [Python API](python-api.md)
+
+-   **Planner or analyst**
+
+    ---
+
+    See what a finished study looks like, then compare scenarios of your own.
+
+    [Worked examples](worked-examples/airport-ground-support.md), [Experiments](experiments.md) and [reading results](learn/6-results.md)
+
+-   **Integrator**
+
+    ---
+
+    Run it from a pipeline, check files in CI, build on the formats.
+
+    [Command line](reference/cli/index.md), [model file keys](reference/schema.md) and [MCP](mcp.md)
+
+-   **AI agent**
+
+    ---
+
+    Read the site as plain text, validate against the schema, call the tools.
+
+    [llms.txt](llms.txt), [llms-full.txt](https://thematthub.github.io/naga/llms-full.txt) (the whole site as one file), a Markdown copy of every page (its address with `.md`), the [JSON Schema](schema/model-v29.json) and the [agent tools](reference/tools.md)
+
+</div>
 
 ## What you can model
 
@@ -55,13 +100,6 @@ top are the three ways in, and each gives the same answer from the same file.
 Whichever way you use, the model is the same JSON file, so what one person builds in Python an
 agent can check and a colleague can open.
 
-```console
-pip install nagasim
-naga --help
-```
-
-Python 3.11 or later. It depends on SimPy, NumPy, pandas, SciPy and openpyxl.
-
 ## What's new in 0.12
 
 --8<-- "docs/whats-new.md:latest"
@@ -86,7 +124,7 @@ every change.
 |---|---|
 | run something in a minute | [Quick start](quickstart.md) |
 | see what a model looks like and what it gives | [Gallery](gallery/index.md) |
-| check the engine against models with a known answer | [Reference models](reference-models.md) |
+| check the engine against models with a known answer | [Reference models](validation/reference-models.md) |
 | map what you know onto this | Coming from [SimPy](coming-from/simpy.md), [Arena](coming-from/arena.md), [AnyLogic](coming-from/anylogic.md), [Vensim](coming-from/vensim.md), [NetLogo](coming-from/netlogo.md) |
 | write a model file | [Model file format](model-file-format.md), [Blocks](reference/blocks.md) |
 | know what a part of a model does when it runs | [Modelling guide](modelling-guide/index.md) |

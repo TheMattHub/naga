@@ -28,18 +28,89 @@ __all__ = ["Results"]
 
 
 class Results(dict):
-    """`dict[str, pd.DataFrame]` (the nine-to-twenty KPI frames, one "Run"
-    column each) plus notebook conveniences."""
+    """What a run returns: KPI frames by name, with notebook conveniences.
+
+    A ``dict[str, pd.DataFrame]`` (the nine-to-twenty KPI frames, each with a
+    "Run" column), so ``results["system"]`` works as on any dict; the methods
+    add the mean over runs, a plot and an Excel workbook. Made by
+    `nagasim.api.run_model`, ``Model.run`` and the experiment functions.
+
+    See Also
+    --------
+    nagasim.api.run_model : Makes it.
+    nagasim.build.Model : ``Model.run`` returns it.
+    nagasim.experiments.flatten_kpis : The frames as one long table.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import api
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+    >>> sorted(results["system"].columns)
+    ['Metric', 'Run', 'Value']
+    >>> results.kpi("system/Total Entities Completed") > 0
+    True
+    """
 
     def frame(self, name: str) -> pd.DataFrame:
-        """Alias for `results[name]`, for readability in a notebook."""
+        """Return the KPI frame *name*; an alias for ``results[name]``.
+
+        Parameters
+        ----------
+        name : str
+            A frame name, such as ``"system"`` or ``"resource_summary"``.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The frame, one row per metric and run.
+
+        See Also
+        --------
+        Results.kpis : The mean over runs, one row per KPI.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+        >>> list(results.frame("system").columns)
+        ['Metric', 'Value', 'Run']
+        """
         return self[name]
 
     def kpis(self) -> pd.DataFrame:
-        """Tidy KPI DataFrame -- metric, mean, std, ci95 (half-width) over
-        runs -- built from `experiments.flatten_kpis`'s stable "family/name"
-        keys (e.g. "system/Avg Queue Length", "resource/Server/Usage %
-        (snapshot)")."""
+        """Return the KPIs as one table: mean, spread and interval over runs.
+
+        Built from the stable "family/name" keys of
+        `nagasim.experiments.flatten_kpis`, such as ``"system/Avg Queue
+        Length"`` or ``"resource/Server/Usage % (snapshot)"``.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``metric``, ``mean``, ``std`` and ``ci95`` (the 95%
+            half-width), one row per KPI.
+
+        See Also
+        --------
+        Results.kpi : One KPI's mean.
+        nagasim.experiments.flatten_kpis : One row per KPI and run.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+        >>> list(results.kpis().columns)
+        ['metric', 'mean', 'std', 'ci95']
+        """
         # Local import: experiments.py imports nagasim.api, so importing it at
         # module level here would make api.py -> results.py -> experiments.py
         # -> api.py a cycle.
@@ -55,9 +126,38 @@ class Results(dict):
         return pd.DataFrame(rows, columns=["metric", "mean", "std", "ci95"])
 
     def kpi(self, key: str) -> float:
-        """The mean over runs of one KPI, by its "family/name" key
-        (`results.kpi("system/Avg Queue Length")`); `KeyError` naming the key if absent.
-        The spread is in `kpis()`."""
+        """Return the mean over runs of one KPI.
+
+        Parameters
+        ----------
+        key : str
+            The KPI's "family/name" key, for example ``"system/Avg Queue
+            Length"``.
+
+        Returns
+        -------
+        float
+            The mean over runs. The spread is in `Results.kpis`.
+
+        Raises
+        ------
+        KeyError
+            If *key* is not a KPI of these results (the message names it).
+
+        See Also
+        --------
+        Results.kpis : All KPIs, with spread.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+        >>> results.kpi("system/Total Entities Completed") > 0
+        True
+        """
         table = self.kpis()
         hit = table.loc[table["metric"] == key, "mean"]
         if hit.empty:
@@ -73,11 +173,52 @@ class Results(dict):
         return f"<p>{n} replication{'s' if n != 1 else ''}</p>\n{table}"
 
     def plot(self, key: str, ax=None, **kw):
-        """A bar of the mean with a 95% CI whisker over runs for a KPI key
-        (e.g. "system/Avg Queue Length"), or a line over time for a
-        `timeseries` series (e.g. "level/Tank"/an AUX/a flow name) -- whichever
-        `key` matches. Returns the `Axes`. Needs matplotlib (not a core
-        dependency): raises with an install hint if it is missing."""
+        """Plot one KPI or one time series.
+
+        A KPI key gives a bar of the mean with a 95% interval whisker over
+        runs; a ``timeseries`` series (a level, an auxiliary, a flow) gives a
+        line over time. Whichever *key* matches is drawn.
+
+        Parameters
+        ----------
+        key : str
+            A KPI key such as ``"system/Avg Queue Length"``, or a series name
+            such as ``"level/Tank"``.
+        ax : matplotlib.axes.Axes, optional
+            Where to draw; a new figure when omitted.
+        **kw
+            Passed to matplotlib's ``bar`` or ``plot``.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes drawn on.
+
+        Raises
+        ------
+        KeyError
+            If *key* is neither a KPI key nor a series of these results.
+        ImportError
+            If matplotlib (not a core dependency) is missing; the message says
+            how to install it.
+
+        See Also
+        --------
+        Results.kpis : The numbers behind the bar.
+
+        Examples
+        --------
+        >>> import matplotlib
+        >>> matplotlib.use("Agg")
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+        >>> ax = results.plot("system/Total Entities Completed")
+        >>> ax.get_ylabel()
+        'system/Total Entities Completed'
+        """
         try:
             import matplotlib.pyplot as plt
         except ImportError as exc:
@@ -108,7 +249,35 @@ class Results(dict):
         return ax
 
     def to_excel(self, path) -> None:
-        """Write the results workbook (ROADMAP 2.4 C's xlsx exporter)."""
+        """Write the results as an Excel workbook, one sheet per frame.
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            The ``.xlsx`` file to write.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        Results.frame : One frame, as a DataFrame.
+
+        Examples
+        --------
+        >>> import tempfile
+        >>> from pathlib import Path
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+        >>> with tempfile.TemporaryDirectory() as folder:
+        ...     results.to_excel(Path(folder) / "results.xlsx")
+        ...     (Path(folder) / "results.xlsx").is_file()
+        True
+        """
         from nagasim.exporters import EXPORTER_REGISTRY
 
         EXPORTER_REGISTRY["xlsx"].write(self, path)

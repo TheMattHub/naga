@@ -32,7 +32,7 @@
 | `CONV` | 1 | CONV("name"): the product rate of delayed conversion NAME right now, per its time_unit |
 | `COS` | 1 | math.cos, radians |
 | `COSH` | 1 | math.cosh, radians |
-| `COUNT` | 1..4 | COUNT("pop"[, "state"][, "attr", "value"]): a population's live agents, those in a state (O(1)), or those whose categorical attribute holds that category |
+| `COUNT` | 1..4 | COUNT("pop"[, "state"]\[, "attr", "value"]): a population's live agents, those in a state (O(1)), or those whose categorical attribute holds that category |
 | `DEG` | 1 | radians to degrees |
 | `DELAY` | 1 | output of delay NAME |
 | `DELAY1` | 2..3 | DELAY1(x, tau[, init]): first-order material delay (init defaults to x at t0); needs simulation.sd |

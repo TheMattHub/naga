@@ -1,0 +1,14 @@
+from nagasim import build as nb
+
+m = nb.Model(time_limit=480, warmup=0)         # one 8-hour day, in minutes
+m.add_resource(name="Server")
+arrive = m.create(distribution=nb.Exponential(rate=1.0))          # a customer a minute
+serve = m.process(resource_name="Desks", distribution=nb.Exponential(rate=1.25))
+arrive >> serve >> m.dispose()
+m.add_schedule(name="afternoon", kind="capacity", points=[[240, 0], [240, 1]])   # closed 4 h, open 4 h
+m.add_resource(name="Second", capacity=1, capacity_schedule="afternoon")
+m.add_resource_set(name="Desks", members=["Server", "Second"], rule="PreferredOrder")
+
+results = m.run(seed=1)
+print(round(results.kpi("resource/Desks/Time in Queue Avg"), 2), "minutes mean wait at the desks")
+print(results["resource_summary"][["Resource", "Total Seizes", "Usage % (snapshot)"]].to_string(index=False))

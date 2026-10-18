@@ -1,7 +1,7 @@
 # Python API
 
 The command line is a thin layer over a few functions. This page shows the ones a script or a
-notebook uses; their signatures are in [Python entry points](reference/api.md). Before 1.0 this
+notebook uses; their signatures are in [Python entry points](reference/api/index.md). Before 1.0 this
 API may change between minor versions, with a changelog line each time.
 
 ## Run a model

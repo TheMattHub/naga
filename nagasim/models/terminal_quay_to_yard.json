@@ -7,7 +7,7 @@
       "type": "SUBMODEL",
       "description": "Vessel calls",
       "position": [0.0, 100.0],
-      "layout_position": [0.0, -60.0],
+      "layout_position": [-60.0, 0.0],
       "params": {"definition": "Vessel calls"}
     },
     {
@@ -15,7 +15,8 @@
       "type": "SUBMODEL",
       "description": "Quay crane",
       "position": [200.0, 100.0],
-      "layout_position": [0.0, -30.0],
+      "layout_position": [-19.0, 0.0],
+      "layout_rotation": 180.0,
       "params": {"definition": "Quay crane"}
     },
     {
@@ -38,7 +39,7 @@
       "type": "SUBMODEL",
       "description": "Yard block",
       "position": [1100.0, 40.0],
-      "layout_position": [700.0, 40.0],
+      "layout_position": [800.75, 48.0],
       "params": {
         "definition": "Yard block",
         "arguments": {
@@ -54,7 +55,7 @@
       "type": "SUBMODEL",
       "description": "Yard block",
       "position": [1100.0, 160.0],
-      "layout_position": [1000.0, 40.0],
+      "layout_position": [1100.75, 48.0],
       "params": {
         "definition": "Yard block",
         "arguments": {
@@ -817,7 +818,7 @@
     },
     "Yard block": {
       "info": {
-        "description": "One yard block served by one gantry crane (an RTG by default). A container enters by \"in\" and is given a bay drawn uniformly from the first \"Bays\" of the block; the crane travels from wherever it stands to that bay, picks the container, travels back to the block's transfer point (its \"transfer\" node, where the carriers and trucks are served) and sets it down, and the container leaves by \"out\". Each travel is the gantry's own hop: the longer of the gantry run along the block and the trolley run across it, plus the hoist time. With probability \"Reshuffle share\" the container is under another one and the crane hoists once more. The same cycle stands for stacking a container (transfer to bay) and retrieving one. The geometry lays out 30 bays 6.5 m apart (one TEU bay each), 8 m across from the truck lane; move the bay nodes for another block. Set \"Home node\" to this block's transfer node, <instance>/transfer, so the crane starts there. The crane is the fleet <instance>/CT RTG, which a Truck gate names to share it. The crane's pick time reads the container's ct_reshuffle_s (seconds), which this block and the Truck gate set: any other TRANSPORT on this crane must set it too. Ceilings: no stack positions (a bay is a point, not rows and tiers); one crane per block, since two gantries on one runway do not see each other; a warm start does not carry where the crane stands.",
+        "description": "One yard block served by one gantry crane (an RTG by default). A container enters by \"in\" and is given a bay drawn uniformly from the first \"Bays\" of the block; the crane travels from wherever it stands to that bay, picks the container, travels back to the block's transfer point (its \"transfer\" node, where the carriers and trucks are served) and sets it down, and the container leaves by \"out\". Each travel is the gantry's own hop: the longer of the gantry run along the block and the trolley run across it, plus the hoist time. With probability \"Reshuffle share\" the container is under another one and the crane hoists once more. The same cycle stands for stacking a container (transfer to bay) and retrieving one. The geometry lays out 30 bays 6.5 m apart (one TEU bay each) on the block's centre line, between the crane's runways, and the transfer point at the west end on the truck lane, 8 m across from the bays; the nodes are offsets from the block's centre, where its footprint is drawn. Move the bay nodes for another block. Set \"Home node\" to this block's transfer node, <instance>/transfer, so the crane starts there. The crane is the fleet <instance>/CT RTG, which a Truck gate names to share it. The crane's pick time reads the container's ct_reshuffle_s (seconds), which this block and the Truck gate set: any other TRANSPORT on this crane must set it too. Ceilings: no stack positions (a bay is a point, not rows and tiers); one crane per block, since two gantries on one runway do not see each other; a warm start does not carry where the crane stands.",
         "library": {"library": "container_terminals", "asset": "yard_block", "version": "0.1.0"},
         "parameters": [
           {
@@ -953,37 +954,37 @@
         ],
         "geometry": {
           "nodes": [
-            {"name": "transfer", "dx": 0.0, "dy": 0.0, "attach": true},
-            {"name": "bay1", "dx": 6.5, "dy": 8.0},
-            {"name": "bay2", "dx": 13.0, "dy": 8.0},
-            {"name": "bay3", "dx": 19.5, "dy": 8.0},
-            {"name": "bay4", "dx": 26.0, "dy": 8.0},
-            {"name": "bay5", "dx": 32.5, "dy": 8.0},
-            {"name": "bay6", "dx": 39.0, "dy": 8.0},
-            {"name": "bay7", "dx": 45.5, "dy": 8.0},
-            {"name": "bay8", "dx": 52.0, "dy": 8.0},
-            {"name": "bay9", "dx": 58.5, "dy": 8.0},
-            {"name": "bay10", "dx": 65.0, "dy": 8.0},
-            {"name": "bay11", "dx": 71.5, "dy": 8.0},
-            {"name": "bay12", "dx": 78.0, "dy": 8.0},
-            {"name": "bay13", "dx": 84.5, "dy": 8.0},
-            {"name": "bay14", "dx": 91.0, "dy": 8.0},
-            {"name": "bay15", "dx": 97.5, "dy": 8.0},
-            {"name": "bay16", "dx": 104.0, "dy": 8.0},
-            {"name": "bay17", "dx": 110.5, "dy": 8.0},
-            {"name": "bay18", "dx": 117.0, "dy": 8.0},
-            {"name": "bay19", "dx": 123.5, "dy": 8.0},
-            {"name": "bay20", "dx": 130.0, "dy": 8.0},
-            {"name": "bay21", "dx": 136.5, "dy": 8.0},
-            {"name": "bay22", "dx": 143.0, "dy": 8.0},
-            {"name": "bay23", "dx": 149.5, "dy": 8.0},
-            {"name": "bay24", "dx": 156.0, "dy": 8.0},
-            {"name": "bay25", "dx": 162.5, "dy": 8.0},
-            {"name": "bay26", "dx": 169.0, "dy": 8.0},
-            {"name": "bay27", "dx": 175.5, "dy": 8.0},
-            {"name": "bay28", "dx": 182.0, "dy": 8.0},
-            {"name": "bay29", "dx": 188.5, "dy": 8.0},
-            {"name": "bay30", "dx": 195.0, "dy": 8.0}
+            {"name": "transfer", "dx": -100.75, "dy": -8.0, "attach": true},
+            {"name": "bay1", "dx": -94.25, "dy": 0.0},
+            {"name": "bay2", "dx": -87.75, "dy": 0.0},
+            {"name": "bay3", "dx": -81.25, "dy": 0.0},
+            {"name": "bay4", "dx": -74.75, "dy": 0.0},
+            {"name": "bay5", "dx": -68.25, "dy": 0.0},
+            {"name": "bay6", "dx": -61.75, "dy": 0.0},
+            {"name": "bay7", "dx": -55.25, "dy": 0.0},
+            {"name": "bay8", "dx": -48.75, "dy": 0.0},
+            {"name": "bay9", "dx": -42.25, "dy": 0.0},
+            {"name": "bay10", "dx": -35.75, "dy": 0.0},
+            {"name": "bay11", "dx": -29.25, "dy": 0.0},
+            {"name": "bay12", "dx": -22.75, "dy": 0.0},
+            {"name": "bay13", "dx": -16.25, "dy": 0.0},
+            {"name": "bay14", "dx": -9.75, "dy": 0.0},
+            {"name": "bay15", "dx": -3.25, "dy": 0.0},
+            {"name": "bay16", "dx": 3.25, "dy": 0.0},
+            {"name": "bay17", "dx": 9.75, "dy": 0.0},
+            {"name": "bay18", "dx": 16.25, "dy": 0.0},
+            {"name": "bay19", "dx": 22.75, "dy": 0.0},
+            {"name": "bay20", "dx": 29.25, "dy": 0.0},
+            {"name": "bay21", "dx": 35.75, "dy": 0.0},
+            {"name": "bay22", "dx": 42.25, "dy": 0.0},
+            {"name": "bay23", "dx": 48.75, "dy": 0.0},
+            {"name": "bay24", "dx": 55.25, "dy": 0.0},
+            {"name": "bay25", "dx": 61.75, "dy": 0.0},
+            {"name": "bay26", "dx": 68.25, "dy": 0.0},
+            {"name": "bay27", "dx": 74.75, "dy": 0.0},
+            {"name": "bay28", "dx": 81.25, "dy": 0.0},
+            {"name": "bay29", "dx": 87.75, "dy": 0.0},
+            {"name": "bay30", "dx": 94.25, "dy": 0.0}
           ]
         },
         "catalogue": {

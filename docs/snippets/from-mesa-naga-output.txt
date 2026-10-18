@@ -1,0 +1,2 @@
+Naga: share ever infected 0.886
+exact, for a large population: 0.893

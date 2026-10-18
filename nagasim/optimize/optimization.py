@@ -121,61 +121,115 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
              evaluator=None, warm_start_points: list[dict] | None = None,
              pool=None, min_improvement: float = _MIN_IMPROVEMENT,
              record_logs=None) -> OptimizationResult:
-    """Search the factor space for the best *response* within a replication
-    *budget*, then confirm the winner with `select_best`.
+    """Search the factor space for the best response within a replication budget.
 
-    The built-in method (`method="auto"` or `"pattern"`, no extra dependency):
+    The winner is confirmed with ranking and selection (`select_best`).
 
-        1  seed the search with a Latin hypercube of about 10 x n_factors
-           points, bounded by the budget, each run for `replications_per_point`
-           replications on the SAME seeds as every other point (CRN, so point
-           differences are low-variance);
-        2  take the best of them as the incumbent (feasibility first, then mean);
-        3  repeat: try the 2n coordinate neighbours of the incumbent at each
-           factor's OWN current step (a fraction of its range, rounded for
-           integer factors and clipped to the bounds);
-        4  a neighbour replaces the incumbent only if it WINS: feasible where
-           the incumbent is not, or a paired-t interval on the per-replication
-           differences at `confidence` that excludes 0 in its favour;
-        5  an ambiguous challenger (better mean, interval straddling 0) gets
-           more replications -- and so does the incumbent, on the same seeds --
-           up to `max_replications_per_point`, then is retested once;
-        6  the winning factor's step doubles only when the gain is at least
-           `min_improvement` of the objective's own size; an axis whose own
-           neighbours beat nothing is halved, and a full sweep with no move
-           halves every axis. The search converges when EVERY factor's step is
-           below its own grid unit (ARCHITECTURE D80);
-        7  finally `select_best` (KN) over the top `select_top` distinct points
-           on whatever budget is left, for a statistically defensible winner.
+    The built-in method (``method="auto"`` or ``"pattern"``, no extra
+    dependency) works in these steps:
 
-    Every point ever evaluated is cached on its ROUNDED coordinates, so an
-    integer factor never pays for the same point twice, and `history` records
-    each evaluation. The budget is a hard cap: an evaluation that would exceed
-    it is not run.
+    1. Seed the search with a Latin hypercube of about ``10 * n_factors`` points,
+       bounded by the budget, each run for *replications_per_point* replications
+       on the same seeds as every other point (common random numbers, so
+       differences between points have low variance).
+    2. Take the best of them as the incumbent: feasibility first, then the mean.
+    3. Try the ``2n`` coordinate neighbours of the incumbent at each factor's own
+       current step (a fraction of its range, rounded for integer factors and
+       clipped to the bounds).
+    4. A neighbour replaces the incumbent only if it wins: it is feasible where
+       the incumbent is not, or a paired-t interval on the per-replication
+       differences, at *confidence*, excludes 0 in its favour.
+    5. An ambiguous challenger (better mean, interval straddling 0) gets more
+       replications, and so does the incumbent on the same seeds, up to
+       *max_replications_per_point*, then is retested once.
+    6. The winning factor's step doubles only when the gain is at least
+       *min_improvement* of the objective's own size; an axis whose neighbours
+       beat nothing is halved, and a full sweep with no move halves every axis.
+       The search converges when every factor's step is below its own grid unit.
+    7. Finally `select_best` (KN) runs over the top *select_top* distinct points
+       on whatever budget is left, for a statistically defensible winner.
 
-    `method="optuna"` runs optuna's TPE sampler instead (lazy import, optional
-    dependency; a clear error when it is not installed) and finishes with the
-    same selection step.
+    Every point is cached on its rounded coordinates, so an integer factor never
+    pays for the same point twice, and ``history`` records each evaluation. The
+    budget is a hard cap: an evaluation that would exceed it is not run.
 
-    *evaluator* replaces the `_Evaluator` this would build for itself, for a
-    caller that needs its own response KPIs (`nagasim.calibrate`, which adds a
-    calibration objective through the evaluator's `extra` hook) or that wants
-    to read the cached per-replication values afterwards. It carries its own
-    budget, so *budget* then only sizes the search's internal splits.
+    Parameters
+    ----------
+    layout : dict or str
+        The model, or a path to it.
+    factors : list of Factor
+        What to vary: an override path, a kind and bounds.
+    response : str
+        The KPI key to optimise.
+    goal : {"min", "max"}, default "min"
+        Direction of the response.
+    constraints : sequence, default ()
+        Feasibility conditions on other KPIs.
+    budget : int, default 300
+        Hard cap on replications.
+    replications_per_point : int, default 5
+        Replications of each evaluated point.
+    method : {"auto", "pattern", "optuna"}, default "auto"
+        ``"optuna"`` runs optuna's TPE sampler instead (optional dependency,
+        imported lazily) and finishes with the same selection step.
+    seed : int, default 0
+        Seed of replication 0.
+    confidence : float, default 0.95
+        Level of the intervals used to accept a move.
+    indifference : float, optional
+        The difference below which two points count as equal in the selection.
+    workers : int, default 1
+        Process-pool size.
+    run_length, warmup : optional
+        Fall back to the model's own settings.
+    max_replications_per_point : int, optional
+        Cap for the extra replications of an ambiguous comparison.
+    select_top : int, default 3
+        Points the final selection compares.
+    on_progress, should_stop : callable, optional
+        As in `nagasim.api.run_model`.
+    evaluator : optional
+        Replaces the internal evaluator, for a caller that needs its own response
+        KPIs (as `nagasim.calibrate` does) or wants the cached per-replication
+        values afterwards. It carries its own budget, so *budget* then only sizes
+        the search's internal splits.
+    warm_start_points : list of dict, optional
+        Evaluated first, through the same gate as every other point, so they are
+        simulated rather than trusted and count in *budget*.
+        `nagasim.surrogate.Surrogate.suggest` proposes such points.
+    pool : ProcessPoolExecutor, optional
+        A pool the caller owns.
+    min_improvement : float, default 0.01
+        How much better a move must be, as a fraction of the objective's size, to
+        count as a success: below it the point is still taken but the step does
+        not widen and no replications are bought to settle it. 0 restores "any
+        significant gain is a success".
+    record_logs : bool, optional
+        As in `nagasim.api.run_model`.
 
-    *min_improvement* (PHASE4 T7, ARCHITECTURE D80) is how much better a move
-    must be, as a FRACTION of the objective's own size, before it counts as a
-    success: below it the point is still taken -- it really is better -- but the
-    step does not widen and no replications are bought to settle it. It is what
-    keeps a factor worth a rounding error from consuming the search; 0 restores
-    the older "any statistically significant gain is a success".
+    Returns
+    -------
+    OptimizationResult
+        ``best`` (factor values), ``best_mean``, ``history`` and the selection
+        outcome.
 
-    *warm_start_points* (ROADMAP 3.7 B item 7), when given, are evaluated
-    FIRST, through the same `evaluate()` gate as every other point -- so they
-    are simulated (not trusted blindly) and counted in *budget* exactly like
-    any pilot point. `nagasim.surrogate.Surrogate.suggest()` proposes these:
-    candidate optima read off a fitted response surface, to be confirmed by
-    the real simulation before anyone trusts them.
+    See Also
+    --------
+    nagasim.experiments.run_scenarios : Compare points you name yourself.
+    nagasim.calibrate.calibrate : Search for parameters that reproduce observations.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim.optimize import Factor, optimize
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> factor = Factor(path="blocks.process_1.params.dist_params.rate",
+    ...                 kind="continuous", low=1.1, high=2.0, name="rate")
+    >>> found = optimize(str(path), [factor], response="system/Avg Queue Length", goal="min",
+    ...                  budget=12, replications_per_point=2, run_length=200, warmup=20, seed=0)
+    >>> 1.1 <= found.best["rate"] <= 2.0
+    True
     """
     base = load_layout(layout)
     factors = list(factors)

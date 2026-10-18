@@ -1,0 +1,5 @@
+1.67 minutes mean wait at the desks
+Resource  Total Seizes  Usage % (snapshot)
+  Server           386               67.10
+  Second           115               33.14
+   Desks           501               55.78

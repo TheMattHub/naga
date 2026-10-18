@@ -1,2 +1,7 @@
 mkdocs==1.6.1
 mkdocs-material==9.5.49
+mkdocs-redirects==1.2.3
+mkdocstrings[python]==1.0.7
+mkdocstrings-python==2.0.9
+salabim==26.0.8
+mesa==3.5.1

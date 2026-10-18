@@ -31,7 +31,7 @@
       "type": "SUBMODEL",
       "description": "Battery storage",
       "position": [60.0, -40.0],
-      "layout_position": [20.0, 6.0],
+      "layout_position": [23.0, 6.0],
       "params": {
         "definition": "Battery storage",
         "arguments": {

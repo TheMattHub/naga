@@ -2493,11 +2493,30 @@ def _annotate_sections(defs: dict) -> None:
 
 
 def build_json_schema() -> dict:
-    """The current model file format as a draft 2020-12 JSON Schema.
+    """Return the current model file format as a draft 2020-12 JSON Schema.
 
-    Built fresh on each call from BLOCK_REGISTRY / DISTRIBUTION_REGISTRY and the
-    enumerations in `resource_manager`, `schedules`, `stats` and `timeunits`, so
-    plugin blocks and distributions are included automatically.
+    Built fresh on each call from the block and distribution registries and the
+    enumerations in ``resource_manager``, ``schedules``, ``stats`` and
+    ``timeunits``, so plugin blocks and distributions are included
+    automatically.
+
+    Returns
+    -------
+    dict
+        The schema, ready for ``json.dumps`` or an editor's schema hookup.
+
+    See Also
+    --------
+    nagasim.modelfmt.minimal : The shortest valid form of a model.
+
+    Examples
+    --------
+    >>> from nagasim.modelschema import build_json_schema
+    >>> schema = build_json_schema()
+    >>> schema["$schema"]
+    'https://json-schema.org/draft/2020-12/schema'
+    >>> "blocks" in schema["properties"]
+    True
     """
     record_kinds = ", ".join(RECORD_KINDS)
     defs = _defs()

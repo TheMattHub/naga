@@ -80,6 +80,6 @@ The other options are `--orders orders.csv`, `--propose makespan|weighted_tardin
 `--orders` replaces the model's order book from a CSV. With no other flag it just prints the
 as-is schedule; add `--propose` to solve first (the proposed layout, not the as-is one, is what
 `--risk`/`--export`/`--report` then use), `--risk N` to score it, `--export` to write it, and
-`--report` for an HTML page with the Gantt and the risk table together. See the
-[command line reference](../reference/cli.md) for every flag's default.
+`--report` for an HTML page with the Gantt and the risk table together. `naga plan --help`
+lists every flag with its default.
 

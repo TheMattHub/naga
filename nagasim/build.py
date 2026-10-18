@@ -228,9 +228,35 @@ class Level:
         return f"{type_name.lower()}_{n}"
 
     def link(self, source, target, **fields):
-        """Link *source* to *target* (blocks or names); *fields* are the link's own
-        (`delay`, `source_port`, `target_port`). Returns *target*, so links chain; a name
-        ends a chain."""
+        """Link *source* to *target*; ``a >> b`` calls this.
+
+        Parameters
+        ----------
+        source, target : Block or str
+            The ends: blocks of this level, or block names. A block made on
+            another level raises ``ValueError``.
+        **fields
+            The link's own keys: ``delay``, ``source_port``, ``target_port``.
+
+        Returns
+        -------
+        Block or str
+            *target*, so links chain; a name ends a chain.
+
+        See Also
+        --------
+        nagasim.build.Model.definition : A second level to link within.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> m = nb.Model()
+        >>> a, b = m.create(), m.dispose()
+        >>> m.link(a, b) is b
+        True
+        >>> m.to_dict()["links"]
+        [{'source': 'create_1', 'target': 'dispose_1'}]
+        """
         if any(isinstance(end, Block) and end.level is not self for end in (source, target)):
             raise ValueError(f"link {source} -> {target}: both blocks must be on this level "
                              "(a submodel definition links only its own blocks)")
@@ -239,8 +265,40 @@ class Level:
 
 
 class Model(Level):
-    """A model. Keywords are the run settings (`time_limit`, `warmup`, `replications`, every
-    key of `simulation`) and the top-level sections (`info`, `network`, `simulation`, ...)."""
+    """A model written in Python; the file it produces is the model.
+
+    Every block type is a method named after it, taking the block's parameters
+    by name; ``a >> b`` links two blocks; ``add_resource`` and the like add an
+    entry to a list of the file. Keywords are the run settings (``time_limit``,
+    ``warmup``, ``replications``, every key of ``simulation``) and the top-level
+    sections (``info``, ``network``, ``simulation``, ...).
+
+    Parameters
+    ----------
+    **top
+        Run settings and top-level sections. An unknown keyword raises
+        ``TypeError`` naming the valid ones; a run setting given both as a
+        keyword and inside ``simulation=`` raises too.
+
+    See Also
+    --------
+    nagasim.build.export_python : The reverse, a model file as builder code.
+    nagasim.modelfmt.minimal : The form ``to_dict`` returns.
+
+    Examples
+    --------
+    >>> from nagasim import build as nb
+    >>> m = nb.Model(time_limit=100, replications=2)
+    >>> m.add_resource(name="Server")
+    'Server'
+    >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+    >>> serve = m.process(resource_name="Server", distribution=nb.Exponential(rate=1.25))
+    >>> _ = arrive >> serve >> m.dispose()
+    >>> [b["type"] for b in m.to_dict()["blocks"]]
+    ['CREATE', 'PROCESS', 'DISPOSE']
+    >>> m.run(seed=0).kpi("system/Total Entities Completed") > 0
+    True
+    """
 
     def __init__(self, **top):
         run = {k: top.pop(k) for k in list(top) if k in SIMULATION}
@@ -281,24 +339,125 @@ class Model(Level):
         return sorted(set(super().__dir__()) | set(_RECORDS))
 
     def definition(self, name: str, **fields) -> Level:
-        """A submodel definition (`info`, `parameters`, `scoped`, ...): a Level with the same
-        block methods. An instance of it is `m.submodel(definition=name, ...)`."""
+        """Add a submodel definition and return its canvas.
+
+        Parameters
+        ----------
+        name : str
+            The definition's name; an instance of it is
+            ``m.submodel(definition=name, ...)``.
+        **fields
+            The definition's keys: ``info``, ``parameters``, ``scoped``, ...
+
+        Returns
+        -------
+        Level
+            A canvas with the same block methods and ``link`` as the model.
+
+        See Also
+        --------
+        nagasim.build.Model.link : Links blocks on a level.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> m = nb.Model()
+        >>> sub = m.definition("Station")
+        >>> _ = sub.process("Work")
+        >>> m.to_dict()["submodels"]["Station"]["blocks"][0]["name"]
+        'Work'
+        """
         definition = _plain(fields)
         self.layout.setdefault("submodels", {})[name] = definition
         return Level(definition)
 
     def to_dict(self) -> dict:
-        """The model in `naga fmt`'s form."""
+        """Return the model as a dict, in the form ``naga fmt`` writes.
+
+        Returns
+        -------
+        dict
+            The model file's content: only the keys that differ from the
+            defaults, in the file's order.
+
+        See Also
+        --------
+        nagasim.build.Model.save : Writes it to a file.
+        nagasim.modelfmt.minimal : The function that makes this form.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> m = nb.Model(time_limit=50)
+        >>> _ = m.create() >> m.dispose()
+        >>> [b["type"] for b in m.to_dict()["blocks"]]
+        ['CREATE', 'DISPOSE']
+        """
         return modelfmt.minimal(self.layout)
 
     def save(self, path) -> Path:
-        """Write the model to *path*, and nothing else; returns the path."""
+        """Write the model to a file, and nothing else.
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            The model file to write (UTF-8, LF line ends).
+
+        Returns
+        -------
+        pathlib.Path
+            *path*.
+
+        See Also
+        --------
+        nagasim.build.Model.to_dict : The content, as a dict.
+
+        Examples
+        --------
+        >>> import tempfile
+        >>> from pathlib import Path
+        >>> from nagasim import build as nb
+        >>> m = nb.Model(time_limit=50)
+        >>> _ = m.create() >> m.dispose()
+        >>> with tempfile.TemporaryDirectory() as folder:
+        ...     m.save(Path(folder) / "model.json").name
+        'model.json'
+        """
         path = Path(path)
         path.write_text(modelfmt.dumps(self.to_dict()), encoding="utf-8", newline="\n")
         return path
 
     def run(self, **options):
-        """`api.run_model(self.to_dict(), **options)`."""
+        """Run the model; ``api.run_model(self.to_dict(), **options)``.
+
+        Parameters
+        ----------
+        **options
+            The options of `nagasim.api.run_model` (``replications``,
+            ``seed``, ``warmup``, ``run_length``, ``workers``, ...).
+
+        Returns
+        -------
+        Results or None
+            The KPI frames; None if no replication completed.
+
+        See Also
+        --------
+        nagasim.api.run_model : The options, in full.
+        nagasim.results.Results : What it returns.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> m = nb.Model(time_limit=100)
+        >>> m.add_resource(name="Server")
+        'Server'
+        >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+        >>> serve = m.process(resource_name="Server", distribution=nb.Exponential(rate=1.25))
+        >>> _ = arrive >> serve >> m.dispose()
+        >>> m.run(seed=0).kpi("system/Total Entities Completed") > 0
+        True
+        """
         from nagasim import api
 
         return api.run_model(self.to_dict(), **options)
@@ -357,10 +516,40 @@ def _call(target: str, func: str, args: list[str], kwargs: dict) -> str:
 
 
 def export_python(layout) -> str:
-    """Builder code for *layout* (a path or a dict): running it gives `m`, whose `to_dict()`
-    is `naga fmt`'s form of the model. Every value is written as a Python literal (`repr`),
-    a distribution as its constructor when its name and keys are the registry's: no text of
-    the model ever becomes code."""
+    """Return builder code for a model.
+
+    Running the code gives ``m``, whose ``to_dict()`` is the model in ``naga fmt``
+    form. Every value is written as a Python literal (``repr``), and a
+    distribution as its constructor when its name and keys are the registry's, so
+    no text of the model ever becomes code.
+
+    Parameters
+    ----------
+    layout : str or dict
+        A path or a layout dict.
+
+    Returns
+    -------
+    str
+        Python source.
+
+    See Also
+    --------
+    nagasim.build.Model : What the code builds.
+
+    Examples
+    --------
+    >>> from nagasim import build as nb
+    >>> m = nb.Model(time_limit=10)
+    >>> _ = m.create(distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+    >>> code = nb.export_python(m.to_dict())
+    >>> code.splitlines()[0]
+    'from nagasim import build as nb'
+    >>> namespace = {}
+    >>> exec(code, namespace)
+    >>> namespace["m"].to_dict() == m.to_dict()
+    True
+    """
     short = modelfmt.minimal(layout)
     top = {k: v for k, v in short.items() if k in _TOP}
     run = top.get("simulation")

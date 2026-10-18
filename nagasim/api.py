@@ -310,87 +310,92 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
               network=None, confine_to=None, feed=None,
               controllers: dict | None = None, pool=None,
               record_logs: bool | None = None, deterministic: bool | None = None) -> Results | None:
-    """Run *replications* replications with seeds seed, seed+1, ...
+    """Run replications of a model and return its KPI frames.
 
-    *path* is a model file path or an already-loaded layout dict (nothing is
-    written to disk in that case). Returns a `Results` (a `dict[str,
-    pd.DataFrame]` subclass -- every existing `results["system"]` /
-    `isinstance(results, dict)` caller is unaffected) of the KPI frames
-    concatenated over the completed replications, each tagged with a `Run`
-    column, plus notebook conveniences (PHASE5 O6): `results.kpis()`,
-    `.plot(key)`, `.to_excel(path)`, a Jupyter `_repr_html_`. None if none
-    completed.
+    Replication ``r`` is seeded with ``seed + r``, so a run is reproducible.
 
-    *replications*, *warmup* and *run_length* fall back to the model's own
-    "simulation" section (ROADMAP 1.5) when left None; an explicit value
-    (0 included) always wins. Raises ModelValidationError if the effective run
-    length ends up 0/None and the model has no other way to stop
-    (`schema.requires_run_length`) -- such a model would otherwise hang
-    forever (a never-ending CREATE, a failure, or a repeating capacity
-    schedule all keep the event queue non-empty).
+    Parameters
+    ----------
+    path : str or dict
+        A model file path or an already-loaded layout dict (nothing is written to
+        disk for a dict).
+    replications, warmup, run_length : optional
+        Fall back to the model's own ``simulation`` section when left None; an
+        explicit value (0 included) always wins. A warm-started model (a non-empty
+        ``initial_state``) defaults its warm-up to 0, because the initial state is
+        the history a warm-up would otherwise build. A model with no run length
+        and no other way to stop raises `ModelValidationError`, as it would
+        otherwise run forever.
+    seed : int, default 0
+        Seed of replication 0.
+    workers : int or "auto", default 1
+        More than 1 spreads the replications over a process pool; the output is
+        identical to a sequential run. ``"auto"`` times replication 0 first and
+        switches to a pool only when at least 3 more replications remain and that
+        one took 1 s or more.
+    on_progress : callable, optional
+        ``on_progress(done, total)`` after each completed replication.
+    should_stop : callable, optional
+        Polled between replications and during one; on an interruption only the
+        completed replications are returned.
+    trace : TraceRecorder, optional
+        Subscribed to replication 0 only, which then runs in this process.
+    bind_data : bool, default False
+        Resolve the model's data bindings once, before the first replication, so
+        every replication runs on the same bound values. The `BindingReport`
+        comes back as the extra ``"data_inputs"`` frame; a binding that fails is
+        a row with its problem, never an exception.
+    base_dir : path, optional
+        What a source's relative ``location`` resolves against (default: the
+        model file's folder).
+    network : NetworkPolicy, optional
+        The caller's `netguard.NetworkPolicy`. Without one a ``sql`` or
+        ``json_url`` source is refused, whatever the model file says.
+    confine_to : path, optional
+        The one directory a file-backed source may be read from.
+    feed : Feed, optional
+        The caller's open `live.Feed`; live sources are answered from it, in this
+        process.
+    controllers : dict, optional
+        ``{policy name: Controller}`` for every policy-mode DECIDE block. With
+        ``workers != 1`` they must be picklable.
+    pool : ProcessPoolExecutor, optional
+        A pool the caller owns and reuses across calls (see `scenario_pool`), so
+        a study pays the process start-up once. Results are identical.
+    record_logs : bool, optional
+        False switches the per-event logs off: the log frames keep their columns
+        and have no rows, and every summary statistic is untouched. None keeps
+        the model's own setting (default: on).
+    deterministic : bool, optional
+        True makes every distribution sample its mean, chance branches use
+        largest-remainder allocation and replications are forced to 1. None keeps
+        the model's own ``simulation.deterministic`` (default: off).
 
-    *workers* > 1 spreads the replications over a `ProcessPoolExecutor`
-    (ROADMAP 1.6). The output is identical to the sequential run: each
-    replication is seeded independently and the frames are re-ordered by seed
-    before they are concatenated. A pool is never spawned for workers <= 1, and
-    `trace` keeps replication 0 in this process (a recorder cannot be pickled
-    back out of a child).
+    Returns
+    -------
+    Results or None
+        A `Results` (a ``dict[str, pandas.DataFrame]``) of the KPI frames
+        concatenated over the completed replications, each tagged with a ``Run``
+        column, with ``.kpis()``, ``.kpi(key)``, ``.plot(key)`` and
+        ``.to_excel(path)`` on top. None if no replication completed.
 
-    *workers* == "auto" (ROADMAP 1.7 E) times replication 0 in-process first;
-    with at least 3 more replications left and that one taking >= 1 second it
-    switches to a pool sized `auto_workers`, otherwise it stays sequential --
-    either way the output is exactly what a fixed `workers` value would give.
+    See Also
+    --------
+    nagasim.experiments.run_scenarios : Several variants of one model, compared.
+    nagasim.experiments.run_until_precision : Replicate until an interval is tight enough.
+    nagasim.experiments.flatten_kpis : The KPI frames as one long table.
 
-    `on_progress(done, total)` fires after each completed replication.
-    `should_stop()` is polled between replications and (via `run_single_simulation`)
-    during one; on an interruption, only the replications completed so far are
-    returned. `trace`, a `TraceRecorder`, is subscribed to replication 0 only.
-
-    *bind_data* (ROADMAP 3.4a) resolves the model's data bindings ONCE, before
-    the first replication, so every replication runs the same bound values:
-    the resolved parameters are applied to a copy of the layout and the
-    resulting `BindingReport` comes back as the extra "data_inputs" frame. A
-    binding that fails or is refused is a row in that frame with its problem,
-    never an exception -- the run continues on the model's own stored value.
-    *base_dir* is what a source's relative `location` resolves against
-    (default: the model file's own folder); *network* is the caller's
-    `netguard.NetworkPolicy` -- without one, a `sql`/`json_url` source is
-    refused, whatever the model file says -- and *confine_to*, when given,
-    is the one directory a file-backed source may be read from. *feed* is the
-    caller's open `live.Feed`: live sources are answered from it, in this
-    process (a feed is never handed to a worker).
-
-    A warm-started model (a non-empty "initial_state", ROADMAP 3.4b) defaults
-    its warm-up to 0 rather than to the model's own setting: the initial state
-    IS the history a warm-up would otherwise have to build, and discarding it
-    is almost never what the caller meant. An explicit *warmup* still wins.
-
-    *pool*, when given, is a `ProcessPoolExecutor` the CALLER owns and reuses
-    across many `run_model` calls (see `scenario_pool`) -- a study that runs
-    dozens of scenarios then pays the process start-up cost once instead of
-    once per scenario. The results are identical either way.
-
-    *record_logs* False (PHASE4 T7) switches the per-EVENT logs off for this
-    run: the entity, resource and store LOG frames come back with their columns
-    and no rows, and every summary statistic is untouched -- they all come from
-    the time-weighted collectors and the streaming per-type accumulators. It is
-    written into the layout as `simulation.record_logs`, so it reaches a pool
-    worker with the model. Left None, the model's own setting (default: on)
-    stands.
-
-    *controllers* (ROADMAP 3.7 A) attaches `{policy name: Controller}` for
-    every Policy-mode DECIDE block in-process, before any replication starts.
-    With `workers != 1` the controllers must be picklable (a `ProcessPoolExecutor`
-    task is pickled to reach the worker): an unpicklable one raises a clear
-    ValueError here rather than a cryptic one from the pool.
-
-    *deterministic* True (PHASE6 W4 P1, D119) turns on deterministic run mode
-    for this call: every distribution samples its mean, DECIDE-by-chance uses
-    largest-remainder allocation, a failure's TTF/TTR use their mean, and
-    replications are forced to 1 (see `run_settings`). Same `with_run_setting`
-    pattern as *record_logs*, so it reaches a pool worker with the layout;
-    left None, the model's own `simulation.deterministic` (default: off)
-    stands.
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import api
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> results = api.run_model(str(path), replications=2, run_length=200, warmup=20, seed=0)
+    >>> sorted(int(r) for r in results["system"]["Run"].unique())
+    [0, 1]
+    >>> results.kpi("system/Total Entities Completed") > 0
+    True
     """
     # ROADMAP 2.4 B: a library caller that never went through launcher.main()
     # (a script, a notebook, an MCP tool) still gets plugin blocks/

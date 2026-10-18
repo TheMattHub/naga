@@ -313,7 +313,7 @@ Send `message` (with an optional `payload`) to the agents `to` names.
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
 | `message` | str | `''` | yes |  |  | Name of the message; an agent's "message" transition matches it. |
-| `to` | object | `'entity.agent'` |  |  |  | Recipients: an expression giving an agent (entity.agent, AGENT("Pop", i)) or {"population": "Pop"[, "where": "<condition on self>"][, "random": true]}. |
+| `to` | object | `'entity.agent'` |  |  |  | Recipients: an expression giving an agent (entity.agent, AGENT("Pop", i)) or {"population": "Pop"[, "where": "<condition on self>"]\[, "random": true]}. |
 | `payload` | str | `''` |  |  |  | Optional expression evaluated for the entity; the receiving transition reads it as `payload`. |
 
 Outputs: 1.

@@ -91,8 +91,10 @@ m.save("mm1.json")
 
 ## Next
 
+- Build one model step by step in Python, from a queue to scenarios and the event log:
+  the [learning path](learn/index.md).
 - Change the model and compare: `naga scenarios`, `naga optimize`, `naga doe`
-  ([command line reference](reference/cli.md)).
+  ([command line reference](reference/cli/index.md)).
 - Larger models that run as they are: `naga examples` lists them, `naga run job_shop_jackson`
   runs one, and the [gallery](gallery/index.md) shows each with its numbers.
 - The whole file format: [Model file format](model-file-format.md).

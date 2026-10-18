@@ -1,5 +1,5 @@
 """Generate the engine site's generated pages (`docs/reference/*.md`, `docs/gallery/*.md`,
-`docs/reference-models.md`, `docs/worked-examples/`, `docs/llms.txt`) from the live registries, the bundled models and the site's own nav.
+`docs/validation/reference-models.md`, `docs/worked-examples/`, `docs/llms.txt`) from the live registries, the bundled models and the site's own nav.
 
     python tools/gen_engine_docs.py
 
@@ -12,6 +12,7 @@ for the product's site too (`product=True`: the links only that site has).
 from __future__ import annotations
 
 import contextlib
+import inspect
 import io
 import json
 import os
@@ -45,6 +46,13 @@ def _write(out: Path, name: str, lines: list[str], product: bool = False) -> Non
     (out / name).write_text(text, encoding="utf-8", newline="\n")
 
 
+def _no_ref(text: str, product: bool) -> str:
+    """*text* where `][` cannot read as a Markdown reference link. The engine site's
+    mkdocstrings plugin resolves `[a][b]` as a cross-reference, and the optional-argument
+    notation `f(x[, a][, b])` looks like one; the product site has no such plugin."""
+    return text if product else text.replace("][", "]" + chr(92) + "[")
+
+
 # ---------------------------------------------------------------- blocks.md
 
 def gen_blocks(out: Path, product: bool = False) -> None:
@@ -65,7 +73,7 @@ def gen_blocks(out: Path, product: bool = False) -> None:
                 lines.append(
                     f"| `{p.name}` | {p.type.__name__} | `{p.default!r}` | "
                     f"{'yes' if p.required else ''} | {quantity} | {unit} | "
-                    f"{p.description or '--'} |")
+                    f"{_no_ref(p.description, product) or '--'} |")
         else:
             lines.append("No parameters.")
         outputs = "multiple, chosen at run time" if spec.multi_output else "1"
@@ -121,7 +129,7 @@ def gen_expressions(out: Path, product: bool = False) -> None:
     for fname in sorted(FUNCTIONS):
         _, _, low, high = FUNCTIONS[fname]
         arity = str(low) if high == low else f"{low}..{'n' if high is None else high}"
-        lines.append(f"| `{fname}` | {arity} | {notes.get(fname, '')} |")
+        lines.append(f"| `{fname}` | {arity} | {_no_ref(notes.get(fname, ''), product)} |")
     _write(out, "expressions.md", lines, product)
 
 
@@ -590,18 +598,50 @@ def _capture_help(args, main) -> str:
     return out.getvalue().strip()
 
 
+# One page per group of commands: a page of 30 commands is 900 lines. A command that is in
+# no group stops the generator, so a new command is placed when it is added.
+CLI_GROUPS = (
+    ("run-and-compare", "Run and compare",
+     "Run a model, compare scenarios and search for the best settings.",
+     ("examples", "run", "scenarios", "invest", "fit", "doe", "optimize", "policy-eval")),
+    ("model-files", "Check and edit model files",
+     "Validate, format, diff, merge and test model files, and export them as code.",
+     ("schema", "validate", "fmt", "export", "diff", "merge", "check", "ci-template")),
+    ("build-from-data", "Build a model from data",
+     "Draft a model from tables or an event log, or translate one from another tool.",
+     ("generate", "discover", "sdimport")),
+    ("twin", "Digital twin",
+     "Read a plant, start a run from its state, calibrate and forecast.",
+     ("bind", "watch", "state", "plant", "twin", "calibrate", "forecast")),
+    ("plan-and-share", "Plan, inspect and share",
+     "Plan with a solver, find the loops that drive a system dynamics model, and share a model in a browser.",
+     ("plan", "loops", "viewer")),
+    ("agents", "Agents",
+     "Serve the model operations to an assistant.",
+     ("mcp", "assist")),
+)
+
+
 def gen_cli(out: Path) -> None:
     from nagasim.cli import COMMANDS, main
 
+    grouped = [name for *_head, names in CLI_GROUPS for name in names]
+    assert sorted(grouped) == sorted(COMMANDS), (
+        f"CLI_GROUPS must place every command once; missing {sorted(set(COMMANDS) - set(grouped))}, "
+        f"unknown {sorted(set(grouped) - set(COMMANDS))}")
     lines = ["# Command line reference", "",
              "`--help` output of every `naga` command, captured live so it cannot drift from "
-             "the real argument parsers. `python -m nagasim` is the same program.", "",
-             "| Command | What it does |", "|---|---|"]
-    lines += [f"| [`naga {name}`](#naga-{name}) | {summary} |"
-              for name, (_module, _attr, summary) in COMMANDS.items()]
-    for name in COMMANDS:
-        lines += ["", f"## naga {name}", "", "```text", _capture_help([name, "--help"], main), "```"]
-    _write(out, "cli.md", lines)
+             "the real argument parsers, one page for each group of commands. "
+             "`python -m nagasim` is the same program.", ""]
+    for slug, title, summary, names in CLI_GROUPS:
+        lines += [f"## {title}", "", summary, "", "| Command | What it does |", "|---|---|"]
+        lines += [f"| [`naga {name}`]({slug}.md#naga-{name}) | {COMMANDS[name][2]} |" for name in names]
+        lines.append("")
+        page = [f"# {title}", "", summary]
+        for name in names:
+            page += ["", f"## naga {name}", "", "```text", _capture_help([name, "--help"], main), "```"]
+        _write(out / "cli", f"{slug}.md", page)
+    _write(out / "cli", "index.md", lines)
 
 
 # ----------------------------------------------------------------- schema.md
@@ -703,38 +743,67 @@ API = ("nagasim.api.run_model", "nagasim.experiments.run_scenarios",
        "nagasim.experiments.flatten_kpis", "nagasim.optimize.optimize",
        "nagasim.calibrate.calibrate", "nagasim.forecast.forecast",
        "nagasim.inputfit.best_fit", "nagasim.modelcheck.assert_model",
-       "nagasim.modelschema.build_json_schema", "nagasim.build.Model",
+       "nagasim.modelschema.build_json_schema", "nagasim.build.Model", "nagasim.results.Results",
        "nagasim.build.export_python", "nagasim.modelfmt.minimal",
        "nagasim.core.document.ModelDocument")
 
 
+# The members a class page lists, in this order (an entry point that is not here lists none).
+# `link` is Level's, which Model inherits. The `add_*` and block methods are made at run time
+# from the registries, so they have no source to read; `_builders` writes them instead.
+API_MEMBERS = {"nagasim.build.Model": ("run", "to_dict", "save", "definition", "link"),
+               "nagasim.results.Results": ("kpi", "kpis", "frame", "plot", "to_excel")}
+
+
+def _builders() -> list[str]:
+    """The Model's list builders (`add_*`), from the same registry that makes them."""
+    from nagasim import build as nb
+
+    lines = ["", "## List builders", "",
+             "Each `add_*` method appends one entry to a list of the model file and returns the "
+             "entry's key (its name, or its id for an order). The keywords are the entry's keys "
+             "([Model file keys](../schema.md)); an unknown keyword raises `TypeError` naming "
+             "the valid ones. Each block type is a method too, named after the type in lower "
+             "case (`m.process(...)`), and returns a block that `>>` links; see "
+             "[Blocks](../blocks.md).", "",
+             "```python", "from nagasim import build as nb", "m = nb.Model()",
+             "m.add_resource(name=\"Server\", capacity=2)     # returns 'Server'", "```", "",
+             "| Method | Adds to | Key | What the list holds |", "|---|---|---|---|"]
+    for method, section in nb._RECORDS.items():
+        doc = " ".join(section.doc.split()).replace("|", chr(92) + "|")
+        lines.append(f"| `{method}` | `{section.name}` | `{section.key}` | {doc} |")
+    return lines
+
+
 def gen_api(out: Path) -> None:
+    """`api/index.md` and one page per entry point under *out*. A page is a mkdocstrings
+    directive: the signature, parameters and examples are the docstring's, rendered at
+    build time, so nothing on them is typed here."""
     import ast
     import importlib
     import inspect
 
     lines = ["# Python entry points", "",
-             "The signature and summary of the functions a script calls most, read from the "
-             "source. Before 1.0 the Python API may change between minor versions; each such "
-             "change has a changelog line. See [Python API](../python-api.md) for how they fit "
-             "together."]
+             "The functions and classes a script calls most. Each page is its docstring: "
+             "parameters, return value, a runnable example and related entry points. Before 1.0 "
+             "the Python API may change between minor versions; each such change has a changelog "
+             "line. See the [Python API guide](../../python-api.md) for how they fit together.",
+             "", "| Entry point | What it does |", "|---|---|"]
     for dotted in API:
         module_name, name = dotted.rsplit(".", 1)
         defined_in = inspect.getmodule(getattr(importlib.import_module(module_name), name))
-        # The source text, not inspect.signature: its rendering of annotations differs
-        # between Python versions.
         tree = ast.parse(inspect.getsource(defined_in))
         node = next(n for n in tree.body if getattr(n, "name", None) == name)
-        doc = " ".join((ast.get_docstring(node) or "").split("\n\n", 1)[0].split())
-        if isinstance(node, ast.ClassDef):
-            init = next((n for n in node.body if getattr(n, "name", None) == "__init__"), None)
-            args = ast.unparse(init.args).removeprefix("self").lstrip(", ") if init else ""
-            signature = f"class {name}({args})"
-        else:
-            returns = f" -> {ast.unparse(node.returns)}" if node.returns else ""
-            signature = f"{name}({ast.unparse(node.args)}){returns}"
-        lines += ["", f"## {dotted}", "", "```text", signature, "```", "", doc or "(no summary)"]
-    _write(out, "api.md", lines)
+        doc = " ".join((ast.get_docstring(node) or "").split(chr(10) * 2, 1)[0].split())
+        lines.append(f"| [`{dotted}`]({name}.md) | {doc.replace('|', chr(92) + '|')} |")
+        members = API_MEMBERS.get(dotted)
+        listed = (["      members:", *(f"        - {m}" for m in members),
+                   "      inherited_members: true"] if members else ["      members: false"])
+        _write(out / "api", f"{name}.md",
+               [f"# {name}", "", f"Python reference for `{dotted}`.", "", f"::: {dotted}", "    options:", "      heading_level: 2",
+                "      show_root_heading: false", "      show_root_toc_entry: false", *listed,
+                *(_builders() if dotted == "nagasim.build.Model" else [])])
+    _write(out / "api", "index.md", lines)
 
 
 REFERENCE = (gen_blocks, gen_distributions, gen_expressions, gen_kpis, gen_cli, gen_schema,
@@ -872,7 +941,7 @@ def gallery_index(catalogue: dict) -> str:
               "gives, on the version these pages were built from. Few replications make wide "
               "intervals: these are illustrations, not results to cite. The models whose "
               "answer is known exactly are compared with it on "
-              "[Reference models](../reference-models.md).", "",
+              "[Reference models](../validation/reference-models.md).", "",
               "The diagrams are the model's own blocks and links, written as Mermaid text. They "
               "are drawn by a script your browser loads from unpkg.com, the one request these "
               "pages make to another site; without it a diagram shows as its text. A model of "
@@ -1186,7 +1255,7 @@ def reference_page(rows: list[str]) -> str:
     lines = ["# Reference models", "",
              "Models whose answer is known exactly, from a formula found in the textbooks of "
              "the subject, beside what the engine gives when it runs them. Every model here is "
-             "one of the [bundled models](gallery/index.md), so each line can be repeated "
+             "one of the [bundled models](../gallery/index.md), so each line can be repeated "
              "with one command.", "",
              "| Case | Method | Model | Quantity | Exact | Naga | 95% interval | Exact inside | "
              "Replications | Seed |", "|---|---|---|---|---|---|---|---|---|---|",
@@ -1231,7 +1300,7 @@ def reference_page(rows: list[str]) -> str:
               "Agreement on these cases says the engine's clock, queues, random streams, "
               "integrators and statistics are right where a formula can check them. It says "
               "nothing about a model that has no formula, which is most models: for those, "
-              "see [Model assertions](model-assertions.md) and [Experiments](experiments.md)."]
+              "see [Model assertions](../model-assertions.md) and [Experiments](../experiments.md)."]
     return "\n".join(lines)
 
 
@@ -1692,6 +1761,48 @@ def draw_worked_example_charts(out: Path) -> None:
         plt.close(fig)
 
 
+# ----------------------------------------------------------------- snippets/
+#
+# A page shows code from `docs/snippets/<name>.py` and what it prints from
+# `<name>-output.txt`, both by `--8<--` include. The output is written here from a real run
+# (the snippet seeds itself), so a number on a page is never typed and the "generated
+# pages match the generator" test guards it. The fence runner expands the same includes,
+# so the code on the page is the code that ran.
+
+def run_snippet(source: Path) -> str:
+    """What the snippet prints, run in an empty scratch folder."""
+    import logging
+    import tempfile
+
+    out, here = io.StringIO(), os.getcwd()
+    logging.disable(logging.WARNING)
+    with tempfile.TemporaryDirectory() as scratch:
+        os.chdir(scratch)
+        try:
+            with contextlib.redirect_stdout(out):
+                exec(compile(source.read_text(encoding="utf-8"), str(source), "exec"),
+                     {"__name__": "__main__"})
+        finally:
+            os.chdir(here)
+            logging.disable(logging.NOTSET)
+    return out.getvalue()
+
+
+def output_name(source: Path) -> str:
+    """`landing-example.py` prints into `landing-output.txt`, `learn-2.py` into `learn-2-output.txt`."""
+    return source.stem.removesuffix("-example") + "-output.txt"
+
+
+def gen_snippets_one(source: Path, out: Path) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    (out / output_name(source)).write_text(run_snippet(source), encoding="utf-8", newline="\n")
+
+
+def gen_snippets(out: Path) -> None:
+    for source in sorted((DOCS / "snippets").glob("*.py")):
+        gen_snippets_one(source, out)
+
+
 # ------------------------------------------------------------------ llms.txt
 #
 # A map of the site for an LLM agent (llmstxt.org): every page of the nav, with its title,
@@ -1747,7 +1858,8 @@ def llms_txt() -> str:
              "returns statistics as pandas frames. Command `naga`, Python package `nagasim`.", "",
              "Every page of the documentation, in the order of its menu. An agent that builds "
              "models should start with the model file format, the block reference and the agent "
-             "tools."]
+             "tools.", "", "The whole site as one file: llms-full.txt. Every page has a Markdown "
+             "copy at its address with .md in place of .html."]
     section = None
     for group, title, path in nav:
         if group != section:
@@ -1924,12 +2036,14 @@ def build_stub() -> str:
         for key, value in run.items()]
     model_params += [f"{key}: {_py_type(schema['properties'].get(key), defs)} = ..."
                      for key in sorted(nb._TOP, key=list(schema["properties"]).index)]
-    model_doc = [" ".join(nb.Model.__doc__.split()), ""] + [
+    # The class docstring is numpydoc (the API reference renders it); a constructor tooltip
+    # gets its first paragraph and the run settings.
+    model_doc = [" ".join(nb.Model.__doc__.split("\n\n")[0].split()), ""] + [
         f"{key}: {' '.join(value.get('description', '').split())}".rstrip(": ")
         for key, value in run.items()]
     out += ["", "",
             "class Model(Level):",
-            *_docstring([nb.Model.__doc__.split("\n")[0]], "    "),
+            *_docstring([inspect.cleandoc(nb.Model.__doc__)], "    "),
             "    layout: dict[str, Any]"]
     out += _signature("__init__", model_params, "None", model_doc)
     for method, section in nb._RECORDS.items():
@@ -1965,9 +2079,10 @@ def main() -> None:
     for generate in REFERENCE:
         generate(DOCS / "reference")
     gen_gallery(DOCS / "gallery")
-    gen_reference_models(DOCS)
+    gen_reference_models(DOCS / "validation")
     gen_worked_examples(DOCS / "worked-examples")
     draw_worked_example_charts(DOCS / "worked-examples")
+    gen_snippets(DOCS / "snippets")
     gen_llms(DOCS)
     sys.stdout.write(f"gen_engine_docs: wrote {DOCS}\n")
 

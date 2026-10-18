@@ -7,6 +7,7 @@
       "type": "SUBMODEL",
       "description": "Shore power",
       "position": [150.0, 100.0],
+      "layout_position": [0.0, 0.0],
       "params": {
         "definition": "Shore power",
         "arguments": {
@@ -22,6 +23,7 @@
       "type": "SUBMODEL",
       "description": "Grid connection",
       "position": [600.0, 300.0],
+      "layout_position": [12.0, 0.0],
       "params": {
         "definition": "Grid connection",
         "arguments": {

@@ -91,4 +91,5 @@ wait for each other. A modeller adds those by hand, and the draft gives them a p
 
 The [event log page](event-log-to-model.md) has every column the reader understands, the
 routing and fitting rules, and how accurate the drafts are on public real logs. Try your own
-log with `--check` first.
+log with `--check` first. To build a model from scratch in Python instead, follow the
+[learning path](learn/index.md).

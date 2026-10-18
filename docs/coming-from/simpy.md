@@ -73,6 +73,17 @@ print("Naga: mean time in system", round(kpis.loc["system/Avg Throughput Time", 
 print(kpis.loc[["system/Avg Queue Length", "resource/Server/Usage % (snapshot)"], ["mean", "ci95"]])
 ```
 
+The same model can be written from Python with the builder instead of a JSON file; it writes
+the file above and runs it:
+
+```python
+--8<-- "docs/snippets/from-simpy-builder.py"
+```
+
+```text
+--8<-- "docs/snippets/from-simpy-builder-output.txt"
+```
+
 Both estimate the same quantity, 4 minutes in theory, from different random numbers. The second
 one also gave the queue length, the utilisation and their confidence intervals without a line of
 monitoring code, and the model can be validated, diffed, sent to an optimiser or edited by an

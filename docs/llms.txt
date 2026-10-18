@@ -4,12 +4,94 @@
 
 Every page of the documentation, in the order of its menu. An agent that builds models should start with the model file format, the block reference and the agent tools.
 
+The whole site as one file: llms-full.txt. Every page has a Markdown copy at its address with .md in place of .html.
+
 ## Start
 
-- [Home](https://thematthub.github.io/naga/index.html): Naga is a simulation engine for Python, built on SimPy, for people who have a question about how a system behaves and want an answer they can show their work for.
-- [What's new](https://thematthub.github.io/naga/whats-new.html): This page gives the major changes of each minor release, newest first: what you can do now that you could not before, and what changes when you upgrade.
-- [Release notes](https://thematthub.github.io/naga/changelog.html)
-- [Quick start](https://thematthub.github.io/naga/quickstart.html): A single-server queue, from nothing to numbers.
+- [Home](https://thematthub.github.io/naga/index.html): Naga is a simulation engine for Python, built on SimPy: you describe a system as a model file, and it runs the model and gives back an answer with its confidence interval.
+
+## Learn
+
+- [Learn Naga](https://thematthub.github.io/naga/learn/index.html): The learning path builds one model in six steps, and each page adds a few lines to the previous one and prints what the model does.
+- [1. One queue](https://thematthub.github.io/naga/learn/1-one-queue.html): A queue with one server is the smallest model worth running, and the rest of this path grows it.
+- [2. Two servers and a schedule](https://thematthub.github.io/naga/learn/2-two-servers-and-a-schedule.html): Real servers are not always there, so this step adds a second desk that is closed for the first four hours and open for the last four.
+- [3. A tank level](https://thematthub.github.io/naga/learn/3-a-tank-level.html): A tank fills and drains continuously, which a queue model cannot say, so this step puts one in the same model.
+- [4. Agents](https://thematthub.github.io/naga/learn/4-agents.html): An agent is a small statechart that lives in the model beside the blocks.
+- [5. Replications and scenarios](https://thematthub.github.io/naga/learn/5-replications-and-scenarios.html): One run is one sample, so a claim about the model needs many runs and a comparison needs the same random numbers on both sides.
+- [6. Reading the results](https://thematthub.github.io/naga/learn/6-results.html): Every run returns more than the headline number: summaries for each kind of component, and a log of what happened.
+- [Quick start from a model file](https://thematthub.github.io/naga/quickstart.html): A single-server queue, from nothing to numbers.
+- [Tutorial: a log to a model in five minutes](https://thematthub.github.io/naga/event-log-tutorial.html): This page takes a real-looking event log from a job shop to a running model, and shows what to check before trusting it.
+
+## Worked examples
+
+- [Airport ground support](https://thematthub.github.io/naga/worked-examples/airport-ground-support.html): This page works through two decisions a ground handler at a hub faces: how many ramp agents and how much ground equipment a day's flight schedule needs, and whether that equipment can go electric and how it should charge.
+- [Container terminal](https://thematthub.github.io/naga/worked-examples/container-terminal.html): This page works through two decisions a container terminal faces: whether to electrify the fleet that carries boxes between the quay and the yard, and how large a shore power connection at a berth should be.
+
+## How-to
+
+- [Compare scenarios and search](https://thematthub.github.io/naga/experiments.html): Everything about running more than one replication, comparing designs, and searching for a good one: nagasim.experiments (scenarios, CRN, precision, warm-up) and nagasim.optimize (DOE, ranking and selection, optimization), driven from the command line (naga scenarios, naga doe, naga optimize) or from Python.
+- [Model assertions and CI](https://thematthub.github.io/naga/model-assertions.html): A model assertion pins one KPI against a comparison operator and value, checked over the model's own replications -- the same idea as a unit test, but for a simulation's steady-state behaviour instead of its code.
+- [Semantic diff and merge](https://thematthub.github.io/naga/semantic-diff.html): A plain git diff on two model JSON files is mostly noise: a tool that saves a model writes blocks, resources and every other list back in whatever order its own structures hold them, so saving a model with no real edit can still produce a wall of reordered lines.
+- [Share a model (the browser viewer)](https://thematthub.github.io/naga/sharing-a-model.html): A model can be shared as one HTML file in which the engine itself runs.
+- [Event log to model](https://thematthub.github.io/naga/event-log-to-model.html): Most plants and offices already record what happened: which order went through which step, when it started and finished, and who did it.
+- [Use from Python](https://thematthub.github.io/naga/python-api.html): The command line is a thin layer over a few functions.
+- [Use with an agent](https://thematthub.github.io/naga/mcp.html): The engine has a set of tools an LLM agent calls to build, validate, run, debug and analyse a model: Agent tools lists every one.
+
+## Digital twin
+
+- [Digital twin](https://thematthub.github.io/naga/digital-twin.html): A digital twin is a model that reads its parameters from real data, starts from the state the real system is in now and forecasts from there; naga twin keeps one running beside a plant, scores its forecasts against what then happened and recommends among actions you name.
+- [A plant as a timeline](https://thematthub.github.io/naga/plant-timeline.html): The views of a run (the HTML player, the debugger's inspection) draw one thing: the timeline a run's trace reduces to.
+- [Live data](https://thematthub.github.io/naga/live-data.html): A model can read what a plant is saying right now: a REST service, an MQTT broker (plain topics or Sparkplug B) or an OPC UA server.
+
+## Coming from
+
+- [SimPy](https://thematthub.github.io/naga/coming-from/simpy.html): Naga runs on SimPy: every block is a SimPy process and every resource a SimPy resource.
+- [salabim](https://thematthub.github.io/naga/coming-from/salabim.html): salabim is a process-oriented simulation library: you write a class for each kind of thing that moves through the system, and its process method says what that thing does, one request, hold or release at a time.
+- [Mesa](https://thematthub.github.io/naga/coming-from/mesa.html): Mesa is an agent-based modelling library for Python: an agent is a class, a model is a class that creates the agents, and by default time advances in steps in which each agent runs its step method (Mesa also has an experimental event scheduler).
+- [Arena](https://thematthub.github.io/naga/coming-from/arena.html): The block vocabulary here is close to Arena's flowchart modules, and the expression functions keep the SIMAN names.
+- [AnyLogic](https://thematthub.github.io/naga/coming-from/anylogic.html): Like AnyLogic, Naga runs discrete-event, system-dynamics and agent-based parts in one model on one clock.
+- [Vensim](https://thematthub.github.io/naga/coming-from/vensim.html): Naga integrates stocks and flows on a fixed time step, with the functions a Vensim model uses most, and reads a .mdl file for a common subset of the language.
+- [NetLogo](https://thematthub.github.io/naga/coming-from/netlogo.html): Naga has agents on a grid with patches, in continuous space or on a network, with links, ticks, births and deaths.
+
+## Command line
+
+- [Command line reference](https://thematthub.github.io/naga/reference/cli/index.html): --help output of every naga command, captured live so it cannot drift from the real argument parsers, one page for each group of commands.
+- [Run and compare](https://thematthub.github.io/naga/reference/cli/run-and-compare.html): Run a model, compare scenarios and search for the best settings.
+- [Check and edit model files](https://thematthub.github.io/naga/reference/cli/model-files.html): Validate, format, diff, merge and test model files, and export them as code.
+- [Build a model from data](https://thematthub.github.io/naga/reference/cli/build-from-data.html): Draft a model from tables or an event log, or translate one from another tool.
+- [Digital twin](https://thematthub.github.io/naga/reference/cli/twin.html): Read a plant, start a run from its state, calibrate and forecast.
+- [Plan, inspect and share](https://thematthub.github.io/naga/reference/cli/plan-and-share.html): Plan with a solver, find the loops that drive a system dynamics model, and share a model in a browser.
+- [Agents](https://thematthub.github.io/naga/reference/cli/agents.html): Serve the model operations to an assistant.
+
+## Reference
+
+- [Blocks](https://thematthub.github.io/naga/reference/blocks.html): One section per block type, from nagasim/core/block_registry.py.
+- [Distributions](https://thematthub.github.io/naga/reference/distributions.html): One section per distribution, from nagasim/core/distributions.py's DISTRIBUTION_REGISTRY.
+- [Expressions](https://thematthub.github.io/naga/reference/expressions.html): core/expressions.py's grammar: a restricted-Python AST allow-list, never eval/exec.
+- [KPIs](https://thematthub.github.io/naga/reference/kpis.html): Every result frame nagasim.api.run_model / nagasim.experiments.run_scenarios return, and every column each one carries -- probed against nagasim/models/job_shop_jackson.json so a new KPI column fails this generation until it has a definition here.
+- [Model file keys](https://thematthub.github.io/naga/reference/schema.html): Current schema version: 29 (nagasim/core/schema/migrate.py).
+- [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 71 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+
+## Python API
+
+- [Python entry points](https://thematthub.github.io/naga/reference/api/index.html): The functions and classes a script calls most.
+- [run_model](https://thematthub.github.io/naga/reference/api/run_model.html): Python reference for nagasim.api.run_model.
+- [run_scenarios](https://thematthub.github.io/naga/reference/api/run_scenarios.html): Python reference for nagasim.experiments.run_scenarios.
+- [run_until_precision](https://thematthub.github.io/naga/reference/api/run_until_precision.html): Python reference for nagasim.experiments.run_until_precision.
+- [suggest_warmup](https://thematthub.github.io/naga/reference/api/suggest_warmup.html): Python reference for nagasim.experiments.suggest_warmup.
+- [flatten_kpis](https://thematthub.github.io/naga/reference/api/flatten_kpis.html): Python reference for nagasim.experiments.flatten_kpis.
+- [optimize](https://thematthub.github.io/naga/reference/api/optimize.html): Python reference for nagasim.optimize.optimize.
+- [calibrate](https://thematthub.github.io/naga/reference/api/calibrate.html): Python reference for nagasim.calibrate.calibrate.
+- [forecast](https://thematthub.github.io/naga/reference/api/forecast.html): Python reference for nagasim.forecast.forecast.
+- [best_fit](https://thematthub.github.io/naga/reference/api/best_fit.html): Python reference for nagasim.inputfit.best_fit.
+- [assert_model](https://thematthub.github.io/naga/reference/api/assert_model.html): Python reference for nagasim.modelcheck.assert_model.
+- [build_json_schema](https://thematthub.github.io/naga/reference/api/build_json_schema.html): Python reference for nagasim.modelschema.build_json_schema.
+- [Model](https://thematthub.github.io/naga/reference/api/Model.html): Python reference for nagasim.build.Model.
+- [Results](https://thematthub.github.io/naga/reference/api/Results.html): Python reference for nagasim.results.Results.
+- [export_python](https://thematthub.github.io/naga/reference/api/export_python.html): Python reference for nagasim.build.export_python.
+- [minimal](https://thematthub.github.io/naga/reference/api/minimal.html): Python reference for nagasim.modelfmt.minimal.
+- [ModelDocument](https://thematthub.github.io/naga/reference/api/ModelDocument.html): Python reference for nagasim.core.document.ModelDocument.
 
 ## Gallery
 
@@ -23,30 +105,6 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 - [System dynamics](https://thematthub.github.io/naga/gallery/system-dynamics.html): 6 of the bundled models.
 - [Agent-based](https://thematthub.github.io/naga/gallery/agent-based.html): 12 of the bundled models.
 - [Games](https://thematthub.github.io/naga/gallery/games.html): 2 of the bundled models.
-- [Reference models](https://thematthub.github.io/naga/reference-models.html): Models whose answer is known exactly, from a formula found in the textbooks of the subject, beside what the engine gives when it runs them.
-
-## Worked examples
-
-- [Airport ground support](https://thematthub.github.io/naga/worked-examples/airport-ground-support.html): This page works through two decisions a ground handler at a hub faces: how many ramp agents and how much ground equipment a day's flight schedule needs, and whether that equipment can go electric and how it should charge.
-- [Container terminal](https://thematthub.github.io/naga/worked-examples/container-terminal.html): This page works through two decisions a container terminal faces: whether to electrify the fleet that carries boxes between the quay and the yard, and how large a shore power connection at a berth should be.
-
-## Coming from
-
-- [SimPy](https://thematthub.github.io/naga/coming-from/simpy.html): Naga runs on SimPy: every block is a SimPy process and every resource a SimPy resource.
-- [Arena](https://thematthub.github.io/naga/coming-from/arena.html): The block vocabulary here is close to Arena's flowchart modules, and the expression functions keep the SIMAN names.
-- [AnyLogic](https://thematthub.github.io/naga/coming-from/anylogic.html): Like AnyLogic, Naga runs discrete-event, system-dynamics and agent-based parts in one model on one clock.
-- [Vensim](https://thematthub.github.io/naga/coming-from/vensim.html): Naga integrates stocks and flows on a fixed time step, with the functions a Vensim model uses most, and reads a .mdl file for a common subset of the language.
-- [NetLogo](https://thematthub.github.io/naga/coming-from/netlogo.html): Naga has agents on a grid with patches, in continuous space or on a network, with links, ticks, births and deaths.
-
-## Guides
-
-- [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
-- [System dynamics](https://thematthub.github.io/naga/system-dynamics.html): Stocks and flows with feedback, alongside the ordinary block flow chart -- the same model file, the same run_model.
-- [Agent-based modelling](https://thematthub.github.io/naga/agent-based-modelling.html): Populations of agents, each running its own small statechart, alongside the ordinary block flow chart and system dynamics -- the same model file, the same run_model.
-- [Python API](https://thematthub.github.io/naga/python-api.html): The command line is a thin layer over a few functions.
-- [Use with an agent](https://thematthub.github.io/naga/mcp.html): The engine has a set of tools an LLM agent calls to build, validate, run, debug and analyse a model: Agent tools lists every one.
-- [Tools or code, an LLM case study](https://thematthub.github.io/naga/llm-study.html): The agent tools rest on a claim: a language model that builds a simulation through them gets a model that is valid, runs and gives the right answer more often than the same model writing SimPy code for the same request.
-- [Security](https://thematthub.github.io/naga/security.html): A model file (.json) is untrusted data, exactly like a document someone emailed you.
 
 ## Modelling guide
 
@@ -70,32 +128,23 @@ Every page of the documentation, in the order of its menu. An agent that builds 
 - [Mobile cobots, machine tending](https://thematthub.github.io/naga/modelling-guide/tending.html): A mobile cobot is a vehicle with an arm: it carries a part to a machine, puts it in, and later takes it out and carries it on.
 - [Investment case](https://thematthub.github.io/naga/modelling-guide/investment.html): An investment case compares each scenario with a baseline and reports whether the extra capital pays for itself: payback, net present value (NPV) and return on investment (ROI).
 
-## Experiments and files
+## Background
 
-- [Experiments](https://thematthub.github.io/naga/experiments.html): Everything about running more than one replication, comparing designs, and searching for a good one: nagasim.experiments (scenarios, CRN, precision, warm-up) and nagasim.optimize (DOE, ranking and selection, optimization), driven from the command line (naga scenarios, naga doe, naga optimize) or from Python.
-- [Model assertions and CI](https://thematthub.github.io/naga/model-assertions.html): A model assertion pins one KPI against a comparison operator and value, checked over the model's own replications -- the same idea as a unit test, but for a simulation's steady-state behaviour instead of its code.
-- [Semantic diff and merge](https://thematthub.github.io/naga/semantic-diff.html): A plain git diff on two model JSON files is mostly noise: a tool that saves a model writes blocks, resources and every other list back in whatever order its own structures hold them, so saving a model with no real edit can still produce a wall of reordered lines.
-- [Sharing a model (the browser viewer)](https://thematthub.github.io/naga/sharing-a-model.html): A model can be shared as one HTML file in which the engine itself runs.
-- [Event log to model](https://thematthub.github.io/naga/event-log-to-model.html): Most plants and offices already record what happened: which order went through which step, when it started and finished, and who did it.
-- [Tutorial: a log to a model in five minutes](https://thematthub.github.io/naga/event-log-tutorial.html): This page takes a real-looking event log from a job shop to a running model, and shows what to check before trusting it.
-
-## Digital twin
-
-- [Digital twin](https://thematthub.github.io/naga/digital-twin.html): A digital twin is a model that reads its parameters from real data, starts from the state the real system is in now and forecasts from there; naga twin keeps one running beside a plant, scores its forecasts against what then happened and recommends among actions you name.
-- [A plant as a timeline](https://thematthub.github.io/naga/plant-timeline.html): The views of a run (the HTML player, the debugger's inspection) draw one thing: the timeline a run's trace reduces to.
-- [Live data](https://thematthub.github.io/naga/live-data.html): A model can read what a plant is saying right now: a REST service, an MQTT broker (plain topics or Sparkplug B) or an OPC UA server.
-
-## Reference
-
-- [Command line](https://thematthub.github.io/naga/reference/cli.html): --help output of every naga command, captured live so it cannot drift from the real argument parsers.
-- [Blocks](https://thematthub.github.io/naga/reference/blocks.html): One section per block type, from nagasim/core/block_registry.py.
-- [Distributions](https://thematthub.github.io/naga/reference/distributions.html): One section per distribution, from nagasim/core/distributions.py's DISTRIBUTION_REGISTRY.
-- [Expressions](https://thematthub.github.io/naga/reference/expressions.html): core/expressions.py's grammar: a restricted-Python AST allow-list, never eval/exec.
-- [KPIs](https://thematthub.github.io/naga/reference/kpis.html): Every result frame nagasim.api.run_model / nagasim.experiments.run_scenarios return, and every column each one carries -- probed against nagasim/models/job_shop_jackson.json so a new KPI column fails this generation until it has a definition here.
-- [Model file keys](https://thematthub.github.io/naga/reference/schema.html): Current schema version: 29 (nagasim/core/schema/migrate.py).
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 71 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
-- [Python entry points](https://thematthub.github.io/naga/reference/api.html): The signature and summary of the functions a script calls most, read from the source.
-
-## Project
-
+- [System dynamics](https://thematthub.github.io/naga/system-dynamics.html): Stocks and flows with feedback, alongside the ordinary block flow chart -- the same model file, the same run_model.
+- [Agent-based modelling](https://thematthub.github.io/naga/agent-based-modelling.html): Populations of agents, each running its own small statechart, alongside the ordinary block flow chart and system dynamics -- the same model file, the same run_model.
+- [Security](https://thematthub.github.io/naga/security.html): A model file (.json) is untrusted data, exactly like a document someone emailed you.
+- [Tools or code, an LLM case study](https://thematthub.github.io/naga/llm-study.html): The agent tools rest on a claim: a language model that builds a simulation through them gets a model that is valid, runs and gives the right answer more often than the same model writing SimPy code for the same request.
+- [Stability and deprecation](https://thematthub.github.io/naga/stability.html): Before version 1.0 the Python API may change between minor versions, and every such change has a line in the release notes.
 - [Contributing](https://thematthub.github.io/naga/contributing.html)
+
+## Validation
+
+- [Validation](https://thematthub.github.io/naga/validation/index.html): Naga is checked against answers that are known without simulating, and anyone can repeat the checks.
+- [Reference models](https://thematthub.github.io/naga/validation/reference-models.html): Models whose answer is known exactly, from a formula found in the textbooks of the subject, beside what the engine gives when it runs them.
+- [Benchmarks](https://thematthub.github.io/naga/validation/benchmarks.html): This page compares Naga with raw SimPy, salabim and Ciw on queueing models whose mean time in system is known exactly.
+- [Citing](https://thematthub.github.io/naga/validation/citing.html): If Naga contributed to a paper, a thesis or a report, please cite it.
+
+## Release notes
+
+- [](https://thematthub.github.io/naga/changelog.html)
+- [What's new](https://thematthub.github.io/naga/whats-new.html): This page gives the major changes of each minor release, newest first: what you can do now that you could not before, and what changes when you upgrade.

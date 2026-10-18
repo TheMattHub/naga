@@ -415,12 +415,37 @@ def check(layout, *, workers: int = 1) -> list[Result]:
 
 
 def assert_model(path_or_layout, strict: bool = False) -> None:
-    """pytest helper: `nagasim.modelcheck.assert_model("model.json")` raises
-    AssertionError naming every failed assertion/reality check, so a normal
-    pytest failure report shows what went wrong. An inconclusive result (an
-    assertion's CI straddles the bound) does not raise by default -- it is
-    reported through `warnings.warn` instead -- unless `strict=True`, which
-    treats it as a failure too."""
+    """Assert, in a test, that a model passes its own assertions and reality checks.
+
+    Raises ``AssertionError`` naming every failed assertion, so a normal pytest
+    report shows what went wrong. An inconclusive result (an assertion's
+    confidence interval straddles the bound) does not raise by default; it is
+    reported through ``warnings.warn``.
+
+    Parameters
+    ----------
+    path_or_layout : str or dict
+        The model file or the layout dict.
+    strict : bool, default False
+        Treat an inconclusive result as a failure too.
+
+    Returns
+    -------
+    None
+
+    See Also
+    --------
+    nagasim.api.run_model : Runs the model without checking its assertions.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim.modelcheck import assert_model
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> assert_model(str(path)) is None
+    True
+    """
     results = check(path_or_layout)
     failed = [r for r in results if r.status == "fail"]
     inconclusive = [r for r in results if r.status == "inconclusive"]
