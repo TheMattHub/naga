@@ -36,8 +36,9 @@ _document_args("study_update", study=_ID,
                        "replaced whole. goals and assumptions entries need a string id; a goal is "
                        "{id, text, kpi, low, high}; an assumption is {id, text, value, source}; a "
                        "target component is {name, purpose, blocks: [block names]}; a source is "
-                       "{id, text, input}; validation is "
-                       "{level: data|known_answer|expert, passed: bool, ...}.")
+                       "{id, text, input}; a validation entry is {level: data|known_answer|expert, "
+                       "passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, "
+                       "\"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.")
 _document_args("study_add_input", study=_ID, name="File name to store under inputs/ (no folders).",
                path="Workspace file to copy in; give this or text.",
                text="Text to store (a transcript, notes); give this or path.")
@@ -209,12 +210,18 @@ def _check_assumptions(key, value):
     return value
 
 
+_VALIDATION_HINT = ('each entry needs "level" (one of data, known_answer, expert) and "passed" (true or '
+                    'false), e.g. {"level": "known_answer", "passed": true, "text": "M/G/1 formula vs model wait"}')
+
+
 def _check_validation(key, value):
+    # The checklist reads only level and passed: an entry without a boolean passed (say
+    # "status": "passed") would be stored and silently ignored, so it is refused here.
     for v in _dicts(key, value):
         if v.get("level") not in LEVELS:
-            raise _bad(key, f"level must be one of {list(LEVELS)}")
-        if "passed" in v and not isinstance(v["passed"], bool):
-            raise _bad(key, "passed must be true or false")
+            raise ToolError("E_STUDY_BAD_VALUE", f"{key}: level must be one of {list(LEVELS)}", _VALIDATION_HINT)
+        if not isinstance(v.get("passed"), bool):
+            raise ToolError("E_STUDY_BAD_VALUE", f"{key}: passed must be true or false", _VALIDATION_HINT)
     return value
 
 
@@ -269,7 +276,8 @@ def study_update(study: str, changes: dict) -> dict:
     """Record what the study has learned or the person decided: set any of question,
     decision, mode, size, plan_approved, goals, target, assumptions, sources, validation,
     experiments, skipped. A list key replaces the whole list. Nothing here can mark the study
-    accepted.
+    accepted. Example: study_update(study, changes={"validation": [{"level": "known_answer",
+    "passed": true, "text": "..."}]}).
 
     Returns {"ok", "next_step"}.
     """
@@ -292,8 +300,8 @@ def study_update(study: str, changes: dict) -> dict:
 @tool()
 def study_add_input(study: str, name: str, path: str | None = None, text: str | None = None) -> dict:
     """Keep a source of the study in its inputs/ folder: copy a workspace file, or store text
-    (a call transcript, notes). Then name it with study_update(sources=[{"id", "text",
-    "input": <the returned path>}]) so the inputs step can check it.
+    (a call transcript, notes). Then name it with study_update(changes={"sources": [{"id",
+    "text", "input": <the returned path>}]}) so the inputs step can check it.
 
     Returns {"input": "inputs/<name>"}.
     """
@@ -330,8 +338,12 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
     note. A model that does not validate or run is stored as a draft with its problems, not
     refused: read "problems", fix the model, step again.
 
+    The study's size sets the replications (quick 5, standard 10, deep 30); the model's own
+    simulation.replications is not used, so steps stay cheap and comparable. For tighter
+    numbers raise the size, or run run_model / run_scenarios on model "study:<study id>".
+
     Returns {"id", "kind": "version"|"draft", "verdict", "checks", "changes", "kpis",
-    "sufficiency", "next_step"}; a version also has its report at versions/<id>/report.html.
+    "replications", "sufficiency", "next_step"}; a version also has its report at versions/<id>/report.html.
     """
     started = time.monotonic()
     folder, s = _open(study)
@@ -339,6 +351,7 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
     cached = key is not None and key in s["requests"]
     digest = rerun = None
     problems: list = []
+    n = SIZES[s["size"]]["replications"]
     if not cached:
         model = _slot(folder)
         written = call("write_model", model=model, layout=layout)
@@ -347,7 +360,6 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
         elif not written["ok"]:
             problems = written["problems"]
         else:
-            n = SIZES[s["size"]]["replications"]
             digest = call("run_model", model=model, replications=n, seed=seed)
             # ponytail: same-seed rerun on the first version and every fifth halves the cost;
             # rerun every step if drift is ever seen.
@@ -366,6 +378,7 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
             answer["report_error"] = err
         if page := _page(folder, s):
             answer["page"] = page
+    answer["replications"] = n
     answer["sufficiency"] = _label(s)
     answer["next_step"] = study_mod.next_step(s, folder)
     return answer

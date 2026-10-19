@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import json
 import re
+from importlib import resources
 from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim import flowchart
 from nagasim.modeldiff import diff
-from nagasim.studychecks import overall
+from nagasim.studychecks import kpi_mean, overall
 from nagasim.twin import write_json, write_text
 
 FORMAT = 1
@@ -39,17 +40,27 @@ CHECKLIST = (
     ("conclusions", "Goals are answered"),
 )
 # What to do for the first open item; names the tool that moves it on.
+# Every study_update mention names the real call shape, changes={...} (a test holds this).
 _TODO = {
-    "question": "Record the question with study_update(question=...).",
-    "goals": "Record measurable goals (KPI with low/high) with study_update(goals=...).",
-    "scope": "Record the target and its components with study_update(target=...).",
-    "inputs": "Add input files with study_add_input and name them with study_update(sources=...).",
-    "assumptions": "Record each assumption with its source using study_update(assumptions=...).",
+    "question": 'Record the question with study_update(changes={"question": "..."}).',
+    "goals": 'Record measurable goals with study_update(changes={"goals": [{"id": "g1", "text": "...", '
+             '"kpi": "<KPI name>", "low": <number>, "high": <number>}]}).',
+    "scope": 'Record the target and its components with study_update(changes={"target": '
+             '[{"name": "...", "purpose": "...", "blocks": ["<block name>"]}]}).',
+    "inputs": 'Add input files with study_add_input and name them with study_update(changes={"sources": '
+              '[{"id": "s1", "text": "...", "input": "inputs/<name>"}]}).',
+    "assumptions": 'Record each assumption with its source using study_update(changes={"assumptions": '
+                   '[{"id": "a1", "text": "...", "source": "..."}]}).',
     "model": "Build the first model version with study_step.",
-    "verification": "Fix the model with study_step until its verdict is passed.",
-    "validation": "Record a validation result with study_update(validation=...).",
-    "experiments": "Run scenarios with study_step and record them with study_update(experiments=...); "
-                   "each scenario is a version and counts against the size's increments.",
+    "verification": "Fix the model with study_step until its model checks (laws, reproducibility, "
+                    "assumptions) pass; unmet goals are findings, not model errors.",
+    "validation": 'Compare the model with reality or a known answer, then record it with '
+                  'study_update(changes={"validation": [{"level": "data|known_answer|expert", '
+                  '"passed": true, "text": "what was compared"}]}).',
+    "experiments": 'Put the alternatives in the model as scenarios ("scenarios": [{"name": "...", "overrides": '
+                   '[{"path": "resources.<name>.capacity", "value": 2}]}]) and step it with study_step; '
+                   'compare them with run_scenarios(model="study:<study id>"), then record the result with '
+                   'study_update(changes={"experiments": [{"id": "e1", "text": "...", "result": "..."}]}).',
     "conclusions": "Compare the last version's KPIs with the goals and adjust the model or the goals. "
                    "When the person is satisfied, build the deliverable with study_package.",
 }
@@ -64,9 +75,25 @@ _AGENTS_MD = """\
 This folder is a simulation study run by the Naga engine; the engine tests every model step.
 Call the study_status tool with this folder first and follow its next_step.
 The model versions are in versions/ (work in progress in versions/drafts/).
+The study guide: the `run_simulation_study` prompt of the Naga MCP server, or `naga skill` for the Agent Skills folder.
 Never edit study.json by hand: the engine writes it, and a hand edit can break the checks.
 Inputs live in inputs/, test results in tests/, reports and tables in outputs/.
 """
+
+
+def skill_dir():
+    """The `simulation-study` Agent Skills folder shipped in the package. Read through
+    importlib.resources so it works from a zip or wheel, not only from a source tree."""
+    return resources.files("nagasim") / "skills" / "simulation-study"
+
+
+def skill_text(name: str = "SKILL.md") -> str:
+    """One file of the skill; `name` may be a path below the folder, e.g. references/interview.md."""
+    node = skill_dir()
+    for part in name.split("/"):
+        node = node / part
+    return node.read_text(encoding="utf-8")
+
 
 
 class StudyError(ValueError):
@@ -210,9 +237,15 @@ def _item(study: dict, item: str, folder: Path | None) -> tuple[str, str]:
     if item == "verification":
         if last is None:
             return "not_verified", "no model version yet"
-        verdict = last.get("verdict")
+        # Judged without the goal checks: an unmet goal is a finding, not a broken model.
+        # An older record without "verification" falls back to the step's verdict.
+        verdict = last.get("verification", last.get("verdict"))
         return (verdict if verdict in VERDICTS else "not_verified"), ""
     if item == "validation":
+        # Validation is study-level and holds across versions: it compares the model's logic with
+        # reality or a known answer, and a later step (a scenario, another capacity) seldom undoes
+        # that. Each step re-runs the laws and assumption checks; re-validate when a step changes
+        # the logic itself.
         results = [v.get("passed") for v in study["validation"]]
         if True in results:
             return "passed", ""
@@ -275,7 +308,7 @@ def effort(study: dict) -> dict:
 def next_step(study: dict, folder: Path | None = None) -> str:
     if study["mode"] == "one_go" and not study["plan_approved"]:
         return ("Show the person the plan card (goals, scope, assumptions, effort) and record their "
-                "approval with study_update(plan_approved=true).")
+                "approval with study_update(changes={\"plan_approved\": true}).")
     if sufficiency(study)["sufficient"]:
         return "Report the result; offer extensions."
     if len(study["versions"]) >= SIZES[study["size"]]["increments"]:
@@ -334,8 +367,9 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
                                   pending=[c for c in study["target"] if not c.get("blocks")])
         write_text(target / "flowchart.svg", flowchart.to_svg(geom, f"{vid}: {note}"))
         write_text(target / "flowchart.txt", flowchart.to_text(geom))
-        study["versions"].append({"id": vid, "note": note, "verdict": verdict, "kpis": kpis,
-                                  "changes_count": len(lines)})
+        study["versions"].append({"id": vid, "note": note, "verdict": verdict,
+                                  "verification": overall([c for c in checks if c["kind"] != "goal"]),
+                                  "kpis": kpis, "changes_count": len(lines)})
     answer = {"id": vid, "kind": "version" if keep else "draft", "verdict": verdict, "checks": checks,
               "changes": lines[:_MAX_CHANGES], "kpis": kpis}
     if not keep:
@@ -356,6 +390,12 @@ def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, ch
     verdict = "failed" if digest is None else overall(checks)
     kpis = {k: v["mean"] for k, v in ((digest or {}).get("system") or {}).items()
             if isinstance(v, dict) and v.get("mean") is not None}
+    # A goal on a user statistic or a resource column is stored too, with the value its goal check
+    # used, so goals_status (the cover, the checklist) agrees with the step's goal checks.
+    for goal in study["goals"]:
+        k = goal.get("kpi")
+        if digest is not None and k and k not in kpis and (m := kpi_mean(digest, k)) is not None:
+            kpis[k] = m
     return _record(folder, study, layout, verdict, checks, kpis, note, key, problems or [])
 
 

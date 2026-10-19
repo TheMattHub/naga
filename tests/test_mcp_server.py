@@ -71,7 +71,8 @@ def test_the_server_publishes_every_tool_resource_and_prompt(tmp_path):
                     "naga://reference/expressions", "naga://reference/schema"}
     assert [getattr(t, "uriTemplate", getattr(t, "uri_template", None)) for t in templates] \
         == ["naga://examples/{name}"]
-    assert {p.name for p in prompts} == {"build_model_from_description", "analyse_results"}
+    assert {p.name for p in prompts} == {"build_model_from_description", "analyse_results",
+                                        "run_simulation_study", "study_interview"}
 
 
 def test_tools_compact_publishes_what_building_a_model_needs_and_nothing_else(tmp_path):

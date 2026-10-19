@@ -68,3 +68,17 @@ options:
   --reasoning {none,low,medium,high,omit}
   --max-tool-rounds MAX_TOOL_ROUNDS
 ```
+
+## naga skill
+
+```text
+usage: naga skill [-h] [--copy DIR] [--force]
+
+Show where the simulation-study guide is, or copy it so an assistant that
+reads Agent Skills (a skills folder) can use it.
+
+options:
+  -h, --help  show this help message and exit
+  --copy DIR  copy the folder to DIR/simulation-study (writes only there)
+  --force     replace DIR/simulation-study if it exists
+```

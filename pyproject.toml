@@ -73,7 +73,7 @@ include = ["nagasim*"]
 # models/data/*.mesmap.json: the MES twin demo.
 nagasim = ["models/*.json", "models/data/*.csv", "models/data/*.mesmap.json",
           "models/data/mes_twin_shop/*.csv", "templates/*.yml", "templates/*.txt", "py.typed",
-          "*.pyi"]
+          "*.pyi", "skills/*/*.md", "skills/*/references/*.md"]
 
 [tool.setuptools.dynamic]
 version = {attr = "nagasim.__version__"}

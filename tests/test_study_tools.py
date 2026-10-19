@@ -311,3 +311,28 @@ def test_page_html_is_the_page(ws):
     assert html.startswith("<!DOCTYPE html>") and 'id="actions"' in html
     assert f'data-study="{sid}"' in html
     assert T.call("study_page_html", study="nope")["error"]["code"]
+
+
+def test_validation_without_a_boolean_passed_is_refused_with_the_shape(ws):
+    # dogfood 2026-10-19: {"status": "passed"} was stored and silently ignored by the checklist.
+    sid = start(ws)
+    bad = T.call("study_update", study=sid, changes={"validation": [{"level": "known_answer", "status": "passed"}]})
+    assert bad["error"]["code"] == "E_STUDY_BAD_VALUE" and '"passed": true' in bad["error"]["hint"]
+    ok = T.call("study_update", study=sid, changes={"validation": [{"level": "known_answer", "passed": True}]})
+    assert ok["ok"] is True
+    T.call("study_update", study=sid, changes={"plan_approved": True})
+    r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
+    assert r["replications"] == 10        # the standard size, whatever the model says
+    item = [c for c in T.call("study_status", study=sid)["checklist"] if c["item"] == "validation"]
+    assert item[0]["verdict"] == "passed"   # validation holds across versions
+
+
+def test_scenarios_of_a_step_run_on_the_study_slot(ws):
+    # The experiments next_step: scenarios in the layout, then run_scenarios on "study:<id>".
+    sid = start(ws)
+    lay = layout(ws)
+    lay["scenarios"] = [{"name": "two", "overrides": [{"path": "resources.Server.capacity", "value": 2}]}]
+    assert T.call("study_step", study=sid, layout=lay, note="with a scenario")["kind"] == "version"
+    r = T.call("run_scenarios", model=f"study:{sid}", replications=3)
+    assert "error" not in r, r
+    assert any(row["scenario"] == "two" for row in r["comparison"])

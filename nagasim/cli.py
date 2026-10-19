@@ -65,6 +65,7 @@ COMMANDS = {
     "forecast": ("forecast", "main", "short-horizon forecast with prediction bands"),
     "plan": ("planning", "main", "deterministic plan, optional CP-SAT proposal and risk"),
     "loops": ("loopdominance", "main", "loop dominance (Loops That Matter) of an SD model"),
+    "skill": ("skillcli", "main", "show or copy the simulation-study guide for an assistant"),
     "mcp": ("mcp_server", "main", "Model Context Protocol server over stdio"),
     "assist": ("assistant", "main", "one headless assistant turn"),
 }

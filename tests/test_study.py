@@ -252,6 +252,7 @@ def test_a_passing_step_is_version_one(tmp_path):
     assert out["kpis"] == {"Throughput": 7.0}
     assert json.loads((folder / "versions/v001/model.json").read_text()) == _layout("a")
     assert study.load(folder)["versions"][0] == {"id": "v001", "note": "first", "verdict": "passed",
+                                                 "verification": "passed",
                                                  "kpis": {"Throughput": 7.0}, "changes_count": 0}
 
 
@@ -374,3 +375,31 @@ def test_step_keeps_every_changed_block_beyond_the_capped_changes(tmp_path):
     study.record_step(folder, st, _layout(*many), _digest(), _PASSED, "many", None)
     step = json.loads((folder / "versions" / "v002" / "step.json").read_text(encoding="utf-8"))
     assert len(step["changes"]) == 30 and len(step["changed"]) == 40
+
+
+def test_next_step_texts_name_the_changes_call_shape():
+    # dogfood 2026-10-19: the texts said study_update(goals=...), a shape the tool refuses.
+    texts = list(study._TODO.values()) + [study.next_step(_fresh())]
+    mentions = [x.split("study_update(", 1)[1] for x in texts if "study_update(" in x]
+    assert len(mentions) >= 7 and all(m.startswith("changes=") for m in mentions)
+
+
+def test_verification_ignores_unmet_goals(tmp_path):
+    # dogfood 2026-10-19: an unmet goal made next_step ask to fix the model (ruling 12: a finding).
+    folder, st = _new(tmp_path)
+    st["plan_approved"] = True
+    unmet = _PASSED + [{"name": "goal g1", "verdict": "failed", "why": "", "kind": "goal"}]
+    out = study.record_step(folder, st, _layout("a"), _digest(), unmet, "first", None)
+    assert out["kind"] == "version" and out["verdict"] == "partial"
+    assert _verdicts(st)["verification"] == "passed"
+    assert "Fix the model" not in study.next_step(st, folder)
+
+
+def test_a_goal_on_a_user_statistic_is_stored_with_the_version(tmp_path):
+    # dogfood 2026-10-19: goal checks found a RECORD tally, the cover read system KPIs only.
+    folder, st = _new(tmp_path)
+    st["goals"] = [{"id": "g1", "kpi": "wait_mean", "high": 5}]
+    digest = {"system": {"Throughput": {"mean": 7.0}}, "user_stats": {"wait_mean": {"mean": 0.5}}}
+    study.record_step(folder, st, _layout("a"), digest, _PASSED, "first", None)
+    assert st["versions"][0]["kpis"]["wait_mean"] == 0.5
+    assert study.goals_status(st)[0]["status"] == "met"

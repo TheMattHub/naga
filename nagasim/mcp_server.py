@@ -30,10 +30,11 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import re
 import threading
 from pathlib import Path
 
-from nagasim import __version__, agent_tools, examples, netguard, studyapp
+from nagasim import __version__, agent_tools, examples, netguard, study, studyapp
 from nagasim.assistant import COMPACT_TOOL_NAMES
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
@@ -346,6 +347,19 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
                                "bottlenecks, warm-up and scenario comparison.")
     def analyse_results(question: str = "What do these results say?") -> str:
         return _ANALYSE_PROMPT.format(question=question)
+
+    @server.prompt(name="run_simulation_study",
+                   description="Run a simulation study for a decision: the interview, the "
+                               "model, the checks and the honest report.")
+    def run_simulation_study(question: str = "") -> str:
+        body = re.sub(r"\A---\n.*?\n---\n", "", study.skill_text(), count=1, flags=re.S)
+        return body + (f"\nThe person's question: {question}\n" if question else "")
+
+    @server.prompt(name="study_interview",
+                   description="How to interview the person before a study: what to ask and "
+                               "what to find out yourself.")
+    def study_interview() -> str:
+        return study.skill_text("references/interview.md")
 
     return server
 

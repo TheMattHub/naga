@@ -2326,12 +2326,12 @@
     "read_only": true
   },
   {
-    "description": "Record what the study has learned or the person decided: set any of question,\ndecision, mode, size, plan_approved, goals, target, assumptions, sources, validation,\nexperiments, skipped. A list key replaces the whole list. Nothing here can mark the study\naccepted.\n\nReturns {\"ok\", \"next_step\"}.",
+    "description": "Record what the study has learned or the person decided: set any of question,\ndecision, mode, size, plan_approved, goals, target, assumptions, sources, validation,\nexperiments, skipped. A list key replaces the whole list. Nothing here can mark the study\naccepted. Example: study_update(study, changes={\"validation\": [{\"level\": \"known_answer\",\n\"passed\": true, \"text\": \"...\"}]}).\n\nReturns {\"ok\", \"next_step\"}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "changes": {
-          "description": "Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input}; validation is {level: data|known_answer|expert, passed: bool, ...}.",
+          "description": "Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input}; a validation entry is {level: data|known_answer|expert, passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, \"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.",
           "type": "object"
         },
         "study": {
@@ -2349,7 +2349,7 @@
     "read_only": false
   },
   {
-    "description": "Keep a source of the study in its inputs/ folder: copy a workspace file, or store text\n(a call transcript, notes). Then name it with study_update(sources=[{\"id\", \"text\",\n\"input\": <the returned path>}]) so the inputs step can check it.\n\nReturns {\"input\": \"inputs/<name>\"}.",
+    "description": "Keep a source of the study in its inputs/ folder: copy a workspace file, or store text\n(a call transcript, notes). Then name it with study_update(changes={\"sources\": [{\"id\",\n\"text\", \"input\": <the returned path>}]}) so the inputs step can check it.\n\nReturns {\"input\": \"inputs/<name>\"}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2386,7 +2386,7 @@
     "read_only": false
   },
   {
-    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Always send the complete model file and a one-line\nnote. A model that does not validate or run is stored as a draft with its problems, not\nrefused: read \"problems\", fix the model, step again.\n\nReturns {\"id\", \"kind\": \"version\"|\"draft\", \"verdict\", \"checks\", \"changes\", \"kpis\",\n\"sufficiency\", \"next_step\"}; a version also has its report at versions/<id>/report.html.",
+    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Always send the complete model file and a one-line\nnote. A model that does not validate or run is stored as a draft with its problems, not\nrefused: read \"problems\", fix the model, step again.\n\nThe study's size sets the replications (quick 5, standard 10, deep 30); the model's own\nsimulation.replications is not used, so steps stay cheap and comparable. For tighter\nnumbers raise the size, or run run_model / run_scenarios on model \"study:<study id>\".\n\nReturns {\"id\", \"kind\": \"version\"|\"draft\", \"verdict\", \"checks\", \"changes\", \"kpis\",\n\"replications\", \"sufficiency\", \"next_step\"}; a version also has its report at versions/<id>/report.html.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

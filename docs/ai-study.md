@@ -61,6 +61,16 @@ reason in their own words. The buttons call the study tools through the assistan
 the person to confirm; nothing is accepted without the typed reason. Assistants without MCP Apps get a
 short text summary and the path of the page file, so the study works the same way everywhere.
 
+## The study guide
+
+The engine ships a short study guide for assistants, so the method travels with the tools. It is an
+Agent Skills folder, the format most assistants read: the protocol in a page, an interview the assistant
+runs in rounds of numbered questions with a recommended answer each, and the study steps from the
+simulation literature with their sources. `naga skill` prints where it is and `naga skill --copy DIR`
+copies it into an assistant's skills folder; over MCP the same text is the `run_simulation_study` and
+`study_interview` prompts, and every study folder's `AGENTS.md` points to it. The guide states goals and
+principles only, because the engine's checks are what keep a study honest.
+
 ## Verdicts and validation levels
 
 Every check, and every checklist item, ends in one of four verdicts: `passed`, `partial`,

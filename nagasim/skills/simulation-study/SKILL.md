@@ -15,25 +15,55 @@ decision, ask only what you cannot find out, and report honestly.
    carries a `next_step`: do that. The folder is the memory, so a new chat resumes from it.
 2. Intake, the person's choice:
    - a **free-flow description** (a voice message, a long text, documents): store it with
-     `study_add_input(text=...)` or `study_add_input(path=...)`, extract the decision, goals and constraints,
-     and ask only about the gaps;
+     `study_add_input(study, name="message.txt", text=...)` or `path=...`, extract the decision, goals and
+     constraints, and ask only about the gaps;
    - the **interview**: rounds of numbered questions with your recommended answer each
      (`references/interview.md`).
-3. State the effort before building (`study_status` gives the estimate for the size), and the two modes:
+3. State the effort before building (`study_status` answers `effort`), and the two modes:
    - **one go** (default for a first study): show **one plan card** (goals with their acceptance ranges,
      scope, the assumptions you will make, effort, mode); after the person approves it, record
      `plan_approved` and build to the target without further questions, recording every answer you chose
      as an assumption they can revisit;
    - **incremental**: show each step and let the person steer.
-4. Record what you learn with `study_update(changes={...})`: goals as KPI ranges, the target components,
-   assumptions with their source, sources with their input file.
-5. Build by sending the **whole model** to `study_step` (call `get_model_format` once first). A step that
-   does not run is kept as a draft with its problems: fix and step again. Look at `study_view` when the
-   structure matters; it shows what changed and what is still missing.
+4. Record what you learn with `study_update` (shapes below).
+5. Build by sending the **whole model** to `study_step(study, layout={...}, note=...)` (call
+   `get_model_format` once first). A step that does not run is kept as a draft with its problems: fix and
+   step again. `study_view` shows the flowchart: what changed and what is still missing.
 6. Validate against the person's data, a known answer (a simplified case with a textbook result) or an
    expert's judgement, and record it with its level.
 7. Run the scenarios the decision needs, then give the answer with the control room (`study_show`) and,
    when the person is satisfied, the package (`study_package`).
+
+## Records (`study_update(study, changes={...})`)
+
+A list key replaces the whole list, so send every entry each time.
+
+- goal: `{"id": "g1", "text": "orders wait under 15 min", "kpi": "Packer/Time in Queue Avg", "high": 15}`
+  (`low` and/or `high`; a goal without them stays text and is never met);
+- target component: `{"name": "Packing", "purpose": "...", "blocks": ["pack"]}` (blocks once built);
+- assumption: `{"id": "a1", "text": "arrivals are random", "value": "exponential, mean 6 min", "source": "manager"}`;
+- source: `{"id": "s1", "text": "manager's message", "input": "inputs/message.txt"}`;
+- validation: `{"level": "known_answer", "passed": true, "text": "M/G/1 wait vs model"}`
+  (`level`: `data`, `known_answer` or `expert`);
+- experiment: `{"id": "e1", "text": "one vs two stations", "result": "..."}`;
+- `"plan_approved": true` once the person approves the plan card.
+
+KPI names: a system KPI as the run lists it (`Avg Throughput Time`), a resource column as
+`"<resource>/<column>"` (`Packer/Time in Queue Avg` is the wait before a resource), or a statistic you
+record in the model. `study_step` answers the KPIs it measured; use those names.
+
+## Scenarios
+
+Put the alternatives in the model's `scenarios` list, step it, then
+`run_scenarios(model="study:<study id>")` and record the result as an experiment. The size sets the
+replications per step (`study_step` answers how many); for the final comparison, check the confidence
+intervals separate the options before you call one better.
+
+## Tools
+
+`study_start`, `study_status`, `study_update`, `study_add_input`, `study_step`, `study_view`,
+`study_show`, `study_revert`, `study_accept` (the person's only), `study_package`; plus the model tools
+(`get_model_format`, `run_scenarios`).
 
 ## Principles
 
@@ -48,8 +78,6 @@ decision, ask only what you cannot find out, and report honestly.
 - **Respect the size.** A quick question gets a quick study; the checklist records what was skipped.
 - For a deep study, suggest a reviewer pass: a fresh assistant reads only the control room and lists its
   doubts before delivery.
-
-## Out of scope
 
 Say so plainly when simulation cannot answer the question (a pure accounting sum, a one-off physical
 calculation, a question without a process), and suggest what can.

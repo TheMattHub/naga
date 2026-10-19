@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Study tools, after an assistant ran a whole study through them: `next_step` names the real `study_update(changes={...})` call; a validation entry needs `level` and `passed: true|false` and is refused otherwise, with an example; an unmet goal no longer fails verification; goals on statistics the model records are counted on the cover; `study_step` reports the replications it used, which the study size sets.
+- AI-run studies have a study guide for assistants: an Agent Skills folder (protocol, an interview in rounds adapted from mattpocock/skills, the study steps with their sources) that `naga skill` shows or copies and the MCP server offers as the `run_simulation_study` and `study_interview` prompts.
 - AI-run studies in the chat: in assistants that support MCP Apps (needs the `mcp` 2.x SDK), `study_show` opens the control room inside the chat, with buttons to go back to an earlier version and to accept the study with a reason; elsewhere it answers a short summary and the page's path.
 - AI-run studies have a control room: `control-room.html` in the study folder opens with the verdict, then the goals and checklist, the target, and the version timeline with flowcharts and KPI charts; it runs no script, prints to PDF and is refreshed after every version. `study_package` writes the deliverable: the page, an Excel workbook, the current model and RO-Crate metadata.
 - AI-run studies can be seen: every study version keeps a flowchart of its model (SVG and a text list), with the step's changes outlined and the target's unbuilt parts dashed, and `study_view` returns it to the assistant as a PNG image over MCP. The `mcp` extra now needs `mcp>=1.19`, the first SDK that passes an image result through.

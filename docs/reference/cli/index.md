@@ -77,3 +77,4 @@ Serve the model operations to an assistant.
 |---|---|
 | [`naga mcp`](agents.md#naga-mcp) | Model Context Protocol server over stdio |
 | [`naga assist`](agents.md#naga-assist) | one headless assistant turn |
+| [`naga skill`](agents.md#naga-skill) | show or copy the simulation-study guide for an assistant |

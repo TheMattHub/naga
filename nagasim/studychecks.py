@@ -17,7 +17,7 @@ def _mean(entry) -> float | None:
     return entry.get("mean") if isinstance(entry, dict) else None
 
 
-def _lookup(digest: dict, kpi: str) -> float | None:
+def kpi_mean(digest: dict, kpi: str) -> float | None:
     """KPI mean from `system`, then `user_stats`, then "<resource>/<column>"."""
     for section in ("system", "user_stats"):
         m = _mean((digest.get(section) or {}).get(kpi))
@@ -56,7 +56,7 @@ def _range_check(name: str, kind: str, spec: dict, digest: dict) -> dict | None:
     kpi, lo, hi = spec.get("kpi"), spec.get("low"), spec.get("high")
     if not kpi or (lo is None and hi is None):
         return None
-    m = _lookup(digest, kpi)
+    m = kpi_mean(digest, kpi)
     if m is None:
         return _check(name, "not_verified", f"KPI '{kpi}' is not in the run digest", kind)
     ok = (lo is None or m >= lo) and (hi is None or m <= hi)
