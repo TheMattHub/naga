@@ -257,10 +257,12 @@ class AssistantSession:
     turn record of `nagasim.llm`) and `usage`; the provider is stateless."""
 
     def __init__(self, workspace_adapter, provider, *, app: str = "Naga", extra_tools: tuple = (),
-                 select_tools=offered_tools, max_tool_rounds: int = 12):
+                 select_tools=offered_tools, max_tool_rounds: int = 12, system: str | None = None):
         self.adapter = workspace_adapter
         self.provider = provider
-        self.system = system_prompt(app)
+        # *system* replaces the model-editing prompt for an adapter that is not about one model
+        # (the study room's assistant runs the study tools, with the study guide as its prompt).
+        self.system = system if system is not None else system_prompt(app)
         self.max_tool_rounds = max_tool_rounds
         self.history: list[dict] = []
         self.usage = llm.Usage()

@@ -5,6 +5,7 @@ can run a simulation study. The folder is the memory (stateless calls); `nagasim
 from __future__ import annotations
 
 import base64
+import functools
 import logging
 import json
 import os
@@ -16,7 +17,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import api, experiments, flowchart, studyinput, studypackage, studypage
+from nagasim import api, experiments, flowchart, studyinput, studypackage, studypage, studyroom
 from nagasim.core.stats import ci95
 from nagasim import study as study_mod
 from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, step_checks
@@ -84,14 +85,38 @@ def _folder(study) -> Path:
     return folder
 
 
-def _open(study: str) -> tuple[Path, dict]:
+def _open(study: str, write: bool = False) -> tuple[Path, dict]:
+    """The folder and its study; `write` claims the study for this process first (E_STUDY_BUSY when
+    another naga process holds it), so a refused call changes nothing."""
     folder = _folder(study)
     with _study_errors():
-        return folder, study_mod.load(folder)
+        s = study_mod.load(folder)
+        if write:
+            study_mod.claim(folder)
+        return folder, s
 
 
 def _sid(folder: Path) -> str:
     return folder.relative_to(workspace().root).as_posix()
+
+
+def _linked(fn):
+    """Every study answer carries the control room: `page_url` (the file page, once written) and
+    `room_url` while a live room runs. Under @tool, so a refused call (a ToolError) carries neither."""
+    @functools.wraps(fn)
+    def run(**kwargs):
+        out = fn(**kwargs)
+        if not isinstance(out, dict):
+            return out
+        sid = out["study"] if isinstance(out.get("study"), str) else kwargs.get("study")
+        if isinstance(sid, str):
+            page = _folder(sid) / "control-room.html"
+            if page.is_file():
+                out["page_url"] = page.as_uri()
+            if room := studyroom.url_for(sid):
+                out["room_url"] = room
+        return out
+    return run
 
 
 def _log(study: dict, name: str, started: float) -> None:
@@ -116,7 +141,8 @@ def _page(folder: Path, study: dict) -> str | None:
     """Refresh the control room page after a recorded version; a failed write must not lose the
     version, so it answers None and the step still succeeds."""
     try:
-        write_text(folder / "control-room.html", studypage.render(folder, study))
+        write_text(folder / "control-room.html",
+                   studypage.render(folder, study, room_url=studyroom.url_for(_sid(folder))))
     except Exception:   # a hand-edited record that does not render must not fail a recorded step
         logging.getLogger(__name__).warning("control room page not written", exc_info=True)
         return None
@@ -267,6 +293,7 @@ def _slug(text: str) -> str:
 
 
 @tool()
+@_linked
 def study_start(question: str, study: str | None = None, mode: str = "one_go",
                 size: str = "standard", changes: dict | None = None) -> dict:
     """Start a simulation study: make its folder and say what to do first.
@@ -297,6 +324,7 @@ def study_start(question: str, study: str | None = None, mode: str = "one_go",
     checked, notes = _check(_merge(changes, {})) if changes is not None else ({}, [])   # before the folder exists
     with _study_errors():
         s = study_mod.create(folder, question.strip(), mode, size, save_now=False)
+        study_mod.claim(folder)
     s.update(checked)
     _log(s, "study_start", started)
     _save(folder, s)
@@ -306,9 +334,11 @@ def study_start(question: str, study: str | None = None, mode: str = "one_go",
 
 
 @tool(read_only=True)
+@_linked
 def study_status(study: str) -> dict:
     """Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the
-    last version's KPIs and the next step. Call it first on an existing study folder.
+    last version's KPIs with how confident they are (precision of the confidence intervals) and
+    the next step. Call it first on an existing study folder.
 
     Returns {"study", "question", "mode", "size", "sufficiency", "why_not_sufficient", "goals",
     "checklist", "last_version", "versions", "effort", "next_step"}, plus "plan_card" until the
@@ -441,13 +471,15 @@ _SETTABLE = {
 
 
 @tool()
+@_linked
 def study_update(study: str, changes: dict | None = None, question: str | None = None,
                  mode: str | None = None, size: str | None = None,
                  plan_approved: bool | None = None, precision: dict | None = None,
                  goals: list | None = None, target: list | None = None, assumptions: list | None = None,
                  sources: list | None = None, validation: list | None = None,
                  experiments: list | None = None, skipped: list | None = None) -> dict:
-    """Record what the study has learned or the person decided: set any of question,
+    """Record what the study has learned or the person decided (fewer or more replications:
+    set precision): set any of question,
     decision, mode, size, plan_approved, precision, goals, target, assumptions, sources, validation,
     experiments, skipped, inside `changes` or (all but decision) as parameters of the same name
     (a key sent both ways is refused; decision is changes={"decision": ...} only). A list key replaces the whole list. Nothing here can mark the study
@@ -460,7 +492,7 @@ def study_update(study: str, changes: dict | None = None, question: str | None =
     Returns {"ok", "next_step"}, plus "normalised" (a list of notes) when something was mapped.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     merged = _merge(changes, dict(question=question, mode=mode, size=size,
                                   plan_approved=plan_approved, precision=precision, goals=goals,
                                   target=target, assumptions=assumptions, sources=sources,
@@ -475,6 +507,7 @@ def study_update(study: str, changes: dict | None = None, question: str | None =
 
 
 @tool()
+@_linked
 def study_add_input(study: str, name: str, path: str | None = None, text: str | None = None) -> dict:
     """Keep a source of the study in its inputs/ folder: copy a workspace file, or store text
     (a call transcript, notes). Then name it with study_update(changes={"sources": [{"id",
@@ -483,7 +516,7 @@ def study_add_input(study: str, name: str, path: str | None = None, text: str | 
     Returns {"input": "inputs/<name>"}.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     if not isinstance(name, str) or not name or name in (".", "..") or re.search(r"[\\/:]", name):
         raise _bad("name", "must be a plain file name without folders")
     if (path is None) == (text is None):
@@ -509,6 +542,7 @@ def study_add_input(study: str, name: str, path: str | None = None, text: str | 
 
 
 @tool()
+@_linked
 def study_step(study: str, layout: dict | None = None, note: str | None = None, request_id: str | None = None, seed: int = 0,
                changes: dict | None = None) -> dict:
     """Test one model step: write the whole model, run it, check it, and store it as a new
@@ -555,7 +589,7 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                         "for record-only changes use study_update(changes=...), or resend the whole layout to step")
     if note is None:
         raise ToolError("E_BAD_ARGUMENT", "`note` is required", "send a one-line note saying what the step changes")
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     notes: list[str] = []
     if changes is not None:     # refused before anything runs, so a bad record never costs a step
         notes += _set(s, _merge(changes, {}))
@@ -630,6 +664,7 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
 
 
 @tool()
+@_linked
 def study_validate(study: str, kind: str = "queue_formula") -> dict:
     """Check the last model version against a textbook answer and record the validation.
 
@@ -645,7 +680,7 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
     formula's mean wait, their relative difference and whether it is within 5%.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     if kind != "queue_formula":
         raise _bad("kind", "must be queue_formula")
     if not s["versions"]:
@@ -682,6 +717,7 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
 
 
 @tool()
+@_linked
 def study_accept(study: str, reason: str) -> dict:
     """Record that the person accepts the study as it stands. Call it only with the
     person's own words, after they have explicitly accepted; never on your own judgment. It
@@ -690,7 +726,7 @@ def study_accept(study: str, reason: str) -> dict:
     Returns {"sufficiency": label}.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     if not isinstance(reason, str) or not reason.strip():
         raise _bad("reason", "give the person's own words")
     s["accepted"] = {"reason": reason.strip(), "by": "person (relayed by the assistant)"}
@@ -702,6 +738,7 @@ def study_accept(study: str, reason: str) -> dict:
 
 
 @tool()
+@_linked
 def study_revert(study: str, version: str, note: str, request_id: str | None = None) -> dict:
     """Go back to an earlier version: it is recorded again as a new version, so no history is
     lost. Use it when a later step made things worse.
@@ -709,7 +746,7 @@ def study_revert(study: str, version: str, note: str, request_id: str | None = N
     Returns the new version, like study_step.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     _log(s, "study_revert", started)
     key = study_mod.request_key("revert", request_id)
     cached = key is not None and key in s["requests"]
@@ -726,6 +763,7 @@ def study_revert(study: str, version: str, note: str, request_id: str | None = N
 
 
 @tool()
+@_linked
 def study_report(study: str, version: str | None = None) -> dict:
     """Write a version's full HTML report (KPIs with intervals, resources, charts) on request.
     Steps do not write it, to keep the default output light. It reruns the version's stored
@@ -734,7 +772,7 @@ def study_report(study: str, version: str | None = None) -> dict:
     Returns {"path": the report file relative to the workspace root}.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     with _study_errors():
         vid = study_mod.version_id(s, version)
     base = folder / "versions" / vid
@@ -758,15 +796,17 @@ def study_report(study: str, version: str | None = None) -> dict:
 
 
 @tool()
+@_linked
 def study_package(study: str) -> dict:
-    """Build the study's deliverable in its package/ folder: the control room page, an Excel
+    """Build the study's deliverable, the final files to hand over, in its package/ folder:
+    the control room page, an Excel
     workbook (goals, versions with KPIs, checklist, assumptions), the current model and
     RO-Crate metadata. Use it when the person is satisfied with the study.
 
     Returns {"files": [paths relative to the workspace root], "next_step"}.
     """
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
     with _study_errors():
         names = studypackage.package(folder, s)
     _log(s, "study_package", started)
@@ -776,6 +816,7 @@ def study_package(study: str) -> dict:
 
 
 @tool(read_only=True)
+@_linked
 def study_view(study: str, version: str | None = None, format: str = "png") -> dict:
     """See a version's flowchart: built blocks, what this step changed and what of the agreed
     target is not built yet. Use it to check the model looks like the process.
@@ -815,8 +856,9 @@ def study_view(study: str, version: str | None = None, format: str = "png") -> d
 
 
 @tool(read_only=True)
+@_linked
 def study_show(study: str) -> dict:
-    """Show the study's control room. In chats that support MCP Apps the page appears inline,
+    """Show the study's control room, its dashboard. In chats that support MCP Apps the page appears inline,
     with buttons to revert to a version or accept the study; elsewhere this is a short summary
     and the path of the page file.
 

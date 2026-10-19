@@ -10,7 +10,7 @@ Serve the model operations to an assistant.
 ```text
 usage: naga mcp [-h] [--root ROOT] [--allow-network] [--allow-private-network]
                 [--allow-host HOST] [--connections FILE]
-                [--tools {all,compact}] [--twin DIR]
+                [--tools {all,compact}] [--room] [--twin DIR]
 
 Run the MCP server over stdio. File access is confined to --root, and network
 access is off unless you allow it here.
@@ -34,6 +34,9 @@ options:
                         building, running and saving a model needs
                         (get_model_format, write_model, run_model, ...), so a
                         client pays for fewer tool descriptions
+  --room                also serve the live control room of the studies on
+                        127.0.0.1 (a random port and token); every study
+                        answer then carries its address
   --twin DIR            the result directory of a twin you started (naga twin
                         run --out DIR): two read-only tools then answer from
                         it. No tool can start a twin or choose this directory
@@ -96,4 +99,22 @@ positional arguments:
 
 options:
   -h, --help  show this help message and exit
+```
+
+## naga room
+
+```text
+usage: naga room [-h] [--root ROOT] [--no-browser] folder
+
+The live control room of a study in your browser, on this machine only
+(127.0.0.1).
+
+positional arguments:
+  folder        the study folder (it holds study.json)
+
+options:
+  -h, --help    show this help message and exit
+  --root ROOT   workspace root the study tools are confined to (default: the
+                folder's parent)
+  --no-browser  print the address, do not open a browser
 ```

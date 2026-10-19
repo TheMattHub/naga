@@ -83,11 +83,11 @@ def test_package_lists_writeup_and_slides_when_they_exist(tmp_path):
     assert {"writeup.html", "writeup.md", "slides.html"} <= ids
 
 
-def test_page_on_request_lists_new_tools_and_sensitivity_table(tmp_path):
+def test_page_lists_deliverables_and_sensitivity_table(tmp_path):
     from nagasim import studypage
     folder, st = _study(tmp_path)
     page = studypage.render(folder, st)
-    assert "planned" not in page and "study_sensitivity" in page and 'id="sensitivity"' not in page
+    assert "planned" not in page and 'data-deliverable="sensitivity"' in page and "data-empty" in page
     vdir = folder / "versions" / st["versions"][-1]["id"]
     (vdir / "sensitivity.json").write_text(json.dumps({
         "charts": {"A": "<svg onload=evil></svg>"}, "changes_answer": ["x"],

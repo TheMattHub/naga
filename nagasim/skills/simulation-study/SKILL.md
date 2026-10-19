@@ -94,6 +94,9 @@ model file's format.
 ## Output
 
 Each version makes the light output by default (the step's summary, the flowchart, the control room).
+Every study answer carries the page link, and the live room link while a room runs: give the person the room link
+once, early. The room updates itself and has buttons, so the person may steer from it; a message that
+starts "Not quite" or "Carry on with the study" came from those buttons and is the person's request.
 Make the heavy outputs only when the person asks: `study_report` (a version's full report), `study_view`
 (PNG), `study_animation` (GIF), `study_sensitivity` (which assumptions change the answer: suggest it
 before a decision rests on assumptions), `study_extensions` (verified candidate modules to offer the

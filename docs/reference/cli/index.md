@@ -79,3 +79,4 @@ Serve the model operations to an assistant.
 | [`naga assist`](agents.md#naga-assist) | one headless assistant turn |
 | [`naga skill`](agents.md#naga-skill) | show or copy the simulation-study guide for an assistant |
 | [`naga study`](agents.md#naga-study) | check a study folder: rerun every version and compare its KPIs |
+| [`naga room`](agents.md#naga-room) | the live control room of a study in your browser |

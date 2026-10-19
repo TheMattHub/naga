@@ -393,8 +393,8 @@ def test_the_app_resource_is_listed(tmp_path):
 
 @needs_apps
 def test_other_tools_have_no_ui_meta(tmp_path):
-    study = {"study_show", "study_page_html", "study_revert", "study_accept"}
     tools = asyncio.run(mcp_server.build_server(tmp_path).list_tools())
+    study = {t.name for t in tools if t.name.startswith("study_")}
     assert [t.name for t in tools if t.name not in study and (t.meta or {}).get("ui")] == []
 
 

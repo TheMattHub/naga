@@ -143,11 +143,10 @@ def test_header_has_chips_and_precision(tmp_path):
 def test_panels_and_summaries(tmp_path):
     folder, st = _two_versions(tmp_path)
     page = studypage.render(folder, st)
-    for pid in ("goals", "model", "versions", "assumptions", "on-request"):
+    for pid in ("goals", "model", "versions", "assumptions", "deliverables"):
         assert re.search(rf'<details id="{pid}"[^>]*><summary>[^<]+', page)
     assert 'id="scenarios"' not in page
     assert re.search(r"Checklist: \d+ passed", page) or "not verified" in page
-    assert "study_report" in page and "study_writeup" in page
     assert '<details id="assumptions" class="panel">' in page      # closed
 
 
@@ -161,7 +160,7 @@ def test_goals_panel_opens_only_on_failure(tmp_path):
 
 def test_versions_table_and_nested_details(tmp_path):
     folder, st = _two_versions(tmp_path)
-    vs = studypage.render(folder, st).split('id="versions"')[1].split('id="assumptions"')[0]
+    vs = studypage.render(folder, st).split('id="versions"')[1].split('id="sensitivity"')[0]
     assert vs.index('data-version="v002"') < vs.index('data-version="v001"')   # newest first
     # rows start closed: the row shows the goal KPIs and the model panel the latest flowchart
     assert vs.count("<details") == 3 and vs.count("<details open>") == 0
@@ -171,3 +170,41 @@ def test_versions_table_and_nested_details(tmp_path):
 def test_print_css_opens_panels():
     css = studypage._CSS.split("@media print")[1]
     assert "position:static" in css and "details>*:not(summary)" in css and "content-visibility:visible" in css
+
+
+def test_marks_latest_version_and_pending_plan(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    page = studypage.render(folder, st)
+    assert page.count("data-latest") == 1
+    assert re.search(r'data-version="v002" data-latest', page) and "data-plan-pending" in page
+    assert "data-accepted" not in page and "naga room s" in page
+    st["plan_approved"], st["accepted"] = True, {"reason": "fine"}
+    page = studypage.render(folder, st, room_url="http://127.0.0.1:1/s/s/")
+    assert "data-plan-pending" not in page and "data-accepted" in page
+    assert 'Live room: <a href="http://127.0.0.1:1/s/s/">' in page
+
+
+def test_deliverables_list_existing_and_missing(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    (folder / "versions" / "v001" / "report.html").write_text("r", encoding="utf-8")
+    page = studypage.render(folder, st)
+    assert '<li data-deliverable="report" data-path="versions/v001/report.html">Report of a version: made' in page
+    assert '<li data-deliverable="slides" data-path="">Slides: not made yet' in page
+    panel = page.split('id="deliverables"')[1].split("</details>")[0]
+    assert "study_" not in panel and panel.count("data-deliverable=") == 8
+
+
+def test_sensitivity_panel_marked_empty(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    assert '<details id="sensitivity" class="panel" data-empty>' in studypage.render(folder, st)
+    assert 'id="sensitivity"' not in studypage.render(*_new(tmp_path / "e"))    # nothing to run on yet
+
+
+def test_734_a_deliverable_of_an_older_version_says_which(tmp_path):
+    """#734: 'Sensitivity: made 19:21' beside 'not run yet' - the file was v001's, the latest is v002."""
+    folder, st = _two_versions(tmp_path)
+    (folder / "versions" / "v001" / "sensitivity.json").write_text("{}", encoding="utf-8")
+    (folder / "versions" / "v002" / "report.html").write_text("r", encoding="utf-8")
+    page = studypage.render(folder, st)
+    assert re.search(r"Sensitivity of the answer: made for v001, \d\d:\d\d<", page)
+    assert re.search(r"Report of a version: made \d\d:\d\d<", page)

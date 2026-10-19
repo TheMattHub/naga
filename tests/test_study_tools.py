@@ -457,7 +457,7 @@ def test_report_on_request(ws):
     sid = start(ws)
     T.call("study_step", study=sid, layout=layout(ws), note="a", seed=3)
     out = T.call("study_report", study=sid, version="v001")
-    assert out == {"path": f"{sid}/versions/v001/report.html"}, out
+    assert out["path"] == f"{sid}/versions/v001/report.html" and set(out) == {"path", "page_url"}, out
     assert "<html" in (ws.root / out["path"]).read_text(encoding="utf-8").lower()
     # no version means the last one
     assert T.call("study_report", study=sid)["path"] == out["path"]
@@ -582,3 +582,54 @@ def test_a_version_argument_never_leaves_the_study(ws):
             r = T.call(name, study=sid, version=bad, **args)
             assert r["error"]["code"] == "E_STUDY_NO_VERSION", (name, bad, r)
     assert not list(ws.root.rglob("evil")) and not (ws.root / "x").exists()
+
+
+@pytest.fixture
+def other_process():
+    import subprocess
+    import sys
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    yield child.pid
+    child.kill()
+    child.wait()
+
+
+def _foreign_lock(ws, sid, pid):
+    from nagasim import study as study_mod
+    folder = (ws.root / sid).resolve()
+    study_mod._claimed.discard(folder)      # this test process took it on study_start
+    (folder / ".naga-writer").write_text(json.dumps({"pid": pid, "started": "x"}), encoding="utf-8")
+
+
+def test_second_process_is_refused(ws, other_process):
+    sid = start(ws)
+    _foreign_lock(ws, sid, other_process)
+    r = T.call("study_update", study=sid, changes={"question": "changed?"})
+    assert r["error"]["code"] == "E_STUDY_BUSY" and str(other_process) in r["error"]["message"]
+    assert T.call("study_status", study=sid)["question"] == "Is one server enough?"
+
+
+def test_stale_writer_is_taken_over(ws):
+    import os
+    sid = start(ws)
+    _foreign_lock(ws, sid, 999999)
+    assert T.call("study_update", study=sid, changes={"question": "changed?"})["ok"] is True
+    held = json.loads((ws.root / sid / ".naga-writer").read_text(encoding="utf-8"))
+    assert held["pid"] == os.getpid()
+
+
+def test_read_tools_ignore_the_lock(ws, other_process):
+    sid = start(ws)
+    _foreign_lock(ws, sid, other_process)
+    assert "error" not in T.call("study_status", study=sid)
+
+
+def test_answers_carry_page_url(ws, monkeypatch):
+    from nagasim import studyroom
+    sid = _one_version(ws)
+    st = T.call("study_status", study=sid)
+    assert st["page_url"].startswith("file:///") and st["page_url"].endswith("/control-room.html")
+    assert "room_url" not in st
+    monkeypatch.setattr(studyroom, "url_for", lambda s: f"http://127.0.0.1:9/s/{s}/")
+    assert T.call("study_status", study=sid)["room_url"] == f"http://127.0.0.1:9/s/{sid}/"
+    assert "page_url" not in T.call("study_status", study="nope")      # a refusal carries no links

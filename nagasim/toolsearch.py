@@ -19,7 +19,7 @@ _GROUPS = ("validate check verify validation", "scenario option alternative what
            "chart plot figure image picture flowchart diagram", "slide deck presentation", "package deliverable export",
            "sensitivity assumption robust", "revert undo rollback", "accept approve", 
            "update add set change edit record", "start begin", "load open read", "list enumerate catalogue")
-# Generic ranking, tuned on EVAL and checked on the frozen HELD_OUT table (tests/test_toolsearch.py): a single
+# Generic ranking, tuned on EVAL and checked on the frozen HELD_OUT_2 table (tests/test_toolsearch.py): a single
 # shared word in a tool NAME ("record", "files") must not beat a tool that matches more of the question, so
 # the name weighs little more than the summary, the exact-name bonus is small, argument docs are indexed and
 # the score is scaled by the share of query terms matched.

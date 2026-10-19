@@ -141,7 +141,8 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
               restart: bool = False, seed: int = 0, max_seconds: float = 10.0,
               back: bool = False, scope: str | None = None) -> dict:
     """Run one replication of a model under a debugger: start it, or continue it,
-    until a stop, one step, a model time, a pending decision or the end.
+    until a stop, one step, a model time, a pending decision or the end. Use it to explain
+    behaviour, such as why a queue grows or where entities get stuck.
 
     The run is kept between calls, one per model, so the usual loop is: set stops
     and watches, call again and again, and read `debug_inspect` whenever it

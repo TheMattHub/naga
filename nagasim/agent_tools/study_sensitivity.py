@@ -7,7 +7,7 @@ from nagasim import studysensitivity
 from nagasim.studychecks import goal_kpi, kpi_entry
 
 from .core import _digest, _document_args, tool
-from .study import _ID, _log, _open, _save, _sid, _study_errors, _tails
+from .study import _ID, _linked, _log, _open, _save, _sid, _study_errors, _tails
 
 _document_args("study_sensitivity", study=_ID,
                version="Version id, e.g. v002; omit for the last.",
@@ -16,6 +16,7 @@ _document_args("study_sensitivity", study=_ID,
 
 
 @tool()
+@_linked
 def study_sensitivity(study: str, version: str | None = None, factors: list[str] | None = None,
                       delta: float = 0.2) -> dict:
     """Vary one assumption at a time (arrival and service parameters, capacities) around a version,
@@ -24,7 +25,7 @@ def study_sensitivity(study: str, version: str | None = None, factors: list[str]
     "changes_answer": [paths where a goal verdict flips]}; the full table and a swing chart per
     goal KPI are in the file. Rate parameters are varied as rates (a higher rate is a shorter time)."""
     started = time.monotonic()
-    folder, s = _open(study)
+    folder, s = _open(study, write=True)
 
     def kpis(results, layout):
         digest = _digest(results)

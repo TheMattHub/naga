@@ -8,8 +8,10 @@ data, assumptions, model, verification, validation, experiments, conclusions. Ti
 paraphrased. Every verdict is computed from the study, never self-reported."""
 from __future__ import annotations
 
+import atexit
 import json
 import math
+import os
 import re
 from importlib import resources
 from datetime import datetime, timezone
@@ -191,6 +193,74 @@ def load(folder: Path) -> dict:
 def save(folder: Path, study: dict) -> None:
     """Atomic: the old file stays if the write fails (OSError)."""
     write_json(Path(folder) / "study.json", study)
+
+
+# --- one writer process per study ------------------------------------------------------------
+
+WRITER = ".naga-writer"
+_claimed: set[Path] = set()
+
+
+def _alive(pid: int) -> bool:
+    """Whether a process with this pid runs (a pid we cannot query but that exists counts as alive)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = ctypes.c_void_p
+        k32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+        k32.CloseHandle.argtypes = (ctypes.c_void_p,)
+        handle = k32.OpenProcess(0x1000, False, pid)    # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ctypes.get_last_error() == 5         # access denied: it exists
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        k32.CloseHandle(handle)
+        return bool(ok) and code.value == 259           # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _release() -> None:
+    for folder in _claimed:
+        lock = folder / WRITER
+        try:
+            if json.loads(lock.read_text(encoding="utf-8")).get("pid") == os.getpid():
+                lock.unlink()
+        except (OSError, ValueError):
+            pass
+
+
+def claim(folder: Path, **extra) -> None:
+    """Make this process the study's only writer: the chat and the browser room share one process
+    and one lock, but a second naga process must not interleave its saves with ours. Taken on the
+    first write, kept for the life of the process, released at exit; a lock whose pid is gone is
+    taken over. `extra` is stored in the lock too (`naga room` records its address there, so a second
+    `naga room` on the study can print it). ponytail: read-then-write, so two processes claiming in the same instant can both
+    win; an O_EXCL create closes that if it is ever seen."""
+    folder = Path(folder).resolve()
+    if folder in _claimed:
+        return
+    lock = folder / WRITER
+    try:
+        held = json.loads(lock.read_text(encoding="utf-8"))
+        pid = int(held.get("pid", 0)) if isinstance(held, dict) else 0
+    except (OSError, ValueError, TypeError):
+        pid = 0
+    if pid and pid != os.getpid() and _alive(pid):
+        raise StudyError("E_STUDY_BUSY", f"{folder.name} is open in naga process {pid}",
+                         "Close that process, or use its room.")
+    write_json(lock, {"pid": os.getpid(),
+                      "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), **extra})
+    if not _claimed:
+        atexit.register(_release)
+    _claimed.add(folder)
 
 
 # --- checklist, verdicts, sufficiency -------------------------------------------------------

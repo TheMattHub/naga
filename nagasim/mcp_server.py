@@ -117,10 +117,11 @@ def _suggesting(server_class):
 # MCP Apps: the study control room renders inline in clients that support it. The tools stay
 # registered once, by the loop in build_server; the ui _meta goes on that registration
 # (Apps.tool would register a second copy) and Apps contributes the template resource and the
-# capability advertised in initialize. visibility: study_page_html is the page's own call.
-_STUDY_UI = {name: {"resourceUri": studyapp.URI, "visibility": vis} for name, vis in (
-    ("study_show", ["model", "app"]), ("study_page_html", ["app"]),
-    ("study_revert", ["model", "app"]), ("study_accept", ["model", "app"]))}
+# capability advertised in initialize. Every study tool carries the page, so the room shows at
+# every stage (and the page's buttons may call any of them); study_page_html is the page's own call.
+_STUDY_UI = {name: {"resourceUri": studyapp.URI,
+                    "visibility": ["app"] if name == "study_page_html" else ["model", "app"]}
+             for name in agent_tools.TOOLS if name.startswith("study_")}
 
 
 def _study_apps(tools):
@@ -294,7 +295,7 @@ The question to answer: {question}
 # ---------------------------------------------------------------- server
 def build_server(root: str | Path | None = None, network=None, twin=None, *,
                  twin_dir=None, name: str = "naga", instructions: str = INSTRUCTIONS,
-                 tools=None):
+                 tools=None, room: bool = False):
     """Build the MCP server with every tool, resource and prompt registered.
 
     *network* is the `netguard.NetworkPolicy` the human passed at start-up; with
@@ -303,7 +304,9 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     every twin tool refuses; *twin_dir* is the result directory of a twin they
     started, which two tools read. *name* and *instructions* are what the server
     tells a client about itself. *tools* limits the published tools to those names
-    (COMPACT_TOOLS for `--tools compact`); None publishes every one.
+    (COMPACT_TOOLS for `--tools compact`); None publishes every one. *room* starts the live control
+    room (`nagasim.studyroom`) in a thread of this process, sharing the tool lock, so every study
+    answer carries its address; like the network, it is the caller's flag, never a tool argument.
 
     A caller that serves the result itself, not through `serve`, must call
     `agent_tools.drop_python_consent()` first, as `serve` does (D186).
@@ -313,6 +316,11 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     server_class = _server_class()
     agent_tools.use_workspace(agent_tools.Workspace(root, network=network, twin=twin,
                                                     twin_dir=twin_dir))
+    if room:
+        from nagasim import studyroom
+        if studyroom.ACTIVE is None:
+            provider, key = studyroom.provider_from_env()
+            studyroom.Room(agent_tools.workspace().root, _TOOL_LOCK, provider=provider, key=key).start()
     discover.exposed = None if tools is None else frozenset(tools)    # find_tool must not name a hidden tool
     apps = _study_apps(tools)
     extra = {"extensions": [apps]} if apps else {}
@@ -398,6 +406,9 @@ def add_arguments(parser) -> None:
                         help="all: every tool (default); compact: only what building, running "
                              "and saving a model needs (get_model_format, write_model, "
                              "run_model, ...), so a client pays for fewer tool descriptions")
+    parser.add_argument("--room", action="store_true",
+                        help="also serve the live control room of the studies on 127.0.0.1 (a random "
+                             "port and token); every study answer then carries its address")
     parser.add_argument("--twin", dest="twin_dir", default=None, metavar="DIR",
                         help="the result directory of a twin you started (naga twin run "
                              "--out DIR): two read-only tools then answer from it. No tool "
@@ -410,7 +421,8 @@ def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIO
         server = build_server(args.root, network=netguard.policy_from_args(args), twin=twin,
                               twin_dir=getattr(args, "twin_dir", None),
                               name=name, instructions=instructions,
-                              tools=COMPACT_TOOLS if getattr(args, "tools", "all") == "compact" else None)
+                              tools=COMPACT_TOOLS if getattr(args, "tools", "all") == "compact" else None,
+                              room=getattr(args, "room", False))
     except MCPUnavailable as exc:
         print(str(exc))     # stdout is the transport only once the server runs
         return 1

@@ -4,7 +4,7 @@ from __future__ import annotations
 from nagasim import studyextensions as ext
 
 from .core import ToolError, _document_args, tool
-from .study import _ID, _open, _read_layout, _sid, _study_errors
+from .study import _ID, _linked, _open, _read_layout, _sid, _study_errors
 
 _document_args("study_extensions", study=_ID,
                apply="Name of the module to add (shifts, failures, arrival_peak); omit to list the verified candidates.",
@@ -12,9 +12,10 @@ _document_args("study_extensions", study=_ID,
 
 
 @tool(read_only=True)
+@_linked
 def study_extensions(study: str, apply: str | None = None, params: dict | None = None) -> dict:
-    """Candidate extension modules for the study's model: shifts with a break, resource failures,
-    an arrival peak. Without `apply`, lists the ones that validate, run and pass the law checks
+    """Candidate extension modules for the study's model: shifts with a break, resource failures
+    (machine breakdowns), an arrival peak. Without `apply`, lists the ones that validate, run and pass the law checks
     on the last version, with their effect on the goal KPIs in one short run (indicative only).
     With `apply`, answers the model layout with that module added: review it, then send it to
     study_step; this tool never steps the study.

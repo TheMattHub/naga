@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from pathlib import Path
 
 from nagasim import flowchart, study as study_mod
@@ -192,7 +193,8 @@ def _precision_line(study: dict, steps: dict) -> str:
             + (", " if n and parts else "") + ("95% half-width: " + "; ".join(parts) if parts else "") + "</p>")
 
 
-def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id: str | None) -> str:
+def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id: str | None,
+            room_url: str | None = None, in_room: bool = False) -> str:
     suff = study_mod.sufficiency(study)
     cls = "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait"
     if study["versions"]:
@@ -201,14 +203,18 @@ def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id:
         latest = f"Latest version: {esc(vid)}" + (f", {esc(_when(at))}" if at else "")
     else:
         latest = "no model yet"
-    mark = f' data-study="{esc(study_id)}"' if study_id else ""
+    mark = (f' data-study="{esc(study_id)}"' if study_id else "") + (
+        "" if study["plan_approved"] else " data-plan-pending") + (" data-accepted" if study.get("accepted") else "")
+    room = ('' if in_room else  # the room's own page needs no address, and the url holds the token
+            f'<p class="muted">Live room: <a href="{esc(room_url)}">{esc(room_url)}</a></p>' if room_url
+            else f'<p class="muted">For the live room run: naga room {esc(folder.name)}</p>')
     chips = "".join(_chip(study, g, spec, steps) for g, spec in zip(goals, study["goals"]))
     return (f'<header id="cover"{mark}><h1>{esc(study["question"])}</h1>'
             + (f'<p class="muted">Decision: {esc(study["decision"])}</p>' if study["decision"] else "")
             + f'<div class="banner {cls}">{esc(suff["label"])}</div>'
             + (f'<div class="chips">{chips}</div>' if chips else "")
             + _precision_line(study, steps)
-            + f'<p class="muted">{_open_item(study, folder)}{latest}.</p></header>')
+            + f'<p class="muted">{_open_item(study, folder)}{latest}.</p>{room}</header>')
 
 
 def _open_item(study: dict, folder: Path) -> str:
@@ -294,7 +300,8 @@ def _scenarios_panel(study: dict, steps: dict) -> str:
 def _version_detail(folder: Path, study: dict, v: dict, step: dict) -> str:
     vid = v["id"]
     changes = "".join(f"<li>{esc(c)}</li>" for c in step.get("changes") or [])
-    return (f'<div class="version" id="{esc(vid)}" data-version="{esc(vid)}">'
+    latest = " data-latest" if v is study["versions"][-1] else ""
+    return (f'<div class="version" id="{esc(vid)}" data-version="{esc(vid)}"{latest}>'
             + (f"<ul>{changes}</ul>" if changes else "")
             + _table(["KPI", "Mean"], [[esc(k), _num(x)] for k, x in (v.get("kpis") or {}).items()])
             + _flow(folder, study, v, step)
@@ -339,7 +346,9 @@ def _sensitivity_panel(folder: Path, study: dict) -> str:
     data = _read(folder / "versions" / study["versions"][-1]["id"] / "sensitivity.json")
     rows = [(f, k, e) for f in (data or {}).get("factors") or [] for k, e in (f.get("kpis") or {}).items()]
     if not rows:
-        return ""
+        return ('<details id="sensitivity" class="panel" data-empty><summary>Sensitivity: not run yet</summary>'
+                '<div class="scroll"><p class="muted">Which assumptions change the answer: '
+                'not run yet.</p></div></details>')
     rows.sort(key=lambda r: -(r[2].get("swing") or 0))
     table = _table(["Assumption", "KPI", "Low", "High", "Swing", "Changes the answer"],
                    [[esc(f.get("label") or f.get("path") or ""), esc(k), _num(f.get("low")), _num(f.get("high")),
@@ -348,21 +357,48 @@ def _sensitivity_panel(folder: Path, study: dict) -> str:
     return _panel("sensitivity", f"Sensitivity: {n} assumption(s) change the answer", table, False)
 
 
-def _on_request_panel() -> str:
-    items = ["<code>study_report</code>: the full report of any version",
-             "<code>study_view</code>: a PNG of the model or a result",
-             "<code>study_package</code>: the deliverable folder",
-             "<code>study_sensitivity</code>: which assumptions change the answer",
-             "<code>study_extensions</code>: verified candidate modules",
-             "<code>study_animation</code>: a GIF of the model running",
-             "<code>study_writeup</code>: a paper-style report",
-             "<code>study_slides</code>: a deck"]
-    return _panel("on-request", "On request: report, view, package, sensitivity, extensions, animation, write-up, slides",
-                  "<ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul>", False)
+# What each deliverable is, in plain words, and where its file lands (newest version first);
+# view and extensions write no file, so they are only ever "on request".
+_DELIVERABLES = (
+    ("report", "Report of a version", ["versions/{v}/report.html"]),
+    ("view", "Flowchart image", []),
+    ("package", "Deliverable package", ["package/control-room.html"]),
+    ("sensitivity", "Sensitivity of the answer", ["versions/{v}/sensitivity.json"]),
+    ("extensions", "Candidate extensions", []),
+    ("animation", "Animation", ["versions/{v}/animation.gif"]),
+    ("writeup", "Write-up", ["package/writeup.html"]),
+    ("slides", "Slides", ["package/slides.html"]),
+)
 
 
-def render(folder: Path, study: dict | None = None, study_id: str | None = None) -> str:
-    """The page as one string; loads the study when none is given."""
+def _made(folder: Path, study: dict, patterns: list[str]) -> Path | None:
+    """The newest existing file of a deliverable: the latest version that has it."""
+    ids = [v["id"] for v in reversed(study["versions"])]
+    paths = [folder / p.format(v=i) for p in patterns for i in (ids if "{v}" in p else [""])]
+    return next((p for p in paths if p.is_file()), None)
+
+
+def _deliverables_panel(folder: Path, study: dict) -> str:
+    items, made = [], 0
+    for kind, label, patterns in _DELIVERABLES:
+        path = _made(folder, study, patterns)
+        if path is not None:
+            made += 1
+            when = time.strftime("%H:%M", time.localtime(path.stat().st_mtime))
+            rel = path.relative_to(folder).as_posix()
+            old = rel.split("/")[1] if rel.startswith("versions/") else None
+            latest = study["versions"][-1]["id"]
+            state = f"made for {old}, {when}" if old and old != latest else f"made {when}"
+        else:
+            state, rel = ("on request" if not patterns else "not made yet"), ""
+        items.append(f'<li data-deliverable="{kind}" data-path="{esc(rel)}">{esc(label)}: {esc(state)}</li>')
+    return _panel("deliverables", f"Deliverables: {made} made", "<ul>" + "".join(items) + "</ul>", False)
+
+
+def render(folder: Path, study: dict | None = None, study_id: str | None = None,
+           room_url: str | None = None, in_room: bool = False) -> str:
+    """The page as one string; loads the study when none is given. `room_url` is the live room's
+    address while one runs (the header links it); `in_room` is the room's own view, which omits the line."""
     folder = Path(folder)
     study = study_mod.load(folder) if study is None else study
     steps = {v["id"]: _read(folder / "versions" / v["id"] / "step.json") or {} for v in study["versions"]}
@@ -373,10 +409,10 @@ def render(folder: Path, study: dict | None = None, study_id: str | None = None)
             f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
-            + _header(study, goals, steps, folder, study_id) + '<div id="actions"></div>'
+            + _header(study, goals, steps, folder, study_id, room_url, in_room) + '<div id="actions"></div>'
             + _goals_panel(study, goals, folder) + _model_panel(folder, study, steps)
             + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps) + _sensitivity_panel(folder, study)
-            + _assumptions_panel(study) + _on_request_panel()
+            + _assumptions_panel(study) + _deliverables_panel(folder, study)
             + f'<script type="application/json" id="study-json">{data}</script></main></body></html>\n')
     # Non-ASCII text becomes a character reference: the page stays ASCII and renders the same.
     return page.encode("ascii", "xmlcharrefreplace").decode("ascii")
