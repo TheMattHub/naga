@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 89 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 90 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -158,3 +158,9 @@ The 89 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `study_writeup` |  | Write a paper-style report of the study on request (STRESS-aligned sections: abstract, objective, model logic, data and assumptions, experimentation, verification and validation, results, limitations, discussion, references), built from the study folder. |
 | `study_slides` |  | Make a slide deck of the study on request: one HTML file, 16:9 slides (title and question, the answer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was run, next steps). |
+
+## discover
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `find_tool` | yes | Find the tools that fit what you want to do, by a few words or a tool name you guessed ("validate against a formula", "make slides", "run_study"). |

@@ -2862,5 +2862,26 @@
     },
     "name": "study_slides",
     "read_only": false
+  },
+  {
+    "description": "Find the tools that fit what you want to do, by a few words or a tool name you guessed\n(\"validate against a formula\", \"make slides\", \"run_study\"). Answers {\"tools\": [{name, score,\nsummary, args}]}, best first, `args` being the required arguments. Use it when no tool in your list is obviously right.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 5,
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "find_tool",
+    "read_only": true
   }
 ]

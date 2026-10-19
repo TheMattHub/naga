@@ -35,6 +35,7 @@ import threading
 from pathlib import Path
 
 from nagasim import __version__, agent_tools, examples, netguard, study, studyapp
+from nagasim.agent_tools import discover
 from nagasim.assistant import COMPACT_TOOL_NAMES
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
@@ -312,6 +313,7 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     server_class = _server_class()
     agent_tools.use_workspace(agent_tools.Workspace(root, network=network, twin=twin,
                                                     twin_dir=twin_dir))
+    discover.exposed = None if tools is None else frozenset(tools)    # find_tool must not name a hidden tool
     apps = _study_apps(tools)
     extra = {"extensions": [apps]} if apps else {}
     server = _suggesting(server_class)(name, version=__version__, instructions=instructions, **extra)

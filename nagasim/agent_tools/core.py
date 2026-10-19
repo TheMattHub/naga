@@ -63,10 +63,16 @@ def _close(word, choices) -> list[str]:
 
 
 def unknown_tool_error(name, choices=None) -> ToolError:
-    """E_UNKNOWN_TOOL with the closest names among `choices` (default: every registered tool;
-    the MCP server passes only the tools it exposes, so a hidden tool is never suggested)."""
+    """E_UNKNOWN_TOOL with suggestions among `choices` (default: every registered tool; the MCP server
+    passes only the tools it exposes, so a hidden tool is never suggested). Close spellings come first
+    (difflib: a typo); the free-text search fills up to three, for a guess like `run_study` that is
+    far from every name."""
+    from .discover import catalogue_index   # lazy: discover imports this module
+    from nagasim import toolsearch
     choices = TOOLS if choices is None else choices
-    close = _close(name, choices)
+    close = difflib.get_close_matches(str(name), list(choices), n=3, cutoff=0.75)
+    close += [h["name"] for h in toolsearch.search(catalogue_index(), str(name), 3, set(choices))
+              if h["name"] not in close][:3 - len(close)]
     return ToolError("E_UNKNOWN_TOOL", f"no tool named '{name}'",
                      f"did you mean: {', '.join(close)}?" if close
                      else f"use one of: {', '.join(sorted(choices))}", close)

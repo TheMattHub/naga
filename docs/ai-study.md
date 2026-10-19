@@ -87,7 +87,8 @@ The study tools accept the common near-misses an assistant makes and say what th
 range given as `range: [0, 5]`, a record field called `statement` instead of `text` or a single record
 where a list is expected is stored in the canonical form, and the answer lists each change under
 `normalised`; ambiguous input is refused with a corrected call built from the caller's own values. An
-unknown tool or argument name answers "did you mean". `study_start` takes the whole plan in one call and
+unknown tool or argument name answers "did you mean", and for a guessed tool name it also suggests the tools
+that fit by meaning; `find_tool` searches the tools by a few words of intent. `study_start` takes the whole plan in one call and
 `study_step` can record what was learned in the same call as the step, so a study needs fewer calls.
 `naga study rerun FOLDER` reruns every version from its stored model and seed and reports whether the
 results reproduce, so a study can be checked without an assistant.
