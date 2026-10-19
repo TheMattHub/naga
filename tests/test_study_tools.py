@@ -550,3 +550,35 @@ def test_step_without_a_layout_points_to_study_update(ws):
     sid = start(ws)
     err = T.call("study_step", study=sid, note="n", changes={"decision": "d"})["error"]
     assert err["code"] == "E_BAD_ARGUMENT" and "study_update(changes=" in err["hint"]
+
+
+def test_second_pass_extends_the_first(ws, monkeypatch):
+    # Exact, not approximate: replication i uses seed + i, so 10 + (n - 10) equals one run of n.
+    from nagasim import api
+    from nagasim.studychecks import kpi_mean
+    real, calls = api.run_model, []
+
+    def spy(layout, *a, **k):
+        calls.append(k.get("replications"))
+        return real(layout, *a, **k)
+    monkeypatch.setattr(api, "run_model", spy)
+    sid, r = step_with(ws, [{**QGOAL, "precision": 0.05}])
+    n = r["replications"]
+    assert n > 10 and (n - 10) in calls and n not in calls
+    monkeypatch.setattr(api, "run_model", real)
+    step = json.loads((ws.root / sid / "versions" / "v001" / "step.json").read_text(encoding="utf-8"))
+    assert T.call("write_model", model="shot", layout=layout(ws))["ok"]
+    oneshot = T.call("run_model", model="shot", replications=n, seed=0)
+    assert step["kpis"] == {k: kpi_mean(oneshot, k) for k in step["kpis"]}
+    assert step["kpis"]
+
+
+def test_a_version_argument_never_leaves_the_study(ws):
+    sid = start(ws)
+    T.call("study_step", study=sid, layout=layout(ws), note="a")
+    for bad in ["../x", "../../../evil", "V001", "v1", "v001/../v001", str(ws.root / "evil")]:
+        for name in ["study_sensitivity", "study_animation", "study_report", "study_view", "study_revert"]:
+            args = {"note": "x"} if name == "study_revert" else {}
+            r = T.call(name, study=sid, version=bad, **args)
+            assert r["error"]["code"] == "E_STUDY_NO_VERSION", (name, bad, r)
+    assert not list(ws.root.rglob("evil")) and not (ws.root / "x").exists()

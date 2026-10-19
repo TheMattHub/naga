@@ -17,6 +17,7 @@ body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;ma
 #actions{max-width:1100px;margin:0 auto;padding:0 16px}
 #actions input{width:60%;padding:4px 8px;margin-right:8px}
 .naga-err{color:#7a1f1f;font-weight:600;margin-left:8px}
+.naga-bar{max-width:1100px;margin:0 auto;padding:4px 16px}.naga-bar button{margin-right:6px}
 button{cursor:pointer;padding:3px 10px}button:disabled{cursor:default}
 </style></head><body>
 <div id="naga-msg" role="status"></div>
@@ -25,6 +26,28 @@ button{cursor:pointer;padding:3px 10px}button:disabled{cursor:default}
 (function () {
   var pending = {}, nextId = 1, study = null, loaded = false;
   var statusEl = document.getElementById("naga-msg"), pageEl = document.getElementById("page");
+  // Open state of the panels, in memory only (lost on a reload of the chat). Keyed by the panel id,
+  // or by its position for the nested ones without an id. ponytail: position keys can shift if the
+  // page's structure changes between two renders; add ids to the nested panels if that happens.
+  var openState = Object.create(null);
+
+  function panels() { return Array.prototype.slice.call(pageEl.querySelectorAll("details")); }
+  function panelKey(d) { return d.id || "#" + panels().indexOf(d); }
+  pageEl.addEventListener("toggle", function (ev) { openState[panelKey(ev.target)] = ev.target.open; }, true);
+  function restorePanels() {
+    panels().forEach(function (d) { var k = panelKey(d); if (k in openState) { d.open = openState[k]; } });
+  }
+  function toolbar() {
+    var bar = document.createElement("div");
+    bar.className = "naga-bar";
+    [["Expand all", true], ["Collapse all", false]].forEach(function (p) {
+      var b = document.createElement("button");
+      b.textContent = p[0];
+      b.onclick = function () { panels().forEach(function (d) { d.open = p[1]; }); };
+      bar.appendChild(b);
+    });
+    pageEl.insertBefore(bar, pageEl.firstChild);
+  }
 
   function send(msg) { msg.jsonrpc = "2.0"; parent.postMessage(msg, "*"); }
   function request(method, params) {
@@ -67,6 +90,8 @@ button{cursor:pointer;padding:3px 10px}button:disabled{cursor:default}
     });
     var cover = pageEl.querySelector("[data-study]");
     if (!study && cover) { study = cover.getAttribute("data-study"); }
+    restorePanels();
+    toolbar();
     decorate();
   }
 

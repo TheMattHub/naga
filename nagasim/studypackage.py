@@ -18,7 +18,8 @@ from nagasim.studychecks import goal_kpi
 from nagasim.twin import write_json, write_text
 
 _FORMATS = {".html": "text/html", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".json": "application/json"}
+            ".json": "application/json",
+            ".md": "text/markdown"}
 
 
 def _sheet(wb: Workbook, title: str, head: list[str], rows: list[list]) -> None:
@@ -82,7 +83,7 @@ def ro_crate(study: dict, files: list[str]) -> dict:
 
 
 def package(folder: Path, study: dict) -> list[str]:
-    """Write the package; returns its four paths relative to the study folder."""
+    """Write the package; returns its paths (four, plus any write-up or slides) relative to the study folder."""
     folder = Path(folder)
     if not study["versions"]:
         raise study_mod.StudyError("E_STUDY_NO_VERSION", "the study has no model version yet",
@@ -99,5 +100,11 @@ def package(folder: Path, study: dict) -> list[str]:
     finally:
         tmp.unlink(missing_ok=True)
     names = ["control-room.html", "study.xlsx", "model.json"]
+    # Written by study_writeup and study_slides, which record the version they were built from in
+    # outputs.json; listed only when that is still the last version (an older one would mislead).
+    built = studypage._read(out / "outputs.json") or {}
+    last = study["versions"][-1]["id"]
+    names += [n for key, files in (("writeup", ("writeup.html", "writeup.md")), ("slides", ("slides.html",)))
+              if built.get(key) == last for n in files if (out / n).is_file()]
     write_json(out / "ro-crate-metadata.json", ro_crate(study, names))
     return [f"package/{n}" for n in names + ["ro-crate-metadata.json"]]

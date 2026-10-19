@@ -592,18 +592,21 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                     break
             first = digest
             if digest is not None:
-                tail_why = _tails(s, digest, workspace().results[model], layout)
+                first_results = workspace().results[model]
+                tail_why = _tails(s, digest, first_results, layout)
                 status = study_mod.precision_status(s, digest)
                 n = study_mod.replications_needed(status, FIRST_PASS, cap)
                 if n > FIRST_PASS:
-                    # ponytail: a rerun with n replications instead of adding to the first pass;
-                    # same seed keeps it deterministic and paired with the scenarios. Merge the
-                    # passes if run time matters.
-                    digest = call("run_model", model=model, replications=n, seed=seed)
-                    if "error" in digest:
-                        problems, digest, rerun = [digest["error"]], None, None
+                    # Replication i uses seed + i, so the extra n - FIRST_PASS replications continue the
+                    # first pass and the merge equals one run of n.
+                    more = call("run_model", model=model, replications=n - FIRST_PASS, seed=seed + FIRST_PASS)
+                    if "error" in more:
+                        problems, digest, rerun = [more["error"]], None, None
                     else:
-                        _tails(s, digest, workspace().results[model], layout)
+                        res = workspace().results
+                        res[model] = experiments._merge(first_results, res[model])
+                        digest = {**_digest(res[model]), "model": model, "frames": sorted(res[model])}
+                        _tails(s, digest, res[model], layout)
                         status = study_mod.precision_status(s, digest)
             if digest is not None:
                 scenarios, extra = _run_scenarios(layout, s, n, seed)
@@ -732,11 +735,8 @@ def study_report(study: str, version: str | None = None) -> dict:
     """
     started = time.monotonic()
     folder, s = _open(study)
-    ids = [v["id"] for v in s["versions"]]
-    vid = version if version is not None else (ids[-1] if ids else None)
-    if vid is None or vid not in ids or not re.fullmatch(r"v\d{3,}", vid):
-        raise ToolError("E_STUDY_NO_VERSION", f"no version {vid!r}",
-                        f"Pick an id from the study's versions list: {ids}.")
+    with _study_errors():
+        vid = study_mod.version_id(s, version)
     base = folder / "versions" / vid
     try:
         layout = json.loads((base / "model.json").read_text(encoding="utf-8"))
@@ -787,11 +787,8 @@ def study_view(study: str, version: str | None = None, format: str = "png") -> d
     folder, s = _open(study)
     if format not in ("png", "svg", "text"):
         raise _bad("format", "must be png, svg or text")
-    ids = [v["id"] for v in s["versions"]]
-    vid = version if version is not None else (ids[-1] if ids else None)
-    if vid is None or vid not in ids or not re.fullmatch(r"v\d{3,}", vid):
-        raise ToolError("E_STUDY_NO_VERSION", f"no version {vid!r}",
-                        f"Pick an id from the study's versions list: {ids}.")
+    with _study_errors():
+        vid = study_mod.version_id(s, version)
     base = folder / "versions" / vid
     try:
         layout = json.loads((base / "model.json").read_text(encoding="utf-8"))

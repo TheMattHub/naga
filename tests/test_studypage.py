@@ -147,7 +147,7 @@ def test_panels_and_summaries(tmp_path):
         assert re.search(rf'<details id="{pid}"[^>]*><summary>[^<]+', page)
     assert 'id="scenarios"' not in page
     assert re.search(r"Checklist: \d+ passed", page) or "not verified" in page
-    assert "study_report" in page and "paper-style write-up (planned)" in page
+    assert "study_report" in page and "study_writeup" in page
     assert '<details id="assumptions" class="panel">' in page      # closed
 
 

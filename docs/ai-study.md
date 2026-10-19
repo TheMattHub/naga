@@ -54,9 +54,20 @@ the count, the target and the precision reached.
 
 Each version makes only what the person needs to follow the study: a short summary of what changed,
 the goal KPIs with their intervals, the flowchart and the refreshed control room. Heavier output is made
-when someone asks for it, from the stored versions: `study_report` for a version's full run report,
-`study_view` for a PNG of the flowchart and `study_package` for the deliverable. This keeps each step
-quick and the conversation short.
+when someone asks for it, from the stored versions, so each step stays quick and the conversation short:
+
+- `study_report`: a version's full run report;
+- `study_view`: a PNG of the flowchart;
+- `study_animation`: a GIF of the model running (needs `nagasim[plot]`);
+- `study_sensitivity`: which assumptions change the answer, each varied 20% either way with common random
+  numbers, ranked by how much it moves each goal KPI;
+- `study_extensions`: candidate modules (shifts with a break, resource failures, an arrival peak), offered
+  only when the engine has tried them on the model and they validate and run; the assistant reviews the
+  changed model and steps it;
+- `study_writeup`: a paper-style report (HTML and Markdown) with the headings of the STRESS guidelines;
+- `study_slides`: a deck for the decision meeting, one 16:9 slide per page when printed;
+- `study_package`: the deliverable folder with the page, the workbook, the model, the write-up and the
+  slides when made.
 
 ## The control room and the package
 

@@ -52,6 +52,8 @@ themselves grouped as:
 * `debug.py`     -- the run debugger: `debug_run` and `debug_inspect`
 * `study.py`     -- the study folder: `study_start`, `study_status`, `study_update`,
                     `study_add_input`, `study_step`, `study_accept`, `study_revert`
+* `study_sensitivity.py`, `study_extensions.py`, `study_anim.py`, `study_writeup.py` -- the on-request study outputs:
+                    `study_sensitivity`, `study_extensions`, `study_animation`, `study_writeup`, `study_slides`
 
 Importing this package registers every tool, in the module order above, then
 loads plugins (`load_plugins()`) so a plugin's blocks/distributions are in
@@ -65,7 +67,7 @@ from nagasim.plugins import load_plugins
 
 from .core import (ToolError, ToolSpec, Workspace, TOOLS, call, drop_python_consent,
                    python_consent_dropped, tool, tool_schemas, use_workspace, workspace)
-from . import core, model, records, runs, data, reference, wholemodel, debug, study  # noqa: F401 -- import order is registration order
+from . import core, model, records, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup  # noqa: F401 -- import order is registration order
 # Re-exported on purpose: tests read these three directly.
 from .core import _ARG_DOCS
 from .data import _BINDABLE

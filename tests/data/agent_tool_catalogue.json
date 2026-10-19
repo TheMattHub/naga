@@ -2718,5 +2718,149 @@
     },
     "name": "study_validate",
     "read_only": false
+  },
+  {
+    "description": "Vary one assumption at a time (arrival and service parameters, capacities) around a version,\nwith common random numbers and the version's stored replications and seed, and rank them by\nhow much each moves the goal KPIs. Answers {\"file\", \"ranked\": [{path, label, swing}],\n\"changes_answer\": [paths where a goal verdict flips]}; the full table and a swing chart per\ngoal KPI are in the file. Rate parameters are varied as rates (a higher rate is a shorter time).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "delta": {
+          "default": 0.2,
+          "description": "Relative change, 0.2 = +-20%; capacities change by +-1.",
+          "type": "number"
+        },
+        "factors": {
+          "description": "Paths to vary (as in an earlier answer); omit for the most relevant, at most 8.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version id, e.g. v002; omit for the last.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_sensitivity",
+    "read_only": false
+  },
+  {
+    "description": "Candidate extension modules for the study's model: shifts with a break, resource failures,\nan arrival peak. Without `apply`, lists the ones that validate, run and pass the law checks\non the last version, with their effect on the goal KPIs in one short run (indicative only).\nWith `apply`, answers the model layout with that module added: review it, then send it to\nstudy_step; this tool never steps the study.\nExample: study_extensions(study=\"naga-studies/cranes\", apply=\"failures\", params={\"mtbf\": 200}).\n\nReturns {\"candidates\": [{\"name\", \"label\", \"purpose\", \"effort\", \"indicative\"}]} or\n{\"module\", \"layout\", \"next_step\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "apply": {
+          "description": "Name of the module to add (shifts, failures, arrival_peak); omit to list the verified candidates.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "description": "Optional parameters of the module, e.g. {\"mtbf\": 200}.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_extensions",
+    "read_only": true
+  },
+  {
+    "description": "Make an animated GIF of one replication of a version (the step's stored seed): boxes shaded by\nutilisation, queue counts and a clock. On request only; it needs nagasim[plot] (matplotlib).\n\nReturns {\"path\": the GIF relative to the workspace root, \"frames\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "scenario": {
+          "description": "Name of a scenario of the model to animate instead of the baseline.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version id, e.g. v002; omit for the last.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_animation",
+    "read_only": false
+  },
+  {
+    "description": "Write a paper-style report of the study on request (STRESS-aligned sections: abstract, objective,\nmodel logic, data and assumptions, experimentation, verification and validation, results, limitations,\ndiscussion, references), built from the study folder. `discussion` is your own interpretation, placed\nin section 8. Returns {\"html\": the page with figures, \"markdown\": the same text without figures},\npaths relative to the workspace root. writeup.md carries the study's own text as written (Markdown,\nnot escaped for HTML), so treat it as text to read, not to embed in a page.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "discussion": {
+          "description": "Your own discussion text for section 8 (plain text, escaped in the page); omit for none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_writeup",
+    "read_only": false
+  },
+  {
+    "description": "Make a slide deck of the study on request: one HTML file, 16:9 slides (title and question, the\nanswer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was\nrun, next steps). Scroll on screen; print to PDF gives one slide per page. Returns {\"path\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_slides",
+    "read_only": false
   }
 ]

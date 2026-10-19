@@ -28,6 +28,7 @@ def start(ws, goals):
     return r["study"]
 
 
+@pytest.mark.slow
 def test_tail_goal_is_a_goal_kpi(ws):
     sid = start(ws, [TAIL])
     r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
@@ -49,6 +50,7 @@ def test_tail_goal_not_verified_when_the_shares_cannot_be_rebuilt(ws, monkeypatc
     assert T.call("study_status", study=sid)["goals"][0]["status"] == "not_verified"
 
 
+@pytest.mark.slow
 def test_tail_goal_in_scenarios(ws):
     m = layout(ws)
     m["scenarios"] = [{"name": "two", "overrides": [{"path": "resources.Server.capacity", "value": 2}]}]
@@ -58,6 +60,7 @@ def test_tail_goal_in_scenarios(ws):
     assert sc["kpis"][NAME]["mean"] < r["kpis"][NAME] and sc["goals"]["g1"] == "met"
 
 
+@pytest.mark.slow
 def test_validate_the_queue_formula(ws):
     sid = start(ws, [{"id": "g1", "text": "wait", "kpi": "Avg Throughput Time", "high": 50}])
     T.call("study_step", study=sid, layout=layout(ws), note="first model")
@@ -71,6 +74,7 @@ def test_validate_the_queue_formula(ws):
     assert "validate" not in T.call("study_status", study=sid)
 
 
+@pytest.mark.slow
 def test_validate_not_applicable_to_two_resources(ws):
     m = layout(ws)
     m["resources"].append({"name": "Other", "capacity": 1, "discipline": "FIFO"})

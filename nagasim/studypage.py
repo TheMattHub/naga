@@ -7,6 +7,7 @@ through `esc`. The page embeds `study.json` as data so the page alone can restar
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from nagasim import flowchart, study as study_mod
@@ -52,6 +53,19 @@ def _badge(verdict: str) -> str:
     return f'<span class="badge {esc(verdict)}">{esc(str(verdict).replace("_", " "))}</span>'
 
 
+def _ascii(text: str) -> str:
+    """Non-ASCII text becomes a character reference: the page stays ASCII and renders the same."""
+    return text.encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+
+def _page(title: str, css: str, body: str) -> str:
+    """One HTML document, no script allowed by the CSP; `body` holds ready-made (escaped) markup."""
+    return _ascii("<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
+                  f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">'
+                  '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                  f"<title>{esc(title[:80])}</title><style>{css}</style></head><body>{body}</body></html>\n")
+
+
 def _table(head: list[str], rows: list[list[str]]) -> str:
     """Rows hold ready-made (already escaped) cells."""
     th = "".join(f"<th>{esc(h)}</th>" for h in head)
@@ -59,10 +73,45 @@ def _table(head: list[str], rows: list[list[str]]) -> str:
     return f"<table><tr>{th}</tr>{body}</table>"
 
 
-def _num(v) -> str:
+def _sig(x: float, digits: int) -> str:
+    """`digits` significant digits, plain notation (never 2.3e-05), trailing zeros dropped."""
+    if x == 0 or not math.isfinite(x):
+        return "0" if x == 0 else str(x)
+    dec = max(0, digits - 1 - math.floor(math.log10(abs(x))))
+    out = f"{round(x, dec):.{dec}f}"
+    return out.rstrip("0").rstrip(".") if "." in out else out
+
+
+def _is_share(kpi) -> bool:
+    return "share" in str(kpi or "").lower()
+
+
+def _pct(x: float) -> str:
+    return _sig(x * 100, 3 if abs(x) >= 0.1 else 2)
+
+
+def _n(v, kpi=None) -> str:
+    """A value for people: a share KPI in [0, 1] as a percentage, else 4 significant digits."""
+    if v is None:
+        return ""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return str(v)
+    if _is_share(kpi) and 0 <= v <= 1:
+        return _pct(v) + "%"
+    return _sig(v, 4)
+
+
+def _hw(v, kpi=None) -> str:
+    """A half-width or target; for a share KPI it is in percentage points."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and _is_share(kpi):
+        return _pct(v) + " points"
+    return _n(v)
+
+
+def _num(v, kpi=None) -> str:
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return "" if v is None else esc(v)
-    return f"{v:.4g}"
+    return _n(v, kpi)
 
 
 def _range(spec: dict) -> str:
@@ -283,12 +332,32 @@ def _assumptions_panel(study: dict) -> str:
                   + _table(["Source", "Input file"], src), False)
 
 
+def _sensitivity_panel(folder: Path, study: dict) -> str:
+    """Ranked factors of the last version's sensitivity.json, redrawn from its numbers (stored SVG is never embedded)."""
+    if not study["versions"]:
+        return ""
+    data = _read(folder / "versions" / study["versions"][-1]["id"] / "sensitivity.json")
+    rows = [(f, k, e) for f in (data or {}).get("factors") or [] for k, e in (f.get("kpis") or {}).items()]
+    if not rows:
+        return ""
+    rows.sort(key=lambda r: -(r[2].get("swing") or 0))
+    table = _table(["Assumption", "KPI", "Low", "High", "Swing", "Changes the answer"],
+                   [[esc(f.get("label") or f.get("path") or ""), esc(k), _num(f.get("low")), _num(f.get("high")),
+                     _num(e.get("swing")), "yes" if e.get("flips") else "no"] for f, k, e in rows])
+    n = len((data or {}).get("changes_answer") or [])
+    return _panel("sensitivity", f"Sensitivity: {n} assumption(s) change the answer", table, False)
+
+
 def _on_request_panel() -> str:
     items = ["<code>study_report</code>: the full report of any version",
              "<code>study_view</code>: a PNG of the model or a result",
              "<code>study_package</code>: the deliverable folder",
-             "A paper-style write-up (planned)"]
-    return _panel("on-request", "On request: report, PNG view, package, write-up",
+             "<code>study_sensitivity</code>: which assumptions change the answer",
+             "<code>study_extensions</code>: verified candidate modules",
+             "<code>study_animation</code>: a GIF of the model running",
+             "<code>study_writeup</code>: a paper-style report",
+             "<code>study_slides</code>: a deck"]
+    return _panel("on-request", "On request: report, view, package, sensitivity, extensions, animation, write-up, slides",
                   "<ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul>", False)
 
 
@@ -306,7 +375,7 @@ def render(folder: Path, study: dict | None = None, study_id: str | None = None)
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
             + _header(study, goals, steps, folder, study_id) + '<div id="actions"></div>'
             + _goals_panel(study, goals, folder) + _model_panel(folder, study, steps)
-            + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps)
+            + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps) + _sensitivity_panel(folder, study)
             + _assumptions_panel(study) + _on_request_panel()
             + f'<script type="application/json" id="study-json">{data}</script></main></body></html>\n')
     # Non-ASCII text becomes a character reference: the page stays ASCII and renders the same.

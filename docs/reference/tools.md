@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 84 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 89 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -133,3 +133,28 @@ The 84 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `study_view` | yes | See a version's flowchart: built blocks, what this step changed and what of the agreed target is not built yet. |
 | `study_show` | yes | Show the study's control room. |
 | `study_page_html` | yes | The control room page as one HTML string. |
+
+## study_sensitivity
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `study_sensitivity` |  | Vary one assumption at a time (arrival and service parameters, capacities) around a version, with common random numbers and the version's stored replications and seed, and rank them by how much each moves the goal KPIs. |
+
+## study_extensions
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `study_extensions` | yes | Candidate extension modules for the study's model: shifts with a break, resource failures, an arrival peak. |
+
+## study_anim
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `study_animation` |  | Make an animated GIF of one replication of a version (the step's stored seed): boxes shaded by utilisation, queue counts and a clock. |
+
+## study_writeup
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `study_writeup` |  | Write a paper-style report of the study on request (STRESS-aligned sections: abstract, objective, model logic, data and assumptions, experimentation, verification and validation, results, limitations, discussion, references), built from the study folder. |
+| `study_slides` |  | Make a slide deck of the study on request: one HTML file, 16:9 slides (title and question, the answer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was run, next steps). |

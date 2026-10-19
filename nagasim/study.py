@@ -116,6 +116,16 @@ class StudyError(ValueError):
         self.hint = hint
 
 
+def version_id(study: dict, version: str | None = None) -> str:
+    """The id of a recorded version (the last when `version` is None). Any other string is refused, so a
+    version argument can never lead a path outside versions/."""
+    ids = [v["id"] for v in study["versions"]]
+    vid = version if version is not None else (ids[-1] if ids else None)
+    if not isinstance(vid, str) or vid not in ids or not re.fullmatch(r"v\d{3,}", vid):
+        raise StudyError("E_STUDY_NO_VERSION", f"no version {vid!r}", f"Pick an id from {ids}.")
+    return vid
+
+
 def _check_choice(name: str, value: str, allowed: tuple) -> None:
     if value not in allowed:
         raise StudyError("E_STUDY_BAD_VALUE", f"{name} must be one of {list(allowed)}, not {value!r}",
@@ -515,17 +525,15 @@ def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, ch
     return _record(folder, study, layout, verdict, checks, kpis, note, key, problems or [], scenarios, run)
 
 
-def revert(folder: Path, study: dict, version_id: str, note: str, request_id: str | None = None) -> dict:
-    """Record the stored model of `version_id` as a new version; its history is never rewritten.
+def revert(folder: Path, study: dict, version: str, note: str, request_id: str | None = None) -> dict:
+    """Record the stored model of `version` as a new version; its history is never rewritten.
     The same `request_id` returns the first answer."""
     key = request_key("revert", request_id)
     if key is not None and key in study["requests"]:
         return study["requests"][key]
-    old = Path(folder) / "versions" / version_id
-    # The id must look like one: a hand-edited study.json must not lead outside versions/.
-    if (not re.fullmatch(r"v\d{3,}", str(version_id)) or not any(v["id"] == version_id for v in study["versions"])
-            or not (old / "step.json").is_file()):
-        raise StudyError("E_STUDY_NO_VERSION", f"no version {version_id!r}",
+    old = Path(folder) / "versions" / version_id(study, version)
+    if not (old / "step.json").is_file():
+        raise StudyError("E_STUDY_NO_VERSION", f"no version {version!r}",
                          "Pick an id from the study's versions list.")
     step = json.loads((old / "step.json").read_text(encoding="utf-8"))
     layout = json.loads((old / "model.json").read_text(encoding="utf-8"))

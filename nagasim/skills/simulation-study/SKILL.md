@@ -94,8 +94,11 @@ model file's format.
 ## Output
 
 Each version makes the light output by default (the step's summary, the flowchart, the control room).
-Make the heavy outputs only when the person asks: a version's full report, a PNG of the flowchart, the
-package; a paper-style write-up is planned.
+Make the heavy outputs only when the person asks: `study_report` (a version's full report), `study_view`
+(PNG), `study_animation` (GIF), `study_sensitivity` (which assumptions change the answer: suggest it
+before a decision rests on assumptions), `study_extensions` (verified candidate modules to offer the
+person), `study_writeup` (a paper-style report; pass your own `discussion` text), `study_slides` (a deck)
+and `study_package` (the deliverable).
 
 ## Principles
 

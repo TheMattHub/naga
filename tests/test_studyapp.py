@@ -18,6 +18,18 @@ def test_template_calls_only_the_three_tools():
     assert studyapp.HTML.count('"tools/call"') == 1
 
 
+def test_template_has_expand_and_collapse_all():
+    html = studyapp.HTML
+    assert '"Expand all"' in html and '"Collapse all"' in html
+    assert "d.open = p[1]" in html          # both buttons toggle every panel
+
+
+def test_template_remembers_open_panels_in_memory_only():
+    html = studyapp.HTML
+    assert 'addEventListener("toggle"' in html and "restorePanels();" in html
+    assert "localStorage" not in html and "sessionStorage" not in html
+
+
 def test_template_never_uses_innerhtml():
     assert "innerHTML" not in studyapp.HTML and "document.write" not in studyapp.HTML
 
