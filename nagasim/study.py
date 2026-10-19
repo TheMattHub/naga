@@ -50,7 +50,8 @@ _TODO = {
     "validation": "Record a validation result with study_update(validation=...).",
     "experiments": "Run scenarios with study_step and record them with study_update(experiments=...); "
                    "each scenario is a version and counts against the size's increments.",
-    "conclusions": "Compare the last version's KPIs with the goals and adjust the model or the goals.",
+    "conclusions": "Compare the last version's KPIs with the goals and adjust the model or the goals. "
+                   "When the person is satisfied, build the deliverable with study_package.",
 }
 _SUBFOLDERS = ("inputs", "versions", "versions/drafts", "tests", "outputs")
 

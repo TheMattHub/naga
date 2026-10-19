@@ -5,6 +5,7 @@ can run a simulation study. The folder is the memory (stateless calls); `nagasim
 from __future__ import annotations
 
 import base64
+import logging
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import flowchart
+from nagasim import flowchart, studypackage, studypage
 from nagasim import study as study_mod
 from nagasim.studychecks import step_checks
 from nagasim.study import CHECKLIST, LEVELS, MODES, SIZES, StudyError
@@ -33,7 +34,9 @@ _document_args("study_update", study=_ID,
                changes="Keys to set: question, decision, mode, size, plan_approved, goals, target, "
                        "assumptions, sources, validation, experiments, skipped. A list key is "
                        "replaced whole. goals and assumptions entries need a string id; a goal is "
-                       "{id, text, kpi, low, high}; a source is {id, text, input}; validation is "
+                       "{id, text, kpi, low, high}; an assumption is {id, text, value, source}; a "
+                       "target component is {name, purpose, blocks: [block names]}; a source is "
+                       "{id, text, input}; validation is "
                        "{level: data|known_answer|expert, passed: bool, ...}.")
 _document_args("study_add_input", study=_ID, name="File name to store under inputs/ (no folders).",
                path="Workspace file to copy in; give this or text.",
@@ -44,6 +47,7 @@ _document_args("study_step", study=_ID, layout="The complete model file as one J
                seed="First replication's seed.")
 _document_args("study_view", study=_ID, version="Version id, e.g. v002; omit for the last.",
                format="png (image), svg or text.")
+_document_args("study_package", study=_ID)
 _document_args("study_accept", study=_ID, reason="The person's own words accepting the study.")
 _document_args("study_revert", study=_ID, version="Id of an earlier version, e.g. v002.",
                note="Why the study goes back to it.", request_id="Any unique string, as for study_step.")
@@ -103,6 +107,17 @@ def _store(folder: Path, vid: str) -> dict | None:
     return report.get("error")
 
 
+def _page(folder: Path, study: dict) -> str | None:
+    """Refresh the control room page after a recorded version; a failed write must not lose the
+    version, so it answers None and the step still succeeds."""
+    try:
+        write_text(folder / "control-room.html", studypage.render(folder, study))
+    except Exception:   # a hand-edited record that does not render must not fail a recorded step
+        logging.getLogger(__name__).warning("control room page not written", exc_info=True)
+        return None
+    return f"{_sid(folder)}/control-room.html"
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40].strip("-") or "study"
 
@@ -155,6 +170,8 @@ def study_status(study: str) -> dict:
            "checklist": [{k: c[k] for k in ("item", "verdict", "why")} for c in study_mod.checklist(s, folder)],
            "last_version": s["versions"][-1] if s["versions"] else None, "versions": len(s["versions"]),
            "effort": study_mod.effort(s), "next_step": study_mod.next_step(s, folder)}
+    if (folder / "control-room.html").is_file():
+        out["page"] = f"{_sid(folder)}/control-room.html"
     if not s["plan_approved"]:
         out["plan_card"] = study_mod.plan_card(s)
     return out
@@ -265,6 +282,8 @@ def study_update(study: str, changes: dict) -> dict:
     s.update(checked)
     _log(s, "study_update", started)
     _save(folder, s)
+    if s["versions"]:   # the page shows goals and assumptions too
+        _page(folder, s)
     return {"ok": True, "next_step": study_mod.next_step(s, folder)}
 
 
@@ -343,6 +362,8 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
         err = _store(folder, answer["id"])
         if err:
             answer["report_error"] = err
+        if page := _page(folder, s):
+            answer["page"] = page
     answer["sufficiency"] = _label(s)
     answer["next_step"] = study_mod.next_step(s, folder)
     return answer
@@ -363,6 +384,8 @@ def study_accept(study: str, reason: str) -> dict:
     s["accepted"] = {"reason": reason.strip(), "by": "person (relayed by the assistant)"}
     _log(s, "study_accept", started)
     _save(folder, s)
+    if s["versions"]:   # the banner changes with an acceptance
+        _page(folder, s)
     return {"sufficiency": _label(s)}
 
 
@@ -388,9 +411,29 @@ def study_revert(study: str, version: str, note: str, request_id: str | None = N
         err = run.get("error") or _store(folder, answer["id"])
         if err:
             answer["report_error"] = err
+        if page := _page(folder, s):
+            answer["page"] = page
     answer["sufficiency"] = _label(s)
     answer["next_step"] = study_mod.next_step(s, folder)
     return answer
+
+
+@tool()
+def study_package(study: str) -> dict:
+    """Build the study's deliverable in its package/ folder: the control room page, an Excel
+    workbook (goals, versions with KPIs, checklist, assumptions), the current model and
+    RO-Crate metadata. Use it when the person is satisfied with the study.
+
+    Returns {"files": [paths relative to the workspace root], "next_step"}.
+    """
+    started = time.monotonic()
+    folder, s = _open(study)
+    with _study_errors():
+        names = studypackage.package(folder, s)
+    _log(s, "study_package", started)
+    _save(folder, s)
+    return {"files": [f"{_sid(folder)}/{n}" for n in names],
+            "next_step": "Give the person package/control-room.html (print it to PDF) and study.xlsx."}
 
 
 @tool(read_only=True)

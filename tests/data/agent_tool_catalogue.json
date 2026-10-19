@@ -2331,7 +2331,7 @@
       "additionalProperties": false,
       "properties": {
         "changes": {
-          "description": "Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; a source is {id, text, input}; validation is {level: data|known_answer|expert, passed: bool, ...}.",
+          "description": "Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input}; validation is {level: data|known_answer|expert, passed: bool, ...}.",
           "type": "object"
         },
         "study": {
@@ -2512,5 +2512,23 @@
     },
     "name": "study_view",
     "read_only": true
+  },
+  {
+    "description": "Build the study's deliverable in its package/ folder: the control room page, an Excel\nworkbook (goals, versions with KPIs, checklist, assumptions), the current model and\nRO-Crate metadata. Use it when the person is satisfied with the study.\n\nReturns {\"files\": [paths relative to the workspace root], \"next_step\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_package",
+    "read_only": false
   }
 ]

@@ -64,7 +64,7 @@ not a program, the same file gives the same answer through each of them.
   `naga export --python` to turn any model into that code.
 - **Outputs**: pandas frames, Excel, CSV, JSON, a self-contained HTML report, a recorded run to
   replay, and a viewer in which the engine itself runs in a browser.
-- **Agent tools**: 79 tools over MCP to build, validate, run, debug and analyse a model.
+- **Agent tools**: 80 tools over MCP to build, validate, run, debug and analyse a model.
 
 ## Quick start
 
@@ -176,7 +176,7 @@ runs the submodels, the product's artwork is not included here.
 
 ## Use with an agent
 
-The engine ships 79 tools an agent can call to build, validate, run, debug and analyse a model, and two
+The engine ships 80 tools an agent can call to build, validate, run, debug and analyse a model, and two
 ways to offer them:
 
 <!-- no-run: a server that waits for its client, and a request to a language model -->

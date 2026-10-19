@@ -248,3 +248,43 @@ def test_view_of_a_wide_model_points_to_the_text(ws, monkeypatch):
     real = flowchart.geometry
     monkeypatch.setattr(flowchart, "geometry", lambda *a, **k: {**real(*a, **k), "width": 5000})
     assert "read the text" in T.call("study_view", study=sid)["note"]
+
+
+def test_a_version_refreshes_the_page(ws):
+    sid = start(ws)
+    T.call("study_update", study=sid, changes={"plan_approved": True, "goals": [GOAL]})
+    r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
+    assert r["page"] == f"{sid}/control-room.html"
+    assert "v001" in (ws.root / sid / "control-room.html").read_text(encoding="utf-8")
+    assert T.call("study_status", study=sid)["page"] == r["page"]
+
+
+def test_a_draft_does_not_write_the_page(ws):
+    sid = start(ws)
+    bad = layout(ws)
+    bad["blocks"][0]["type"] = "NOT_A_BLOCK"
+    r = T.call("study_step", study=sid, layout=bad, note="oops")
+    assert r["kind"] == "draft" and "page" not in r
+    assert not (ws.root / sid / "control-room.html").exists()
+    assert "page" not in T.call("study_status", study=sid)
+
+
+def test_package_tool_returns_files(ws):
+    sid = start(ws)
+    T.call("study_step", study=sid, layout=layout(ws), note="first model")
+    r = T.call("study_package", study=sid)
+    assert "error" not in r, r
+    assert len(r["files"]) == 4 and all((ws.root / f).is_file() for f in r["files"])
+    assert r["files"][0].startswith(sid + "/package/")
+
+
+def test_package_tool_without_versions(ws):
+    sid = start(ws)
+    assert T.call("study_package", study=sid)["error"]["code"] == "E_STUDY_NO_VERSION"
+
+
+def test_accept_refreshes_the_page(ws):
+    sid = _one_version(ws)
+    T.call("study_accept", study=sid, reason="good enough for the budget talk")
+    page = (ws.root / sid / "control-room.html").read_text(encoding="utf-8")
+    assert "accepted with open issues" in page

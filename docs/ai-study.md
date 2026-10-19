@@ -40,6 +40,18 @@ to the assistant as a PNG image over MCP (with `nagasim[plot]` installed), as SV
 which is what an assistant without image support reads. Looking at the drawing is often the quickest
 way to catch a wrong link.
 
+## The control room and the package
+
+Each study has one page, `control-room.html` in its folder, that the person opens to see where the
+study stands. It opens with the verdict (sufficient for its goals or not yet, how many goals are met,
+the validation level reached), then the goals and checklist, the target with what is still missing,
+and the timeline of versions with their flowcharts, results and the sentence to say to go back to one.
+The page is refreshed after every version and runs no script, so it can be emailed or put on a shared
+drive, and printing it from the browser gives the PDF. When the person is satisfied, `study_package`
+writes the deliverable to `package/`: the page, an Excel workbook of goals, versions, checklist and
+assumptions, the current model and an RO-Crate description of the files. The page also embeds the
+study's record, so a copy of it is enough to pick the study up again.
+
 ## Verdicts and validation levels
 
 Every check, and every checklist item, ends in one of four verdicts: `passed`, `partial`,
