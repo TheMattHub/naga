@@ -52,6 +52,15 @@ writes the deliverable to `package/`: the page, an Excel workbook of goals, vers
 assumptions, the current model and an RO-Crate description of the files. The page also embeds the
 study's record, so a copy of it is enough to pick the study up again.
 
+## In the chat
+
+In assistants that support MCP Apps, the control room opens inside the chat when the assistant calls
+`study_show`. The page there is the same as the file, with two additions the person can use directly: a
+button beside each earlier version to go back to it, and a box to accept the study as it stands with a
+reason in their own words. The buttons call the study tools through the assistant's app, which may ask
+the person to confirm; nothing is accepted without the typed reason. Assistants without MCP Apps get a
+short text summary and the path of the page file, so the study works the same way everywhere.
+
 ## Verdicts and validation levels
 
 Every check, and every checklist item, ends in one of four verdicts: `passed`, `partial`,

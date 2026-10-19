@@ -288,3 +288,26 @@ def test_accept_refreshes_the_page(ws):
     T.call("study_accept", study=sid, reason="good enough for the budget talk")
     page = (ws.root / sid / "control-room.html").read_text(encoding="utf-8")
     assert "accepted with open issues" in page
+
+
+def test_show_summarises(ws):
+    sid = start(ws)
+    T.call("study_update", study=sid, changes={"plan_approved": True, "goals": [GOAL]})
+    assert "error" not in T.call("study_step", study=sid, layout=layout(ws), note="first model")
+    r = T.call("study_show", study=sid)
+    assert r["study"] == sid and r["versions"] == 1 and r["goals_met"].endswith(" of 1")
+    assert r["page"] == f"{sid}/control-room.html" and r["sufficiency"] in r["text"]
+
+
+def test_show_on_an_empty_study(ws):
+    sid = start(ws)
+    r = T.call("study_show", study=sid)
+    assert r["versions"] == 0 and r["goals_met"] == "0 of 0" and r["page"] is None and r["text"]
+
+
+def test_page_html_is_the_page(ws):
+    sid = start(ws)
+    html = T.call("study_page_html", study=sid)["html"]     # no version yet: the empty-study page
+    assert html.startswith("<!DOCTYPE html>") and 'id="actions"' in html
+    assert f'data-study="{sid}"' in html
+    assert T.call("study_page_html", study="nope")["error"]["code"]

@@ -48,6 +48,8 @@ _document_args("study_step", study=_ID, layout="The complete model file as one J
 _document_args("study_view", study=_ID, version="Version id, e.g. v002; omit for the last.",
                format="png (image), svg or text.")
 _document_args("study_package", study=_ID)
+_document_args("study_show", study=_ID)
+_document_args("study_page_html", study=_ID)
 _document_args("study_accept", study=_ID, reason="The person's own words accepting the study.")
 _document_args("study_revert", study=_ID, version="Id of an earlier version, e.g. v002.",
                note="Why the study goes back to it.", request_id="Any unique string, as for study_step.")
@@ -476,3 +478,33 @@ def study_view(study: str, version: str | None = None, format: str = "png") -> d
             if geom["width"] > 2 * 1600:   # drawn at under half size: names are too small to read
                 out["note"] = "the model is wide, so the image is scaled down; read the text for names"
     return out
+
+
+@tool(read_only=True)
+def study_show(study: str) -> dict:
+    """Show the study's control room. In chats that support MCP Apps the page appears inline,
+    with buttons to revert to a version or accept the study; elsewhere this is a short summary
+    and the path of the page file.
+
+    Returns {"study", "sufficiency", "goals_met": "k of n", "versions", "page": path or None, "text"}.
+    """
+    folder, s = _open(study)
+    goals = study_mod.goals_status(s)
+    met = f"{sum(g['status'] == 'met' for g in goals)} of {len(goals)}"
+    page = f"{_sid(folder)}/control-room.html" if (folder / "control-room.html").is_file() else None
+    label = _label(s)
+    text = (f"{s['question']} Status: {label}. Goals met: {met}. Versions: {len(s['versions'])}."
+            + (f" Page: {page}." if page else ""))
+    return {"study": _sid(folder), "sufficiency": label, "goals_met": met,
+            "versions": len(s["versions"]), "page": page, "text": text}
+
+
+@tool(read_only=True)
+def study_page_html(study: str) -> dict:
+    """The control room page as one HTML string. It exists for the in-chat page, which fetches
+    it itself so the HTML never enters the conversation; assistants should call study_show instead.
+
+    Returns {"html"}.
+    """
+    folder, s = _open(study)
+    return {"html": studypage.render(folder, s, study_id=_sid(folder))}

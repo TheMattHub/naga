@@ -33,7 +33,7 @@ import json
 import threading
 from pathlib import Path
 
-from nagasim import __version__, agent_tools, examples, netguard
+from nagasim import __version__, agent_tools, examples, netguard, studyapp
 from nagasim.assistant import COMPACT_TOOL_NAMES
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
@@ -87,6 +87,30 @@ def _server_class():
         return FastMCP
     except ImportError as exc:      # no mcp at all, or a version with neither name
         raise MCPUnavailable(INSTALL_HINT) from exc
+
+
+# MCP Apps: the study control room renders inline in clients that support it. The tools stay
+# registered once, by the loop in build_server; the ui _meta goes on that registration
+# (Apps.tool would register a second copy) and Apps contributes the template resource and the
+# capability advertised in initialize. visibility: study_page_html is the page's own call.
+_STUDY_UI = {name: {"resourceUri": studyapp.URI, "visibility": vis} for name, vis in (
+    ("study_show", ["model", "app"]), ("study_page_html", ["app"]),
+    ("study_revert", ["model", "app"]), ("study_accept", ["model", "app"]))}
+
+
+def _study_apps(tools):
+    """The Apps extension holding the study template, or None (mcp 1.x has no
+    `mcp.server.apps`; a `--tools compact` list without study_show has nothing to show)."""
+    if tools is not None and "study_show" not in tools:
+        return None
+    try:
+        from mcp.server.apps import Apps
+    except ImportError:
+        return None
+    apps = Apps()
+    apps.add_html_resource(studyapp.URI, studyapp.HTML, title="Study control room",
+                           prefers_border=False)
+    return apps
 
 
 def _with_image(answer):
@@ -264,7 +288,9 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     server_class = _server_class()
     agent_tools.use_workspace(agent_tools.Workspace(root, network=network, twin=twin,
                                                     twin_dir=twin_dir))
-    server = server_class(name, version=__version__, instructions=instructions)
+    apps = _study_apps(tools)
+    extra = {"extensions": [apps]} if apps else {}
+    server = server_class(name, version=__version__, instructions=instructions, **extra)
 
     # The SDK runs a sync tool on a worker thread and serves requests concurrently, while
     # the workspace is one mutable object (a debug run is a live engine session): calls are
@@ -279,8 +305,9 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     for spec in agent_tools.TOOLS.values():
         if tools is not None and spec.name not in tools:
             continue
+        meta = {"ui": _STUDY_UI[spec.name]} if apps and spec.name in _STUDY_UI else None
         server.add_tool(serialised(spec.fn), name=spec.name, description=_described(spec),
-                        annotations=_annotations(spec))
+                        annotations=_annotations(spec), **({"meta": meta} if meta else {}))
 
     @server.resource("naga://reference/blocks", mime_type="text/markdown",
                      description="Every block type with its parameters.")

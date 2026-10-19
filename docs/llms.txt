@@ -72,7 +72,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [KPIs](https://thematthub.github.io/naga/reference/kpis.html): Every result frame nagasim.api.run_model / nagasim.experiments.run_scenarios return, and every column each one carries -- probed against nagasim/models/job_shop_jackson.json so a new KPI column fails this generation until it has a definition here.
 - [Model file keys](https://thematthub.github.io/naga/reference/schema.html): Current schema version: 29 (nagasim/core/schema/migrate.py).
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 80 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 82 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 

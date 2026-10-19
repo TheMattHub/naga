@@ -73,7 +73,7 @@ def _validation_level(study: dict) -> str:
     return next((lv for lv in reversed(study_mod.LEVELS) if lv in passed), "none recorded").replace("_", " ")
 
 
-def _cover(study: dict, goals: list[dict], steps: dict) -> str:
+def _cover(study: dict, goals: list[dict], steps: dict, study_id: str | None = None) -> str:
     suff = study_mod.sufficiency(study)
     cls = "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait"
     met = sum(g["status"] == "met" for g in goals)
@@ -83,7 +83,8 @@ def _cover(study: dict, goals: list[dict], steps: dict) -> str:
         latest = f"Latest version: {esc(vid)}" + (f", {esc(_when(at))}" if at else "")
     else:
         latest = "no model yet"
-    return (f'<section id="cover"><h1>{esc(study["question"])}</h1>'
+    mark = f' data-study="{esc(study_id)}"' if study_id else ""
+    return (f'<section id="cover"{mark}><h1>{esc(study["question"])}</h1>'
             + (f'<p>Decision: {esc(study["decision"])}</p>' if study["decision"] else "")
             + f'<div class="banner {cls}">{esc(suff["label"])}</div>'
             f'<p>Goals met: {met} of {len(goals)}. Validation level reached: '
@@ -142,7 +143,7 @@ def _version(folder: Path, study: dict, v: dict, step: dict) -> str:
     all_kpis = v.get("kpis") or {}
     kpis = (f"<details><summary>All KPIs ({len(all_kpis)})</summary>"   # no script: collapsed by the browser
             + _table(["KPI", "Mean"], [[esc(k), _num(x)] for k, x in all_kpis.items()]) + "</details>")
-    return (f'<div class="version" id="{esc(vid)}"><h3>{esc(vid)} {_badge(v.get("verdict", "not_verified"))}</h3>'
+    return (f'<div class="version" id="{esc(vid)}" data-version="{esc(vid)}"><h3>{esc(vid)} {_badge(v.get("verdict", "not_verified"))}</h3>'
             f'<p>{esc(v.get("note", ""))} <span class="muted">{esc(_when(step.get("at")))}</span></p>'
             + (f"<ul>{changes}</ul>" if changes else "") + kpis + flow
             + f'<p class="muted">To go back, ask: "revert to {esc(vid)}"</p></div>')
@@ -165,7 +166,7 @@ def _assumptions(study: dict) -> str:
             + _table(["Source", "Input file"], src) + "</section>")
 
 
-def render(folder: Path, study: dict | None = None) -> str:
+def render(folder: Path, study: dict | None = None, study_id: str | None = None) -> str:
     """The page as one string; loads the study when none is given."""
     folder = Path(folder)
     study = study_mod.load(folder) if study is None else study
@@ -177,7 +178,7 @@ def render(folder: Path, study: dict | None = None) -> str:
             f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
-            + _cover(study, goals, steps) + _status(study, goals, folder) + _target(study)
+            + _cover(study, goals, steps, study_id) + '<div id="actions"></div>' + _status(study, goals, folder) + _target(study)
             + _timeline(folder, study, steps) + _assumptions(study)
             + f'<script type="application/json" id="study-json">{data}</script></main></body></html>\n')
     # Non-ASCII text becomes a character reference: the page stays ASCII and renders the same.

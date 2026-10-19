@@ -2530,5 +2530,41 @@
     },
     "name": "study_package",
     "read_only": false
+  },
+  {
+    "description": "Show the study's control room. In chats that support MCP Apps the page appears inline,\nwith buttons to revert to a version or accept the study; elsewhere this is a short summary\nand the path of the page file.\n\nReturns {\"study\", \"sufficiency\", \"goals_met\": \"k of n\", \"versions\", \"page\": path or None, \"text\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_show",
+    "read_only": true
+  },
+  {
+    "description": "The control room page as one HTML string. It exists for the in-chat page, which fetches\nit itself so the HTML never enters the conversation; assistants should call study_show instead.\n\nReturns {\"html\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_page_html",
+    "read_only": true
   }
 ]

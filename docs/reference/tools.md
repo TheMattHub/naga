@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 80 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 82 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -129,3 +129,5 @@ The 80 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `study_revert` |  | Go back to an earlier version: it is recorded again as a new version, so no history is lost. |
 | `study_package` |  | Build the study's deliverable in its package/ folder: the control room page, an Excel workbook (goals, versions with KPIs, checklist, assumptions), the current model and RO-Crate metadata. |
 | `study_view` | yes | See a version's flowchart: built blocks, what this step changed and what of the agreed target is not built yet. |
+| `study_show` | yes | Show the study's control room. |
+| `study_page_html` | yes | The control room page as one HTML string. |

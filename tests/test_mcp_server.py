@@ -66,7 +66,7 @@ def test_the_server_publishes_every_tool_resource_and_prompt(tmp_path):
     assert {t.name for t in tools} == set(agent_tools.TOOLS)
     assert all(len(t.description) > 80 for t in tools)
 
-    uris = {str(r.uri) for r in resources}
+    uris = {str(r.uri) for r in resources} - {"ui://naga/study.html"}   # the MCP Apps template
     assert uris == {"naga://reference/blocks", "naga://reference/distributions",
                     "naga://reference/expressions", "naga://reference/schema"}
     assert [getattr(t, "uriTemplate", getattr(t, "uri_template", None)) for t in templates] \
@@ -172,7 +172,7 @@ def test_naga_mcp_is_a_command_of_the_engine_cli(capsys):
 
 
 def test_the_engine_server_runs_without_the_product(tmp_path):
-    """`naga mcp` in a fresh interpreter: 80 tools, resources under naga://, no product import."""
+    """`naga mcp` in a fresh interpreter: 82 tools, resources under naga://, no product import."""
     code = (
         "import asyncio, sys\n"
         "from nagasim import mcp_server\n"
@@ -185,7 +185,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "80" and first.startswith("naga://reference/")
+    assert count == "82" and first.startswith("naga://reference/")
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):
@@ -356,3 +356,51 @@ def test_study_view_reaches_the_client_as_an_image(tmp_path):
 
     kinds = [c.type for c in asyncio.run(go()).content]
     assert kinds == ["image", "text"]
+
+
+# -- MCP Apps: the study control room in the chat ------------------------------
+
+needs_apps = pytest.mark.skipif(
+    importlib.util.find_spec("mcp") is None or importlib.util.find_spec("mcp.server.apps") is None,
+    reason="MCP Apps needs mcp 2.x (mcp.server.apps)")
+
+
+@needs_apps
+def test_study_show_is_bound_to_the_app(tmp_path):
+    from nagasim import studyapp
+    tools = {t.name: t for t in asyncio.run(mcp_server.build_server(tmp_path).list_tools())}
+    ui = {n: tools[n].meta["ui"] for n in
+          ("study_show", "study_page_html", "study_revert", "study_accept")}
+    assert all(u["resourceUri"] == studyapp.URI for u in ui.values())
+    assert ui["study_page_html"]["visibility"] == ["app"]
+    assert ui["study_show"]["visibility"] == ["model", "app"]
+
+
+@needs_apps
+def test_the_app_resource_is_listed(tmp_path):
+    from nagasim import studyapp
+    server = mcp_server.build_server(tmp_path)
+
+    async def both():
+        return await server.list_resources(), await server.read_resource(studyapp.URI)
+
+    resources, read = asyncio.run(both())
+    listed = [r for r in resources if str(r.uri) == studyapp.URI]
+    assert [r.mime_type for r in listed] == ["text/html;profile=mcp-app"]
+    assert _text(read) == studyapp.HTML
+
+
+@needs_apps
+def test_other_tools_have_no_ui_meta(tmp_path):
+    study = {"study_show", "study_page_html", "study_revert", "study_accept"}
+    tools = asyncio.run(mcp_server.build_server(tmp_path).list_tools())
+    assert [t.name for t in tools if t.name not in study and (t.meta or {}).get("ui")] == []
+
+
+@needs_apps
+def test_initialize_advertises_the_apps_extension(tmp_path):
+    server = mcp_server.build_server(tmp_path)
+    caps = server._lowlevel_server.get_capabilities(
+        __import__("mcp.server.lowlevel.server", fromlist=["NotificationOptions"])
+        .NotificationOptions(), {})
+    assert "io.modelcontextprotocol/ui" in (caps.extensions or {})
