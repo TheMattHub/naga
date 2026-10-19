@@ -1,10 +1,13 @@
 """The simulation-study skill ships as package data and stays true to the tool registry."""
 from __future__ import annotations
 
+import importlib.util
 import re
 import tomllib
 from fnmatch import fnmatch
 from pathlib import Path
+
+import pytest
 
 from nagasim import agent_tools, study
 
@@ -73,6 +76,8 @@ def test_skill_cli_copies_and_refuses_overwrite(tmp_path, capsys):
     assert (tmp_path / "simulation-study" / "SKILL.md").read_text(encoding="utf-8").startswith("---")
 
 
+@pytest.mark.skipif(importlib.util.find_spec("mcp") is None,
+                    reason="the MCP SDK is an optional extra: pip install \"nagasim[mcp]\"")
 def test_prompts_return_the_skill(tmp_path):
     import asyncio
     from nagasim import mcp_server
