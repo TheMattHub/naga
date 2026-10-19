@@ -30,6 +30,16 @@ which is all the assistant needs to follow. The other tools keep the record:
 - `study_revert` goes back to an earlier version, recorded as a new version so no history is lost.
 - `study_accept` records that the person accepts the study as it stands.
 
+## Seeing the model
+
+Every version keeps a flowchart of its model, so the person and the assistant can see what each step
+built. Blocks added or changed in that step have an orange outline, and parts of the agreed target that
+have no blocks yet are drawn dashed to the right. The flowchart is stored beside the version as
+`flowchart.svg` and as `flowchart.txt`, a plain list of the blocks and links. `study_view` returns it
+to the assistant as a PNG image over MCP (with `nagasim[plot]` installed), as SVG, or as that text,
+which is what an assistant without image support reads. Looking at the drawing is often the quickest
+way to catch a wrong link.
+
 ## Verdicts and validation levels
 
 Every check, and every checklist item, ends in one of four verdicts: `passed`, `partial`,

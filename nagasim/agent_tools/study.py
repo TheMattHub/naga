@@ -4,6 +4,7 @@ can run a simulation study. The folder is the memory (stateless calls); `nagasim
 `run_model` / `export` through the registry and map `StudyError` to `ToolError`."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -14,6 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from nagasim import flowchart
 from nagasim import study as study_mod
 from nagasim.studychecks import step_checks
 from nagasim.study import CHECKLIST, LEVELS, MODES, SIZES, StudyError
@@ -40,6 +42,8 @@ _document_args("study_step", study=_ID, layout="The complete model file as one J
                note="One line: what changed in this step and why.",
                request_id="Any unique string; a retried call with the same one is not recorded twice.",
                seed="First replication's seed.")
+_document_args("study_view", study=_ID, version="Version id, e.g. v002; omit for the last.",
+               format="png (image), svg or text.")
 _document_args("study_accept", study=_ID, reason="The person's own words accepting the study.")
 _document_args("study_revert", study=_ID, version="Id of an earlier version, e.g. v002.",
                note="Why the study goes back to it.", request_id="Any unique string, as for study_step.")
@@ -387,3 +391,45 @@ def study_revert(study: str, version: str, note: str, request_id: str | None = N
     answer["sufficiency"] = _label(s)
     answer["next_step"] = study_mod.next_step(s, folder)
     return answer
+
+
+@tool(read_only=True)
+def study_view(study: str, version: str | None = None, format: str = "png") -> dict:
+    """See a version's flowchart: built blocks, what this step changed and what of the agreed
+    target is not built yet. Use it to check the model looks like the process.
+
+    Returns {"version", "format", "text"} (the text lists every block, state and link), plus
+    "image" for png or "svg" for svg. Without matplotlib a png request answers with the text
+    and a "note".
+    """
+    folder, s = _open(study)
+    if format not in ("png", "svg", "text"):
+        raise _bad("format", "must be png, svg or text")
+    ids = [v["id"] for v in s["versions"]]
+    vid = version if version is not None else (ids[-1] if ids else None)
+    if vid is None or vid not in ids or not re.fullmatch(r"v\d{3,}", vid):
+        raise ToolError("E_STUDY_NO_VERSION", f"no version {vid!r}",
+                        f"Pick an id from the study's versions list: {ids}.")
+    base = folder / "versions" / vid
+    try:
+        layout = json.loads((base / "model.json").read_text(encoding="utf-8"))
+        step = json.loads((base / "step.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ToolError("E_STUDY_UNREADABLE", f"version {vid} files cannot be read",
+                        "Record a new step.") from None
+    changed = set(step.get("changed") or flowchart.changed_blocks(step.get("changes", [])))
+    geom = flowchart.geometry(layout, changed,
+                              pending=[c for c in s["target"] if not c.get("blocks")])
+    title = next(v["note"] for v in s["versions"] if v["id"] == vid)
+    out = {"version": vid, "format": format, "text": flowchart.to_text(geom)}
+    if format == "svg":
+        out["svg"] = flowchart.to_svg(geom, f"{vid}: {title}")
+    elif format == "png":
+        png = flowchart.to_png(geom, f"{vid}: {title}")
+        if png is None:
+            out.update(format="text", note="install nagasim[plot] for images")
+        else:
+            out["image"] = {"mime_type": "image/png", "data": base64.b64encode(png).decode("ascii")}
+            if geom["width"] > 2 * 1600:   # drawn at under half size: names are too small to read
+                out["note"] = "the model is wide, so the image is scaled down; read the text for names"
+    return out

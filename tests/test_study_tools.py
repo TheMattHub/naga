@@ -203,3 +203,48 @@ def test_request_id_is_per_tool(ws):
     assert r["id"] == "v002"
     assert T.call("study_revert", study=sid, version="v001", note="back", request_id="x")["id"] == "v002"
     assert T.call("study_status", study=sid)["versions"] == 2
+
+
+def _one_version(ws):
+    sid = start(ws)
+    r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
+    assert r["id"] == "v001", r
+    return sid
+
+
+def test_view_returns_a_png_image(ws):
+    pytest.importorskip("matplotlib")
+    import base64
+    sid = _one_version(ws)
+    r = T.call("study_view", study=sid)
+    assert r["version"] == "v001" and r["format"] == "png"
+    assert r["image"]["mime_type"] == "image/png"
+    assert base64.b64decode(r["image"]["data"]).startswith(b"\x89PNG")
+    assert "built" in r["text"]
+    assert "<svg" in T.call("study_view", study=sid, format="svg")["svg"]
+
+
+def test_view_text_without_matplotlib(ws, monkeypatch):
+    from nagasim import flowchart
+    sid = _one_version(ws)
+    monkeypatch.setattr(flowchart, "to_png", lambda *a, **k: None)
+    r = T.call("study_view", study=sid)
+    assert r["format"] == "text" and "image" not in r and "nagasim[plot]" in r["note"]
+
+
+def test_view_unknown_version_or_format(ws):
+    sid = _one_version(ws)
+    for bad in ("v009", "../x", "d001"):
+        assert T.call("study_view", study=sid, version=bad)["error"]["code"] == "E_STUDY_NO_VERSION"
+    assert T.call("study_view", study=sid, format="gif")["error"]["code"] == "E_STUDY_BAD_VALUE"
+    assert T.call("study_view", study=start(ws, study="naga-studies/empty"))["error"]["code"] == "E_STUDY_NO_VERSION"
+
+
+def test_view_of_a_wide_model_points_to_the_text(ws, monkeypatch):
+    pytest.importorskip("matplotlib")
+    from nagasim import flowchart
+    sid = _one_version(ws)
+    assert "note" not in T.call("study_view", study=sid)
+    real = flowchart.geometry
+    monkeypatch.setattr(flowchart, "geometry", lambda *a, **k: {**real(*a, **k), "width": 5000})
+    assert "read the text" in T.call("study_view", study=sid)["note"]

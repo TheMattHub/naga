@@ -351,3 +351,26 @@ def test_ids_are_not_reused_after_a_folder_is_removed(tmp_path):
         study.record_step(folder, st, _layout(n), _digest(), _PASSED, n, None)
     shutil.rmtree(folder / "versions/v001")
     assert study.record_step(folder, st, _layout("3"), _digest(), _PASSED, "3", None)["id"] == "v003"
+
+
+def test_a_version_has_its_flowchart(tmp_path):
+    folder, st = _new(tmp_path)
+    ok = [{"name": "c", "verdict": "passed", "why": "", "kind": "law"}]
+    study.record_step(folder, st, _layout("a"), _digest(), ok, "first", None)
+    v = folder / "versions" / "v001"
+    assert (v / "flowchart.svg").read_text(encoding="utf-8").startswith("<svg")
+    text = (v / "flowchart.txt").read_text(encoding="utf-8")
+    assert all(b["name"] in text for b in _layout("a")["blocks"])
+    bad = [{"name": "c", "verdict": "failed", "why": "", "kind": "assumption"}]
+    study.record_step(folder, st, _layout("b"), _digest(), bad, "broken", None)
+    d = folder / "versions" / "drafts" / "d001"
+    assert (d / "model.json").exists() and not (d / "flowchart.svg").exists()
+
+
+def test_step_keeps_every_changed_block_beyond_the_capped_changes(tmp_path):
+    folder, st = _new(tmp_path)
+    study.record_step(folder, st, _layout("a"), _digest(), _PASSED, "first", None)
+    many = ["a"] + [f"b{i}" for i in range(40)]
+    study.record_step(folder, st, _layout(*many), _digest(), _PASSED, "many", None)
+    step = json.loads((folder / "versions" / "v002" / "step.json").read_text(encoding="utf-8"))
+    assert len(step["changes"]) == 30 and len(step["changed"]) == 40

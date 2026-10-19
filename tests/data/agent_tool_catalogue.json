@@ -2482,5 +2482,35 @@
     },
     "name": "study_revert",
     "read_only": false
+  },
+  {
+    "description": "See a version's flowchart: built blocks, what this step changed and what of the agreed\ntarget is not built yet. Use it to check the model looks like the process.\n\nReturns {\"version\", \"format\", \"text\"} (the text lists every block, state and link), plus\n\"image\" for png or \"svg\" for svg. Without matplotlib a png request answers with the text\nand a \"note\".",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "default": "png",
+          "description": "png (image), svg or text.",
+          "type": "string"
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version id, e.g. v002; omit for the last.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_view",
+    "read_only": true
   }
 ]

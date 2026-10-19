@@ -56,7 +56,7 @@ opcua = ["asyncua>=2.1,<3"]
 # nagasim/results.py: Results.plot() for notebook use.
 plot = ["matplotlib"]
 # nagasim/mcp_server.py: `naga mcp`.
-mcp = ["mcp>=1.2"]
+mcp = ["mcp>=1.19"]
 # nagasim/llm.py: the Anthropic provider of `naga assist`.
 assistant = ["anthropic>=0.40"]
 

@@ -13,6 +13,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from nagasim import flowchart
 from nagasim.modeldiff import diff
 from nagasim.studychecks import overall
 from nagasim.twin import write_json, write_text
@@ -322,11 +323,16 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
     target = folder / "versions" / vid if keep else folder / "versions" / "drafts" / vid
     target.mkdir(parents=True, exist_ok=True)
     write_json(target / "model.json", layout)
+    changed = flowchart.changed_blocks(lines)    # all of them: "changes" below is capped
     write_json(target / "step.json", {
-        "id": vid, "note": note, "verdict": verdict, "checks": checks, "kpis": kpis,
+        "id": vid, "changed": sorted(changed), "note": note, "verdict": verdict, "checks": checks, "kpis": kpis,
         "changes": lines[:_MAX_CHANGES], "problems": problems,
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
-    if keep:
+    if keep:   # the flowchart shows this step's changes and what of the target is not built yet
+        geom = flowchart.geometry(layout, changed,
+                                  pending=[c for c in study["target"] if not c.get("blocks")])
+        write_text(target / "flowchart.svg", flowchart.to_svg(geom, f"{vid}: {note}"))
+        write_text(target / "flowchart.txt", flowchart.to_text(geom))
         study["versions"].append({"id": vid, "note": note, "verdict": verdict, "kpis": kpis,
                                   "changes_count": len(lines)})
     answer = {"id": vid, "kind": "version" if keep else "draft", "verdict": verdict, "checks": checks,

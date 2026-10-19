@@ -43,7 +43,7 @@ __all__ = ["build_server", "add_arguments", "serve", "main", "MCPUnavailable", "
 
 INSTALL_HINT = (
     "The Model Context Protocol SDK is not installed. It is an optional extra:\n"
-    "    pip install \"nagasim[mcp]\"      (or: pip install \"mcp>=1.2\")\n"
+    "    pip install \"nagasim[mcp]\"      (or: pip install \"mcp>=1.19\")\n"
     "Everything the server exposes is also callable directly from "
     "nagasim.agent_tools without it."
 )
@@ -87,6 +87,25 @@ def _server_class():
         return FastMCP
     except ImportError as exc:      # no mcp at all, or a version with neither name
         raise MCPUnavailable(INSTALL_HINT) from exc
+
+
+def _with_image(answer):
+    """An answer with an "image" key ({"mime_type", "data" base64}) becomes MCP image content
+    plus the rest of the answer as JSON text, so the assistant sees the picture. Any other
+    answer is returned untouched. A finished CallToolResult, not a bare list of blocks: the SDK
+    checks a bare return against the tool's `dict` output schema and would reject the list,
+    while it passes a CallToolResult through (the rest of the answer is its structured part,
+    wrapped as {"result": ...} like every other tool's). mcp 1.19 is the first SDK that passes it
+    through, hence the extra's floor."""
+    if not (isinstance(answer, dict) and isinstance(answer.get("image"), dict)):
+        return answer
+    from mcp.types import CallToolResult, ImageContent, TextContent
+    image = answer["image"]
+    rest = {k: v for k, v in answer.items() if k != "image"}
+    return CallToolResult(
+        content=[ImageContent(type="image", data=image["data"], mimeType=image["mime_type"]),
+                 TextContent(type="text", text=json.dumps(rest, indent=2))],
+        structuredContent={"result": rest})   # the shape the SDK gives a bare `dict` tool
 
 
 def _described(spec: agent_tools.ToolSpec) -> str:
@@ -254,7 +273,7 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
         @functools.wraps(fn)        # the SDK reads the signature, hints and docstring off it
         def locked(*args, **kwargs):
             with _TOOL_LOCK:
-                return fn(*args, **kwargs)
+                return _with_image(fn(*args, **kwargs))
         return locked
 
     for spec in agent_tools.TOOLS.values():

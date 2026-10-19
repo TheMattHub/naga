@@ -172,7 +172,7 @@ def test_naga_mcp_is_a_command_of_the_engine_cli(capsys):
 
 
 def test_the_engine_server_runs_without_the_product(tmp_path):
-    """`naga mcp` in a fresh interpreter: 78 tools, resources under naga://, no product import."""
+    """`naga mcp` in a fresh interpreter: 79 tools, resources under naga://, no product import."""
     code = (
         "import asyncio, sys\n"
         "from nagasim import mcp_server\n"
@@ -185,7 +185,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "78" and first.startswith("naga://reference/")
+    assert count == "79" and first.startswith("naga://reference/")
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):
@@ -331,3 +331,28 @@ def test_the_stdio_server_refuses_a_python_model_even_when_started_with_consent(
     opened, run = asyncio.run(asyncio.wait_for(session(), timeout=180))
     assert "error" not in opened, opened
     assert run["error"]["code"] == "E_AGENT_PYTHON_REFUSED", run
+
+
+def test_image_answers_become_image_content(tmp_path):
+    answer = {"version": "v001", "image": {"mime_type": "image/png", "data": "iVBORw0KGgo="}}
+    image, text = mcp_server._with_image(answer).content
+    assert image.model_dump(by_alias=True)["mimeType"] == "image/png"    # attribute name differs per SDK line
+    assert (image.type, image.data) == ("image", "iVBORw0KGgo=")
+    assert json.loads(text.text) == {"version": "v001"}
+    plain = {"ok": True}
+    assert mcp_server._with_image(plain) is plain
+
+
+def test_study_view_reaches_the_client_as_an_image(tmp_path):
+    pytest.importorskip("matplotlib")
+    shutil.copy(EXAMPLES / "single_server.json", tmp_path / "single_server.json")
+    server = mcp_server.build_server(tmp_path)
+    layout = json.loads((tmp_path / "single_server.json").read_text(encoding="utf-8"))
+
+    async def go():
+        start = json.loads(_text(await server.call_tool("study_start", {"question": "q?"})))
+        await server.call_tool("study_step", {"study": start["study"], "layout": layout, "note": "n"})
+        return await server.call_tool("study_view", {"study": start["study"]})
+
+    kinds = [c.type for c in asyncio.run(go()).content]
+    assert kinds == ["image", "text"]
