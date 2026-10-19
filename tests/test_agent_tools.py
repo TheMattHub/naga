@@ -1339,3 +1339,18 @@ def test_upsert_scenario_stores_a_goal():
     ok(T.call("upsert_scenario", model=model, name="S", goal="Can two servers do it?",
               overrides=[{"path": "resources.Server.capacity", "value": 2}]))
     assert _open(model)[0].scenarios[0]["goal"] == "Can two servers do it?"
+
+
+def test_unknown_tool_suggests():
+    err = T.call("validate_modle")["error"]
+    assert err["code"] == "E_UNKNOWN_TOOL"
+    assert "validate_model" in err["did_you_mean"]
+    assert err["hint"].startswith("did you mean: ")
+
+
+def test_unknown_argument_suggests():
+    props = T.TOOLS["new_model"].input_schema["properties"]
+    wrong = next(iter(props)) + "s"
+    err = T.call("new_model", **{wrong: "x"})["error"]
+    assert err["code"] == "E_BAD_ARGUMENT" and wrong in err["message"]
+    assert next(iter(props)) in err["did_you_mean"]

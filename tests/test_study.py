@@ -174,7 +174,7 @@ def test_next_step_reports_when_sufficient_and_at_the_cap():
 def test_effort_grows_with_size():
     calls = [study.effort(_fresh(size=z))["tool_calls"] for z in ("quick", "standard", "deep")]
     assert calls == sorted(calls) and len(set(calls)) == 3
-    assert study.effort(_fresh(size="quick"))["tool_calls"] == 18
+    assert study.effort(_fresh(size="quick"))["tool_calls"] == 10
 
 
 def test_checklist_items_are_computed_from_the_study(tmp_path):
@@ -421,3 +421,61 @@ def test_a_goal_on_a_user_statistic_is_stored_with_the_version(tmp_path):
     study.record_step(folder, st, _layout("a"), digest, _PASSED, "first", None)
     assert st["versions"][0]["kpis"]["wait_mean"] == 0.5
     assert study.goals_status(st)[0]["status"] == "met"
+
+
+def test_precision_defaults_by_size():
+    assert {k: (v["relative"], v["cap"]) for k, v in study.PRECISION.items()} == {
+        "quick": (0.10, 50), "standard": (0.05, 200), "deep": (0.02, 1000)}
+    assert study.FIRST_PASS == 10
+
+
+def test_precision_target_relative_absolute_and_near_zero():
+    s = {"size": "standard"}
+    goal = {"kpi": "k", "high": 5}
+    assert study.precision_target(s, goal, 4.0) == pytest.approx(0.2)           # 5% of the mean
+    assert study.precision_target({**s, "precision": {"relative": 0.1}}, goal, 4.0) == pytest.approx(0.4)
+    assert study.precision_target(s, {**goal, "precision": 0.3}, 4.0) == 0.3     # absolute on the goal
+    assert study.precision_target(s, goal, 0.0) == pytest.approx(0.05)          # 1% of the bound, not 0
+
+
+def test_replications_needed_rule():
+    ok = {"half_width": 0.0, "target": 1.0, "met": True}
+    assert study.replications_needed({"a": ok}, 10, 200) == 10                  # no variance: n1
+    wide = {"half_width": 2.0, "target": 1.0, "met": False}
+    assert study.replications_needed({"a": ok, "b": wide}, 10, 200) == 40       # 10 * (2/1)^2
+    assert study.replications_needed({"b": wide}, 10, 30) == 30                 # capped
+    assert study.replications_needed({}, 10, 200) == 10
+
+
+def test_precision_sentence_provisional_and_met():
+    assert "provisional" in study.precision_sentence(10, {}, 200)
+    st = {"k": {"half_width": 0.4, "target": 0.5, "met": True}}
+    assert "37 replications" in study.precision_sentence(37, st, 200)
+
+
+def _scen(met):
+    return {"goals": {"g1": "met" if met else "not_met"}}
+
+
+def test_a_scenario_meeting_every_goal_makes_the_study_sufficient_with_it():
+    s = _good(validation=[{"level": "data", "passed": True}])
+    s["goals"][0]["id"] = "g1"
+    s["versions"][0]["kpis"]["Avg Throughput Time"] = 4.0     # the base model misses
+    s["versions"][0]["scenarios"] = {"two cranes": _scen(True), "three cranes": _scen(True), "one": _scen(False)}
+    sf = study.sufficiency(s)
+    assert sf["sufficient"] and sf["label"] == "sufficient for its goals with: two cranes, three cranes"
+    assert dict((c["item"], c) for c in study.checklist(s))["conclusions"]["why"].endswith("two cranes, three cranes")
+    s["versions"][0]["scenarios"] = {"one": _scen(False)}
+    assert study.sufficiency(s)["label"] == "not yet sufficient"
+    s["versions"][0]["scenarios"] = {"two cranes": _scen(True)}
+    s["validation"] = []                                       # validation still has to hold
+    assert study.sufficiency(s)["label"] == "not yet sufficient"
+
+
+def test_the_cap_hint_has_a_ready_call():
+    from nagasim.studychecks import step_checks  # noqa: F401
+    status = {"K": {"half_width": 1.2, "target": 0.5, "met": False, "mean": 10.0}}
+    s = _good(validation=[{"level": "data", "passed": True}], plan_approved=True)
+    s["versions"][0].update(verification="passed", precision=status, replications=200)
+    assert '"relative": 0.12' in study.next_step(s) and "deep size" in study.next_step(s)
+    assert "0.12" in study.precision_sentence(200, status, 200)

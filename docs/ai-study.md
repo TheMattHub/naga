@@ -40,17 +40,46 @@ to the assistant as a PNG image over MCP (with `nagasim[plot]` installed), as SV
 which is what an assistant without image support reads. Looking at the drawing is often the quickest
 way to catch a wrong link.
 
+## How many replications
+
+The engine chooses the number of replications from the study's precision target, so the count is a
+stated decision rather than a guess. Every goal KPI should reach a 95% confidence half-width of 10% of
+its mean in a quick study, 5% in a standard one and 2% in a deep one (or a target the person sets). A step
+runs 10 replications, works out from their spread how many each goal KPI needs, and reruns with the
+largest count and the same seed, up to 50, 200 or 1000. When the cap stops it first, the step says so and
+the precision check is partial, never passed. Each step's answer, the control room and the report state
+the count, the target and the precision reached.
+
+## What each version makes, and what is on request
+
+Each version makes only what the person needs to follow the study: a short summary of what changed,
+the goal KPIs with their intervals, the flowchart and the refreshed control room. Heavier output is made
+when someone asks for it, from the stored versions: `study_report` for a version's full run report,
+`study_view` for a PNG of the flowchart and `study_package` for the deliverable. This keeps each step
+quick and the conversation short.
+
 ## The control room and the package
 
-Each study has one page, `control-room.html` in its folder, that the person opens to see where the
-study stands. It opens with the verdict (sufficient for its goals or not yet, how many goals are met,
-the validation level reached), then the goals and checklist, the target with what is still missing,
-and the timeline of versions with their flowcharts, results and the sentence to say to go back to one.
-The page is refreshed after every version and runs no script, so it can be emailed or put on a shared
-drive, and printing it from the browser gives the PDF. When the person is satisfied, `study_package`
-writes the deliverable to `package/`: the page, an Excel workbook of goals, versions, checklist and
-assumptions, the current model and an RO-Crate description of the files. The page also embeds the
-study's record, so a copy of it is enough to pick the study up again.
+Each study has one page, `control-room.html` in its folder, that shows where the study stands on one
+screen. The header carries the verdict, one chip per goal with its value, interval and trend, the
+precision and the item still open. Below it, panels open on demand: goals and checklist, the latest
+model's flowchart, the versions (one row each, expanding to their changes and flowchart), the scenarios
+against the goals, the assumptions and sources, and what can be made on request. The page runs no script,
+so it can be emailed or put on a shared drive, and printing it gives the PDF with every panel open. When
+the person is satisfied, `study_package` writes the deliverable to `package/`: the page, an Excel workbook,
+the current model and an RO-Crate description. The page embeds the study's record, so a copy of it is
+enough to pick the study up again.
+
+## Fewer, safer tool calls
+
+The study tools accept the common near-misses an assistant makes and say what they changed. A goal's
+range given as `range: [0, 5]`, a record field called `statement` instead of `text` or a single record
+where a list is expected is stored in the canonical form, and the answer lists each change under
+`normalised`; ambiguous input is refused with a corrected call built from the caller's own values. An
+unknown tool or argument name answers "did you mean". `study_start` takes the whole plan in one call and
+`study_step` can record what was learned in the same call as the step, so a study needs fewer calls.
+`naga study rerun FOLDER` reruns every version from its stored model and seed and reports whether the
+results reproduce, so a study can be checked without an assistant.
 
 ## In the chat
 

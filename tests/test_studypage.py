@@ -26,7 +26,7 @@ def _new(tmp_path, **keys):
 
 
 def _timeline(page):
-    return page.split('id="timeline"')[1].split('id="assumptions"')[0]
+    return page.split('id="versions"')[1].split('id="assumptions"')[0]
 
 
 def test_page_of_an_empty_study(tmp_path):
@@ -44,15 +44,15 @@ def test_page_shows_verdict_goals_and_versions(tmp_path):
     page = studypage.render(folder)
     assert f'class="banner b-wait">{study.sufficiency(st)["label"]}' in page
     assert 'id="v001"' in page and 'id="v002"' in page and "revert to v001" in page
-    assert _timeline(page).count("<svg") >= 3     # a flowchart per version and a KPI chart
-    assert "Goals met: 1 of 1" in page and "none recorded" in page
+    assert _timeline(page).count("<svg") >= 2     # a flowchart per version
+    assert "Goals: 1 of 1 met" in page and "none recorded" in page
 
 
 def test_validation_level_is_the_strongest_passed(tmp_path):
     val = [{"level": "data", "passed": True}, {"level": "expert", "passed": True},
            {"level": "known_answer", "passed": False}]
     folder, st = _new(tmp_path, validation=val)
-    assert "Validation level reached: expert" in studypage.render(folder, st)
+    assert "Validation: expert" in studypage.render(folder, st)
 
 
 def test_strings_are_escaped(tmp_path):
@@ -115,7 +115,59 @@ def test_page_shows_scenario_results_per_goal(tmp_path):
           "Slow": {"kpis": {"Throughput": {"mean": 3.0}}, "goals": {"g1": "not_met"}}}
     study.record_step(folder, st, _layout("a"), _digest(), _OK, "first", None, scenarios=sc)
     page = studypage.render(folder, st)
-    tl = _timeline(page)
-    assert "<th>Scenario</th>" in tl and "8 +- 0.5" in tl and "Slow" in tl and "not met" in tl
-    cover = page.split('id="cover"')[1].split("</section>")[0]
-    assert "Scenarios: Fast meets 1 of 1; Slow meets 0 of 1." in cover
+    tl = page
+    assert "<th>Scenario</th>" in page and "8 +- 0.5" in tl and "Slow" in tl and "not met" in tl
+    assert "Scenarios: Fast meets 1 of 1; Slow meets 0 of 1" in page
+
+
+def _two_versions(tmp_path, extra=None):
+    goals = [{"id": "g1", "text": "Throughput", "kpi": "Throughput", "low": 5, "high": 9}]
+    folder, st = _new(tmp_path, goals=goals, target=[{"name": "crane"}])
+    study.record_step(folder, st, _layout("a"), _digest(), _OK, "first", None)
+    study.record_step(folder, st, _layout("a", "b"), _digest(Throughput=8.0), _OK, "second", None)
+    return folder, st
+
+
+def test_header_has_chips_and_precision(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    st["versions"][-1]["replications"] = 25
+    st["versions"][-1]["precision"] = {"Throughput": {"half_width": 0.3, "target": 0.4, "met": True}}
+    page = studypage.render(folder, st, study_id="s")
+    head = page.split("<header")[1].split("</header>")[0]
+    assert 'class="chip met"' in head and "8 +- 0.3" in head and "<svg" in head
+    assert "25 replications" in head and "target 0.4" in head and "Latest version: v002" in head
+    assert 'data-study="s"' in head and "<b>Open:</b>" in head and "study_update" not in head
+    assert "replications" not in studypage.render(folder, _two_versions(tmp_path / "x")[1]).split("</header>")[0]
+
+
+def test_panels_and_summaries(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    page = studypage.render(folder, st)
+    for pid in ("goals", "model", "versions", "assumptions", "on-request"):
+        assert re.search(rf'<details id="{pid}"[^>]*><summary>[^<]+', page)
+    assert 'id="scenarios"' not in page
+    assert re.search(r"Checklist: \d+ passed", page) or "not verified" in page
+    assert "study_report" in page and "paper-style write-up (planned)" in page
+    assert '<details id="assumptions" class="panel">' in page      # closed
+
+
+def test_goals_panel_opens_only_on_failure(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    st["goals"].append({"id": "g2", "text": "Be nice"})      # text only: the goals item turns partial
+    assert '<details id="goals" class="panel">' in studypage.render(folder, st)     # partial: closed
+    st["validation"] = [{"level": "data", "passed": False, "text": "wait times off by 40%"}]
+    assert '<details id="goals" class="panel" open>' in studypage.render(folder, st)
+
+
+def test_versions_table_and_nested_details(tmp_path):
+    folder, st = _two_versions(tmp_path)
+    vs = studypage.render(folder, st).split('id="versions"')[1].split('id="assumptions"')[0]
+    assert vs.index('data-version="v002"') < vs.index('data-version="v001"')   # newest first
+    # rows start closed: the row shows the goal KPIs and the model panel the latest flowchart
+    assert vs.count("<details") == 3 and vs.count("<details open>") == 0
+    assert vs.index('data-version="v002"') < vs.index('data-version="v001"')
+
+
+def test_print_css_opens_panels():
+    css = studypage._CSS.split("@media print")[1]
+    assert "position:static" in css and "details>*:not(summary)" in css and "content-visibility:visible" in css

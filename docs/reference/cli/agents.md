@@ -82,3 +82,18 @@ options:
   --copy DIR  copy the folder to DIR/simulation-study (writes only there)
   --force     replace DIR/simulation-study if it exists
 ```
+
+## naga study
+
+```text
+usage: naga study [-h] {rerun} ...
+
+Checks on a study folder.
+
+positional arguments:
+  {rerun}
+    rerun     re-run every version and compare the stored KPIs
+
+options:
+  -h, --help  show this help message and exit
+```

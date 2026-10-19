@@ -9,6 +9,7 @@ paraphrased. Every verdict is computed from the study, never self-reported."""
 from __future__ import annotations
 
 import json
+import math
 import re
 from importlib import resources
 from datetime import datetime, timezone
@@ -16,15 +17,21 @@ from pathlib import Path
 
 from nagasim import flowchart
 from nagasim.modeldiff import diff
-from nagasim.studychecks import kpi_mean, overall
+from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, overall
 from nagasim.twin import write_json, write_text
 
 FORMAT = 1
 MODES = ("one_go", "incremental")
 # Caps per study size. ponytail: guessed caps, calibrate from usage data.
-SIZES = {"quick": {"replications": 5, "increments": 3, "scenarios": 2},
-         "standard": {"replications": 10, "increments": 8, "scenarios": 5},
-         "deep": {"replications": 30, "increments": 20, "scenarios": 12}}
+SIZES = {"quick": {"increments": 3, "scenarios": 2},
+         "standard": {"increments": 8, "scenarios": 5},
+         "deep": {"increments": 20, "scenarios": 12}}
+# Replications come from a precision target, not from the size: the target (relative half-width of
+# the 95% CI on every goal KPI) and the cap on replications per size. First pass: FIRST_PASS.
+PRECISION = {"quick": {"relative": 0.10, "cap": 50},
+             "standard": {"relative": 0.05, "cap": 200},
+             "deep": {"relative": 0.02, "cap": 1000}}
+FIRST_PASS = 10
 VERDICTS = ("passed", "partial", "failed", "not_verified")
 LEVELS = ("data", "known_answer", "expert")
 CHECKLIST = (
@@ -200,11 +207,22 @@ def goals_status(study: dict) -> list[dict]:
     last = _last(study)
     out = []
     for i, goal in enumerate(study["goals"]):
-        kpi, mean = goal.get("kpi"), None
+        kpi, mean = goal_kpi(goal), None
         if last is not None and kpi is not None:
             mean = (last.get("kpis") or {}).get(kpi)
         out.append({"id": goal.get("id", f"g{i + 1}"), "text": goal.get("text") or kpi or "",
                     "status": judge(goal, mean)})
+    return out
+
+
+def scenarios_meeting(study: dict) -> list[str]:
+    """Scenarios of the last version that meet every goal that has a verdict there (at least one)."""
+    last = _last(study)
+    out = []
+    for name, sc in ((last or {}).get("scenarios") or {}).items():
+        verdicts = [v for v in (sc.get("goals") or {}).values() if v != "not_verified"]
+        if verdicts and all(v == "met" for v in verdicts):
+            out.append(name)
     return out
 
 
@@ -260,7 +278,11 @@ def _item(study: dict, item: str, folder: Path | None) -> tuple[str, str]:
     if item == "experiments":
         return ("passed", "") if study["experiments"] else ("not_verified", "no experiments yet")
     met = [g["status"] == "met" for g in goals_status(study)]  # conclusions
-    return _all_or_some(met), "" if met and all(met) else "goals are not all met on the last version"
+    if met and all(met):
+        return "passed", ""
+    if scen := scenarios_meeting(study):
+        return "passed", "the base model misses a goal; met with: " + ", ".join(scen)
+    return _all_or_some(met), "goals are not all met on the last version"
 
 
 def checklist(study: dict, folder: Path | None = None) -> list[dict]:
@@ -289,11 +311,16 @@ def sufficiency(study: dict) -> dict:
         why.append(f"validation is {verdicts['validation']}")
     if not goals:
         why.append("no goals are recorded")
-    why += [f"goal {g['id']} is {g['status']}" for g in goals if g["status"] != "met"]
+    missed = [f"goal {g['id']} is {g['status']}" for g in goals if g["status"] != "met"]
+    # A scenario that meets every goal makes the study sufficient with that scenario, when the base
+    # model misses goals and nothing else is open.
+    scen = scenarios_meeting(study) if missed and not why else []
+    if not scen:
+        why += missed
     passed = {v.get("level") for v in study["validation"] if v.get("passed")}
     accepted = study.get("accepted")
     if not why:
-        label = "sufficient for its goals"
+        label = "sufficient for its goals" + (" with: " + ", ".join(scen) if scen else "")
     elif accepted:
         label = f"accepted with open issues: {accepted.get('reason', '')}"
     else:
@@ -303,16 +330,85 @@ def sufficiency(study: dict) -> dict:
             "accepted": accepted, "why": why}
 
 
+# --- precision: replications chosen from a target -----------------------------------------
+
+def precision_target(study: dict, goal: dict, mean: float) -> float:
+    """Absolute half-width wanted for the goal's KPI: the goal's own `precision`, else the study's
+    (or size's) relative target on |mean|. Near zero a relative target would demand the cap, so
+    a mean below 1% of the goal's bound uses 1% of the bound instead."""
+    if goal.get("precision") is not None:
+        return float(goal["precision"])
+    rel = (study.get("precision") or {}).get("relative", PRECISION[study["size"]]["relative"])
+    bounds = [abs(goal[e]) for e in ("low", "high") if goal.get(e) is not None]
+    floor = 0.01 * max(bounds) if bounds else 0.0
+    return floor if abs(mean) < floor else rel * abs(mean)
+
+
+def precision_status(study: dict, digest: dict) -> dict:
+    """{kpi: {half_width, target, met}} for the goal KPIs the digest has a CI for. Two goals on
+    one KPI keep the stricter target."""
+    out: dict = {}
+    for goal in study["goals"]:
+        kpi = goal_kpi(goal)
+        e = kpi_entry(digest, kpi) if kpi else None
+        h = e.get("ci_half_width") if e else None
+        if h is None:
+            continue
+        target = precision_target(study, goal, e["mean"])
+        if kpi not in out or target < out[kpi]["target"]:
+            out[kpi] = {"half_width": round(h, 6), "target": round(target, 6), "met": h <= target,
+                        "mean": round(e["mean"], 6)}
+    return out
+
+
+def replications_needed(status: dict, n1: int, cap: int) -> int:
+    """Two-pass rule (Law, Simulation Modeling and Analysis, ch. 9): n >= n1 (h / target)^2 for
+    the widest goal KPI, never below n1, never above the cap."""
+    need = [n1] + [math.ceil(n1 * (v["half_width"] / v["target"]) ** 2) if v["target"] > 0 else cap
+                   for v in status.values()]
+    return min(max(need), cap)
+
+
+def precision_sentence(n: int, status: dict, cap: int) -> str:
+    if not status:
+        return f"{n} replications (provisional: no goal KPI yet to set a precision target)."
+    parts = ", ".join(f"{k} +-{v['half_width']:g} (target +-{v['target']:g}, {'met' if v['met'] else 'not met'})"
+                      for k, v in status.items())
+    capped = f" The cap of {cap} stopped it. {cap_hint(status)}" if n >= cap and not all(
+        v["met"] for v in status.values()) else ""
+    return f"{n} replications for the precision target at 95%: {parts}.{capped}"
+
+
+def cap_hint(status: dict) -> str:
+    """The two ways on when the replication cap stopped a step: relax the target (an assumption to
+    record) or use the deep size. Only a suggestion; the person decides."""
+    rels = [v["half_width"] / abs(v["mean"]) for v in status.values() if not v["met"] and v.get("mean")]
+    relax = (f'relax the target to a relative half-width of {math.ceil(round(max(rels) * 100, 6)) / 100:g} and '
+             f'record it as an assumption with study_update(changes={{"precision": {{"relative": '
+             f'{math.ceil(round(max(rels) * 100, 6)) / 100:g}}}}}), or ') if rels else ""
+    return f"Ways on: {relax}move to the deep size (a higher cap)."
+
+
 # --- effort, next step, plan card -----------------------------------------------------------
 
 def effort(study: dict) -> dict:
-    """A rough estimate. ponytail: from one measured small task (6 replies, 0.8 min); calibrate later."""
+    """A rough estimate. Calls: 4 + 2 per increment, from the measured runs (dogfood 2026-10-19:
+    10 calls for a 3-version one-go study). Minutes are still from one small task; calibrate later."""
     n = SIZES[study["size"]]["increments"]
-    return {"size": study["size"], "tool_calls": 6 + 4 * n, "minutes": 1 + 1.5 * n,
+    return {"size": study["size"], "tool_calls": 4 + 2 * n, "minutes": 1 + 1.5 * n,
             "note": "An estimate only; adjust it to your own app and model."}
 
 
 def next_step(study: dict, folder: Path | None = None) -> str:
+    text = _next_step(study, folder)
+    last = _last(study)
+    status = (last or {}).get("precision") or {}
+    if last and status and not all(v["met"] for v in status.values())             and (last.get("replications") or 0) >= PRECISION[study["size"]]["cap"]:
+        return f"{text} The replication cap stopped the precision target. {cap_hint(status)}"
+    return text
+
+
+def _next_step(study: dict, folder: Path | None = None) -> str:
     if study["mode"] == "one_go" and not study["plan_approved"]:
         if not study["goals"]:      # a plan card without goals is an empty card
             return _TODO["goals"]
@@ -356,7 +452,8 @@ def request_key(tool: str, request_id: str | None) -> str | None:
 
 def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[dict],
             kpis: dict, note: str, request_key: str | None, problems: list[dict],
-            scenarios: dict | None = None) -> dict:
+            scenarios: dict | None = None, run: dict | None = None) -> dict:
+    """`run` is {"replications", "precision", "precision_note"} of the step's run, None for an old step."""
     folder = Path(folder)
     keep = verdict in ("passed", "partial")
     last = _last(study)
@@ -372,6 +469,7 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
     write_json(target / "step.json", {
         "id": vid, "changed": sorted(changed), "note": note, "verdict": verdict, "checks": checks, "kpis": kpis,
         "changes": lines[:_MAX_CHANGES], "problems": problems, **({"scenarios": scenarios} if scenarios else {}),
+        **{k: run[k] for k in ("replications", "precision", "seed") if run and k in run},
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     if keep:   # the flowchart shows this step's changes and what of the target is not built yet
         geom = flowchart.geometry(layout, changed,
@@ -379,13 +477,16 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
         write_text(target / "flowchart.svg", flowchart.to_svg(geom, f"{vid}: {note}"))
         write_text(target / "flowchart.txt", flowchart.to_text(geom))
         study["versions"].append({"id": vid, "note": note, "verdict": verdict,
-                                  "verification": overall([c for c in checks if c["kind"] != "goal"]),
+                                  "verification": overall([c for c in checks if c["kind"] not in ("goal", "precision")]),
                                   "kpis": kpis, "changes_count": len(lines),
-                                  **({"scenarios": scenarios} if scenarios else {})})
+                                  **({"scenarios": scenarios} if scenarios else {}),
+                                  **{k: run[k] for k in ("replications", "precision") if run}})
     answer = {"id": vid, "kind": "version" if keep else "draft", "verdict": verdict, "checks": checks,
               "changes": lines[:_MAX_CHANGES], "kpis": kpis}
     if scenarios:
         answer["scenarios"] = scenarios
+    if run:
+        answer.update({k: v for k, v in run.items() if k != "seed"})   # the seed is for study_report
     if not keep:
         answer["problems"] = problems     # stored with the answer, so a re-issued call returns them
     if request_key is not None:
@@ -396,7 +497,7 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
 
 def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, checks: list[dict],
                 note: str, request_id: str | None, problems: list[dict] | None = None,
-                scenarios: dict | None = None) -> dict:
+                scenarios: dict | None = None, run: dict | None = None) -> dict:
     """Store a step as a version (passed/partial) or a draft (failed). The same `request_id`
     returns the first answer, so a retried call does not record twice."""
     key = request_key("step", request_id)
@@ -408,10 +509,10 @@ def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, ch
     # A goal on a user statistic or a resource column is stored too, with the value its goal check
     # used, so goals_status (the cover, the checklist) agrees with the step's goal checks.
     for goal in study["goals"]:
-        k = goal.get("kpi")
+        k = goal_kpi(goal)
         if digest is not None and k and k not in kpis and (m := kpi_mean(digest, k)) is not None:
             kpis[k] = m
-    return _record(folder, study, layout, verdict, checks, kpis, note, key, problems or [], scenarios)
+    return _record(folder, study, layout, verdict, checks, kpis, note, key, problems or [], scenarios, run)
 
 
 def revert(folder: Path, study: dict, version_id: str, note: str, request_id: str | None = None) -> dict:
@@ -429,4 +530,5 @@ def revert(folder: Path, study: dict, version_id: str, note: str, request_id: st
     step = json.loads((old / "step.json").read_text(encoding="utf-8"))
     layout = json.loads((old / "model.json").read_text(encoding="utf-8"))
     return _record(folder, study, layout, step["verdict"], step["checks"], step["kpis"], note, key, [],
-                   step.get("scenarios"))
+                   step.get("scenarios"),
+                   {k: step[k] for k in ("replications", "precision", "seed") if k in step} or None)

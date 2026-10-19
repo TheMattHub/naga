@@ -12,7 +12,9 @@ decision, ask only what you cannot find out, and report honestly.
 ## The protocol
 
 1. `study_start(question=...)` once, or `study_status(study=...)` for an existing folder. Every answer
-   carries a `next_step`: do that. The folder is the memory, so a new chat resumes from it.
+   carries a `next_step` with a ready-to-send call: do that, or better when you know better. The folder is
+   the memory, so a new chat resumes from it. `study_start(..., changes={...})` records the whole plan card
+   in the same call.
 2. Intake, the person's choice:
    - a **free-flow description** (a voice message, a long text, documents): store it with
      `study_add_input(study, name="message.txt", text=...)` or `path=...`, extract the decision, goals and
@@ -27,19 +29,28 @@ decision, ask only what you cannot find out, and report honestly.
    - **incremental**: show each step and let the person steer.
 4. Record what you learn with `study_update` (shapes below).
 5. Build by sending the **whole model** to `study_step(study, layout={...}, note=...)` (call
-   `get_model_format` once first). A step that does not run is kept as a draft with its problems: fix and
-   step again. `study_view` shows the flowchart: what changed and what is still missing.
-6. Validate against the person's data, a known answer (a simplified case with a textbook result) or an
-   expert's judgement, and record it with its level.
+   `get_model_format` once first); every step sends the whole layout, and `changes={...}` in the same call
+   records what you learned (for record-only changes use `study_update`). A step that
+   does not run is kept as a draft with its problems: fix and step again. The engine picks the
+   replications from the study's precision target and says how many and how precise; when the cap stops
+   it first, relax the target and record that as an assumption, or move to the deep size. `study_view` shows
+   the flowchart: what changed and what is still missing.
+6. Validate against the person's data, a known answer or an expert's judgement, and record it with its
+   level. For a single queue, `study_validate(study=...)` runs the textbook comparison and records it.
 7. Run the scenarios the decision needs, then give the answer with the control room (`study_show`) and,
    when the person is satisfied, the package (`study_package`).
 
 ## Records (`study_update(study, changes={...})`)
 
-A list key replaces the whole list, so send every entry each time.
+A list key replaces the whole list, so send every entry each time. Near-miss shapes are accepted and
+answered under `normalised` with the canonical form; use that form next time.
 
 - goal: `{"id": "g1", "text": "orders wait under 15 min", "kpi": "Packer/Time in Queue Avg", "high": 15}`
   (`low` and/or `high`; a goal without them stays text and is never met);
+- tail goal: `{"id": "g2", "text": "at most 5% wait over 15 min", "kpi": "Packer/Time in Queue",
+  "share_above": 15, "high": 0.05}` (the engine computes the share and reports it as the KPI
+  `Packer/Share waiting over 15`);
+- `"precision": {"relative": 0.05}` to change the study's target (half-width at 95%);
 - `"target"`: a list of components, `[{"name": "Packing", "purpose": "...", "blocks": ["pack"]}]`
   (blocks once built);
 - assumption: `{"id": "a1", "text": "arrivals are random", "value": "exponential, mean 6 min", "source": "manager"}`;
@@ -60,23 +71,31 @@ Put the alternatives in the model file, the base model being the baseline:
 Every `study_step` runs them with the same replications and seed and answers, per scenario, each goal
 KPI (mean and confidence half-width) and whether each goal is met. Record the comparison with
 `study_update(changes={"experiments": [...]})`. The size sets the replications and caps the scenarios;
-call one option better only when the intervals separate.
+call one option better only when the intervals separate. When the base model misses a goal and a
+scenario meets them all, the label says so ("sufficient for its goals with: Two stations"): the answer
+to the person is that option.
 
 ## Modelling notes
 
 - A shift that starts empty and ends is a finite-horizon study: report the shift's averages and say so.
   A steady-state question (long-run behaviour) needs a long run with a warm-up; the two can differ a lot
   near full load, so pick the one the decision is about and name it.
-- "How many wait longer than X" needs a statistic the model records (an assignment of the wait and a
-  record of whether it exceeded X); averages hide the tail.
-- A known-answer check: a simplified scenario with a textbook result (a single queue against the M/M/1 or
-  M/G/1 formula, run long) is a good validation at the `known_answer` level.
+- "How many wait longer than X" is a tail goal (above); averages hide the tail.
+- A known-answer check: a simplified case with a textbook result is a good validation at the
+  `known_answer` level; `study_validate` does it for a single queue.
 
 ## Tools
 
-`study_start`, `study_status`, `study_update`, `study_add_input`, `study_step`, `study_view`,
-`study_show`, `study_revert`, `study_accept` (the person's only), `study_package`; plus `get_model_format` for the model
-file's format.
+`study_start`, `study_status`, `study_update`, `study_add_input`, `study_step`, `study_validate`,
+`study_view`, `study_show`, `study_revert`, `study_accept` (the person's only), and on request
+`study_report` (a version's full report), `study_package` (the deliverable); plus `get_model_format` for the
+model file's format.
+
+## Output
+
+Each version makes the light output by default (the step's summary, the flowchart, the control room).
+Make the heavy outputs only when the person asks: a version's full report, a PNG of the flowchart, the
+package; a paper-style write-up is planned.
 
 ## Principles
 

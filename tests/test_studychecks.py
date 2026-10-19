@@ -79,3 +79,13 @@ def test_overall_unmet_goal_is_partial_not_failed():
     g = {"name": "goal g", "verdict": "failed", "why": "", "kind": "goal"}
     a = {"name": "assumption a", "verdict": "failed", "why": "", "kind": "assumption"}
     assert overall([g]) == "partial" and overall([g, a]) == "failed"
+
+
+def test_precision_check_never_fails_and_is_partial_when_unmet():
+    from nagasim.studychecks import precision_check
+    met = {"k": {"half_width": 0.4, "target": 0.5, "met": True}}
+    miss = {"k": {"half_width": 0.9, "target": 0.5, "met": False}}
+    assert precision_check(met, 20, 200)["verdict"] == "passed"
+    c = precision_check(miss, 200, 200)
+    assert c["verdict"] == "partial" and c["kind"] == "precision" and "0.9" in c["why"]
+    assert overall([c]) == "partial"

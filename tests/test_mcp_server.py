@@ -173,7 +173,7 @@ def test_naga_mcp_is_a_command_of_the_engine_cli(capsys):
 
 
 def test_the_engine_server_runs_without_the_product(tmp_path):
-    """`naga mcp` in a fresh interpreter: 82 tools, resources under naga://, no product import."""
+    """`naga mcp` in a fresh interpreter: 84 tools, resources under naga://, no product import."""
     code = (
         "import asyncio, sys\n"
         "from nagasim import mcp_server\n"
@@ -186,7 +186,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "82" and first.startswith("naga://reference/")
+    assert count == "84" and first.startswith("naga://reference/")
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):
@@ -405,3 +405,27 @@ def test_initialize_advertises_the_apps_extension(tmp_path):
         __import__("mcp.server.lowlevel.server", fromlist=["NotificationOptions"])
         .NotificationOptions(), {})
     assert "io.modelcontextprotocol/ui" in (caps.extensions or {})
+
+
+def test_mcp_unknown_tool_suggests(tmp_path):
+    server = mcp_server.build_server(tmp_path)
+    result = asyncio.run(server.call_tool("validate_modle", {}))
+    error = json.loads(_text(result))["error"]
+    assert error["code"] == "E_UNKNOWN_TOOL" and "validate_model" in error["did_you_mean"]
+
+
+def test_mcp_unknown_argument_suggests(tmp_path):
+    server = mcp_server.build_server(tmp_path)
+    result = asyncio.run(server.call_tool("open_model", {"pth": "single_server.json"}))
+    error = json.loads(_text(result))["error"]
+    assert error["code"] == "E_BAD_ARGUMENT" and "path" in error["did_you_mean"]
+
+
+def test_a_tool_the_server_hides_cannot_be_called_by_name(tmp_path):
+    """--tools compact hides most tools; calling one by name must not run it, and the
+    suggestions name only tools this server exposes."""
+    server = mcp_server.build_server(tmp_path, tools=mcp_server.COMPACT_TOOLS)
+    hidden = next(n for n in sorted(mcp_server.agent_tools.TOOLS) if n not in mcp_server.COMPACT_TOOLS)
+    error = json.loads(_text(asyncio.run(server.call_tool(hidden, {}))))["error"]
+    assert error["code"] == "E_UNKNOWN_TOOL"
+    assert set(error.get("did_you_mean") or []) <= mcp_server.COMPACT_TOOLS

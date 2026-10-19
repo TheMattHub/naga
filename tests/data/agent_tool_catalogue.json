@@ -2273,10 +2273,17 @@
     "read_only": false
   },
   {
-    "description": "Start a simulation study: make its folder and say what to do first.\n\nUse it for a decision question (\"how many cranes do we need?\"), then follow the\nnext_step in every answer. The study keeps its state in the folder; pass the returned\n`study` to the other study tools.\n\nReturns {\"study\", \"next_step\", \"plan_card\", \"effort\"}.",
+    "description": "Start a simulation study: make its folder and say what to do first.\n\nUse it for a decision question (\"how many cranes do we need?\"), then follow the\nnext_step in every answer. The study keeps its state in the folder; pass the returned\n`study` to the other study tools.\n\nSend the plan card in the same call with `changes` (the same keys and shapes as\nstudy_update). Example: study_start(question=\"How many cranes do we need?\",\nchanges={\"goals\": [{\"id\": \"g1\", \"text\": \"wait under 5\", \"kpi\": \"Avg Throughput Time\", \"high\": 5}]}).\n\nReturns {\"study\", \"next_step\", \"plan_card\", \"effort\"}, plus \"normalised\" when a near-miss\ninput was mapped.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "changes": {
+          "description": "Keys to record in the same call, with the shapes of study_update's changes.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "mode": {
           "default": "one_go",
           "description": "one_go (plan approved first, then built) or incremental (built step by step).",
@@ -2308,7 +2315,7 @@
     "read_only": false
   },
   {
-    "description": "Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the\nlast version's KPIs and the next step. Call it first on an existing study folder.\n\nReturns {\"study\", \"question\", \"mode\", \"size\", \"sufficiency\", \"why_not_sufficient\", \"goals\",\n\"checklist\", \"last_version\", \"versions\", \"effort\", \"next_step\"}, plus \"plan_card\" until the\nplan is approved.",
+    "description": "Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the\nlast version's KPIs and the next step. Call it first on an existing study folder.\n\nReturns {\"study\", \"question\", \"mode\", \"size\", \"sufficiency\", \"why_not_sufficient\", \"goals\",\n\"checklist\", \"last_version\", \"versions\", \"effort\", \"next_step\"}, plus \"plan_card\" until the\nplan is approved and \"validate\" (a ready-to-send study_validate call) while no validation has\npassed and the last version is a queue with a textbook answer.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2326,22 +2333,108 @@
     "read_only": true
   },
   {
-    "description": "Record what the study has learned or the person decided: set any of question,\ndecision, mode, size, plan_approved, goals, target, assumptions, sources, validation,\nexperiments, skipped. A list key replaces the whole list. Nothing here can mark the study\naccepted. Example: study_update(study, changes={\"validation\": [{\"level\": \"known_answer\",\n\"passed\": true, \"text\": \"...\"}]}).\n\nReturns {\"ok\", \"next_step\"}.",
+    "description": "Record what the study has learned or the person decided: set any of question,\ndecision, mode, size, plan_approved, precision, goals, target, assumptions, sources, validation,\nexperiments, skipped, inside `changes` or (all but decision) as parameters of the same name\n(a key sent both ways is refused; decision is changes={\"decision\": ...} only). A list key replaces the whole list. Nothing here can mark the study\naccepted. Near-miss shapes (a goal with \"range\": [0, 5], \"statement\" for \"text\", one object\nfor a list) are mapped to the canonical record and listed in \"normalised\"; a typo'd key is\nrefused with a corrected example.\nExample: study_update(study=\"naga-studies/cranes\", validation=[{\"level\": \"known_answer\",\n\"passed\": true, \"text\": \"M/G/1 formula vs model wait\"}]).\n\nReturns {\"ok\", \"next_step\"}, plus \"normalised\" (a list of notes) when something was mapped.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "assumptions": {
+          "description": "Same as the \"assumptions\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "changes": {
-          "description": "Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input}; a validation entry is {level: data|known_answer|expert, passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, \"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.",
-          "type": "object"
+          "description": "Optional if the keys are sent as parameters. Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input}; a validation entry is {level: data|known_answer|expert, passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, \"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "experiments": {
+          "description": "Same as the \"experiments\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "goals": {
+          "description": "Same as the \"goals\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "mode": {
+          "description": "Same as the \"mode\" key of changes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plan_approved": {
+          "description": "Same as the \"plan_approved\" key of changes.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "precision": {
+          "description": "Same as the \"precision\" key of changes.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "question": {
+          "description": "Same as the \"question\" key of changes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "description": "Same as the \"size\" key of changes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "skipped": {
+          "description": "Same as the \"skipped\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sources": {
+          "description": "Same as the \"sources\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "study": {
           "description": "Study folder relative to the workspace root (the id study_start returned).",
           "type": "string"
+        },
+        "target": {
+          "description": "Same as the \"target\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "validation": {
+          "description": "Same as the \"validation\" key of changes.",
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
-        "study",
-        "changes"
+        "study"
       ],
       "type": "object"
     },
@@ -2386,17 +2479,30 @@
     "read_only": false
   },
   {
-    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Always send the complete model file and a one-line\nnote. A model that does not validate or run is stored as a draft with its problems, not\nrefused: read \"problems\", fix the model, step again.\n\nThe study's size sets the replications (quick 5, standard 10, deep 30); the model's own\nsimulation.replications is not used, so steps stay cheap and comparable. For tighter\nnumbers raise the size.\n\nThe model's \"scenarios\" (a list of {\"name\", \"overrides\": [{\"path\":\n\"resources.<name>.capacity\", \"value\": 2}]}) run with the step, with the same replications\nand seed, up to the size's cap; their goal KPIs and goals met come back in \"scenarios\".\n\nReturns {\"id\", \"kind\": \"version\"|\"draft\", \"verdict\", \"checks\", \"changes\", \"kpis\",\n\"replications\", \"sufficiency\", \"next_step\"}; a version also has its report at\nversions/<id>/report.html. With scenarios: \"scenarios\": {name: {\"kpis\": {goal KPI: {mean,\nci_half_width}}, \"goals\": {goal id: met|not_met|not_verified}}}, and \"scenario_error\" or\n\"scenarios_skipped\" when a run failed or the cap cut some.",
+    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Always send the complete model file and a one-line\nnote. A model that does not validate or run is stored as a draft with its problems, not\nrefused: read \"problems\", fix the model, step again.\n\nThe replications come from a precision target, not from the model's own\nsimulation.replications: a first pass of 10, then, if a goal KPI's 95% confidence interval is\nwider than its target, one rerun (same seed) with the count the widest needs, up to the size's\ncap (quick 50, standard 200, deep 1000). The target is a relative half-width (quick 10%,\nstandard 5%, deep 2%; set another with study_update precision={\"relative\": 0.03}) or an\nabsolute one per goal (\"precision\": 0.5 in the KPI's unit). With no goal KPI the count is 10\nand provisional. A cap reached makes the \"precision\" check partial, never failed.\n\nThe model's \"scenarios\" (a list of {\"name\", \"overrides\": [{\"path\":\n\"resources.<name>.capacity\", \"value\": 2}]}) run with the step, with the same replications\nand seed, up to the size's cap; their goal KPIs and goals met come back in \"scenarios\".\n\n`changes` (the same keys and shapes as study_update) is recorded first, in the same call, so\na step that also records the goals or a validation needs one call, not two. Scenario\noverrides sent as {\"resources.<name>.capacity\": 2} are mapped to the list shape; a target\ncomponent without blocks whose name matches a block name is mapped to it. Both are listed in\n\"normalised\". Example: study_step(study=\"naga-studies/cranes\", layout={...the whole model...},\nnote=\"add the second crane\", changes={\"assumptions\": [{\"id\": \"a1\", \"text\": \"...\", \"source\": \"...\"}]}).\n\nA tail goal {\"id\", \"text\", \"kpi\": \"<resource>/Time in Queue\", \"share_above\": 15, \"high\": 0.05}\nbounds the share of entities that waited more than 15 at that resource. The engine rebuilds\nthe waits from the run's resource log (FIFO resources only) and stores the share per\nreplication as the KPI \"<resource>/Share waiting over 15\", with its confidence interval, so it is\njudged, sized (precision) and compared across scenarios like any KPI. When the waits cannot be\nrebuilt the goal stays not_verified and \"tail_note\" says why.\n\nReturns {\"id\", \"kind\": \"version\"|\"draft\", \"verdict\", \"checks\", \"changes\", \"kpis\",\n\"replications\", \"precision\": {goal KPI: {half_width, target, met}}, \"precision_note\" (one\nsentence), \"sufficiency\", \"next_step\"}. A version has no\nreport file by default (the answer is the light output); study_report writes it on request. With scenarios: \"scenarios\": {name: {\"kpis\": {goal KPI: {mean,\nci_half_width}}, \"goals\": {goal id: met|not_met|not_verified}}}, and \"scenario_error\" or\n\"scenarios_skipped\" when a run failed or the cap cut some; \"normalised\" when an input was mapped.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "changes": {
+          "description": "Keys to record in the same call, with the shapes of study_update's changes. Recorded before the step.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "layout": {
           "description": "The complete model file as one JSON object (as write_model).",
-          "type": "object"
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "note": {
           "description": "One line: what changed in this step and why.",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "request_id": {
           "description": "Any unique string; a retried call with the same one is not recorded twice.",
@@ -2416,9 +2522,7 @@
         }
       },
       "required": [
-        "study",
-        "layout",
-        "note"
+        "study"
       ],
       "type": "object"
     },
@@ -2566,5 +2670,53 @@
     },
     "name": "study_page_html",
     "read_only": true
+  },
+  {
+    "description": "Write a version's full HTML report (KPIs with intervals, resources, charts) on request.\nSteps do not write it, to keep the default output light. It reruns the version's stored\nmodel with the step's stored replications and seed, so the numbers match the step.\n\nReturns {\"path\": the report file relative to the workspace root}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Version id, e.g. v002; omit for the last.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_report",
+    "read_only": false
+  },
+  {
+    "description": "Check the last model version against a textbook answer and record the validation.\n\nkind=\"queue_formula\" applies when the model is one arrival stream (exponential interarrival\ntimes) feeding one FIFO resource: the engine runs the model 100 times longer than its own\nrun length (warm-up 10% of that, 10 replications, seed 0), compares the mean wait in queue\nwith M/M/c (Erlang C) or M/G/1 (Pollaczek-Khinchine) and records a known_answer validation\nthat passes within 5% relative error. Any other model answers E_STUDY_NOT_APPLICABLE with the\nreason, so the person is asked for another validation.\nExample: study_validate(study=\"naga-studies/cranes\").\n\nReturns {\"kind\", \"model\", \"formula\", \"rel_error\", \"passed\", \"next_step\"}: the simulated and the\nformula's mean wait, their relative difference and whether it is within 5%.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "queue_formula",
+          "description": "The known answer to check against; only queue_formula (M/M/c or M/G/1) exists.",
+          "type": "string"
+        },
+        "study": {
+          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "study"
+      ],
+      "type": "object"
+    },
+    "name": "study_validate",
+    "read_only": false
   }
 ]

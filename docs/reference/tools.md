@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 82 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 84 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -122,11 +122,13 @@ The 82 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `study_start` |  | Start a simulation study: make its folder and say what to do first. |
 | `study_status` | yes | Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the last version's KPIs and the next step. |
-| `study_update` |  | Record what the study has learned or the person decided: set any of question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. |
+| `study_update` |  | Record what the study has learned or the person decided: set any of question, decision, mode, size, plan_approved, precision, goals, target, assumptions, sources, validation, experiments, skipped, inside `changes` or (all but decision) as parameters of the same name (a key sent both ways is refused; decision is changes={"decision": ...} only). |
 | `study_add_input` |  | Keep a source of the study in its inputs/ folder: copy a workspace file, or store text (a call transcript, notes). |
 | `study_step` |  | Test one model step: write the whole model, run it, check it, and store it as a new version (or as a draft when it fails). |
+| `study_validate` |  | Check the last model version against a textbook answer and record the validation. |
 | `study_accept` |  | Record that the person accepts the study as it stands. |
 | `study_revert` |  | Go back to an earlier version: it is recorded again as a new version, so no history is lost. |
+| `study_report` |  | Write a version's full HTML report (KPIs with intervals, resources, charts) on request. |
 | `study_package` |  | Build the study's deliverable in its package/ folder: the control room page, an Excel workbook (goals, versions with KPIs, checklist, assumptions), the current model and RO-Crate metadata. |
 | `study_view` | yes | See a version's flowchart: built blocks, what this step changed and what of the agreed target is not built yet. |
 | `study_show` | yes | Show the study's control room. |

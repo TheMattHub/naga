@@ -14,6 +14,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from nagasim import study as study_mod, studypage
+from nagasim.studychecks import goal_kpi
 from nagasim.twin import write_json, write_text
 
 _FORMATS = {".html": "text/html", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -40,7 +41,7 @@ def workbook(folder: Path, study: dict, path: Path) -> None:
     """Sheets Goals, Versions (one column per KPI seen in any version), Checklist, Assumptions."""
     folder, path = Path(folder), Path(path)
     last = (study["versions"][-1].get("kpis") or {}) if study["versions"] else {}
-    goals = [[g["text"], spec.get("kpi"), spec.get("low"), spec.get("high"), last.get(spec.get("kpi")),
+    goals = [[g["text"], goal_kpi(spec), spec.get("low"), spec.get("high"), last.get(goal_kpi(spec)),
               g["status"]] for spec, g in zip(study["goals"], study_mod.goals_status(study))]
     kpis = list(dict.fromkeys(k for v in study["versions"] for k in (v.get("kpis") or {})))
     versions = []

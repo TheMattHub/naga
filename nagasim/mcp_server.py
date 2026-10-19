@@ -90,6 +90,29 @@ def _server_class():
         raise MCPUnavailable(INSTALL_HINT) from exc
 
 
+def _suggesting(server_class):
+    """The SDK class with `call_tool` (public, documented) answering an unknown tool name
+    as the engine does, with "did you mean", instead of the SDK's bare "Unknown tool"."""
+    class SuggestingServer(server_class):
+        async def call_tool(self, name, arguments, *args, **kwargs):
+            exposed = {t.name for t in await self.list_tools()}
+            if name not in exposed:
+                # Built here, never through agent_tools.call: a registered tool this server does
+                # not expose (--tools compact) must not run, and only exposed names are suggested.
+                answer = agent_tools.core.unknown_tool_error(name, exposed).as_dict()
+            elif not set(arguments or {}) <= set(agent_tools.TOOLS[name].input_schema["properties"]):
+                # The SDK validates before our wrapper and would blame a missing field; the
+                # engine's refusal names the typo, and nothing runs (it precedes the tool body).
+                with _TOOL_LOCK:
+                    answer = agent_tools.call(name, **arguments)
+            else:
+                return await super().call_tool(name, arguments, *args, **kwargs)
+            from mcp.types import CallToolResult, TextContent
+            return CallToolResult(content=[TextContent(type="text", text=json.dumps(answer, indent=2))],
+                                  structuredContent={"result": answer})
+    return SuggestingServer
+
+
 # MCP Apps: the study control room renders inline in clients that support it. The tools stay
 # registered once, by the loop in build_server; the ui _meta goes on that registration
 # (Apps.tool would register a second copy) and Apps contributes the template resource and the
@@ -291,7 +314,7 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
                                                     twin_dir=twin_dir))
     apps = _study_apps(tools)
     extra = {"extensions": [apps]} if apps else {}
-    server = server_class(name, version=__version__, instructions=instructions, **extra)
+    server = _suggesting(server_class)(name, version=__version__, instructions=instructions, **extra)
 
     # The SDK runs a sync tool on a worker thread and serves requests concurrently, while
     # the workspace is one mutable object (a debug run is a live engine session): calls are

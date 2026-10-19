@@ -12,6 +12,7 @@ public surface.
 """
 from __future__ import annotations
 
+import difflib
 import inspect
 import json
 import os
@@ -46,14 +47,33 @@ _RESOURCE_COLUMNS = ("Usage % (snapshot)", "Queue Length Avg", "Queue Length Max
 class ToolError(Exception):
     """A refusal an agent can act on: a code, a message and a concrete hint."""
 
-    def __init__(self, code: str, message: str, hint: str | None = None):
+    def __init__(self, code: str, message: str, hint: str | None = None,
+                 did_you_mean: list[str] | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
         self.hint = hint
+        self.did_you_mean = did_you_mean
 
     def as_dict(self) -> dict:
-        return {"error": {"code": self.code, "message": self.message, "hint": self.hint}}
+        error = {"code": self.code, "message": self.message, "hint": self.hint}
+        if self.did_you_mean:
+            error["did_you_mean"] = self.did_you_mean
+        return {"error": error}
+
+
+def _close(word, choices) -> list[str]:
+    return difflib.get_close_matches(str(word), list(choices), n=3, cutoff=0.5)
+
+
+def unknown_tool_error(name, choices=None) -> ToolError:
+    """E_UNKNOWN_TOOL with the closest names among `choices` (default: every registered tool;
+    the MCP server passes only the tools it exposes, so a hidden tool is never suggested)."""
+    choices = TOOLS if choices is None else choices
+    close = _close(name, choices)
+    return ToolError("E_UNKNOWN_TOOL", f"no tool named '{name}'",
+                     f"did you mean: {', '.join(close)}?" if close
+                     else f"use one of: {', '.join(sorted(choices))}", close)
 
 
 # ---------------------------------------------------------------- workspace
@@ -257,6 +277,13 @@ def _require_arguments(schema: dict, kwargs: dict) -> None:
     """A required argument left out is named, and said to be inside an object argument
     when it was put there (#409: `type` sent inside `params`); Python's own TypeError
     text is nothing a model can act on."""
+    known = schema["properties"]
+    for key in kwargs:
+        if key not in known and not schema.get("additionalProperties"):
+            close = _close(key, known)
+            raise ToolError("E_BAD_ARGUMENT", f"unknown argument `{key}`",
+                            f"did you mean: {', '.join(close)}?" if close
+                            else f"this tool takes: {', '.join(known) or 'no arguments'}", close)
     for key in schema["required"]:
         if key in kwargs:
             continue
@@ -313,8 +340,7 @@ def call(tool_name, /, **kwargs) -> dict:
     (new_model, ...) is not shadowed."""
     spec = TOOLS.get(tool_name)
     if spec is None:
-        return ToolError("E_UNKNOWN_TOOL", f"no tool named '{tool_name}'",
-                         f"use one of: {', '.join(sorted(TOOLS))}").as_dict()
+        return unknown_tool_error(tool_name).as_dict()
     return spec.fn(**kwargs)
 
 

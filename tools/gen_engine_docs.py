@@ -618,7 +618,7 @@ CLI_GROUPS = (
      ("plan", "loops", "viewer")),
     ("agents", "Agents",
      "Serve the model operations to an assistant.",
-     ("mcp", "assist", "skill")),
+     ("mcp", "assist", "skill", "study")),
 )
 
 

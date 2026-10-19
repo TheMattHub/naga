@@ -37,7 +37,7 @@ def test_start_status_step_round_trip(ws):
     r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
     assert "error" not in r, r
     assert r["kind"] == "version" and r["id"] == "v001"
-    assert (ws.root / sid / "versions" / "v001" / "report.html").is_file()
+    assert not (ws.root / sid / "versions" / "v001" / "report.html").exists()
     assert "sufficiency" in r and "next_step" in r
     st = T.call("study_status", study=sid)
     assert st["last_version"]["id"] == "v001" and st["versions"] == 1 and "plan_card" not in st
@@ -193,7 +193,7 @@ def test_revert_puts_the_old_layout_in_the_slot(ws):
     assert r["kind"] == "version"
     names = [b.name if hasattr(b, "name") else b["name"] for b in ws.models[f"study:{sid}"].to_layout()["blocks"]]
     assert names == [b["name"] for b in lay["blocks"]]
-    assert (ws.root / sid / "versions" / r["id"] / "report.html").is_file()
+    assert not (ws.root / sid / "versions" / r["id"] / "report.html").exists()
 
 
 def test_request_id_is_per_tool(ws):
@@ -322,7 +322,7 @@ def test_validation_without_a_boolean_passed_is_refused_with_the_shape(ws):
     assert ok["ok"] is True
     T.call("study_update", study=sid, changes={"plan_approved": True})
     r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
-    assert r["replications"] == 10        # the standard size, whatever the model says
+    assert r["replications"] == 10        # no goal KPI: the first pass, whatever the model says
     item = [c for c in T.call("study_status", study=sid)["checklist"] if c["item"] == "validation"]
     assert item[0]["verdict"] == "passed"   # validation holds across versions
 
@@ -385,3 +385,168 @@ def test_a_bad_scenario_never_fails_the_step(ws):
     lay["scenarios"] = [{"name": "Bad", "overrides": [{"path": "resources.Nope.capacity", "value": 2}]}]
     r = T.call("study_step", study=sid, layout=lay, note="bad scenario")
     assert r["kind"] == "version" and "scenario_error" in r and "scenarios" not in r
+
+
+QGOAL = {"id": "g1", "text": "queue wait", "kpi": "Server/Time in Queue Avg", "high": 5}
+
+
+def step_with(ws, goals, **upd):
+    sid = start(ws)
+    T.call("study_update", study=sid, changes={"plan_approved": True, "goals": goals, **upd})
+    return sid, T.call("study_step", study=sid, layout=layout(ws), note="m")
+
+
+def test_step_without_goals_uses_first_pass(ws):
+    sid, r = step_with(ws, [])
+    assert r["replications"] == 10 and "provisional" in r["precision_note"] and r["precision"] == {}
+
+
+def test_step_raises_replications_for_a_noisy_goal_kpi(ws):
+    sid, r = step_with(ws, [{**QGOAL, "precision": 0.05}])
+    p = r["precision"]["Server/Time in Queue Avg"]
+    assert r["replications"] > 10
+    assert p["met"] or r["replications"] == 200
+    step = json.loads((ws.root / sid / "versions" / "v001" / "step.json").read_text(encoding="utf-8"))
+    assert step["replications"] == r["replications"] and step["precision"] == r["precision"]
+    assert T.call("study_status", study=sid)["last_version"].get("replications") == r["replications"]
+
+
+def test_zero_mean_goal_uses_absolute_target(ws):
+    # Total Cost is 0 in this model: a relative target on a zero mean must not demand the cap.
+    sid, r = step_with(ws, [{"id": "g1", "text": "no cost", "kpi": "Total Cost", "high": 5}])
+    assert r["replications"] == 10 and r["precision"]["Total Cost"]["met"] is True
+
+
+def test_cap_reached_is_partial_not_failed(ws):
+    sid, r = step_with(ws, [{**QGOAL, "precision": 1e-9}], size="quick")
+    assert r["replications"] == 50 and r["kind"] == "version" and r["verdict"] == "partial"
+    c = [c for c in r["checks"] if c["kind"] == "precision"][0]
+    assert c["verdict"] == "partial" and "cap" in r["precision_note"]
+
+
+def test_scenarios_use_the_final_count(ws):
+    lay = layout(ws)
+    lay["scenarios"] = [{"name": "two", "overrides": [{"path": "resources.Server.capacity", "value": 2}]}]
+    sid = start(ws)
+    T.call("study_update", study=sid, changes={"goals": [{**QGOAL, "precision": 0.05}]})
+    r = T.call("study_step", study=sid, layout=lay, note="m")
+    assert r["replications"] > 10 and "two" in r["scenarios"]
+
+
+def test_precision_sentence_in_answer(ws):
+    sid, r = step_with(ws, [{**QGOAL, "precision": 0.05}])
+    assert f"{r['replications']} replications" in r["precision_note"]
+
+
+def test_precision_settings_are_validated(ws):
+    sid = start(ws)
+    for ch in ({"precision": {"relative": 1.5}}, {"precision": {"relative": "x"}}, {"precision": 0.1},
+               {"goals": [{"id": "g", "precision": -1}]}, {"goals": [{"id": "g", "precision": True}]}):
+        assert T.call("study_update", study=sid, changes=ch)["error"]["code"] == "E_STUDY_BAD_VALUE"
+    assert T.call("study_update", study=sid, changes={"precision": {"relative": 0.03}})["ok"] is True
+
+
+def test_a_version_has_no_report_by_default(ws):
+    sid = start(ws)
+    r = T.call("study_step", study=sid, layout=layout(ws), note="a")
+    assert "report_error" not in r
+    assert not (ws.root / sid / "versions" / r["id"] / "report.html").exists()
+
+
+def test_report_on_request(ws):
+    sid = start(ws)
+    T.call("study_step", study=sid, layout=layout(ws), note="a", seed=3)
+    out = T.call("study_report", study=sid, version="v001")
+    assert out == {"path": f"{sid}/versions/v001/report.html"}, out
+    assert "<html" in (ws.root / out["path"]).read_text(encoding="utf-8").lower()
+    # no version means the last one
+    assert T.call("study_report", study=sid)["path"] == out["path"]
+
+
+def test_report_unknown_version(ws):
+    sid = start(ws)
+    assert T.call("study_report", study=sid)["error"]["code"] == "E_STUDY_NO_VERSION"
+    T.call("study_step", study=sid, layout=layout(ws), note="a")
+    assert T.call("study_report", study=sid, version="v009")["error"]["code"] == "E_STUDY_NO_VERSION"
+
+
+# -- one call does more -------------------------------------------------------
+
+def test_canonical_update_answer_is_unchanged(ws):
+    sid = start(ws)
+    up = T.call("study_update", study=sid, changes={"goals": [GOAL]})
+    assert set(up) == {"ok", "next_step"}
+
+
+def test_near_miss_update_is_mapped_and_reported(ws):
+    sid = start(ws)
+    up = T.call("study_update", study=sid, changes={"goals": [
+        {"id": "g1", "statement": "wait under 5", "kpi": "Avg Throughput Time", "range": [0, 5]}]})
+    assert up["ok"] is True and any("statement -> text" in n for n in up["normalised"])
+    stored = T.call("study_status", study=sid)["goals"]
+    assert stored[0]["id"] == "g1"
+    s = json.loads((ws.root / sid / "study.json").read_text(encoding="utf-8"))
+    assert s["goals"][0]["text"] == "wait under 5" and s["goals"][0]["high"] == 5 and "range" not in s["goals"][0]
+
+
+def test_update_refuses_a_typo_with_an_example(ws):
+    sid = start(ws)
+    e = T.call("study_update", study=sid, changes={"goalz": []})["error"]
+    assert e["code"] == "E_STUDY_BAD_VALUE" and "goals" in e["message"] and e["hint"]
+
+
+def test_update_takes_record_keys_as_parameters(ws):
+    sid = start(ws)
+    up = T.call("study_update", study=sid, goals=[GOAL], plan_approved=True)
+    assert up["ok"] is True and "normalised" not in up
+    assert T.call("study_status", study=sid)["goals"]
+    both = T.call("study_update", study=sid, changes={"question": "a"}, question="b")["error"]
+    assert both["code"] == "E_STUDY_BAD_VALUE" and "'a'" in both["message"] and "'b'" in both["message"]
+    assert T.call("study_update", study=sid)["error"]["code"] == "E_STUDY_BAD_VALUE"
+
+
+def test_start_takes_the_plan_card_in_one_call(ws):
+    r = T.call("study_start", question="q?", changes={"goals": [GOAL], "plan_approved": True})
+    assert "error" not in r, r
+    assert r["plan_card"]["goals"][0]["id"] == "g1"
+    assert "normalised" not in r
+    bad = T.call("study_start", question="q?", study="naga-studies/x", changes={"goalz": []})
+    assert bad["error"]["code"] == "E_STUDY_BAD_VALUE"
+    assert not (ws.root / "naga-studies" / "x").exists()
+
+
+def test_step_records_changes_then_steps(ws):
+    sid = start(ws)
+    lay = layout(ws)
+    lay["scenarios"] = [{"name": "more", "overrides": {"resources.Server.capacity": 2}}]
+    r = T.call("study_step", study=sid, layout=lay, note="a", changes={"goals": [GOAL], "plan_approved": True})
+    assert "error" not in r, r
+    assert any("overrides" in n for n in r["normalised"])
+    assert T.call("study_status", study=sid)["goals"][0]["id"] == "g1"
+    bad = T.call("study_step", study=sid, layout=layout(ws), note="b", changes={"goalz": []})
+    assert bad["error"]["code"] == "E_STUDY_BAD_VALUE"
+    assert T.call("study_status", study=sid)["versions"] == 1
+
+
+def test_next_step_is_a_ready_to_send_call(ws):
+    sid = start(ws)
+    up = T.call("study_update", study=sid, changes={"decision": "d"})
+    assert f'study_update(study="{sid}", changes=' in up["next_step"]
+
+
+def test_target_component_maps_to_the_block_with_the_same_name(ws):
+    sid = start(ws)
+    lay = layout(ws)
+    name = next(b["name"] for b in lay["blocks"])
+    comp = name.lower().replace("_", " ") if "_" in name else name.swapcase()
+    T.call("study_update", study=sid, changes={"target": [{"name": comp, "purpose": "p"}]})
+    r = T.call("study_step", study=sid, layout=lay, note="a")
+    assert any(name in n for n in r["normalised"]), r.get("normalised")
+    s = json.loads((ws.root / sid / "study.json").read_text(encoding="utf-8"))
+    assert s["target"][0]["blocks"] == [name]
+
+
+def test_step_without_a_layout_points_to_study_update(ws):
+    sid = start(ws)
+    err = T.call("study_step", study=sid, note="n", changes={"decision": "d"})["error"]
+    assert err["code"] == "E_BAD_ARGUMENT" and "study_update(changes=" in err["hint"]
