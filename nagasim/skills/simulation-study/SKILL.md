@@ -40,7 +40,8 @@ A list key replaces the whole list, so send every entry each time.
 
 - goal: `{"id": "g1", "text": "orders wait under 15 min", "kpi": "Packer/Time in Queue Avg", "high": 15}`
   (`low` and/or `high`; a goal without them stays text and is never met);
-- target component: `{"name": "Packing", "purpose": "...", "blocks": ["pack"]}` (blocks once built);
+- `"target"`: a list of components, `[{"name": "Packing", "purpose": "...", "blocks": ["pack"]}]`
+  (blocks once built);
 - assumption: `{"id": "a1", "text": "arrivals are random", "value": "exponential, mean 6 min", "source": "manager"}`;
 - source: `{"id": "s1", "text": "manager's message", "input": "inputs/message.txt"}`;
 - validation: `{"level": "known_answer", "passed": true, "text": "M/G/1 wait vs model"}`
@@ -54,16 +55,28 @@ record in the model. `study_step` answers the KPIs it measured; use those names.
 
 ## Scenarios
 
-Put the alternatives in the model's `scenarios` list, step it, then
-`run_scenarios(model="study:<study id>")` and record the result as an experiment. The size sets the
-replications per step (`study_step` answers how many); for the final comparison, check the confidence
-intervals separate the options before you call one better.
+Put the alternatives in the model file, the base model being the baseline:
+`"scenarios": [{"name": "Two stations", "overrides": [{"path": "resources.Packer.capacity", "value": 2}]}]`.
+Every `study_step` runs them with the same replications and seed and answers, per scenario, each goal
+KPI (mean and confidence half-width) and whether each goal is met. Record the comparison with
+`study_update(changes={"experiments": [...]})`. The size sets the replications and caps the scenarios;
+call one option better only when the intervals separate.
+
+## Modelling notes
+
+- A shift that starts empty and ends is a finite-horizon study: report the shift's averages and say so.
+  A steady-state question (long-run behaviour) needs a long run with a warm-up; the two can differ a lot
+  near full load, so pick the one the decision is about and name it.
+- "How many wait longer than X" needs a statistic the model records (an assignment of the wait and a
+  record of whether it exceeded X); averages hide the tail.
+- A known-answer check: a simplified scenario with a textbook result (a single queue against the M/M/1 or
+  M/G/1 formula, run long) is a good validation at the `known_answer` level.
 
 ## Tools
 
 `study_start`, `study_status`, `study_update`, `study_add_input`, `study_step`, `study_view`,
-`study_show`, `study_revert`, `study_accept` (the person's only), `study_package`; plus the model tools
-(`get_model_format`, `run_scenarios`).
+`study_show`, `study_revert`, `study_accept` (the person's only), `study_package`; plus `get_model_format` for the model
+file's format.
 
 ## Principles
 

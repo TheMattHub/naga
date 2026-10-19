@@ -140,10 +140,28 @@ def test_person_acceptance_is_labelled():
     assert sf["sufficient"] is False and "accepted with open issues: pilot only" in sf["label"]
 
 
+_G = [{"id": "g1", "kpi": "K", "high": 5}]
+
+
 def test_next_step_asks_for_the_plan_card_first_in_one_go():
-    assert "plan card" in study.next_step(_fresh())
-    assert "plan card" not in study.next_step(_fresh(mode="incremental"))
-    assert "plan card" not in study.next_step(_fresh(plan_approved=True))
+    assert "plan card" in study.next_step(_fresh(goals=_G))
+    assert "plan card" not in study.next_step(_fresh(goals=_G, mode="incremental"))
+    assert "plan card" not in study.next_step(_fresh(goals=_G, plan_approved=True))
+
+
+def test_next_step_asks_for_goals_before_showing_an_empty_plan_card():
+    assert "plan card" not in study.next_step(_fresh()) and '"goals"' in study.next_step(_fresh())
+
+
+def test_next_step_maps_blocks_when_components_exist_without_them():
+    nxt = study.next_step(_fresh(goals=_G, plan_approved=True, target=[{"name": "Packer", "purpose": "x"}]))
+    assert "Record the target" not in nxt and '"blocks"' in nxt and "full list" in nxt
+    assert "Record the target" in study.next_step(_fresh(goals=_G, plan_approved=True))
+
+
+def test_experiments_step_says_scenarios_run_with_every_step():
+    todo = study._TODO["experiments"]
+    assert "run_scenarios" not in todo and "every step" in todo
 
 
 def test_next_step_reports_when_sufficient_and_at_the_cap():

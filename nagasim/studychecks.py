@@ -17,14 +17,19 @@ def _mean(entry) -> float | None:
     return entry.get("mean") if isinstance(entry, dict) else None
 
 
-def kpi_mean(digest: dict, kpi: str) -> float | None:
-    """KPI mean from `system`, then `user_stats`, then "<resource>/<column>"."""
+def kpi_entry(digest: dict, kpi: str) -> dict | None:
+    """KPI {mean, ci_half_width} from `system`, then `user_stats`, then "<resource>/<column>"."""
     for section in ("system", "user_stats"):
-        m = _mean((digest.get(section) or {}).get(kpi))
-        if m is not None:
-            return m
+        e = (digest.get(section) or {}).get(kpi)
+        if _mean(e) is not None:
+            return e
     res, _, col = kpi.partition("/")
-    return _mean(((digest.get("resources") or {}).get(res) or {}).get(col))
+    e = ((digest.get("resources") or {}).get(res) or {}).get(col)
+    return e if _mean(e) is not None else None
+
+
+def kpi_mean(digest: dict, kpi: str) -> float | None:
+    return _mean(kpi_entry(digest, kpi))
 
 
 def _laws(digest: dict) -> list[dict]:

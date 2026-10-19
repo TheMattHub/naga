@@ -58,12 +58,16 @@ _TODO = {
                   'study_update(changes={"validation": [{"level": "data|known_answer|expert", '
                   '"passed": true, "text": "what was compared"}]}).',
     "experiments": 'Put the alternatives in the model as scenarios ("scenarios": [{"name": "...", "overrides": '
-                   '[{"path": "resources.<name>.capacity", "value": 2}]}]) and step it with study_step; '
-                   'compare them with run_scenarios(model="study:<study id>"), then record the result with '
+                   '[{"path": "resources.<name>.capacity", "value": 2}]}]) and step it with study_step: the '
+                   'scenarios run with every step and their goal results come back in the answer ("scenarios"). '
+                   'Then record the comparison with '
                    'study_update(changes={"experiments": [{"id": "e1", "text": "...", "result": "..."}]}).',
     "conclusions": "Compare the last version's KPIs with the goals and adjust the model or the goals. "
                    "When the person is satisfied, build the deliverable with study_package.",
 }
+_MAP_BLOCKS = ('Build the components with study_step, then map each to the blocks that model it with '
+               'study_update(changes={"target": [{"name": "...", "blocks": ["<block name>"]}]}), sending the '
+               'full list (a list key is replaced whole).')
 _SUBFOLDERS = ("inputs", "versions", "versions/drafts", "tests", "outputs")
 
 # Required keys and their types; the rest are optional and filled by `load`.
@@ -182,6 +186,14 @@ def _all_or_some(flags: list[bool]) -> str:
     return "passed" if flags and all(flags) else "partial" if any(flags) else "not_verified"
 
 
+def judge(goal: dict, mean: float | None) -> str:
+    """met / not_met / not_verified for one goal against one KPI mean."""
+    if mean is None:
+        return "not_verified"
+    ok = (goal.get("low") is None or mean >= goal["low"]) and (goal.get("high") is None or mean <= goal["high"])
+    return "met" if ok else "not_met"
+
+
 def goals_status(study: dict) -> list[dict]:
     """Each goal met / not_met / not_verified on the last version's KPI means. A goal without
     a KPI (text only) or without a version to look at stays not_verified."""
@@ -191,13 +203,8 @@ def goals_status(study: dict) -> list[dict]:
         kpi, mean = goal.get("kpi"), None
         if last is not None and kpi is not None:
             mean = (last.get("kpis") or {}).get(kpi)
-        if mean is None:
-            status = "not_verified"
-        else:
-            ok = ((goal.get("low") is None or mean >= goal["low"])
-                  and (goal.get("high") is None or mean <= goal["high"]))
-            status = "met" if ok else "not_met"
-        out.append({"id": goal.get("id", f"g{i + 1}"), "text": goal.get("text") or kpi or "", "status": status})
+        out.append({"id": goal.get("id", f"g{i + 1}"), "text": goal.get("text") or kpi or "",
+                    "status": judge(goal, mean)})
     return out
 
 
@@ -307,6 +314,8 @@ def effort(study: dict) -> dict:
 
 def next_step(study: dict, folder: Path | None = None) -> str:
     if study["mode"] == "one_go" and not study["plan_approved"]:
+        if not study["goals"]:      # a plan card without goals is an empty card
+            return _TODO["goals"]
         return ("Show the person the plan card (goals, scope, assumptions, effort) and record their "
                 "approval with study_update(changes={\"plan_approved\": true}).")
     if sufficiency(study)["sufficient"]:
@@ -319,7 +328,8 @@ def next_step(study: dict, folder: Path | None = None) -> str:
         if c["item"] == "inputs" and not study["sources"]:
             continue
         if c["verdict"] != "passed" and c["item"] not in skipped:
-            return _TODO[c["item"]]
+            # Components already recorded: only their blocks are missing, do not ask for the target again.
+            return _MAP_BLOCKS if c["item"] == "scope" and study["target"] else _TODO[c["item"]]
     return "Report the result; offer extensions."
 
 
@@ -345,7 +355,8 @@ def request_key(tool: str, request_id: str | None) -> str | None:
 
 
 def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[dict],
-            kpis: dict, note: str, request_key: str | None, problems: list[dict]) -> dict:
+            kpis: dict, note: str, request_key: str | None, problems: list[dict],
+            scenarios: dict | None = None) -> dict:
     folder = Path(folder)
     keep = verdict in ("passed", "partial")
     last = _last(study)
@@ -360,7 +371,7 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
     changed = flowchart.changed_blocks(lines)    # all of them: "changes" below is capped
     write_json(target / "step.json", {
         "id": vid, "changed": sorted(changed), "note": note, "verdict": verdict, "checks": checks, "kpis": kpis,
-        "changes": lines[:_MAX_CHANGES], "problems": problems,
+        "changes": lines[:_MAX_CHANGES], "problems": problems, **({"scenarios": scenarios} if scenarios else {}),
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     if keep:   # the flowchart shows this step's changes and what of the target is not built yet
         geom = flowchart.geometry(layout, changed,
@@ -369,9 +380,12 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
         write_text(target / "flowchart.txt", flowchart.to_text(geom))
         study["versions"].append({"id": vid, "note": note, "verdict": verdict,
                                   "verification": overall([c for c in checks if c["kind"] != "goal"]),
-                                  "kpis": kpis, "changes_count": len(lines)})
+                                  "kpis": kpis, "changes_count": len(lines),
+                                  **({"scenarios": scenarios} if scenarios else {})})
     answer = {"id": vid, "kind": "version" if keep else "draft", "verdict": verdict, "checks": checks,
               "changes": lines[:_MAX_CHANGES], "kpis": kpis}
+    if scenarios:
+        answer["scenarios"] = scenarios
     if not keep:
         answer["problems"] = problems     # stored with the answer, so a re-issued call returns them
     if request_key is not None:
@@ -381,7 +395,8 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
 
 
 def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, checks: list[dict],
-                note: str, request_id: str | None, problems: list[dict] | None = None) -> dict:
+                note: str, request_id: str | None, problems: list[dict] | None = None,
+                scenarios: dict | None = None) -> dict:
     """Store a step as a version (passed/partial) or a draft (failed). The same `request_id`
     returns the first answer, so a retried call does not record twice."""
     key = request_key("step", request_id)
@@ -396,7 +411,7 @@ def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, ch
         k = goal.get("kpi")
         if digest is not None and k and k not in kpis and (m := kpi_mean(digest, k)) is not None:
             kpis[k] = m
-    return _record(folder, study, layout, verdict, checks, kpis, note, key, problems or [])
+    return _record(folder, study, layout, verdict, checks, kpis, note, key, problems or [], scenarios)
 
 
 def revert(folder: Path, study: dict, version_id: str, note: str, request_id: str | None = None) -> dict:
@@ -413,4 +428,5 @@ def revert(folder: Path, study: dict, version_id: str, note: str, request_id: st
                          "Pick an id from the study's versions list.")
     step = json.loads((old / "step.json").read_text(encoding="utf-8"))
     layout = json.loads((old / "model.json").read_text(encoding="utf-8"))
-    return _record(folder, study, layout, step["verdict"], step["checks"], step["kpis"], note, key, [])
+    return _record(folder, study, layout, step["verdict"], step["checks"], step["kpis"], note, key, [],
+                   step.get("scenarios"))

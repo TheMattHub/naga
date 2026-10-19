@@ -16,13 +16,13 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import flowchart, studypackage, studypage
+from nagasim import experiments, flowchart, studypackage, studypage
 from nagasim import study as study_mod
-from nagasim.studychecks import step_checks
+from nagasim.studychecks import kpi_entry, step_checks
 from nagasim.study import CHECKLIST, LEVELS, MODES, SIZES, StudyError
 from nagasim.twin import write_text
 
-from .core import ToolError, _document_args, call, tool, workspace
+from .core import ToolError, _digest, _document_args, call, tool, workspace
 
 _ID = "Study folder relative to the workspace root (the id study_start returned)."
 _document_args("study_start", question="The decision or question the study answers, in the person's words.",
@@ -119,6 +119,41 @@ def _page(folder: Path, study: dict) -> str | None:
         logging.getLogger(__name__).warning("control room page not written", exc_info=True)
         return None
     return f"{_sid(folder)}/control-room.html"
+
+
+def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | None, dict]:
+    """Run the layout's scenarios (not the baseline: the step just ran it) with the step's
+    replications and seed, from the layout itself so a fresh process needs no model slot.
+    Answers ({name: {"kpis": {goal kpi: {mean, ci_half_width}}, "goals": {goal id: verdict}}} or
+    None, extra answer keys). A failing scenario run is reported, never fails the step."""
+    names = [sc.get("name") for sc in layout.get("scenarios") or [] if isinstance(sc, dict) and sc.get("name")]
+    extra: dict = {}
+    cap = SIZES[s["size"]]["scenarios"]
+    if len(names) > cap:
+        extra["scenarios_skipped"] = (f"size {s['size']} runs at most {cap} scenarios; not run: "
+                                      + ", ".join(names[cap:]))
+        names = names[:cap]
+    if not names:
+        return None, extra
+    try:
+        run = experiments.run_scenarios(layout, names, replications=n, seed=seed, baseline=False)
+    except Exception as exc:    # an override that does not apply, a run error: the base step stands
+        logging.getLogger(__name__).warning("study scenarios failed", exc_info=True)
+        extra["scenario_error"] = f"{type(exc).__name__}: {exc}"
+        return None, extra
+    out = {}
+    for name, results in run.results.items():
+        digest = _digest(results)
+        kpis, verdicts = {}, {}
+        for i, g in enumerate(s["goals"]):
+            e = kpi_entry(digest, g["kpi"]) if g.get("kpi") else None
+            if e is not None:
+                kpis[g["kpi"]] = {k: e[k] for k in ("mean", "ci_half_width") if e.get(k) is not None}
+            verdicts[g.get("id", f"g{i + 1}")] = study_mod.judge(g, e["mean"] if e else None)
+        out[name] = {"kpis": kpis, "goals": verdicts}
+    if not run.completed:
+        extra["scenario_error"] = "the scenario run did not finish"
+    return out or None, extra
 
 
 def _slug(text: str) -> str:
@@ -340,16 +375,24 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
 
     The study's size sets the replications (quick 5, standard 10, deep 30); the model's own
     simulation.replications is not used, so steps stay cheap and comparable. For tighter
-    numbers raise the size, or run run_model / run_scenarios on model "study:<study id>".
+    numbers raise the size.
+
+    The model's "scenarios" (a list of {"name", "overrides": [{"path":
+    "resources.<name>.capacity", "value": 2}]}) run with the step, with the same replications
+    and seed, up to the size's cap; their goal KPIs and goals met come back in "scenarios".
 
     Returns {"id", "kind": "version"|"draft", "verdict", "checks", "changes", "kpis",
-    "replications", "sufficiency", "next_step"}; a version also has its report at versions/<id>/report.html.
+    "replications", "sufficiency", "next_step"}; a version also has its report at
+    versions/<id>/report.html. With scenarios: "scenarios": {name: {"kpis": {goal KPI: {mean,
+    ci_half_width}}, "goals": {goal id: met|not_met|not_verified}}}, and "scenario_error" or
+    "scenarios_skipped" when a run failed or the cap cut some.
     """
     started = time.monotonic()
     folder, s = _open(study)
     key = study_mod.request_key("step", request_id)
     cached = key is not None and key in s["requests"]
-    digest = rerun = None
+    digest = rerun = scenarios = None
+    extra: dict = {}
     problems: list = []
     n = SIZES[s["size"]]["replications"]
     if not cached:
@@ -369,9 +412,12 @@ def study_step(study: str, layout: dict, note: str, request_id: str | None = Non
                 if r is not None and "error" in r:
                     problems, digest, rerun = [r["error"]], None, None
                     break
+            if digest is not None:
+                scenarios, extra = _run_scenarios(layout, s, n, seed)
     checks = step_checks(layout, digest, rerun, s) if digest is not None else []
     _log(s, "study_step", started)
-    answer = dict(study_mod.record_step(folder, s, layout, digest, checks, note, request_id, problems))
+    answer = dict(study_mod.record_step(folder, s, layout, digest, checks, note, request_id, problems, scenarios))
+    answer.update({k: v for k, v in extra.items() if k not in answer})
     if answer["kind"] == "version" and not cached:
         err = _store(folder, answer["id"])
         if err:

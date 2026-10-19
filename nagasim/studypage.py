@@ -73,6 +73,16 @@ def _validation_level(study: dict) -> str:
     return next((lv for lv in reversed(study_mod.LEVELS) if lv in passed), "none recorded").replace("_", " ")
 
 
+def _scen_line(study: dict) -> str:
+    """'scenarios: A meets 1 of 2; ...' from the last version's scenario results, or ''."""
+    sc = ((study["versions"][-1].get("scenarios") or {}) if study["versions"] else {})
+    parts = []
+    for name, r in sc.items():
+        verdicts = list((r.get("goals") or {}).values())
+        parts.append(f"{esc(name)} meets {verdicts.count('met')} of {len(verdicts)}")
+    return f" Scenarios: {'; '.join(parts)}." if parts else ""
+
+
 def _cover(study: dict, goals: list[dict], steps: dict, study_id: str | None = None) -> str:
     suff = study_mod.sufficiency(study)
     cls = "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait"
@@ -88,7 +98,7 @@ def _cover(study: dict, goals: list[dict], steps: dict, study_id: str | None = N
             + (f'<p>Decision: {esc(study["decision"])}</p>' if study["decision"] else "")
             + f'<div class="banner {cls}">{esc(suff["label"])}</div>'
             f'<p>Goals met: {met} of {len(goals)}. Validation level reached: '
-            f'{esc(_validation_level(study))}. {latest}.</p></section>')
+            f'{esc(_validation_level(study))}. {latest}.{_scen_line(study)}</p></section>')
 
 
 def _status(study: dict, goals: list[dict], folder: Path) -> str:
@@ -130,6 +140,20 @@ def _charts(study: dict) -> str:
     return "".join(f'<div class="flow">{c}</div>' for c in out)
 
 
+def _scenarios(study: dict, sc: dict) -> str:
+    """Scenario x goal KPI table: mean +- CI and whether the goal is met."""
+    rows = []
+    for name, r in sc.items():
+        cells = [esc(name)]
+        for g in study["goals"]:
+            e = (r.get("kpis") or {}).get(g.get("kpi")) or {}
+            ci = f" +- {_num(e['ci_half_width'])}" if e.get("ci_half_width") is not None else ""
+            v = (r.get("goals") or {}).get(g.get("id"), "not_verified")
+            cells.append(f"{_num(e.get('mean'))}{ci} {_badge(v)}" if e else _badge(v))
+        rows.append(cells)
+    return _table(["Scenario"] + [g.get("kpi") or g.get("id", "") for g in study["goals"]], rows)
+
+
 def _version(folder: Path, study: dict, v: dict, step: dict) -> str:
     vid = v["id"]
     model = _read(folder / "versions" / vid / "model.json")
@@ -145,7 +169,8 @@ def _version(folder: Path, study: dict, v: dict, step: dict) -> str:
             + _table(["KPI", "Mean"], [[esc(k), _num(x)] for k, x in all_kpis.items()]) + "</details>")
     return (f'<div class="version" id="{esc(vid)}" data-version="{esc(vid)}"><h3>{esc(vid)} {_badge(v.get("verdict", "not_verified"))}</h3>'
             f'<p>{esc(v.get("note", ""))} <span class="muted">{esc(_when(step.get("at")))}</span></p>'
-            + (f"<ul>{changes}</ul>" if changes else "") + kpis + flow
+            + (f"<ul>{changes}</ul>" if changes else "") + kpis
+            + (_scenarios(study, step["scenarios"]) if step.get("scenarios") else "") + flow
             + f'<p class="muted">To go back, ask: "revert to {esc(vid)}"</p></div>')
 
 

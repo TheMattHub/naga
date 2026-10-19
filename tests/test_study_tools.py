@@ -336,3 +336,52 @@ def test_scenarios_of_a_step_run_on_the_study_slot(ws):
     r = T.call("run_scenarios", model=f"study:{sid}", replications=3)
     assert "error" not in r, r
     assert any(row["scenario"] == "two" for row in r["comparison"])
+
+
+def _with_scenarios(ws, n=2):
+    lay = layout(ws)
+    lay["scenarios"] = [{"name": f"S{i}", "overrides": [{"path": "resources.Server.capacity", "value": 1 + i}]}
+                        for i in range(1, n + 1)]
+    return lay
+
+
+def test_step_runs_scenarios_and_judges_the_goals(ws):
+    sid = start(ws)
+    goals = [GOAL, {"id": "g2", "text": "server busy", "kpi": "Server/Time in Queue Avg", "high": 100}]
+    T.call("study_update", study=sid, changes={"goals": goals})
+    r = T.call("study_step", study=sid, layout=_with_scenarios(ws), note="two scenarios")
+    assert r["kind"] == "version" and "scenario_error" not in r, r
+    assert set(r["scenarios"]) == {"S1", "S2"}
+    s1 = r["scenarios"]["S1"]
+    assert set(s1["goals"]) == {"g1", "g2"} and "mean" in s1["kpis"]["Avg Throughput Time"]
+    assert "ci_half_width" in s1["kpis"]["Avg Throughput Time"]
+    step = json.loads((ws.root / sid / "versions" / "v001" / "step.json").read_text(encoding="utf-8"))
+    study_json = json.loads((ws.root / sid / "study.json").read_text(encoding="utf-8"))
+    assert step["scenarios"] == r["scenarios"] == study_json["versions"][0]["scenarios"]
+    # the page shows the scenario table
+    assert "S2" in (ws.root / sid / "control-room.html").read_text(encoding="utf-8")
+
+
+def test_a_fresh_workspace_steps_with_scenarios(ws):
+    sid = start(ws)
+    T.call("study_update", study=sid, changes={"goals": [GOAL]})
+    T.call("study_step", study=sid, layout=_with_scenarios(ws), note="one")
+    again = T.use_workspace(T.Workspace(ws.root))      # a new process: the model slots are gone
+    r = T.call("study_step", study=sid, layout=_with_scenarios(ws), note="two")
+    assert r["kind"] == "version" and set(r["scenarios"]) == {"S1", "S2"}, r
+    assert again is not ws
+
+
+def test_scenarios_are_capped_by_the_size(ws):
+    sid = start(ws, size="quick")
+    T.call("study_update", study=sid, changes={"goals": [GOAL]})
+    r = T.call("study_step", study=sid, layout=_with_scenarios(ws, 3), note="three")
+    assert set(r["scenarios"]) == {"S1", "S2"} and "S3" in r["scenarios_skipped"]
+
+
+def test_a_bad_scenario_never_fails_the_step(ws):
+    sid = start(ws)
+    lay = layout(ws)
+    lay["scenarios"] = [{"name": "Bad", "overrides": [{"path": "resources.Nope.capacity", "value": 2}]}]
+    r = T.call("study_step", study=sid, layout=lay, note="bad scenario")
+    assert r["kind"] == "version" and "scenario_error" in r and "scenarios" not in r

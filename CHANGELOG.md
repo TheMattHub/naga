@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Study tools: the scenarios in the model run with every `study_step` (same replications and seed, capped by the study size) and come back judged against the goals, per scenario; the control room shows them. The study guide says how to write them and when a shift study differs from a steady-state one.
 - Study tools, after an assistant ran a whole study through them: `next_step` names the real `study_update(changes={...})` call; a validation entry needs `level` and `passed: true|false` and is refused otherwise, with an example; an unmet goal no longer fails verification; goals on statistics the model records are counted on the cover; `study_step` reports the replications it used, which the study size sets.
 - AI-run studies have a study guide for assistants: an Agent Skills folder (protocol, an interview in rounds adapted from mattpocock/skills, the study steps with their sources) that `naga skill` shows or copies and the MCP server offers as the `run_simulation_study` and `study_interview` prompts.
 - AI-run studies in the chat: in assistants that support MCP Apps (needs the `mcp` 2.x SDK), `study_show` opens the control room inside the chat, with buttons to go back to an earlier version and to accept the study with a reason; elsewhere it answers a short summary and the page's path.

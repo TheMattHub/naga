@@ -106,3 +106,16 @@ def test_large_study_stays_small_and_fast(tmp_path):
     took = time.perf_counter() - t0
     print(f"large page: {len(page) / 1e6:.2f} MB in {took:.2f} s")
     assert len(page) < 5_000_000 and took < 5
+
+
+def test_page_shows_scenario_results_per_goal(tmp_path):
+    goals = [{"id": "g1", "text": "Throughput", "kpi": "Throughput", "low": 5}]
+    folder, st = _new(tmp_path, goals=goals)
+    sc = {"Fast": {"kpis": {"Throughput": {"mean": 8.0, "ci_half_width": 0.5}}, "goals": {"g1": "met"}},
+          "Slow": {"kpis": {"Throughput": {"mean": 3.0}}, "goals": {"g1": "not_met"}}}
+    study.record_step(folder, st, _layout("a"), _digest(), _OK, "first", None, scenarios=sc)
+    page = studypage.render(folder, st)
+    tl = _timeline(page)
+    assert "<th>Scenario</th>" in tl and "8 +- 0.5" in tl and "Slow" in tl and "not met" in tl
+    cover = page.split('id="cover"')[1].split("</section>")[0]
+    assert "Scenarios: Fast meets 1 of 1; Slow meets 0 of 1." in cover
