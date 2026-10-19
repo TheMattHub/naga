@@ -1,4 +1,5 @@
 """The animated GIF of a study run (nagasim/studyanim.py, tool study_animation)."""
+import importlib.util
 import json
 import shutil
 import sys
@@ -24,6 +25,8 @@ def study(tmp_path):
     return ws, sid
 
 
+@pytest.mark.skipif(importlib.util.find_spec("matplotlib") is None,
+                    reason="the animation needs the optional nagasim[plot] extra")
 def test_gif_has_magic_frames_and_size_cap(study):
     ws, sid = study
     r = T.call("study_animation", study=sid)

@@ -34,11 +34,15 @@ def _imports():
     return FigureCanvasAgg, Figure, Rectangle, Image
 
 
-def _record(layout: dict, scenario: str | None, seed: int) -> tuple[dict, TraceRecorder]:
+def _check_scenario(layout: dict, scenario: str | None) -> None:
     if scenario:
         names = [s.get("name") for s in layout.get("scenarios") or [] if isinstance(s, dict)]
         if scenario not in names:
             raise StudyError("E_STUDY_BAD_VALUE", f"no scenario {scenario!r}", f"Use one of {names}.")
+
+
+def _record(layout: dict, scenario: str | None, seed: int) -> tuple[dict, TraceRecorder]:
+    if scenario:
         layout = experiments._scenario_layouts(layout, [scenario], baseline=False)[scenario]
     _n, length, warm = experiments._window(layout, 1, None, None)
     recorder = TraceRecorder()
@@ -99,10 +103,11 @@ def gif(folder, study: dict, version: str | None = None, scenario: str | None = 
     """Write `versions/<id>/animation.gif` (<= MAX_BYTES, <= MAX_WIDTH px wide) and answer (its path, the frame count used).
     The run is the version's first replication (its stored seed), so the same folder gives the
     same animation."""
-    parts = _imports()
     folder, frames = Path(folder), max(int(frames), 2)
     base = folder / "versions" / version_id(study, version)
     layout = json.loads((base / "model.json").read_text(encoding="utf-8"))
+    _check_scenario(layout, scenario)
+    parts = _imports()      # after the arguments: a bad version or scenario is refused with or without the extra
     seed = (json.loads((base / "step.json").read_text(encoding="utf-8"))).get("seed") or 0
     layout, recorder = _record(layout, scenario, seed)
     timeline = Timeline(recorder.events)
