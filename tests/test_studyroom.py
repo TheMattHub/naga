@@ -11,6 +11,7 @@ import pytest
 
 from nagasim import agent_tools as T
 from nagasim import studyroom
+from nagasim import study as study_mod
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -142,6 +143,19 @@ def test_room_url_is_registered(room):
     assert T.call("study_status", study=room.sid)["room_url"] == room.url(room.sid)
     room.stop()
     assert studyroom.url_for(room.sid) is None
+
+
+def test_the_token_is_never_written_to_disk(room):
+    # A study folder gets zipped and shared: the page file and the writer lock hold the address only.
+    T.call("study_update", study=room.sid, plan_approved=True)
+    folder = room.root / room.sid
+    from nagasim.agent_tools import study as study_tools
+    study_tools._page(folder, study_mod.load(folder))
+    study_mod.claim(folder, room=room.address(room.sid))
+    for name in ("control-room.html", ".naga-writer"):
+        text = (folder / name).read_text(encoding="utf-8")
+        assert room.token not in text, name
+    assert room.address(room.sid) in (folder / "control-room.html").read_text(encoding="utf-8")
 
 
 def test_mcp_room_flag_is_cli_only():

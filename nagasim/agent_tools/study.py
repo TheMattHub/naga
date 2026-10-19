@@ -142,7 +142,8 @@ def _page(folder: Path, study: dict) -> str | None:
     version, so it answers None and the step still succeeds."""
     try:
         write_text(folder / "control-room.html",
-                   studypage.render(folder, study, room_url=studyroom.url_for(_sid(folder))))
+                   # the file may be shared: the room's address without its token
+                   studypage.render(folder, study, room_url=(studyroom.url_for(_sid(folder)) or "").split("?")[0] or None))
     except Exception:   # a hand-edited record that does not render must not fail a recorded step
         logging.getLogger(__name__).warning("control room page not written", exc_info=True)
         return None

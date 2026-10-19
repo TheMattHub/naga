@@ -189,7 +189,12 @@ class Room:
             self._server.server_close()
 
     def url(self, study_id: str) -> str:
-        return f"http://127.0.0.1:{self.port}/s/{quote(study_id, safe='')}/?t={self.token}"
+        return f"{self.address(study_id)}?t={self.token}"
+
+    def address(self, study_id: str) -> str:
+        """The room's address without its token: what may be written to disk (a study folder gets
+        zipped and shared); a browser that opened the tokened link once has the cookie for it."""
+        return f"http://127.0.0.1:{self.port}/s/{quote(study_id, safe='')}/"
 
     def folder(self, study_id: str) -> Path:
         folder = (self.root / study_id).resolve()
@@ -452,12 +457,13 @@ def main(argv=None) -> int:
     room = Room(root, threading.Lock(), provider=provider, key=key)
     room.start()
     try:
-        study_mod.claim(folder, room=room.url(sid))
+        study_mod.claim(folder, room=room.address(sid))
     except study_mod.StudyError as exc:
         room.stop()
         held = _held(folder)
         if held.get("room"):
-            print(f"This study's room is already running: {held['room']}")
+            print(f"This study's room is already running at {held['room']}: open the link the first "
+                  "naga room printed (its key is not stored on disk).")
             return 0
         sys.stderr.write(f"naga room: {exc} {exc.hint}\n")
         return 1
