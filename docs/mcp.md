@@ -28,8 +28,9 @@ same entry:
 ```
 
 Any other MCP client that starts a stdio server works the same way. Restart the client after
-editing its configuration. To help the assistant pick the right tool with a small local model, add
-`--tool-picker gte` (optional, off by default; see [Pick tools with a small model](tool-picker.md)).
+editing its configuration. To help the assistant pick the right tool, add `--tool-picker gte` (a
+small local model) or `--tool-picker haiku` (hosted Claude Haiku, needs `ANTHROPIC_API_KEY`); both
+are optional and off by default (see [Pick tools with a small model](tool-picker.md)).
 
 Besides the tools the server publishes:
 

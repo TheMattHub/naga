@@ -20,6 +20,7 @@ import ipaddress
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit, urlunsplit
@@ -128,6 +129,21 @@ def _check_key(key: str | None) -> None:
         raise LLMError("the API key contains a space, a line break or a control character")
 
 
+def _stored_user_key() -> str:
+    """ANTHROPIC_API_KEY as stored for this Windows user (setx, System Properties), or "".
+    A process started by a parent that predates the setting (a desktop app launched from an old
+    Explorer) never sees it in its environment (#745); the stored value is the same person's own."""
+    if sys.platform != "win32":
+        return ""
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+            value = winreg.QueryValueEx(k, "ANTHROPIC_API_KEY")[0]
+    except OSError:
+        return ""
+    return value if isinstance(value, str) else ""
+
+
 def _check_endpoint(url: str, key: str | None) -> str:
     """The address as it will be contacted, or LLMError. Checked and rebuilt from its parsed
     host and port, so the host that was judged is the host that is contacted (D187). A message
@@ -217,7 +233,8 @@ def resolve_config(*, provider=None, base_url=None, model=None, api_key=None, re
     def pick(flag, name):
         return flag or env.get(f"NAGASIM_LLM_{name}") or ""
 
-    held_anthropic = anthropic_key or env.get("ANTHROPIC_API_KEY") or ""
+    held_anthropic = (anthropic_key or env.get("ANTHROPIC_API_KEY")
+                      or (_stored_user_key() if environ is None else "") or "")
     generic_key = env.get("NAGASIM_LLM_API_KEY") or ""
     chosen = pick(provider, "PROVIDER") or ("anthropic" if held_anthropic else "openai")
     if chosen not in ("anthropic", "openai"):

@@ -375,31 +375,104 @@ _CHAT_BODY = """<section id="naga-chat" aria-label="Assistant">
 <label class="chat-note"><input type="checkbox" id="chat-aloud"> Read answers aloud</label></div>
 </section>"""
 
+_TEXT = r"""  // The assistant's answer is model output: a small Markdown subset (paragraphs, line breaks,
+  // **bold**, *italic*, `code`, - and 1. lists) built with createElement and text nodes only. No
+  // markup parsing, no links, images or HTML: a URL or a tag stays plain text.
+  var INLINE = /\*\*([^*\n]+)\*\*|\*([^*\s][^*\n]*)\*|`([^`\n]+)`/g;
+  function inline(parent, text) {
+    var last = 0, m;
+    INLINE.lastIndex = 0;
+    while ((m = INLINE.exec(text))) {
+      if (m.index > last) { parent.appendChild(document.createTextNode(text.slice(last, m.index))); }
+      var el = document.createElement(m[1] != null ? "strong" : m[2] != null ? "em" : "code");
+      el.textContent = m[1] != null ? m[1] : m[2] != null ? m[2] : m[3];
+      parent.appendChild(el);
+      last = INLINE.lastIndex;
+    }
+    if (last < text.length) { parent.appendChild(document.createTextNode(text.slice(last))); }
+  }
+  function markdown(el, text) {
+    el.textContent = "";
+    var para = null, list = null, listTag = "";
+    text.split("\n").forEach(function (row) {
+      var item = /^\s*(?:([-*])|\d+[.)])\s+(.*)$/.exec(row);
+      if (!row.trim()) { para = list = null; return; }
+      if (item) {
+        var tag = item[1] ? "ul" : "ol";
+        if (!list || listTag !== tag) { list = el.appendChild(document.createElement(tag)); listTag = tag; }
+        para = null;
+        inline(list.appendChild(document.createElement("li")), item[2]);
+        return;
+      }
+      list = null;
+      if (para) { para.appendChild(document.createElement("br")); }
+      else { para = el.appendChild(document.createElement("p")); }
+      inline(para, row);
+    });
+  }
+  // What is read aloud: the text without its Markdown marks.
+  function plain(text) { return text.replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, "").replace(/[*`]/g, ""); }
+  // ponytail: stopword counts tell six languages apart on a few sentences; a short or mixed answer
+  // can be guessed wrong (ties go to English). Use a real detector if more languages are needed.
+  var STOP = { en: "the and is are of to that it for with this you",
+               it: "il che di non per una sono della con questo anche gli",
+               de: "der die und ist nicht das ein mit sich auch zu den",
+               fr: "les et est des une pas que pour dans sur avec qui",
+               es: "el los que es por una para con las del como pero",
+               nl: "het een en is niet van dat op voor met zijn ook" };
+  function language(text) {
+    var words = text.toLowerCase().match(/[a-z\u00e0-\u00fc]+/g) || [], best = "en", top = 0;
+    Object.keys(STOP).forEach(function (code) {
+      var set = STOP[code].split(" "), n = 0;
+      words.forEach(function (w) { if (set.indexOf(w) >= 0) { n++; } });
+      if (n > top) { best = code; top = n; }
+    });
+    return best;
+  }
+  // A voice of that language, a natural then a local one first; none rather than a wrong one.
+  function voiceFor(code, voices) {
+    var same = voices.filter(function (v) { return (v.lang || "").toLowerCase().indexOf(code) === 0; });
+    return same.filter(function (v) { return /natural/i.test(v.name); })[0]
+      || same.filter(function (v) { return v.localService; })[0] || same[0] || null;
+  }
+"""
+
 _CHAT = r"""  var since = 0, turn = null;
   var logEl = document.getElementById("chat-log"), inEl = document.getElementById("chat-in");
   var sendEl = document.getElementById("chat-send"), stopEl = document.getElementById("chat-stop");
   var micEl = document.getElementById("chat-mic"), aloudEl = document.getElementById("chat-aloud");
-  var answerEl = null, lastAnswer = null;
-  function line(cls, text) {
-    var p = document.createElement("p");
+  var answerEl = null, answerText = "", lastAnswer = "", toolEl = null;
+  function line(cls, text, tag) {
+    var p = document.createElement(tag || "p");
     p.className = cls;
     p.textContent = text;
     logEl.appendChild(p);
     logEl.scrollTop = logEl.scrollHeight;
     return p;
   }
+  function speak(text) {
+    var code = language(text), voice = voiceFor(code, window.speechSynthesis.getVoices());
+    if (!voice) { return; }     // the default voice follows the OS language, not the answer's
+    var u = new SpeechSynthesisUtterance(plain(text));
+    u.lang = voice.lang;
+    u.voice = voice;
+    window.speechSynthesis.speak(u);
+  }
   function show(ev) {
     if (ev.kind === "user") { answerEl = null; line("chat-user", "You: " + ev.text); }
     else if (ev.kind === "text") {
-      if (!answerEl) { answerEl = lastAnswer = line("chat-answer", ""); }
-      answerEl.textContent += ev.text;
+      // Streaming: the turn's whole text is rendered again as it grows (a mark may close later).
+      if (!answerEl) { answerEl = line("chat-answer", "", "div"); answerText = ""; }
+      answerText += ev.text;
+      lastAnswer = answerText;
+      markdown(answerEl, answerText);
       logEl.scrollTop = logEl.scrollHeight;
-    } else if (ev.kind === "tool") { answerEl = null; line("chat-tool", ev.text + "..."); }
-    else if (ev.kind === "error") { answerEl = null; line("chat-error", ev.text); }
+    } else if (ev.kind === "tool") { answerEl = null; toolEl = line("chat-tool", ev.text + "..."); }
+    else if (ev.kind === "tool_failed") {
+      if (toolEl) { toolEl.textContent = toolEl.textContent.replace(/\.\.\.$/, "") + ": " + ev.text; }
+    } else if (ev.kind === "error") { answerEl = null; line("chat-error", ev.text); }
     else if (ev.kind === "done") {
-      if (aloudEl.checked && lastAnswer && window.speechSynthesis) {
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(lastAnswer.textContent));
-      }
+      if (aloudEl.checked && lastAnswer && window.speechSynthesis) { speak(lastAnswer); }
       answerEl = null;
     }
   }
@@ -437,6 +510,12 @@ _CHAT = r"""  var since = 0, turn = null;
     inEl.value = "";
     chatSend(text);
   };
+  // Enter sends, Shift+Enter is a new line; not while an input method composes a character.
+  inEl.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) { return; }
+    ev.preventDefault();
+    if (!sendEl.disabled) { sendEl.onclick(); }
+  });
   stopEl.onclick = function () { post("./api/chat/stop", {}).catch(function () {}); };
   var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (Recognition) {
@@ -444,7 +523,7 @@ _CHAT = r"""  var since = 0, turn = null;
     document.getElementById("chat-mic-note").hidden = false;
     micEl.onclick = function () {
       var rec = new Recognition();
-      rec.lang = navigator.language || "en-US";
+      rec.lang = lastAnswer ? language(lastAnswer) : (navigator.language || "en-US");
       rec.interimResults = true;
       rec.onresult = function (ev) {
         var text = "", final = false;
@@ -459,6 +538,7 @@ _CHAT = r"""  var since = 0, turn = null;
       rec.start();
     };
   }
+  if (window.speechSynthesis) { window.speechSynthesis.getVoices(); }   // some browsers load them late
   // A reload of the page keeps the conversation: show what the room already holds, and follow a
   // turn that is still running.
   follow();
@@ -471,5 +551,5 @@ HTML = _TEMPLATE.replace("/*TRANSPORT*/", _HOST).replace("/*STYLE*/\n", "").repl
 def room_html() -> str:
     """The shell for the browser room: the same client over fetch, polling for changes, with the
     room's assistant panel."""
-    return (_TEMPLATE.replace("/*TRANSPORT*/", _ROOM.replace("/*CHAT*/\n", _CHAT))
+    return (_TEMPLATE.replace("/*TRANSPORT*/", _ROOM.replace("/*CHAT*/\n", _TEXT + _CHAT))
             .replace("/*STYLE*/", _CHAT_STYLE).replace("/*BODY*/", _CHAT_BODY))

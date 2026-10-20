@@ -119,9 +119,12 @@ def _linked(fn):
     return run
 
 
-def _log(study: dict, name: str, started: float) -> None:
-    study["usage"].append({"tool": name, "seconds": round(time.monotonic() - started, 3),
-                           "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+def _log(study: dict, name: str, started: float, error: str | None = None) -> None:
+    row = {"tool": name, "seconds": round(time.monotonic() - started, 3),
+           "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    if error:       # a step stored as a draft: why it took no time
+        row["error"] = error
+    study["usage"].append(row)
 
 
 def _save(folder: Path, study: dict) -> None:
@@ -647,7 +650,7 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                 scenarios, extra = _run_scenarios(layout, s, n, seed)
     checks = (step_checks(layout, digest, rerun, s, {"status": status, "n": n, "cap": cap}, first)
               if digest is not None else [])
-    _log(s, "study_step", started)
+    _log(s, "study_step", started, study_mod.error_code(problems) if problems else None)
     run = {"replications": n, "seed": seed, "precision": status, "precision_note": study_mod.precision_sentence(n, status, cap)}
     answer = dict(study_mod.record_step(folder, s, layout, digest, checks, note, request_id, problems, scenarios,
                                         run))

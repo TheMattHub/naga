@@ -466,6 +466,16 @@ def _no_real_qsettings(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _find_tool_state():
+    """find_tool's process-wide state (the tools a server exposes, the tool picker) starts and ends
+    clean: a test that built a `--tools compact` server left its subset for the next test on the worker."""
+    from nagasim.agent_tools import discover
+    yield
+    discover.exposed = None
+    discover.picker = None
+
+
+@pytest.fixture(autouse=True)
 def _no_real_llm(monkeypatch):
     """Tests never reach a real model: the local default points at the discard port and no
     key or provider setting leaks in from the developer's shell."""
@@ -473,6 +483,8 @@ def _no_real_llm(monkeypatch):
     for name in ("ANTHROPIC_API_KEY", "NAGASIM_LLM_API_KEY", "NAGASIM_LLM_PROVIDER",
                  "NAGASIM_LLM_MODEL", "NAGASIM_LLM_REASONING"):
         monkeypatch.delenv(name, raising=False)
+    from nagasim import llm
+    monkeypatch.setattr(llm, "_stored_user_key", lambda: "")    # nor the key stored for the Windows user (#745)
 
 
 # ---------------------------------------------------------------- live connectivity (PHASE7 7.8)

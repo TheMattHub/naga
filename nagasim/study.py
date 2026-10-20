@@ -525,6 +525,13 @@ def _next_id(parent: Path, prefix: str) -> str:
     return f"{prefix}{max(nums, default=0) + 1:03d}"
 
 
+def error_code(problems) -> str:
+    """The first error code of a draft's problems (a validation lists warnings too), for the panel
+    and the usage log."""
+    codes = [p.get("code", "") for p in problems or () if isinstance(p, dict)]
+    return next((c for c in codes if c.startswith("E_")), codes[0] if codes else "error")
+
+
 def request_key(tool: str, request_id: str | None) -> str | None:
     """Stored answers are keyed by tool, so a revert reusing a step's id is not a replay."""
     return None if request_id is None else f"{tool}:{request_id}"

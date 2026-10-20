@@ -409,10 +409,12 @@ def add_arguments(parser) -> None:
     parser.add_argument("--room", action="store_true",
                         help="also serve the live control room of the studies on 127.0.0.1 (a random "
                              "port and token); every study answer then carries its address")
-    parser.add_argument("--tool-picker", dest="tool_picker", choices=("gte",), default=None,
-                        help="re-rank find_tool's answers with a small local model (off by default; "
+    parser.add_argument("--tool-picker", dest="tool_picker", choices=("gte", "haiku"), default=None,
+                        help="re-rank find_tool's answers (off by default). gte: a small local model, "
                              "needs nagasim[picker], and the first use downloads the weights from "
-                             "Hugging Face). find_tool then says to try its first three in order")
+                             "Hugging Face. haiku: hosted Claude Haiku, needs nagasim[assistant] and "
+                             "ANTHROPIC_API_KEY; each find_tool query and the tool catalogue go to "
+                             "Anthropic. find_tool then says to try its first three in order")
     parser.add_argument("--twin", dest="twin_dir", default=None, metavar="DIR",
                         help="the result directory of a twin you started (naga twin run "
                              "--out DIR): two read-only tools then answer from it. No tool "
@@ -424,7 +426,10 @@ def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIO
     from nagasim import toolpicker
     from nagasim.agent_tools import discover
     try:
-        discover.use_picker(getattr(args, "tool_picker", None))     # D671: the caller's choice, loaded once
+        if getattr(args, "tool_picker", None):      # D671: the caller's choice, loaded once, after the handshake (#746)
+            discover.use_picker_soon(args.tool_picker)
+        else:
+            discover.use_picker(None)
     except toolpicker.PickerUnavailable as exc:
         print(str(exc))
         return 1

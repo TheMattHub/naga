@@ -114,15 +114,32 @@ class StudyAdapter:
                                          "send the arguments as one JSON object").as_dict()
         if self.on_tool is not None:
             self.on_tool(name)
-        return self._call(name, arguments)
+        out = self._call(name, arguments)
+        if self.on_tool is not None and (failed := _failure(out)):
+            self.on_tool(name, failed)
+        return out
 
     def _call(self, name: str, arguments: dict) -> dict:
         from nagasim import agent_tools
         with self.lock, agent_tools.python_consent_dropped():
-            return agent_tools.call(name, **{**arguments, "study": self.study_id})
+            out = agent_tools.call(name, **{**arguments, "study": self.study_id})
+        # The person is in the room already: its link (token included) is not the assistant's to paste.
+        return {k: v for k, v in out.items() if k not in ("room_url", "page_url")} if isinstance(out, dict) else out
 
     def model_summary(self) -> dict:
         return self._call("study_status", {})
+
+
+def _failure(out) -> str | None:
+    """'refused (E_CODE)' for a refused call, 'draft (E_CODE)' for a step stored as a draft, else None."""
+    if not isinstance(out, dict):
+        return None
+    if isinstance(out.get("error"), dict):
+        return f"refused ({out['error'].get('code', 'error')})"
+    if out.get("kind") == "draft":
+        from nagasim import study as study_mod
+        return f"draft ({study_mod.error_code(out.get('problems'))})"
+    return None
 
 
 class _Chat:
@@ -227,11 +244,16 @@ class Room:
         streamed = []
         try:
             if chat.session is None:
-                adapter = StudyAdapter(self.root, sid, self.lock,
-                                       on_tool=lambda n: chat.add("tool", _PURPOSE.get(n, "Working")))
+                def on_tool(name, failed=None):
+                    if failed:
+                        chat.add("tool_failed", failed)
+                    else:
+                        chat.add("tool", _PURPOSE.get(name, "Working"))
+                adapter = StudyAdapter(self.root, sid, self.lock, on_tool=on_tool)
                 system = (f"You run the simulation study in the folder {sid!r} for the person, from its live "
                           "control room. Pass that folder as `study` to every tool. Answer in plain words, "
-                          "briefly; the page shows the numbers.\n\n" + study_mod.skill_text())
+                          "briefly; the page shows the numbers. The person is reading this in the room "
+                          "already: never give them its link or address.\n\n" + study_mod.skill_text())
                 chat.session = assistant.AssistantSession(
                     adapter, self.provider, system=system, select_tools=lambda kind, extra: adapter.names)
 

@@ -82,7 +82,9 @@ def index(specs: list[dict]) -> Index:
 
 def search(index: Index, query: str, limit: int = 5, choices: set[str] | None = None, rerank=None) -> list[dict]:
     """The best `limit` tools for `query` as [{name, score, summary, args}], best first, ties by name.
-    `choices` restricts the answer to those names; `rerank(query, candidates)` may reorder the top ten."""
+    `choices` restricts the answer to those names; `rerank(query, candidates)` may reorder the top ten,
+    or every allowed tool (a tool BM25 scored 0 has score 0) when it declares `pool = "all"`."""
+    everything = getattr(rerank, "pool", "top") == "all"
     query_terms = set(tokens(query))
     if not query_terms:
         return []
@@ -98,10 +100,10 @@ def search(index: Index, query: str, limit: int = 5, choices: set[str] | None = 
         score += 1.0 * len(query_terms & d["name_tokens"]) / max(len(query_terms), len(d["name_tokens"]))   # a name that IS the query
         if squashed == d["name"].replace("_", ""):
             score += 100.0
-        if score > 0:
+        if score > 0 or everything:
             found.append({"name": d["name"], "score": round(score, 3), "summary": d["summary"], "args": d["args"]})
     found.sort(key=lambda c: (-c["score"], c["name"]))
-    top = found[:max(limit, 10)]
+    top = found if everything else found[:max(limit, 10)]
     if rerank is not None:
         top = list(rerank(query, top))
     return top[:limit]

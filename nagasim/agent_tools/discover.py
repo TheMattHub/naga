@@ -1,6 +1,9 @@
 """find_tool: search the tool catalogue by intent (nagasim.toolsearch)."""
 from __future__ import annotations
 
+import logging
+import threading
+
 from nagasim import toolsearch
 
 from .core import TOOLS, tool
@@ -9,7 +12,7 @@ from .core import TOOLS, tool
 exposed: frozenset[str] | None = None
 _INDEX: tuple[int, toolsearch.Index] | None = None
 # The optional re-ranking model (nagasim.toolpicker), one per process, set only by whoever starts the
-# server (`naga mcp --tool-picker`, D671); None = find_tool's own order, its answer unchanged.
+# server (`naga mcp --tool-picker`, D671, D672); None = find_tool's own order, its answer unchanged.
 picker = None
 
 
@@ -36,7 +39,7 @@ def find_tool(query: str, limit: int = 5) -> dict:
 
 
 def use_picker(name: str | None) -> None:
-    """Load the picker `name` ("gte") for this process, or turn it off with None. Raises
+    """Load the picker `name` ("gte" or "haiku") for this process, or turn it off with None. Raises
     toolpicker.PickerUnavailable at once, so a missing package stops the server at startup."""
     global picker
     if name is None:
@@ -46,3 +49,21 @@ def use_picker(name: str | None) -> None:
     docs = {t.name: toolpicker.document({"name": t.name, "description": t.description, "input_schema": t.input_schema})
             for t in TOOLS.values()}
     picker = toolpicker.load(name, lambda n: docs.get(n, n))
+
+
+def use_picker_soon(name: str) -> threading.Thread:
+    """`use_picker` for a server that must answer its client at once (#746): the quick checks run
+    now and raise PickerUnavailable; the model loads in a daemon thread, and until it is ready
+    find_tool answers in its own order. A load that fails there is logged and leaves it off."""
+    from nagasim import toolpicker
+    toolpicker.check(name)
+
+    def load():
+        try:
+            use_picker(name)
+        except Exception as exc:    # the server keeps serving; find_tool's own order is a valid answer
+            logging.getLogger(__name__).warning("tool picker %s not loaded: %s", name, type(exc).__name__)
+
+    thread = threading.Thread(target=load, name="tool-picker", daemon=True)
+    thread.start()
+    return thread
