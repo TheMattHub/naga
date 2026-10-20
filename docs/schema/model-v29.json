@@ -408,7 +408,7 @@
       "oneOf": [
         {
           "title": "Bernoulli",
-          "description": "Yes/no decisions, e.g. reject/accept, pass/fail. Param: p (success probability) in [0, 1].",
+          "description": "A single yes/no outcome with a given probability, such as accept or reject, pass or fail, or rework or not. Param: p (success probability) in [0, 1].",
           "type": "object",
           "properties": {
             "distribution": {
@@ -456,7 +456,7 @@
         },
         {
           "title": "Beta",
-          "description": "Useful for bounded times or probabilities. Params: alpha, beta > 0; min < max.",
+          "description": "A value between a minimum and a maximum with a flexible shape, such as a fraction, a proportion or a bounded time. Params: alpha, beta > 0; min < max.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -540,7 +540,7 @@
         },
         {
           "title": "Binomial",
-          "description": "Fixed-number trials with success/failure outcomes. Params: n (trials) >= 0, p in [0, 1].",
+          "description": "Count of successes (for example defective parts) in a fixed number of independent trials. Params: n (trials) >= 0, p in [0, 1].",
           "type": "object",
           "properties": {
             "distribution": {
@@ -600,7 +600,7 @@
         },
         {
           "title": "BoundedNormal",
-          "description": "Normal distribution bounded within a range; useful for processes with natural limits, such as delays. Params: mean (central value), stddev (standard deviation) > 0; min < max.",
+          "description": "Bell-shaped variation around an average, cut off at a minimum and a maximum so a time cannot go negative or beyond a physical limit. Params: mean (central value), stddev (standard deviation) > 0; min < max.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -684,7 +684,7 @@
         },
         {
           "title": "Cauchy",
-          "description": "Heavy-tailed distribution for outlier-sensitive systems (rare); often returns negative values. Params: x0 (location), gamma (scale) > 0.",
+          "description": "Very heavy-tailed values with frequent extreme outliers in both directions; rarely right for times, and it often returns negative values. Params: x0 (location), gamma (scale) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -744,7 +744,7 @@
         },
         {
           "title": "ChiSquare",
-          "description": "Used mostly for statistical diagnostics. Param: df (degrees of freedom) >= 1.",
+          "description": "Statistical diagnostics and sums of squared normal variations; rarely used for simulation times. Param: df (degrees of freedom) >= 1.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -792,7 +792,7 @@
         },
         {
           "title": "Constant",
-          "description": "Fixed delay or service time, commonly used for deterministic processes. Params: value (fixed duration) >= 0.",
+          "description": "A fixed duration that never varies, for a deterministic service time, transit time or interval. Params: value (fixed duration) >= 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -840,7 +840,7 @@
         },
         {
           "title": "CustomExpression",
-          "description": "Model expression (core/expressions.py grammar). Param: expression (string, e.g. '2 + EXPO(3)').",
+          "description": "Any model expression, for example '2 + EXPO(3)', when no single distribution fits. Param: expression (string, e.g. '2 + EXPO(3)').",
           "type": "object",
           "properties": {
             "distribution": {
@@ -881,7 +881,7 @@
         },
         {
           "title": "DiscreteUniform",
-          "description": "Equal chance of integers between bounds. Params: low (min) <= high (max), integers.",
+          "description": "A whole number between a minimum and a maximum, each equally likely, such as a random lot size from 1 to 6. Params: low (min) <= high (max), integers.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -941,7 +941,7 @@
         },
         {
           "title": "EmpiricalContinuous",
-          "description": "Piecewise-uniform continuous sampling from a histogram: picks a bin by weight, then draws uniformly within it (true continuous, not point resampling). Params: values (float list of bin edges, length = len(probs) + 1), probs (bin weights summing to 1).",
+          "description": "Measured data as a histogram: a bin is picked by its weight, then a value is drawn evenly within it (a continuous draw, not a resample of points). Params: values (float list of bin edges, length = len(probs) + 1), probs (bin weights summing to 1).",
           "type": "object",
           "properties": {
             "distribution": {
@@ -998,7 +998,7 @@
         },
         {
           "title": "EmpiricalDiscrete",
-          "description": "Samples discrete values (integers) from a list with associated probabilities. Params: values (int list), probs (weights summing to 1).",
+          "description": "Whole-number values with their own measured probabilities, such as order sizes or the number of items per job. Params: values (int list), probs (weights summing to 1).",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1054,7 +1054,7 @@
         },
         {
           "title": "Erlang",
-          "description": "Sum of k exponential stages (special case of gamma). Params: k (stages) >= 1, rate (lambda) > 0.",
+          "description": "Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random. Params: k (stages) >= 1, rate (lambda) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1114,7 +1114,7 @@
         },
         {
           "title": "Exponential",
-          "description": "Classic model for memoryless interarrival and failure times. Param: rate (lambda, event rate) > 0.",
+          "description": "Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one. Param: rate (lambda, event rate) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1162,7 +1162,7 @@
         },
         {
           "title": "FixedSchedule",
-          "description": "Step-wise time schedule for entity generation or delays. Param: schedule (ordered list of times).",
+          "description": "Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan. Param: schedule (ordered list of times).",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1206,7 +1206,7 @@
         },
         {
           "title": "Gamma",
-          "description": "Flexible model for skewed service/process times. Params: alpha (shape) > 0, beta (scale) > 0.",
+          "description": "Right-skewed service or processing times that cannot go below zero, from very regular to very variable. Params: alpha (shape) > 0, beta (scale) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1266,7 +1266,7 @@
         },
         {
           "title": "Geometric",
-          "description": "Models number of trials until first success. Param: p in (0, 1].",
+          "description": "Number of attempts until the first success, such as tries before a part passes inspection. Param: p in (0, 1].",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1314,7 +1314,7 @@
         },
         {
           "title": "Hypergeometric",
-          "description": "Sampling without replacement (e.g., quality inspection). Params: N (population) >= K (success states) >= n (sample) >= 0.",
+          "description": "Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample. Params: N (population) >= K (success states) >= n (sample) >= 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1386,7 +1386,7 @@
         },
         {
           "title": "InverseGaussian",
-          "description": "Used in detailed modeling of reaction/decision delays. Params: mu (mean) > 0, lambda (shape) > 0.",
+          "description": "Right-skewed positive times such as a reaction or decision delay, or the time for a drifting quantity to reach a level. Params: mu (mean) > 0, lambda (shape) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1446,7 +1446,7 @@
         },
         {
           "title": "JohnsonSB",
-          "description": "For skewed variables bounded in [min, max] (e.g., fill %). Params: a1, a2 (shape), min < max.",
+          "description": "A skewed value that stays between a minimum and a maximum, such as a yield or fill percentage. Params: a1, a2 (shape), min < max.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1530,7 +1530,7 @@
         },
         {
           "title": "JohnsonSU",
-          "description": "Highly flexible for skewed and kurtotic data fitting; can return negative values. Params: a, b (shape), loc (center), scale > 0.",
+          "description": "A flexible fit for skewed, heavy-tailed data when no simple distribution matches; it can return negative values. Params: a, b (shape), loc (center), scale > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1614,7 +1614,7 @@
         },
         {
           "title": "LogLogistic",
-          "description": "Heavy-tailed alternative to lognormal for skewed durations. Params: c (shape) > 0, scale > 0.",
+          "description": "Right-skewed durations with a heavier tail than lognormal, such as repair or lifetime data that cannot go below zero. Params: c (shape) > 0, scale > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1674,7 +1674,7 @@
         },
         {
           "title": "Lognormal",
-          "description": "Right-skewed times like human handling or picking durations. Params: mu (log-mean), sigma (log-stddev) > 0.",
+          "description": "Right-skewed times that cannot go below zero, such as manual handling, picking or repair durations with an occasional long one. Params: mu (log-mean), sigma (log-stddev) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1734,7 +1734,7 @@
         },
         {
           "title": "NegativeBinomial",
-          "description": "Trials until r successes, with success chance p. Params: r (target successes) >= 1, p in (0, 1].",
+          "description": "Number of failures before a set number of successes, each try with the same chance of success, such as rejected parts before r good ones. Params: r (target successes) >= 1, p in (0, 1].",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1794,7 +1794,7 @@
         },
         {
           "title": "Normal",
-          "description": "Models symmetric variation around a mean (e.g., repair times), can produce negative values unless mean >> 0 and . Params: mean (central value), stddev (standard deviation) > 0.",
+          "description": "Symmetric variation around an average, such as a cycle time that is rarely far from the mean; it can go negative unless the mean is much larger than the spread. Params: mean (central value), stddev (standard deviation) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1854,7 +1854,7 @@
         },
         {
           "title": "PearsonTypeV",
-          "description": "Used for inverse-gamma-shaped delays or failures. Params: a (shape) > 0, scale > 0.",
+          "description": "Right-skewed positive delays or times to failure with a long tail, an alternative to lognormal. Params: a (shape) > 0, scale > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1914,7 +1914,7 @@
         },
         {
           "title": "PearsonTypeVI",
-          "description": "Ratios of gammas (e.g., cost per service); always positive. Can model time if parameters are appropriate. Params: a, b > 0, scale > 0.",
+          "description": "A ratio of two gamma variables, such as cost per service, that is always positive; it can model times when the parameters suit. Params: a, b > 0, scale > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -1986,7 +1986,7 @@
         },
         {
           "title": "Poisson",
-          "description": "Number of arrivals/events in a fixed time window. Param: lambda (average rate) > 0.",
+          "description": "Counts per period, such as the number of arrivals or events in a fixed time window. Param: lambda (average rate) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -2034,7 +2034,7 @@
         },
         {
           "title": "Rayleigh",
-          "description": "Models magnitudes like movement noise or energy. Param: sigma (scale) > 0.",
+          "description": "A positive magnitude such as movement noise or a positioning error, with a single scale parameter. Param: sigma (scale) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -2082,7 +2082,7 @@
         },
         {
           "title": "Triangular",
-          "description": "Used with expert estimates of min, most likely, and max times. Params: low =< mode =< high.",
+          "description": "Min, most likely and max are known, usually from expert estimates when there is no data. Params: low =< mode =< high.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -2154,7 +2154,7 @@
         },
         {
           "title": "Uniform",
-          "description": "Equal probability within a bounded range; used when only min and max are known. Params: low (min) =< high (max), both real numbers.",
+          "description": "Any value between a minimum and a maximum is equally likely; use it when only the min and max are known. Params: low (min) =< high (max), both real numbers.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -2214,7 +2214,7 @@
         },
         {
           "title": "Weibull",
-          "description": "Common for modeling equipment lifetimes and breakdowns. Params: scale (lambda) > 0, shape (k) > 0.",
+          "description": "Equipment lifetimes and time to failure, where the breakdown rate can rise with age (wear-out) or fall (early failures). Params: scale (lambda) > 0, shape (k) > 0.",
           "type": "object",
           "properties": {
             "distribution": {
@@ -2278,7 +2278,7 @@
       "oneOf": [
         {
           "title": "ASSIGN",
-          "description": "Ordered list of assignments: each is `{\"target\": \"entity.<attr>\" | \"entity.agent.<attr>\" | \"<variable>\", \"expr\": \"<expression>\"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.",
+          "description": "Sets attributes on a part, order or customer, or a model variable, from expressions as it passes, for example a due date, a type or a counter. Takes an ordered list of assignments, each is `{\"target\": \"entity.<attr>\" | \"entity.agent.<attr>\" | \"<variable>\", \"expr\": \"<expression>\"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.",
           "type": "object",
           "properties": {
             "name": {
@@ -2345,7 +2345,7 @@
         },
         {
           "title": "BATCH",
-          "description": "Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.",
+          "description": "Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.",
           "type": "object",
           "properties": {
             "name": {
@@ -2480,7 +2480,7 @@
         },
         {
           "title": "BUFFER",
-          "description": "A finite number of places between two stations; when they are all taken the upstream machine stays blocked, holding its finished part.",
+          "description": "Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part.",
           "type": "object",
           "properties": {
             "name": {
@@ -2566,7 +2566,7 @@
         },
         {
           "title": "CONVEYOR",
-          "description": "A belt segment entities ride from one end to the other.",
+          "description": "Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.",
           "type": "object",
           "properties": {
             "name": {
@@ -2792,7 +2792,7 @@
         },
         {
           "title": "CREATE",
-          "description": "Entity source. Either samples the inter-arrival gap from `distribution` (`arrival_mode = \"Interarrival\"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = \"Schedule\"`). Every model needs at least one CREATE block.",
+          "description": "Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule. Either samples the inter-arrival gap from `distribution` (`arrival_mode = \"Interarrival\"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = \"Schedule\"`). Every model needs at least one CREATE block.",
           "type": "object",
           "properties": {
             "name": {
@@ -3087,7 +3087,7 @@
         },
         {
           "title": "DECIDE",
-          "description": "N-way branch. \"Chance\" mode draws on the block's own RNG against cumulative `probs`; \"Condition\" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. \"Policy\" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` (\"first\" / \"random\" / \"shortest\") so a Policy-mode model still runs and validates headless.",
+          "description": "Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. \"Chance\" mode draws on the block's own RNG against cumulative `probs`; \"Condition\" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. \"Policy\" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` (\"first\" / \"random\" / \"shortest\") so a Policy-mode model still runs and validates headless.",
           "type": "object",
           "properties": {
             "name": {
@@ -3240,7 +3240,7 @@
         },
         {
           "title": "DELAY",
-          "description": "Pure timeout: hold the entity for a sampled duration, seizing nothing, then forward it. Use PROCESS instead when the delay is a resource-backed service.",
+          "description": "Pure waiting time (transit, curing, travel, a pause) that holds the entity for a sampled duration without using any machine, operator or other resource. Seizes nothing, then forwards it. Use PROCESS instead when the delay is a resource-backed service.",
           "type": "object",
           "properties": {
             "name": {
@@ -3387,7 +3387,7 @@
         },
         {
           "title": "DISPOSE",
-          "description": "Entity sink. Waits an optional deletion delay, stamps deletion_time and throughput_time, accrues the entity type's WIP holding cost, and removes the entity from live_entities. Every model needs at least one DISPOSE block, and every flow that does not lead back to a CREATE must end in one (schema.validate_graph_structured).",
+          "description": "End of the flow: parts, orders or customers leave the system here, and their throughput time and holding cost are recorded. Waits an optional deletion delay, stamps deletion_time and throughput_time, accrues the entity type's WIP holding cost, and removes the entity from live_entities. Every model needs at least one DISPOSE block, and every flow that does not lead back to a CREATE must end in one (schema.validate_graph_structured).",
           "type": "object",
           "properties": {
             "name": {
@@ -3548,7 +3548,7 @@
         },
         {
           "title": "DUPLICATE",
-          "description": "Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).",
+          "description": "Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).",
           "type": "object",
           "properties": {
             "name": {
@@ -3618,7 +3618,7 @@
         },
         {
           "title": "HOLD",
-          "description": "Signal / Condition / Infinite queue gate. Infinite mode never releases: the entity stays held in the store for the rest of the run. That is the documented semantics, not a leak.",
+          "description": "Holds entities waiting in a queue until a named signal fires, a condition becomes true (a buffer has room, a machine is idle), or for good. Infinite mode never releases: the entity stays held in the store for the rest of the run. That is the documented semantics, not a leak.",
           "type": "object",
           "properties": {
             "name": {
@@ -3757,7 +3757,7 @@
         },
         {
           "title": "LOGIC",
-          "description": "Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.",
+          "description": "Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.",
           "type": "object",
           "properties": {
             "name": {
@@ -3824,7 +3824,7 @@
         },
         {
           "title": "MATCH",
-          "description": "Match `number_to_match` *distinct* entity types; with `match_on` set, only entities whose value of that attribute is equal (Arena's attribute match). The arriving entity is always stored first, so it can never be dropped ; the match is then taken atomically from the stores, oldest waiting type first, FIFO within a type (and within a value).",
+          "description": "Waits until one entity of each of several kinds is present (a part and its kit, an order and its customer), then releases them together. Match `number_to_match` *distinct* entity types; with `match_on` set, only entities whose value of that attribute is equal (Arena's attribute match). The arriving entity is always stored first, so it can never be dropped ; the match is then taken atomically from the stores, oldest waiting type first, FIFO within a type (and within a value).",
           "type": "object",
           "properties": {
             "name": {
@@ -3950,7 +3950,7 @@
         },
         {
           "title": "MOTION",
-          "description": "A station whose service is a cycle of motions -- moves timed from a motion profile (trapezoidal, payload-derated, slowed for human-robot collaboration) plus picks, places, tool changes, dwells and process steps. Seizing, setups, failures, preemption, workers and blocking are PROCESS's.",
+          "description": "Robot or cobot station whose service is a cycle of timed moves, picks, places and tool changes, so cycle time comes from motion data, not a distribution. A station whose service is a cycle of motions -- moves timed from a motion profile (trapezoidal, payload-derated, slowed for human-robot collaboration) plus picks, places, tool changes, dwells and process steps. Seizing, setups, failures, preemption, workers and blocking are PROCESS's.",
           "type": "object",
           "properties": {
             "name": {
@@ -4471,7 +4471,7 @@
         },
         {
           "title": "PROCESS",
-          "description": "Seize, delay and release fused in one block; `action` selects which of the three steps run (\"Seize Delay Release\", \"Seize Delay\", \"Delay Release\", \"Delay\"), so the same block type covers a self-contained service, the start or end of a hold split across two blocks, or a plain timed delay. The most-used block for a simple resource-backed service step.",
+          "description": "Machine, workstation or service step: a part, order or customer waits for a resource (machine, operator, server), is processed for a time, then frees it. Seize, delay and release fused in one block; `action` selects which of the three steps run (\"Seize Delay Release\", \"Seize Delay\", \"Delay Release\", \"Delay\"), so the same block type covers a self-contained service, the start or end of a hold split across two blocks, or a plain timed delay. The most-used block for a simple resource-backed service step.",
           "type": "object",
           "properties": {
             "name": {
@@ -5001,7 +5001,7 @@
         },
         {
           "title": "RECORD",
-          "description": "RECORD block: a zero-time block that updates a user-defined statistic and forwards the entity unchanged. Statistics live on the simulation context (`ctx.user_stats`), keyed by `stat_name`, so two RECORD blocks writing to the same name share one collector -- core/schema/ rejects a same-name pair with different `kind`s at load time, before a run can hit the mismatch here. `expr` is the increment for \"count\", the observed value for \"tally\", the new level for \"time_persistent\", and ignored for \"time_between\" (it tallies the gap since the statistic's last arrival; the first arrival records nothing). `kind=\"cost\"` is the one kind that builds no collector: `expr` is a MONEY amount added to the cost item `stat_name` every time an entity passes -- an ordering cost, a changeover cost, a lost-sale penalty. It joins the model's Total Cost and is itemised in the `cost_summary` frame.",
+          "description": "Counts or measures something as entities pass (a count, a time between arrivals, a defect, a cost) in a user-named statistic, without delaying them. A zero-time block that updates a user-defined statistic and forwards the entity unchanged. Statistics live on the simulation context (`ctx.user_stats`), keyed by `stat_name`, so two RECORD blocks writing to the same name share one collector -- core/schema/ rejects a same-name pair with different `kind`s at load time, before a run can hit the mismatch here. `expr` is the increment for \"count\", the observed value for \"tally\", the new level for \"time_persistent\", and ignored for \"time_between\" (it tallies the gap since the statistic's last arrival; the first arrival records nothing). `kind=\"cost\"` is the one kind that builds no collector: `expr` is a MONEY amount added to the cost item `stat_name` every time an entity passes -- an ordering cost, a changeover cost, a lost-sale penalty. It joins the model's Total Cost and is itemised in the `cost_summary` frame.",
           "type": "object",
           "properties": {
             "name": {
@@ -5112,7 +5112,7 @@
         },
         {
           "title": "RELEASE",
-          "description": "Release everything the entity holds under `resource_name` (a plain resource or a set member), after an optional delay. Pairs with SEIZE for a hold split across two blocks; raises if the entity never seized that name (fail-loud by design).",
+          "description": "Frees a machine, operator or other resource that an earlier SEIZE gave the entity, after an optional delay. Release everything the entity holds under `resource_name` (a plain resource or a set member), after an optional delay. Pairs with SEIZE for a hold split across two blocks; raises if the entity never seized that name (fail-loud by design).",
           "type": "object",
           "properties": {
             "name": {
@@ -5289,7 +5289,7 @@
         },
         {
           "title": "ROUTE",
-          "description": "Send the entity to the next station of its `sequence`, applying that step's attribute values and advancing its `step` index; once the sequence is finished, forward along the block's own outgoing link instead.",
+          "description": "Sends a part or job to the next station on its own routing sequence (a job-shop or multi-step route) instead of along a fixed link. Send the entity to the next station of its `sequence`, applying that step's attribute values and advancing its `step` index; once the sequence is finished, forward along the block's own outgoing link instead.",
           "type": "object",
           "properties": {
             "name": {
@@ -5490,7 +5490,7 @@
         },
         {
           "title": "SEIZE",
-          "description": "Request `quantity` units of `resource_name` (a plain resource or a resource set), honouring priority and the resource's queue discipline, then hold the block's own delay before forwarding. Pairs with RELEASE for a hold split across two blocks; PROCESS fuses the common Seize-Delay- Release case into one block. `balk_if` and `renege_after` let an entity leave without ever being served, by the block's second outgoing link. Preemption is PROCESS only: the service a SEIZE starts is finished somewhere else, so there is nothing here that could safely be interrupted.",
+          "description": "Waits in a queue for a machine, operator, vehicle or other resource, takes it and keeps it until a later RELEASE, so one resource can span several steps. Request `quantity` units of `resource_name` (a plain resource or a resource set), honouring priority and the resource's queue discipline, then hold the block's own delay before forwarding. Pairs with RELEASE for a hold split across two blocks; PROCESS fuses the common Seize-Delay- Release case into one block. `balk_if` and `renege_after` let an entity leave without ever being served, by the block's second outgoing link. Preemption is PROCESS only: the service a SEIZE starts is finished somewhere else, so there is nothing here that could safely be interrupted.",
           "type": "object",
           "properties": {
             "name": {
@@ -5836,7 +5836,7 @@
         },
         {
           "title": "SEND",
-          "description": "Send `message` (with an optional `payload`) to the agents `to` names.",
+          "description": "Sends a message, with an optional payload, to agents of an agent-based model so they can react, for example a customer calling a driver.",
           "type": "object",
           "properties": {
             "name": {
@@ -5932,7 +5932,7 @@
         },
         {
           "title": "SEPARATE",
-          "description": "Split a batch entity into its children. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.",
+          "description": "Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.",
           "type": "object",
           "properties": {
             "name": {
@@ -6013,7 +6013,7 @@
         },
         {
           "title": "SIGNAL",
-          "description": "After an optional delay, succeeds the named signal event (releasing every HOLD block currently waiting on it) and immediately replaces it with a fresh one -- broadcast, edge-triggered, auto-reset.",
+          "description": "Broadcasts a named signal that releases every entity waiting at a HOLD block for it, for example a shift start, a gate opening or a green light. After an optional delay, succeeds the named signal event (releasing every HOLD block currently waiting on it) and immediately replaces it with a fresh one -- broadcast, edge-triggered, auto-reset.",
           "type": "object",
           "properties": {
             "name": {
@@ -6174,7 +6174,7 @@
         },
         {
           "title": "STATION",
-          "description": "Named entry point of a routing. Entities arrive here from a ROUTE block whose sequence step names this block, or along an ordinary link; either way `entity.station` becomes this block's name and the entity continues along the station's single outgoing link.",
+          "description": "Named stop on a job-shop or multi-step routing where a ROUTE block delivers parts, orders or jobs and sets their current location. Named entry point of a routing. Entities arrive here from a ROUTE block whose sequence step names this block, or along an ordinary link; either way `entity.station` becomes this block's name and the entity continues along the station's single outgoing link.",
           "type": "object",
           "properties": {
             "name": {
@@ -6269,7 +6269,7 @@
         },
         {
           "title": "SUBMODEL",
-          "description": "Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).",
+          "description": "Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).",
           "type": "object",
           "properties": {
             "name": {
@@ -6364,7 +6364,7 @@
         },
         {
           "title": "SUB_ENTRY",
-          "description": "Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).",
+          "description": "Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).",
           "type": "object",
           "properties": {
             "name": {
@@ -6431,7 +6431,7 @@
         },
         {
           "title": "SUB_EXIT",
-          "description": "Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).",
+          "description": "Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).",
           "type": "object",
           "properties": {
             "name": {
@@ -6498,7 +6498,7 @@
         },
         {
           "title": "TRANSFER",
-          "description": "Move `amount` of `level` as the entity passes.",
+          "description": "Adds to or takes from a continuous tank, stock or inventory level (fuel, material, a pool) as the entity passes, optionally waiting until it is available.",
           "type": "object",
           "properties": {
             "name": {
@@ -6616,7 +6616,7 @@
         },
         {
           "title": "TRANSPORT",
-          "description": "Seize a vehicle, fetch the entity, carry it, unload, release.",
+          "description": "Moves a part, order or load between locations with a vehicle (truck, AGV, forklift, robot) from a fleet: fetch, carry, unload, free the vehicle.",
           "type": "object",
           "properties": {
             "name": {

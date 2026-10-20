@@ -10,8 +10,9 @@ __all__ = ["Delay", "SPEC"]
 
 
 class Delay(BaseProcess):
-    """Pure timeout: hold the entity for a sampled duration, seizing nothing,
-    then forward it. Use PROCESS instead when the delay is a resource-backed
+    """Pure waiting time (transit, curing, travel, a pause) that holds the entity for a sampled duration without using any machine, operator or other resource.
+
+    Seizes nothing, then forwards it. Use PROCESS instead when the delay is a resource-backed
     service."""
 
     def __init__(self, env, block, next_process=None, delay=0):

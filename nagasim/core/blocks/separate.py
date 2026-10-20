@@ -12,8 +12,7 @@ __all__ = ["Separate", "SPEC"]
 
 
 class Separate(BaseProcess):
-    """
-    Split a batch entity into its children.
+    """Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each.
 
     Parameters
     ----------

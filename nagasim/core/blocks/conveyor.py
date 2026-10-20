@@ -61,7 +61,7 @@ _EPS = 1e-9
 
 
 class Conveyor(BaseProcess):
-    """A belt segment entities ride from one end to the other."""
+    """Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full."""
 
     # The token rides through (PHASE4 T7): a belt accepts the part when it is
     # physically on it, not when it is offered -- so a full or stopped belt

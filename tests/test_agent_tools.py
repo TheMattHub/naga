@@ -380,6 +380,14 @@ def test_answers_stay_small_on_the_job_shop_model(ws):
     assert answers["log"]["has_more"] is True      # paged, not truncated silently
 
 
+def test_listing_summaries_are_full_sentences():
+    # An assistant picks a block or distribution from these one-liners alone.
+    for b in ok(T.call("list_block_types"))["block_types"]:
+        assert len(b["summary"]) >= 40 and b["summary"].endswith("."), b
+    for d in ok(T.call("list_distributions"))["distributions"]:
+        assert d["summary"].strip(), d
+
+
 def test_reference_tools_describe_the_live_registries():
     types = {b["type"] for b in ok(T.call("list_block_types"))["block_types"]}
     assert {"CREATE", "PROCESS", "DISPOSE", "DECIDE"} <= types

@@ -11,7 +11,9 @@ __all__ = ["Match", "SPEC"]
 
 
 class Match(BaseProcess):
-    """Match `number_to_match` *distinct* entity types; with `match_on` set,
+    """Waits until one entity of each of several kinds is present (a part and its kit, an order and its customer), then releases them together.
+
+    Match `number_to_match` *distinct* entity types; with `match_on` set,
     only entities whose value of that attribute is equal (Arena's attribute
     match).
 

@@ -29,7 +29,7 @@ def list_block_types() -> dict:
     for name in sorted(BLOCK_REGISTRY):
         spec = BLOCK_REGISTRY[name]
         doc = " ".join((spec.cls.__doc__ or "").split())
-        out.append({"type": name, "summary": _first_sentence(doc, 120),
+        out.append({"type": name, "summary": _first_sentence(doc, 160),
                     "required": [p.name for p in spec.params if p.required],
                     "multi_output": spec.multi_output})
     return {"block_types": out}
@@ -82,8 +82,9 @@ def list_distributions(block_type: str | None = None) -> dict:
     The names are what goes in a block's `distribution` param, a link delay, or
     a failure's uptime/downtime.
 
-    Returns {"distributions": [{"name", "category", "arrival", "delay",
-    "params"}]}; call describe_distribution for parameter meanings.
+    Returns {"distributions": [{"name", "summary", "category", "arrival", "delay",
+    "params"}]}; `summary` is one plain sentence on when to use it. Call
+    describe_distribution for parameter meanings.
     """
     names = get_available_distributions(block_type) if block_type else sorted(DISTRIBUTION_REGISTRY)
     out = []
@@ -91,7 +92,8 @@ def list_distributions(block_type: str | None = None) -> dict:
         spec = DISTRIBUTION_REGISTRY.get(name)
         if spec is None:
             continue
-        out.append({"name": name, "category": spec.category, "arrival": spec.arrival,
+        out.append({"name": name, "summary": _first_sentence(spec.use_case),
+                    "category": spec.category, "arrival": spec.arrival,
                     "delay": spec.delay, "params": [p.name for p in spec.params]})
     return {"distributions": out}
 

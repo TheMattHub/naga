@@ -34,7 +34,7 @@
     "read_only": true
   },
   {
-    "description": "List the distribution names available for a duration or a random draw.\n\nPass `block_type` (CREATE, DELAY, PROCESS, ...) to get only the ones that\nblock is usually given; omit it for everything, including plugin entries.\nThe names are what goes in a block's `distribution` param, a link delay, or\na failure's uptime/downtime.\n\nReturns {\"distributions\": [{\"name\", \"category\", \"arrival\", \"delay\",\n\"params\"}]}; call describe_distribution for parameter meanings.",
+    "description": "List the distribution names available for a duration or a random draw.\n\nPass `block_type` (CREATE, DELAY, PROCESS, ...) to get only the ones that\nblock is usually given; omit it for everything, including plugin entries.\nThe names are what goes in a block's `distribution` param, a link delay, or\na failure's uptime/downtime.\n\nReturns {\"distributions\": [{\"name\", \"summary\", \"category\", \"arrival\", \"delay\",\n\"params\"}]}; `summary` is one plain sentence on when to use it. Call\ndescribe_distribution for parameter meanings.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

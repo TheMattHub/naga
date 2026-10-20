@@ -16,7 +16,7 @@ __all__ = ["Send", "SPEC"]
 
 
 class Send(BaseProcess):
-    """Send `message` (with an optional `payload`) to the agents `to` names."""
+    """Sends a message, with an optional payload, to agents of an agent-based model so they can react, for example a customer calling a driver."""
 
     def __init__(self, env, block, next_process=None, message="", to="entity.agent",
                  payload=""):

@@ -7,7 +7,7 @@ One section per block type, from `nagasim/core/block_registry.py`. Types marked 
 
 ## ASSIGN
 
-Ordered list of assignments: each is `{"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.
+Sets attributes on a part, order or customer, or a model variable, from expressions as it passes, for example a due date, a type or a counter. Takes an ordered list of assignments, each is `{"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -17,7 +17,7 @@ Outputs: 1.
 
 ## BATCH
 
-Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.
+Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -30,7 +30,7 @@ Outputs: 1.
 
 ## BUFFER
 
-A finite number of places between two stations; when they are all taken the upstream machine stays blocked, holding its finished part.
+Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -41,7 +41,7 @@ Outputs: 1.
 
 ## CONVEYOR
 
-A belt segment entities ride from one end to the other.
+Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -60,7 +60,7 @@ Outputs: 1.
 
 ## CREATE
 
-Entity source. Either samples the inter-arrival gap from `distribution` (`arrival_mode = "Interarrival"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = "Schedule"`). Every model needs at least one CREATE block.
+Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule. Either samples the inter-arrival gap from `distribution` (`arrival_mode = "Interarrival"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = "Schedule"`). Every model needs at least one CREATE block.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -81,7 +81,7 @@ Outputs: 1.
 
 ## DECIDE
 
-N-way branch. "Chance" mode draws on the block's own RNG against cumulative `probs`; "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
+Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. "Chance" mode draws on the block's own RNG against cumulative `probs`; "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -97,7 +97,7 @@ Outputs: multiple, chosen at run time.
 
 ## DELAY
 
-Pure timeout: hold the entity for a sampled duration, seizing nothing, then forward it. Use PROCESS instead when the delay is a resource-backed service.
+Pure waiting time (transit, curing, travel, a pause) that holds the entity for a sampled duration without using any machine, operator or other resource. Seizes nothing, then forwards it. Use PROCESS instead when the delay is a resource-backed service.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -109,7 +109,7 @@ Outputs: 1.
 
 ## DISPOSE
 
-Entity sink. Waits an optional deletion delay, stamps deletion_time and throughput_time, accrues the entity type's WIP holding cost, and removes the entity from live_entities. Every model needs at least one DISPOSE block, and every flow that does not lead back to a CREATE must end in one (schema.validate_graph_structured).
+End of the flow: parts, orders or customers leave the system here, and their throughput time and holding cost are recorded. Waits an optional deletion delay, stamps deletion_time and throughput_time, accrues the entity type's WIP holding cost, and removes the entity from live_entities. Every model needs at least one DISPOSE block, and every flow that does not lead back to a CREATE must end in one (schema.validate_graph_structured).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -122,7 +122,7 @@ Outputs: 1.
 
 ## DUPLICATE
 
-Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
+Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -132,7 +132,7 @@ Outputs: 1.
 
 ## HOLD
 
-Signal / Condition / Infinite queue gate. Infinite mode never releases: the entity stays held in the store for the rest of the run. That is the documented semantics, not a leak.
+Holds entities waiting in a queue until a named signal fires, a condition becomes true (a buffer has room, a machine is idle), or for good. Infinite mode never releases: the entity stays held in the store for the rest of the run. That is the documented semantics, not a leak.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -146,7 +146,7 @@ Outputs: 1.
 
 ## LOGIC
 
-Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
+Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -156,7 +156,7 @@ Outputs: multiple, chosen at run time.
 
 ## MATCH
 
-Match `number_to_match` *distinct* entity types; with `match_on` set, only entities whose value of that attribute is equal (Arena's attribute match). The arriving entity is always stored first, so it can never be dropped ; the match is then taken atomically from the stores, oldest waiting type first, FIFO within a type (and within a value).
+Waits until one entity of each of several kinds is present (a part and its kit, an order and its customer), then releases them together. Match `number_to_match` *distinct* entity types; with `match_on` set, only entities whose value of that attribute is equal (Arena's attribute match). The arriving entity is always stored first, so it can never be dropped ; the match is then taken atomically from the stores, oldest waiting type first, FIFO within a type (and within a value).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -170,7 +170,7 @@ Outputs: 1.
 
 ## MOTION
 
-A station whose service is a cycle of motions -- moves timed from a motion profile (trapezoidal, payload-derated, slowed for human-robot collaboration) plus picks, places, tool changes, dwells and process steps. Seizing, setups, failures, preemption, workers and blocking are PROCESS's.
+Robot or cobot station whose service is a cycle of timed moves, picks, places and tool changes, so cycle time comes from motion data, not a distribution. A station whose service is a cycle of motions -- moves timed from a motion profile (trapezoidal, payload-derated, slowed for human-robot collaboration) plus picks, places, tool changes, dwells and process steps. Seizing, setups, failures, preemption, workers and blocking are PROCESS's.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -207,7 +207,7 @@ Outputs: 1.
 
 ## PROCESS
 
-Seize, delay and release fused in one block; `action` selects which of the three steps run ("Seize Delay Release", "Seize Delay", "Delay Release", "Delay"), so the same block type covers a self-contained service, the start or end of a hold split across two blocks, or a plain timed delay. The most-used block for a simple resource-backed service step.
+Machine, workstation or service step: a part, order or customer waits for a resource (machine, operator, server), is processed for a time, then frees it. Seize, delay and release fused in one block; `action` selects which of the three steps run ("Seize Delay Release", "Seize Delay", "Delay Release", "Delay"), so the same block type covers a self-contained service, the start or end of a hold split across two blocks, or a plain timed delay. The most-used block for a simple resource-backed service step.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -242,7 +242,7 @@ Outputs: 1.
 
 ## RECORD
 
-RECORD block: a zero-time block that updates a user-defined statistic and forwards the entity unchanged. Statistics live on the simulation context (`ctx.user_stats`), keyed by `stat_name`, so two RECORD blocks writing to the same name share one collector -- core/schema/ rejects a same-name pair with different `kind`s at load time, before a run can hit the mismatch here. `expr` is the increment for "count", the observed value for "tally", the new level for "time_persistent", and ignored for "time_between" (it tallies the gap since the statistic's last arrival; the first arrival records nothing). `kind="cost"` is the one kind that builds no collector: `expr` is a MONEY amount added to the cost item `stat_name` every time an entity passes -- an ordering cost, a changeover cost, a lost-sale penalty. It joins the model's Total Cost and is itemised in the `cost_summary` frame.
+Counts or measures something as entities pass (a count, a time between arrivals, a defect, a cost) in a user-named statistic, without delaying them. A zero-time block that updates a user-defined statistic and forwards the entity unchanged. Statistics live on the simulation context (`ctx.user_stats`), keyed by `stat_name`, so two RECORD blocks writing to the same name share one collector -- core/schema/ rejects a same-name pair with different `kind`s at load time, before a run can hit the mismatch here. `expr` is the increment for "count", the observed value for "tally", the new level for "time_persistent", and ignored for "time_between" (it tallies the gap since the statistic's last arrival; the first arrival records nothing). `kind="cost"` is the one kind that builds no collector: `expr` is a MONEY amount added to the cost item `stat_name` every time an entity passes -- an ordering cost, a changeover cost, a lost-sale penalty. It joins the model's Total Cost and is itemised in the `cost_summary` frame.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -255,7 +255,7 @@ Outputs: 1.
 
 ## RELEASE
 
-Release everything the entity holds under `resource_name` (a plain resource or a set member), after an optional delay. Pairs with SEIZE for a hold split across two blocks; raises if the entity never seized that name (fail-loud by design).
+Frees a machine, operator or other resource that an earlier SEIZE gave the entity, after an optional delay. Release everything the entity holds under `resource_name` (a plain resource or a set member), after an optional delay. Pairs with SEIZE for a hold split across two blocks; raises if the entity never seized that name (fail-loud by design).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -269,7 +269,7 @@ Outputs: 1.
 
 ## ROUTE
 
-Send the entity to the next station of its `sequence`, applying that step's attribute values and advancing its `step` index; once the sequence is finished, forward along the block's own outgoing link instead.
+Sends a part or job to the next station on its own routing sequence (a job-shop or multi-step route) instead of along a fixed link. Send the entity to the next station of its `sequence`, applying that step's attribute values and advancing its `step` index; once the sequence is finished, forward along the block's own outgoing link instead.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -284,7 +284,7 @@ Outputs: 1.
 
 ## SEIZE
 
-Request `quantity` units of `resource_name` (a plain resource or a resource set), honouring priority and the resource's queue discipline, then hold the block's own delay before forwarding. Pairs with RELEASE for a hold split across two blocks; PROCESS fuses the common Seize-Delay- Release case into one block. `balk_if` and `renege_after` let an entity leave without ever being served, by the block's second outgoing link. Preemption is PROCESS only: the service a SEIZE starts is finished somewhere else, so there is nothing here that could safely be interrupted.
+Waits in a queue for a machine, operator, vehicle or other resource, takes it and keeps it until a later RELEASE, so one resource can span several steps. Request `quantity` units of `resource_name` (a plain resource or a resource set), honouring priority and the resource's queue discipline, then hold the block's own delay before forwarding. Pairs with RELEASE for a hold split across two blocks; PROCESS fuses the common Seize-Delay- Release case into one block. `balk_if` and `renege_after` let an entity leave without ever being served, by the block's second outgoing link. Preemption is PROCESS only: the service a SEIZE starts is finished somewhere else, so there is nothing here that could safely be interrupted.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -308,7 +308,7 @@ Outputs: 1.
 
 ## SEND
 
-Send `message` (with an optional `payload`) to the agents `to` names.
+Sends a message, with an optional payload, to agents of an agent-based model so they can react, for example a customer calling a driver.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -320,7 +320,7 @@ Outputs: 1.
 
 ## SEPARATE
 
-Split a batch entity into its children. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.
+Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -331,7 +331,7 @@ Outputs: 1.
 
 ## SIGNAL
 
-After an optional delay, succeeds the named signal event (releasing every HOLD block currently waiting on it) and immediately replaces it with a fresh one -- broadcast, edge-triggered, auto-reset.
+Broadcasts a named signal that releases every entity waiting at a HOLD block for it, for example a shift start, a gate opening or a green light. After an optional delay, succeeds the named signal event (releasing every HOLD block currently waiting on it) and immediately replaces it with a fresh one -- broadcast, edge-triggered, auto-reset.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -344,7 +344,7 @@ Outputs: 1.
 
 ## STATION
 
-Named entry point of a routing. Entities arrive here from a ROUTE block whose sequence step names this block, or along an ordinary link; either way `entity.station` becomes this block's name and the entity continues along the station's single outgoing link.
+Named stop on a job-shop or multi-step routing where a ROUTE block delivers parts, orders or jobs and sets their current location. Named entry point of a routing. Entities arrive here from a ROUTE block whose sequence step names this block, or along an ordinary link; either way `entity.station` becomes this block's name and the entity continues along the station's single outgoing link.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -356,7 +356,7 @@ Outputs: 1.
 
 ## SUBMODEL
 
-Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
+Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -368,7 +368,7 @@ Outputs: multiple, chosen at run time.
 
 ## SUB_ENTRY
 
-Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
+Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -378,7 +378,7 @@ Outputs: 1.
 
 ## SUB_EXIT
 
-Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
+Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -388,7 +388,7 @@ Outputs: 1.
 
 ## TRANSFER
 
-Move `amount` of `level` as the entity passes.
+Adds to or takes from a continuous tank, stock or inventory level (fuel, material, a pool) as the entity passes, optionally waiting until it is available.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -401,7 +401,7 @@ Outputs: 1.
 
 ## TRANSPORT
 
-Seize a vehicle, fetch the entity, carry it, unload, release.
+Moves a part, order or load between locations with a vehicle (truck, AGV, forklift, robot) from a fleet: fetch, carry, unload, free the vehicle.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|

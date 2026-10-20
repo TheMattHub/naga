@@ -29,7 +29,9 @@ _NOT_MOTION = frozenset({"distribution", "dist_params", "time_unit"})
 
 
 class Motion(Process):
-    """A station whose service is a cycle of motions -- moves timed from a
+    """Robot or cobot station whose service is a cycle of timed moves, picks, places and tool changes, so cycle time comes from motion data, not a distribution.
+
+    A station whose service is a cycle of motions -- moves timed from a
     motion profile (trapezoidal, payload-derated, slowed for human-robot
     collaboration) plus picks, places, tool changes, dwells and process steps.
     Seizing, setups, failures, preemption, workers and blocking are PROCESS's."""

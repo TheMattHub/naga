@@ -11,7 +11,9 @@ __all__ = ["Assign", "SPEC"]
 
 
 class Assign(BaseProcess):
-    """Ordered list of assignments: each is
+    """Sets attributes on a part, order or customer, or a model variable, from expressions as it passes, for example a due date, a type or a counter.
+
+    Takes an ordered list of assignments, each is
     `{"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}`.
 
     Assignments run in order, so a later one sees what an earlier one wrote.

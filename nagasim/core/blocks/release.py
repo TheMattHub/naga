@@ -14,7 +14,9 @@ __all__ = ["Release", "SPEC"]
 
 
 class Release(BaseProcess):
-    """Release everything the entity holds under `resource_name` (a plain
+    """Frees a machine, operator or other resource that an earlier SEIZE gave the entity, after an optional delay.
+
+    Release everything the entity holds under `resource_name` (a plain
     resource or a set member), after an optional delay. Pairs with SEIZE for a
     hold split across two blocks; raises if the entity never seized that name
     (fail-loud by design)."""

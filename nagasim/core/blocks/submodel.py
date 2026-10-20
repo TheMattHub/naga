@@ -29,7 +29,9 @@ __all__ = ["SubmodelBlock", "ENTRY_SPEC", "EXIT_SPEC", "INSTANCE_SPEC"]
 
 
 class SubmodelBlock(BaseProcess):
-    """Editor-only placeholder shared by three types, never run directly --
+    """Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run.
+
+    Editor-only placeholder shared by three types, never run directly --
     `core/submodels.flatten()` expands them away before the engine builds any
     process. SUB_ENTRY: an input port of a submodel definition (`port` names
     it; exactly one outgoing link inside the definition, none incoming).

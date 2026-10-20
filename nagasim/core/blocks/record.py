@@ -14,7 +14,9 @@ KINDS = RECORD_KINDS
 
 
 class Record(BaseProcess):
-    """RECORD block: a zero-time block that updates a
+    """Counts or measures something as entities pass (a count, a time between arrivals, a defect, a cost) in a user-named statistic, without delaying them.
+
+    A zero-time block that updates a
     user-defined statistic and forwards the entity unchanged.
 
     Statistics live on the simulation context (`ctx.user_stats`), keyed by

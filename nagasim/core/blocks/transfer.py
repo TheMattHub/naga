@@ -30,7 +30,7 @@ __all__ = ["Transfer", "SPEC", "TRANSFER_MODES"]
 
 
 class Transfer(BaseProcess):
-    """Move `amount` of `level` as the entity passes."""
+    """Adds to or takes from a continuous tank, stock or inventory level (fuel, material, a pool) as the entity passes, optionally waiting until it is available."""
 
     def __init__(self, env, block, next_process=None, level_name="", amount="1",
                  mode="remove", wait=False):

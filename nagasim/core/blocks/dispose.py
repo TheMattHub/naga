@@ -12,7 +12,9 @@ __all__ = ["Dispose", "SPEC"]
 
 
 class Dispose(BaseProcess):
-    """Entity sink. Waits an optional deletion delay, stamps deletion_time and
+    """End of the flow: parts, orders or customers leave the system here, and their throughput time and holding cost are recorded.
+
+    Waits an optional deletion delay, stamps deletion_time and
     throughput_time, accrues the entity type's WIP holding cost,
     and removes the entity from live_entities. Every model needs at least one
     DISPOSE block, and every flow that does not lead back to a CREATE must end

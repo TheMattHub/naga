@@ -44,7 +44,9 @@ TRAVEL_MODES = ("time", "network")
 
 
 class Route(BaseProcess):
-    """Send the entity to the next station of its `sequence`, applying that
+    """Sends a part or job to the next station on its own routing sequence (a job-shop or multi-step route) instead of along a fixed link.
+
+    Send the entity to the next station of its `sequence`, applying that
     step's attribute values and advancing its `step` index; once the sequence
     is finished, forward along the block's own outgoing link instead."""
 

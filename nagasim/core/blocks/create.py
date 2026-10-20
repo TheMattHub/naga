@@ -29,7 +29,9 @@ _THINNING_YIELD = 256
 
 
 class Create(BaseProcess):
-    """Entity source. Either samples the inter-arrival gap from `distribution`
+    """Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule.
+
+    Either samples the inter-arrival gap from `distribution`
     (`arrival_mode = "Interarrival"`, the classic behaviour) or drives a
     non-homogeneous Poisson process from an arrival `Schedule` by thinning
     (`arrival_mode = "Schedule"`). Every model needs at least one

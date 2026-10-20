@@ -41,7 +41,7 @@ __all__ = ["Transport", "SPEC"]
 
 
 class Transport(BaseProcess):
-    """Seize a vehicle, fetch the entity, carry it, unload, release."""
+    """Moves a part, order or load between locations with a vehicle (truck, AGV, forklift, robot) from a fleet: fetch, carry, unload, free the vehicle."""
 
     def __init__(self, env, block, next_process=None):
         super().__init__(env, block, next_process)

@@ -14,7 +14,9 @@ __all__ = ["Batch", "SPEC"]
 
 
 class Batch(BaseProcess):
-    """Groups entities by count: puts each arrival in the block's store and,
+    """Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity.
+
+    Groups entities by count: puts each arrival in the block's store and,
     as soon as `batch_size` items are waiting, takes exactly that many
     atomically to form one batch entity. Members leave live_entities and carry
     `in_batch` until a SEPARATE splits the batch again.

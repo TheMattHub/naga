@@ -12,7 +12,9 @@ __all__ = ["Signal", "SPEC"]
 
 
 class Signal(BaseProcess):
-    """After an optional delay, succeeds the named signal event (releasing
+    """Broadcasts a named signal that releases every entity waiting at a HOLD block for it, for example a shift start, a gate opening or a green light.
+
+    After an optional delay, succeeds the named signal event (releasing
     every HOLD block currently waiting on it) and immediately replaces it with
     a fresh one -- broadcast, edge-triggered, auto-reset."""
 

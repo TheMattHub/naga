@@ -23,7 +23,7 @@ class Distribution:
 
 
 def Constant(*, value: float | str = 1.0) -> Distribution:
-    """Fixed delay or service time, commonly used for deterministic processes.
+    """A fixed duration that never varies, for a deterministic service time, transit time or interval.
     Params: value (fixed duration) >= 0.
 
     value: fixed duration, >= 0
@@ -31,7 +31,7 @@ def Constant(*, value: float | str = 1.0) -> Distribution:
 
 
 def Uniform(*, low: float | str = 0.0, high: float | str = 1.0) -> Distribution:
-    """Equal probability within a bounded range; used when only min and max are known.
+    """Any value between a minimum and a maximum is equally likely; use it when only the min and max are known.
     Params: low (min) =< high (max), both real numbers.
 
     low: minimum, <= high
@@ -40,7 +40,7 @@ def Uniform(*, low: float | str = 0.0, high: float | str = 1.0) -> Distribution:
 
 
 def Exponential(*, rate: float | str = 1.0) -> Distribution:
-    """Classic model for memoryless interarrival and failure times.
+    """Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one.
     Param: rate (lambda, event rate) > 0.
 
     rate: event rate (lambda), > 0
@@ -48,7 +48,7 @@ def Exponential(*, rate: float | str = 1.0) -> Distribution:
 
 
 def Normal(*, mean: float | str = 0.0, stddev: float | str = 1.0) -> Distribution:
-    """Models symmetric variation around a mean (e.g., repair times), can produce negative values unless mean >> 0 and .
+    """Symmetric variation around an average, such as a cycle time that is rarely far from the mean; it can go negative unless the mean is much larger than the spread.
     Params: mean (central value), stddev (standard deviation) > 0.
 
     mean: central value
@@ -63,7 +63,7 @@ def BoundedNormal(
     min: float | str = 0.0,
     max: float | str = 1.0,
 ) -> Distribution:
-    """Normal distribution bounded within a range; useful for processes with natural limits, such as delays.
+    """Bell-shaped variation around an average, cut off at a minimum and a maximum so a time cannot go negative or beyond a physical limit.
     Params: mean (central value), stddev (standard deviation) > 0; min < max.
 
     mean: central value
@@ -74,7 +74,7 @@ def BoundedNormal(
 
 
 def Lognormal(*, mu: float | str = 0.0, sigma: float | str = 1.0) -> Distribution:
-    """Right-skewed times like human handling or picking durations.
+    """Right-skewed times that cannot go below zero, such as manual handling, picking or repair durations with an occasional long one.
     Params: mu (log-mean), sigma (log-stddev) > 0.
 
     mu: log-mean
@@ -88,7 +88,7 @@ def Triangular(
     high: float | str = 1.0,
     mode: float | str = 0.5,
 ) -> Distribution:
-    """Used with expert estimates of min, most likely, and max times.
+    """Min, most likely and max are known, usually from expert estimates when there is no data.
     Params: low =< mode =< high.
 
     low: minimum, <= mode
@@ -98,7 +98,7 @@ def Triangular(
 
 
 def Gamma(*, alpha: float | str = 1.0, beta: float | str = 1.0) -> Distribution:
-    """Flexible model for skewed service/process times.
+    """Right-skewed service or processing times that cannot go below zero, from very regular to very variable.
     Params: alpha (shape) > 0, beta (scale) > 0.
 
     alpha: shape, > 0
@@ -107,7 +107,7 @@ def Gamma(*, alpha: float | str = 1.0, beta: float | str = 1.0) -> Distribution:
 
 
 def Weibull(*, scale: float | str = 1.0, shape: float | str = 1.0) -> Distribution:
-    """Common for modeling equipment lifetimes and breakdowns.
+    """Equipment lifetimes and time to failure, where the breakdown rate can rise with age (wear-out) or fall (early failures).
     Params: scale (lambda) > 0, shape (k) > 0.
 
     scale: lambda, > 0
@@ -122,7 +122,7 @@ def Beta(
     alpha: float | str = 1.0,
     beta: float | str = 1.0,
 ) -> Distribution:
-    """Useful for bounded times or probabilities.
+    """A value between a minimum and a maximum with a flexible shape, such as a fraction, a proportion or a bounded time.
     Params: alpha, beta > 0; min < max.
 
     min: lower bound, < max
@@ -133,7 +133,7 @@ def Beta(
 
 
 def Erlang(*, k: float | str = 1.0, rate: float | str = 1.0) -> Distribution:
-    """Sum of k exponential stages (special case of gamma).
+    """Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random.
     Params: k (stages) >= 1, rate (lambda) > 0.
 
     k: number of exponential stages, >= 1
@@ -142,7 +142,7 @@ def Erlang(*, k: float | str = 1.0, rate: float | str = 1.0) -> Distribution:
 
 
 def Cauchy(*, x0: float | str = 0.0, gamma: float | str = 1.0) -> Distribution:
-    """Heavy-tailed distribution for outlier-sensitive systems (rare); often returns negative values.
+    """Very heavy-tailed values with frequent extreme outliers in both directions; rarely right for times, and it often returns negative values.
     Params: x0 (location), gamma (scale) > 0.
 
     x0: location
@@ -151,7 +151,7 @@ def Cauchy(*, x0: float | str = 0.0, gamma: float | str = 1.0) -> Distribution:
 
 
 def InverseGaussian(*, mu: float | str = 1.0, lambda_: float | str = 1.0) -> Distribution:
-    """Used in detailed modeling of reaction/decision delays.
+    """Right-skewed positive times such as a reaction or decision delay, or the time for a drifting quantity to reach a level.
     Params: mu (mean) > 0, lambda (shape) > 0.
 
     mu: mean, > 0
@@ -160,7 +160,7 @@ def InverseGaussian(*, mu: float | str = 1.0, lambda_: float | str = 1.0) -> Dis
 
 
 def Rayleigh(*, sigma: float | str = 1.0) -> Distribution:
-    """Models magnitudes like movement noise or energy.
+    """A positive magnitude such as movement noise or a positioning error, with a single scale parameter.
     Param: sigma (scale) > 0.
 
     sigma: scale, > 0
@@ -168,7 +168,7 @@ def Rayleigh(*, sigma: float | str = 1.0) -> Distribution:
 
 
 def ChiSquare(*, df: float | str = 1.0) -> Distribution:
-    """Used mostly for statistical diagnostics.
+    """Statistical diagnostics and sums of squared normal variations; rarely used for simulation times.
     Param: df (degrees of freedom) >= 1.
 
     df: degrees of freedom, >= 1
@@ -176,7 +176,7 @@ def ChiSquare(*, df: float | str = 1.0) -> Distribution:
 
 
 def LogLogistic(*, c: float | str = 1.0, scale: float | str = 1.0) -> Distribution:
-    """Heavy-tailed alternative to lognormal for skewed durations.
+    """Right-skewed durations with a heavier tail than lognormal, such as repair or lifetime data that cannot go below zero.
     Params: c (shape) > 0, scale > 0.
 
     c: shape, > 0
@@ -191,7 +191,7 @@ def JohnsonSU(
     loc: float | str = 0.0,
     scale: float | str = 1.0,
 ) -> Distribution:
-    """Highly flexible for skewed and kurtotic data fitting; can return negative values.
+    """A flexible fit for skewed, heavy-tailed data when no simple distribution matches; it can return negative values.
     Params: a, b (shape), loc (center), scale > 0.
 
     a: shape
@@ -208,7 +208,7 @@ def JohnsonSB(
     min: float | str = 0.0,
     max: float | str = 1.0,
 ) -> Distribution:
-    """For skewed variables bounded in [min, max] (e.g., fill %).
+    """A skewed value that stays between a minimum and a maximum, such as a yield or fill percentage.
     Params: a1, a2 (shape), min < max.
 
     a1: shape
@@ -219,7 +219,7 @@ def JohnsonSB(
 
 
 def PearsonTypeV(*, a: float | str = 1.0, scale: float | str = 1.0) -> Distribution:
-    """Used for inverse-gamma-shaped delays or failures.
+    """Right-skewed positive delays or times to failure with a long tail, an alternative to lognormal.
     Params: a (shape) > 0, scale > 0.
 
     a: shape, > 0
@@ -233,7 +233,7 @@ def PearsonTypeVI(
     b: float | str = 1.0,
     scale: float | str = 1.0,
 ) -> Distribution:
-    """Ratios of gammas (e.g., cost per service); always positive. Can model time if parameters are appropriate.
+    """A ratio of two gamma variables, such as cost per service, that is always positive; it can model times when the parameters suit.
     Params: a, b > 0, scale > 0.
 
     a: shape, > 0
@@ -243,7 +243,7 @@ def PearsonTypeVI(
 
 
 def Bernoulli(*, p: float | str = 0.5) -> Distribution:
-    """Yes/no decisions, e.g. reject/accept, pass/fail.
+    """A single yes/no outcome with a given probability, such as accept or reject, pass or fail, or rework or not.
     Param: p (success probability) in [0, 1].
 
     p: success probability, in [0, 1]
@@ -251,7 +251,7 @@ def Bernoulli(*, p: float | str = 0.5) -> Distribution:
 
 
 def Binomial(*, n: float | str = 1.0, p: float | str = 0.5) -> Distribution:
-    """Fixed-number trials with success/failure outcomes.
+    """Count of successes (for example defective parts) in a fixed number of independent trials.
     Params: n (trials) >= 0, p in [0, 1].
 
     n: number of trials, >= 0
@@ -260,7 +260,7 @@ def Binomial(*, n: float | str = 1.0, p: float | str = 0.5) -> Distribution:
 
 
 def Geometric(*, p: float | str = 0.5) -> Distribution:
-    """Models number of trials until first success.
+    """Number of attempts until the first success, such as tries before a part passes inspection.
     Param: p in (0, 1].
 
     p: success probability, in (0, 1]
@@ -268,7 +268,7 @@ def Geometric(*, p: float | str = 0.5) -> Distribution:
 
 
 def Poisson(*, lambda_: float | str = 1.0) -> Distribution:
-    """Number of arrivals/events in a fixed time window.
+    """Counts per period, such as the number of arrivals or events in a fixed time window.
     Param: lambda (average rate) > 0.
 
     lambda_: average rate, > 0
@@ -276,7 +276,7 @@ def Poisson(*, lambda_: float | str = 1.0) -> Distribution:
 
 
 def NegativeBinomial(*, r: float | str = 1.0, p: float | str = 0.5) -> Distribution:
-    """Trials until r successes, with success chance p.
+    """Number of failures before a set number of successes, each try with the same chance of success, such as rejected parts before r good ones.
     Params: r (target successes) >= 1, p in (0, 1].
 
     r: target number of successes, >= 1
@@ -285,7 +285,7 @@ def NegativeBinomial(*, r: float | str = 1.0, p: float | str = 0.5) -> Distribut
 
 
 def DiscreteUniform(*, low: float | str = 0.0, high: float | str = 1.0) -> Distribution:
-    """Equal chance of integers between bounds.
+    """A whole number between a minimum and a maximum, each equally likely, such as a random lot size from 1 to 6.
     Params: low (min) <= high (max), integers.
 
     low: minimum integer, <= high
@@ -299,7 +299,7 @@ def Hypergeometric(
     K: float | str = 5.0,
     n: float | str = 3.0,
 ) -> Distribution:
-    """Sampling without replacement (e.g., quality inspection).
+    """Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample.
     Params: N (population) >= K (success states) >= n (sample) >= 0.
 
     N: population size
@@ -309,7 +309,7 @@ def Hypergeometric(
 
 
 def EmpiricalContinuous(*, values: list[Any] = ..., probs: list[Any] = ...) -> Distribution:
-    """Piecewise-uniform continuous sampling from a histogram: picks a bin by weight, then draws uniformly within it (true continuous, not point resampling).
+    """Measured data as a histogram: a bin is picked by its weight, then a value is drawn evenly within it (a continuous draw, not a resample of points).
     Params: values (float list of bin edges, length = len(probs) + 1), probs (bin weights summing to 1).
 
     values: bin edges, length = len(probs) + 1
@@ -318,7 +318,7 @@ def EmpiricalContinuous(*, values: list[Any] = ..., probs: list[Any] = ...) -> D
 
 
 def EmpiricalDiscrete(*, values: list[Any] = ..., probs: list[Any] = ...) -> Distribution:
-    """Samples discrete values (integers) from a list with associated probabilities.
+    """Whole-number values with their own measured probabilities, such as order sizes or the number of items per job.
     Params: values (int list), probs (weights summing to 1).
 
     values: candidate integer values
@@ -327,7 +327,7 @@ def EmpiricalDiscrete(*, values: list[Any] = ..., probs: list[Any] = ...) -> Dis
 
 
 def FixedSchedule(*, schedule: list[Any] = ...) -> Distribution:
-    """Step-wise time schedule for entity generation or delays.
+    """Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.
     Param: schedule (ordered list of times).
 
     schedule: ordered list of absolute arrival/event times
@@ -335,7 +335,7 @@ def FixedSchedule(*, schedule: list[Any] = ...) -> Distribution:
 
 
 def CustomExpression(*, expression: str = '1') -> Distribution:
-    """Model expression (core/expressions.py grammar).
+    """Any model expression, for example '2 + EXPO(3)', when no single distribution fits.
     Param: expression (string, e.g. '2 + EXPO(3)').
 
     expression: model expression, e.g. '2 + EXPO(3)'
@@ -379,7 +379,7 @@ class Level:
         sequence: str | dict[str, Any] = '',
         population: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a CREATE block. Entity source. Either samples the inter-arrival gap from `distribution` (`arrival_mode = "Interarrival"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = "Schedule"`). Every model needs at least one CREATE block.
+        """Add a CREATE block. Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule. Either samples the inter-arrival gap from `distribution` (`arrival_mode = "Interarrival"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = "Schedule"`). Every model needs at least one CREATE block.
 
         e_type='DEFAULT': Entity type assigned to every entity this block creates.
         arrival_mode='Interarrival': "Interarrival": sample the gap from `distribution`. "Schedule": a non-homogeneous Poisson process driven by `schedule_name`. "Orders": release the model's declared orders, each at its own release time with its due date, quantity and routing.
@@ -409,7 +409,7 @@ class Level:
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
         remove_agent: bool | dict[str, Any] = False,
     ) -> Block:
-        """Add a DISPOSE block. Entity sink. Waits an optional deletion delay, stamps deletion_time and throughput_time, accrues the entity type's WIP holding cost, and removes the entity from live_entities. Every model needs at least one DISPOSE block, and every flow that does not lead back to a CREATE must end in one (schema.validate_graph_structured).
+        """Add a DISPOSE block. End of the flow: parts, orders or customers leave the system here, and their throughput time and holding cost are recorded. Waits an optional deletion delay, stamps deletion_time and throughput_time, accrues the entity type's WIP holding cost, and removes the entity from live_entities. Every model needs at least one DISPOSE block, and every flow that does not lead back to a CREATE must end in one (schema.validate_graph_structured).
 
         distribution='Constant': Name of a registered distribution (see the distribution reference).
         dist_params={'value': 0.0}: Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential).
@@ -428,7 +428,7 @@ class Level:
         label_offset: list[Any] | None = None,
         assignments: list[Any] | dict[str, Any] = ...,
     ) -> Block:
-        """Add a ASSIGN block. Ordered list of assignments: each is `{"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.
+        """Add a ASSIGN block. Sets attributes on a part, order or customer, or a model variable, from expressions as it passes, for example a due date, a type or a counter. Takes an ordered list of assignments, each is `{"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.
 
         assignments=[]: Ordered list of {"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}; each runs in order.
         """
@@ -450,7 +450,7 @@ class Level:
         fallback: str | dict[str, Any] = 'first',
         queue_exprs: list[Any] | dict[str, Any] = ...,
     ) -> Block:
-        """Add a DECIDE block. N-way branch. "Chance" mode draws on the block's own RNG against cumulative `probs`; "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
+        """Add a DECIDE block. Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. "Chance" mode draws on the block's own RNG against cumulative `probs`; "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
 
         mode='Chance': "Chance": branch by probability. "Condition": branch by expression. "Policy": branch by a controller attached to `policy`.
         probs=[]: Cumulative branch probabilities, used when mode is "Chance".
@@ -486,7 +486,7 @@ class Level:
         renege_after: float | str | dict[str, Any] = '',
         renege_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
     ) -> Block:
-        """Add a SEIZE block. Request `quantity` units of `resource_name` (a plain resource or a resource set), honouring priority and the resource's queue discipline, then hold the block's own delay before forwarding. Pairs with RELEASE for a hold split across two blocks; PROCESS fuses the common Seize-Delay- Release case into one block. `balk_if` and `renege_after` let an entity leave without ever being served, by the block's second outgoing link. Preemption is PROCESS only: the service a SEIZE starts is finished somewhere else, so there is nothing here that could safely be interrupted.
+        """Add a SEIZE block. Waits in a queue for a machine, operator, vehicle or other resource, takes it and keeps it until a later RELEASE, so one resource can span several steps. Request `quantity` units of `resource_name` (a plain resource or a resource set), honouring priority and the resource's queue discipline, then hold the block's own delay before forwarding. Pairs with RELEASE for a hold split across two blocks; PROCESS fuses the common Seize-Delay- Release case into one block. `balk_if` and `renege_after` let an entity leave without ever being served, by the block's second outgoing link. Preemption is PROCESS only: the service a SEIZE starts is finished somewhere else, so there is nothing here that could safely be interrupted.
 
         distribution='Constant': Name of a registered distribution (see the distribution reference).
         dist_params={'value': 0.0}: Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential).
@@ -518,7 +518,7 @@ class Level:
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
     ) -> Block:
-        """Add a DELAY block. Pure timeout: hold the entity for a sampled duration, seizing nothing, then forward it. Use PROCESS instead when the delay is a resource-backed service.
+        """Add a DELAY block. Pure waiting time (transit, curing, travel, a pause) that holds the entity for a sampled duration without using any machine, operator or other resource. Seizes nothing, then forwards it. Use PROCESS instead when the delay is a resource-backed service.
 
         distribution='Constant': Name of a registered distribution (see the distribution reference).
         dist_params={'value': 0.0}: Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential).
@@ -540,7 +540,7 @@ class Level:
         resource_name: str | dict[str, Any] = '',
         worker_when_blocked: str | dict[str, Any] = 'leaves',
     ) -> Block:
-        """Add a RELEASE block. Release everything the entity holds under `resource_name` (a plain resource or a set member), after an optional delay. Pairs with SEIZE for a hold split across two blocks; raises if the entity never seized that name (fail-loud by design).
+        """Add a RELEASE block. Frees a machine, operator or other resource that an earlier SEIZE gave the entity, after an optional delay. Release everything the entity holds under `resource_name` (a plain resource or a set member), after an optional delay. Pairs with SEIZE for a hold split across two blocks; raises if the entity never seized that name (fail-loud by design).
 
         distribution='Constant': Name of a registered distribution (see the distribution reference).
         dist_params={'value': 0.0}: Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential).
@@ -563,7 +563,7 @@ class Level:
         max_wait: float | str | dict[str, Any] = '',
         max_wait_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
     ) -> Block:
-        """Add a BATCH block. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.
+        """Add a BATCH block. Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.
 
         batch_size=2: Number of entities grouped into one batch entity.
         batched_entity_type='BATCH': Entity type assigned to the batch entity.
@@ -586,7 +586,7 @@ class Level:
         type_store_map: dict[str, Any] = ...,
         match_on: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a MATCH block. Match `number_to_match` *distinct* entity types; with `match_on` set, only entities whose value of that attribute is equal (Arena's attribute match). The arriving entity is always stored first, so it can never be dropped ; the match is then taken atomically from the stores, oldest waiting type first, FIFO within a type (and within a value).
+        """Add a MATCH block. Waits until one entity of each of several kinds is present (a part and its kit, an order and its customer), then releases them together. Match `number_to_match` *distinct* entity types; with `match_on` set, only entities whose value of that attribute is equal (Arena's attribute match). The arriving entity is always stored first, so it can never be dropped ; the match is then taken atomically from the stores, oldest waiting type first, FIFO within a type (and within a value).
 
         number_to_match=2: Number of distinct entity types to match together.
         batch_option=False: True: combine the matched entities into one batch entity. False: forward them separately.
@@ -607,7 +607,7 @@ class Level:
         mode: str | dict[str, Any] = 'Retain original entity values',
         attrs: list[Any] | dict[str, Any] = ...,
     ) -> Block:
-        """Add a SEPARATE block. Split a batch entity into its children. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.
+        """Add a SEPARATE block. Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.
 
         mode='Retain original entity values': How children get their attributes: retain their own values, take all of the parent's, or take only the ones listed in attrs.
         attrs=[]: Attribute labels to copy from the parent, used when mode is "specific".
@@ -624,7 +624,7 @@ class Level:
         label_offset: list[Any] | None = None,
         number_of_duplicates: int | dict[str, Any] = 2,
     ) -> Block:
-        """Add a DUPLICATE block. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
+        """Add a DUPLICATE block. Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
 
         number_of_duplicates=2: Total number of entities leaving this block, original included (>= 2).
         """
@@ -644,7 +644,7 @@ class Level:
         scan_interval: float | dict[str, Any] = 1.0,
         scan_interval_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
     ) -> Block:
-        """Add a HOLD block. Signal / Condition / Infinite queue gate. Infinite mode never releases: the entity stays held in the store for the rest of the run. That is the documented semantics, not a leak.
+        """Add a HOLD block. Holds entities waiting in a queue until a named signal fires, a condition becomes true (a buffer has room, a machine is idle), or for good. Infinite mode never releases: the entity stays held in the store for the rest of the run. That is the documented semantics, not a leak.
 
         mode='Signal': "Signal": wait for a named signal. "Condition": wait until every condition is true, re-checked whenever something it reads changes. "Infinite": never release.
         signal_name='': Name of the signal to wait for, when mode is "Signal".
@@ -667,7 +667,7 @@ class Level:
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
         signal_name: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a SIGNAL block. After an optional delay, succeeds the named signal event (releasing every HOLD block currently waiting on it) and immediately replaces it with a fresh one -- broadcast, edge-triggered, auto-reset.
+        """Add a SIGNAL block. Broadcasts a named signal that releases every entity waiting at a HOLD block for it, for example a shift start, a gate opening or a green light. After an optional delay, succeeds the named signal event (releasing every HOLD block currently waiting on it) and immediately replaces it with a fresh one -- broadcast, edge-triggered, auto-reset.
 
         distribution='Constant': Name of a registered distribution (see the distribution reference).
         dist_params={'value': 0.0}: Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential).
@@ -686,7 +686,7 @@ class Level:
         label_offset: list[Any] | None = None,
         logic_class: str | dict[str, Any] = 'SampleLogic',
     ) -> Block:
-        """Add a LOGIC block. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
+        """Add a LOGIC block. Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
 
         logic_class='SampleLogic': Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int.
         """
@@ -727,7 +727,7 @@ class Level:
         on_preempt: str | dict[str, Any] = 'resume',
         resample: bool | dict[str, Any] = False,
     ) -> Block:
-        """Add a PROCESS block. Seize, delay and release fused in one block; `action` selects which of the three steps run ("Seize Delay Release", "Seize Delay", "Delay Release", "Delay"), so the same block type covers a self-contained service, the start or end of a hold split across two blocks, or a plain timed delay. The most-used block for a simple resource-backed service step.
+        """Add a PROCESS block. Machine, workstation or service step: a part, order or customer waits for a resource (machine, operator, server), is processed for a time, then frees it. Seize, delay and release fused in one block; `action` selects which of the three steps run ("Seize Delay Release", "Seize Delay", "Delay Release", "Delay"), so the same block type covers a self-contained service, the start or end of a hold split across two blocks, or a plain timed delay. The most-used block for a simple resource-backed service step.
 
         action='Seize Delay Release': Which of seize/delay/release run: "Seize Delay Release", "Seize Delay", "Delay Release" or "Delay".
         distribution='Constant': Name of a registered distribution (see the distribution reference).
@@ -795,7 +795,7 @@ class Level:
         on_preempt: str | dict[str, Any] = 'resume',
         resample: bool | dict[str, Any] = False,
     ) -> Block:
-        """Add a MOTION block. A station whose service is a cycle of motions -- moves timed from a motion profile (trapezoidal, payload-derated, slowed for human-robot collaboration) plus picks, places, tool changes, dwells and process steps. Seizing, setups, failures, preemption, workers and blocking are PROCESS's.
+        """Add a MOTION block. Robot or cobot station whose service is a cycle of timed moves, picks, places and tool changes, so cycle time comes from motion data, not a distribution. A station whose service is a cycle of motions -- moves timed from a motion profile (trapezoidal, payload-derated, slowed for human-robot collaboration) plus picks, places, tool changes, dwells and process steps. Seizing, setups, failures, preemption, workers and blocking are PROCESS's.
 
         action='Seize Delay Release': Which of seize/delay/release run: "Seize Delay Release", "Seize Delay", "Delay Release" or "Delay".
         profile='': Name of a record in "motion_profiles": speed, acceleration, payload derating and collaborative speed of whoever does the motions.
@@ -841,7 +841,7 @@ class Level:
         expr: str | dict[str, Any] = '1',
         category: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a RECORD block. RECORD block: a zero-time block that updates a user-defined statistic and forwards the entity unchanged. Statistics live on the simulation context (`ctx.user_stats`), keyed by `stat_name`, so two RECORD blocks writing to the same name share one collector -- core/schema/ rejects a same-name pair with different `kind`s at load time, before a run can hit the mismatch here. `expr` is the increment for "count", the observed value for "tally", the new level for "time_persistent", and ignored for "time_between" (it tallies the gap since the statistic's last arrival; the first arrival records nothing). `kind="cost"` is the one kind that builds no collector: `expr` is a MONEY amount added to the cost item `stat_name` every time an entity passes -- an ordering cost, a changeover cost, a lost-sale penalty. It joins the model's Total Cost and is itemised in the `cost_summary` frame.
+        """Add a RECORD block. Counts or measures something as entities pass (a count, a time between arrivals, a defect, a cost) in a user-named statistic, without delaying them. A zero-time block that updates a user-defined statistic and forwards the entity unchanged. Statistics live on the simulation context (`ctx.user_stats`), keyed by `stat_name`, so two RECORD blocks writing to the same name share one collector -- core/schema/ rejects a same-name pair with different `kind`s at load time, before a run can hit the mismatch here. `expr` is the increment for "count", the observed value for "tally", the new level for "time_persistent", and ignored for "time_between" (it tallies the gap since the statistic's last arrival; the first arrival records nothing). `kind="cost"` is the one kind that builds no collector: `expr` is a MONEY amount added to the cost item `stat_name` every time an entity passes -- an ordering cost, a changeover cost, a lost-sale penalty. It joins the model's Total Cost and is itemised in the `cost_summary` frame.
 
         stat_name='' (required): Name of the user statistic; two RECORD blocks with the same name share one collector.
         kind='count': "count" (running total of expr), "tally" (mean of expr), "time_between" (mean gap between arrivals), "time_persistent" (time-average level of expr) or "cost" (adds expr to a named cost item and to Total Cost).
@@ -862,7 +862,7 @@ class Level:
         node: str | dict[str, Any] = '',
         tending: dict[str, Any] = ...,
     ) -> Block:
-        """Add a STATION block. Named entry point of a routing. Entities arrive here from a ROUTE block whose sequence step names this block, or along an ordinary link; either way `entity.station` becomes this block's name and the entity continues along the station's single outgoing link.
+        """Add a STATION block. Named stop on a job-shop or multi-step routing where a ROUTE block delivers parts, orders or jobs and sets their current location. Named entry point of a routing. Entities arrive here from a ROUTE block whose sequence step names this block, or along an ordinary link; either way `entity.station` becomes this block's name and the entity continues along the station's single outgoing link.
 
         station='': Optional station name this block answers to, shown as `entity.station` and usable in a sequence step. Empty: the block's own name is the station name.
         node='': Optional path-network node this station sits on. With one, travel to and from this station is the shortest path along the network and `DISTANCE("...", "...")` can name it.
@@ -885,7 +885,7 @@ class Level:
         speed: float | str | dict[str, Any] = '',
         speed_unit: Literal['base', 'mm/ms', 'mm/s', 'mm/min', 'mm/h', 'mm/day', 'mm/week', 'mm/month', 'mm/year', 'cm/ms', 'cm/s', 'cm/min', 'cm/h', 'cm/day', 'cm/week', 'cm/month', 'cm/year', 'm/ms', 'm/s', 'm/min', 'm/h', 'm/day', 'm/week', 'm/month', 'm/year', 'km/ms', 'km/s', 'km/min', 'km/h', 'km/day', 'km/week', 'km/month', 'km/year'] | dict[str, Any] = 'base',
     ) -> Block:
-        """Add a ROUTE block. Send the entity to the next station of its `sequence`, applying that step's attribute values and advancing its `step` index; once the sequence is finished, forward along the block's own outgoing link instead.
+        """Add a ROUTE block. Sends a part or job to the next station on its own routing sequence (a job-shop or multi-step route) instead of along a fixed link. Send the entity to the next station of its `sequence`, applying that step's attribute values and advancing its `step` index; once the sequence is finished, forward along the block's own outgoing link instead.
 
         distribution='Constant': Name of a registered distribution (see the distribution reference).
         dist_params={'value': 0.0}: Parameters for `distribution`, by name (e.g. {"rate": 0.5} for Exponential).
@@ -909,7 +909,7 @@ class Level:
         mode: str | dict[str, Any] = 'remove',
         wait: bool | dict[str, Any] = False,
     ) -> Block:
-        """Add a TRANSFER block. Move `amount` of `level` as the entity passes.
+        """Add a TRANSFER block. Adds to or takes from a continuous tank, stock or inventory level (fuel, material, a pool) as the entity passes, optionally waiting until it is available.
 
         level='' (required): Name of the level this block adds to or removes from.
         amount='1': How much to move: an expression, e.g. 20 or entity.quantity.
@@ -930,7 +930,7 @@ class Level:
         destination: str | dict[str, Any] = '',
         priority: int | dict[str, Any] = 0,
     ) -> Block:
-        """Add a TRANSPORT block. Seize a vehicle, fetch the entity, carry it, unload, release.
+        """Add a TRANSPORT block. Moves a part, order or load between locations with a vehicle (truck, AGV, forklift, robot) from a fleet: fetch, carry, unload, free the vehicle.
 
         fleet='' (required): Name of the mover fleet whose vehicles do the carrying.
         destination='': STATION the entity is carried to. Empty: the next station of the entity's routing, exactly as ROUTE would choose it.
@@ -957,7 +957,7 @@ class Level:
         from_node: str | dict[str, Any] = '',
         to_node: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a CONVEYOR block. A belt segment entities ride from one end to the other.
+        """Add a CONVEYOR block. Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
 
         length=0.0: Belt length in layout units. 0 takes the network distance between `from_node` and `to_node`.
         length_unit='base': Unit of `length`: "base" (the model's) or one of its quantity's units.
@@ -983,7 +983,7 @@ class Level:
         capacity: int | dict[str, Any] = 1,
         level: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a BUFFER block. A finite number of places between two stations; when they are all taken the upstream machine stays blocked, holding its finished part.
+        """Add a BUFFER block. Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part.
 
         capacity=1 (required): Places in the buffer, 0 or more. A part takes one on the way in and holds it until the next station accepts it, so an upstream machine blocks while the buffer is full. 0 means no place at all (blocking after service with no buffer); for an unlimited queue, do not draw a buffer.
         level='': Optional level whose value mirrors the buffer's content, so an asset can draw it as a fill indicator. Empty = no level.
@@ -1002,7 +1002,7 @@ class Level:
         to: Any = 'entity.agent',
         payload: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a SEND block. Send `message` (with an optional `payload`) to the agents `to` names.
+        """Add a SEND block. Sends a message, with an optional payload, to agents of an agent-based model so they can react, for example a customer calling a driver.
 
         message='' (required): Name of the message; an agent's "message" transition matches it.
         to='entity.agent': Recipients: an expression giving an agent (entity.agent, AGENT("Pop", i)) or {"population": "Pop"[, "where": "<condition on self>"][, "random": true]}.
@@ -1022,7 +1022,7 @@ class Level:
         arguments: dict[str, Any] = ...,
         preset: str | dict[str, Any] = '',
     ) -> Block:
-        """Add a SUBMODEL block. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
+        """Add a SUBMODEL block. Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
 
         definition='': Name of the submodel definition
         arguments={}: Parameter bindings: {name: number | expression | bool}
@@ -1040,7 +1040,7 @@ class Level:
         label_offset: list[Any] | None = None,
         port: str | dict[str, Any] = 'in',
     ) -> Block:
-        """Add a SUB_ENTRY block. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
+        """Add a SUB_ENTRY block. Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
 
         port='in': Input port name of the definition
         """
@@ -1056,7 +1056,7 @@ class Level:
         label_offset: list[Any] | None = None,
         port: str | dict[str, Any] = 'out',
     ) -> Block:
-        """Add a SUB_EXIT block. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
+        """Add a SUB_EXIT block. Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
 
         port='out': Output port name of the definition
         """

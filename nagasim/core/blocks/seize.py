@@ -15,7 +15,9 @@ __all__ = ["Seize", "SPEC"]
 
 
 class Seize(QueueBehaviour, BaseProcess):
-    """Request `quantity` units of `resource_name` (a plain resource or a
+    """Waits in a queue for a machine, operator, vehicle or other resource, takes it and keeps it until a later RELEASE, so one resource can span several steps.
+
+    Request `quantity` units of `resource_name` (a plain resource or a
     resource set), honouring priority and the resource's queue discipline,
     then hold the block's own delay before forwarding. Pairs with RELEASE for
     a hold split across two blocks; PROCESS fuses the common Seize-Delay-

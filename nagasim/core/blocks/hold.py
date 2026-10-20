@@ -26,7 +26,7 @@ _STEADY_NAMES = frozenset({"entity", "true", "false", "HORIZON"})
 
 
 class Hold(BaseProcess):
-    """Signal / Condition / Infinite queue gate.
+    """Holds entities waiting in a queue until a named signal fires, a condition becomes true (a buffer has room, a machine is idle), or for good.
 
     Infinite mode never releases: the entity stays held in the store for the
     rest of the run. That is the documented semantics, not a leak.

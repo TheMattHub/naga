@@ -11,7 +11,9 @@ __all__ = ["Duplicate", "SPEC"]
 
 
 class Duplicate(BaseProcess):
-    """Forwards the original entity unchanged, then forwards
+    """Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged.
+
+    Forwards the original entity unchanged, then forwards
     `number_of_duplicates - 1` shallow copies, each a fresh Entity with its
     own id and name (never a deepcopy: that used to clone the entity manager
     and any live resource requests)."""

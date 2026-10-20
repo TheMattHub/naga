@@ -24,8 +24,7 @@ __all__ = ["Buffer", "SPEC"]
 
 
 class Buffer(BaseProcess):
-    """A finite number of places between two stations; when they are all taken
-    the upstream machine stays blocked, holding its finished part."""
+    """Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part."""
 
     # The token rides through: a buffer accepts the entity when it gives it a
     # place, not when it arrives (a full buffer has not accepted anything).

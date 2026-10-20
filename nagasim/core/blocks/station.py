@@ -30,7 +30,9 @@ __all__ = ["Station", "SPEC"]
 
 
 class Station(BaseProcess):
-    """Named entry point of a routing. Entities arrive here from a
+    """Named stop on a job-shop or multi-step routing where a ROUTE block delivers parts, orders or jobs and sets their current location.
+
+    Named entry point of a routing. Entities arrive here from a
     ROUTE block whose sequence step names this block, or along an ordinary
     link; either way `entity.station` becomes this block's name and the entity
     continues along the station's single outgoing link."""

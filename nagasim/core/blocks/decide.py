@@ -14,7 +14,9 @@ FALLBACK_MODES = ("first", "random", "shortest")
 
 
 class Decide(BaseProcess):
-    """N-way branch. "Chance" mode draws on the block's own RNG against
+    """Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy.
+
+    "Chance" mode draws on the block's own RNG against
     cumulative `probs`; "Condition" mode evaluates each of `conditions` in
     order and takes the first true one. Both modes take the last outgoing
     link as an ELSE branch when there is one more link than probs/conditions;

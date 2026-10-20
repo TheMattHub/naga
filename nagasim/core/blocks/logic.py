@@ -11,7 +11,9 @@ __all__ = ["Logic", "SPEC"]
 
 
 class Logic(BaseProcess):
-    """Routes an entity through a user-supplied, plain (non-BaseProcess) class
+    """Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough.
+
+    Routes an entity through a user-supplied, plain (non-BaseProcess) class
     defined in nagasim.core.custom_logic. The class only needs an
     `execute(self, entity, ctx) -> int` method returning the outgoing link index;
     `execute(self, entity)` (no ctx) is also accepted."""

@@ -7,7 +7,7 @@ One section per distribution, from `nagasim/core/distributions.py`'s `DISTRIBUTI
 
 ## Bernoulli
 
-Yes/no decisions, e.g. reject/accept, pass/fail.  
+A single yes/no outcome with a given probability, such as accept or reject, pass or fail, or rework or not.  
 Param: p (success probability) in [0, 1].
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
@@ -18,7 +18,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
 
 ## Beta
 
-Useful for bounded times or probabilities.  
+A value between a minimum and a maximum with a flexible shape, such as a fraction, a proportion or a bounded time.  
 Params: alpha, beta > 0; min < max.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Beta` (see Input analysis).
@@ -32,7 +32,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Binomial
 
-Fixed-number trials with success/failure outcomes.  
+Count of successes (for example defective parts) in a fixed number of independent trials.  
 Params: n (trials) >= 0, p in [0, 1].
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0. Can be fit from data as `Binomial` (see Input analysis).
@@ -44,7 +44,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0. Can be fit 
 
 ## BoundedNormal
 
-Normal distribution bounded within a range; useful for processes with natural limits, such as delays.  
+Bell-shaped variation around an average, cut off at a minimum and a maximum so a time cannot go negative or beyond a physical limit.  
 Params: mean (central value), stddev (standard deviation) > 0; min < max.
 
 Category: special. Arrival: no. Delay: yes. Support lower bound: 0.0.
@@ -58,7 +58,7 @@ Category: special. Arrival: no. Delay: yes. Support lower bound: 0.0.
 
 ## Cauchy
 
-Heavy-tailed distribution for outlier-sensitive systems (rare); often returns negative values.  
+Very heavy-tailed values with frequent extreme outliers in both directions; rarely right for times, and it often returns negative values.  
 Params: x0 (location), gamma (scale) > 0.
 
 Category: special. Arrival: no. Delay: no. Support lower bound: unbounded.
@@ -70,7 +70,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: unbounded.
 
 ## ChiSquare
 
-Used mostly for statistical diagnostics.  
+Statistical diagnostics and sums of squared normal variations; rarely used for simulation times.  
 Param: df (degrees of freedom) >= 1.
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
@@ -81,7 +81,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
 
 ## Constant
 
-Fixed delay or service time, commonly used for deterministic processes.  
+A fixed duration that never varies, for a deterministic service time, transit time or interval.  
 Params: value (fixed duration) >= 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0.
@@ -92,7 +92,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0.
 
 ## CustomExpression
 
-Model expression (core/expressions.py grammar).  
+Any model expression, for example '2 + EXPO(3)', when no single distribution fits.  
 Param: expression (string, e.g. '2 + EXPO(3)').
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0.
@@ -103,7 +103,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0.
 
 ## DiscreteUniform
 
-Equal chance of integers between bounds.  
+A whole number between a minimum and a maximum, each equally likely, such as a random lot size from 1 to 6.  
 Params: low (min) <= high (max), integers.
 
 Category: special. Arrival: no. Delay: yes. Support lower bound: 0.0. Can be fit from data as `DiscreteUniform` (see Input analysis).
@@ -115,7 +115,7 @@ Category: special. Arrival: no. Delay: yes. Support lower bound: 0.0. Can be fit
 
 ## EmpiricalContinuous
 
-Piecewise-uniform continuous sampling from a histogram: picks a bin by weight, then draws uniformly within it (true continuous, not point resampling).  
+Measured data as a histogram: a bin is picked by its weight, then a value is drawn evenly within it (a continuous draw, not a resample of points).  
 Params: values (float list of bin edges, length = len(probs) + 1), probs (bin weights summing to 1).
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0.
@@ -127,7 +127,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0.
 
 ## EmpiricalDiscrete
 
-Samples discrete values (integers) from a list with associated probabilities.  
+Whole-number values with their own measured probabilities, such as order sizes or the number of items per job.  
 Params: values (int list), probs (weights summing to 1).
 
 Category: discrete. Arrival: yes. Delay: yes. Support lower bound: 0.0.
@@ -139,7 +139,7 @@ Category: discrete. Arrival: yes. Delay: yes. Support lower bound: 0.0.
 
 ## Erlang
 
-Sum of k exponential stages (special case of gamma).  
+Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random.  
 Params: k (stages) >= 1, rate (lambda) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Erlang` (see Input analysis).
@@ -151,7 +151,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Exponential
 
-Classic model for memoryless interarrival and failure times.  
+Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one.  
 Param: rate (lambda, event rate) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Exponential` (see Input analysis).
@@ -162,7 +162,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## FixedSchedule
 
-Step-wise time schedule for entity generation or delays.  
+Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.  
 Param: schedule (ordered list of times).
 
 Category: continuous. Arrival: yes. Delay: no. Support lower bound: 0.0.
@@ -173,7 +173,7 @@ Category: continuous. Arrival: yes. Delay: no. Support lower bound: 0.0.
 
 ## Gamma
 
-Flexible model for skewed service/process times.  
+Right-skewed service or processing times that cannot go below zero, from very regular to very variable.  
 Params: alpha (shape) > 0, beta (scale) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Gamma` (see Input analysis).
@@ -185,7 +185,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Geometric
 
-Models number of trials until first success.  
+Number of attempts until the first success, such as tries before a part passes inspection.  
 Param: p in (0, 1].
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0. Can be fit from data as `Geometric` (see Input analysis).
@@ -196,7 +196,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0. Can be fit 
 
 ## Hypergeometric
 
-Sampling without replacement (e.g., quality inspection).  
+Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample.  
 Params: N (population) >= K (success states) >= n (sample) >= 0.
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
@@ -209,7 +209,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
 
 ## InverseGaussian
 
-Used in detailed modeling of reaction/decision delays.  
+Right-skewed positive times such as a reaction or decision delay, or the time for a drifting quantity to reach a level.  
 Params: mu (mean) > 0, lambda (shape) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `InverseGaussian` (see Input analysis).
@@ -221,7 +221,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## JohnsonSB
 
-For skewed variables bounded in [min, max] (e.g., fill %).  
+A skewed value that stays between a minimum and a maximum, such as a yield or fill percentage.  
 Params: a1, a2 (shape), min < max.
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
@@ -235,7 +235,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
 
 ## JohnsonSU
 
-Highly flexible for skewed and kurtotic data fitting; can return negative values.  
+A flexible fit for skewed, heavy-tailed data when no simple distribution matches; it can return negative values.  
 Params: a, b (shape), loc (center), scale > 0.
 
 Category: special. Arrival: no. Delay: no. Support lower bound: unbounded.
@@ -249,7 +249,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: unbounded.
 
 ## LogLogistic
 
-Heavy-tailed alternative to lognormal for skewed durations.  
+Right-skewed durations with a heavier tail than lognormal, such as repair or lifetime data that cannot go below zero.  
 Params: c (shape) > 0, scale > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `LogLogistic` (see Input analysis).
@@ -261,7 +261,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Lognormal
 
-Right-skewed times like human handling or picking durations.  
+Right-skewed times that cannot go below zero, such as manual handling, picking or repair durations with an occasional long one.  
 Params: mu (log-mean), sigma (log-stddev) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Lognormal` (see Input analysis).
@@ -273,7 +273,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## NegativeBinomial
 
-Trials until r successes, with success chance p.  
+Number of failures before a set number of successes, each try with the same chance of success, such as rejected parts before r good ones.  
 Params: r (target successes) >= 1, p in (0, 1].
 
 Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
@@ -285,7 +285,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: 0.0.
 
 ## Normal
 
-Models symmetric variation around a mean (e.g., repair times), can produce negative values unless mean >> 0 and .  
+Symmetric variation around an average, such as a cycle time that is rarely far from the mean; it can go negative unless the mean is much larger than the spread.  
 Params: mean (central value), stddev (standard deviation) > 0.
 
 Category: special. Arrival: no. Delay: no. Support lower bound: unbounded. Can be fit from data as `Normal` (see Input analysis).
@@ -297,7 +297,7 @@ Category: special. Arrival: no. Delay: no. Support lower bound: unbounded. Can b
 
 ## PearsonTypeV
 
-Used for inverse-gamma-shaped delays or failures.  
+Right-skewed positive delays or times to failure with a long tail, an alternative to lognormal.  
 Params: a (shape) > 0, scale > 0.
 
 Category: continuous. Arrival: no. Delay: yes. Support lower bound: 0.0.
@@ -309,7 +309,7 @@ Category: continuous. Arrival: no. Delay: yes. Support lower bound: 0.0.
 
 ## PearsonTypeVI
 
-Ratios of gammas (e.g., cost per service); always positive. Can model time if parameters are appropriate.  
+A ratio of two gamma variables, such as cost per service, that is always positive; it can model times when the parameters suit.  
 Params: a, b > 0, scale > 0.
 
 Category: continuous. Arrival: no. Delay: yes. Support lower bound: 0.0.
@@ -322,7 +322,7 @@ Category: continuous. Arrival: no. Delay: yes. Support lower bound: 0.0.
 
 ## Poisson
 
-Number of arrivals/events in a fixed time window.  
+Counts per period, such as the number of arrivals or events in a fixed time window.  
 Param: lambda (average rate) > 0.
 
 Category: discrete. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Poisson` (see Input analysis).
@@ -333,7 +333,7 @@ Category: discrete. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be f
 
 ## Rayleigh
 
-Models magnitudes like movement noise or energy.  
+A positive magnitude such as movement noise or a positioning error, with a single scale parameter.  
 Param: sigma (scale) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Rayleigh` (see Input analysis).
@@ -344,7 +344,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Triangular
 
-Used with expert estimates of min, most likely, and max times.  
+Min, most likely and max are known, usually from expert estimates when there is no data.  
 Params: low =< mode =< high.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Triangular` (see Input analysis).
@@ -357,7 +357,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Uniform
 
-Equal probability within a bounded range; used when only min and max are known.  
+Any value between a minimum and a maximum is equally likely; use it when only the min and max are known.  
 Params: low (min) =< high (max), both real numbers.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Uniform` (see Input analysis).
@@ -369,7 +369,7 @@ Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be
 
 ## Weibull
 
-Common for modeling equipment lifetimes and breakdowns.  
+Equipment lifetimes and time to failure, where the breakdown rate can rise with age (wear-out) or fall (early failures).  
 Params: scale (lambda) > 0, shape (k) > 0.
 
 Category: continuous. Arrival: yes. Delay: yes. Support lower bound: 0.0. Can be fit from data as `Weibull` (see Input analysis).

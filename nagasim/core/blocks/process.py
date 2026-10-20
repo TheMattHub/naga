@@ -51,7 +51,9 @@ _DEFAULT_SETUP_CATEGORY = "Changeover"
 
 
 class Process(QueueBehaviour, BaseProcess):
-    """Seize, delay and release fused in one block; `action` selects which of
+    """Machine, workstation or service step: a part, order or customer waits for a resource (machine, operator, server), is processed for a time, then frees it.
+
+    Seize, delay and release fused in one block; `action` selects which of
     the three steps run ("Seize Delay Release", "Seize Delay", "Delay Release",
     "Delay"), so the same block type covers a self-contained service, the
     start or end of a hold split across two blocks, or a plain timed delay.
