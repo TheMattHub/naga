@@ -4,9 +4,29 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.12: one source of truth for a model's fields
+## 0.13: an assistant runs a simulation study
 
 <!-- --8<-- [start:latest] -->
+- **Studies an assistant can run.** The study tools keep a study in a folder: the question,
+  goals with KPI ranges, assumptions and their sources, validation, and every model version with
+  its checks. Each step runs and checks the whole model, and every answer names the next step, so
+  another assistant or a person can resume it.
+- **A live control room.** `naga room` or `naga mcp --room` serves the study's page on this
+  machine: it updates itself while the chat works, its buttons approve the plan, ask for the next
+  iteration or make a deliverable, and it has an assistant of its own.
+
+<!-- no-run: a server that waits for its client -->
+```console
+naga mcp --root path/to/studies --room
+```
+
+- **The right tool, first.** `find_tool` searches the agent tools by intent, and an optional
+  tool picker (`--tool-picker gte`, local, or `haiku`, hosted) puts the right one first more often.
+- **Before you upgrade:** the `mcp` extra now needs `mcp>=1.19`.
+<!-- --8<-- [end:latest] -->
+
+## 0.12: one source of truth for a model's fields
+
 - **Schema and engine agree.** The published JSON schema is generated from the same field table
   the engine validates and flattens with, so an editor or an agent checking a model against the
   schema sees what `naga validate` sees.
@@ -24,7 +44,6 @@ naga validate berth_shore_power
   `naga state observe` is removed (a plant's state comes from `naga twin`); and the Python names
   `costs.COST_KINDS`, `SimSession.take_events`, `ModelDocument.set_description_text` and
   `api.run_replication` are gone.
-<!-- --8<-- [end:latest] -->
 
 ## 0.11: shore power at a berth
 
