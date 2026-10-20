@@ -53,6 +53,9 @@ sql = ["sqlalchemy"]
 # Bounds: 2.1 is the lowest version whose node-id parsing was read, and the first with the
 # public message-limit attributes; a new major is not assumed.
 opcua = ["asyncua>=2.1,<3"]
+# nagasim/toolpicker.py: `naga mcp --tool-picker gte` (D671), off by default, never bundled.
+# The first use downloads the model weights from Hugging Face.
+picker = ["sentence-transformers>=3"]
 # nagasim/results.py: Results.plot() for notebook use.
 plot = ["matplotlib"]
 # nagasim/mcp_server.py: `naga mcp`.

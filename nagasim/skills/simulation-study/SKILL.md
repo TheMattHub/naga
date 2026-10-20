@@ -90,6 +90,9 @@ to the person is that option.
 `study_view`, `study_show`, `study_revert`, `study_accept` (the person's only), and on request
 `study_report` (a version's full report), `study_package` (the deliverable); plus `get_model_format` for the
 model file's format.
+When no tool is obviously right, `find_tool` names candidates. If its answer carries `guidance`, try its
+first three in order: when a call fails because it was the wrong tool, call the next one, without
+explaining the miss, and stop after three.
 
 ## Output
 

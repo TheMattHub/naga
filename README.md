@@ -199,6 +199,16 @@ command-line flags, then the environment (`NAGASIM_LLM_PROVIDER`, `NAGASIM_LLM_B
 `naga assist` works on the one model file you give it and reaches only the endpoint you
 configured. A model's own Python behaviour never runs through either.
 
+### Optional: System-1 tool picker
+
+A small re-ranking model can help an assistant pick the right tool. `pip install "nagasim[picker]"`
+and `naga mcp --tool-picker gte` re-rank `find_tool`'s answers with gte-reranker-modernbert-base
+(the right tool first for 14 of 25 blind requests, against 8 without it), and the answer tells the
+assistant to try the first three in order. It is off unless you pass the flag, and its first use
+downloads the weights from Hugging Face. To use another model, see the
+[System-1 AI Gateway](https://github.com/TheMattHub/Sys1-AI-Gateway) and its study of the options;
+the [tool picker page](https://thematthub.github.io/naga/tool-picker/) has the comparison.
+
 ## Limits to know
 
 - The readers, the MQTT outbox and the twin have run against Mosquitto 2.1.2, an asyncua 2.1.0

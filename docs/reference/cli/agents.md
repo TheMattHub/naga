@@ -10,7 +10,8 @@ Serve the model operations to an assistant.
 ```text
 usage: naga mcp [-h] [--root ROOT] [--allow-network] [--allow-private-network]
                 [--allow-host HOST] [--connections FILE]
-                [--tools {all,compact}] [--room] [--twin DIR]
+                [--tools {all,compact}] [--room] [--tool-picker {gte}]
+                [--twin DIR]
 
 Run the MCP server over stdio. File access is confined to --root, and network
 access is off unless you allow it here.
@@ -37,6 +38,10 @@ options:
   --room                also serve the live control room of the studies on
                         127.0.0.1 (a random port and token); every study
                         answer then carries its address
+  --tool-picker {gte}   re-rank find_tool's answers with a small local model
+                        (off by default; needs nagasim[picker], and the first
+                        use downloads the weights from Hugging Face).
+                        find_tool then says to try its first three in order
   --twin DIR            the result directory of a twin you started (naga twin
                         run --out DIR): two read-only tools then answer from
                         it. No tool can start a twin or choose this directory

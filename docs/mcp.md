@@ -28,7 +28,8 @@ same entry:
 ```
 
 Any other MCP client that starts a stdio server works the same way. Restart the client after
-editing its configuration.
+editing its configuration. To help the assistant pick the right tool with a small local model, add
+`--tool-picker gte` (optional, off by default; see [Pick tools with a small model](tool-picker.md)).
 
 Besides the tools the server publishes:
 

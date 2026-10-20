@@ -37,6 +37,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [Use from Python](https://thematthub.github.io/naga/python-api.html): The command line is a thin layer over a few functions.
 - [Use with an agent](https://thematthub.github.io/naga/mcp.html): The engine has a set of tools an LLM agent calls to build, validate, run, debug and analyse a model: Agent tools lists every one.
 - [Run a study with an assistant](https://thematthub.github.io/naga/ai-study.html): The engine can keep a whole simulation study in a folder and test every model step, so any assistant that speaks to it (see Use with an agent) can run a study without remembering anything between calls.
+- [Pick tools with a small model](https://thematthub.github.io/naga/tool-picker.html): find_tool ranks the agent tools by plain word overlap, and a small re-ranking model can put the right tool first more often.
 
 ## Digital twin
 
