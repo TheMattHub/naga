@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 90 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 92 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -115,6 +115,7 @@ The 90 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `debug_run` |  | Run one replication of a model under a debugger: start it, or continue it, until a stop, one step, a model time, a pending decision or the end. |
 | `debug_inspect` | yes | Read the state of a model's debug run where it stands, without moving it. |
+| `run_facts` | yes | Run one replication of a model and list what happened in it that no KPI reports, as facts with numbers: blocks no entity entered, resources never seized, resources with a unit doing no work (free, or held by an entity waiting elsewhere) while entities waited for them, and entities still in the model at the end. |
 
 ## study
 
@@ -158,6 +159,12 @@ The 90 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `study_writeup` |  | Write a paper-style report of the study on request (STRESS-aligned sections: abstract, objective, model logic, data and assumptions, experimentation, verification and validation, results, limitations, discussion, references), built from the study folder. |
 | `study_slides` |  | Make a slide deck of the study on request: one HTML file, 16:9 slides (title and question, the answer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was run, next steps). |
+
+## view
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `view_model` | yes | See a model as a picture: its blocks, each where it sits in the editor's process view, and the links between them. |
 
 ## discover
 

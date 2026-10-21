@@ -247,7 +247,8 @@ def test_tool_names_are_snake_case_verbs():
              "investment",      # investment_case: the name the CLI and spec use
              "debug",           # debug_run, debug_inspect: the names the 7.5 spec uses
              "study",          # the study_* tools
-             "find")            # find_tool
+             "find",            # find_tool
+             "view")            # view_model, view_3d: a picture of the model
     for name in T.TOOLS:
         assert name == name.lower() and " " not in name
         assert name.split("_")[0] in verbs, name

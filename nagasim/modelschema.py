@@ -1680,7 +1680,11 @@ def _defs() -> dict:
                                               "\"when\" below selects."},
                 "when": {"type": "string", "default": "always",
                          "description": "\"always\" (every sample), \"final\" (the last sample "
-                                        "only) or \"after <t>\" (samples at or after time t)."},
+                                        "only), or a window of sampled times, ends included: "
+                                        "\"after <t>\", \"before <t>\" or \"between <t1> and "
+                                        "<t2>\" (the constraint holds at every sample in it). "
+                                        "\"eventually\", alone or followed by a window, asks "
+                                        "that it hold at least once in it."},
             },
             "required": ["name", "inputs", "constraint"],
             "additionalProperties": False,

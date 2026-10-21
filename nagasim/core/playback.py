@@ -593,13 +593,14 @@ class Timeline:
         elif e.kind == "entity_seized":
             if e.block:     # "" = seized by a block outside the level being viewed
                 self._mark_in_service(e.entity_id, e.block)
-            self._resource_busy[e.target] = self._resource_busy.get(e.target, 0) + 1
+            # The units the seize holds (#748); an older trace carries none, so 1.
+            self._resource_busy[e.target] = self._resource_busy.get(e.target, 0) + (int(e.value) or 1)
         elif e.kind == "entity_released":
             # entity_released changes no block occupancy: it fires on the
             # Release block, not the Seize block the entity is still counted
             # in. It DOES free the resource the busy count is keyed on.
             if e.target in self._resource_busy:
-                self._resource_busy[e.target] = max(self._resource_busy[e.target] - 1, 0)
+                self._resource_busy[e.target] = max(self._resource_busy[e.target] - (int(e.value) or 1), 0)
         elif e.kind == "resource_state":
             if e.state == "capacity":
                 self._resource_capacity[e.resource] = e.value

@@ -1,0 +1,52 @@
+{
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "Infeed",
+      "description": "The box spawner: 30 a minute, each gap drawn between half and one and a half times the 2 s period",
+      "type": "CREATE",
+      "position": [100, 200],
+      "params": {
+        "e_type": "BOX",
+        "arrival_mode": "Interarrival",
+        "distribution": "Uniform",
+        "dist_params": {"low": 1.0, "high": 3.0},
+        "entities_per_arrival": 1,
+        "max_arrivals": 0,
+        "start_time": 1.05
+      }
+    },
+    {
+      "name": "Belt",
+      "description": "The belt, from where the box drops on it to its head: 4.085 - 0.45 = 3.635 m at 1 m/s; a 0.6 m box takes 0.6 m",
+      "type": "CONVEYOR",
+      "position": [300, 200],
+      "params": {"length": 3.635, "speed": 1.0, "spacing": 0.6}
+    },
+    {
+      "name": "Sink",
+      "description": "The despawner past the belt's head",
+      "type": "DISPOSE",
+      "position": [500, 200],
+      "params": {"distribution": "Constant", "dist_params": {"value": 0.0}}
+    }
+  ],
+  "links": [
+    {"source": "Infeed", "target": "Belt"},
+    {"source": "Belt", "target": "Sink"}
+  ],
+  "resources": [],
+  "resource_sets": [],
+  "entities": [],
+  "variables": [],
+  "schedules": [],
+  "failures": [],
+  "simulation": {
+    "time_limit": 300,
+    "warmup": 0,
+    "replications": 1,
+    "time_unit": "seconds",
+    "timeseries_counts": ["Belt"]
+  },
+  "info": {"title": "A box belt, as an Open Industry Project scene states it"}
+}

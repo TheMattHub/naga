@@ -261,7 +261,7 @@ def _hold(block, entity, holds: dict) -> None:
             entity.req_params = {}
         entity.req_params[name] = {"resource": member, "requests": requests, "set": rset,
                                    "seized_at": since}
-        block.emit("entity_seized", entity=entity, resource=member.name)
+        block.emit("entity_seized", entity=entity, resource=member.name, value=len(requests))
         # The grants are counted when SimPy processes them: before the statistics restart.
         block.ctx.settling += 1
         block.env.process(_granted(block.ctx, requests))

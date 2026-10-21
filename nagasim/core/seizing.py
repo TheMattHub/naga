@@ -285,7 +285,7 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
         _accrue_usage_cost(block, entity, member, len(requests))
     if block.ctx.debug:
         log.debug("Entity %s acquired '%s' at time %s.", entity.id, member.name, block.env.now)
-    block.emit("entity_seized", entity=entity, resource=member.name)
+    block.emit("entity_seized", entity=entity, resource=member.name, value=len(requests))  # units (#748)
     if block.space_aware:
         # D169: the station holds the part, but a cobot still placing it
         # finishes its cycle before the job starts.
@@ -510,7 +510,8 @@ def release(block, entity, target_name):
             member.release(request)
         if info["set"] is not None:
             info["set"].released(len(info["requests"]))
-        block.emit("entity_released", entity=entity, resource=member.name)
+        block.emit("entity_released", entity=entity, resource=member.name,
+                   value=len(info["requests"]))   # units (#748)
     if block.ctx.debug:
         log.debug("Entity %s released resource '%s' at time %s.", entity.id, member.name, block.env.now)
 

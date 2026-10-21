@@ -70,9 +70,17 @@ parse or trust. It is evaluated twice (DEVLOG #165):
 The earlier of the two failures is reported; Snapshot is None when only the
 live probe saw it (it fell between samples).
 
-WHEN. "always" (every sample, the default), "final" (the last sample only), or
-"after <t>" (samples at or after time t) -- Vensim's own three shapes for when
-the consequence is expected to hold.
+WHEN (grammar and parser: `core/schema/sections_validation.py`'s `parse_when`, shared with
+the validator). "always" (every sample, the default), "final" (the last sample only) and
+"after <t>" (samples at or after time t) are Vensim's own three shapes. D677 adds
+"before <t>" and "between <t1> and <t2>" (every sample in the window, both ends in) and
+"eventually", alone or with such a window: the constraint must hold at LEAST ONCE in the
+window (Open Industry Project's "eventually"). For "eventually" the live probe holds the first
+instant the constraint HELD inside the window, not the first failure, and the check passes if
+the probe or any sample in the window saw it hold. One that already holds at the window's
+first sample passes with a note ("held from the start of the window: nothing had to happen"):
+it asked nothing of the model. One that never held fails with "never held <window in words>",
+and "Violation time" is the window's end (the run's end when the window has none or runs past it).
 
 RUN. Each check is ONE deterministic replication (replication 1) at the same
 seed as every other check in the set (Vensim-style CRN across checks: unrelated
@@ -98,6 +106,7 @@ from nagasim import api, experiments
 from nagasim.core import submodels
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.levels import LevelSystem
+from nagasim.core.schema.sections_validation import parse_when
 from nagasim.core.stats import ci95
 
 __all__ = ["Result", "check", "assert_model", "main", "run_reality_checks", "RESULT_COLUMNS"]
@@ -123,6 +132,7 @@ class Result:
     status: str  # "pass" | "fail" | "inconclusive"
     message: str
     kind: str  # "assertion" | "reality_check"
+    note: str = ""  # a reality check's extra word on its outcome (D677); it is also in `message`
 
     @property
     def passed(self) -> bool:
@@ -207,14 +217,20 @@ def _reality_result(row) -> Result:
         when = row["Violation time"]
         message = (f"reality check '{name}' failed" +
                   (f" at t={when:.6g}" if when is not None else ""))
-    return Result(name, None, None, None, None, None, None, None, status, message, "reality_check")
+    note = row["Note"]
+    if note:
+        message += f" ({note})"
+    return Result(name, None, None, None, None, None, None, None, status, message,
+                  "reality_check", note)
 
 
 # ---------------------------------------------------------------------- reality checks
 
-RESULT_COLUMNS = ["Check", "Passed", "Violation time", "Snapshot"]
+RESULT_COLUMNS = ["Check", "Passed", "Violation time", "Snapshot", "Note"]
 # Hidden "sample" delay + auxiliary holding the first failing instant (#165).
 _PROBE = "~reality_check"
+_INF = float("inf")
+_FROM_START = "held from the start of the window: nothing had to happen"
 
 
 def _overrides(name: str, inputs) -> list:
@@ -223,41 +239,42 @@ def _overrides(name: str, inputs) -> list:
     return [{"path": path, "value": value} for path, value in (inputs or {}).items()]
 
 
-def _when_mask(name: str, when, times: np.ndarray) -> np.ndarray:
-    when = (when or "always").strip() if isinstance(when, str) else when
-    if when == "always":
-        return np.ones_like(times, dtype=bool)
-    if when == "final":
+def _when_mask(mode: str, lo: float, hi: float, times: np.ndarray) -> np.ndarray:
+    """Which sampled *times* the check looks at: the last one for "final", else those in [lo, hi]."""
+    if mode == "final":
         mask = np.zeros_like(times, dtype=bool)
         if len(mask):
             mask[-1] = True
         return mask
-    prefix = "after "
-    if isinstance(when, str) and when.startswith(prefix):
-        try:
-            after = float(when[len(prefix):])
-        except ValueError:
-            after = None
-        if after is not None:
-            return times >= after
-    raise ValueError(f"reality check '{name}': unknown \"when\" {when!r}; use \"always\", "
-                     f"\"final\" or \"after <t>\"")
+    return (times >= lo) & (times <= hi)
 
 
-def _with_probe(layout: dict, constraint_text: str, when) -> dict:
-    """*layout* plus the live probe (DEVLOG #165): a sample delay whose
-    condition is "not yet failed and the constraint fails now" and whose input
-    is TNOW, so it holds the first failing instant (-1 while none), read back
-    through an auxiliary. "final" needs no probe: the last sample is exact."""
-    when = (when or "always").strip() if isinstance(when, str) else when
-    if when == "final":
+def _window_words(lo: float, hi: float) -> str:
+    if lo == -_INF and hi == _INF:
+        return "during the run"
+    if hi == _INF:
+        return f"after {lo:g}"
+    if lo == -_INF:
+        return f"before {hi:g}"
+    return f"between {lo:g} and {hi:g}"
+
+
+def _with_probe(layout: dict, constraint_text: str, mode: str, lo: float, hi: float) -> dict:
+    """*layout* plus the live probe (DEVLOG #165): a sample delay whose input is TNOW, so it
+    holds the first instant its condition was true (-1 while none), read back through an
+    auxiliary. The condition is "not yet seen and the constraint fails now" ("always"), or
+    "... holds now" ("eventually", D677), inside the window [lo, hi]. "final" needs no probe:
+    the last sample is exact."""
+    if mode == "final":
         return layout
-    after = f" and TNOW >= {float(when[len('after '):])!r}" if when != "always" else ""
+    seen = f"({constraint_text})" if mode == "eventually" else f"not ({constraint_text})"
+    window = ((f" and TNOW >= {lo!r}" if lo > -_INF else "") +
+              (f" and TNOW <= {hi!r}" if hi < _INF else ""))
     probe = json.dumps(_PROBE)
     return {**layout,
             "delays": list(layout.get("delays") or []) + [{
                 "name": _PROBE, "kind": "sample", "input": "TNOW", "initial": -1,
-                "condition": f"DELAY({probe}) < 0 and not ({constraint_text}){after}"}],
+                "condition": f"DELAY({probe}) < 0 and {seen}{window}"}],
             "auxiliaries": list(layout.get("auxiliaries") or []) + [
                 {"name": _PROBE, "expr": f"DELAY({probe})"}]}
 
@@ -321,10 +338,12 @@ def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dic
         raise ValueError(f"reality check '{name}': {', '.join(unsampled)}() is not sampled; "
                          f"read it through an auxiliary and check AUX(\"<name>\")")
 
-    when = entry.get("when", "always")
+    try:                                                # reject a bad "when" before running
+        mode, lo, hi = parse_when(entry.get("when", "always"))
+    except ValueError as exc:
+        raise ValueError(f"reality check '{name}': {exc}") from None
     layout = experiments.apply_overrides(base, _overrides(name, entry.get("inputs")))
-    _when_mask(name, when, np.zeros(0))                 # reject a bad "when" before running
-    layout = _with_probe(layout, constraint_text, when)
+    layout = _with_probe(layout, constraint_text, mode, lo, hi)
     results = api.run_model(layout, replications=1, seed=seed, run_length=run_length, warmup=warmup)
     if results is None:
         raise ValueError(f"reality check '{name}': the run produced no result")
@@ -339,21 +358,33 @@ def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dic
     live = pivot.pop(column).dropna() if column in pivot else None
     first = float(live.iloc[-1]) if live is not None and len(live) else -1.0
     times = pivot.index.to_numpy(dtype=float)
-    mask = _when_mask(name, when, times)
 
-    for t, keep in zip(times, mask):
-        if not keep or (first >= 0 and t > first):
-            continue
+    def outcome(passed, at=None, snapshot=None, note=""):
+        return {"Check": name, "Passed": passed, "Violation time": at, "Snapshot": snapshot,
+                "Note": note}
+
+    # "eventually" looks for a sample where the constraint holds; the others for one where it fails.
+    hunting = mode == "eventually"
+    for i, t in enumerate(times[_when_mask(mode, lo, hi, times)]):
+        if first >= 0 and t > first and not hunting:
+            break                                       # the live probe failed earlier
         row = pivot.loc[t].dropna().to_dict()
         try:
-            passed = bool(constraint.evaluate(_row_scope(float(t), row, bus)))
+            holds = bool(constraint.evaluate(_row_scope(float(t), row, bus)))
         except ExpressionError as exc:
             raise ValueError(f"reality check '{name}': {exc}") from None
-        if not passed:
-            return {"Check": name, "Passed": False, "Violation time": float(t), "Snapshot": row}
-    if first >= 0:
-        return {"Check": name, "Passed": False, "Violation time": first, "Snapshot": None}
-    return {"Check": name, "Passed": True, "Violation time": None, "Snapshot": None}
+        if holds == hunting:
+            # "From the start" only when the probe, which sees between samples, agrees: the
+            # first sample in the window may come after the constraint began to hold.
+            from_start = i == 0 and (first < 0 or first <= max(lo, float(times[0])))
+            return (outcome(True, note=_FROM_START if from_start else "") if hunting
+                    else outcome(False, float(t), row))
+    if first >= 0:                                      # only the live probe saw it
+        return outcome(True) if hunting else outcome(False, first)
+    if hunting:
+        return outcome(False, min(hi, float(times[-1])),
+                       note=f"never held {_window_words(lo, hi)}")
+    return outcome(True)
 
 
 def run_reality_checks(layout, *, seed: int = 0, run_length=None, warmup=None,
@@ -491,7 +522,8 @@ def _print_table(model_path: str, results: list[Result]) -> None:
         return
     for r in results:
         status = r.status.upper()
-        print(f"  [{status}] {r.kind:13s} {r.name}: {r.message if r.status != 'pass' else 'ok'}")
+        detail = r.message if r.status != "pass" else "ok" + (f" ({r.note})" if r.note else "")
+        print(f"  [{status}] {r.kind:13s} {r.name}: {detail}")
 
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"

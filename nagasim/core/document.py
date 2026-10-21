@@ -482,17 +482,15 @@ class ModelDocument:
         except BaseException:
             self._reset_from_layout(self._tx_pre_state)
             raise
-        else:
-            if self._tx_events:  # at least one real mutation happened
-                self._commit_undo(self._tx_pre_state, self._tx_label)
-                for kind, info in self._tx_events:
-                    for fn in list(self._listeners):
-                        fn(kind, **info)
         finally:
-            self._tx_depth = 0
-            self._tx_pre_state = None
-            self._tx_label = None
-            self._tx_events = []
+            events, pre, label = self._tx_events, self._tx_pre_state, self._tx_label
+            self._tx_depth, self._tx_pre_state, self._tx_label, self._tx_events = 0, None, None, []
+        # Closed before it commits and notifies: a listener then reads can_undo as True (#754).
+        if events:  # at least one real mutation happened
+            self._commit_undo(pre, label)
+            for kind, info in events:
+                for fn in list(self._listeners):
+                    fn(kind, **info)
 
     # -- undo/redo --------------------------------------------------------
     def _commit_undo(self, snapshot: dict, label: str | None) -> None:
@@ -520,9 +518,11 @@ class ModelDocument:
 
     def undo(self, steps: int = 1) -> str | None:
         """Undo up to *steps* steps (fewer if the stack is shallower). Returns
-        the label of the LAST step undone, or None if nothing moved."""
+        the label of the LAST step undone, or None if nothing moved. Nothing moves
+        while a transaction is open (#753): its edits are not a step yet, so an undo
+        would pop the step before them and the commit would then bury it."""
         label = None
-        for _ in range(max(steps, 0)):
+        for _ in range(max(steps, 0) if self._tx_depth == 0 else 0):
             if not self._undo_stack:
                 break
             self._redo_stack.append(self.to_layout())
@@ -536,9 +536,10 @@ class ModelDocument:
 
     def redo(self, steps: int = 1) -> str | None:
         """Redo up to *steps* steps (fewer if the stack is shallower). Returns
-        the label of the LAST step redone, or None if nothing moved."""
+        the label of the LAST step redone, or None if nothing moved (always while a
+        transaction is open, as `undo`)."""
         label = None
-        for _ in range(max(steps, 0)):
+        for _ in range(max(steps, 0) if self._tx_depth == 0 else 0):
             if not self._redo_stack:
                 break
             self._undo_stack.append(self.to_layout())
@@ -558,13 +559,20 @@ class ModelDocument:
     def redo_labels(self) -> list[str]:
         return list(reversed(self._redo_labels))
 
+    def newest_undo_step(self) -> dict | None:
+        """The layout snapshot the next `undo()` restores, or None. It is the SAME object
+        until that step is undone or another step is pushed, so `is` tells a caller whether
+        a step it saw is still the newest (the assistant dock's Revert). Read it, never
+        change it."""
+        return self._undo_stack[-1] if self._undo_stack else None
+
     @property
     def can_undo(self) -> bool:
-        return bool(self._undo_stack)
+        return bool(self._undo_stack) and self._tx_depth == 0
 
     @property
     def can_redo(self) -> bool:
-        return bool(self._redo_stack)
+        return bool(self._redo_stack) and self._tx_depth == 0
 
     # -- listeners ----------------------------------------------------------
     def subscribe(self, fn, *, first: bool = False) -> None:

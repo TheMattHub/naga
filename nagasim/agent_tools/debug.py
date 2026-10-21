@@ -4,6 +4,9 @@ workspace, with stops, watches and an inspector.
 The run is a `SimSession`; everything here reads it through `core/debugger.py` and
 the one trace reducer (`Timeline`). It binds no data and opens no file or socket,
 so neither tool takes a path, an endpoint or a permission.
+
+`run_facts` (D679) sits beside them: one whole replication, recorded and read by
+`core/runfacts.py`, kept nowhere, and with no path, endpoint or permission either.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from nagasim.core.debugger import ScopedStep, Stops, entity_view, note_point, wa
 from nagasim.core.playback import Timeline, visible_name
 from nagasim.core.session import SimSession
 from nagasim.core.trace import TraceRecorder
+from nagasim.factscli import run as record_facts
 
 from .core import ToolError, _budget, _document_args, _runnable_layout, tool, workspace
 
@@ -380,3 +384,37 @@ def debug_inspect(model: str, block: str | None = None, entity: int | None = Non
     if entity is not None:
         out["entity"] = entity_view(session, entity)
     return _json_safe(out)
+
+
+_document_args("run_facts", model="Workspace name of the model to run.",
+               seed="Seed of the replication.",
+               run_length="Model time to run to; omit for the model's own run length.")
+
+
+@tool(read_only=True)
+def run_facts(model: str, seed: int = 0, run_length: float | None = None) -> dict:
+    """Run one replication of a model and list what happened in it that no KPI reports,
+    as facts with numbers: blocks no entity entered, resources never seized, resources
+    with a unit doing no work (free, or held by an entity waiting elsewhere) while
+    entities waited for them, and entities still in the model at the end. Use it after
+    building or changing a model to find mistakes a run does not fail on, such as a
+    branch never taken, a wrong resource name, a multi-resource seize in the wrong
+    order or a HOLD never released.
+
+    A fact says what was measured and what can cause it, never that the model is
+    wrong: some facts are what the model intends. The run is the one `run_model` makes
+    with one replication and the same seed; nothing is kept.
+
+    Returns {"model", "seed", "end_time", "truncated", "facts": [{"kind", "text",
+    "block", "resource", "t", "count", "duration"}]}. Kinds come in this order:
+    never_entered, never_seized, idle_while_waiting, left_waiting and truncated (the
+    trace hit its cap, so the facts cover the run only up to `t`); at most 20 of each,
+    then one fact saying how many more there are.
+    """
+    layout = _runnable_layout(workspace().document(model), model)
+    try:
+        answer = record_facts(layout, seed=seed, run_length=run_length)
+    except RuntimeError as exc:
+        # As run_model (#411): a model error found only while running is an answer.
+        raise ToolError("E_RUN_FAILED", str(exc), "call validate_model and fix the model") from exc
+    return _json_safe({"model": model, **answer})

@@ -75,7 +75,36 @@ def _validate_scenarios(layout: dict, problems: list) -> None:
                     f"{where}/value", hint="add the \"value\" this override sets"))
 
 
-_REALITY_CHECK_WHEN = re.compile(r"^(always|final)$|^after\s+-?\d+(?:\.\d+)?$")
+_INF = float("inf")
+_WHEN_NUMBER = r"(-?\d+(?:\.\d+)?)"
+_WHEN_WINDOW = re.compile(
+    rf"after {_WHEN_NUMBER}|before {_WHEN_NUMBER}|between {_WHEN_NUMBER} and {_WHEN_NUMBER}")
+WHEN_FORMS = ('"always", "final", "after <t>", "before <t>", "between <t1> and <t2>", or '
+              '"eventually" alone or followed by one of the three windows')
+
+
+def parse_when(when) -> tuple[str, float, float]:
+    """A reality check's "when" as (mode, lo, hi) (D677): *mode* is "always" (the constraint
+    must hold at every sample in [lo, hi]), "final" (at the last sample) or "eventually" (at
+    least once in [lo, hi]); a window with no start or end has -inf or inf there. The one
+    parser for the validator, the sample mask and the live probe. ValueError on a text outside
+    the grammar and on t1 > t2."""
+    text = (" ".join(when.split()) or "always") if isinstance(when, str) else ""
+    if text in ("always", "final", "eventually"):
+        return text, -_INF, _INF
+    mode, window = (("eventually", text[len("eventually "):]) if text.startswith("eventually ")
+                    else ("always", text))
+    found = _WHEN_WINDOW.fullmatch(window)
+    if found is None:
+        raise ValueError(f'unknown "when" {when!r}; use {WHEN_FORMS}')
+    after, before, start, end = found.groups()
+    if after is not None:
+        return mode, float(after), _INF
+    if before is not None:
+        return mode, -_INF, float(before)
+    if float(start) > float(end):
+        raise ValueError(f'"when" {when!r} ends before it starts (t1 is later than t2)')
+    return mode, float(start), float(end)
 
 
 def _validate_reality_checks(layout: dict, problems: list, variables: set[str],
@@ -85,7 +114,7 @@ def _validate_reality_checks(layout: dict, problems: list, variables: set[str],
     actually addresses something in THIS model is `experiments.apply_overrides`'s
     job, same reasoning as a scenario override), a "constraint" that compiles
     against the same LEVEL/AUX/FLOW/TNOW names a flow or auxiliary can use, and
-    a "when" of "always"/"final"/"after <t>"."""
+    a "when" `parse_when` accepts."""
     seen: set[str] = set()
     for index, entry in enumerate(layout.get("reality_checks", [])):
         at = f"/reality_checks/{index}"
@@ -107,11 +136,11 @@ def _validate_reality_checks(layout: dict, problems: list, variables: set[str],
                 f"reality check '{name}': \"inputs\" must be an object of non-empty override "
                 f"path: value", f"{at}/inputs",
                 hint="{\"auxiliaries.Workforce.expr\": \"0\"}, same paths a scenario uses"))
-        when = entry.get("when", "always")
-        if not isinstance(when, str) or not _REALITY_CHECK_WHEN.match(when):
-            problems.append(problem(
-                "E_REALITY_CHECK_WHEN", f"reality check '{name}': unknown \"when\" {when!r}",
-                f"{at}/when", hint="use \"always\", \"final\" or \"after <t>\""))
+        try:
+            parse_when(entry.get("when", "always"))
+        except ValueError as exc:
+            problems.append(problem("E_REALITY_CHECK_WHEN", f"reality check '{name}': {exc}",
+                                    f"{at}/when"))
         constraint = entry.get("constraint", "")
         if not constraint:
             problems.append(problem(

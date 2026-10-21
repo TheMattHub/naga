@@ -1468,7 +1468,7 @@
     "read_only": false
   },
   {
-    "description": "Run the model's Vensim-style reality checks: an input imposed on the\nmodel (e.g. \"workforce = 0\") paired with a constraint expected to hold\ngiven it (e.g. \"then production = 0\"). Each check is one deterministic\nreplication; a check with no violation passes.\n\nReturns {\"model\", \"checks\": [{\"check\", \"passed\", \"violation_time\",\n\"snapshot\"}]} -- \"violation_time\" and \"snapshot\" (the LEVEL/AUX/FLOW values\nat that instant) are null for a check that passed.",
+    "description": "Run the model's Vensim-style reality checks: an input imposed on the\nmodel (e.g. \"workforce = 0\") paired with a constraint expected to hold\ngiven it (e.g. \"then production = 0\"). Each check is one deterministic\nreplication; a check with no violation passes.\n\nReturns {\"model\", \"checks\": [{\"check\", \"passed\", \"violation_time\",\n\"snapshot\", \"note\"}]} -- \"violation_time\" and \"snapshot\" (the LEVEL/AUX/FLOW values\nat that instant) are null for a check that passed; \"note\" is \"\" or a word on the\noutcome, such as an \"eventually\" check that held from the start of its window.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2160,6 +2160,36 @@
       "type": "object"
     },
     "name": "debug_inspect",
+    "read_only": true
+  },
+  {
+    "description": "Run one replication of a model and list what happened in it that no KPI reports,\nas facts with numbers: blocks no entity entered, resources never seized, resources\nwith a unit doing no work (free, or held by an entity waiting elsewhere) while\nentities waited for them, and entities still in the model at the end. Use it after\nbuilding or changing a model to find mistakes a run does not fail on, such as a\nbranch never taken, a wrong resource name, a multi-resource seize in the wrong\norder or a HOLD never released.\n\nA fact says what was measured and what can cause it, never that the model is\nwrong: some facts are what the model intends. The run is the one `run_model` makes\nwith one replication and the same seed; nothing is kept.\n\nReturns {\"model\", \"seed\", \"end_time\", \"truncated\", \"facts\": [{\"kind\", \"text\",\n\"block\", \"resource\", \"t\", \"count\", \"duration\"}]}. Kinds come in this order:\nnever_entered, never_seized, idle_while_waiting, left_waiting and truncated (the\ntrace hit its cap, so the facts cover the run only up to `t`); at most 20 of each,\nthen one fact saying how many more there are.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to run.",
+          "type": "string"
+        },
+        "run_length": {
+          "description": "Model time to run to; omit for the model's own run length.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Seed of the replication.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "run_facts",
     "read_only": true
   },
   {
@@ -2882,6 +2912,29 @@
       "type": "object"
     },
     "name": "find_tool",
+    "read_only": true
+  },
+  {
+    "description": "See a model as a picture: its blocks, each where it sits in the editor's process view, and the\nlinks between them. Use it to check that the model looks like the process you meant to build.\n\nReturns {\"model\", \"format\", \"text\"} (every block with its type, then every link) plus \"image\" for\npng; svg answers {\"model\", \"format\", \"svg\"} instead. Without matplotlib a png request answers with\nthe text and a \"note\", as format \"text\".",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "default": "png",
+          "description": "png (an image, the default), svg (drawing source) or text (a list of blocks and links).",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "view_model",
     "read_only": true
   }
 ]

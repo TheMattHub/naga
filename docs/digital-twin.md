@@ -449,6 +449,92 @@ To let an assistant read a running twin, start the server with `naga mcp --twin 
 tools `get_twin_monitor`, `get_twin_forecast` and `get_twin_recommendations` answer from that directory. No tool can start a
 twin or choose a connection.
 
+## A physics-simulated test plant
+
+The twin can be tried against a plant whose timing a physics engine decided, not the model under
+test. [Open Industry Project](https://www.openindustryproject.org/) (OIP, MIT licence) is a
+browser simulator of conveyors with Jolt physics and a built-in IEC 61131-3 PLC. Its headless
+runner steps a scene and its program for any number of simulated seconds and prints every tag
+change with its time; `tools/oip_trace_to_log.py` turns that into the plant log `naga twin --log`
+replays. The repository carries five minutes of one such run, so a test or a demo needs no plant,
+no broker and no OIP install.
+
+The run is a box spawner (30 boxes a minute, each gap random between half and one and a half
+times 2 s), a 4 m belt at 1 m/s, a photo eye and a despawner. The operator presses Start at 1 s,
+Stop at 150 s and Start again at 165 s. In `tests/data/oip_belt_line/`:
+
+- `plant.jsonl`: the log, 596 lines, one tag change each, in simulated seconds;
+- `line.json` and `line.plantmap.json`: a model of the belt (spawner, a 3.635 m conveyor, sink)
+  and the mapping that turns two PLC counters, boxes spawned and boxes into the sink, into the
+  counters of two blocks;
+- `README.md`: where it comes from, OIP's licence, its commit and the commands that write the log
+  again, which give the same bytes on the machine that recorded it.
+
+<!-- no-run: the fixture is in the repository's tests/data, not in the page's scratch folder -->
+```console
+naga plant check tests/data/oip_belt_line/line.plantmap.json tests/data/oip_belt_line/line.json
+naga twin once tests/data/oip_belt_line/line.json --map tests/data/oip_belt_line/line.plantmap.json \
+     --log tests/data/oip_belt_line/plant.jsonl --out twin_out --horizon 30 --replications 50
+naga twin status twin_out
+```
+
+The twin reads 144 boxes spawned and 143 counted, as the log says. Played at one second a
+second (`naga twin run --speed 1`, or `tests/test_oip_test_plant.py`, which moves the clock
+itself), a forecast made at 100.5 s is set beside what the plant then counted. Its forecast of
+arrivals follows the plant within a box or two. Its forecast of exits runs about two boxes low,
+the boxes that were on the belt when it began: a mapping of counters names no items, so the twin
+starts from an empty belt (a conveyor cannot be started from an anonymous count). A forecast made
+at 140.5 s runs on through the stop, because the model has no stop, while the plant counts nothing
+from 150 s to about 166 s: the observation falls far below the 5% to 95% band, which is what a
+score is for.
+
+To record another OIP line, scaffold or open a project, add a test spec that presses Start and
+runs as long as you want, run it with `--trace all --json`, convert the trace, and write a
+[mapping](plant-timeline.md) for the tags you care about: each key of the log is a tag's name.
+
+<!-- no-run: needs an OIP clone and Node -->
+```console
+npm run test-project --silent -- my-line --only record --trace all --json > trace.json
+python tools/oip_trace_to_log.py trace.json plant.jsonl
+```
+
+### The live route (untested)
+
+OIP's desktop app can publish the running program's variables as an OPC UA server, with security
+`None` and anonymous sessions, on this machine only (its panel shows the endpoint; the example
+below assumes port 4843). Our `opcua` reader ([Live data](live-data.md)) supports exactly that
+for a connection you mark `private` (a loopback address is refused without it), and the pieces
+that need no server are tested. **Nothing here has been run against OIP desktop**: the port, the namespace index and the
+node names are to be read from its panel, or from any OPC UA browser.
+
+```json
+{"format": 1, "connections": {
+  "oip": {"kind": "opcua", "url": "opc.tcp://127.0.0.1:4843", "private": true, "root": "ns=1;"}}}
+```
+
+Add the source to the model, and map each node id as the key (`time.epoch` is the minute you
+start: model time 0):
+
+```json
+{"name": "oip", "kind": "opcua", "connection": "oip", "options": {"interval_ms": 500},
+ "location": "ns=1;s=/SpawnCount\nns=1;s=/SinkCount"}
+```
+
+```json
+{"format": 1, "time": {"epoch": "2026-10-22T09:00:00+00:00", "unit": "seconds"}, "signals": [
+  {"source": "oip", "key": "ns=1;s=/SpawnCount", "as": "counter", "block": "Infeed"},
+  {"source": "oip", "key": "ns=1;s=/SinkCount", "as": "counter", "block": "Belt"}]}
+```
+
+<!-- no-run: needs OIP desktop with its OPC UA server on, and nagasim[opcua] -->
+```console
+naga watch line.json --connections oip.json --check
+naga twin run line.json --map live.plantmap.json --connections oip.json --out twin_out --horizon 30
+```
+
+The reader only subscribes: it writes no node and calls no method, so the simulated PLC cannot be
+changed from here.
+
 ## Scheduling re-runs
 
 There is no bespoke scheduler here: a forecast that should refresh every hour is `naga forecast

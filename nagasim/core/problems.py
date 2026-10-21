@@ -420,8 +420,9 @@ PROBLEM_CODES: dict[str, str] = {
     "E_DUPLICATE_REALITY_CHECK": "Two reality checks share a name.",
     "E_REALITY_CHECK_INPUT": "A reality check's \"inputs\" is not an object of override path: "
                              "value, or one of its paths is empty.",
-    "E_REALITY_CHECK_WHEN": "A reality check's \"when\" is neither \"always\", \"final\" nor "
-                            "\"after <t>\".",
+    "E_REALITY_CHECK_WHEN": "A reality check's \"when\" is outside the grammar (\"always\", "
+                            "\"final\", a window, or \"eventually\" with or without one), or its "
+                            "window ends before it starts.",
     # -- loop dominance (depth bucket L1, nagasim/loopdominance.py) -----------
     "E_LOOP_GRID": "Loop dominance needs the SD step grid (simulation.sd) and the model has none.",
     "W_LOOP_HYBRID": "Loop dominance on a model with DES blocks or agent populations: the "

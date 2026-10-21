@@ -36,7 +36,7 @@ naga mcp --root path/to/models --tool-picker haiku
 Haiku chooses among every tool the server exposes, not only `find_tool`'s ten best, and its three
 picks lead the answer, followed by `find_tool`'s own order. Each `find_tool` call sends the query and
 the tool catalogue (names, summaries and argument docs) to api.anthropic.com; no model, study or
-result data goes with it. That is about 12,000 prompt tokens per call over 90 tools, mostly read
+result data goes with it. That is about 12,000 prompt tokens per call over the 90-tool catalogue it was measured with, mostly read
 from Anthropic's prompt cache, since the catalogue is the same for every query. A missing key or
 package stops the server at startup with one line; a network error, a timeout (10 s) or an odd reply
 keeps `find_tool`'s own order. The key is read from the environment (on Windows, also the value
@@ -58,7 +58,7 @@ A query goes to Haiku first, and only a failed call (no network, a timeout, an A
 the backup instead; if the backup fails too, `find_tool`'s own order stands. With no key or no
 `anthropic` package at startup, the server logs one line and runs on the backup alone. Reading the
 folder is the only new access, the weights are loaded with remote code off, and the log keeps the
-error class, never the key or the query. The backup suits when you keep a trained model of your own offline.
+error class, never the key or the query. The backup suits when you keep a trained model of your own offline. A ready-made one, fine-tuned for naga's tools, is on Hugging Face: `--tool-picker-backup TheMattFace/gte-reranker-naga-toolpicker` downloads it on first use ([model card](https://huggingface.co/TheMattFace/gte-reranker-naga-toolpicker)).
 
 A cross-encoder picker (`gte` or the backup) loads in half precision on a GPU and in full precision on CPU. On the frozen test sets half precision picked the same first tool on all 549 requests and ran three times faster on a 4 GB laptop GPU (1.2 s against 3.9 s a decision), while on CPU it ran six times slower (91 s against 15 s). So naga chooses the precision from the hardware, and the model folder's own precision does not matter.
 
@@ -73,7 +73,7 @@ assistant the same. With the picker off, the answer is unchanged.
 
 The pickers were chosen on two frozen blind sets, never used to tune anything: TEST3, 150 requests written by
 four different models, and AGENT3, 274 `find_tool` queries as an agent (Claude Opus 5.5 with naga's server
-instructions) phrases them. Each engine below ranks all 90 tools; the count is the right tool first.
+instructions) phrases them. Each engine below ranked every tool of the 90-tool catalogue; the count is the right tool first.
 
 | Engine | TEST3 (150) | AGENT3 (274) | Median time per query |
 |---|---|---|---|

@@ -423,6 +423,32 @@ def test_undo_redo_cap_matches_the_undo_stack_cap():
     assert len(doc.undo_labels()) == _MAX_UNDO_DEPTH
 
 
+def test_newest_undo_step_is_the_same_object_until_another_step_comes_or_it_is_undone():
+    from nagasim.core.document import _MAX_UNDO_DEPTH
+
+    doc = ModelDocument()
+    assert doc.newest_undo_step() is None
+    doc.add_block("CREATE", (0, 0), "a")
+    step = doc.newest_undo_step()
+    assert step == {**step, "blocks": []}           # the layout from before the edit
+    assert doc.newest_undo_step() is step
+
+    doc.add_block("CREATE", (10, 0), "b")           # an edit: another step on top
+    assert doc.newest_undo_step() is not step
+    doc.undo()                                      # ... undone: the step is the newest again
+    assert doc.newest_undo_step() is step
+
+    doc.undo()                                      # the step itself undone
+    assert doc.newest_undo_step() is None
+    doc.redo()
+    assert doc.newest_undo_step() is not step       # a redo pushes a new snapshot
+
+    for i in range(_MAX_UNDO_DEPTH + 5):            # at the cap an edit still changes the newest
+        before = doc.newest_undo_step()
+        doc.add_block("CREATE", (i, 50))
+        assert doc.newest_undo_step() is not before
+
+
 # -- listeners ----------------------------------------------------------
 
 def test_subscribers_receive_kinds():

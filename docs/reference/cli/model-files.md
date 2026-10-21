@@ -124,6 +124,29 @@ options:
                      bound) as a failure too (exit 1)
 ```
 
+## naga facts
+
+```text
+usage: naga facts [-h] [--seed SEED] [--run-length RUN_LENGTH] [--json] model
+
+Run one replication and list what happened in it that nothing else reports:
+blocks never entered, resources never seized, resources idle while entities
+waited for them, entities left at the end. Facts, not verdicts: exit 0
+whenever the run happened.
+
+positional arguments:
+  model                 path to the model JSON, or a bundled model's name
+                        (naga examples)
+
+options:
+  -h, --help            show this help message and exit
+  --seed SEED
+  --run-length RUN_LENGTH
+                        default: the model's own 'simulation.time_limit'; 0 =
+                        run until the queue drains
+  --json                print the facts as JSON
+```
+
 ## naga ci-template
 
 ```text

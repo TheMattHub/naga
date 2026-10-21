@@ -1816,7 +1816,7 @@ class Model(Level):
         description
         inputs: Override path -> value, the same grammar a scenario override's "path" uses (e.g. "auxiliaries.Workforce.expr": "0").
         constraint: A boolean expression over LEVEL()/AUX()/FLOW() and TNOW, checked at every sampled instant the "when" below selects.
-        when: "always" (every sample), "final" (the last sample only) or "after <t>" (samples at or after time t).
+        when: "always" (every sample), "final" (the last sample only), or a window of sampled times, ends included: "after <t>", "before <t>" or "between <t1> and <t2>" (the constraint holds at every sample in it). "eventually", alone or followed by a window, asks that it hold at least once in it.
         """
 
     def add_data_source(

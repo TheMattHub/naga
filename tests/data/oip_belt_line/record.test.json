@@ -1,0 +1,16 @@
+{
+  "name": "record: five minutes of boxes through a belt, one operator stop",
+  "duration": 300,
+  "inputs": [
+    { "at": 1.0, "tag": "Start", "value": true },
+    { "at": 1.1, "tag": "Start", "value": false },
+    { "at": 150.0, "tag": "Stop", "value": true },
+    { "at": 150.1, "tag": "Stop", "value": false },
+    { "at": 165.0, "tag": "Start", "value": true },
+    { "at": 165.1, "tag": "Start", "value": false }
+  ],
+  "checks": [
+    { "eventually": true, "tag": "DischargeEye", "equals": true },
+    { "eventually": true, "tag": "SinkCount", "min": 1 }
+  ]
+}

@@ -20,6 +20,7 @@ from nagasim import agent_tools as T
 from nagasim import api, modelcheck
 from nagasim.core import schema
 from nagasim.core.schema import validate_model_structured
+from nagasim.core.schema.sections_validation import parse_when
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 
@@ -428,6 +429,185 @@ def test_run_reality_checks_raises_a_clear_error_on_an_empty_constraint():
         modelcheck.run_reality_checks(layout)
 
 
+# -- "when": windows and "eventually" (D677) ------------------------------------
+#
+# A ramp: L(t) = t, sampled at t = 0, 1, ..., 10 (the SD grid and the sampler agree), so what a
+# constraint on L does at every sample is known by hand. _LE5 holds for t <= 5, _GE6 for t >= 6.
+
+_LE5, _GE6, _GE0, _NEVER = ('LEVEL("L") <= 5', 'LEVEL("L") >= 6', 'LEVEL("L") >= 0',
+                            'LEVEL("L") > 100')
+_FROM_START = "held from the start of the window: nothing had to happen"
+
+
+def _ramp(constraint, when):
+    return {"blocks": [], "links": [],
+            "levels": [{"name": "L", "initial": 0.0}],
+            "flows": [{"name": "up", "rate": "1", "to": "L"}],
+            "reality_checks": [{"name": "n", "inputs": {}, "constraint": constraint,
+                                "when": when}],
+            "simulation": {"time_limit": 10.0, "timeseries_points": 10, "sd": {"dt": 1.0}}}
+
+
+def _outcome(layout):
+    row = modelcheck.run_reality_checks(layout).iloc[0]
+    return bool(row["Passed"]), row["Violation time"], row["Note"]
+
+
+@pytest.mark.parametrize("constraint, when, passed, at, note", [
+    # The kept forms: same results, no note.
+    (_LE5, "always", False, 6.0, ""),
+    (_GE6, "always", False, 0.0, ""),
+    (_LE5, "final", False, 10.0, ""),
+    (_GE6, "final", True, None, ""),
+    (_LE5, "after 7", False, 7.0, ""),
+    (_LE5, "after 11", True, None, ""),
+    # "before <t>" and "between <t1> and <t2>": every sample in the window, both ends in.
+    (_LE5, "before 5", True, None, ""),
+    (_LE5, "before 6", False, 6.0, ""),
+    (_LE5, "between 0 and 5", True, None, ""),
+    (_LE5, "between 2 and 5", True, None, ""),
+    (_LE5, "between 2 and 6", False, 6.0, ""),
+    (_LE5, "between 7 and 9", False, 7.0, ""),
+    # "eventually": at least once in the window; a hold at the window's first sample is noted.
+    (_GE6, "eventually", True, None, ""),
+    (_GE0, "eventually", True, None, _FROM_START),
+    (_GE6, "eventually after 3", True, None, ""),
+    (_GE6, "eventually after 8", True, None, _FROM_START),
+    (_GE6, "eventually before 6", True, None, ""),
+    (_GE6, "eventually before 5", False, 5.0, "never held before 5"),
+    (_GE6, "eventually between 5 and 7", True, None, ""),
+    (_GE6, "eventually between 6 and 9", True, None, _FROM_START),
+    (_GE6, "eventually between 1 and 5", False, 5.0, "never held between 1 and 5"),
+    # The failure is stamped at the window's end, or at the run's end when the window has none
+    # or runs past it.
+    (_NEVER, "eventually", False, 10.0, "never held during the run"),
+    (_NEVER, "eventually after 3", False, 10.0, "never held after 3"),
+    (_NEVER, "eventually before 20", False, 10.0, "never held before 20"),
+    (_NEVER, "eventually between 2 and 4", False, 4.0, "never held between 2 and 4"),
+    (_GE6, "eventually between 12 and 20", False, 10.0, "never held between 12 and 20"),
+])
+def test_when_forms_on_a_ramp(constraint, when, passed, at, note):
+    got_passed, got_at, got_note = _outcome(_ramp(constraint, when))
+    assert got_passed is passed
+    assert got_at == pytest.approx(at) if at is not None else got_at is None
+    assert got_note == note
+
+
+def test_the_result_messages_name_the_window_and_the_vacuous_pass():
+    def message(constraint, when):
+        [result] = modelcheck.check(_ramp(constraint, when))
+        return result.message
+    assert message(_LE5, "always") == "reality check 'n' failed at t=6"
+    assert message(_GE6, "final") == "reality check 'n' passed"
+    assert message(_GE0, "eventually") == f"reality check 'n' passed ({_FROM_START})"
+    assert message(_GE6, "eventually between 1 and 5") == \
+        "reality check 'n' failed at t=5 (never held between 1 and 5)"
+
+
+def test_a_vacuous_pass_is_printed_but_a_plain_pass_stays_ok(capsys):
+    modelcheck._print_table("m", modelcheck.check(_ramp(_GE0, "eventually")))
+    modelcheck._print_table("m", modelcheck.check(_ramp(_GE6, "eventually")))
+    out = capsys.readouterr().out.splitlines()
+    assert out[1].endswith(f"n: ok ({_FROM_START})")
+    assert out[3].endswith("n: ok")
+
+
+def test_the_kept_forms_leave_the_live_probe_as_it_was():
+    base = {"blocks": [], "links": []}
+    probe = json.dumps("~reality_check")
+    for when, tail in (("always", ""), ("after 3", " and TNOW >= 3.0")):
+        [delay] = modelcheck._with_probe(base, _LE5, *parse_when(when))["delays"]
+        assert delay["condition"] == f"DELAY({probe}) < 0 and not ({_LE5}){tail}"
+    assert modelcheck._with_probe(base, _LE5, *parse_when("final")) is base
+
+
+def test_held_from_the_start_needs_the_probe_to_agree_when_samples_are_coarse():
+    # L = t on a 1-unit grid, sampled every 5: L >= 3 first holds at t=3, after the window's
+    # start (1), though t=5 is the window's first sample; L >= 0 holds at 1 itself.
+    coarse = {**_ramp('LEVEL("L") >= 3', "eventually after 1")}
+    coarse["simulation"] = {**coarse["simulation"], "timeseries_points": 2}
+    assert _outcome(coarse) == (True, None, "")
+    coarse["reality_checks"][0]["constraint"] = _GE0
+    assert _outcome(coarse) == (True, None, _FROM_START)
+
+
+def test_the_live_probe_for_eventually_holds_the_first_instant_it_held_in_the_window():
+    [delay] = modelcheck._with_probe({}, _GE6, *parse_when("eventually between 2 and 4"))["delays"]
+    assert delay["condition"] == (f"DELAY({json.dumps('~reality_check')}) < 0 and ({_GE6})"
+                                  " and TNOW >= 2.0 and TNOW <= 4.0")
+
+
+def _dip(constraint, when):
+    """x is -1 only on the SD grid points 5.01 and 5.015; the sampler (every 0.05) never lands there."""
+    return {"levels": [{"name": "L", "initial": 0.0}],
+            "flows": [{"name": "f", "to": "L", "rate": "1 + 0*TNOW"}],
+            "auxiliaries": [{"name": "x", "expr": "IF(TNOW > 5.005 and TNOW < 5.02, -1, 1)"}],
+            "reality_checks": [{"name": "n", "constraint": constraint, "when": when}],
+            "simulation": {"time_limit": 10.0, "sd": {"dt": 0.005}, "timeseries_points": 200}}
+
+
+@pytest.mark.parametrize("constraint, when, passed, at, note", [
+    # A dip between samples: only the live probe can see it, and it honours the window.
+    ('AUX("x") > 0', "between 5 and 5.5", False, 5.01, ""),
+    ('AUX("x") > 0', "between 5.5 and 7", True, None, ""),
+    ('AUX("x") > 0', "before 4.5", True, None, ""),
+    ('AUX("x") > 0', "after 5.5", True, None, ""),
+    ('AUX("x") < 0', "eventually between 5 and 5.5", True, None, ""),
+    ('AUX("x") < 0', "eventually", True, None, ""),
+    ('AUX("x") < 0', "eventually before 4.5", False, 4.5, "never held before 4.5"),
+    ('AUX("x") < 0', "eventually after 5.5", False, 10.0, "never held after 5.5"),
+])
+def test_the_live_probe_sees_between_samples_inside_the_window(constraint, when, passed, at, note):
+    got_passed, got_at, got_note = _outcome(_dip(constraint, when))
+    assert got_passed is passed
+    assert got_at == pytest.approx(at) if at is not None else got_at is None
+    assert got_note == note
+
+
+def test_parse_when_gives_the_mode_and_the_window():
+    inf = float("inf")
+    parse = parse_when
+    assert parse("always") == ("always", -inf, inf)
+    assert parse("final") == ("final", -inf, inf)
+    assert parse("after 3") == ("always", 3.0, inf)
+    assert parse("before 2.5") == ("always", -inf, 2.5)
+    assert parse("between 1 and 5") == ("always", 1.0, 5.0)
+    assert parse("between 4 and 4") == ("always", 4.0, 4.0)
+    assert parse("eventually") == ("eventually", -inf, inf)
+    assert parse("eventually after 3") == ("eventually", 3.0, inf)
+    assert parse("eventually before 2") == ("eventually", -inf, 2.0)
+    assert parse("  eventually   between -1.5  and 5 ") == ("eventually", -1.5, 5.0)
+
+
+_BAD_WHEN = ["sometimes", "between 5 and 2", "eventually between 5 and 2", "between 1", "between 1 and",
+             "between and 2", "before", "after x", "eventually final", "eventually always",
+             "eventually eventually", "after 3 and 4", "between 1 and 2 and 3", "eventually between"]
+
+
+@pytest.mark.parametrize("when", _BAD_WHEN)
+def test_a_bad_when_is_refused_before_the_run(when, monkeypatch):
+    layout = _ramp(_LE5, when)
+    assert "E_REALITY_CHECK_WHEN" in {p.code for p in schema.validate_model_structured(layout)}
+
+    def no_run(*args, **kwargs):
+        raise AssertionError("the model ran")
+    monkeypatch.setattr(modelcheck.api, "run_model", no_run)
+    with pytest.raises(ValueError, match="reality check 'n'.*when"):
+        modelcheck.run_reality_checks(layout)
+
+
+def test_a_window_that_ends_before_it_starts_says_so():
+    with pytest.raises(ValueError, match="ends before it starts"):
+        parse_when("eventually between 5 and 2")
+
+
+def test_every_good_when_validates():
+    for when in ("always", "final", "after 3", "before 3", "between 1 and 2", "eventually",
+                 "eventually after 3", "eventually before 3", "eventually between 1 and 2"):
+        assert "E_REALITY_CHECK_WHEN" not in {
+            p.code for p in schema.validate_model_structured(_ramp(_LE5, when))}, when
+
+
 # -- the agent tool ------------------------------------------------------------
 
 def test_the_run_reality_checks_agent_tool(tmp_path):
@@ -446,5 +626,5 @@ def test_the_run_reality_checks_agent_tool(tmp_path):
     result = T.call("run_reality_checks", model=model)
     assert "error" not in result, result.get("error")
     assert result["checks"] == [
-        {"check": "shutdown", "passed": True, "violation_time": None, "snapshot": None},
+        {"check": "shutdown", "passed": True, "violation_time": None, "snapshot": None, "note": ""},
     ]

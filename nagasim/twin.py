@@ -725,6 +725,9 @@ class PlantSource:
         # anonymous members, and a mapping with no "at" or "seen" names nobody at all.
         kinds = {signal.get("as") for signal in signals}
         self.approximate = "queue" in kinds or not kinds & {"at", "seen"}
+        # With no signal that says where an item is (counters alone), WIP is not told, and
+        # not told is not zero: it is left out of what is observed and scored (#758).
+        self._tells_wip = bool(kinds & {"queue", "at", "seen", "job"})
         # The blocks a counter tells the departures of (D288): what a forecast must sample.
         self._counted = sorted({signal["block"] for signal in signals
                                 if signal.get("as") == "counter"})
@@ -799,7 +802,7 @@ class PlantSource:
                 "in_service": cut(seen.get("in_service") or {}),
                 "resources": resources[:LIMITS["names"]], "levels": cut(seen.get("levels") or {}),
                 "counters": cut(counters)}
-        observed = {"system/WIP": wip,
+        observed = {**({"system/WIP": wip} if self._tells_wip else {}),
                     **{f"resource/{r['name']}/in_service": r["busy"] for r in resources},
                     **{f"level/{name}": value for name, value in (seen.get("levels") or {}).items()},
                     **{f"block/{name}/out": said["total"] for name, said in counters.items()}}

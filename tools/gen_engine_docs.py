@@ -606,7 +606,7 @@ CLI_GROUPS = (
      ("examples", "run", "scenarios", "invest", "fit", "doe", "optimize", "policy-eval")),
     ("model-files", "Check and edit model files",
      "Validate, format, diff, merge and test model files, and export them as code.",
-     ("schema", "validate", "fmt", "export", "diff", "merge", "check", "ci-template")),
+     ("schema", "validate", "fmt", "export", "diff", "merge", "check", "facts", "ci-template")),
     ("build-from-data", "Build a model from data",
      "Draft a model from tables or an event log, or translate one from another tool.",
      ("generate", "discover", "sdimport")),

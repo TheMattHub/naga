@@ -624,7 +624,7 @@ def textconv(layout_doc: dict) -> str:
 
 # --------------------------------------------------------------------- CLI --
 
-def _change_line(c: Change) -> str:
+def change_line(c: Change) -> str:
     if c.kind in ("added", "removed"):
         return f"{c.kind} {c.path}"
     return f"{c.kind} {c.path}: {c.old!r} -> {c.new!r}"
@@ -682,7 +682,7 @@ def main(argv=None) -> int:
         print(json.dumps([_change_dict(c) for c in changes], indent=2))
     else:
         for c in changes:
-            print(_change_line(c))
+            print(change_line(c))
         if not changes:
             print("no changes")
     return 1 if changes else 0

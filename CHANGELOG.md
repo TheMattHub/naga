@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `naga facts MODEL` runs one replication and lists what happened that nothing else reports, as facts, never verdicts: blocks no entity entered, resources never seized, resources with a unit doing no work (free, or held by an entity waiting for another resource) while entities waited for them, and entities left at the end ("never empty since t"). `--json` for scripts; exit 0 whenever the run happened. The same report is the read-only agent tool `run_facts`.
+- Reality checks: `when` also accepts `before <t>`, `between <t1> and <t2>` and `eventually`, alone or with one of those windows: an eventually check passes when the constraint holds at least once in the window, and says so when it already held at the window's start. The `run_reality_checks` tool answers each check's note.
+- `view_model(model, format)`, a read-only agent tool, draws the model's flowchart as a PNG image (SVG or text on request), so an agent can see what it built.
+- A physics-simulated test plant for the twin: five minutes of an Open Industry Project box belt (MIT), recorded headlessly, with a model and a plant map that replay it (`tests/data/oip_belt_line`, `tools/oip_trace_to_log.py`). The digital-twin page has a section on it, with an OPC UA recipe for Open Industry Project's desktop app that has not been run yet.
+- Fixed: undo and redo inside an open transaction (an assistant turn) popped the edit made before it; `debug_inspect` counted a seize of several units as one busy unit; a twin whose plant map has counters only scored its WIP forecasts against a WIP of 0 it was never told.
+
 ## 0.14.0 (2026-10-21)
 
 0.14.0 adds an offline backup for the Haiku tool picker. When Haiku cannot answer (no key, no network, an error), a local cross-encoder ranks every tool, so `find_tool` still puts the right one first. The cross-encoder also loads in the precision that suits the hardware.

@@ -54,6 +54,7 @@ themselves grouped as:
                     `study_add_input`, `study_step`, `study_accept`, `study_revert`
 * `study_sensitivity.py`, `study_extensions.py`, `study_anim.py`, `study_writeup.py` -- the on-request study outputs:
                     `study_sensitivity`, `study_extensions`, `study_animation`, `study_writeup`, `study_slides`
+* `view.py`      -- `view_model`: a picture of a model, for an agent that can only read JSON
 
 Importing this package registers every tool, in the module order above, then
 loads plugins (`load_plugins()`) so a plugin's blocks/distributions are in
@@ -67,7 +68,7 @@ from nagasim.plugins import load_plugins
 
 from .core import (ToolError, ToolSpec, Workspace, TOOLS, call, drop_python_consent,
                    python_consent_dropped, tool, tool_schemas, use_workspace, workspace)
-from . import core, model, records, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup, discover  # noqa: F401 -- import order is registration order
+from . import core, model, records, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup, view, discover  # noqa: F401 -- import order is registration order
 # Re-exported on purpose: tests read these three directly.
 from .core import _ARG_DOCS
 from .data import _BINDABLE

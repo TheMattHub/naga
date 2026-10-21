@@ -30,6 +30,8 @@ import sys
 COMMANDS = {
     "examples": ("examples", "main", "list the models that ship in the package"),
     "run": ("api", "main", "run a model headless"),
+    "facts": ("factscli", "main",
+              "run once and list what happened that nothing else reports, as facts"),
     "scenarios": ("experiments", "main", "run named scenarios headless and compare them"),
     "invest": ("investment", "main",
                "payback, NPV and ROI of each scenario against a baseline"),

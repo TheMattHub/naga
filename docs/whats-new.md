@@ -12,7 +12,7 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
   every tool, not only `find_tool`'s ten best, so the right tool still comes first more often.
 - **Precision by hardware.** A cross-encoder loads in float16 on a CUDA GPU and in float32 on a CPU,
   which keeps the same picks and the best speed on each.
-- **New evidence.** The page Pick tools with a small model compares the pickers over all 90 tools.
+- **New evidence.** The page Pick tools with a small model compares the pickers over the whole 90-tool catalogue.
 <!-- --8<-- [end:latest] -->
 
 ## 0.13: an assistant runs a simulation study

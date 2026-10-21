@@ -243,8 +243,9 @@ def run_reality_checks(model: str, run_length: float | None = None, warmup: floa
     replication; a check with no violation passes.
 
     Returns {"model", "checks": [{"check", "passed", "violation_time",
-    "snapshot"}]} -- "violation_time" and "snapshot" (the LEVEL/AUX/FLOW values
-    at that instant) are null for a check that passed.
+    "snapshot", "note"}]} -- "violation_time" and "snapshot" (the LEVEL/AUX/FLOW values
+    at that instant) are null for a check that passed; "note" is "" or a word on the
+    outcome, such as an "eventually" check that held from the start of its window.
     """
     doc = workspace().document(model)
     layout = _runnable_layout(doc, model)
@@ -257,7 +258,8 @@ def run_reality_checks(model: str, run_length: float | None = None, warmup: floa
     checks = [{"check": r["Check"], "passed": bool(r["Passed"]),
               "violation_time": _finite(r["Violation time"]),
               "snapshot": ({k: _finite(v) for k, v in r["Snapshot"].items()}
-                          if r["Snapshot"] is not None else None)}
+                          if r["Snapshot"] is not None else None),
+               "note": r["Note"]}
              for r in table.to_dict(orient="records")]
     return {"model": model, "checks": checks}
 

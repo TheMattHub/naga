@@ -45,12 +45,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-from nagasim import agent_tools, llm
+from nagasim import agent_tools, llm, modeldiff
 from nagasim.core.document import ModelDocument
 
 __all__ = [
     "CURATED_TOOL_NAMES", "COMPACT_TOOL_NAMES", "offered_tools", "system_prompt", "tool_defs",
     "ToolCallLog", "TurnResult", "WorkspaceAdapter", "AssistantSession", "redact", "main",
+    "REVIEW_NOTES", "turn_label", "review_lines",
 ]
 
 # ---------------------------------------------------------------- tool lists
@@ -211,8 +212,8 @@ class WorkspaceAdapter:
     def offer(self, names) -> None:
         self.offered = frozenset(names)
 
-    def begin_turn(self) -> None:
-        self._cm = self.document.transaction()
+    def begin_turn(self, label: str | None = None) -> None:
+        self._cm = self.document.transaction(label)
         self._cm.__enter__()
 
     def commit_turn(self) -> None:
@@ -247,6 +248,35 @@ class WorkspaceAdapter:
         return agent_tools.TOOLS["get_model_summary"].fn(model=self.MODEL_ID)
 
 
+# ---------------------------------------------------------------- review of a turn (D680)
+# The line a turn's user text starts with after the person answered the review of the turn
+# before: the agent learns Keep or Revert and does not build on reverted work.
+REVIEW_NOTES = {"kept": "[The person kept your last changes]",
+                "reverted": "[The person reverted your last changes]"}
+
+
+def turn_label(prompt: str) -> str:
+    """The undo step's name for a turn, as the History menu shows it: the prompt's first 40
+    characters, its line breaks folded to spaces."""
+    return "Assistant: " + " ".join(prompt.split())[:40]
+
+
+def review_lines(before: dict, after: dict, *, limit: int = 100, width: int = 200) -> list[str]:
+    """What a turn changed, one line per change as `naga diff` prints it (added, removed,
+    changed with old and new value), from the layout before the turn to the layout after it.
+    Canvas moves come last, as ONE line with their count. A line is cut at *width* characters
+    and the list at *limit* lines: a turn that rewrites the model must not flood the panel."""
+    changes = modeldiff.diff(before, after)
+    moved = {c.path.rpartition(".")[0] for c in changes if c.kind == "moved"}
+    lines = [modeldiff.change_line(c) for c in changes if c.kind != "moved"]
+    lines = [line if len(line) <= width else line[:width - 3] + "..." for line in lines]
+    if len(lines) > limit:
+        lines[limit:] = [f"... and {len(lines) - limit} more changes"]
+    if moved:
+        lines.append(f"{len(moved)} item{'s' if len(moved) > 1 else ''} moved on the canvas")
+    return lines
+
+
 # ---------------------------------------------------------------- session
 _STOPPED = {"length": "the model's reply was cut at its length limit",
             "refusal": "the model refused to answer"}
@@ -270,18 +300,24 @@ class AssistantSession:
         self.adapter.offer(names)
         self._tool_defs = tool_defs(names)
 
-    def run_turn(self, user_text: str, *, on_text_delta=None, should_cancel=None) -> TurnResult:
+    def run_turn(self, user_text: str, *, label: str | None = None, on_text_delta=None,
+                 should_cancel=None) -> TurnResult:
         """Run one user turn to completion (or cancellation, or the round cap): ask, execute
-        any requested tools, feed results back, repeat. The whole turn is one undo step; an
-        exception or an unusable reply anywhere in the loop rolls every edit the turn made
-        back out."""
+        any requested tools, feed results back, repeat. The whole turn is one undo step, named
+        *label* when given (`turn_label`); an exception or an unusable reply anywhere in the
+        loop rolls every edit the turn made back out."""
         summary = self.adapter.model_summary()
         start = len(self.history)       # where this turn's entries begin
         self.history.append({"role": "user", "text": f"[Current model]\n"
                              f"{json.dumps(summary, separators=(',', ':'))}\n\n{user_text}"})
         tool_calls, text_out = [], []
         rounds, hit_cap, cancelled, error = 0, False, False, None
-        self.adapter.begin_turn()
+        # Only a caller that names the turn passes a label: another adapter (the study room's)
+        # has a begin_turn() with no parameter.
+        if label:
+            self.adapter.begin_turn(label)
+        else:
+            self.adapter.begin_turn()
         try:
             while True:
                 if should_cancel is not None and should_cancel():

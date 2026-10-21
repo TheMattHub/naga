@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "time": {"epoch": "1970-01-01T00:00:00+00:00", "unit": "seconds"},
+  "signals": [
+    {"source": "oip", "key": "SpawnCount", "as": "counter", "block": "Infeed"},
+    {"source": "oip", "key": "SinkCount", "as": "counter", "block": "Belt"}
+  ]
+}
