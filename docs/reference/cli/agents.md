@@ -11,7 +11,7 @@ Serve the model operations to an assistant.
 usage: naga mcp [-h] [--root ROOT] [--allow-network] [--allow-private-network]
                 [--allow-host HOST] [--connections FILE]
                 [--tools {all,compact}] [--room] [--tool-picker {gte,haiku}]
-                [--twin DIR]
+                [--tool-picker-backup PATH] [--twin DIR]
 
 Run the MCP server over stdio. File access is confined to --root, and network
 access is off unless you allow it here.
@@ -46,6 +46,11 @@ options:
                         and ANTHROPIC_API_KEY; each find_tool query and the
                         tool catalogue go to Anthropic. find_tool then says to
                         try its first three in order
+  --tool-picker-backup PATH
+                        with --tool-picker haiku: a local sentence-
+                        transformers CrossEncoder folder (or Hugging Face id)
+                        that ranks every tool when Haiku cannot answer (no
+                        network, timeout, API error, or no key at startup)
   --twin DIR            the result directory of a twin you started (naga twin
                         run --out DIR): two read-only tools then answer from
                         it. No tool can start a twin or choose this directory

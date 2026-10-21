@@ -63,23 +63,49 @@ def check(name: str) -> None:
             raise PickerUnavailable("The haiku tool picker needs ANTHROPIC_API_KEY in the environment.")
 
 
-def load(name: str, documents):
-    """A `rerank(query, candidates)` for `toolsearch.search`, built from the model `name`.
-    `documents(tool_name) -> str` gives each candidate's text. Raises PickerUnavailable at once
-    (at startup) when the name is unknown or the package is missing."""
-    if name not in MODELS:
-        raise PickerUnavailable(f"Unknown tool picker '{name}'; choose one of: {', '.join(MODELS)}.")
-    if name == "haiku":
-        return guarded(_haiku(MODELS[name]), documents, pool="all")
+def check_backup() -> None:
+    """The quick part of loading the offline backup: its package must be there."""
+    import importlib.util
+    if importlib.util.find_spec("sentence_transformers") is None:
+        raise PickerUnavailable(INSTALL_HINT)
+
+
+def _crossencoder(model_name: str):
+    """`score(query, docs)` from a sentence-transformers CrossEncoder: a Hugging Face id or a local
+    folder the caller named. Remote code stays off (CrossEncoder's default; never trust_remote_code)."""
     try:
+        import torch
         from sentence_transformers import CrossEncoder
     except ImportError as exc:
         raise PickerUnavailable(INSTALL_HINT) from exc
+    # D674: half precision picks the same tools and is 3x faster on a GPU, but 6x slower on CPU.
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     try:
-        model = CrossEncoder(MODELS[name])
-    except Exception as exc:    # no network on the first use, a broken cache: say so at startup
-        raise PickerUnavailable(f"Could not load the tool picker {MODELS[name]}: {type(exc).__name__}: {exc}") from exc
-    return guarded(lambda query, docs: [float(s) for s in model.predict([(query, d) for d in docs])], documents)
+        model = CrossEncoder(model_name, model_kwargs={"torch_dtype": dtype})
+    except Exception as exc:    # no network on the first use, a broken cache or folder: say so at startup
+        raise PickerUnavailable(f"Could not load the tool picker {model_name}: {type(exc).__name__}: {exc}") from exc
+    return lambda query, docs: [float(s) for s in model.predict([(query, d) for d in docs])]
+
+
+def load(name: str | None, documents, backup: str | None = None):
+    """A `rerank(query, candidates)` for `toolsearch.search`, built from the model `name`.
+    `documents(tool_name) -> str` gives each candidate's text. Raises PickerUnavailable at once
+    (at startup) when the name is unknown or the package is missing. `backup` (D673) is a local
+    CrossEncoder folder or id: with "haiku" it ranks every allowed tool when Haiku fails; with
+    name None it is the whole picker, also over every tool."""
+    if name is None and backup:
+        return guarded(_crossencoder(backup), documents, pool="all")
+    if name not in MODELS:
+        raise PickerUnavailable(f"Unknown tool picker '{name}'; choose one of: {', '.join(MODELS)}.")
+    if name == "haiku":
+        fallback = None
+        if backup:
+            try:
+                fallback = _crossencoder(backup)
+            except PickerUnavailable as exc:    # Haiku alone still beats find_tool's order
+                _LOG.warning("tool picker backup not loaded: %s", exc)
+        return guarded(_haiku(MODELS[name]), documents, pool="all", backup=fallback)
+    return guarded(_crossencoder(MODELS[name]), documents)
 
 
 def _haiku(model: str):
@@ -120,17 +146,27 @@ def _haiku(model: str):
     return score
 
 
-def guarded(score, documents, pool: str = "top"):
+def guarded(score, documents, pool: str = "top", backup=None):
     """Wrap `score(query, docs) -> [float]` as a rerank that never breaks find_tool: any failure
     while ranking logs and keeps find_tool's own order. `pool` tells toolsearch.search what to hand
-    it: "top" = its ten best, "all" = every allowed tool."""
+    it: "top" = its ten best, "all" = every allowed tool. `backup`, a score of the same shape, ranks
+    the same candidates when `score` raises (D673)."""
+    def order(scorer, query, candidates):
+        scores = scorer(query, [documents(c["name"]) for c in candidates])
+        ranked = sorted(range(len(candidates)), key=lambda i: -scores[i])   # stable: ties keep find_tool's order
+        return [candidates[i] for i in ranked]
+
     def rerank(query: str, candidates: list[dict]) -> list[dict]:
         try:
-            scores = score(query, [documents(c["name"]) for c in candidates])
-            order = sorted(range(len(candidates)), key=lambda i: -scores[i])   # stable: ties keep find_tool's order
-            return [candidates[i] for i in order]
+            return order(score, query, candidates)
         except Exception as exc:    # a picker is advisory; find_tool's own order is always a valid answer
             _LOG.warning("tool picker failed, keeping find_tool's order: %s", type(exc).__name__)
+        if backup is None:
+            return candidates
+        try:
+            return order(backup, query, candidates)
+        except Exception as exc:
+            _LOG.warning("tool picker backup failed, keeping find_tool's order: %s", type(exc).__name__)
             return candidates
     rerank.pool = pool
     return rerank

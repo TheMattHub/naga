@@ -42,6 +42,26 @@ package stops the server at startup with one line; a network error, a timeout (1
 keeps `find_tool`'s own order. The key is read from the environment (on Windows, also the value
 stored for your user with `setx`, for an app started before you set it), and never logged or answered.
 
+## Offline backup for Haiku
+
+Haiku needs the network and a key, and a local model can cover for both. `--tool-picker-backup PATH`
+names a sentence-transformers CrossEncoder folder (or a Hugging Face id) that loads in the background
+next to Haiku and ranks every tool whenever Haiku cannot answer. It works only with
+`--tool-picker haiku`, and without it nothing changes.
+
+<!-- no-run: a server that waits for its client -->
+```console
+naga mcp --root path/to/models --tool-picker haiku --tool-picker-backup path/to/cross-encoder
+```
+
+A query goes to Haiku first, and only a failed call (no network, a timeout, an API error) is ranked by
+the backup instead; if the backup fails too, `find_tool`'s own order stands. With no key or no
+`anthropic` package at startup, the server logs one line and runs on the backup alone. Reading the
+folder is the only new access, the weights are loaded with remote code off, and the log keeps the
+error class, never the key or the query. The backup suits when you keep a trained model of your own offline.
+
+A cross-encoder picker (`gte` or the backup) loads in half precision on a GPU and in full precision on CPU. On the frozen test sets half precision picked the same first tool on all 549 requests and ran three times faster on a 4 GB laptop GPU (1.2 s against 3.9 s a decision), while on CPU it ran six times slower (91 s against 15 s). So naga chooses the precision from the hardware, and the model folder's own precision does not matter.
+
 ## What the assistant sees
 
 With the picker on, `find_tool` answers the re-ranked list and one more field, `guidance`, which
@@ -51,29 +71,28 @@ assistant the same. With the picker off, the answer is unchanged.
 
 ## The evidence
 
-The picker was chosen on a frozen blind set: 25 requests written from the tool names only, never
-used to tune anything. Each engine re-ranked `find_tool`'s top ten.
+The pickers were chosen on two frozen blind sets, never used to tune anything: TEST3, 150 requests written by
+four different models, and AGENT3, 274 `find_tool` queries as an agent (Claude Opus 5.5 with naga's server
+instructions) phrases them. Each engine below ranks all 90 tools; the count is the right tool first.
 
-| Engine | Right tool first | Right tool in top 3 | Median time per request |
+| Engine | TEST3 (150) | AGENT3 (274) | Median time per query |
 |---|---|---|---|
-| `find_tool` alone | 8 of 25 | 14 of 25 | under 1 ms |
-| gte-reranker-modernbert-base (the picker) | 14 of 25 | 17 of 25 | 96 ms |
-| Qwen3-Reranker-0.6B | 14 of 25 | 19 of 25 | 513 ms |
-| Gemma 4 E4B (Q4) | 18 of 25 | 19 of 25 | 2.6 s |
-| Laya (System-1) | 13 of 25 | 17 of 25 | 66 ms |
-| Claude Haiku 5.5 (hosted API) | 19 of 25 | 19 of 25 | 0.9 s |
-| Claude Haiku 5.5, choosing among all 90 tools (`--tool-picker haiku`) | 22 of 25 | 23 of 25 | 0.9 s |
+| `find_tool` alone | 36 | 136 | under 1 ms |
+| gte-reranker-modernbert-base, untuned | 75 | 161 | 1.1 s |
+| gte trained on Claude Opus 5.5's labels (a backup of our own) | 104 | 183 | 1.1 s |
+| Claude Haiku 5.5 (`--tool-picker haiku`) | 86 | 190 | 1.0 s |
 
-Times are on a 4 GB laptop GPU, and Haiku's is the API round trip. Haiku reached the ceiling of
-the top ten (19 of the 25 right tools are in it), which is why the `haiku` picker chooses among all
-the tools instead; it sends each request to Anthropic, so it is opt-in like `gte`. Retrying the next pick after a wrong one equals the top-3 column;
-telling the model what the wrong pick did made it worse, so the guidance is a plain retry. Fine-tuning
-gte on our own requests did not hold on the blind set, so the picker is the model as published.
+Times are on a 4 GB laptop GPU, and Haiku's is the API round trip. The `gte` picker re-ranks only
+`find_tool`'s ten best, in about 0.1 s: 64 of 150 and 163 of 274 first. On agent queries Haiku and the trained
+backup are within noise of each other (Haiku wins 15 queries the backup loses and loses 8), which is why
+`--tool-picker haiku` with a trained backup is the setup we run. Retrying the next pick after a wrong one is
+what the `guidance` field asks; within three tries even the fastest engines reach the best first try, and telling
+the model what the wrong pick did made it worse, so the guidance is a plain retry.
 
 ## Another model
 
-The picker ships two models: `gte`, the best fast local one on the bench, and `haiku`, the most
-accurate, hosted. If you prefer another (Gemma is more accurate than gte and slower, Laya is faster), the
-[System-1 AI Gateway](https://github.com/TheMattHub/Sys1-AI-Gateway) runs these and others behind one
-interface, and its study report (`docs/studies/naga-decisions.md` there) has the full comparison.
+The picker ships two models: `gte`, fast and local, and `haiku`, the most accurate, hosted. The backup takes
+any CrossEncoder folder, such as one trained on a stronger model's labels with the scripts of the
+[System-1 AI Gateway](https://github.com/TheMattHub/Sys1-AI-Gateway); its study
+(`docs/studies/naga-decisions.md` there) compares every engine we tried, with the retries chart and the caveats.
 Pick the model that fits your hardware and your patience.

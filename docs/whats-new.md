@@ -4,9 +4,19 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.13: an assistant runs a simulation study
+## 0.14: an offline backup for the tool picker
 
 <!-- --8<-- [start:latest] -->
+- **A backup when Haiku cannot answer.** `--tool-picker-backup PATH` names a local or Hugging Face
+  CrossEncoder (the `picker` extra). When the hosted Haiku picker fails or has no key, the backup ranks
+  every tool, not only `find_tool`'s ten best, so the right tool still comes first more often.
+- **Precision by hardware.** A cross-encoder loads in float16 on a CUDA GPU and in float32 on a CPU,
+  which keeps the same picks and the best speed on each.
+- **New evidence.** The page Pick tools with a small model compares the pickers over all 90 tools.
+<!-- --8<-- [end:latest] -->
+
+## 0.13: an assistant runs a simulation study
+
 - **Studies an assistant can run.** The study tools keep a study in a folder: the question,
   goals with KPI ranges, assumptions and their sources, validation, and every model version with
   its checks. Each step runs and checks the whole model, and every answer names the next step, so
@@ -23,7 +33,6 @@ naga mcp --root path/to/studies --room
 - **The right tool, first.** `find_tool` searches the agent tools by intent, and an optional
   tool picker (`--tool-picker gte`, local, or `haiku`, hosted) puts the right one first more often.
 - **Before you upgrade:** the `mcp` extra now needs `mcp>=1.19`.
-<!-- --8<-- [end:latest] -->
 
 ## 0.12: one source of truth for a model's fields
 

@@ -415,6 +415,10 @@ def add_arguments(parser) -> None:
                              "Hugging Face. haiku: hosted Claude Haiku, needs nagasim[assistant] and "
                              "ANTHROPIC_API_KEY; each find_tool query and the tool catalogue go to "
                              "Anthropic. find_tool then says to try its first three in order")
+    parser.add_argument("--tool-picker-backup", dest="tool_picker_backup", default=None, metavar="PATH",
+                        help="with --tool-picker haiku: a local sentence-transformers CrossEncoder folder "
+                             "(or Hugging Face id) that ranks every tool when Haiku cannot "
+                             "answer (no network, timeout, API error, or no key at startup)")
     parser.add_argument("--twin", dest="twin_dir", default=None, metavar="DIR",
                         help="the result directory of a twin you started (naga twin run "
                              "--out DIR): two read-only tools then answer from it. No tool "
@@ -425,9 +429,13 @@ def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIO
     agent_tools.drop_python_consent()       # D186: before anything can run, in this process and its workers
     from nagasim import toolpicker
     from nagasim.agent_tools import discover
+    backup = getattr(args, "tool_picker_backup", None)
+    if backup and getattr(args, "tool_picker", None) != "haiku":
+        print("--tool-picker-backup needs --tool-picker haiku.")
+        return 1
     try:
         if getattr(args, "tool_picker", None):      # D671: the caller's choice, loaded once, after the handshake (#746)
-            discover.use_picker_soon(args.tool_picker)
+            discover.use_picker_soon(args.tool_picker, backup)
         else:
             discover.use_picker(None)
     except toolpicker.PickerUnavailable as exc:

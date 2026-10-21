@@ -183,3 +183,91 @@ def test_the_real_haiku_picker_ranks_validate_first():
         assert "study_validate" in [h["name"] for h in out["tools"]]
     finally:
         discover.use_picker(None)
+
+
+# --- the offline backup for haiku (D673): a fake CrossEncoder score, no torch, no network ---
+
+def _backup_score(query, docs):
+    return [float(i) for i in range(len(docs))]       # the last candidate scores best
+
+
+@pytest.fixture
+def backup(monkeypatch):
+    monkeypatch.setattr(toolpicker, "check_backup", lambda: None)
+    monkeypatch.setattr(toolpicker, "_crossencoder", lambda path: _backup_score)
+
+
+def test_backup_ranks_every_tool_when_haiku_raises(haiku, backup, caplog):
+    from nagasim import toolsearch
+    haiku.ranking = RuntimeError(f"401 for key {FAKE_KEY}")
+    discover.use_picker("haiku", "some/folder")
+    allowed = toolsearch.search(discover.catalogue_index(), QUERY, limit=999, rerank=toolpicker.guarded(lambda q, d: [0.0] * len(d), str, pool="all"))
+    out = agent_tools.call("find_tool", query=QUERY, limit=5)
+    assert [h["name"] for h in out["tools"]] == [h["name"] for h in allowed][::-1][:5]   # from all tools, not the top ten
+    assert "RuntimeError" in caplog.text and FAKE_KEY not in caplog.text
+
+
+def test_both_raising_keeps_find_tools_order(monkeypatch):
+    from nagasim import toolsearch
+
+    def broken(query, docs):
+        raise RuntimeError("down")
+    monkeypatch.setattr(discover, "picker", toolpicker.guarded(broken, str, pool="all", backup=broken))
+    assert (agent_tools.call("find_tool", query=QUERY)["tools"]
+            == toolsearch.search(discover.catalogue_index(), QUERY, limit=5))
+
+
+def test_haiku_answering_does_not_use_the_backup(haiku, monkeypatch):
+    monkeypatch.setattr(toolpicker, "check_backup", lambda: None)
+    monkeypatch.setattr(toolpicker, "_crossencoder", lambda path: _backup_score)
+    discover.use_picker("haiku", "some/folder")
+    out = agent_tools.call("find_tool", query=QUERY)
+    assert out["tools"][0]["name"] == "study_validate"      # Haiku's pick, not the backup's reversed order
+
+
+def test_no_key_with_a_backup_runs_on_the_backup_alone(monkeypatch, backup, caplog):
+    from nagasim import toolsearch
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    discover.use_picker_soon("haiku", "some/folder").join(10)
+    assert discover.picker is not None and discover.picker.pool == "all"
+    assert "backup alone" in caplog.text
+    allowed = toolsearch.search(discover.catalogue_index(), QUERY, limit=999, rerank=toolpicker.guarded(lambda q, d: [0.0] * len(d), str, pool="all"))
+    assert [h["name"] for h in agent_tools.call("find_tool", query=QUERY, limit=5)["tools"]] == [h["name"] for h in allowed][::-1][:5]
+
+
+def test_no_key_without_a_backup_is_still_an_error(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # The package check comes first; CI has no `assistant` extra, so pretend it is there.
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    with pytest.raises(toolpicker.PickerUnavailable, match="ANTHROPIC_API_KEY"):
+        discover.use_picker_soon("haiku")
+    assert discover.picker is None
+
+
+def test_the_backup_flag_needs_haiku(capsys):
+    from nagasim import mcp_server
+    p = argparse.ArgumentParser()
+    mcp_server.add_arguments(p)
+    assert p.parse_args([]).tool_picker_backup is None
+    for argv in (["--tool-picker-backup", "x"], ["--tool-picker", "gte", "--tool-picker-backup", "x"]):
+        assert mcp_server.serve(p.parse_args(argv)) == 1
+        assert "needs --tool-picker haiku" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("cuda, want", [(True, "float16"), (False, "float32")])
+def test_a_cross_encoder_loads_half_on_a_gpu_and_full_on_cpu(monkeypatch, cuda, want):
+    # D674: half precision gives the same picks and is 3x faster on a GPU, but 6x slower on CPU.
+    import sys
+    import types
+    seen = {}
+
+    class _CrossEncoder:
+        def __init__(self, name, **kwargs):
+            seen.update(kwargs)
+
+    torch = types.SimpleNamespace(float16="float16", float32="float32",
+                                  cuda=types.SimpleNamespace(is_available=lambda: cuda))
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(CrossEncoder=_CrossEncoder))
+    toolpicker._crossencoder("some/folder")
+    assert seen == {"model_kwargs": {"torch_dtype": want}}

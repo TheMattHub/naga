@@ -38,29 +38,38 @@ def find_tool(query: str, limit: int = 5) -> dict:
     return {"tools": tools, "guidance": GUIDANCE}
 
 
-def use_picker(name: str | None) -> None:
+def use_picker(name: str | None, backup: str | None = None) -> None:
     """Load the picker `name` ("gte" or "haiku") for this process, or turn it off with None. Raises
-    toolpicker.PickerUnavailable at once, so a missing package stops the server at startup."""
+    toolpicker.PickerUnavailable at once, so a missing package stops the server at startup.
+    `backup` is the offline CrossEncoder of D673; with name None it runs alone."""
     global picker
-    if name is None:
+    if name is None and not backup:
         picker = None
         return
     from nagasim import toolpicker
     docs = {t.name: toolpicker.document({"name": t.name, "description": t.description, "input_schema": t.input_schema})
             for t in TOOLS.values()}
-    picker = toolpicker.load(name, lambda n: docs.get(n, n))
+    picker = toolpicker.load(name, lambda n: docs.get(n, n), backup)
 
 
-def use_picker_soon(name: str) -> threading.Thread:
+def use_picker_soon(name: str, backup: str | None = None) -> threading.Thread:
     """`use_picker` for a server that must answer its client at once (#746): the quick checks run
     now and raise PickerUnavailable; the model loads in a daemon thread, and until it is ready
     find_tool answers in its own order. A load that fails there is logged and leaves it off."""
     from nagasim import toolpicker
-    toolpicker.check(name)
+    if backup:
+        toolpicker.check_backup()
+    try:
+        toolpicker.check(name)
+    except toolpicker.PickerUnavailable as exc:
+        if not backup:
+            raise
+        logging.getLogger(__name__).warning("%s; running with the offline backup alone", exc)
+        name = None
 
     def load():
         try:
-            use_picker(name)
+            use_picker(name, backup)
         except Exception as exc:    # the server keeps serving; find_tool's own order is a valid answer
             logging.getLogger(__name__).warning("tool picker %s not loaded: %s", name, type(exc).__name__)
 

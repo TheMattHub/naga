@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 (2026-10-21)
+
+0.14.0 adds an offline backup for the Haiku tool picker. When Haiku cannot answer (no key, no network, an error), a local cross-encoder ranks every tool, so `find_tool` still puts the right one first. The cross-encoder also loads in the precision that suits the hardware.
+
+- `naga mcp --tool-picker haiku --tool-picker-backup PATH` (optional, off by default): PATH is a local folder or a Hugging Face id of a CrossEncoder model (the `picker` extra). It is used when Haiku cannot answer and ranks every tool the server exposes, not only `find_tool`'s ten best; with no API key it runs alone.
+- A cross-encoder loads in float16 on a CUDA GPU and in float32 on a CPU: the same top pick on 549 test rows, about three times faster on a GPU, and six times faster than float16 would be on a CPU.
+- The page Pick tools with a small model quotes the new evidence over all 90 tools (Haiku 190 of 274, a gte backup trained from Opus picks 183).
+
 ## 0.13.0 (2026-10-20)
 
 0.13.0 lets an assistant run a whole simulation study through the engine: a study folder with the question, goals, assumptions, checks and every model version; a live control room in the browser with buttons that act and an assistant of its own; and the deliverables on request. An assistant finds the right agent tool with `find_tool`, optionally helped by a local or a hosted tool picker. The `mcp` extra now needs `mcp>=1.19`.
