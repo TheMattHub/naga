@@ -137,7 +137,11 @@ def main(argv=None, command: str = "doe") -> int:
                             help="total replications the search may spend (default: 300)")
         parser.add_argument("--constraint", action="append", dest="constraints", default=None,
                             help=_CONSTRAINT_HELP)
-        parser.add_argument("--method", default="auto", choices=("auto", "pattern", "optuna"))
+        parser.add_argument("--method", default="auto",
+                            choices=("auto", "pattern", "optuna", "optuna-gp", "optuna-nsga2"))
+        parser.add_argument("--objective", action="append", dest="objectives", default=None,
+                            metavar="KPI:min|max",
+                            help="an objective of --method optuna-nsga2 (give at least two)")
         parser.add_argument("--indifference", type=float, default=None,
                             help="the smallest difference worth detecting in the final "
                                  "ranking-and-selection step (default: 5%% of the best mean)")
@@ -185,7 +189,12 @@ def main(argv=None, command: str = "doe") -> int:
                       replications_per_point=args.replications, method=args.method,
                       seed=args.seed, indifference=args.indifference, workers=args.workers,
                       run_length=args.run_length, warmup=args.warmup,
-                      min_improvement=args.min_improvement)
+                      min_improvement=args.min_improvement,
+                      objectives=[tuple(o.rsplit(":", 1)) for o in (args.objectives or [])])
+    if result.pareto is not None:
+        print(f"Pareto set ({len(result.pareto)} points):")
+        print(result.pareto.to_string(index=False))
+        return 0
     print(f"Best point: {_fmt_point(result.best)}")
     print(f"{args.response} = {result.best_mean:.6g} "
           f"({'converged' if result.converged else 'budget or step limit reached'}; "

@@ -1,10 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 (2026-10-22)
 
+0.15.0 makes a run easier to trust. Every run now checks itself against the operational laws of queues, `naga facts` lists what happened in a run that nothing else reports, `naga verify` checks the engine against textbook queues, and `what_if` answers a change with a clear verdict. Reality checks gain `eventually` and time windows, and an agent can now see the model as a picture. Results keep their values; the system frame gains one measured `Avg WIP` row.
+
+- Every run checks itself against the operational laws (`nagasim/laws.py`): utilisation, offered load, Little's law per resource and for the system, flow conservation, censoring (over 5% of the entities still inside at the end) and initial bias (no warm-up while MSER-5 would move the mean by over 5%). They are warnings that name the law (`W_LAW`), skipped wherever an input cannot be computed, shown in the `run_model` digest, the study steps and `naga check`.
+- The system frame gains `Avg WIP`, the time-weighted count of entities in the system; `Avg WIP (Little)` keeps its values and is a lower bound when work is still inside at the end. `resource_summary` gains `Queue Length at End`.
+- `naga verify` runs nine textbook queueing cases against their theory (a pass is within the larger of three confidence half-widths and 2%); `--quick` takes about 20 s, and `--html` writes a report.
+- Agent tools: `what_if` answers "what if I change this" on paired common random numbers, doubling replications until each KPI's difference is clear or a cap is reached, and calls it better or worse only when told the goal's direction; `check_draft` compares a generated model with its source's own figures (an event log or tables) and never calls it valid. `run_scenarios` rows gain `Replications Needed` and `CRN Ratio`.
 - `naga facts MODEL` runs one replication and lists what happened that nothing else reports, as facts, never verdicts: blocks no entity entered, resources never seized, resources with a unit doing no work (free, or held by an entity waiting for another resource) while entities waited for them, and entities left at the end ("never empty since t"). `--json` for scripts; exit 0 whenever the run happened. The same report is the read-only agent tool `run_facts`.
 - Reality checks: `when` also accepts `before <t>`, `between <t1> and <t2>` and `eventually`, alone or with one of those windows: an eventually check passes when the constraint holds at least once in the window, and says so when it already held at the window's start. The `run_reality_checks` tool answers each check's note.
 - `view_model(model, format)`, a read-only agent tool, draws the model's flowchart as a PNG image (SVG or text on request), so an agent can see what it built.
+- Optimisation: `method="optuna-gp"` and `"optuna-nsga2"` (a Pareto set of two or more objectives), with the `ml` extra; single-objective top candidates are confirmed under noise by KN selection, and GP falls back to multivariate TPE without torch.
+- A Modbus TCP reader for the twin: read-only (function codes 1 to 4), stdlib, with the host, unit and register map only in the caller's connection file.
+- `calc_kpis` is about three times faster on short replications, with identical results.
 - A physics-simulated test plant for the twin: five minutes of an Open Industry Project box belt (MIT), recorded headlessly, with a model and a plant map that replay it (`tests/data/oip_belt_line`, `tools/oip_trace_to_log.py`). The digital-twin page has a section on it, with an OPC UA recipe for Open Industry Project's desktop app that has not been run yet.
 - Fixed: undo and redo inside an open transaction (an assistant turn) popped the edit made before it; `debug_inspect` counted a seize of several units as one busy unit; a twin whose plant map has counters only scored its WIP forecasts against a WIP of 0 it was never told.
 

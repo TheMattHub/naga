@@ -30,6 +30,7 @@ def test_examples_exist():
     assert len(MODELS) >= 3, "curated examples missing"
 
 
+@pytest.mark.slow
 def test_run_model_returns_all_frames_per_replication(curated_results):
     # One loop over every bundled example rather than one test each, over the
     # session-wide `curated_results` runs (conftest) rather than its own: the

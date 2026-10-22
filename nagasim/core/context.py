@@ -16,7 +16,7 @@ from nagasim.core.entity_manager import EntityManager
 from nagasim.core.events import EventBus
 from nagasim.core.resource_manager import ResourceManager
 from nagasim.core.sim_classes import Entity
-from nagasim.core.stats import UserStat
+from nagasim.core.stats import TimeWeighted, UserStat
 from nagasim.core.timeunits import ModelUnits
 from nagasim.core.store_manager import StoreManager
 
@@ -33,19 +33,32 @@ class EntityIndex:
     removal too once disposed entities start being pruned (DEVLOG #62).
     """
 
-    __slots__ = ("_items",)
+    __slots__ = ("_items", "_env", "wip")
 
     def __init__(self, entities=()):
         self._items = {e.id: e for e in entities}
+        self._env = None
+        self.wip = None     # time-weighted len(self), once `track` is called
+
+    def track(self, env) -> None:
+        """Keep `wip`, the time-weighted count of the collection: the run's `live_entities`
+        does, for the measured `Avg WIP` (D683, #761). Set after every change, so an append
+        of an id already present cannot count twice."""
+        self._env = env
+        self.wip = TimeWeighted(env.now, len(self._items))
 
     def append(self, entity) -> None:
         self._items[entity.id] = entity
+        if self.wip is not None:
+            self.wip.set(len(self._items), self._env.now)
 
     def remove(self, entity) -> None:
         try:
             del self._items[entity.id]
         except KeyError:
             raise ValueError(f"{entity!r} not in this collection") from None
+        if self.wip is not None:
+            self.wip.set(len(self._items), self._env.now)
 
     def __contains__(self, entity) -> bool:
         return entity.id in self._items
@@ -352,6 +365,7 @@ def build_context(seed: int = 0, clock: float = 0.0) -> SimulationContext:
         bus=EventBus(),
     )
     ctx.clock = clock
+    ctx.live_entities.track(env)     # the measured Avg WIP (D683)
     ctx.debug = _debug_wanted()
     Entity.detached_ids = ctx.entity_ids     # what a bare `Entity()` draws from
     return ctx

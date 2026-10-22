@@ -51,7 +51,7 @@ from nagasim.core.document import ModelDocument
 __all__ = [
     "CURATED_TOOL_NAMES", "COMPACT_TOOL_NAMES", "offered_tools", "system_prompt", "tool_defs",
     "ToolCallLog", "TurnResult", "WorkspaceAdapter", "AssistantSession", "redact", "main",
-    "REVIEW_NOTES", "turn_label", "review_lines",
+    "REVIEW_NOTES", "turn_label", "review_lines", "guard_lines",
 ]
 
 # ---------------------------------------------------------------- tool lists
@@ -274,6 +274,47 @@ def review_lines(before: dict, after: dict, *, limit: int = 100, width: int = 20
         lines[limit:] = [f"... and {len(lines) - limit} more changes"]
     if moved:
         lines.append(f"{len(moved)} item{'s' if len(moved) > 1 else ''} moved on the canvas")
+    return lines
+
+
+def _short_run(layout: dict, deadline: float):
+    """(facts, law checks) of one fixed-seed replication; None when the deadline cut it, () when
+    the model cannot run (validation already says why). Two runs (trace for the facts, frames for the laws): ponytail, one
+    shared run when the guard is too slow."""
+    import time
+    from nagasim import api, factscli, laws
+    stop = lambda: time.monotonic() > deadline      # noqa: E731
+    try:
+        # The agent wrote this layout: its runs never use the person's Python consent (D186).
+        with agent_tools.python_consent_dropped():
+            found = factscli.run(layout, seed=0, should_stop=stop)
+            results = None if found is None else api.run_model(layout, replications=1, seed=0, should_stop=stop)
+    except Exception:                                # a model that does not run has no guard to give
+        return ()
+    if results is None:
+        return None
+    return ({(f["kind"], f["block"], f["resource"]): f["text"] for f in found["facts"]},
+            {c["name"]: c["why"] for c in laws.checks(layout, results) if c["verdict"] != "passed"})
+
+
+def guard_lines(before: dict, after: dict, budget_s: float = 3.0) -> list[str]:
+    """What a turn's edit changed in how the model RUNS (D688): facts and law warnings that are
+    new or gone between a short fixed-seed run of *before* and of *after*, one line each. Both
+    runs share *budget_s*; over it, one line says the guard was skipped. [] when nothing
+    differs. Facts, not a verdict: the person still chooses Keep or Revert."""
+    import time
+    deadline = time.monotonic() + budget_s
+    old = _short_run(before, deadline)
+    new = _short_run(after, deadline) if old != () else ()
+    if old == () or new == ():
+        return []
+    if old is None or new is None:
+        return ["Run check skipped: the model did not run within "
+                f"{budget_s:g} s so no before/after comparison."]
+    lines = []
+    for label, a, b in (("fact", old[0], new[0]), ("law warning", old[1], new[1])):
+        lines += [f"New {label}: {b[k]}" for k in b if k not in a]
+        lines += [f"Gone {label}: {a[k]}" for k in a if k not in b]
     return lines
 
 

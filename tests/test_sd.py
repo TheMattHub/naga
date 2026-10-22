@@ -268,6 +268,7 @@ def test_agent_tools_set_sd_settings_min_null_and_biflow(tmp_path):
 
 # ================================================================ perf guard
 @pytest.mark.slow
+@pytest.mark.perf
 def test_perf_100_dynamic_levels_x_720_steps():
     """Perf guard (PHASE5 refinements): 100 levels, 720 Euler steps, under
     0.5 s. Measured 2026-09-24: 0.20 s alone, but 0.5-0.9 s under `-n auto`

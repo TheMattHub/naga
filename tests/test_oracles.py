@@ -6,15 +6,24 @@ Runtime budget: the whole module stays a few seconds; if it grows, cut run_len o
 replications rather than the assertions.
 """
 import functools
-import math
 
-import numpy as np
 import pytest
 
+from nagasim import verify
 from nagasim.core.sim_runner import run_single_simulation
 from nagasim.core.stats import ci95
 
 from conftest import metric_value as _metric, resource_row as _resource_row
+
+# The textbook cases and their theory live in `nagasim.verify` (D689, one source
+# for `naga verify` and this module); the tests below add the assertions only a
+# test can make (exactness, "a member never queues", ...).
+ORACLE_CASES = ("M/M/1", "D/D/1", "M/M/2 (Erlang C)",
+                "Blocked tandem, buffer 0", "Blocked tandem, buffer 2")
+
+
+def _case(name):
+    return next(c for c in verify.CASES if c.name == name)
 
 # Sized by measurement, not habit: 20 x 3000 keeps the M/M/2 Lq interval about
 # 13% wide (the assertions demand < 15%) and costs 2.2s less than 20 x 4000.
@@ -80,29 +89,24 @@ def _assert_theory_in_ci(samples, theory, label, max_half_width_pct=0.15):
     )
 
 
-def _erlang_c_lq(lam, mu, c):
-    """Expected queue length of an M/M/c queue (Erlang-C)."""
-    a = lam / mu
-    rho = a / c
-    p0 = 1.0 / (sum(a ** n / math.factorial(n) for n in range(c))
-                + a ** c / (math.factorial(c) * (1 - rho)))
-    return p0 * (a ** c) * rho / (math.factorial(c) * (1 - rho) ** 2), rho
-
-
-def test_mm1_sanity_with_a_loose_tolerance(make_model, worker_pool):
+@pytest.mark.slow
+def test_mm1_sanity_with_a_loose_tolerance(worker_pool):
     """The M/M/1 family's one oracle: few replications, short run, wide CI
     tolerance, and in the DEFAULT suite so a broken estimator is caught on
     every `pytest` run. The PROCESS-block form needs no oracle of its own --
     `test_seize_release_chain_equals_one_process_block` below proves the two
     forms bit-identical, and the Jackson case study runs the tight statistical
     version of both (suite-reduction pass, PHASE4 B4/B5)."""
-    path = _mmc_model(make_model, arrival_rate=1.0, service_rate=1.25, capacity=1,
-                      filename="mm1_fast.json")
-    utils, queues, times = _replicate(path, replications=8, run_len=1500, warmup=150, pool=worker_pool)
+    case = _case("M/M/1")
+    utils, queues, times = _replicate(case.layout_fn(), replications=8, run_len=1500, warmup=150,
+                                      pool=worker_pool)
 
-    _assert_theory_in_ci(utils, 0.8, "M/M/1 utilization (fast)", max_half_width_pct=0.5)
-    _assert_theory_in_ci(queues, 3.2, "M/M/1 Queue Length Avg (fast)", max_half_width_pct=1.0)
-    _assert_theory_in_ci(times, 4.0, "M/M/1 Avg Throughput Time (fast)", max_half_width_pct=0.6)
+    _assert_theory_in_ci(utils, case.theory["utilization"], "M/M/1 utilization (fast)",
+                         max_half_width_pct=0.5)
+    _assert_theory_in_ci(queues, case.theory["Lq"], "M/M/1 Queue Length Avg (fast)",
+                         max_half_width_pct=1.0)
+    _assert_theory_in_ci(times, case.theory["W"], "M/M/1 Avg Throughput Time (fast)",
+                         max_half_width_pct=0.6)
 
 
 # ------------------------------------------------- Seize/Release == Process
@@ -179,32 +183,16 @@ def test_a_capacity_two_resource_really_serves_two_entities_at_once(make_model):
 
 
 # ---------------------------------------------------------------- D/D/1
-def test_dd1_is_exact(make_model):
+def test_dd1_is_exact():
     """Constant IAT 2, constant service 1: utilization 0.5, no queue, W = 1."""
-    blocks = [
-        {"name": "create_1", "description": "c", "type": "CREATE", "position": [0, 0],
-         "params": {"e_type": "DEFAULT", "distribution": "Constant", "dist_params": {"value": 2.0},
-                    "entities_per_arrival": 1, "max_arrivals": 0, "start_time": 0}},
-        {"name": "seize_1", "description": "s", "type": "SEIZE", "position": [1, 0],
-         "params": {"distribution": "Constant", "dist_params": {"value": 1.0},
-                    "priority": 0, "quantity": 1, "resource_name": "Server"}},
-        {"name": "release_1", "description": "r", "type": "RELEASE", "position": [2, 0],
-         "params": {"distribution": "Constant", "dist_params": {"value": 0.0},
-                    "resource_name": "Server"}},
-        {"name": "dispose_1", "description": "d", "type": "DISPOSE", "position": [3, 0],
-         "params": {"distribution": "Constant", "dist_params": {"value": 0.0}}},
-    ]
-    links = [["create_1", "seize_1"], ["seize_1", "release_1"], ["release_1", "dispose_1"]]
-    resources = [{"name": "Server", "capacity": 1, "type": "Resource"}]
-    path = make_model(blocks, links, resources=resources, filename="dd1.json")
-
-    kpi = run_single_simulation(path, seed=0, run_len=1000, warmup=0)
+    case = _case("D/D/1")
+    kpi = run_single_simulation(case.layout_fn(), seed=0, run_len=case.run_len, warmup=case.warmup)
     row = _resource_row(kpi)
 
-    assert row["Usage % (snapshot)"] / 100.0 == pytest.approx(0.5, abs=1e-6)
-    assert row["Queue Length Avg"] == pytest.approx(0.0, abs=1e-6)
+    assert row["Usage % (snapshot)"] / 100.0 == pytest.approx(case.theory["utilization"], abs=1e-6)
+    assert row["Queue Length Avg"] == pytest.approx(case.theory["Lq"], abs=1e-6)
     assert row["Queue Length Max"] == pytest.approx(0.0, abs=1e-6)
-    assert _metric(kpi, "Avg Throughput Time") == pytest.approx(1.0, abs=1e-6)
+    assert _metric(kpi, "Avg Throughput Time") == pytest.approx(case.theory["W"], abs=1e-6)
     assert _metric(kpi, "Simulation Time") == pytest.approx(1000.0)
 
 
@@ -268,7 +256,7 @@ def test_warmup_excludes_the_initial_burst(make_model):
 
 # ---------------------------------------------------------------- resource set
 @pytest.mark.slow
-def test_mm2_as_a_set_of_two_single_servers_matches_erlang_c(make_model, worker_pool):
+def test_mm2_as_a_set_of_two_single_servers_matches_erlang_c(worker_pool):
     """ROADMAP 1.2: two capacity-1 resources behind a set with
     SmallestNumberBusy is an M/M/2 queue.
 
@@ -278,8 +266,8 @@ def test_mm2_as_a_set_of_two_single_servers_matches_erlang_c(make_model, worker_
     therefore the queue KPI to compare with Lq, and its utilization is busy
     units over the members' total capacity.
     """
-    lam, mu, c = 1.5, 1.0, 2
-    lq_theory, rho_theory = _erlang_c_lq(lam, mu, c)
+    case = _case("M/M/2 (Erlang C)")
+    lq_theory, rho_theory = case.theory["Lq"], case.theory["utilization"]
     # Suite-reduction pass (PHASE4 D1/D2): this was the second most expensive
     # test in the whole suite at the module's 20 x 3000 settings (7.2 s of a
     # 95 s budget). 12 x 2000 costs 2.7 s. Measured on this machine, the 99%
@@ -290,28 +278,7 @@ def test_mm2_as_a_set_of_two_single_servers_matches_erlang_c(make_model, worker_
     # module default of 15%.
     reps, run_len, warmup = 12, 2000, 200
 
-    blocks = [
-        {"name": "create_1", "description": "c", "type": "CREATE", "position": [0, 0],
-         "params": {"e_type": "DEFAULT", "distribution": "Exponential",
-                    "dist_params": {"rate": lam},
-                    "entities_per_arrival": 1, "max_arrivals": 0, "start_time": 0}},
-        {"name": "process_1", "description": "p", "type": "PROCESS", "position": [1, 0],
-         "params": {"action": "Seize Delay Release", "distribution": "Exponential",
-                    "dist_params": {"rate": mu}, "priority": 0, "quantity": 1,
-                    "resource_name": "Tellers"}},
-        {"name": "dispose_1", "description": "d", "type": "DISPOSE", "position": [2, 0],
-         "params": {"distribution": "Constant", "dist_params": {"value": 0.0}}},
-    ]
-    links = [["create_1", "process_1"], ["process_1", "dispose_1"]]
-    resources = [{"name": "TellerA", "capacity": 1, "discipline": "FIFO"},
-                 {"name": "TellerB", "capacity": 1, "discipline": "FIFO"}]
-    layout = {
-        "blocks": blocks, "links": links, "resources": resources,
-        "resource_sets": [{"name": "Tellers", "members": ["TellerA", "TellerB"],
-                           "rule": "SmallestNumberBusy"}],
-        "entities": [], "variables": [],
-        "simulation": {"time_limit": None, "warmup": 0, "replications": 1},
-    }
+    layout = case.layout_fn()
 
     utils, queues, member_queues = [], [], []
     for kpi in _seeded_runs(layout, reps, run_len, warmup, worker_pool):
@@ -328,67 +295,6 @@ def test_mm2_as_a_set_of_two_single_servers_matches_erlang_c(make_model, worker_
 
 
 # ============ blocked tandem line (PHASE4 T5, ARCHITECTURE D78) =============
-def _tandem_markov(mu1, mu2, places):
-    """Exact stationary solution of a SATURATED two-machine line with `places`
-    between the machines, solved numerically here like the M/M/1+M chain above.
-
-    State `(n, blocked)`: *n* is the number of parts in the buffer plus the one
-    in machine 2 (0 .. places+1), and `blocked` is 1 when machine 1 is holding a
-    finished part it cannot put down -- only possible with the buffer full and
-    machine 2 busy, i.e. at n = places+1. Machine 1 never starves (saturated
-    source) and machine 2 works whenever n >= 1.
-
-    Returns (throughput, P(machine 1 blocked)).
-    """
-    states = [(n, 0) for n in range(places + 2)] + [(places + 1, 1)]
-    index = {s: i for i, s in enumerate(states)}
-    rates = np.zeros((len(states), len(states)))
-    for state in states:
-        n, blocked = state
-        i = index[state]
-        if not blocked:                     # machine 1 finishes a part
-            rates[i, index[(n + 1, 0) if n < places + 1 else (places + 1, 1)]] += mu1
-        if n >= 1:                          # machine 2 finishes one
-            # When machine 1 was blocked its part goes straight into the place
-            # that just freed, so *n* is unchanged and the block clears.
-            rates[i, index[(places + 1, 0) if blocked else (n - 1, 0)]] += mu2
-    generator = rates - np.diag(rates.sum(axis=1))
-    # pi Q = 0 with sum(pi) = 1, as one least-squares system.
-    lhs = np.vstack([generator.T, np.ones(len(states))])
-    rhs = np.zeros(len(states) + 1)
-    rhs[-1] = 1.0
-    pi = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
-    throughput = mu2 * sum(p for state, p in zip(states, pi) if state[0] >= 1)
-    return throughput, float(pi[index[(places + 1, 1)]])
-
-
-def _blocked_line(make_model, *, mu1, mu2, places, filename, arrivals=1800):
-    """A saturated two-machine line: every part released at t=0, so machine 1
-    is never starved and the only thing that stops it is a full buffer."""
-    blocks = [
-        {"name": "src", "description": "src", "type": "CREATE", "position": [0, 0],
-         "params": {"e_type": "DEFAULT", "distribution": "Constant",
-                    "dist_params": {"value": 0.0}, "entities_per_arrival": 1,
-                    "max_arrivals": arrivals, "start_time": 0}},
-        {"name": "m1", "description": "m1", "type": "PROCESS", "position": [1, 0],
-         "params": {"action": "Seize Delay Release", "distribution": "Exponential",
-                    "dist_params": {"rate": mu1}, "priority": 0, "quantity": 1,
-                    "resource_name": "M1"}},
-        {"name": "buf", "description": "buf", "type": "BUFFER", "position": [2, 0],
-         "params": {"capacity": places}},
-        {"name": "m2", "description": "m2", "type": "PROCESS", "position": [3, 0],
-         "params": {"action": "Seize Delay Release", "distribution": "Exponential",
-                    "dist_params": {"rate": mu2}, "priority": 0, "quantity": 1,
-                    "resource_name": "M2"}},
-        {"name": "out", "description": "out", "type": "DISPOSE", "position": [4, 0],
-         "params": {"distribution": "Constant", "dist_params": {"value": 0.0}}},
-    ]
-    links = [["src", "m1"], ["m1", "buf"], ["buf", "m2"], ["m2", "out"]]
-    return make_model(blocks, links,
-                      resources=[{"name": "M1", "capacity": 1}, {"name": "M2", "capacity": 1}],
-                      filename=filename)
-
-
 def _line_samples(path, *, replications=6, run_len=1500, warmup=150, pool=None):
     """Per-replication (throughput, fraction of time machine 1 was blocked).
 
@@ -406,7 +312,7 @@ def _line_samples(path, *, replications=6, run_len=1500, warmup=150, pool=None):
 
 
 @pytest.mark.slow
-def test_blocked_tandem_line_matches_its_markov_chain(make_model, worker_pool):
+def test_blocked_tandem_line_matches_its_markov_chain(worker_pool):
     """Two exponential stations with a finite buffer have a small Markov chain
     with an exact answer; both the throughput and P(blocked) must land in it.
 
@@ -414,10 +320,9 @@ def test_blocked_tandem_line_matches_its_markov_chain(make_model, worker_pool):
     the textbook 2/3 of a single machine) and with two places.
     """
     for places in (0, 2):
-        theory_rate, theory_blocked = _tandem_markov(1.0, 1.0, places)
-        path = _blocked_line(make_model, mu1=1.0, mu2=1.0, places=places,
-                             filename=f"line_{places}.json")
-        rates, blocked = _line_samples(path, pool=worker_pool)
+        case = _case(f"Blocked tandem, buffer {places}")
+        theory_rate, theory_blocked = case.theory["throughput"], case.theory["P(machine 1 blocked)"]
+        rates, blocked = _line_samples(case.layout_fn(), pool=worker_pool)
         _assert_theory_in_ci(rates, theory_rate, f"tandem throughput, buffer {places}")
         # A looser noise guard than the throughput's: a probability around 0.2
         # is a smaller number to estimate, and the interval containing the

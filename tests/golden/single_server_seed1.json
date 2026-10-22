@@ -1,5 +1,5 @@
 {
-  "hash": "ce6f18050bf51fc310a48fbb5017db403a499348debf77bbe279460a329f2bca",
+  "hash": "e6982926e64f5007c04f2e89a847e38cf922df2b8dc8e82b8b4d4157640809fa",
   "model": "single_server.json",
   "payload": {
     "entity_count": 903,
@@ -7,6 +7,7 @@
       "Avg Queue Length": 2.7023,
       "Avg Resource Usage %": 79.36,
       "Avg Throughput Time": 3.4795,
+      "Avg WIP": 3.4958,
       "Avg WIP (Little)": 3.4564,
       "Cost per Completed Entity": 0.0,
       "Entity Log Truncated": 0,

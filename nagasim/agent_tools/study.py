@@ -26,6 +26,7 @@ from nagasim.study import CHECKLIST, FIRST_PASS, LEVELS, MODES, PRECISION, SIZES
 from nagasim.twin import write_text
 
 from .core import ToolError, _digest, _document_args, call, tool, workspace
+from .runs import _run_laws
 
 _ID = "Study folder relative to the workspace root (the id study_start returned)."
 _CH = "Keys to record in the same call, with the shapes of study_update's changes."
@@ -643,7 +644,8 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                     else:
                         res = workspace().results
                         res[model] = experiments._merge(first_results, res[model])
-                        digest = {**_digest(res[model]), "model": model, "frames": sorted(res[model])}
+                        digest = {**_digest(res[model]), "model": model, "frames": sorted(res[model]),
+                                  "laws": _run_laws(workspace().document(model).to_layout(), res[model])}
                         _tails(s, digest, res[model], layout)
                         status = study_mod.precision_status(s, digest)
             if digest is not None:

@@ -21,11 +21,12 @@ from nagasim.core.trace import TraceRecorder
 __all__ = ["run", "main"]
 
 
-def run(model, *, seed: int = 0, run_length: float | None = None) -> dict:
+def run(model, *, seed: int = 0, run_length: float | None = None, should_stop=None) -> dict | None:
     """One replication of *model* (a path or a layout dict), recorded and read.
     *run_length* None takes the model's own. Returns {"seed", "end_time", "truncated",
     "facts": [{"kind", "text", "block", "resource", "t", "count", "duration"}]};
-    raises whatever a model that cannot run raises."""
+    raises whatever a model that cannot run raises. None when *should_stop* cut the run short
+    (facts of a cut run say nothing about the model)."""
     from nagasim.api import run_settings
     from nagasim.core.schema import ModelValidationError, fatal_problems, format_problems, prepare
     from nagasim.core.sim_runner import setup_run, step_until
@@ -40,7 +41,8 @@ def run(model, *, seed: int = 0, run_length: float | None = None) -> dict:
     recorder = TraceRecorder()
     env, _model = setup_run(layout, seed=seed, run_len=length, warmup=warmup,
                             subscribers=(recorder,), prepared=True)
-    step_until(env, length)
+    if step_until(env, length, should_stop):
+        return None
     end = env.ctx.sim_end_time
     found = facts(recorder.events, layout, end_time=end, truncated=recorder.truncated)
     return {"seed": seed, "end_time": end, "truncated": recorder.truncated,

@@ -124,6 +124,20 @@ options:
                      bound) as a failure too (exit 1)
 ```
 
+## naga verify
+
+```text
+usage: naga verify [-h] [--quick] [--json] [--html PATH]
+
+Check the engine against textbook queueing theory.
+
+options:
+  -h, --help   show this help message and exit
+  --quick      8 replications instead of 20
+  --json       print the rows as JSON
+  --html PATH  also write an HTML report here
+```
+
 ## naga facts
 
 ```text

@@ -48,6 +48,7 @@ def reset_statistics(env, t: float) -> None:
     counters restart too. Entity-level warm-up filtering is done in outputs.py
     from creation_time / deletion_time.
     """
+    env.ctx.live_entities.wip.reset(t)              # Avg WIP (D683)
     for res in env.ctx.resource_manager.all().values():
         res.reset_stats(t)
     for store in env.ctx.store_manager.all():

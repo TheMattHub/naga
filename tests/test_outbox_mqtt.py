@@ -93,6 +93,7 @@ def test_replies_are_read_back_through_the_readers_subscription(broker):
     sink.close()
 
 
+@pytest.mark.slow
 def test_a_broker_that_is_down_fails_the_delivery_and_the_rest_of_that_step_at_once(
         broker, monkeypatch):
     """D410: the error is a code or a class, never the broker's text; after one failure the

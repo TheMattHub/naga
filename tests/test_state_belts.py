@@ -74,6 +74,7 @@ def test_every_stage_of_a_belt_is_met_and_carried_exactly(variant, times):
             "two belts": {"held by m", "held by feeder"}}[variant] <= met
 
 
+@pytest.mark.slow
 def test_a_belt_line_is_reproduced_in_distribution():
     """As `test_state`: the state of seed s started with another seed against the run of seed
     s, 30 seeds, each mean difference inside its 99% interval."""

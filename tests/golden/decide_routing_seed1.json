@@ -1,5 +1,5 @@
 {
-  "hash": "ccb044a5fe6f80d80f77de1fb8b0d22b8ed72bb657fd4872465c42867682ad47",
+  "hash": "26aba35aeb60c227fcc18d46a693d27d4cbdec55435ed95d8a6685457c89bc37",
   "model": "decide_routing.json",
   "payload": {
     "entity_count": 524,
@@ -7,6 +7,7 @@
       "Avg Queue Length": 0,
       "Avg Resource Usage %": 0,
       "Avg Throughput Time": 2.1528,
+      "Avg WIP": 2.2523,
       "Avg WIP (Little)": 2.2433,
       "Cost per Completed Entity": 0.0,
       "Entity Log Truncated": 0,

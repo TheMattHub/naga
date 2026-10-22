@@ -68,7 +68,7 @@ from nagasim.plugins import load_plugins
 
 from .core import (ToolError, ToolSpec, Workspace, TOOLS, call, drop_python_consent,
                    python_consent_dropped, tool, tool_schemas, use_workspace, workspace)
-from . import core, model, records, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup, view, discover  # noqa: F401 -- import order is registration order
+from . import core, model, records, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup, view, discover, draftcheck  # noqa: F401 -- import order is registration order
 # Re-exported on purpose: tests read these three directly.
 from .core import _ARG_DOCS
 from .data import _BINDABLE

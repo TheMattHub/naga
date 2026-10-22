@@ -97,6 +97,7 @@ def test_a_candidates_file_is_closed(tmp_path):
         recommend.load(big, model)
 
 
+@pytest.mark.slow
 def test_candidates_are_compared_on_one_seed_and_only_a_clear_gain_is_ranked():
     """D301, D302: paired on common random numbers; an interval that holds "no effect" is
     shown as such; ties and the order are the same on every machine."""
@@ -324,6 +325,7 @@ def test_a_twin_recommends_from_the_plants_state_and_delivers_to_the_callers_out
     assert said["outbox"]["records"]["delivered"] == 1 and said["outbox"]["sink"] == "file"
 
 
+@pytest.mark.slow
 def test_candidates_never_enter_the_history_or_the_rolling_score(tmp_path):
     """D301: a candidate is no forecast. The same twin with and without candidates stores
     the same forecasts and the same scores, and no seed is counted as repeated."""
@@ -355,6 +357,7 @@ def test_without_an_outbox_nothing_leaves_the_result_directory(tmp_path):
         "states", "twin.json", "twin_history.json", "twin_outbox.json"]
 
 
+@pytest.mark.slow
 def test_no_recommendation_is_made_from_a_cycle_that_made_no_forecast(tmp_path):
     cycle, _advisor, clock, *_rest = advised(tmp_path, forecast_every=1.0)
     assert cycle.step()["recommend"]["status"] == "ok"
@@ -377,6 +380,7 @@ def test_no_recommendation_is_made_from_a_cycle_that_made_no_forecast(tmp_path):
     assert doc["recommend"]["reason"] == "kpi" and codes == ["E_RECOMMEND_KPI"]
 
 
+@pytest.mark.slow
 def test_a_refused_write_is_said_once_and_a_record_waits_until_it_expires(tmp_path, monkeypatch):
     cycle, advisor, clock, *_rest = advised(tmp_path, MORE, lifetime=30.0)
     advisor.sink.path.mkdir()               # a folder where the outbox file should be
@@ -500,6 +504,7 @@ def test_only_the_callers_flag_names_a_sink(tmp_path, capsys, monkeypatch):
 
 
 # ---------------------------------------------------------------- feedback (D306-D308)
+@pytest.mark.slow
 def test_an_action_that_was_taken_stands_in_every_later_forecast(tmp_path):
     """D307: the plant's state does not say a capacity, so the model is told. The model
     FILE is not: its hash, the stored states and the rolling score go on."""
@@ -566,6 +571,7 @@ def test_the_effect_of_a_taken_action_is_measured_from_the_plants_counter(tmp_pa
     assert cycle.step()["recommend"]["effects"][0]["observed"] == observed      # once
 
 
+@pytest.mark.slow
 def test_an_effect_that_cannot_be_read_is_said_by_name(tmp_path):
     for name in ("a", "b", "b0", "c", "d"):
         (tmp_path / name).mkdir()
@@ -611,6 +617,7 @@ def test_an_effect_that_cannot_be_read_is_said_by_name(tmp_path):
     assert cycle.step()["recommend"]["effects"][0]["status"] == "not_observable"
 
 
+@pytest.mark.slow
 def test_a_hostile_replies_file_changes_nothing(tmp_path):
     """D306 and the security table: counted by kind, dropped, and the twin goes on."""
     cycle, advisor, clock, *_rest = advised(tmp_path, lifetime=8.0)
@@ -683,6 +690,7 @@ def naga_twin(*arguments, hashseed="0"):
         env={**os.environ, "PYTHONPATH": str(root), "PYTHONHASHSEED": hashseed})
 
 
+@pytest.mark.slow
 def test_naga_twin_reproduce_is_the_exit_check_across_two_processes(tmp_path, capsys):
     """Row 7.15: recommendations reproduce from the same state and seed. One process
     recommends from a plant's state; another computes the stored records again from the
@@ -738,6 +746,7 @@ def test_naga_twin_reproduce_is_the_exit_check_across_two_processes(tmp_path, ca
     assert "no stored recommendation" in capsys.readouterr().out
 
 
+@pytest.mark.slow
 def test_kept_states_are_bounded_and_a_set_that_cannot_be_kept_is_not_delivered(tmp_path, monkeypatch):
     monkeypatch.setitem(recommend.LIMITS, "states", 3)
     cycle, advisor, clock, *_rest = advised(tmp_path, MORE, forecast_every=2.0)
@@ -844,6 +853,7 @@ from nagasim import api  # noqa: E402
 BUFFERS = Path(nagasim.__file__).parent / "models" / "line_with_buffers.json"
 
 
+@pytest.mark.slow
 def test_a_capacity_an_instance_binds_is_refused_and_the_instances_own_is_targetable(tmp_path):
     """I1 of the review: on a model of asset instances the template's capacity is bound
     again by each instance's argument, so an override of it was accepted, changed no run
@@ -889,6 +899,7 @@ def test_a_capacity_an_instance_binds_is_refused_and_the_instances_own_is_target
     assert differences == 0 and "reproduced" in lines[0] and "station_1/Mfg Machine = 2" in lines[0]
 
 
+@pytest.mark.slow
 def test_a_standing_action_is_ended_through_the_outbox(tmp_path, capsys):
     """I2 (D307 amended): `{"id", "decision": "ended"}` on a taken record. It stands no
     more from the next forecast; for anything that does not stand it is counted, dropped."""
@@ -1079,6 +1090,7 @@ def test_reroute_sends_every_item_reaching_its_branch_down_the_link_it_names():
     assert rows[0]["low"] > 0 and model["blocks"][1]["params"]["mode"] == "Chance"
 
 
+@pytest.mark.slow
 def test_a_reroute_is_recorded_taken_stands_and_reproduces(tmp_path):
     """The record, the reply's effect on later forecasts (D307) and the exit check (D303),
     for the second verb as for the first."""

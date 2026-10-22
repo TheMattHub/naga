@@ -15,24 +15,21 @@ def _by(checks, name):
     return next(c for c in checks if c["name"] == name)
 
 
-def test_utilisation_over_100_is_flagged_not_failed():
-    c = _by(step_checks({}, _d(usage=101.0), None, {}), "utilisation: Server")
-    assert c["verdict"] == "partial" and c["kind"] == "law"
-
-
-def test_saturated_is_partial_and_normal_passes():
-    assert _by(step_checks({}, _d(usage=97), None, {}), "utilisation: Server")["verdict"] == "partial"
-    assert _by(step_checks({}, _d(usage=60), None, {}), "utilisation: Server")["verdict"] == "passed"
-
-
-def test_piling_up_work_is_a_partial():
-    c = _by(step_checks({}, _d(created=100, completed=50), None, {}), "flow balance")
-    assert c["verdict"] == "partial" and "piling up" in c["why"]
-    assert _by(step_checks({}, _d(), None, {}), "flow balance")["verdict"] == "passed"
+def test_the_digest_laws_become_step_checks():
+    """A law warning is a partial step check, never a failure; the passed ones are one count."""
+    warn = {"name": "offered load: Server", "verdict": "partial", "why": "unstable by design",
+            "law": "offered load"}
+    cs = step_checks({}, _d(laws={"passed": 3, "partial": [warn]}), None, {})
+    c = _by(cs, "offered load: Server")
+    assert c["verdict"] == "partial" and c["kind"] == "law" and c["why"] == "unstable by design"
+    assert _by(cs, "laws") == {"name": "laws", "verdict": "passed", "why": "3 law checks passed",
+                               "kind": "law"}
+    assert overall(cs) == "partial"
 
 
 def test_laws_without_their_kpis_are_omitted():
     assert step_checks({}, {"replications": 1, "levels": {"x": {}}}, None, {}) == []
+    assert step_checks({}, _d(laws={"passed": 0, "partial": []}), None, {}) == []
 
 
 def test_a_different_rerun_fails_reproducibility():

@@ -57,6 +57,7 @@ def test_python_on_tick_equals_declarative_bit_for_bit(consent, activation):
         assert py["v"].tolist() == [3, 4, 5, 0, 1, 2]
 
 
+@pytest.mark.slow
 def test_a_surface_that_dropped_consent_is_refused_in_every_worker(monkeypatch):
     """D186: the variable is dropped in the parent, so pool workers inherit a clean
     environment and the engine's own gate refuses there too."""

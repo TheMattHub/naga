@@ -28,7 +28,7 @@ every tool call and every model file.
 | A URL resolving to a loopback, link-local, multicast, reserved or unspecified address | closes the classic cloud-metadata-endpoint (`169.254.169.254`) and localhost-service attacks |
 | A URL resolving to a private/unique-local/CGNAT address | closes intranet-scanning even when `--allow-network` is on, unless `--allow-private-network` is also given |
 | A URL with embedded credentials | a credential belongs in an environment variable, never committed inside a model file. A model file may reference only variables whose names start with `NAGASIM_DATA_` (`${NAGASIM_DATA_DB_URL}`); a reference to any other name is refused (`E_DATA_ENV_NAME`) before the environment is read, so a file cannot read your API keys. A failure message, hint or log line about the source quotes the reference as written, not the variable's value, except a value shorter than four characters and a part of a value that a library extracts (the host of a URL held in a variable), which can still be shown. A `NAGASIM_DATA_` variable can be read as data by any model file you run (through a query, an option, a filter, or a location on a host you allowed): put there only what a model file may see |
-| A live source (`rest`, `mqtt`, `opcua`) whose connection you did not define | a model names a connection and never an address: where it leads, and with which credential, is in a connections file only you pass (`--connections`). Without it no socket opens (`E_DATA_CONNECTION`) |
+| A live source (`rest`, `mqtt`, `opcua`, `modbus`) whose connection you did not define | a model names a connection and never an address: where it leads, and with which credential, is in a connections file only you pass (`--connections`). Without it no socket opens (`E_DATA_CONNECTION`) |
 | A password or token over an unencrypted channel to another machine | `mqtt://`, `http://` and OPC UA without security carry it in clear text for anyone on that network; there is no setting that allows it (`E_DATA_PLAINTEXT_CREDENTIAL`). Anonymous plain reads and encrypted channels work |
 | A TLS certificate that is not valid for the host | always verified, host name included; a private CA is named as `ca_file`; no key or flag turns the check off (`E_DATA_TLS`) |
 | A redirect that downgrades https to http, or chains past 3 hops | the oldest SSRF trick there is -- a public URL redirecting to a private one |
@@ -61,7 +61,8 @@ The three live readers are read-only by construction and share one way out of th
 - **Nothing can be written.** The REST reader has one verb, GET. The MQTT client can build a
   CONNECT, a SUBSCRIBE, an acknowledgement, a ping and a DISCONNECT: there is no publish, no
   will and no persistent session, so it leaves nothing on a broker, and a Sparkplug rebirth
-  request is never sent. The OPC UA reader subscribes to data changes and calls nothing else.
+  request is never sent. The OPC UA reader subscribes to data changes and calls nothing else. The Modbus reader builds
+  function codes 1 to 4 (reads) and no other; its register map, host and unit are yours.
 - **Everything read is data.** Values are scalars; a text from a plant is never used as a path,
   an address, an expression or a name, and is written into a model only as an order's field.
 - **Every bound has a ceiling** ([Live data](live-data.md#bounds)): what is over one is dropped

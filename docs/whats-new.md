@@ -4,16 +4,40 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.14: an offline backup for the tool picker
+## 0.15: runs you can trust
 
 <!-- --8<-- [start:latest] -->
+- **Every run checks itself.** A run is held against the operational laws of queues (utilisation,
+  offered load, Little's law, flow conservation), and it warns when too much work is still inside
+  at the end or when a warm-up is missing. The warnings name the law and show in the `run_model`
+  digest, the study steps and `naga check`.
+- **What happened in a run.** `naga facts` lists what nothing else reports: blocks no entity
+  entered, resources never used, resources idle while entities waited for them, and entities left
+  at the end. These are facts with numbers, never verdicts, and agents get them as `run_facts`.
+- **Answers with a verdict.** `what_if` compares a change on common random numbers and adds
+  replications until the difference is clear, and `naga verify` checks the engine against nine
+  textbook queues.
+- **Checks over time, and pictures for agents.** A reality check can now ask that something
+  happens `eventually`, or holds `before` or `between` given times, and `view_model` gives an agent
+  the model's flowchart as an image.
+- **Before you upgrade.** Results keep their values. The system frame gains a measured `Avg WIP`
+  row beside `Avg WIP (Little)`, `resource_summary` gains `Queue Length at End`, and
+  `run_scenarios` gains `Replications Needed` and `CRN Ratio`, so code that reads frames by
+  position sees new rows and columns.
+
+```console
+naga facts model.json
+```
+<!-- --8<-- [end:latest] -->
+
+## 0.14: an offline backup for the tool picker
+
 - **A backup when Haiku cannot answer.** `--tool-picker-backup PATH` names a local or Hugging Face
   CrossEncoder (the `picker` extra). When the hosted Haiku picker fails or has no key, the backup ranks
   every tool, not only `find_tool`'s ten best, so the right tool still comes first more often.
 - **Precision by hardware.** A cross-encoder loads in float16 on a CUDA GPU and in float32 on a CPU,
   which keeps the same picks and the best speed on each.
 - **New evidence.** The page Pick tools with a small model compares the pickers over the whole 90-tool catalogue.
-<!-- --8<-- [end:latest] -->
 
 ## 0.13: an assistant runs a simulation study
 

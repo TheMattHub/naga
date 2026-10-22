@@ -2,8 +2,9 @@
 
 Pure functions over the digest dict that `agent_tools.runs.run_model` returns. Laws are warnings
 (a violated law is "partial", never "failed", since saturation can be the point of a model);
-reproducibility, assumption and goal checks can fail. Little's law is deliberately not checked:
-the engine computes "Avg WIP (Little)" from it, so a check would be circular.
+reproducibility, assumption and goal checks can fail. The laws (utilisation, offered load, Little
+per resource and for the system against the measured `Avg WIP`, flow conservation, censoring,
+initial bias) are computed by `nagasim.laws` from the run's frames; the digest carries them.
 """
 from __future__ import annotations
 
@@ -43,27 +44,12 @@ def kpi_mean(digest: dict, kpi: str) -> float | None:
 
 
 def _laws(digest: dict) -> list[dict]:
-    out = []
-    for name, cols in (digest.get("resources") or {}).items():
-        u = _mean((cols or {}).get("Usage % (snapshot)"))
-        if u is None:
-            continue
-        label = f"utilisation: {name}"
-        if u > 100.5:
-            out.append(_check(label, "partial", f"utilisation {u:.1f}% exceeds 100%", "law"))
-        elif u > 95:
-            out.append(_check(label, "partial", f"saturated at {u:.1f}%, results depend on run length", "law"))
-        else:
-            out.append(_check(label, "passed", f"utilisation {u:.1f}%", "law"))
-    created = _mean((digest.get("system") or {}).get("Total Entities Created"))
-    done = _mean((digest.get("system") or {}).get("Total Entities Completed"))
-    if created is not None and done is not None:
-        if created - done > 0.1 * created:
-            out.append(_check("flow balance", "partial",
-                              f"{created:.0f} created, {done:.0f} completed: work is piling up: "
-                              "unstable system or run too short", "law"))
-        else:
-            out.append(_check("flow balance", "passed", f"{created:.0f} created, {done:.0f} completed", "law"))
+    """The run's law checks (`nagasim.laws`, D684) as the `run_model` digest carries them: each
+    warning in full, the passed ones as one count."""
+    laws = digest.get("laws") or {}
+    out = [_check(c["name"], "partial", c["why"], "law") for c in laws.get("partial") or []]
+    if laws.get("passed"):
+        out.append(_check("laws", "passed", f"{laws['passed']} law checks passed", "law"))
     return out
 
 

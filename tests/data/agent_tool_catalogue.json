@@ -1171,7 +1171,7 @@
     "read_only": true
   },
   {
-    "description": "Run a model and return a COMPACT KPI digest -- never the raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications (see\n`run_to_precision`). One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it. Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\nReturns {\"model\", \"replications\", \"system\": {KPI: {mean, ci_half_width}},\n\"resources\": {name: {metric: {...}}}, \"user_stats\": {...},\n\"frames\": [names available to get_kpi_table]}, plus, only when the model has them,\n\"entities\" (per entity type, when there are several: Avg Time, Total Completed),\n\"levels\" (Average, Final, Time Empty %, Time Full %), \"queues\" (per block: Balked,\nReneged) and \"agents\" (per population/state: Avg Count), in the same {mean,\nci_half_width} form.",
+    "description": "Run a model and return a COMPACT KPI digest -- never the raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications (see\n`run_to_precision`). One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it. Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\nReturns {\"model\", \"replications\", \"system\": {KPI: {mean, ci_half_width}},\n\"resources\": {name: {metric: {...}}}, \"user_stats\": {...},\n\"frames\": [names available to get_kpi_table], \"laws\": {\"passed\": n, \"partial\": [{name,\nverdict, why, law}]}}: the operational-law checks and guardrails (utilisation, offered load,\nLittle, flow conservation, censoring, initial bias) -- warnings, never failures; a partial\none names why its numbers cannot be read at face value. Plus, only when the model has them,\n\"entities\" (per entity type, when there are several: Avg Time, Total Completed),\n\"levels\" (Average, Final, Time Empty %, Time Full %), \"queues\" (per block: Balked,\nReneged) and \"agents\" (per population/state: Avg Count), in the same {mean,\nci_half_width} form.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -1584,13 +1584,18 @@
     "read_only": false
   },
   {
-    "description": "Search model parameters for the best value of one KPI within a\nreplication budget, then confirm the winner statistically.\n\nEvery factor is an override path plus a range, exactly like a scenario\noverride but varying. The budget is a HARD cap on replications, so start\nsmall (a few hundred) and raise it if `converged` is false. Constraints are\njudged on confidence intervals, so a point may come back \"unknown\" rather\nthan feasible or infeasible.\n\nReturns {\"model\", \"best\", \"best_mean\", \"converged\", \"budget_used\",\n\"feasible\", \"history\": [{\"point\", \"mean\", \"feasibility\"}] (last 20)}.",
+    "description": "Search model parameters for the best value of one KPI within a\nreplication budget, then confirm the winner statistically.\n\nEvery factor is an override path plus a range, exactly like a scenario\noverride but varying. The budget is a HARD cap on replications, so start\nsmall (a few hundred) and raise it if `converged` is false. Constraints are\njudged on confidence intervals, so a point may come back \"unknown\" rather\nthan feasible or infeasible. The best `confirm_top` points go through a\nranking-and-selection (KN) step; `confirmed` says whether the winner holds.\n`method=\"optuna-nsga2\"` with `objectives` returns the non-dominated set\nunder `pareto` instead of `confirmed`.\n\nReturns {\"model\", \"best\", \"best_mean\", \"converged\", \"budget_used\",\n\"feasible\", \"history\": [{\"point\", \"mean\", \"feasibility\"}] (last 20),\n\"confirmed\": {\"best\", \"confidence\", \"guaranteed\", \"candidates\"} or null,\n\"pareto\": [{\"point\", \"objectives\"}] (nsga2 only), \"sampler\"}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "budget": {
           "default": 120,
           "description": "Total replications the search may spend.",
+          "type": "integer"
+        },
+        "confirm_top": {
+          "default": 3,
+          "description": "How many of the best points the final statistical confirmation compares (default 3).",
           "type": "integer"
         },
         "constraints": {
@@ -1616,9 +1621,21 @@
             "null"
           ]
         },
+        "method": {
+          "default": "auto",
+          "description": "\"auto\" (pattern search), \"optuna\" (TPE), \"optuna-gp\" (Gaussian process, small budgets) or \"optuna-nsga2\" (several objectives, returns the Pareto set). The optuna ones need the ml extra.",
+          "type": "string"
+        },
         "model": {
           "description": "Workspace name of the model.",
           "type": "string"
+        },
+        "objectives": {
+          "description": "[[\"<kpi key>\", \"min\"|\"max\"], ...] for \"optuna-nsga2\" (at least two).",
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "replications_per_point": {
           "default": 5,
@@ -2915,6 +2932,36 @@
     "read_only": true
   },
   {
+    "description": "Check a generated model against the data it came from, without claiming it is valid.\n\nRuns the model briefly (one traced replication per seed, at least 3) and compares cycle time,\nthroughput and each activity's mean service time with the source's own numbers (event log:\nall three; tables: the process time of the stations whose routing rows agree), then adds the\noperational-law checks of `run_model`. A source with fewer than 30 cases cannot tell a right\ndraft from a wrong one, so the verdict is at best \"partial\" and `note` says so.\n\nReturns {\"verdict\": \"passed\"|\"partial\"|\"failed\", \"compared\": [{kpi, source, draft, within}],\n\"laws\": {passed, partial}, \"sample\": {\"source_cases\", \"draft_replications\"}, \"note\"}.\n\"failed\" means a compared number is off by more than its tolerance (twice the draft's\nconfidence half-width, at least 10%); \"partial\" means a law warns or the source is short.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "max_seconds": {
+          "default": 20,
+          "description": "Wall-clock budget for the draft's runs (at least 3 are made).",
+          "type": "number"
+        },
+        "model": {
+          "description": "Workspace name of the generated model.",
+          "type": "string"
+        },
+        "source": {
+          "description": "The log file, tables folder or .xlsx workbook the model was generated from (inside the workspace).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "check_draft",
+    "read_only": true
+  },
+  {
     "description": "See a model as a picture: its blocks, each where it sits in the editor's process view, and the\nlinks between them. Use it to check that the model looks like the process you meant to build.\n\nReturns {\"model\", \"format\", \"text\"} (every block with its type, then every link) plus \"image\" for\npng; svg answers {\"model\", \"format\", \"svg\"} instead. Without matplotlib a png request answers with\nthe text and a \"note\", as format \"text\".",
     "input_schema": {
       "additionalProperties": false,
@@ -2936,5 +2983,78 @@
     },
     "name": "view_model",
     "read_only": true
+  },
+  {
+    "description": "Ask \"what if I change this?\" without editing the model: run the baseline\nand the changed model on paired seeds, doubling replications (start, 2x, ...\nup to cap) until every KPI's difference interval excludes zero or the cap.\n\nVerdict per KPI is \"better\"/\"worse\" (when goals names the direction),\n\"higher\"/\"lower\" (otherwise) or \"not distinguishable\" (the cap was reached\nwith the interval still across zero: the change is too small to see at this\neffort, not proven absent), or \"unchanged\" (identical in every paired\nreplication, such as a count the change does not touch).\n\nReturns {\"model\", \"n\", \"met\", \"completed\", \"kpis\": [{\"kpi\", \"baseline\",\n\"scenario\", \"diff\", \"diff_lb\", \"diff_ub\", \"verdict\"}]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cap": {
+          "default": 50,
+          "description": "Most replications to try.",
+          "type": "integer"
+        },
+        "goals": {
+          "description": "Optional {kpi: \"min\" | \"max\"}: with it the verdict reads better/worse.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "kpis": {
+          "description": "KPI keys to judge; omit for the system KPIs.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "overrides": {
+          "description": "Scenario-style overrides, e.g. [{\"path\": \"resources.Server.capacity\", \"value\": 2}]; nothing is saved to the model.",
+          "type": "array"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        },
+        "start": {
+          "default": 5,
+          "description": "First replication count (doubles until the answer is clear).",
+          "type": "integer"
+        },
+        "warmup": {
+          "description": "Warm-up time.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "overrides"
+      ],
+      "type": "object"
+    },
+    "name": "what_if",
+    "read_only": false
   }
 ]

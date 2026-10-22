@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from nagasim import api, experiments, investment, loopdominance, modelcheck
+from nagasim import api, experiments, investment, laws, loopdominance, modelcheck
 from nagasim import optimize as optimize_mod
+from nagasim.core.schema import ModelValidationError
 from nagasim.exporters import EXPORTER_REGISTRY
 
 from .core import (
@@ -47,7 +48,10 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
 
     Returns {"model", "replications", "system": {KPI: {mean, ci_half_width}},
     "resources": {name: {metric: {...}}}, "user_stats": {...},
-    "frames": [names available to get_kpi_table]}, plus, only when the model has them,
+    "frames": [names available to get_kpi_table], "laws": {"passed": n, "partial": [{name,
+    verdict, why, law}]}}: the operational-law checks and guardrails (utilisation, offered load,
+    Little, flow conservation, censoring, initial bias) -- warnings, never failures; a partial
+    one names why its numbers cannot be read at face value. Plus, only when the model has them,
     "entities" (per entity type, when there are several: Avg Time, Total Completed),
     "levels" (Average, Final, Time Empty %, Time Full %), "queues" (per block: Balked,
     Reneged) and "agents" (per population/state: Avg Count), in the same {mean,
@@ -71,8 +75,15 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
                         "raise max_seconds, or lower replications/run_length")
     ws.results[model] = results
     digest = _digest(results)
-    digest.update({"model": model, "frames": sorted(results)})
+    digest.update({"model": model, "frames": sorted(results), "laws": _run_laws(layout, results, warmup)})
     return digest
+
+
+def _run_laws(layout: dict, results, warmup: float | None = None) -> dict:
+    """`laws.summary` of a run, judged with the warm-up the run used (D684)."""
+    if warmup is not None:
+        layout = {**layout, "simulation": {**(layout.get("simulation") or {}), "warmup": warmup}}
+    return laws.summary(laws.checks(layout, results))
 
 
 _document_args("get_kpi_table", model="Workspace name of a model that has been run.",
@@ -147,9 +158,48 @@ def run_scenarios(model: str, scenarios: list | None = None, kpis: list | None =
         "lb": ("LB", _finite), "ub": ("UB", _finite),
         "diff": ("Diff vs baseline", _finite), "diff_lb": ("Diff LB", _finite),
         "diff_ub": ("Diff UB", _finite), "significant": ("Significant", bool),
+        "replications_needed": ("Replications Needed", _finite), "crn_ratio": ("CRN Ratio", _finite),
     })
     return {"model": model, "scenarios": result.scenarios, "crn": result.crn,
             "completed": result.completed, "comparison": rows}
+
+
+_document_args("what_if", model="Workspace name of the model.",
+               overrides="Scenario-style overrides, e.g. [{\"path\": \"resources.Server.capacity\", "
+                         "\"value\": 2}]; nothing is saved to the model.",
+               kpis="KPI keys to judge; omit for the system KPIs.",
+               goals="Optional {kpi: \"min\" | \"max\"}: with it the verdict reads better/worse.",
+               start="First replication count (doubles until the answer is clear).",
+               cap="Most replications to try.",
+               run_length="Run length in base time units.", warmup="Warm-up time.",
+               seed="Base seed.", max_seconds="Wall-clock budget.")
+
+
+@tool()
+def what_if(model: str, overrides: list, kpis: list | None = None, goals: dict | None = None,
+            start: int = 5, cap: int = 50, run_length: float | None = None,
+            warmup: float | None = None, seed: int = 0, max_seconds: float | None = None) -> dict:
+    """Ask "what if I change this?" without editing the model: run the baseline
+    and the changed model on paired seeds, doubling replications (start, 2x, ...
+    up to cap) until every KPI's difference interval excludes zero or the cap.
+
+    Verdict per KPI is "better"/"worse" (when goals names the direction),
+    "higher"/"lower" (otherwise) or "not distinguishable" (the cap was reached
+    with the interval still across zero: the change is too small to see at this
+    effort, not proven absent), or "unchanged" (identical in every paired
+    replication, such as a count the change does not touch).
+
+    Returns {"model", "n", "met", "completed", "kpis": [{"kpi", "baseline",
+    "scenario", "diff", "diff_lb", "diff_ub", "verdict"}]}.
+    """
+    try:
+        out = experiments.what_if(workspace().document(model).to_layout(), overrides, kpis,
+                                  start=start, cap=cap, seed=seed, run_length=run_length,
+                                  warmup=warmup, goals=goals, should_stop=_budget(max_seconds))
+    except ModelValidationError as exc:
+        raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
+                        "fix the override paths (list_override_paths shows the valid ones)")
+    return {"model": model, **out}
 
 
 _document_args("investment_case", model="Workspace name of the model to run; it needs an "
@@ -350,6 +400,12 @@ _document_args("optimize", model="Workspace name of the model.",
                replications_per_point="Replications per candidate point.",
                run_length="Run length in base time units.",
                seed="Base seed.",
+               method="\"auto\" (pattern search), \"optuna\" (TPE), \"optuna-gp\" "
+                      "(Gaussian process, small budgets) or \"optuna-nsga2\" (several "
+                      "objectives, returns the Pareto set). The optuna ones need the ml extra.",
+               objectives="[[\"<kpi key>\", \"min\"|\"max\"], ...] for \"optuna-nsga2\" (at least two).",
+               confirm_top="How many of the best points the final statistical confirmation "
+                           "compares (default 3).",
                max_seconds="Wall-clock budget.")
 
 
@@ -357,7 +413,8 @@ _document_args("optimize", model="Workspace name of the model.",
 def optimize(model: str, factors: list, response: str, goal: str = "min",
              constraints: list | None = None, budget: int = 120,
              replications_per_point: int = 5, run_length: float | None = None,
-             seed: int = 0, max_seconds: float | None = None) -> dict:
+             seed: int = 0, max_seconds: float | None = None, method: str = "auto",
+             objectives: list | None = None, confirm_top: int = 3) -> dict:
     """Search model parameters for the best value of one KPI within a
     replication budget, then confirm the winner statistically.
 
@@ -365,10 +422,15 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
     override but varying. The budget is a HARD cap on replications, so start
     small (a few hundred) and raise it if `converged` is false. Constraints are
     judged on confidence intervals, so a point may come back "unknown" rather
-    than feasible or infeasible.
+    than feasible or infeasible. The best `confirm_top` points go through a
+    ranking-and-selection (KN) step; `confirmed` says whether the winner holds.
+    `method="optuna-nsga2"` with `objectives` returns the non-dominated set
+    under `pareto` instead of `confirmed`.
 
     Returns {"model", "best", "best_mean", "converged", "budget_used",
-    "feasible", "history": [{"point", "mean", "feasibility"}] (last 20)}.
+    "feasible", "history": [{"point", "mean", "feasibility"}] (last 20),
+    "confirmed": {"best", "confidence", "guaranteed", "candidates"} or null,
+    "pareto": [{"point", "objectives"}] (nsga2 only), "sampler"}.
     """
     doc = workspace().document(model)
     try:
@@ -381,14 +443,21 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
                                    constraints=[tuple(c) for c in (constraints or ())],
                                    budget=int(budget),
                                    replications_per_point=int(replications_per_point),
-                                   run_length=run_length, seed=seed,
+                                   run_length=run_length, seed=seed, method=method,
+                                   objectives=[tuple(o) for o in (objectives or ())],
+                                   select_top=int(confirm_top),
                                    should_stop=_budget(max_seconds))
     history = _records(result.history.tail(20),
                        {"point": "Point", "mean": ("Mean", _finite), "feasibility": "Feasibility"})
-    return {"model": model, "best": result.best, "best_mean": _finite(result.best_mean),
-            "converged": bool(result.converged), "budget_used": int(result.budget_used),
-            "response": result.response, "goal": result.goal, "feasible": bool(result.feasible),
-            "history": history}
+    out = {"model": model, "best": result.best, "best_mean": _finite(result.best_mean),
+           "converged": bool(result.converged), "budget_used": int(result.budget_used),
+           "response": result.response, "goal": result.goal, "feasible": bool(result.feasible),
+           "history": history, "confirmed": result.confirmed, "sampler": result.sampler}
+    if result.pareto is not None:
+        names = [k for k, _ in objectives]
+        out["pareto"] = [{"point": row["Point"], "objectives": {k: _finite(row[k]) for k in names}}
+                         for _, row in result.pareto.iterrows()]
+    return out
 
 
 _document_args("calibrate", model="Workspace name of the model to calibrate.",

@@ -1,5 +1,5 @@
 {
-  "hash": "705f096b4ab3e3af7b8bb2c488b174bd3dfb67b4bc37599eff703a377f96b4bd",
+  "hash": "a705371ea0cc0e8dc95d5a4b7325db3f72be7943607b09996d45bc373b58c500",
   "model": "priority_rework.json",
   "payload": {
     "entity_count": 309,
@@ -7,6 +7,7 @@
       "Avg Queue Length": 10.3421,
       "Avg Resource Usage %": 99.12,
       "Avg Throughput Time": 11.3655,
+      "Avg WIP": 11.5467,
       "Avg WIP (Little)": 11.3655,
       "Cost per Completed Entity": 0.0,
       "Entity Log Truncated": 0,

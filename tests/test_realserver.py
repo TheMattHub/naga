@@ -231,6 +231,42 @@ def test_the_opcua_reader_against_an_asyncua_server_process(opcua_server):
         assert feed.changes("press", cursor).gap is True
 
 
+def test_the_modbus_reader_against_a_pymodbus_server_process(plant_net):
+    pytest.importorskip("pymodbus", reason="the optional extra nagasim[modbus] is not installed")
+    from nagasim.readers import modbus
+
+    port = _free_port()
+    proc = subprocess.Popen([sys.executable, str(HERE / "modbus_server.py"), str(port)],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        assert proc.stdout.readline().startswith("READY")
+        registers = {
+            "temp": {"address": 0, "kind": "holding", "type": "uint16", "scale": 0.1},
+            "level": {"address": 1, "kind": "input", "type": "int16"},
+            "flow": {"address": 10, "kind": "holding", "type": "float32"},
+            "total": {"address": 20, "kind": "holding", "type": "uint32"},
+            "running": {"address": 3, "kind": "coil", "type": "bool"},
+            "alarm": {"address": 4, "kind": "discrete", "type": "bool"}}
+        conn = netguard.Connection(name="oven", kind="modbus", scheme="modbus", host="127.0.0.1",
+                                   port=port, private=True,
+                                   registers=netguard._registers("oven", registers))
+        source = {"name": "oven", "kind": "modbus", "connection": "oven",
+                  "location": "\n".join(registers)}
+        options = modbus.check(source, conn)
+        for _ in range(50):                     # the server needs a moment after READY
+            try:
+                rows = modbus.read(source, conn, options)
+                break
+            except Exception:
+                time.sleep(0.1)
+        got = {row["register"]: row["value"] for row in rows}
+        assert got["temp"] == pytest.approx(21.5) and got["level"] == -2 and got["flow"] == 1.5
+        assert got["total"] == 65538 and got["running"] is True and got["alarm"] is False
+    finally:
+        proc.kill()
+        proc.wait(10)
+
+
 # ---------------------------------------------------------------- the MQTT outbox sink
 def test_the_outbox_publishes_to_mosquitto_and_reads_replies_from_its_clients(mosquitto):
     record_id = "d" * 64

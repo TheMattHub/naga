@@ -47,6 +47,7 @@ COMMANDS = {
     "diff": ("modeldiff", "main", "semantic diff of two model files by record identity"),
     "merge": ("modeldiff", "merge_main", "three-way merge of model files by record identity"),
     "check": ("modelcheck", "main", "run a model's assertions and reality checks"),
+    "verify": ("verify", "main", "check the engine against textbook queueing theory"),
     "ci-template": ("modelcheck", "main",
                     "print a GitHub Actions workflow running 'naga check'"),
     "generate": ("tablegen", "main", "build a model from Stations/Products/Routings tables"),

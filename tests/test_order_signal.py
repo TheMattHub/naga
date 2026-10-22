@@ -327,6 +327,7 @@ def test_an_effect_the_state_already_shows_is_no_change():
 
 
 # ---------------------------------------------------------------- the twin, end to end
+@pytest.mark.slow
 def test_a_twin_on_the_mock_mes_recommends_order_verbs_and_they_reproduce(tmp_path):
     """The headline: mes_twin_shop's twin reads the mock MES, starts its forecast from the
     plant's book, compares order verbs on it, records the one that wins, and the record

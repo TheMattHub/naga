@@ -202,8 +202,8 @@ usage: naga optimize [-h] --factor FACTORS --response RESPONSE
                      [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
                      [--out OUT] [--report REPORT] [--goal {min,max}]
                      [--budget BUDGET] [--constraint CONSTRAINTS]
-                     [--method {auto,pattern,optuna}]
-                     [--indifference INDIFFERENCE]
+                     [--method {auto,pattern,optuna,optuna-gp,optuna-nsga2}]
+                     [--objective KPI:min|max] [--indifference INDIFFERENCE]
                      [--min-improvement MIN_IMPROVEMENT]
                      model
 
@@ -237,7 +237,10 @@ options:
                         a KPI constraint, as '<kpi key><=<value>' or '<kpi
                         key>>=<value>'. May repeat. Example:
                         'resource/Agents/Usage % (snapshot)<=85'
-  --method {auto,pattern,optuna}
+  --method {auto,pattern,optuna,optuna-gp,optuna-nsga2}
+  --objective KPI:min|max
+                        an objective of --method optuna-nsga2 (give at least
+                        two)
   --indifference INDIFFERENCE
                         the smallest difference worth detecting in the final
                         ranking-and-selection step (default: 5% of the best

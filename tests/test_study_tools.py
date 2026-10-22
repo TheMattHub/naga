@@ -28,6 +28,7 @@ def start(ws, **kw):
     return r["study"]
 
 
+@pytest.mark.slow
 def test_start_status_step_round_trip(ws):
     sid = start(ws)
     st = T.call("study_status", study=sid)
@@ -161,6 +162,7 @@ def test_add_input_logs_usage_and_leaves_no_temp(ws):
     assert json.loads((ws.root / sid / "study.json").read_text())["usage"][-1]["tool"] == "study_add_input"
 
 
+@pytest.mark.slow
 def test_unmet_goal_is_a_version_not_a_draft(ws):
     sid = start(ws)
     T.call("study_update", study=sid, changes={"goals": [
@@ -250,6 +252,7 @@ def test_view_of_a_wide_model_points_to_the_text(ws, monkeypatch):
     assert "read the text" in T.call("study_view", study=sid)["note"]
 
 
+@pytest.mark.slow
 def test_a_version_refreshes_the_page(ws):
     sid = start(ws)
     T.call("study_update", study=sid, changes={"plan_approved": True, "goals": [GOAL]})
@@ -290,6 +293,7 @@ def test_accept_refreshes_the_page(ws):
     assert "accepted with open issues" in page
 
 
+@pytest.mark.slow
 def test_show_summarises(ws):
     sid = start(ws)
     T.call("study_update", study=sid, changes={"plan_approved": True, "goals": [GOAL]})
@@ -345,6 +349,7 @@ def _with_scenarios(ws, n=2):
     return lay
 
 
+@pytest.mark.slow
 def test_step_runs_scenarios_and_judges_the_goals(ws):
     sid = start(ws)
     goals = [GOAL, {"id": "g2", "text": "server busy", "kpi": "Server/Time in Queue Avg", "high": 100}]
@@ -362,6 +367,7 @@ def test_step_runs_scenarios_and_judges_the_goals(ws):
     assert "S2" in (ws.root / sid / "control-room.html").read_text(encoding="utf-8")
 
 
+@pytest.mark.slow
 def test_a_fresh_workspace_steps_with_scenarios(ws):
     sid = start(ws)
     T.call("study_update", study=sid, changes={"goals": [GOAL]})
@@ -372,6 +378,7 @@ def test_a_fresh_workspace_steps_with_scenarios(ws):
     assert again is not ws
 
 
+@pytest.mark.slow
 def test_scenarios_are_capped_by_the_size(ws):
     sid = start(ws, size="quick")
     T.call("study_update", study=sid, changes={"goals": [GOAL]})
@@ -401,6 +408,7 @@ def test_step_without_goals_uses_first_pass(ws):
     assert r["replications"] == 10 and "provisional" in r["precision_note"] and r["precision"] == {}
 
 
+@pytest.mark.slow
 def test_step_raises_replications_for_a_noisy_goal_kpi(ws):
     sid, r = step_with(ws, [{**QGOAL, "precision": 0.05}])
     p = r["precision"]["Server/Time in Queue Avg"]
@@ -417,6 +425,7 @@ def test_zero_mean_goal_uses_absolute_target(ws):
     assert r["replications"] == 10 and r["precision"]["Total Cost"]["met"] is True
 
 
+@pytest.mark.slow
 def test_cap_reached_is_partial_not_failed(ws):
     sid, r = step_with(ws, [{**QGOAL, "precision": 1e-9}], size="quick")
     assert r["replications"] == 50 and r["kind"] == "version" and r["verdict"] == "partial"
@@ -424,6 +433,7 @@ def test_cap_reached_is_partial_not_failed(ws):
     assert c["verdict"] == "partial" and "cap" in r["precision_note"]
 
 
+@pytest.mark.slow
 def test_scenarios_use_the_final_count(ws):
     lay = layout(ws)
     lay["scenarios"] = [{"name": "two", "overrides": [{"path": "resources.Server.capacity", "value": 2}]}]
@@ -433,6 +443,7 @@ def test_scenarios_use_the_final_count(ws):
     assert r["replications"] > 10 and "two" in r["scenarios"]
 
 
+@pytest.mark.slow
 def test_precision_sentence_in_answer(ws):
     sid, r = step_with(ws, [{**QGOAL, "precision": 0.05}])
     assert f"{r['replications']} replications" in r["precision_note"]
@@ -453,6 +464,7 @@ def test_a_version_has_no_report_by_default(ws):
     assert not (ws.root / sid / "versions" / r["id"] / "report.html").exists()
 
 
+@pytest.mark.slow
 def test_report_on_request(ws):
     sid = start(ws)
     T.call("study_step", study=sid, layout=layout(ws), note="a", seed=3)
@@ -515,6 +527,7 @@ def test_start_takes_the_plan_card_in_one_call(ws):
     assert not (ws.root / "naga-studies" / "x").exists()
 
 
+@pytest.mark.slow
 def test_step_records_changes_then_steps(ws):
     sid = start(ws)
     lay = layout(ws)
@@ -552,6 +565,7 @@ def test_step_without_a_layout_points_to_study_update(ws):
     assert err["code"] == "E_BAD_ARGUMENT" and "study_update(changes=" in err["hint"]
 
 
+@pytest.mark.slow
 def test_second_pass_extends_the_first(ws, monkeypatch):
     # Exact, not approximate: replication i uses seed + i, so 10 + (n - 10) equals one run of n.
     from nagasim import api

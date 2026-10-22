@@ -33,6 +33,7 @@ Validate, format, diff, merge and test model files, and export them as code.
 | [`naga diff`](model-files.md#naga-diff) | semantic diff of two model files by record identity |
 | [`naga merge`](model-files.md#naga-merge) | three-way merge of model files by record identity |
 | [`naga check`](model-files.md#naga-check) | run a model's assertions and reality checks |
+| [`naga verify`](model-files.md#naga-verify) | check the engine against textbook queueing theory |
 | [`naga facts`](model-files.md#naga-facts) | run once and list what happened that nothing else reports, as facts |
 | [`naga ci-template`](model-files.md#naga-ci-template) | print a GitHub Actions workflow running 'naga check' |
 

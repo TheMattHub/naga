@@ -27,16 +27,17 @@ from nagasim.core.utils import is_finite_number
 # the CALLER allows them (`nagasim.netguard.NetworkPolicy`, set only by a CLI
 # flag, a server start argument or the editor's consent dialog). Consent is
 # never read from the model file: see `_strip_consent`.
-DATA_SOURCE_KINDS = ("csv", "xlsx", "sqlite", "sql", "json_url", "rest", "mqtt", "opcua")
+DATA_SOURCE_KINDS = ("csv", "xlsx", "sqlite", "sql", "json_url", "rest", "mqtt", "opcua",
+                     "modbus")
 REMOTE_SOURCE_KINDS = ("sql", "json_url")
 # PHASE7 7.8 (D215). A LIVE source names a `connection` the caller defined and never a
 # host: its location is a path, a topic or a node id, and its options are the reader's
 # own list below (never passed through to a library). The readers themselves live in
 # `nagasim/readers/`, which core does not import; a test keeps the two lists equal.
-CONNECTION_SOURCE_KINDS = ("rest", "mqtt", "opcua")
+CONNECTION_SOURCE_KINDS = ("rest", "mqtt", "opcua", "modbus")
 LIVE_SOURCE_OPTIONS = {"rest": ("records", "key", "time", "poll"),
                        "mqtt": ("payload", "time", "qos", "settle"),
-                       "opcua": ("interval_ms", "settle")}
+                       "opcua": ("interval_ms", "settle"), "modbus": ("poll",)}
 
 
 def _validate_scenarios(layout: dict, problems: list) -> None:

@@ -39,7 +39,7 @@ from nagasim.core.stats import ci95, paired_diff_ci, welch_diff_ci
 
 __all__ = ["BASELINE", "apply_overrides", "value_at", "list_override_paths", "override_targets",
            "scenarios_of", "flatten_kpis", "needs_event_logs", "KPI_PREFIXES", "ExperimentResult",
-           "run_scenarios",
+           "run_scenarios", "what_if",
            "record_scenarios",
            "run_until_precision", "suggest_warmup", "WarmupSuggestion", "COMPARISON_COLS", "main"]
 
@@ -531,7 +531,11 @@ def _series(flat: pd.DataFrame, kpi: str) -> np.ndarray:
 
 # ---------------------------------------------------------------- experiment run
 COMPARISON_COLS = ["KPI", "Scenario", "Mean", "LB", "UB",
-                   "Diff vs baseline", "Diff LB", "Diff UB", "Significant"]
+                   "Diff vs baseline", "Diff LB", "Diff UB", "Significant",
+                   "Replications Needed", "CRN Ratio"]
+# A study that needs more replications than this to separate two scenarios is
+# reported as "this many or more", not as an exact (and absurd) count.
+MAX_REPLICATIONS_NEEDED = 1000
 
 
 @dataclass
@@ -585,10 +589,24 @@ class ExperimentResult:
                 diff = diff_ci(values, base_values, confidence)
                 significant = bool(np.isfinite(diff["lb"]) and np.isfinite(diff["ub"])
                                    and (diff["lb"] > 0 or diff["ub"] < 0))
+                needed = ratio = math.nan
+                if scenario != baseline and np.isfinite(diff["lb"]) and np.isfinite(diff["ub"]):
+                    half = (diff["ub"] - diff["lb"]) / 2
+                    if not significant:
+                        # n x (half-width / |diff|)^2: the half-width shrinks as 1/sqrt(n)
+                        # (an estimate: the variance is the one seen so far).
+                        needed = (MAX_REPLICATIONS_NEEDED if diff["mean"] == 0 else
+                                  min(MAX_REPLICATIONS_NEEDED,
+                                      math.ceil(len(values) * (half / abs(diff["mean"])) ** 2)))
+                    if self.crn and half > 0:
+                        # Welch (what independent runs would have given) over paired.
+                        welch = welch_diff_ci(values, base_values, confidence)
+                        ratio = (welch["ub"] - welch["lb"]) / 2 / half
                 rows.append({"KPI": kpi, "Scenario": scenario, "Mean": own["mean"],
                              "LB": own["lb"], "UB": own["ub"],
                              "Diff vs baseline": diff["mean"], "Diff LB": diff["lb"],
-                             "Diff UB": diff["ub"], "Significant": significant})
+                             "Diff UB": diff["ub"], "Significant": significant,
+                             "Replications Needed": needed, "CRN Ratio": ratio})
         return pd.DataFrame(rows, columns=COMPARISON_COLS)
 
 
@@ -763,6 +781,63 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         result.results[name] = concat_runs([kpi for _, kpi in pairs])
         result.seeds[name] = [s for s, _ in pairs]
     return result
+
+
+WHAT_IF = "What-if"      # the temporary scenario's name; never stored in the model
+
+
+def what_if(layout, overrides: list[dict], kpis: list[str] | None = None, *, start: int = 5,
+            cap: int = 50, seed: int = 0, run_length: float | None = None,
+            warmup: float | None = None, goals: dict | None = None, should_stop=None) -> dict:
+    """Does this change matter? Run the baseline against *overrides* on common
+    random numbers, doubling the replications (start, 2 x start, ... up to *cap*)
+    until every KPI's paired difference interval excludes zero.
+
+    *kpis* default to the system KPIs. *goals* maps a KPI to "min" or "max"; with
+    one the verdict is "better"/"worse", without it "higher"/"lower". Returns
+    {"n", "met" (every KPI separated or unchanged), "completed", "kpis": [{"kpi", "baseline",
+    "scenario", "diff", "diff_lb", "diff_ub", "verdict"}]}. An override naming
+    something the model does not have raises ModelValidationError before any run.
+    """
+    base = schema.load_layout(layout)
+    base["scenarios"] = [{"name": WHAT_IF, "overrides": list(overrides)}]
+    goals = goals or {}
+    n = max(2, start)
+    # ponytail: each doubling reruns from replication 0 (same seeds, so the
+    # first n results repeat) -- about 2x the final cost, instead of threading
+    # extra replications through run_scenarios. Upgrade if studies get long.
+    while True:
+        result = run_scenarios(base, [WHAT_IF], replications=n, seed=seed, run_length=run_length,
+                               warmup=warmup, should_stop=should_stop)
+        if not result.completed:
+            return {"n": n, "met": False, "completed": False, "kpis": []}
+        table = result.comparison(kpis=kpis)
+        table = table[table["Scenario"] == WHAT_IF]
+        if kpis is None:
+            table = table[table["KPI"].str.startswith("system/")]
+        # #766: a KPI identical in every paired replication (a counter under CRN) is unchanged,
+        # not undecided, so it does not hold the doubling back.
+        unchanged = (table["Diff LB"] == 0) & (table["Diff UB"] == 0)
+        met = bool(len(table)) and bool((table["Significant"] | unchanged).all())
+        if met or n >= cap:
+            break
+        n = min(cap, n * 2)
+    rows = []
+    for _, r in table.iterrows():
+        diff = float(r["Diff vs baseline"])
+        goal = goals.get(r["KPI"])
+        if r["Diff LB"] == 0 and r["Diff UB"] == 0:
+            verdict = "unchanged"
+        elif not r["Significant"]:
+            verdict = "not distinguishable"
+        elif goal in ("min", "max"):
+            verdict = "better" if (diff < 0) == (goal == "min") else "worse"
+        else:
+            verdict = "higher" if diff > 0 else "lower"
+        rows.append({"kpi": r["KPI"], "baseline": float(r["Mean"]) - diff, "scenario": float(r["Mean"]),
+                     "diff": diff, "diff_lb": float(r["Diff LB"]), "diff_ub": float(r["Diff UB"]),
+                     "verdict": verdict})
+    return {"n": n, "met": met, "completed": True, "kpis": rows}
 
 
 def record_scenarios(layout, result: ExperimentResult, *, run_length: float | None = None,

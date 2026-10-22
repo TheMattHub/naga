@@ -789,6 +789,7 @@ def test_the_schema_is_self_consistent():
     assert dist_titles == set(DISTRIBUTION_REGISTRY)
 
 
+@pytest.mark.slow
 def test_every_bundled_example_validates_against_the_schema():
     """`jsonschema` is NOT a dependency (packaging/product.spec even excludes
     it); when the machine happens to have it, use it for the real check.

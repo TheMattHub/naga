@@ -486,6 +486,7 @@ READERS: dict[str, Reader] = {reader.kind: reader for reader in (
     Reader("rest", _read_live, target="connection"),
     Reader("mqtt", _read_live, target="connection"),
     Reader("opcua", _read_live, target="connection"),
+    Reader("modbus", _read_live, target="connection"),
 )}
 
 

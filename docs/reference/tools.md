@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 92 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 94 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -67,6 +67,7 @@ The 92 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `run_model` |  | Run a model and return a COMPACT KPI digest -- never the raw frames. |
 | `get_kpi_table` | yes | Page through one results frame of the last `run_model` for this model. |
 | `run_scenarios` |  | Run the model's scenarios and compare them against the baseline with confidence intervals and a significance verdict. |
+| `what_if` |  | Ask "what if I change this?" without editing the model: run the baseline and the changed model on paired seeds, doubling replications (start, 2x, . |
 | `investment_case` |  | Run the model's scenarios and price each against the baseline: extra capex, saving per year, payback, NPV and ROI over the `investment` section's horizon, with confidence intervals from several replications. |
 | `run_to_precision` |  | Keep adding replications until one KPI's confidence interval is narrow enough, then report how many it took. |
 | `run_reality_checks` |  | Run the model's Vensim-style reality checks: an input imposed on the model (e.g. |
@@ -171,3 +172,9 @@ The 92 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | Tool | Reads | What it does |
 |---|---|---|
 | `find_tool` | yes | Find the tools that fit what you want to do, by a few words or a tool name you guessed ("validate against a formula", "make slides", "run_study"). |
+
+## draftcheck
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `check_draft` | yes | Check a generated model against the data it came from, without claiming it is valid. |

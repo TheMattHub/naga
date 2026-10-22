@@ -172,11 +172,15 @@ def test_the_flag_offers_haiku():
     assert p.parse_args(["--tool-picker", "haiku"]).tool_picker == "haiku"
 
 
+# Read before conftest's _no_real_llm takes the key out of every test's environment (#830).
+REAL_KEY = __import__("os").environ.get("ANTHROPIC_API_KEY")
+
+
 @pytest.mark.slow
-@pytest.mark.skipif(not __import__("os").environ.get("ANTHROPIC_API_KEY")
-                    or importlib.util.find_spec("anthropic") is None,
+@pytest.mark.skipif(not REAL_KEY or importlib.util.find_spec("anthropic") is None,
                     reason="needs ANTHROPIC_API_KEY and the anthropic package (a real API call)")
-def test_the_real_haiku_picker_ranks_validate_first():
+def test_the_real_haiku_picker_ranks_validate_first(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", REAL_KEY)
     try:
         discover.use_picker("haiku")
         out = agent_tools.call("find_tool", query="check the model against a textbook answer", limit=3)

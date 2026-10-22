@@ -10794,7 +10794,8 @@
             "json_url",
             "rest",
             "mqtt",
-            "opcua"
+            "opcua",
+            "modbus"
           ]
         },
         "location": {

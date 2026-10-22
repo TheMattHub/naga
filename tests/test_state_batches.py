@@ -82,6 +82,7 @@ def test_a_pair_a_match_formed_is_carried(at):
     assert any(len(e.get("members", ())) == 2 for e in taken["entities"])
 
 
+@pytest.mark.slow
 def test_a_formed_batch_is_reproduced_in_distribution():
     """As `test_state`: the state of seed s started with another seed against the run of seed
     s, 30 seeds, each mean difference inside its 99% interval."""

@@ -4,6 +4,7 @@ from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95, paired_diff_ci
 from dataclasses import dataclass
 from nagasim.core.schema import load_layout
+import logging
 import math
 import numpy as np
 import pandas as pd
@@ -42,6 +43,18 @@ class OptimizationResult:
     goal: str
     feasible: bool = True
     selection: SelectionResult | None = None
+    sampler: str = ""                # the optuna sampler actually used, "" otherwise
+    pareto: pd.DataFrame | None = None   # method="optuna-nsga2": the non-dominated set
+
+    @property
+    def confirmed(self) -> dict | None:
+        """The KN confirmation of a single-objective search, None when there was
+        none (one candidate, or no budget left)."""
+        sel = self.selection
+        if sel is None:
+            return None
+        return {"best": dict(self.best), "confidence": sel.confidence,
+                "guaranteed": sel.guaranteed, "candidates": list(sel.table["Candidate"])}
 
     @property
     def best_mean(self) -> float:
@@ -120,7 +133,7 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
              select_top: int = 3, on_progress=None, should_stop=None,
              evaluator=None, warm_start_points: list[dict] | None = None,
              pool=None, min_improvement: float = _MIN_IMPROVEMENT,
-             record_logs=None) -> OptimizationResult:
+             record_logs=None, objectives=None) -> OptimizationResult:
     """Search the factor space for the best response within a replication budget.
 
     The winner is confirmed with ranking and selection (`select_best`).
@@ -169,9 +182,17 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         Hard cap on replications.
     replications_per_point : int, default 5
         Replications of each evaluated point.
-    method : {"auto", "pattern", "optuna"}, default "auto"
+    method : {"auto", "pattern", "optuna", "optuna-gp", "optuna-nsga2"}, default "auto"
         ``"optuna"`` runs optuna's TPE sampler instead (optional dependency,
         imported lazily) and finishes with the same selection step.
+        ``"optuna-gp"`` uses optuna's Gaussian-process sampler, better on small
+        budgets and smooth responses; it needs torch, and without it the search
+        falls back to multivariate TPE (``result.sampler`` says which ran).
+        ``"optuna-nsga2"`` is multi-objective over *objectives* and returns the
+        non-dominated set in ``result.pareto`` instead of one confirmed winner.
+    objectives : sequence of (kpi, goal), optional
+        The objectives of ``"optuna-nsga2"`` (at least two) instead of
+        *response*/*goal*; ``best`` is then the front's winner on the first.
     seed : int, default 0
         Seed of replication 0.
     confidence : float, default 0.95
@@ -243,7 +264,8 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
                                         workers=workers, budget=int(budget), pool=pool,
                                         record_logs=record_logs,
-                                        kpis=[response, *(c[0] for c in constraints)])
+                                        kpis=[response, *(c[0] for c in constraints),
+                                              *(o[0] for o in (objectives or ()))])
     history: list[dict] = []
     records: dict[tuple, _Record] = {}
     best_so_far = [-math.inf]
@@ -339,8 +361,14 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         return paired_diff_ci(challenger.objective[:n], incumbent.objective[:n],
                               confidence)["lb"] > 0
 
-    if method == "optuna":
-        incumbent, converged = _optuna_search(evaluate, factors, budget, reps, seed, prefers)
+    if method == "optuna-nsga2":
+        return _pareto_search(evaluator, factors, objectives, constraints, confidence,
+                              int(budget), reps, seed, should_stop, on_progress)
+    sampler_used = [""]
+    if method in ("optuna", "optuna-gp"):
+        incumbent, converged = _optuna_search(evaluate, factors, budget, reps, seed, prefers,
+                                              "gp" if method == "optuna-gp" else "tpe",
+                                              sampler_used)
     else:
         incumbent, converged = _pattern_search(evaluate_all, factors, budget, reps, seed,
                                                prefers, wins, should_stop, warm_start_points,
@@ -373,7 +401,7 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
                               history=frame, converged=converged, budget_used=evaluator.used,
                               response=response, goal=goal,
                               feasible=incumbent.feasibility != "infeasible",
-                              selection=selection)
+                              selection=selection, sampler=sampler_used[0])
 
 
 # `_pattern_search`/`_optuna_search` moved here from the Sobol-indices section
@@ -481,39 +509,121 @@ def _pattern_search(evaluate_all, factors, budget, reps, seed, prefers, wins, sh
     return incumbent, bool(all(step[f.name] < floor[f.name] for f in factors))
 
 
-def _optuna_search(evaluate, factors, budget, reps, seed, prefers):
-    """`method="optuna"`: TPE over the same factor space. Optional dependency,
-    imported here and nowhere else, so nothing in the default path needs it."""
+def _suggest(trial, factors) -> dict:
+    point = {}
+    for factor in factors:
+        if factor.kind == "categorical":
+            point[factor.name] = trial.suggest_categorical(factor.name, factor.levels)
+        elif factor.kind == "integer":
+            point[factor.name] = trial.suggest_int(factor.name, int(factor.low), int(factor.high))
+        else:
+            point[factor.name] = trial.suggest_float(factor.name, factor.low, factor.high,
+                                                     step=factor.step)
+    return point
+
+
+def _optuna():
+    """Optuna, imported here and nowhere else, so nothing in the default path
+    needs it."""
     try:
         import optuna
     except ImportError as exc:      # pragma: no cover - depends on the environment
-        raise ImportError("method='optuna' needs the optional optuna package "
+        raise ImportError("the optuna methods need the optional optuna package "
                           "(pip install \"nagasim[ml]\", or: pip install optuna); "
                           "the built-in method needs nothing") from exc
-
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+    return optuna
+
+
+def _optuna_search(evaluate, factors, budget, reps, seed, prefers, kind="tpe", used=None):
+    """`method="optuna"` (TPE) and `"optuna-gp"` over the same factor space."""
+    optuna = _optuna()
     best: list = [None]
 
     def objective(trial):
-        point = {}
-        for factor in factors:
-            if factor.kind == "categorical":
-                point[factor.name] = trial.suggest_categorical(factor.name, factor.levels)
-            elif factor.kind == "integer":
-                point[factor.name] = trial.suggest_int(factor.name, int(factor.low),
-                                                       int(factor.high))
-            else:
-                point[factor.name] = trial.suggest_float(factor.name, factor.low, factor.high,
-                                                         step=factor.step)
-        record = evaluate(point)
+        record = evaluate(_suggest(trial, factors))
         if record is None:
             trial.study.stop()
             return -math.inf
         if prefers(record, best[0]):
             best[0] = record
-        return record.mean            # sign-adjusted: TPE always maximises here
+        return record.mean            # sign-adjusted: the study always maximises here
 
-    study = optuna.create_study(direction="maximize",
-                                sampler=optuna.samplers.TPESampler(seed=seed))
+    sampler = optuna.samplers.TPESampler(seed=seed)
+    if kind == "gp":
+        # optuna's GPSampler imports torch, which is not in the `ml` extra:
+        # without it use multivariate TPE (models interactions) and say so.
+        try:
+            import torch  # noqa: F401
+            sampler = optuna.samplers.GPSampler(seed=seed)
+        except ImportError:
+            logging.getLogger(__name__).warning(
+                "optuna-gp needs torch, which is not installed: using multivariate TPE")
+            sampler = optuna.samplers.TPESampler(seed=seed, multivariate=True)
+    if used is not None:
+        used[0] = type(sampler).__name__
+    study = optuna.create_study(direction="maximize", sampler=sampler)
     study.optimize(objective, n_trials=max(1, int(budget) // reps), catch=())
-    return best[0], False       # TPE stops on the trial budget, never on convergence
+    return best[0], False       # stops on the trial budget, never on convergence
+
+
+def _pareto_search(evaluator, factors, objectives, constraints, confidence, budget, reps, seed,
+                   should_stop, on_progress):
+    """`method="optuna-nsga2"`: NSGA-II over the objectives' means; the result is
+    the non-dominated set of feasible points. No KN step: with several objectives
+    there is no single winner to confirm.
+
+    ponytail: membership is judged on sample means, so a point near the front
+    may be on it by noise; add per-objective intervals if that bites.
+    """
+    objectives = [tuple(o) for o in (objectives or ())]
+    if len(objectives) < 2:
+        raise ValueError("method='optuna-nsga2' needs objectives: at least two (kpi, goal) pairs")
+    signs = [-1.0 if g == "min" else 1.0 for _, g in objectives]
+    optuna = _optuna()
+    rows: dict[tuple, dict] = {}
+    lost = [-math.inf] * len(objectives)
+
+    def objective(trial):
+        key = _point_key(factors, _suggest(trial, factors))
+        point = {f.name: v for f, v in zip(factors, key)}
+        seeds = [seed + r for r in range(reps)]
+        if len(evaluator.missing(key, seeds)) > budget - evaluator.used:
+            trial.study.stop()
+            return lost
+        values = evaluator.values_many([(key, overrides_for(factors, point), seeds)],
+                                       should_stop=should_stop).get(key)
+        if values is None:
+            trial.study.stop()
+            return lost
+        means = [s * float(np.nanmean(_response(values, k)))
+                 for s, (k, _) in zip(signs, objectives)]
+        rows[key] = {"point": point, "means": means,
+                     "feasible": _feasibility(constraints, values, confidence) != "infeasible"}
+        if on_progress is not None:
+            on_progress(evaluator.used, budget)
+        return means
+
+    study = optuna.create_study(directions=["maximize"] * len(objectives),
+                                sampler=optuna.samplers.NSGAIISampler(seed=seed))
+    study.optimize(objective, n_trials=max(1, budget // reps), catch=())
+    if not rows:
+        raise ModelValidationError(["the budget was too small to evaluate a single point"])
+    feasible = [r for r in rows.values() if r["feasible"]]
+    pool = feasible or list(rows.values())
+    front = [r for r in pool if not any(
+        all(o >= m for o, m in zip(other["means"], r["means"]))
+        and any(o > m for o, m in zip(other["means"], r["means"])) for other in pool)]
+    table = pd.DataFrame([{"Point": _fmt_point(r["point"]), **r["point"],
+                           **{k: s * m for s, (k, _), m in zip(signs, objectives, r["means"])}}
+                          for r in front])
+    # `best` is the front's winner on the first objective, so callers that only
+    # read best/best_overrides keep working; the front itself is `pareto`.
+    top = max(front, key=lambda r: r["means"][0])
+    history = pd.DataFrame([{"Point": _fmt_point(r["point"]), **r["point"],
+                             "Mean": signs[0] * r["means"][0]} for r in rows.values()])
+    return OptimizationResult(best=dict(top["point"]),
+                              best_overrides=overrides_for(factors, top["point"]),
+                              history=history, converged=False, budget_used=evaluator.used,
+                              response=objectives[0][0], goal=objectives[0][1],
+                              feasible=bool(feasible), sampler="NSGAIISampler", pareto=table)

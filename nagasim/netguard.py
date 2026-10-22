@@ -50,7 +50,7 @@ from urllib.parse import parse_qsl, urlsplit
 __all__ = ["NetworkPolicy", "GuardError", "NetworkRefused", "PathRefused", "check_url",
            "check_sql_url", "fetch", "confine_path", "is_unc_path", "host_of", "describe_url",
            "add_arguments", "policy_from_args", "Secret", "Connection", "ConnectionsError",
-           "CONNECTION_KINDS", "LIMITS", "load_connections", "connection_for",
+           "CONNECTION_KINDS", "LIMITS", "Register", "load_connections", "connection_for",
            "describe_connection", "vet_connection", "open_connection"]
 
 MAX_REDIRECTS = 3
@@ -296,12 +296,13 @@ def confine_path(candidate, root) -> Path:
 
 
 # ---------------------------------------------------------------- connections (D215, D216)
-# A live source (rest, mqtt, opcua) never names a host: it names a CONNECTION, and a
+# A live source (rest, mqtt, opcua, modbus) never names a host: it names a CONNECTION, and a
 # connection exists only in a file the caller passed (`--connections FILE`) or the product's
 # dialog confirmed. Defining one is the consent for that host and port, and for nothing else.
-CONNECTION_KINDS = {"rest": ("https", "http"), "mqtt": ("mqtts", "mqtt"), "opcua": ("opc.tcp",)}
+CONNECTION_KINDS = {"rest": ("https", "http"), "mqtt": ("mqtts", "mqtt"), "opcua": ("opc.tcp",),
+                    "modbus": ("modbus",)}
 CONNECTION_USES = ("read", "outbox")
-_PORTS = {"https": 443, "http": 80, "mqtts": 8883, "mqtt": 1883, "opc.tcp": 4840}
+_PORTS = {"https": 443, "http": 80, "mqtts": 8883, "mqtt": 1883, "opc.tcp": 4840, "modbus": 502}
 _TLS_SCHEMES = ("https", "mqtts")
 # Every bound a source could otherwise choose for us: name -> (default, ceiling). The
 # caller's file may move one under its ceiling (`"limits"`); a model or a tool may not (D220).
@@ -317,7 +318,8 @@ _COMMON_KEYS = frozenset({"kind", "url", "private", "secret", "ca_file", "root",
 _KIND_KEYS = {"rest": frozenset({"auth", "username", "header"}),
               "mqtt": frozenset({"username"}),
               "opcua": frozenset({"username", "security", "server_cert", "client_cert",
-                                  "client_key"})}
+                                  "client_key"}),
+              "modbus": frozenset({"unit", "registers"})}
 _AUTHS = ("bearer", "basic", "header")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 _FORBIDDEN_HEADERS = frozenset({"host", "content-length", "transfer-encoding", "connection"})
@@ -375,6 +377,8 @@ class Connection:
     client_cert: str | None = None
     client_key: str | None = None
     limits: tuple = ()                  # ((name, value), ...) of LIMITS the caller moved
+    unit: int = 1                       # modbus: the unit (slave) id
+    registers: tuple = ()               # modbus: the caller's register map, ((name, Register), ...)
     use: str = "read"                   # "outbox": reserved for PHASE7 7.15; never a source
 
     @property
@@ -388,6 +392,50 @@ class Connection:
 
     def limit(self, name: str) -> int:
         return dict(self.limits).get(name, LIMITS[name][0])
+
+
+# Modbus: the register map is the caller's. A model names registers, never addresses.
+MODBUS_KINDS = {"holding": 3, "input": 4, "coil": 1, "discrete": 2}     # kind -> read function
+MODBUS_TYPES = {"uint16": 1, "int16": 1, "uint32": 2, "int32": 2, "float32": 2, "bool": 1}
+_REGISTER_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+MAX_REGISTERS = 1000
+
+
+@dataclass(frozen=True)
+class Register:
+    """One entry of a connection's register map: where a value is, and how to decode it."""
+
+    address: int
+    kind: str                           # a key of MODBUS_KINDS
+    type: str                           # a key of MODBUS_TYPES; coils and discrete inputs are "bool"
+    scale: float = 1.0
+    word_order: str = "big"             # a 32-bit value: "big" has the high word first
+
+
+def _registers(name: str, spec) -> tuple:
+    if not isinstance(spec, dict) or not 0 < len(spec) <= MAX_REGISTERS:
+        raise _bad(name, f'"registers" must be an object of 1 to {MAX_REGISTERS} registers')
+    out = []
+    for reg, entry in spec.items():
+        known = {"address", "kind", "type", "scale", "word_order"}
+        if not _REGISTER_NAME.match(str(reg)) or not isinstance(entry, dict) \
+                or set(entry) - known or not {"address", "kind", "type"} <= set(entry):
+            raise _bad(name, "a register is a name of letters, digits and _.- with an object of "
+                             "address, kind, type and optionally scale and word_order")
+        address, kind, kind_type = entry["address"], entry["kind"], entry["type"]
+        scale, order = entry.get("scale", 1), entry.get("word_order", "big")
+        words = MODBUS_TYPES.get(kind_type, 0)
+        if type(address) is not int or address < 0 or address + words > 65536 or not words:
+            raise _bad(name, f"register '{reg}': address 0 to 65535 and a type of "
+                             f"{', '.join(MODBUS_TYPES)}")
+        if kind not in MODBUS_KINDS or (kind in ("coil", "discrete")) != (kind_type == "bool"):
+            raise _bad(name, f"register '{reg}': kind is one of {', '.join(MODBUS_KINDS)}, and "
+                             f"coil and discrete go with type bool, only they do")
+        if isinstance(scale, bool) or not isinstance(scale, (int, float)) or scale != scale \
+                or abs(scale) == float("inf") or order not in ("big", "little"):
+            raise _bad(name, f"register '{reg}': scale is a finite number, word_order big or little")
+        out.append((str(reg), Register(address, kind, kind_type, float(scale), order)))
+    return tuple(out)
 
 
 def _bad(name: str, message: str, hint: str = _CONNECTIONS_HINT) -> ConnectionsError:
@@ -472,6 +520,15 @@ def _connection(name: str, spec, base: Path, secrets) -> Connection:
             raise _bad(name, '"header" is not a header name a credential may travel in')
     elif secret is not None and not username:
         raise _bad(name, '"secret" is a password, so "username" is needed')
+    unit = spec.get("unit", 1)
+    if kind == "modbus":
+        # Modbus TCP has no login and no encryption: nothing here can hold a credential.
+        if secret is not None or "ca_file" in spec or security != "None":
+            raise _bad(name, "a modbus connection has no secret, ca_file or security")
+        if type(unit) is not int or not 0 <= unit <= 255:
+            raise _bad(name, '"unit" must be a whole number from 0 to 255')
+        if "registers" not in spec:
+            raise _bad(name, 'a modbus connection needs the "registers" map')
     if security not in _OPCUA_SECURITY:
         raise _bad(name, f"\"security\" must be one of {', '.join(_OPCUA_SECURITY)}")
     certs = {key: _beside(base, name, key, spec[key])
@@ -492,7 +549,9 @@ def _connection(name: str, spec, base: Path, secrets) -> Connection:
         path=parts.path.rstrip("/"), private=spec.get("private", False), auth=auth, header=header,
         username=username, secret=secret,
         ca_file=_beside(base, name, "ca_file", spec["ca_file"]) if "ca_file" in spec else None,
-        root=root, security=security, limits=tuple(sorted(limits.items())), use=use, **certs)
+        root=root, security=security, limits=tuple(sorted(limits.items())), use=use,
+        unit=unit if kind == "modbus" else 1,
+        registers=_registers(name, spec["registers"]) if kind == "modbus" else (), **certs)
 
 
 def load_connections(path, secrets=None) -> dict[str, Connection]:

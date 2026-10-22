@@ -18,7 +18,8 @@ One row per metric (`Metric`, `Value` columns). Metrics observed on the probe ru
 | `Total Entities Completed` | Entities with `deletion_time is not None and >= warmup`. |
 | `Avg Throughput Time` | Mean of `deletion_time - creation_time` over completed entities (link transfer time included). |
 | `Throughput (per time unit)` | Completed entities divided by the observed simulation time. |
-| `Avg WIP (Little)` | Little's-law estimate: throughput x average throughput time (not a measured time-average of live entities). |
+| `Avg WIP (Little)` | Little's-law estimate: throughput x average throughput time of completed entities. A lower bound while work is still inside (an overloaded or short run); `Avg WIP` is the measured value. |
+| `Avg WIP` | Time-weighted average number of entities in the system over the observed window (a batch counts once, as the batch entity). |
 | `Max Queue Length` | Largest queue length observed across every resource, resource set and store. |
 | `Avg Queue Length` | Sum of the time-weighted average queue length across every resource, resource set and store. |
 | `Avg Resource Usage %` | Mean utilization (busy time over scheduled/available capacity) across real resources only -- a resource set's own collector re-counts its members, so it is excluded here to avoid double counting. |
@@ -86,6 +87,7 @@ A run can also emit one WARNING row, absent from the probe above because a healt
 | `Total Cost` | Sum of cost attributed to this object/run (resource busy+idle+usage cost, or an entity's own accumulated cost, or the model-wide total). |
 | `Queue Length Avg` | Time-weighted average queue length. |
 | `Queue Length Max` | Largest queue length observed (ignores zero-duration levels). |
+| `Queue Length at End` | Requests still waiting when the run ends (never served in the window). |
 | `Queue Length Mode` | Most frequent queue length (event-sample, not time-weighted). |
 | `Queue Length Mode %` | Share of observations at the modal queue length. |
 | `Queue Len P95` | 95th percentile of the queue-length event samples. |

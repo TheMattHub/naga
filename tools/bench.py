@@ -24,7 +24,8 @@ repetition.
 `--compare` reads any older file: a model or column the saved run lacks is
 shown as n/a. The old `wall_seconds` column (step_until only, no sampler) is
 compared against the new `run_seconds`. `tools/bench_baseline.json` is the
-pre-optimisation snapshot from this machine. `mm1_100k` is now time-limited
+pre-optimisation snapshot from this machine; `tools/bench_after.json` the
+latest one (2026-10-21, after the KPI-step work of D690). `mm1_100k` is now time-limited
 (run length 100,000) so the sampler runs; the old file drained 100k arrivals
 without it, so its figures are not like-for-like.
 """

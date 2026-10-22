@@ -520,6 +520,7 @@ def watched(tmp_path, until=200.0):
     return doc, model, mapping, log, events
 
 
+@pytest.mark.slow
 def test_a_stored_score_equals_its_recomputation_from_the_log(tmp_path):
     """Row 7.14's exit check."""
     doc, model, mapping, log, events = watched(tmp_path)
@@ -566,6 +567,7 @@ def test_a_stored_score_equals_its_recomputation_from_the_log(tmp_path):
     assert sum(r["coverage"] * r["points"] for r in rows.values()) / basis["points"] > 0.75
 
 
+@pytest.mark.slow
 def test_a_recomputation_says_every_stored_number_the_log_does_not_give(tmp_path):
     _doc, model, mapping, log, _events = watched(tmp_path)
     path = tmp_path / twin.HISTORY_FILE
@@ -607,6 +609,7 @@ def test_a_recomputation_says_every_stored_number_the_log_does_not_give(tmp_path
     assert score.recompute(tmp_path, model, {"format": 1, "time": {}}, log)[1] == 1
 
 
+@pytest.mark.slow
 def test_naga_twin_score_is_the_recomputation_as_a_command(tmp_path, capsys):
     _doc, model, mapping, log, _events = watched(tmp_path / "out", until=80.0)
     paths = [str(tmp_path / name) for name in ("line.json", "line.plantmap.json", "plant.jsonl")]
@@ -626,6 +629,7 @@ def test_naga_twin_score_is_the_recomputation_as_a_command(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------- surfaces (D297)
+@pytest.mark.slow
 def test_naga_twin_status_and_the_agent_tool_give_the_scores_with_their_basis(tmp_path, capsys):
     from nagasim import agent_tools as T
 
@@ -847,6 +851,7 @@ def polled(model, out, times, *, horizon=30.0, counter=None, between=None):
     return docs, whole + [line for t in times for line in polls[t]], mapping, recorder.events
 
 
+@pytest.mark.slow
 def test_scheduled_twins_score_throughput_against_the_plant_and_the_log_gives_the_same(
         tmp_path, capsys):
     """Two and more processes over one directory: the second scores the first's forecast
@@ -888,6 +893,7 @@ def test_scheduled_twins_score_throughput_against_the_plant_and_the_log_gives_th
     assert "every stored score equals its recomputation from the log" in capsys.readouterr().out
 
 
+@pytest.mark.slow
 def test_a_reading_that_is_damaged_reset_or_too_old_is_no_previous_reading(tmp_path):
     """Never an error that ends a step (F1 of 7.12's review), never a count made up."""
     model = busy_line()

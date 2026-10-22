@@ -27,6 +27,7 @@ def study(tmp_path):
 
 @pytest.mark.skipif(importlib.util.find_spec("matplotlib") is None,
                     reason="the animation needs the optional nagasim[plot] extra")
+@pytest.mark.slow
 def test_gif_has_magic_frames_and_size_cap(study):
     ws, sid = study
     r = T.call("study_animation", study=sid)
@@ -41,11 +42,13 @@ def test_gif_has_magic_frames_and_size_cap(study):
     assert r["frames"] == 40 and r["path"].endswith("versions/v001/animation.gif")
 
 
+@pytest.mark.slow
 def test_unknown_scenario_is_a_coded_error(study):
     _, sid = study
     assert T.call("study_animation", study=sid, scenario="nope")["error"]["code"] == "E_STUDY_BAD_VALUE"
 
 
+@pytest.mark.slow
 def test_without_matplotlib_the_error_is_coded(study, monkeypatch):
     _, sid = study
     monkeypatch.setitem(sys.modules, "matplotlib.figure", None)

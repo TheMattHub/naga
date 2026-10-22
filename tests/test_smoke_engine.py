@@ -722,6 +722,7 @@ MEMORY_BOUND_MB = 40.0
 
 
 @pytest.mark.slow
+@pytest.mark.perf
 def test_throughput_floor_and_bounded_peak_memory():
     """DEVLOG #62: past `entity_log_limit` the run must stop carrying one
     Entity object per arrival forever, so peak memory stays flat instead of

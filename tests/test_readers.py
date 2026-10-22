@@ -1091,6 +1091,7 @@ def test_sparkplug_births_data_and_deaths_become_states_and_no_rebirth_is_asked(
     assert 3 not in {kind for kind, _flags in plant.packets}
 
 
+@pytest.mark.slow
 def test_whatever_bytes_arrive_the_decoders_only_drop_and_count():
     """Fuzz (rule 10: everything read is data). Random bytes as a payload of each kind, on
     a random topic: `deliver` never raises, hands on only scalars, and `sparkplug.decode`
@@ -1738,6 +1739,7 @@ _SECURE_REFUSALS = [
 
 @pytest.mark.parametrize("what, certificate, uri, pinned", _SECURE_REFUSALS,
                          ids=[case[0] for case in _SECURE_REFUSALS])
+@pytest.mark.slow
 def test_an_opcua_server_whose_certificate_is_not_right_never_gets_the_password(
         what, certificate, uri, pinned, secure_press):
     from nagasim import live
@@ -1797,6 +1799,7 @@ def _parsed(body: bytes, limits=(), **options):
     return out, len(built), peak
 
 
+@pytest.mark.slow
 def test_a_rest_body_of_millions_of_rows_is_refused_at_the_row_cap_not_after_parsing():
     """A 20 MB body of `{},` is millions of dicts if it is parsed whole first. The rows are
     decoded one at a time and the read is refused at the cap: the work done is the cap's,

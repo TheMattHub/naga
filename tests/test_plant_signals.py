@@ -298,6 +298,7 @@ def test_a_part_that_only_waited_for_a_cell_did_not_leave_the_belt_s_end():
 @pytest.mark.parametrize("name, at, speed, kinds", [
     ("warehouse_library", 508.5, 60.0, {"belt", "members", "transfer", "trip"}),
     ("automation_floor", 200.5, 1.0, {"cycle", "members", "trip"})])
+@pytest.mark.slow
 def test_a_twin_forecasts_from_its_plant_and_is_scored(name, at, speed, kinds, tmp_path):
     """The headline: a recorded log of the model's own run stands in for the plant; the
     twin's forecast starts from the plant's state (belts, trucks and truckloads, putaways,

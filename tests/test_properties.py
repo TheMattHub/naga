@@ -184,6 +184,7 @@ def _run_with_trace(layout, seed=0):
 
 @given(layout=_model_strategy())
 @_SETTINGS
+@pytest.mark.slow
 def test_generated_model_validates_conserves_and_never_goes_negative(layout):
     # (a) the generated layout validates with no (non-warning) errors.
     problems = [p for p in schema.validate_model(layout) if not p.startswith("warning:")]

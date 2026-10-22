@@ -228,6 +228,7 @@ def _digest(text):
     return base64.b64encode(_hashlib.sha256(text.encode()).digest()).decode()
 
 
+@pytest.mark.slow
 def test_the_page_is_a_constant_shell_and_data_that_cannot_break_out(tmp_path, monkeypatch):
     folder = _fake_folder(tmp_path, monkeypatch)
     layout = _hostile_model()
@@ -312,6 +313,7 @@ def test_a_model_is_refused_before_anything_is_read_or_run(tmp_path, monkeypatch
     assert not (tmp_path / "a.html").exists()
 
 
+@pytest.mark.slow
 def test_a_long_or_empty_viewer_is_said(tmp_path, monkeypatch):
     folder = _fake_folder(tmp_path, monkeypatch)
     slow = viewer.what_if(model(), replications=3)
@@ -362,6 +364,7 @@ def test_the_scripts_pure_half_under_node(tmp_path):
 
 
 # ---------------------------------------------------------------- naga viewer (V4)
+@pytest.mark.slow
 def test_naga_viewer_writes_the_file_says_what_it_holds_and_never_downloads(
         tmp_path, monkeypatch, capsys):
     folder = _fake_folder(tmp_path, monkeypatch)
@@ -480,6 +483,7 @@ def _same_run(answer, desktop):
 
 @in_a_browser
 @pytest.mark.parametrize("browser", BROWSERS, ids=lambda path: Path(path).stem)
+@pytest.mark.slow
 def test_exit_check_a_changed_input_run_in_the_page_gives_the_desktops_numbers(tmp_path, browser):
     """The first cut's exit check: a bundled model exported to one file, opened from disk,
     an input changed, re-run, and the KPIs are desktop Python's for that input and seed."""

@@ -775,6 +775,7 @@ PROBLEM_CODES: dict[str, str] = {
                        "value stands.",
     "W_MES_NAIVE_TIME": "An MES timestamp carries no UTC offset and was read as UTC.",
     "W_MES_TABLE_MISSING": "A REST MES source answered 404 for a table, which was read as empty.",
+    "W_LAW": "A law check of the last run did not pass (nagasim.laws): a warning, never an error; it clears when the model changes.",
     # -- file level -----------------------------------------------------------
     "E_SCHEMA_VERSION": "The file's schema_version is newer than this build supports.",
 }

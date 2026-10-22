@@ -86,6 +86,7 @@ def _rk4(rate, y: list, t_end: float, dt: float, watch: int = 0) -> tuple[list, 
 
 # -- discrete-event -------------------------------------------------------------
 
+@pytest.mark.slow
 def test_mm1_mean_number_waiting():
     """M/M/1, Poisson arrivals at lam, exponential service at mu, rho = lam / mu < 1.
 
@@ -99,6 +100,7 @@ def test_mm1_mean_number_waiting():
                                           blocks["PROCESS"]["dist_params"]["rate"], 1))
 
 
+@pytest.mark.slow
 def test_mm2_mean_number_waiting_is_erlang_c():
     """M/M/c with c = 2 (two tellers taken as one set), a = lam / mu, rho = a / c.
 
@@ -113,6 +115,7 @@ def test_mm2_mean_number_waiting_is_erlang_c():
                            blocks["PROCESS"]["dist_params"]["rate"], len(tellers["members"])))
 
 
+@pytest.mark.slow
 def test_mg1_mean_number_waiting_is_pollaczek_khinchine():
     """M/G/1: Poisson arrivals at lam, service time S of any distribution, rho = lam E[S].
 
@@ -147,6 +150,7 @@ def test_mg1_mean_number_waiting_is_pollaczek_khinchine():
     _check("M/G/1 queue (Pollaczek-Khinchine)", in_system - lam * (low + high) / 2)
 
 
+@pytest.mark.slow
 def test_open_jackson_network_mean_time_in_the_shop():
     """Three stations with chance routing and a rework loop back to the first.
 
@@ -225,6 +229,7 @@ def test_an_agent_alternating_idle_and_busy_is_busy_its_renewal_share_of_the_tim
     _check("Busy/idle cycle", float(busy))
 
 
+@pytest.mark.slow
 def test_an_epidemic_of_agents_infects_the_exact_mean_number_of_its_markov_chain():
     """N agents; a susceptible is infected at rate beta I / N, an infected recovers at gamma.
 

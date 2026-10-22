@@ -38,6 +38,7 @@ def test_the_task_list_is_the_folder():
 
 
 @pytest.mark.parametrize("task", TASKS.values(), ids=lambda task: task.id)
+@pytest.mark.slow
 def test_a_tasks_tool_solution_is_inside_its_tolerance(task):
     """Solvable with the tools the study offers, and the answer read off the results is right."""
     _document, results = _replay(task)
@@ -60,6 +61,7 @@ def test_a_tasks_simpy_solution_is_graded_correct_and_a_wrong_one_is_not(task, t
 
 
 @pytest.mark.parametrize("task", TASKS.values(), ids=lambda task: task.id)
+@pytest.mark.slow
 def test_a_tasks_builder_solution_is_graded_correct(task, tmp_path):
     script = tmp_path / "solution.py"
     script.write_text(task.module.BUILDER, encoding="utf-8")
@@ -108,6 +110,7 @@ def test_a_script_that_is_not_a_simpy_script_is_not_valid(tmp_path):
     assert (grade["valid"], grade["runnable"], grade["note"]) == (True, False, "timeout") and "1 seconds" in told
 
 
+@pytest.mark.slow
 def test_a_model_file_is_graded_on_the_file_the_run_and_the_answer(tmp_path):
     task = TASKS["mm1"]
     document, _results = _replay(task)
@@ -138,6 +141,7 @@ def _rows(out):
     return {(r["arm"], r["repeat"]): r for r in study.collect(out)["attempts"]}
 
 
+@pytest.mark.slow
 def test_the_local_harness_grades_both_arms_and_resumes(tmp_path, capsys):
     task = TASKS["mm1"]
     calls = [(f"c{i}", name, json.dumps(arguments)) for i, (name, arguments) in enumerate(task.module.NAGA)]
@@ -184,6 +188,7 @@ def test_the_local_harness_grades_both_arms_and_resumes(tmp_path, capsys):
     assert not [line for line in json.dumps(study.collect(tmp_path)).split('"') if str(Path.home()) in line]
 
 
+@pytest.mark.slow
 def test_a_turn_the_loop_undoes_leaves_no_model_and_an_unreachable_server_stops_the_run(tmp_path, capsys):
     task = TASKS["mm1"]
     calls = [(f"c{i}", name, json.dumps(arguments)) for i, (name, arguments) in enumerate(task.module.NAGA)]
@@ -227,6 +232,7 @@ say(type="result", subtype="success", is_error=False, num_turns=3, usage={"input
 '''
 
 
+@pytest.mark.slow
 def test_the_claude_harness_isolates_grades_and_stops_on_a_quota_error(tmp_path, monkeypatch, capsys):
     task = TASKS["mm1"]
     document, _results = _replay(task)

@@ -420,6 +420,7 @@ def _office_log(running: bool):
     return events
 
 
+@pytest.mark.slow
 def test_a_log_that_starts_empty_is_flagged_as_a_ramp_up():
     """D632: the check flags a start from empty only when it can tell (30 cases arriving in
     the first mean cycle time); the sample and the round trips' short logs never trip it."""
@@ -505,6 +506,7 @@ def _close(a, b, rel, floor=0.0):
     return abs(a - b) <= max(rel * abs(a), floor)
 
 
+@pytest.mark.slow
 def test_round_trip_jackson_is_first_order_with_rework_and_a_set():
     source, draft, layout, report = _round_trip("job_shop_jackson.json", 3000)
     assert report["routing"]["mode"] == "markov"
@@ -518,6 +520,7 @@ def test_round_trip_jackson_is_first_order_with_rework_and_a_set():
         assert _close(act["service"], draft["activities"][name]["service"], 0.10), name
 
 
+@pytest.mark.slow
 def test_round_trip_routed_shop_uses_variants():
     source, draft, layout, report = _round_trip("job_shop_routed.json", 3000)
     assert report["routing"]["mode"] == "variants"

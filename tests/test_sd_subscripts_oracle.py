@@ -113,6 +113,7 @@ def test_two_dims_first_slowest_and_star_over_one_dim_keeps_the_other_bound():
         '((LEVEL("P[a,y]")) + (LEVEL("P[b,y]")))'
 
 
+@pytest.mark.slow
 def test_sum_and_mean_values_and_a_1000_term_sum_compiles():
     elements = [f"e{i}" for i in range(1000)]
     layout = {"blocks": [], "links": [],
@@ -303,6 +304,7 @@ def test_perf_proxy_one_evaluation_per_element_per_step_and_no_saturation_sums()
 
 @pytest.mark.slow
 @pytest.mark.parametrize("method, budget", [("euler", 4.0), ("rk4", 10.0)])
+@pytest.mark.perf
 def test_perf_1000_elements_x_876_steps(method, budget):
     """Perf guard (PHASE5 design refinements: 1000 elements x 8760 steps,
     Euler <= 20 s, RK4 <= 45 s), run at a TENTH of the steps (budgets a tenth plus setup headroom) so

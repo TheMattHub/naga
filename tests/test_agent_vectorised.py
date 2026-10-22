@@ -55,12 +55,14 @@ def test_perf_proxy_2k_sir_firings_are_exact_and_fast():
 
 
 @pytest.mark.slow
+@pytest.mark.perf
 def test_perf_10k_sir_under_3s():
     """AB-4 guard: 10k agents <= 3 s (measured 0.37 s, 17,704 firings)."""
     assert _sir_firings(10_000) < 3.0
 
 
 @pytest.mark.slow
+@pytest.mark.perf
 def test_perf_100k_sir_scaled_to_20k():
     """AB-4 guard: 100k agents <= 20 s, run at 20k with a proportional 4 s so
     the full set stays under its ceiling (the SD-3 precedent). Full size
@@ -102,6 +104,7 @@ def test_perf_proxy_20k_agents_one_draw_each():
 
 
 @pytest.mark.slow
+@pytest.mark.perf
 def test_perf_250k_agents_one_expo_timeout_each():
     """D107 guard, run at a QUARTER of the 1M target (60 s, 400 MB) so the full
     set stays under its ceiling: 250k agents, one EXPO timeout each, < 15 s and

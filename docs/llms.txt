@@ -43,7 +43,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 - [Digital twin](https://thematthub.github.io/naga/digital-twin.html): A digital twin is a model that reads its parameters from real data, starts from the state the real system is in now and forecasts from there; naga twin keeps one running beside a plant, scores its forecasts against what then happened and recommends among actions you name.
 - [A plant as a timeline](https://thematthub.github.io/naga/plant-timeline.html): The views of a run (the HTML player, the debugger's inspection) draw one thing: the timeline a run's trace reduces to.
-- [Live data](https://thematthub.github.io/naga/live-data.html): A model can read what a plant is saying right now: a REST service, an MQTT broker (plain topics or Sparkplug B) or an OPC UA server.
+- [Live data](https://thematthub.github.io/naga/live-data.html): A model can read what a plant is saying right now: a REST service, an MQTT broker (plain topics or Sparkplug B), an OPC UA server or a Modbus TCP device.
 
 ## Coming from
 
@@ -73,7 +73,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [KPIs](https://thematthub.github.io/naga/reference/kpis.html): Every result frame nagasim.api.run_model / nagasim.experiments.run_scenarios return, and every column each one carries -- probed against nagasim/models/job_shop_jackson.json so a new KPI column fails this generation until it has a definition here.
 - [Model file keys](https://thematthub.github.io/naga/reference/schema.html): Current schema version: 29 (nagasim/core/schema/migrate.py).
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 92 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 94 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 

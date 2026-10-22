@@ -303,6 +303,7 @@ def test_live_timeline_fires_a_same_instant_arrival_across_a_chunk_boundary():
     assert live.state_at(6.0)["queues"]["B"] == [1, 2]     # the arrival first
 
 
+@pytest.mark.slow
 def test_live_timeline_retains_no_event_log_however_much_is_fed():
     """The whole point of live mode: unlike the capped `TraceRecorder` the
     canvas used to stream from, feeding it many times DEFAULT_MAX_EVENTS

@@ -481,6 +481,7 @@ def test_a_debugged_run_gives_the_golden_hash(traced):
 
 @pytest.mark.parametrize("model", ["energy_pv_battery.json", "sd_sir.json",
                                    "agents_machine_repair.json", "two_cell_line.json"])
+@pytest.mark.slow
 def test_a_debugged_run_equals_an_undebugged_one_frame_for_frame(model):
     doc = _load(model)
     expected = SimSession(doc, seed=0).finish()

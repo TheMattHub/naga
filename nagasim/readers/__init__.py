@@ -29,7 +29,7 @@ from nagasim.sources import ReadError
 __all__ = ["KINDS", "load", "checked_options"]
 
 # The live kinds, in the order `schema.DATA_SOURCE_KINDS` lists them.
-KINDS: tuple[str, ...] = ("rest", "mqtt", "opcua")
+KINDS: tuple[str, ...] = ("rest", "mqtt", "opcua", "modbus")
 
 
 def load(kind: str):

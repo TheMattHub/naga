@@ -102,7 +102,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from nagasim import api, experiments
+from nagasim import api, experiments, laws
 from nagasim.core import submodels
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.levels import LevelSystem
@@ -526,6 +526,20 @@ def _print_table(model_path: str, results: list[Result]) -> None:
         print(f"  [{status}] {r.kind:13s} {r.name}: {detail}")
 
 
+def _print_laws(model_path: str, workers: int) -> None:
+    """The operational-law checks of one run with the model's own settings (D684). Warnings
+    only: they never change the exit status, saturation can be the point of a model."""
+    base = api.load_layout(model_path)
+    run = api.run_model(base, seed=0, workers=workers)
+    found = laws.checks(base, run) if run is not None else []
+    if not found:
+        return
+    partial = [c for c in found if c["verdict"] != "passed"]
+    for c in partial:
+        print(f"  [WARN] {'law':13s} {c['name']}: {c['why']}")
+    print(f"  laws: {len(found) - len(partial)} passed, {len(partial)} warning(s)")
+
+
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
@@ -547,6 +561,7 @@ def _run_check(model_paths: list[str], *, junit: str | None, workers: int, stric
             print(f"naga check: {path}: {exc}", file=sys.stderr)
             return 2
         _print_table(path, results)
+        _print_laws(path, workers)
         all_results.append((path, results))
 
     if junit:

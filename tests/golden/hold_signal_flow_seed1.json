@@ -1,5 +1,5 @@
 {
-  "hash": "3b7a87cfd37f58267773234407e5e7dc1d28c1537ce11f298f19a8760458fb66",
+  "hash": "47eb52cc01a9791bab3b07be2eb0105163a07f63cc10255908e30fd2710ff047",
   "model": "hold_signal_flow.json",
   "payload": {
     "entity_count": 30,
@@ -7,6 +7,7 @@
       "Avg Queue Length": 0.6522,
       "Avg Resource Usage %": 45.69,
       "Avg Throughput Time": 1.6739,
+      "Avg WIP": 2.5257,
       "Avg WIP (Little)": 2.5257,
       "Cost per Completed Entity": 0.0,
       "Entity Log Truncated": 0,

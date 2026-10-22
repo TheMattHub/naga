@@ -7,7 +7,7 @@ Markovian routing between stations. Product-form theory gives an EXACT
 closed-form for every station's utilization and queue length, and for the
 system's mean time in system (via Little's law) -- no other queueing network
 shape has that. Assertions use 99% Student-t intervals over replications,
-same style as tests/test_oracles.py (whose `_erlang_c_lq`/`_assert_theory_in_ci`
+same style as tests/test_oracles.py (whose `_assert_theory_in_ci`
 helpers are reused here rather than duplicated).
 
 The whole module drives ONE `run_scenarios` call (module-scoped fixture,
@@ -30,7 +30,8 @@ from nagasim.core.document import ModelDocument
 from nagasim import api, experiments
 from nagasim.report import build_report
 
-from test_oracles import _assert_theory_in_ci, _erlang_c_lq
+from nagasim.verify import _erlang_c_lq
+from test_oracles import _assert_theory_in_ci
 from conftest import metric_value as _metric, resource_row as _resource_row
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "nagasim" / "models" / "job_shop_jackson.json"
@@ -80,7 +81,7 @@ def _jackson_theory(gamma: dict, routing: dict, rates: dict, capacities: dict) -
     per_station, total_l = {}, 0.0
     for s in stations:
         lam_s, mu_s, c_s = lambdas[s], rates[s], capacities[s]
-        lq, rho = _erlang_c_lq(lam_s, mu_s, c_s)
+        lq, rho = _erlang_c_lq(lam_s, mu_s, c_s), lam_s / (c_s * mu_s)
         l = lq + lam_s / mu_s
         per_station[s] = {"lambda": lam_s, "rho": rho, "Lq": lq, "L": l}
         total_l += l

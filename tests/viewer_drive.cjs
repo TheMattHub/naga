@@ -10,22 +10,27 @@
 // held at start), and a WebSocket counts as an address asked. What the protocol does not
 // report (WebRTC, a connection with no request) is pinned by a static test of the
 // page's own scripts instead (tests/test_viewer.py).
-const { spawn } = require("child_process"), path = require("path");
+const { spawn } = require("child_process"), path = require("path"), fs = require("fs");
 const [exe, page, profile, steps] = process.argv.slice(2);
 // Not an address asked of anyone: the page's own file and bytes, and the browser's own
 // built-in pages (Edge now and then attaches one of its `edge:` pages as a child target).
 const LOCAL = /^(file|data|blob|about|edge|chrome|devtools):/;
 
 (async () => {
-  const port = 9300 + Math.floor(Math.random() * 600);
+  // Port 0: the browser takes a free port and writes it to DevToolsActivePort in its
+  // profile. A port of our own choosing collided under pytest -n auto: two tests drove
+  // one browser and read each other's page (#832).
   const browser = spawn(exe, ["--headless=new", "--disable-gpu", "--no-first-run",
-    "--remote-debugging-port=" + port, "--user-data-dir=" + profile, "about:blank"], { stdio: "ignore" });
+    "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank"], { stdio: "ignore" });
   const out = { answers: [], asked: [], console: [], attached: 0 };
   try {
     let target;
     for (let i = 0; i < 150 && !target; i += 1) {
       await new Promise(r => setTimeout(r, 200));
-      try { target = (await (await fetch("http://127.0.0.1:" + port + "/json")).json()).find(t => t.type === "page"); }
+      try {
+        const port = fs.readFileSync(path.join(profile, "DevToolsActivePort"), "utf8").split("\n")[0].trim();
+        target = (await (await fetch("http://127.0.0.1:" + port + "/json")).json()).find(t => t.type === "page");
+      }
       catch (e) { /* the browser is not up yet */ }
     }
     const ws = new WebSocket(target.webSocketDebuggerUrl);

@@ -11,6 +11,7 @@ from math import isfinite
 from typing import Optional
 from dataclasses import asdict, is_dataclass
 from collections import Counter
+from functools import lru_cache
 
 from nagasim.core import blocking, bottleneck
 from nagasim.core.expressions import ExpressionError
@@ -23,6 +24,30 @@ from nagasim.core.utils import ResourceSnapshot, StoreSnapshot
 import logging
 
 log = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=None)
+def _empty_frame(columns: tuple) -> pd.DataFrame:
+    return pd.DataFrame([], columns=list(columns))
+
+
+def _frame(rows: list, columns: list, run_id: Optional[int] = None) -> pd.DataFrame:
+    """`pd.DataFrame(rows, columns=columns)`, with the empty case copied from a
+    cached template: pandas builds an empty frame with named columns column by
+    column (~1 ms each), and most of calc_kpis' ~30 frames are empty for a
+    typical model, so building them dominated short replications (D690). The
+    copy is deep, so a caller adding a column never touches the template.
+
+    *run_id* (tuple rows only) appends a trailing "Run" column, as cheap as any
+    other column here, where inserting it afterwards cost more than building
+    the frame. An empty frame gets none: `calc_kpis` inserts it, which keeps
+    its int64 dtype (an inferred empty column would be object)."""
+    if rows:
+        if run_id is not None:
+            rows = [(*row, run_id) for row in rows]
+            columns = [*columns, "Run"]
+        return pd.DataFrame(rows, columns=columns)
+    return _empty_frame(tuple(columns)).copy()
 
 __all__ = [
     "observed_window", "calc_kpis", "consumed_entities", "counted_entities", "entity_totals",
@@ -71,12 +96,12 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
     dash_sum           = summarize_dashboard(env, run_id=run_id)    # PHASE6 G1
     agt_attr, agt_log  = summarize_agent_attributes(env, warmup=warmup, run_id=run_id)
 
-    # -- tag logs with the replication index --------------------------
+    # -- tag logs with the replication index: a non-empty frame already got
+    # its trailing "Run" from `_frame` (D690), an empty one gets it here --
     if run_id is not None:
-        ent_log["Run"] = run_id
-        res_log["Run"] = run_id
-        sto_log["Run"] = run_id
-        sys_sum["Run"] = run_id
+        for df in (ent_log, res_log, sto_log, sys_sum):
+            if "Run" not in df.columns:
+                df["Run"] = run_id
 
     return {
         "system":   sys_sum,
@@ -233,6 +258,8 @@ _RESOURCE_LOG_COLS = ["Resource", "time", "in_use", "queue_length", "event_type"
 _STORE_LOG_COLS = ["Store", "time", "items", "event_type"]
 _ENTITY_LOG_COLS = ["Entity ID", "Type", "Created At", "Exited At", "Throughput Time", "In Batch",
                     "Cost", "Initial", "Agent"]
+_ENTITY_LOG_DTYPES = {"In Batch": np.dtype(object), "Exited At": np.dtype("float64"),
+                      "Throughput Time": np.dtype("float64")}
 
 # The summary columns whose value is computed FROM the per-event log (the
 # queue-length / store-size snapshots) and so is blank or different with
@@ -327,25 +354,29 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
             continue
         t_total = (e.deletion_time - e.creation_time) if is_completed else None
         cost, _ = entity_cost_asof(e, ctx, t1)
-        records.append({
-            "Entity ID": getattr(e, "_id", "?"),
-            "Type": getattr(e, "e_type", "Unknown"),
-            "Created At": e.creation_time,
-            "Exited At": e.deletion_time,
-            "Throughput Time": t_total,
-            "In Batch": getattr(e, "in_batch", None),
-            "Cost": cost,
-            # ROADMAP 3.4b: True for an entity the warm start injected at t=0.
-            "Initial": bool(getattr(e, "initial", False)),
-            # H2, D130: "<Pop>:<index>" for an entity with an agent (from
+        # One tuple per row in _ENTITY_LOG_COLS order: pandas infers each column
+        # exactly as it does from dicts, minus the per-row key lookups (D690).
+        records.append((
+            getattr(e, "_id", "?"),
+            getattr(e, "e_type", "Unknown"),
+            e.creation_time,
+            e.deletion_time,                   # Exited At
+            t_total,                           # Throughput Time
+            getattr(e, "in_batch", None),
+            cost,
+            # Initial (ROADMAP 3.4b): True for an entity the warm start injected at t=0.
+            bool(getattr(e, "initial", False)),
+            # Agent (H2, D130): "<Pop>:<index>" for an entity with an agent (from
             # CREATE's `population` or an agent's own `enter`), else "" --
             # whether that agent is still alive is a separate question
             # (AGENT()/ALIVE() at report time), not this column's job.
-            "Agent": f"{ref[0]}:{ref[1]}" if (ref := getattr(e, "agent", None)) is not None else "",
-        })
+            f"{ref[0]}:{ref[1]}" if (ref := getattr(e, "agent", None)) is not None else "",
+        ))
 
     summary_rows = []
-    for e_type, data in totals.items():
+    # Sorted by type here rather than with sort_values afterwards (D690): the
+    # types are unique keys, so the order is the same and no frame is rebuilt.
+    for e_type, data in sorted(totals.items()):
         times = data["times"]
         costs = data["costs"]
         stats = pct_stats(times) # for p95, p99 and std
@@ -368,12 +399,9 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
             "Total Cost": float(np.sum(costs)) if costs else 0.0,
         })
 
-    # DEVLOG #9: an all-filtered-out frame has no "Entity Type" column to sort on
-    summary_df = pd.DataFrame(summary_rows, columns=_ENTITY_SUMMARY_COLS)
-    if not summary_df.empty:
-        summary_df = summary_df.sort_values("Entity Type").reset_index(drop=True)
+    summary_df = _frame(summary_rows, _ENTITY_SUMMARY_COLS)
 
-    log_df = pd.DataFrame(records, columns=_ENTITY_LOG_COLS)
+    log_df = _frame(records, _ENTITY_LOG_COLS, run_id)
     # DEVLOG #99: "In Batch" is a batch NAME or None, so a replication in which
     # nothing was still batched at report time infers float64 (all-NaN) while
     # its neighbours infer object -- and concatenating the replications raised
@@ -381,8 +409,9 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
     # column's type is a fact about the column, not about one replication.
     # DEVLOG #389: the same for the two times, None in every row of a replication in
     # which no entity left.
-    return summary_df, log_df.astype({"In Batch": "object", "Exited At": "float64",
-                                      "Throughput Time": "float64"})
+    # D690: only the columns that inferred otherwise -- astype copies the whole frame.
+    fix = {c: t for c, t in _ENTITY_LOG_DTYPES.items() if log_df[c].dtype != t}
+    return summary_df, (log_df.astype(fix) if fix else log_df)
 
 def utilization(res, observed: float, t_end: float) -> float:
     """Busy unit-time over SCHEDULED capacity-time (ROADMAP 1.4).
@@ -432,7 +461,8 @@ def summarize_resources(env, warmup: float = 0.0, run_id: int | None = None):
         # DEVLOG #24: waits are only recorded on acquisition, so a request still
         # queued at t1 is invisible. Its censored wait feeds a separate column;
         # the original one keeps its (completed-waits-only) definition.
-        all_waits = waits + res.open_waits(t1)
+        open_waits = res.open_waits(t1)
+        all_waits = waits + open_waits
         mode_len, mode_perc = mode_stats(queue_lengths)
         wait_mode, wait_perc = mode_stats(waits)
         bottleneck_score = round(util * avg_queue, 2)
@@ -458,6 +488,9 @@ def summarize_resources(env, warmup: float = 0.0, run_id: int | None = None):
             "Total Cost": round(total_cost, 4),
             "Queue Length Avg": round(avg_queue, 4),
             "Queue Length Max": res.queue_len.max,
+            # D684: the requests that arrived but were never served, which the offered-load
+            # and per-resource Little checks (nagasim/laws.py) need besides the seizes.
+            "Queue Length at End": len(open_waits),
             "Queue Length Mode": mode_len,
             "Queue Length Mode %": mode_perc,
             "Queue Len P95": q_stats["p95"],
@@ -488,7 +521,7 @@ def summarize_resources(env, warmup: float = 0.0, run_id: int | None = None):
         for row in summaries:
             row["Bottleneck %"] = int(row["Resource"] == top_name)
 
-    return pd.DataFrame(summaries), pd.DataFrame(logs, columns=_RESOURCE_LOG_COLS)
+    return pd.DataFrame(summaries), _frame(logs, _RESOURCE_LOG_COLS, run_id)
 
 def summarize_stores(env, *, warmup: float = 0.0, run_id: int | None = None, sim_time: float):
     store_summary = []
@@ -544,7 +577,7 @@ def summarize_stores(env, *, warmup: float = 0.0, run_id: int | None = None, sim
                 row = asdict(entry) if is_dataclass(entry) else entry
                 store_logs.append(tuple({"Store": store.name, **row}.get(c) for c in _STORE_LOG_COLS))
 
-    return pd.DataFrame(store_summary), pd.DataFrame(store_logs, columns=_STORE_LOG_COLS)
+    return pd.DataFrame(store_summary), _frame(store_logs, _STORE_LOG_COLS, run_id)
 
 def summarize_system(env, *, warmup: float = 0.0, run_id: int | None = None):
     totals = entity_totals(env, warmup)
@@ -585,9 +618,13 @@ def summarize_system(env, *, warmup: float = 0.0, run_id: int | None = None):
     if total_time <= 0:
         throughput = np.nan
         avg_wip    = np.nan
+        measured_wip = np.nan
     else:
         throughput = completed / total_time
+        # D683, #761: Little's estimate from COMPLETED entities only -- a lower bound while
+        # work is still inside; the measured time-average is the row after it.
         avg_wip    = throughput * (np.mean(throughput_times) if throughput_times else 0)
+        measured_wip = env.ctx.live_entities.wip.time_avg(t1)
 
     # Costing (ROADMAP 2.2). Resource cost comes straight from the resource
     # collectors (real resources only -- a set's own cost_totals is always
@@ -639,6 +676,7 @@ def summarize_system(env, *, warmup: float = 0.0, run_id: int | None = None):
         {"Metric": "Avg Throughput Time", "Value": round(np.mean(throughput_times), 4) if throughput_times else np.nan},
         {"Metric": "Throughput (per time unit)",      "Value": round(throughput, 4)},
         {"Metric": "Avg WIP (Little)",    "Value": round(avg_wip, 4)},
+        {"Metric": "Avg WIP",             "Value": round(measured_wip, 4)},
         {"Metric": "Max Queue Length",    "Value": max(max_queues) if max_queues else 0},
         {"Metric": "Avg Queue Length",    "Value": round(float(np.sum(avg_queues)), 4) if avg_queues else 0},
         {"Metric": "Avg Resource Usage %", "Value": round(float(np.mean(utils)) * 100, 2) if utils else 0},
@@ -672,7 +710,7 @@ def summarize_system(env, *, warmup: float = 0.0, run_id: int | None = None):
           if getattr(env.ctx, "clock", 0) else []),
     ]
     rows += _short_window_warning(env, warmup, total_time)
-    return pd.DataFrame(rows)
+    return _frame([(r["Metric"], r["Value"]) for r in rows], ["Metric", "Value"], run_id)
 
 
 # A run whose statistics cover less than this share of the horizon they were
@@ -761,7 +799,7 @@ def summarize_orders(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
             "Tardiness": max(late, 0.0) if has_lateness else np.nan,
             "Late": int(late > 0) if has_lateness else np.nan, "Status": status,
         })
-    return pd.DataFrame(rows, columns=_ORDER_SUMMARY_COLS)
+    return _frame(rows, _ORDER_SUMMARY_COLS)
 
 
 def summarize_due_dates(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
@@ -790,7 +828,7 @@ def summarize_due_dates(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
                 "Max Tardiness": acc.tardiness_max,
                 "Late": acc.completed - acc.on_time,
             })
-    df = pd.DataFrame(rows, columns=_DUE_DATE_SUMMARY_COLS)
+    df = _frame(rows, _DUE_DATE_SUMMARY_COLS)
     if not df.empty:
         df = df.sort_values("Entity Type").reset_index(drop=True)
     return df
@@ -853,7 +891,7 @@ def summarize_queue_behaviour(env, *, run_id: Optional[int] = None) -> pd.DataFr
             "Changeovers": int(getattr(process, "setup_count", 0)),
             "Setup Time": float(getattr(process, "setup_time_total", 0.0)),
         })
-    return pd.DataFrame(rows, columns=_QUEUE_SUMMARY_COLS)
+    return _frame(rows, _QUEUE_SUMMARY_COLS)
 
 
 _MOTION_SUMMARY_COLS = ["Run", "Motion", "Block", "Segment Kind", "Segments", "Mean Time",
@@ -885,7 +923,7 @@ def summarize_motion(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
                      "Segment Kind": "cycle", "Segments": process.cycles,
                      "Mean Time": cycle_total / process.cycles, "Total Time": cycle_total,
                      "Cycle Share %": 100.0, "Collaborative %": np.nan})
-    return pd.DataFrame(rows, columns=_MOTION_SUMMARY_COLS)
+    return _frame(rows, _MOTION_SUMMARY_COLS)
 
 
 # ---------- levels and flows (PHASE4 D1) ----------------------------------
@@ -915,7 +953,7 @@ def summarize_levels(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
     """
     system = env.ctx.level_system
     if system is None:
-        return pd.DataFrame([], columns=_LEVEL_SUMMARY_COLS)
+        return _frame([], _LEVEL_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = [{"Run": run_id, "Level": level.name, "Unit": level.unit,
              "Average": level.time_avg(t1), "Min": level.min, "Max": level.max,
@@ -925,7 +963,7 @@ def summarize_levels(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
              "Total In": level.inflow_total, "Total Out": level.outflow_total,
              "Spilled": level.spilled, "Unmet": level.unmet}
             for level in visible(system.levels.values())]     # no delay stages (SD-2)
-    return pd.DataFrame(rows, columns=_LEVEL_SUMMARY_COLS)
+    return _frame(rows, _LEVEL_SUMMARY_COLS)
 
 
 def summarize_flows(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> pd.DataFrame:
@@ -941,7 +979,7 @@ def summarize_flows(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -
     """
     system = env.ctx.level_system
     if system is None:
-        return pd.DataFrame([], columns=_FLOW_SUMMARY_COLS)
+        return _frame([], _FLOW_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = [{"Run": run_id, "Flow": flow.name,
              "From": flow.src.name if flow.src else "", "To": flow.dst.name if flow.dst else "",
@@ -949,7 +987,7 @@ def summarize_flows(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -
              "Time Limited %": 100.0 * flow.limited_fraction(t1),
              "Cost": flow.cost, "Impact": flow.impact, "Starts": flow.starts}
             for flow in visible(system.flows)]
-    return pd.DataFrame(rows, columns=_FLOW_SUMMARY_COLS)
+    return _frame(rows, _FLOW_SUMMARY_COLS)
 
 
 def summarize_conversions(env, *, warmup: float = 0.0,
@@ -966,7 +1004,7 @@ def summarize_conversions(env, *, warmup: float = 0.0,
     """
     system = env.ctx.level_system
     if system is None or not system.conversions:
-        return pd.DataFrame([], columns=_CONVERSION_SUMMARY_COLS)
+        return _frame([], _CONVERSION_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = [{"Run": run_id, "Conversion": f"{conversion.name}/{substrate.name}",
              "Substrate": substrate.name, "Unit": conversion.unit,
@@ -975,7 +1013,7 @@ def summarize_conversions(env, *, warmup: float = 0.0,
              "Avg Rate": substrate.avg_rate(t1) * conversion.per,
              "Peak Rate": substrate.peak * conversion.per}
             for conversion in system.conversions for substrate in conversion.substrates]
-    return pd.DataFrame(rows, columns=_CONVERSION_SUMMARY_COLS)
+    return _frame(rows, _CONVERSION_SUMMARY_COLS)
 
 
 def summarize_components(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
@@ -990,14 +1028,14 @@ def summarize_components(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
     """
     system = env.ctx.level_system
     if system is None:
-        return pd.DataFrame([], columns=_COMPONENT_SUMMARY_COLS)
+        return _frame([], _COMPONENT_SUMMARY_COLS)
     rows = [{"Run": run_id, "Component": f"{level.name}/{name}", "Level": level.name,
              "Avg Fraction": level.avg_fraction(name), "Min Fraction": level.frac_min(name),
              "Max Fraction": level.frac_max(name), "Final Fraction": level.fraction(name),
              "Total In": level.comp_in[name], "Total Out": level.comp_out[name],
              "Final Content": level.content[name]}
             for level in system.levels.values() for name in level.components]
-    return pd.DataFrame(rows, columns=_COMPONENT_SUMMARY_COLS)
+    return _frame(rows, _COMPONENT_SUMMARY_COLS)
 
 
 def flow_totals(env) -> tuple[float, float]:
@@ -1039,7 +1077,7 @@ def summarize_fleets(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
     """
     fleets = env.ctx.fleets
     if not fleets:
-        return pd.DataFrame([], columns=_FLEET_SUMMARY_COLS)
+        return _frame([], _FLEET_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = []
     for fleet in fleets.values():
@@ -1055,7 +1093,7 @@ def summarize_fleets(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
                      "Idle %": totals["idle_pct"],
                      "Avg Request Wait": totals["avg_wait"],
                      "Max Request Wait": totals["max_wait"]})
-    return pd.DataFrame(rows, columns=_FLEET_SUMMARY_COLS)
+    return _frame(rows, _FLEET_SUMMARY_COLS)
 
 
 _CHARGING_SUMMARY_COLS = ["Run", "Charger", "Kind", "Points", "Sessions", "Utilization %",
@@ -1077,7 +1115,7 @@ def summarize_charging(env, *, warmup: float = 0.0, run_id: Optional[int] = None
              "Grid kWh": round(c.energy(t1), 4), "Peak kW": c.peak_kw,
              "Energy Cost": round(c.energy(t1) * price, 4)}
             for c in env.ctx.chargers.values()]
-    return pd.DataFrame(rows, columns=_CHARGING_SUMMARY_COLS)
+    return _frame(rows, _CHARGING_SUMMARY_COLS)
 
 
 def summarize_batteries(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> pd.DataFrame:
@@ -1094,7 +1132,7 @@ def summarize_batteries(env, *, warmup: float = 0.0, run_id: Optional[int] = Non
                          "Charge Trips": totals["charge_trips"], "Min SoC": totals["min_soc"],
                          "Mean Final SoC": totals["final_soc"], "Depleted": totals["depleted"],
                          "Drain kWh": round(totals["drain_kwh"], 4)})
-    return pd.DataFrame(rows, columns=_BATTERY_SUMMARY_COLS)
+    return _frame(rows, _BATTERY_SUMMARY_COLS)
 
 
 _TENDING_SUMMARY_COLS = ["Run", "Station", "Fleet", "Picks", "Places", "Exchanges",
@@ -1112,7 +1150,7 @@ def summarize_tending(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
              "Avg Loaded Wait": s.loaded_wait.mean,
              "Avg Blocked For Pick": s.blocked_for_pick.mean, "Avg Stay": s.stay.mean}
             for (station, fleet), s in sorted(env.ctx.tending.items())]
-    return pd.DataFrame(rows, columns=_TENDING_SUMMARY_COLS)
+    return _frame(rows, _TENDING_SUMMARY_COLS)
 
 
 def summarize_segments(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
@@ -1126,7 +1164,7 @@ def summarize_segments(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
     """
     network = env.ctx.network
     if network is None or not env.ctx.fleets:
-        return pd.DataFrame([], columns=_SEGMENT_SUMMARY_COLS)
+        return _frame([], _SEGMENT_SUMMARY_COLS)
     counts: dict[str, int] = {}
     traffic = next(iter(env.ctx.fleets.values())).traffic
     for fleet in env.ctx.fleets.values():
@@ -1139,7 +1177,7 @@ def summarize_segments(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
              "Max Occupancy": (traffic.max_occupancy[seg] if traffic and seg in traffic.wait
                                else float("nan"))}
             for seg in network.segments]
-    return pd.DataFrame(rows, columns=_SEGMENT_SUMMARY_COLS)
+    return _frame(rows, _SEGMENT_SUMMARY_COLS)
 
 
 def summarize_conveyors(env, *, warmup: float = 0.0,
@@ -1147,7 +1185,7 @@ def summarize_conveyors(env, *, warmup: float = 0.0,
     """The "conveyor_summary" frame (PHASE4 E1): one row per CONVEYOR block."""
     conveyors = env.ctx.conveyors
     if not conveyors:
-        return pd.DataFrame([], columns=_CONVEYOR_SUMMARY_COLS)
+        return _frame([], _CONVEYOR_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = [{"Run": run_id, "Conveyor": belt.name, "Length": belt.belt_length,
              "Capacity": belt.capacity, "Entered": belt.entered, "Exited": belt.exited,
@@ -1156,7 +1194,7 @@ def summarize_conveyors(env, *, warmup: float = 0.0,
              "Blocked %": 100.0 * belt.blocked.time_avg(t1),
              "Avg Transit Time": belt.transit.mean}
             for belt in conveyors.values()]
-    return pd.DataFrame(rows, columns=_CONVEYOR_SUMMARY_COLS)
+    return _frame(rows, _CONVEYOR_SUMMARY_COLS)
 
 
 def summarize_buffers(env, *, warmup: float = 0.0,
@@ -1170,7 +1208,7 @@ def summarize_buffers(env, *, warmup: float = 0.0,
     """
     nodes = env.ctx.blocking_nodes
     if not nodes:
-        return pd.DataFrame([], columns=_BUFFER_SUMMARY_COLS)
+        return _frame([], _BUFFER_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = []
     for name, node in nodes.items():
@@ -1194,7 +1232,7 @@ def summarize_buffers(env, *, warmup: float = 0.0,
             "Starved %": (round(100.0 * max(capacity_time - res.busy.area(t1), 0.0) / capacity_time, 2)
                           if res is not None and capacity_time > 0 else np.nan),
         })
-    return pd.DataFrame(rows, columns=_BUFFER_SUMMARY_COLS)
+    return _frame(rows, _BUFFER_SUMMARY_COLS)
 
 
 # ------------------------------------------------------- entity flow / bottleneck (M2, D113)
@@ -1213,9 +1251,8 @@ def summarize_material_flow(env, *, run_id: Optional[int] = None) -> pd.DataFram
     Not named "flow_summary": that name already belongs to the PHASE4 D1
     rate-based level-flow frame (D113).
     """
-    rows = [{"Run": run_id, "From": frm, "To": to, "Entities": n}
-            for (frm, to), n in env.ctx.link_flow_counts.items()]
-    return pd.DataFrame(rows, columns=_MATERIAL_FLOW_SUMMARY_COLS)
+    rows = [(run_id, frm, to, n) for (frm, to), n in env.ctx.link_flow_counts.items()]
+    return _frame(rows, _MATERIAL_FLOW_SUMMARY_COLS)
 
 
 def summarize_bottleneck(env, *, warmup: float = 0.0,
@@ -1229,12 +1266,12 @@ def summarize_bottleneck(env, *, warmup: float = 0.0,
     """
     tracker = env.ctx.bottleneck_tracker
     if tracker is None:
-        return pd.DataFrame([], columns=_BOTTLENECK_SUMMARY_COLS)
+        return _frame([], _BOTTLENECK_SUMMARY_COLS)
     t0, t1 = observed_window(env, warmup)
     periods = tracker.closed_periods(t1)
     shares = bottleneck.active_period_shares(periods, t0, t1)
     rows = [{"Run": run_id, "Resource": name, **vals} for name, vals in shares.items()]
-    return pd.DataFrame(rows, columns=_BOTTLENECK_SUMMARY_COLS)
+    return _frame(rows, _BOTTLENECK_SUMMARY_COLS)
 
 
 # ---------------------------------------------------------------- schedule (W4 P2, D120)
@@ -1251,9 +1288,9 @@ def summarize_schedule(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
     """
     log_ = env.ctx.schedule_log
     if not log_:
-        return pd.DataFrame([], columns=_SCHEDULE_LOG_COLS)
+        return _frame([], _SCHEDULE_LOG_COLS)
     rows = [{"Run": run_id, **row} for row in log_]
-    return pd.DataFrame(rows, columns=_SCHEDULE_LOG_COLS)
+    return _frame(rows, _SCHEDULE_LOG_COLS)
 
 
 # ------------------------------------------------------------- energy (M1, D112)
@@ -1377,10 +1414,10 @@ def summarize_energy(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
     t0, t1 = observed_window(env, warmup)
     rows = _resource_energy_rows(env, t0, t1)
     if not rows:
-        return pd.DataFrame([], columns=_ENERGY_SUMMARY_COLS)
+        return _frame([], _ENERGY_SUMMARY_COLS)
     for row in rows:
         row["Run"] = run_id
-    return pd.DataFrame(rows, columns=_ENERGY_SUMMARY_COLS)
+    return _frame(rows, _ENERGY_SUMMARY_COLS)
 
 
 _COST_SUMMARY_COLS = ["Run", "Item", "Category", "Kind", "Amount"]
@@ -1419,7 +1456,7 @@ def summarize_costs(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -
         rows += [{"Run": run_id, "Item": r["Resource"], "Category": "", "Kind": "energy",
                   "Amount": r["Energy Cost"]}
                  for r in _resource_energy_rows(env, t0, t1) if r["Energy Cost"]]
-    return pd.DataFrame(rows, columns=_COST_SUMMARY_COLS)
+    return _frame(rows, _COST_SUMMARY_COLS)
 
 
 def lump_sum_total(env) -> float:
@@ -1444,11 +1481,11 @@ def summarize_agents(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
     its boundary."""
     system = getattr(env.ctx, "agent_system", None)
     if system is None:
-        return pd.DataFrame([], columns=_AGENT_SUMMARY_COLS)
+        return _frame([], _AGENT_SUMMARY_COLS)
     _, t1 = observed_window(env, warmup)
     rows = [{"Run": run_id, "Agent State": f"{row['Population']}/{row['State']}", **row}
             for pop in system.populations for row in pop.summary(t1)]
-    return pd.DataFrame(rows, columns=_AGENT_SUMMARY_COLS)
+    return _frame(rows, _AGENT_SUMMARY_COLS)
 
 
 _AGENT_ATTR_COLS = ["Run", "Agent Attribute", "Population", "Attribute", "State", "Category",
@@ -1510,8 +1547,8 @@ def summarize_agent_attributes(env, *, warmup: float = 0.0,
     """
     system = getattr(env.ctx, "agent_system", None)
     if system is None:
-        return (pd.DataFrame([], columns=_AGENT_ATTR_COLS),
-                pd.DataFrame([], columns=_AGENT_ATTR_LOG_COLS))
+        return (_frame([], _AGENT_ATTR_COLS),
+                _frame([], _AGENT_ATTR_LOG_COLS))
     _, t1 = observed_window(env, warmup)
     rows, log_rows = [], []
     for pop in system.populations:
@@ -1539,8 +1576,8 @@ def summarize_agent_attributes(env, *, warmup: float = 0.0,
                 for s, state in enumerate(pop.type.states):
                     rows.append(_attr_stats_row(run_id, pop.name, name, state,
                                                 values[pop.type.mask(member_states, s)], np.nan))
-    return (pd.DataFrame(rows, columns=_AGENT_ATTR_COLS),
-            pd.DataFrame(log_rows, columns=_AGENT_ATTR_LOG_COLS))
+    return (_frame(rows, _AGENT_ATTR_COLS),
+            _frame(log_rows, _AGENT_ATTR_LOG_COLS))
 
 
 _TIMESERIES_COLS = ["Run", "Time", "Series", "Value", "Warmup"]
@@ -1550,9 +1587,9 @@ def summarize_timeseries(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
     """The "timeseries" frame (ROADMAP 1.7): one row per sample the sampler
     process took, tagged with the replication index. Empty (but correctly
     shaped) when sampling was off for this run."""
-    rows = [{"Run": run_id, "Time": t, "Series": series, "Value": value, "Warmup": warm}
+    rows = [(run_id, t, series, value, warm)
             for t, series, value, warm in getattr(env.ctx, "timeseries", [])]
-    return pd.DataFrame(rows, columns=_TIMESERIES_COLS)
+    return _frame(rows, _TIMESERIES_COLS)
 
 
 _DASHBOARD_COLS = ["Run", "Time", "Widget", "Series", "Value", "Warmup"]
@@ -1563,10 +1600,9 @@ def summarize_dashboard(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
     each instant the timeseries sampler took, tagged with the replication
     index. Empty (but correctly shaped) for a model with no dashboard, or
     when sampling was off for this run."""
-    rows = [{"Run": run_id, "Time": t, "Widget": widget, "Series": series, "Value": value,
-            "Warmup": warm}
+    rows = [(run_id, t, widget, series, value, warm)
             for t, widget, series, value, warm in getattr(env.ctx, "dashboard", [])]
-    return pd.DataFrame(rows, columns=_DASHBOARD_COLS)
+    return _frame(rows, _DASHBOARD_COLS)
 
 
 _GAME_LOG_COLS = ["Run", "Time", "Step", "Action", "Target", "Value"]
@@ -1578,7 +1614,7 @@ def summarize_game_log(entries, *, run_id: Optional[int] = None) -> pd.DataFrame
     probabilities and a number share one column and the row reads back."""
     rows = [{"Run": run_id, "Time": e["t"], "Step": e["step"], "Action": e["action"],
              "Target": e["target"], "Value": json.dumps(e["value"])} for e in entries]
-    return pd.DataFrame(rows, columns=_GAME_LOG_COLS)
+    return _frame(rows, _GAME_LOG_COLS)
 
 
 def timeseries_mean(results: dict) -> pd.DataFrame:
@@ -1629,7 +1665,7 @@ def summarize_user_stats(env, *, warmup: float = 0.0, run_id: Optional[int] = No
             row = {"Count": c.count, "Value": c.mean, "Min": c.min, "Max": c.max, "Std": c.std}
         rows.append({"Run": run_id, "Statistic": name, "Kind": stat.kind, **row})
 
-    return pd.DataFrame(rows, columns=_USER_SUMMARY_COLS)
+    return _frame(rows, _USER_SUMMARY_COLS)
 
 # ------------------------------------------------------------------
 # 95 % CI helper - ***tall / tidy*** format
@@ -1672,9 +1708,10 @@ def pct_stats(series: list[float]) -> dict[str, float]:
     if not series:
         return {"p95": np.nan, "p99": np.nan, "std": np.nan}
     arr = np.asarray(series, dtype=float)
+    p95, p99 = np.percentile(arr, [95, 99])   # one sort, not two (D690)
     return {
-        "p95": float(np.percentile(arr, 95)),
-        "p99": float(np.percentile(arr, 99)),
+        "p95": float(p95),
+        "p99": float(p99),
         "std": float(arr.std(ddof=1)) if arr.size > 1 else np.nan,
     }
 

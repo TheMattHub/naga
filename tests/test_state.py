@@ -326,6 +326,7 @@ def test_rate_based_is_reproduced_exactly(name, at):
     assert _reproduces(_bundled(name), at)["levels"]
 
 
+@pytest.mark.slow
 def test_discrete_event_a_stochastic_run_is_reproduced_in_distribution():
     """M/M/1, 30 seeds: the state of seed s at t = 400, started with ANOTHER seed, against the
     uninterrupted run of seed s over the same window. Stream positions are not state, so the

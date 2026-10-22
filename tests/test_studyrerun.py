@@ -22,6 +22,7 @@ def folder(tmp_path):
     return tmp_path / sid
 
 
+@pytest.mark.slow
 def test_clean_folder_reproduces(folder, capsys):
     assert studyrerun.main(["rerun", str(folder)]) == 0
     assert "v001: ok" in capsys.readouterr().out

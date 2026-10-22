@@ -148,6 +148,7 @@ def test_export_cli_writes_only_the_out_file(tmp_path, capsys):
                                                                                  / "single_server.json")
 
 
+@pytest.mark.slow
 def test_the_stub_is_the_generators_and_names_every_method():
     """`build.pyi` is what `tools/gen_engine_docs.py` writes now (else: run it, commit)."""
     import subprocess
