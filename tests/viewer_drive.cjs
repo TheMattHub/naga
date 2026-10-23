@@ -87,6 +87,7 @@ const LOCAL = /^(file|data|blob|about|edge|chrome|devtools):/;
     ws.close();
   } catch (error) { out.failed = String(error && error.stack || error).slice(0, 600); }
   browser.kill();
-  process.stdout.write(JSON.stringify(out));
-  process.exit(0);
+  // Exit only once the write is out: to a pipe it is asynchronous on Linux, and an
+  // exit right after it cut the JSON short on CI (#982).
+  process.stdout.write(JSON.stringify(out), () => process.exit(0));
 })();
