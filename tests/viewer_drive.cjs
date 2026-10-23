@@ -4,7 +4,7 @@
 //   node viewer_drive.cjs BROWSER.exe PAGE.html PROFILE_DIR 'STEPS as JSON'
 //
 // A step is {"wait": "a regular expression the status line must match", "limit": ms} or
-// {"eval": "an expression"}; the answers are printed as one JSON object with the
+// {"eval": "an expression"} or {"width": px} (the viewport, for a layout check); the answers are printed as one JSON object with the
 // addresses asked for (anything but file:, data: and blob:) by the page, its frames and
 // EVERY worker: each worker is attached before it runs a line (Target.setAutoAttach,
 // held at start), and a WebSocket counts as an address asked. What the protocol does not
@@ -65,11 +65,16 @@ const LOCAL = /^(file|data|blob|about|edge|chrome|devtools):/;
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
     await send("Page.navigate", { url: "file:///" + path.resolve(page).replace(/\\/g, "/") });
     // The page's own markup is there before the first step (its 40 MB of data follow it).
-    for (let i = 0; i < 300 && (await value("!!(document.body && document.getElementById('status'))")) !== true; i += 1) {
+    for (let i = 0; i < 300 && (await value("!!(document.body && (document.getElementById('status') || document.getElementById('view')))")) !== true; i += 1) {
       await new Promise(r => setTimeout(r, 100));
     }
     for (const step of JSON.parse(steps)) {
       if (step.eval) { out.answers.push(await value(step.eval)); continue; }
+      if (step.width) {
+        await send("Emulation.setDeviceMetricsOverride", { width: step.width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
       const until = Date.now() + (step.limit || 90000), wanted = new RegExp(step.wait);
       let text = "";
       while (Date.now() < until && !wanted.test(text)) {

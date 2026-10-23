@@ -276,13 +276,14 @@ def test_the_page_is_the_present_as_the_result_has_it_and_the_summary(tmp_path):
 def test_the_page_asks_for_nothing_and_reloads_itself_at_half_the_cadence(tmp_path):
     page, doc, step, _events = page_of(tmp_path)
     text = page.build(doc, step)
-    assert text.isascii() and "//" not in text
+    assert text.isascii() and "//" not in re.sub(r"'sha256-[A-Za-z0-9+/=]+'", "", text)
     policy = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', text)
     script = re.search(r"<script>(.*)</script>", text, re.S).group(1)
     digest = base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii")
-    assert f"script-src 'sha256-{digest}'" in policy.group(1)
+    theme = base64.b64encode(hashlib.sha256(player.THEME.encode("utf-8")).digest()).decode("ascii")
+    assert f"script-src 'sha256-{theme}' 'sha256-{digest}'" in policy.group(1)
     assert policy.group(1).startswith("default-src 'none'; img-src data:;")
-    assert script.endswith(player._SCRIPT) and "function monitor(" in script
+    assert script.endswith(player.SCRIPT) and "function monitor(" in script
     fixed = page.shell.replace(script, "")
     assert not re.search(r"https?:|ftp:|wss?:|@import|url\(|fetch|XMLHttp|import\(", page.shell, re.I)
     assert not re.search(r"\b(src|href|srcset|action|poster|background|data)\s*=", fixed, re.I)
@@ -305,7 +306,7 @@ def test_text_of_a_plant_reaches_the_page_as_data_only(tmp_path):
     doc["model"]["name"] = HOSTILE
     text = page.build(doc, [TraceEvent(t=1.0, kind="entity_created", entity_id=1,
                                        e_type=HOSTILE, block="p", target=None)])
-    assert text.count("</script>") == 2 and "<img" not in text
+    assert text.count("</script>") == 3 and "<img" not in text      # theme pick, data, drawer
     data = data_of(page, text)
     assert data["monitor"]["summary"]["problems"][0][2] == HOSTILE
     assert data["monitor"]["events"][-1][2] == HOSTILE + " entered at p"
@@ -369,7 +370,7 @@ def run_panel(text, now):
     assert done.returncode == 0, done.stderr[-2000:]
     report = json.loads(done.stdout)
     assert report["banned"] == [] and report["sources"] == []
-    assert set(report["made"]) <= {"option", "tr", "th", "td", "div", "span", "p"}
+    assert set(report["made"]) <= {"button", "option", "tr", "th", "td", "div", "span", "p"}
     return report
 
 

@@ -4,9 +4,33 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.15: runs you can trust
+## 0.16: results that say how far to trust them
 
 <!-- --8<-- [start:latest] -->
+- **Input uncertainty.** `naga uncertainty` resamples the data behind your distributions and reruns the
+  model, so a KPI gets an interval for the run's noise and one for the input's, with the share each
+  contributes. `what_if` now says when a verdict is smaller than the input spread.
+- **A twin that raises its hand.** A twin alerts when a series shifts and stays shifted, and
+  `naga twin --refit` proposes a recalibrated model that you approve or drop. An approved setpoint
+  can be written to a soft PLC with `naga plc-write`, a dry run until you add `--write`.
+- **More to model and check.** Conveyors take `stops`, and `path_checks` assert the order an entity
+  moved through the model. `calibrate(method="abc")` returns a posterior with intervals, and
+  `naga explain` ranks what drives a KPI, as in the snippet below.
+- **More ways to use the engine.** `SimEnv.as_gymnasium_env()` trains a policy with Stable-Baselines3,
+  `naga run --pace` ties the clock to wall time, and `nagasim.simpylog` turns a plain SimPy script into
+  a log for `naga discover`.
+- **Before you upgrade.** Results change for a model with an accumulating conveyor whose end
+  blocks: a part now reaches the belt end no sooner than spacing divided by speed after the one ahead
+  left. In the bundled `warehouse_forklifts` the belt's Blocked % falls by 0.01 to 0.03 points and
+  throughput is unchanged. Every other bundled model gives the same results.
+
+```console
+naga explain single_server "system/Avg Throughput Time"
+```
+<!-- --8<-- [end:latest] -->
+
+## 0.15: runs you can trust
+
 - **Every run checks itself.** A run is held against the operational laws of queues (utilisation,
   offered load, Little's law, flow conservation), and it warns when too much work is still inside
   at the end or when a warm-up is missing. The warnings name the law and show in the `run_model`
@@ -28,7 +52,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 ```console
 naga facts model.json
 ```
-<!-- --8<-- [end:latest] -->
 
 ## 0.14: an offline backup for the tool picker
 

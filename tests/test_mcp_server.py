@@ -174,7 +174,7 @@ def test_naga_mcp_is_a_command_of_the_engine_cli(capsys):
 
 @pytest.mark.slow
 def test_the_engine_server_runs_without_the_product(tmp_path):
-    """`naga mcp` in a fresh interpreter: 94 tools, resources under naga://, no product import."""
+    """`naga mcp` in a fresh interpreter: 96 tools, resources under naga://, no product import."""
     code = (
         "import asyncio, sys\n"
         "from nagasim import mcp_server\n"
@@ -187,7 +187,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "94" and first.startswith("naga://reference/")
+    assert count == "96" and first.startswith("naga://reference/")
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):

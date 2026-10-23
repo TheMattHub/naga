@@ -277,6 +277,7 @@ def write_model(model: str, layout: dict) -> dict:
     else:
         doc.replace_layout(fresh.to_layout(), "Write model")
     ws.results.pop(model, None)
+    ws.asked.pop(model, None)       # what was asked of the old model says nothing of the new one
     errors = sum(1 for p in problems if p.severity == "error")
     return {"ok": not errors, "model": model, "blocks": len(doc.blocks), "errors": errors,
             "warnings": len(problems) - errors,

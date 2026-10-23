@@ -35,11 +35,18 @@ def rerun_version(folder: Path, vid: str) -> tuple[bool, str]:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="naga study", description="Checks on a study folder.")
+    p = argparse.ArgumentParser(prog="naga study", description="Checks on a study folder, and its slides as a PDF.")
     sub = p.add_subparsers(dest="action", required=True)
     r = sub.add_parser("rerun", help="re-run every version and compare the stored KPIs")
     r.add_argument("folder", help="the study folder (holds study.json)")
-    folder = Path(p.parse_args(argv).folder)
+    d = sub.add_parser("deck", help="the slides as a PDF, printed by this machine's Chrome or Edge")
+    d.add_argument("folder", help="the study folder (holds study.json)")
+    d.add_argument("--browser", help="the browser to print with (default: the first Chrome, Edge or Chromium found)")
+    args = p.parse_args(argv)
+    folder = Path(args.folder)
+    if args.action == "deck":
+        from .studydeck import run
+        return run(folder, args.browser)
     try:
         study = study_mod.load(folder)
     except study_mod.StudyError as exc:

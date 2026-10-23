@@ -6,14 +6,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from nagasim import api, experiments, investment, laws, loopdominance, modelcheck
+from nagasim import api, experiments, explain, investment, laws, loopdominance, modelcheck, uncertainty
 from nagasim import optimize as optimize_mod
 from nagasim.core.schema import ModelValidationError
 from nagasim.exporters import EXPORTER_REGISTRY
 
 from .core import (
     MAX_ROWS, ToolError, _budget, _document_args, _edit_result, _finite, _digest, _open,
-    _records, _results_of, _rows, _runnable_layout, _upsert, tool, workspace,
+    _records, _results_of, _rows, _runnable_layout, _upsert, note_asked, recorded, tool, workspace,
 )
 
 _document_args("run_model", model="Workspace name of the model to run.",
@@ -76,6 +76,8 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     ws.results[model] = results
     digest = _digest(results)
     digest.update({"model": model, "frames": sorted(results), "laws": _run_laws(layout, results, warmup)})
+    note_asked(model, {"tool": "run_model", "warnings": [{"name": c["name"], "why": c["why"]}
+                                                         for c in digest["laws"]["partial"]]})
     return digest
 
 
@@ -189,17 +191,95 @@ def what_if(model: str, overrides: list, kpis: list | None = None, goals: dict |
     effort, not proven absent), or "unchanged" (identical in every paired
     replication, such as a count the change does not touch).
 
+    When input_uncertainty has run on this model, "input_note" quotes it beside the
+    verdict, never merged with it: the change's difference measured for these same
+    overrides, else the level's spread, labelled "level" (a level's spread is not the
+    difference's). No note when nothing was measured.
+
     Returns {"model", "n", "met", "completed", "kpis": [{"kpi", "baseline",
-    "scenario", "diff", "diff_lb", "diff_ub", "verdict"}]}.
+    "scenario", "diff", "diff_lb", "diff_ub", "verdict"}], "input_note" (when recorded):
+    {"measure", "resamples", "replications", "kpis", "text"}}.
     """
     try:
         out = experiments.what_if(workspace().document(model).to_layout(), overrides, kpis,
-                                  start=start, cap=cap, seed=seed, run_length=run_length,
+                                  start=start, cap=max(2, min(int(cap), 200)), seed=seed, run_length=run_length,
                                   warmup=warmup, goals=goals, should_stop=_budget(max_seconds))
     except ModelValidationError as exc:
         raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
                         "fix the override paths (list_override_paths shows the valid ones)")
-    return {"model": model, **out}
+    note = uncertainty.what_if_note(recorded(model), overrides,
+                                    [r["kpi"] for r in out["kpis"]])
+    note_asked(model, {"tool": "what_if", "overrides": overrides,
+                       "kpis": [{k: r[k] for k in ("kpi", "diff", "diff_lb", "diff_ub", "verdict")}
+                                for r in out["kpis"][:MAX_ROWS]]})
+    return {"model": model, **out, **({"input_note": note} if note else {})}
+
+
+_document_args("explain_kpi", model="Workspace name of the model.",
+               kpi="The KPI to explain: \"system/Avg Throughput Time\", \"system/Avg WIP\", "
+                   "\"system/Avg WIP (Little)\", \"system/Throughput (per time unit)\" or one "
+                   "resource's \"resource/<name>/<metric>\".",
+               overrides="Optional scenario-style overrides, as in what_if: with them the rows "
+                         "compare the baseline and the changed model on paired seeds; nothing "
+                         "is saved to the model.",
+               replications="Replications of the one batch; with overrides the first count, "
+                            "doubled until the KPI's difference is clear.",
+               cap="Most replications to try with overrides.",
+               run_length="Run length in base time units.", warmup="Warm-up time.",
+               seed="Base seed.", max_seconds="Wall-clock budget.",
+               sensitivity="Optional study_sensitivity answer (or its sensitivity.json): its "
+                           "changes_answer paths join the factors for optimize.")
+
+
+@tool()
+def explain_kpi(model: str, kpi: str, overrides: list | None = None, replications: int = 5,
+                cap: int = 50, run_length: float | None = None, warmup: float | None = None,
+                seed: int = 0, max_seconds: float | None = None,
+                sensitivity: dict | None = None) -> dict:
+    """What makes up a KPI, in one call: its contributors, ranked, each a measured number
+    with its 95% interval, plus one suggested what_if test of the top one (never run).
+
+    Time KPIs (and WIP, by Little's law): per resource, the wait a completed entity spent
+    there, and the rest as "processing and moving"; "coverage" says how much of the KPI the
+    waits add up to. Throughput: per resource its bottleneck share (when the model collects
+    it, outputs.bottleneck) or else its usage, with down and blocked beside. A resource KPI:
+    that resource's usage, down, blocked and wait. With overrides: the same rows for the
+    baseline and the changed model, ranked by the paired difference, each with a verdict
+    ("higher", "lower", "not distinguishable", "unchanged").
+
+    A ranking says how the KPI is made up, not why: every row is labelled "measured", and
+    the suggested test is how to check the top row -- pass its "arguments" to what_if to
+    spend that run.
+
+    "factors" is a hypothesis to search, not a finding: the capacities of the top resource
+    rows that hold 95% of the rows (integer, from one below to two above the current value),
+    then the sensitivity paths that change the answer, at most 4; pass it to optimize as
+    `factors` unchanged. "factors_from" says where each one came from.
+
+    Returns {"model", "kpi", "mode": "level" | "change", "n", "completed", "unit", "value",
+    "rows": [{"row", "label", "resource", ...}], "coverage" (time and WIP), "summary",
+    "notes", "suggested_test": {"label", "tool", "arguments", "text"} or null,
+    "factors": [{"path", "kind", "low", "high"}], "factors_from": [text]}.
+    """
+    layout = workspace().document(model).to_layout()
+    try:
+        out = explain.explain_kpi(layout, kpi, overrides,
+                                  replications=max(2, min(int(replications), 200)), cap=max(2, min(int(cap), 200)),
+                                  seed=seed, run_length=run_length, warmup=warmup,
+                                  should_stop=_budget(max_seconds))
+    except ModelValidationError as exc:
+        raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
+                        "fix the override paths (list_override_paths shows the valid ones)")
+    except ValueError as exc:
+        raise ToolError("E_UNKNOWN_KPI", str(exc),
+                        "name a KPI from run_model's digest or get_kpi_table") from None
+    # Bounds from the model optimize will search, the saved one, not the overridden one.
+    found = explain.factors_from(layout, out,
+                                 sensitivity if isinstance(sensitivity, dict) else None)
+    note_asked(model, {"tool": "explain_kpi", "kpi": kpi, "overrides": overrides or [],
+                       "suggested_test": out.get("suggested_test"), "factors": found["factors"]})
+    return {"model": model, **out, "notes": out["notes"] + found["notes"],
+            "factors": found["factors"], "factors_from": found["from"]}
 
 
 _document_args("investment_case", model="Workspace name of the model to run; it needs an "
@@ -430,7 +510,12 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
     Returns {"model", "best", "best_mean", "converged", "budget_used",
     "feasible", "history": [{"point", "mean", "feasibility"}] (last 20),
     "confirmed": {"best", "confidence", "guaranteed", "candidates"} or null,
-    "pareto": [{"point", "objectives"}] (nsga2 only), "sampler"}.
+    "pareto": [{"point", "objectives"}] (nsga2 only), "sampler", "laws": {"passed",
+    "partial", "replications", "seed", "note"}}: the law checks of the best point, from an
+    extra batch of `replications_per_point` replications on the search's own seeds (not in
+    `budget_used`). A law warning annotates the winner (censored, over-utilised, biased by the
+    empty start); it never changes `best` or `confirmed`, which are about means. Say the
+    warning beside the answer.
     """
     doc = workspace().document(model)
     try:
@@ -439,14 +524,14 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
         raise ToolError("E_BAD_FACTOR", str(exc),
                         "a factor is {\"path\", \"kind\", \"low\", \"high\"} or "
                         "{\"path\", \"kind\": \"categorical\", \"levels\": [...]}") from None
+    stop = _budget(max_seconds)         # one budget: the search and its law batch
     result = optimize_mod.optimize(doc.to_layout(), specs, response=response, goal=goal,
                                    constraints=[tuple(c) for c in (constraints or ())],
                                    budget=int(budget),
                                    replications_per_point=int(replications_per_point),
                                    run_length=run_length, seed=seed, method=method,
                                    objectives=[tuple(o) for o in (objectives or ())],
-                                   select_top=int(confirm_top),
-                                   should_stop=_budget(max_seconds))
+                                   select_top=int(confirm_top), should_stop=stop)
     history = _records(result.history.tail(20),
                        {"point": "Point", "mean": ("Mean", _finite), "feasibility": "Feasibility"})
     out = {"model": model, "best": result.best, "best_mean": _finite(result.best_mean),
@@ -457,6 +542,9 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
         names = [k for k, _ in objectives]
         out["pareto"] = [{"point": row["Point"], "objectives": {k: _finite(row[k]) for k in names}}
                          for _, row in result.pareto.iterrows()]
+    out["laws"] = laws.at_point(doc.to_layout(), result.best_overrides,
+                                replications=max(int(replications_per_point), 2), seed=seed,
+                                run_length=run_length, should_stop=stop)
     return out
 
 
@@ -468,12 +556,16 @@ _document_args("calibrate", model="Workspace name of the model to calibrate.",
                replications_per_point="Replications per candidate point.",
                seed="Base seed.",
                apply="Store the fitted values as a \"Calibrated\" scenario on the model.",
+               method="\"optimize\" (default): search for the best point. \"abc\": rejection "
+                      "ABC as well, a posterior range per factor.",
+               accept="abc only: share of prior samples accepted (default 0.05, at least 20).",
                max_seconds="Wall-clock budget.")
 
 
 @tool()
 def calibrate(model: str, targets: list, factors: list, budget: int = 120,
               replications_per_point: int = 5, seed: int = 0, apply: bool = False,
+              method: str = "optimize", accept: float = 0.05,
               max_seconds: float | None = None) -> dict:
     """Tune model parameters until the model reproduces measured KPIs.
 
@@ -484,9 +576,18 @@ def calibrate(model: str, targets: list, factors: list, budget: int = 120,
     confidence interval too -- a pass whose interval is far wider than the
     tolerance has not really been demonstrated.
 
+    `method="abc"` draws budget - replications_per_point prior samples over the
+    factors' boxes, one replication each, and keeps the nearest `accept` share
+    by the same objective. Say the tolerance and the accepted count with the
+    ranges: they describe single runs near the data, not a mean.
+
     Returns {"model", "best", "objective", "passed", "budget_used", "converged",
     "overrides", "targets": [{"kpi", "observed", "simulated", "lb", "ub",
-    "error", "tolerance", "pass"}]}.
+    "error", "tolerance", "pass"}]}; with abc also "method", "samples",
+    "accepted", "abc_tolerance", "posterior": [{"factor", "median", "p5",
+    "p95"}] and "notes". "laws" are the best point's law checks, as `optimize` gives them (an
+    extra batch of `replications_per_point`, not in `budget_used`): a warning annotates the
+    fit, it never changes it.
     """
     doc, before = _open(model)
     from nagasim import calibrate as calibrate_mod
@@ -496,9 +597,11 @@ def calibrate(model: str, targets: list, factors: list, budget: int = 120,
     except TypeError as exc:
         raise ToolError("E_BAD_FACTOR", str(exc),
                         "a factor is {\"path\", \"kind\", \"low\", \"high\"}") from None
+    stop = _budget(max_seconds)         # one budget: the search and its law batch
     result = calibrate_mod.calibrate(doc.to_layout(), targets, specs, budget=int(budget),
                                      replications_per_point=int(replications_per_point),
-                                     seed=seed, should_stop=_budget(max_seconds))
+                                     seed=seed, method=method, accept=float(accept),
+                                     should_stop=stop)
     rows = _records(result.table, {
         "kpi": "KPI", "observed": ("Observed", _finite), "simulated": ("Simulated", _finite),
         "lb": ("LB", _finite), "ub": ("UB", _finite), "error": ("Error", _finite),
@@ -508,7 +611,21 @@ def calibrate(model: str, targets: list, factors: list, budget: int = 120,
     out = {"model": model, "best": result.best, "objective": _finite(result.objective),
            "passed": bool(result.passed), "budget_used": int(result.budget_used),
            "converged": bool(result.converged), "overrides": list(result.overrides),
-           "targets": rows}
+           "targets": rows,
+           "laws": laws.at_point(doc.to_layout(), result.overrides,
+                                 replications=int(replications_per_point), seed=seed,
+                                 should_stop=stop)}
+    if result.method == "abc":
+        out.update({"method": "abc", "samples": int(len(result.samples)),
+                    "accepted": int(result.accepted), "abc_tolerance": _finite(result.tolerance),
+                    "posterior": _records(result.posterior, {
+                        "factor": "Factor", "median": ("Median", _finite),
+                        "p5": ("P5", _finite), "p95": ("P95", _finite)}),
+                    "notes": list(result.notes)})
+    kept = {"tool": "calibrate", "method": result.method}
+    if result.method == "abc":      # the basis of the trust card's parameter row (D739)
+        kept.update(samples=out["samples"], accepted=out["accepted"], abc_tolerance=out["abc_tolerance"])
+    note_asked(model, kept)
     if not apply:
         return out
     doc.set_scenarios(_upsert(doc.scenarios, result.as_scenario()))
@@ -545,7 +662,9 @@ def forecast(model: str, horizon: float, replications: int = 100, events: list |
 
     Returns {"model", "horizon", "replications", "kpis": [{"kpi", "mean", "lb",
     "ub", "q05", "q95", "min", "max"}], "events": [{"event", "kpi", "condition",
-    "probability", "wilson_lb", "wilson_ub"}], "series": [names]}.
+    "probability", "wilson_lb", "wilson_ub"}], "series": [names], "laws": {"passed",
+    "partial", "replications": 0, "seed", "note"}}: the law checks of the forecast's own runs
+    (no extra run); a warning says why a KPI cannot be read at face value.
     """
     from nagasim import forecast as forecast_mod
 
@@ -574,6 +693,7 @@ def forecast(model: str, horizon: float, replications: int = 100, events: list |
             "wilson_ub": ("Wilson UB", _finite),
         }),
         "series": result.series_names[:MAX_ROWS],
+        "laws": laws.of_run(doc.to_layout(), result.results, what="forecast"),
     }
 
 
@@ -654,13 +774,19 @@ _document_args("fit_surrogate", model="Workspace name of the model.",
                replications="Replications per design point.",
                run_length="Run length in base time units.",
                seed="Base seed.",
-               max_seconds="Wall-clock budget for the whole design.")
+               max_seconds="Wall-clock budget for the whole design and its confirmation.",
+               confirm_top="Confirm the surface's best N suggestions by simulation (KN "
+                           "ranking and selection on common random numbers); 0 (default) "
+                           "fits only. Refused when the surface shows lack of fit.",
+               goal="\"min\" or \"max\": the direction the suggestions and their "
+                    "confirmation look for (with confirm_top).")
 
 
 @tool()
 def fit_surrogate(model: str, factors: list, response: str, design: str = "full:2",
                   kind: str = "quadratic", replications: int = 5, run_length: float | None = None,
-                  seed: int = 0, max_seconds: float | None = None) -> dict:
+                  seed: int = 0, max_seconds: float | None = None, confirm_top: int = 0,
+                  goal: str = "min") -> dict:
     """Run a design of experiments and fit a response-surface surrogate over it
     -- a fast stand-in for the simulation, for optimisation or
     what-if exploration without spending more replications.
@@ -672,9 +798,16 @@ def fit_surrogate(model: str, factors: list, response: str, design: str = "full:
     "quadratic" or "auto" (or "gp"/"forest" with scikit-learn) may do better
     than "linear".
 
+    With `confirm_top` N, the surface's best N distinct points are simulated and compared
+    by KN (as `optimize` confirms its winner): the surface proposes, the runs decide. It is
+    refused when `lack_of_fit` is true ("confirm_refused" says why), since that surface's
+    ranking is not worth runs. The confirmed winner carries its "laws", as optimize's does.
+
     Returns {"model", "response", "kind", "n_points", "r2", "r2_adj",
     "cv_rmse", "lack_of_fit", "coefficients": [{"term", "coefficient",
-    "std_error"}] (empty for gp/forest)}.
+    "std_error"}] (empty for gp/forest)}; with confirm_top also "confirmed": {"best",
+    "overrides", "confidence", "guaranteed", "candidates": [{"point", "mean", "lb", "ub",
+    "n"}], "runs"} or null, "confirm_refused" (text or null) and "laws".
     """
     from nagasim import surrogate as surrogate_mod
     from nagasim.optimize import build_design
@@ -686,15 +819,41 @@ def fit_surrogate(model: str, factors: list, response: str, design: str = "full:
         raise ToolError("E_BAD_FACTOR", str(exc),
                         "a factor is {\"path\", \"kind\", \"low\", \"high\"} or "
                         "{\"path\", \"kind\": \"categorical\", \"levels\": [...]}") from None
+    if goal not in ("min", "max"):
+        raise ToolError("E_BAD_GOAL", f"goal must be \"min\" or \"max\", not {goal!r}", "use min or max")
+    stop = _budget(max_seconds)         # one budget: the design, the confirmation, its laws
     design_frame = build_design(design, specs, seed)
-    design_result = optimize_mod.run_design(doc.to_layout(), specs, design_frame,
+    layout = doc.to_layout()
+    design_result = optimize_mod.run_design(layout, specs, design_frame,
                                             responses=[response], replications=int(replications),
                                             seed=int(seed), run_length=run_length,
-                                            should_stop=_budget(max_seconds))
+                                            should_stop=stop)
     model_fit = surrogate_mod.fit_surrogate(design_result, response, kind=kind)
     coefficients = [{"term": t, "coefficient": _finite(c), "std_error": _finite(s)}
                     for t, c, s in zip(model_fit.terms, model_fit.coef, model_fit.se)]
-    return {"model": model, "response": response, "kind": model_fit.kind,
-            "n_points": len(design_result.design), "r2": _finite(model_fit.r2),
-            "r2_adj": _finite(model_fit.r2_adj), "cv_rmse": _finite(model_fit.cv_rmse),
-            "lack_of_fit": bool(model_fit.lack_of_fit), "coefficients": coefficients}
+    out = {"model": model, "response": response, "kind": model_fit.kind,
+           "n_points": len(design_result.design), "r2": _finite(model_fit.r2),
+           "r2_adj": _finite(model_fit.r2_adj), "cv_rmse": _finite(model_fit.cv_rmse),
+           "lack_of_fit": bool(model_fit.lack_of_fit), "coefficients": coefficients}
+    if int(confirm_top) <= 0:
+        return out
+    out.update(confirmed=None, confirm_refused=None, laws=None)
+    try:
+        sel = model_fit.confirm(layout, max(2, min(int(confirm_top), 10)), goal=goal,
+                                replications=int(replications), seed=int(seed),
+                                run_length=run_length, should_stop=stop)
+    except ValueError as exc:           # lack of fit: the suggestions are not worth runs
+        out["confirm_refused"] = str(exc)
+        return out
+    if sel is None:
+        out["confirm_refused"] = "fewer than two distinct points to compare"
+        return out
+    out["confirmed"] = {
+        "best": sel.best, "overrides": sel.best_overrides, "confidence": sel.confidence,
+        "guaranteed": bool(sel.guaranteed), "runs": int(sel.budget_used),
+        "candidates": _records(sel.table, {"point": "Candidate", "mean": ("Mean", _finite),
+                                           "lb": ("LB", _finite), "ub": ("UB", _finite),
+                                           "n": ("N", int)})}
+    out["laws"] = laws.at_point(layout, sel.best_overrides, replications=max(int(replications), 2),
+                                seed=int(seed), run_length=run_length, should_stop=stop)
+    return out

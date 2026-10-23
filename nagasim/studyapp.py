@@ -361,6 +361,8 @@ _CHAT_STYLE = """#naga-chat{max-width:1100px;margin:8px auto;padding:8px 16px;bo
 #chat-log p{margin:4px 0;white-space:pre-wrap}.chat-user{font-weight:600}.chat-tool{color:#666;font-size:13px}
 .chat-error{color:#7a1f1f;font-weight:600}#chat-in{width:100%;box-sizing:border-box;min-height:3em}
 .chat-note{color:#666;font-size:13px;margin-left:6px}
+.chat-slot{display:inline-block;min-width:10ch;visibility:hidden}.chat-slot.on{visibility:visible}
+.chat-opts{margin:4px 0}.chat-opts button{display:block;width:100%;text-align:left;white-space:normal}
 @media (min-width:1100px){body{display:grid;grid-template-columns:minmax(0,1fr) 380px;align-items:start}
 #naga-msg{grid-column:1/-1;grid-row:1}#page{grid-column:1;grid-row:2}
 #naga-chat{grid-column:2;grid-row:2;position:sticky;top:8px;max-height:calc(100vh - 32px);overflow:auto;
@@ -370,9 +372,12 @@ _CHAT_BODY = """<section id="naga-chat" aria-label="Assistant">
 <h2>Assistant</h2>
 <div id="chat-log" aria-live="polite"></div>
 <textarea id="chat-in" placeholder="Ask the assistant about the study, or tell it what to do next"></textarea>
-<div><button id="chat-send">Send</button><button id="chat-stop" hidden>Stop</button>
+<div><button id="chat-send">Send</button><button id="chat-next">What next?</button>
 <button id="chat-mic" hidden>Speak</button><span id="chat-mic-note" class="chat-note" hidden>Your browser may send speech to its vendor's service.</span>
-<label class="chat-note"><input type="checkbox" id="chat-aloud"> Read answers aloud</label></div>
+<label class="chat-note"><input type="checkbox" id="chat-aloud"> Read answers aloud</label>
+<label class="chat-note" id="chat-hands-box" hidden><input type="checkbox" id="chat-hands"> Hands-free (say "stop" to end)</label>
+<span id="chat-listen" class="chat-note chat-slot" aria-live="polite">Listening...</span>
+<button id="chat-stop" hidden>Stop</button></div>
 </section>"""
 
 _TEXT = r"""  // The assistant's answer is model output: a small Markdown subset (paragraphs, line breaks,
@@ -441,7 +446,13 @@ _CHAT = r"""  var since = 0, turn = null;
   var logEl = document.getElementById("chat-log"), inEl = document.getElementById("chat-in");
   var sendEl = document.getElementById("chat-send"), stopEl = document.getElementById("chat-stop");
   var micEl = document.getElementById("chat-mic"), aloudEl = document.getElementById("chat-aloud");
-  var answerEl = null, answerText = "", lastAnswer = "", toolEl = null;
+  var nextEl = document.getElementById("chat-next"), handsEl = document.getElementById("chat-hands");
+  var listenEl = document.getElementById("chat-listen");
+  var answerEl = null, answerText = "", lastAnswer = "", toolEl = null, turnText = "";
+  // Hands-free: after an answer is read aloud, listen again; "stop" or the toggle ends it. Never
+  // listens while speaking or while a turn runs.
+  var hands = false, active = null;     // active: the recogniser listening now
+  var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   function line(cls, text, tag) {
     var p = document.createElement(tag || "p");
     p.className = cls;
@@ -450,54 +461,107 @@ _CHAT = r"""  var since = 0, turn = null;
     logEl.scrollTop = logEl.scrollHeight;
     return p;
   }
-  function speak(text) {
+  // `then` runs when the reading ends (or at once when no voice fits): hands-free listens there.
+  function speak(text, then) {
     var code = language(text), voice = voiceFor(code, window.speechSynthesis.getVoices());
-    if (!voice) { return; }     // the default voice follows the OS language, not the answer's
+    if (!voice) { if (then) { then(); } return; }    // the default voice follows the OS language, not the answer's
     var u = new SpeechSynthesisUtterance(plain(text));
     u.lang = voice.lang;
     u.voice = voice;
+    if (then) { u.onend = then; u.onerror = then; }
     window.speechSynthesis.speak(u);
   }
+  // The options of a "What next?" (from the study's numbers) and the assistant's own ideas: one
+  // button each, which asks the assistant to go with it. Nothing runs before the person picks.
+  function pickText(kind, i, o) {
+    if (kind === "options") { return "Go with option " + (i + 1) + ": " + o.title + "."; }
+    return "Go with your idea " + (i + 1) + ": " + o.title + " (call " + o.tool + " with "
+      + JSON.stringify(o.arguments || {}) + ").";
+  }
+  function choices(ev) {
+    var items = ev.items || [];
+    if (!items.length && !ev.text) { return; }
+    var box = document.createElement("div");
+    box.className = "chat-opts";
+    box.setAttribute("data-kind", ev.kind);
+    var head = document.createElement("p");
+    head.className = "chat-tool";
+    head.textContent = ev.kind === "ideas"
+      ? "Ideas of the assistant (not measured; check them)" + (ev.text ? ". " + ev.text : "")
+      : (ev.text || "Options") + ":";
+    box.appendChild(head);
+    items.forEach(function (o, i) {
+      var b = document.createElement("button");
+      b.textContent = (i + 1) + ". " + o.title + ": " + o.why + (o.cost ? " (" + o.cost + ")" : "");
+      b.onclick = function () { chatSend(pickText(ev.kind, i, o)); };
+      box.appendChild(b);
+    });
+    logEl.appendChild(box);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
   function show(ev) {
-    if (ev.kind === "user") { answerEl = null; line("chat-user", "You: " + ev.text); }
+    if (ev.kind === "user") { answerEl = null; turnText = ""; line("chat-user", "You: " + ev.text); }
     else if (ev.kind === "text") {
       // Streaming: the turn's whole text is rendered again as it grows (a mark may close later).
       if (!answerEl) { answerEl = line("chat-answer", "", "div"); answerText = ""; }
       answerText += ev.text;
+      turnText += ev.text;
       lastAnswer = answerText;
       markdown(answerEl, answerText);
       logEl.scrollTop = logEl.scrollHeight;
     } else if (ev.kind === "tool") { answerEl = null; toolEl = line("chat-tool", ev.text + "..."); }
     else if (ev.kind === "tool_failed") {
       if (toolEl) { toolEl.textContent = toolEl.textContent.replace(/\.\.\.$/, "") + ": " + ev.text; }
-    } else if (ev.kind === "error") { answerEl = null; line("chat-error", ev.text); }
+    } else if (ev.kind === "options" || ev.kind === "ideas") { answerEl = null; choices(ev); }
+    else if (ev.kind === "error") { answerEl = null; line("chat-error", ev.text); }
     else if (ev.kind === "done") {
-      if (aloudEl.checked && lastAnswer && window.speechSynthesis) { speak(lastAnswer); }
+      var again = function () { if (hands) { setTimeout(listen, 0); } };
+      if ((aloudEl.checked || hands) && turnText && window.speechSynthesis) { speak(turnText, again); }
+      else { again(); }
       answerEl = null;
     }
   }
   function running(on) {
     sendEl.disabled = on;
+    nextEl.disabled = on;
     stopEl.hidden = !on;
     setBusy(on);
   }
-  // Poll the turn's events every 700 ms until it ends; resolves then.
-  function follow() {
-    return new Promise(function (resolve) {
-      function tick() {
-        getJson("./api/chat?since=" + since).then(function (r) {
-          r.events.forEach(show);
-          since += r.events.length;
-          if (r.running) { running(true); setTimeout(tick, 700); } else { running(false); resolve(); }
-        }).catch(function (e) { line("chat-error", e.message); running(false); resolve(); });
+  // One poller for the room's events, every 700 ms while a turn runs or ideas are pending. A waiter
+  // (a turn being followed) is released by the first answer asked for after it began waiting.
+  var waiters = [], polling = false;
+  function tick() {
+    var mine = waiters.slice();
+    getJson("./api/chat?since=" + since).then(function (r) {
+      r.events.forEach(show);
+      since += r.events.length;
+      running(r.running);
+      if (!r.running) {
+        waiters = waiters.filter(function (w) { return mine.indexOf(w) < 0; });
+        mine.forEach(function (w) { w(); });
       }
-      tick();
+      if (r.running || r.pending || waiters.length) { setTimeout(tick, 700); } else { polling = false; }
+    }).catch(function (e) {
+      line("chat-error", e.message);
+      running(false);
+      polling = false;
+      var all = waiters;
+      waiters = [];
+      all.forEach(function (w) { w(); });
     });
   }
-  function chatSend(text) {
+  function follow() {
+    return new Promise(function (resolve) {
+      waiters.push(resolve);
+      if (!polling) { polling = true; tick(); }
+    });
+  }
+  function chatSend(text, extra) {
     if (turn) { return turn; }
     running(true);
-    turn = post("./api/chat", { text: text }).then(function (out) {
+    var body = { text: text, voice: hands };
+    Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
+    turn = post("./api/chat", body).then(function (out) {
       if (out && out.error) { throw new Error(out.error.message || "The assistant refused."); }
       return follow();
     }).catch(function (e) { line("chat-error", e.message); running(false); })
@@ -510,6 +574,7 @@ _CHAT = r"""  var since = 0, turn = null;
     inEl.value = "";
     chatSend(text);
   };
+  nextEl.onclick = function () { chatSend("What next?", { what_next: true }); };
   // Enter sends, Shift+Enter is a new line; not while an input method composes a character.
   inEl.addEventListener("keydown", function (ev) {
     if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) { return; }
@@ -517,26 +582,57 @@ _CHAT = r"""  var since = 0, turn = null;
     if (!sendEl.disabled) { sendEl.onclick(); }
   });
   stopEl.onclick = function () { post("./api/chat/stop", {}).catch(function () {}); };
-  var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function listening(on) { listenEl.className = "chat-note chat-slot" + (on ? " on" : ""); }
+  // One utterance: what was said goes to the assistant as a spoken turn; "stop" ends hands-free.
+  function listen(manual) {
+    if (!Recognition || active || turn || (!hands && !manual)) { return; }
+    if (window.speechSynthesis && window.speechSynthesis.speaking) { return; }
+    var rec = new Recognition(), sent = false;
+    active = rec;
+    rec.lang = lastAnswer ? language(lastAnswer) : (navigator.language || "en-US");
+    rec.interimResults = true;
+    rec.onresult = function (ev) {
+      var text = "", final = false;
+      for (var i = 0; i < ev.results.length; i++) {
+        text += ev.results[i][0].transcript;
+        final = ev.results[i].isFinal;
+      }
+      inEl.value = text;
+      if (!final || sent) { return; }
+      sent = true;
+      inEl.value = "";
+      if (/^\s*stop\b/i.test(text)) { setHands(false); return; }
+      chatSend(text.trim(), { voice: true });
+    };
+    // #945: Chrome ends a recognition after a few seconds of silence with "no-speech"; hands-free
+    // listens again (listen() itself waits while speaking or while a turn runs). A real failure
+    // ends hands-free, so a refused microphone does not loop.
+    rec.onerror = function (ev) {
+      var code = ev && ev.error;
+      if (code === "no-speech" || code === "aborted") { return; }
+      say("The microphone did not work here.");
+      if (hands) { setHands(false); }
+    };
+    rec.onend = function () {
+      if (active === rec) { active = null; }
+      listening(false);
+      if (hands && !sent) { setTimeout(listen, 250); }
+    };
+    listening(true);
+    rec.start();
+  }
+  function setHands(on) {
+    hands = on;
+    handsEl.checked = on;
+    if (!on && active) { var r = active; active = null; listening(false); r.abort(); }
+    if (on) { listen(); }
+  }
   if (Recognition) {
     micEl.hidden = false;
     document.getElementById("chat-mic-note").hidden = false;
-    micEl.onclick = function () {
-      var rec = new Recognition();
-      rec.lang = lastAnswer ? language(lastAnswer) : (navigator.language || "en-US");
-      rec.interimResults = true;
-      rec.onresult = function (ev) {
-        var text = "", final = false;
-        for (var i = 0; i < ev.results.length; i++) {
-          text += ev.results[i][0].transcript;
-          final = ev.results[i].isFinal;
-        }
-        inEl.value = text;
-        if (final) { sendEl.onclick(); }
-      };
-      rec.onerror = function () { say("The microphone did not work here."); };
-      rec.start();
-    };
+    document.getElementById("chat-hands-box").hidden = false;
+    micEl.onclick = function () { listen(true); };
+    handsEl.onchange = function () { setHands(handsEl.checked); };
   }
   if (window.speechSynthesis) { window.speechSynthesis.getVoices(); }   // some browsers load them late
   // A reload of the page keeps the conversation: show what the room already holds, and follow a

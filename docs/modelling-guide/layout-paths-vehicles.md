@@ -213,6 +213,21 @@ Then the two modes differ:
 `conveyor_summary` reports entered, exited, average and maximum occupancy, blocked time and
 average transit time.
 
+**Stops along the belt.** A belt can also hold each part at points along its length, with
+`stops`: `at` is the distance from the entry, `time` a number or an expression, and an optional
+`resource` is seized for the stop and released when its time ends.
+
+```json
+{"length": 12, "speed": 0.5, "spacing": 1.2,
+ "stops": [{"at": 4, "time": 30, "resource": "Labeller"}, {"at": 8, "time": "TRIA(5, 8, 12)"}]}
+```
+
+On an accumulating belt the parts behind pack against a stop as they do against the end, and
+each section between two stops holds `floor(gap / spacing)` parts, so a queue reaches back past
+a stop only by holding the part that is there. A non-accumulating belt stops whole while a part
+is at a stop. The `conveyor_stops` frame, present only when a belt has stops, gives each stop's
+parts, resource waits, busy share and blocked share.
+
 !!! note "A full belt stops the machine feeding it"
     A conveyor's cells are a finite space, exactly like a buffer's places: a station that has
     finished a part and finds the belt full -- or stopped, or inside the entry rhythm
@@ -227,8 +242,8 @@ Recorded so a model written today keeps meaning the same thing later:
   freely, and there is no deadlock avoidance -- only detection;
 * no way to hold a vehicle across several legs outside a TRANSPORT; a multi-load tour is
   planned nearest-neighbour (not the shortest tour) and never waits for more loads;
-* only the entity at a conveyor's **end** can block the belt, so a belt with mid-line diverts
-  needs one conveyor per zone;
+* a conveyor's stops hold a part on the belt, but only its **end** hands a part on, so a belt
+  with mid-line diverts needs one conveyor per zone; a state cannot carry a belt with stops;
 * gantry cranes sharing a runway do not collide with each other -- there is no ordering
   constraint on the shared axis, only each crane's own two-axis geometry.
 

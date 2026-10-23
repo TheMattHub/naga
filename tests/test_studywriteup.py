@@ -40,7 +40,8 @@ def sid(built):
 
 
 def _build(ws):
-    sid = T.call("study_start", question=f"Is one server enough? {EVIL}")["study"]
+    # quick: replications cap at 50 not 200; the write-up tests read wording and structure
+    sid = T.call("study_start", question=f"Is one server enough? {EVIL}", size="quick")["study"]
     goals = [{"id": "g1", "text": "time", "kpi": KPI, "high": 1000},
              {"id": "g2", "text": "waits", "kpi": "Server/Time in Queue", "share_above": 5, "high": 0.9}]
     r = T.call("study_update", study=sid, changes={

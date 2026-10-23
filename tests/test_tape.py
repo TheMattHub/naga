@@ -89,11 +89,12 @@ def assert_tape_equals_timeline(layout: dict, events, run: dict, picks: int = 40
                 want = (x0 + (x1 - x0) * share, y0 + (y1 - y0) * share)
             assert [x, y] == pytest.approx(want, abs=2e-3), (where, entity)
         if k > 0 and "mvx" not in frame:        # the moves of the step, as the scene names them
-            want = [[e_type.upper(), source, target]
-                    for entity, e_type, source, target, _t, _branch
+            want = [[e_type.upper(), source, target, when]
+                    for entity, e_type, source, target, when, _branch
                     in reference.moves_between(times[k - 1], t)
                     if entity not in state["in_transit"] and source in blocks and target in blocks]
-            got = [[scene["types"][i]["name"], names[a], names[b]] for i, a, b in frame.get("mv", [])]
+            got = [[scene["types"][i]["name"], names[a], names[b], when]
+                   for i, a, b, when in frame.get("mv", [])]
             assert got == want, where
         if floor:
             placed = 0

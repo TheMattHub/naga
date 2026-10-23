@@ -607,7 +607,7 @@ def _capture_help(args, main) -> str:
 CLI_GROUPS = (
     ("run-and-compare", "Run and compare",
      "Run a model, compare scenarios and search for the best settings.",
-     ("examples", "run", "scenarios", "invest", "fit", "doe", "optimize", "policy-eval")),
+     ("examples", "run", "scenarios", "explain", "invest", "fit", "uncertainty", "doe", "optimize", "policy-eval")),
     ("model-files", "Check and edit model files",
      "Validate, format, diff, merge and test model files, and export them as code.",
      ("schema", "validate", "fmt", "export", "diff", "merge", "check", "verify", "facts", "ci-template")),
@@ -616,7 +616,7 @@ CLI_GROUPS = (
      ("generate", "discover", "sdimport")),
     ("twin", "Digital twin",
      "Read a plant, start a run from its state, calibrate and forecast.",
-     ("bind", "watch", "state", "plant", "twin", "calibrate", "forecast")),
+     ("bind", "watch", "state", "plant", "twin", "plc-write", "calibrate", "forecast")),
     ("plan-and-share", "Plan, inspect and share",
      "Plan with a solver, find the loops that drive a system dynamics model, and share a model in a browser.",
      ("plan", "loops", "viewer")),

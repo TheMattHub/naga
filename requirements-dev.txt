@@ -7,3 +7,4 @@ jsonschema>=4        # tests/test_schema.py validates bundled models against the
 cryptography>=42     # tests/conftest.py makes the TLS certificate the live-reader tests use
 ortools>=9.10        # optional at run time: nagasim/cpsat.py imports it lazily; listed so CI runs its tests
 cascadio==0.1.1      # optional at run time (the `cad` extra): STEP/IGES import; listed so CI runs tests/test_meshimport.py in full
+usd-core>=25.5,<27   # optional at run time (the `usd` extra): replay to USD; listed so CI runs tests/test_usd_export.py in full

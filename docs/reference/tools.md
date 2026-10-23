@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 94 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 96 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -68,6 +68,7 @@ The 94 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `get_kpi_table` | yes | Page through one results frame of the last `run_model` for this model. |
 | `run_scenarios` |  | Run the model's scenarios and compare them against the baseline with confidence intervals and a significance verdict. |
 | `what_if` |  | Ask "what if I change this?" without editing the model: run the baseline and the changed model on paired seeds, doubling replications (start, 2x, . |
+| `explain_kpi` |  | What makes up a KPI, in one call: its contributors, ranked, each a measured number with its 95% interval, plus one suggested what_if test of the top one (never run). |
 | `investment_case` |  | Run the model's scenarios and price each against the baseline: extra capex, saving per year, payback, NPV and ROI over the `investment` section's horizon, with confidence intervals from several replications. |
 | `run_to_precision` |  | Keep adding replications until one KPI's confidence interval is narrow enough, then report how many it took. |
 | `run_reality_checks` |  | Run the model's Vensim-style reality checks: an input imposed on the model (e.g. |
@@ -87,6 +88,7 @@ The 94 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `resolve_data_bindings` |  | Read the model's data bindings and report what each one produced. |
 | `set_initial_state` |  | Give the model a WARM START: work already in the system at t=0. |
 | `fit_distribution` | yes | Fit candidate distributions to observed data and rank them, so a block's duration comes from measurements instead of a guess. |
+| `input_uncertainty` |  | How much of each KPI's spread comes from the data its inputs were fitted to. |
 | `get_plant_timeline` | yes | Check a plant mapping against a model and, given a recorded plant log, say what the plant looked like at the log's last instant. |
 | `get_twin_monitor` | yes | What the plant looks like now, as the running twin last wrote it. |
 | `get_twin_forecast` | yes | The running twin's latest forecast, and how its earlier ones compare with what the plant then did. |

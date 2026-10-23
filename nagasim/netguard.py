@@ -301,7 +301,9 @@ def confine_path(candidate, root) -> Path:
 # dialog confirmed. Defining one is the consent for that host and port, and for nothing else.
 CONNECTION_KINDS = {"rest": ("https", "http"), "mqtt": ("mqtts", "mqtt"), "opcua": ("opc.tcp",),
                     "modbus": ("modbus",)}
-CONNECTION_USES = ("read", "outbox")
+# "write" (D743, D744): a Modbus connection `naga plc-write` writes setpoints over, to this
+# machine only (`vet_connection`); every reader refuses it (`connection_for`).
+CONNECTION_USES = ("read", "outbox", "write")
 _PORTS = {"https": 443, "http": 80, "mqtts": 8883, "mqtt": 1883, "opc.tcp": 4840, "modbus": 502}
 _TLS_SCHEMES = ("https", "mqtts")
 # Every bound a source could otherwise choose for us: name -> (default, ceiling). The
@@ -379,7 +381,7 @@ class Connection:
     limits: tuple = ()                  # ((name, value), ...) of LIMITS the caller moved
     unit: int = 1                       # modbus: the unit (slave) id
     registers: tuple = ()               # modbus: the caller's register map, ((name, Register), ...)
-    use: str = "read"                   # "outbox": reserved for PHASE7 7.15; never a source
+    use: str = "read"                   # "outbox" or "write": never a source (`connection_for`)
 
     @property
     def url(self) -> str:
@@ -502,6 +504,9 @@ def _connection(name: str, spec, base: Path, secrets) -> Connection:
     use = spec.get("use", "read")
     if use not in CONNECTION_USES:
         raise _bad(name, f"\"use\" must be one of {', '.join(CONNECTION_USES)}")
+    if use == "write" and kind != "modbus":
+        raise _bad(name, '"use": "write" is for a modbus connection only',
+                   "naga plc-write writes Modbus holding registers, and nothing else")
     auth, header, username = spec.get("auth", ""), spec.get("header", ""), spec.get("username", "")
     root, security = spec.get("root", ""), spec.get("security", "None")
     if not all(isinstance(v, str) for v in (auth, header, username, root, security)):
@@ -588,7 +593,8 @@ def connection_for(source: dict, policy: NetworkPolicy) -> Connection:
                              f"source '{source.get('name')}': no connection named '{name}' is "
                              f"defined, so nothing was opened", _CONNECTIONS_HINT)
     if conn.kind != kind or conn.use != "read":
-        what = f"a {conn.kind} connection" if conn.use == "read" else "kept for an outbox"
+        what = f"a {conn.kind} connection" if conn.use == "read" \
+            else "kept for writes" if conn.use == "write" else "kept for an outbox"
         raise NetworkRefused("E_DATA_CONNECTION",
                              f"source '{source.get('name')}': connection '{name}' is {what}, "
                              f"not a {kind} source's", _CONNECTIONS_HINT)
@@ -618,8 +624,15 @@ def vet_connection(conn: Connection) -> list:
     may then be opened to. Link-local, multicast, reserved and unspecified are always
     refused; loopback, private and CGNAT space unless the caller's file says `private`. A
     credential over a channel that is not encrypted is refused unless every address is this
-    machine: nothing turns that off."""
+    machine: nothing turns that off. A connection kept for writes reaches this machine only
+    (D744: a plant's safety system owns real writes), whatever else its file says."""
     addresses = _addresses(conn.host, conn.port)
+    if conn.use == "write" and not all(ip.is_loopback for ip in addresses):
+        raise NetworkRefused(
+            "E_PLC_HOST",
+            f"connection '{conn.name}' is kept for writes and '{conn.host}' is not this "
+            f"machine: setpoints are written to a soft PLC on this machine only",
+            "a plant consumer reads the outbox itself; nothing here writes to a plant")
     for ip in addresses:
         if ip.is_link_local or ip.is_unspecified or ip.is_multicast or \
                 (ip.is_reserved and not ip.is_loopback):
@@ -629,7 +642,8 @@ def vet_connection(conn: Connection) -> list:
                 f"connection may reach",
                 "a connection may not reach the link-local metadata address or a multicast "
                 "group")
-        if not conn.private and (ip.is_loopback or ip.is_private or ip in _CGNAT):
+        if not conn.private and conn.use != "write" \
+                and (ip.is_loopback or ip.is_private or ip in _CGNAT):
             raise NetworkRefused(
                 "E_DATA_URL_PRIVATE",
                 f"connection '{conn.name}': '{conn.host}' resolves to the private address {ip}",

@@ -25,10 +25,10 @@ SAFE = ('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">'
         '<rect width="24" height="24"/></svg>')
 
 
-def split(page: str) -> tuple[str, dict]:
+def split(page: str, tokens=None) -> tuple[str, dict]:
     """(the data block as written, the data in it). Also checks the file's whole
     shape: the constant page, the block, the rest of the constant page."""
-    before, after = player._shell().split("__TAPE__")
+    before, after = player.page_shell(tokens=tokens).split("__TAPE__")
     assert page.startswith(before) and page.endswith(after)
     block = page[len(before):len(page) - len(after)]
     return block, json.loads(block)
@@ -37,11 +37,12 @@ def split(page: str) -> tuple[str, dict]:
 def no_address(page: str) -> None:
     """Nothing in the file can make a browser ask for anything."""
     assert page.isascii()
-    assert "//" not in page                     # no address, absolute or scheme-relative
+    # no address, absolute or scheme-relative (a policy hash is base64: it may hold "//")
+    assert "//" not in re.sub(r"'sha256-[A-Za-z0-9+/=]+'", "", page)
     block, _data = split(page)
     fixed = page.replace(block, "")             # the constant page: all that is not data
     assert not re.search(r"https?:|ftp:|wss?:|@import|url\(", fixed, re.I)
-    markup = fixed.replace(player._SCRIPT, "")
+    markup = fixed.replace(player.SCRIPT, "")
     assert not re.search(r"\b(src|href|srcset|action|poster|background|data)\s*=", markup, re.I)
     assert not re.search(r"<(link|img|iframe|object|embed|a|base|form|video|audio|source)\b",
                          markup, re.I)
@@ -59,7 +60,7 @@ def test_the_address_check_looks_inside_a_picture():
     data["pics"] = ["data:image/svg+xml;base64," + base64.b64encode(evil.encode()).decode()]
     no_address(page)
     with pytest.raises(AssertionError):
-        no_address(page.replace(block, player._embed(data)))
+        no_address(page.replace(block, player.embed(data)))
 
 
 # -- state at t equals Timeline, in the file as written ------------------------------
@@ -77,15 +78,16 @@ def test_the_written_file_says_what_timeline_says(model, tmp_path):
     assert sorted(path.name for path in tmp_path.iterdir()) == ["run.html"]   # one file, there
 
 
+@pytest.mark.parametrize("name", [path.name for path in sorted(MODELS.glob("*.json"))])
 @pytest.mark.slow
-def test_every_bundled_model_makes_a_player_with_no_address_in_it():
-    for path in sorted(MODELS.glob("*.json")):
-        layout, recorder = recorded(path.name)
-        for view in tape.VIEWS:
-            page = player.build_player(layout, {BASELINE: recorder}, view=view, samples=250)
-            no_address(page)
-            _block, data = split(page)
-            assert_tape_equals_timeline(layout, recorder.events, data["runs"][BASELINE], picks=10)
+def test_every_bundled_model_makes_a_player_with_no_address_in_it(name):
+    """One test per model: the 60 runs spread over the workers instead of one 40 s test."""
+    layout, recorder = recorded(name)
+    for view in tape.VIEWS:
+        page = player.build_player(layout, {BASELINE: recorder}, view=view, samples=250)
+        no_address(page)
+        _block, data = split(page)
+        assert_tape_equals_timeline(layout, recorder.events, data["runs"][BASELINE], picks=10)
 
 
 # -- text from a model is data --------------------------------------------------------
@@ -145,7 +147,8 @@ def test_text_from_a_model_reaches_the_page_as_data_and_only_as_data():
     # an entity, a closing script or an address: every such character is escaped.
     assert not set("<>&\n") & set(block)
     assert not re.search(r"(?<!\\)/", block)       # every slash is written as backslash-slash
-    assert page.lower().count("<script") == 2 and page.lower().count("</script") == 2
+    # The theme pick in the head, the data block and the drawer (D703).
+    assert page.lower().count("<script") == 3 and page.lower().count("</script") == 3
     no_address(page)
     # ... and every string comes back exactly as the model had it.
     found = strings(data)
@@ -168,19 +171,23 @@ def test_text_from_a_model_reaches_the_page_as_data_and_only_as_data():
 def test_the_script_puts_text_on_the_page_only_as_text():
     """The other half of the proof: no name can become an element, an attribute or
     code, because the script has no way to make one from a string."""
-    script = player._SCRIPT
+    script = player.SCRIPT
     banned = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval",
               "Function", "fetch", "XMLHttpRequest", "WebSocket", "EventSource", "import",
-              "setAttribute", "srcdoc", "location", "cookie", "localStorage", "sessionStorage",
+              "setAttribute", "srcdoc", "location", "cookie", "sessionStorage",
               "navigator", "postMessage", "open", "setTimeout", "setInterval", "Worker",
               "importScripts", "RTCPeerConnection", "createElementNS", "indexedDB"]
     assert [word for word in banned if re.search(rf"\b{re.escape(word)}\b", script)] == []
+    # Storage holds one thing, the reader's light or dark, under one constant key (D703).
+    stored = re.findall(r"localStorage\.(\w+)\(([^)]*)\)", script + player.THEME)
+    assert stored and all(args.startswith('"naga-theme"') for _call, args in stored)
+    assert {call for call, _args in stored} == {"getItem", "setItem", "removeItem"}
     assert "//" not in script and "\\" not in script       # block comments only, no escapes
     assert len(re.findall(r"\.src\b", script)) == 1       # the one place a picture is loaded
     # One place makes elements, from a tag written in the script itself.
     assert script.count("createElement") == 1 and "document.createElement(tag)" in script
     tags = set(re.findall(r"\badd\(([^,)]*)", script))
-    assert tags == {"tag", '"div"', '"span"', '"tr"', '"th"', '"td"', '"option"'}
+    assert tags == {"tag", '"div"', '"span"', '"tr"', '"th"', '"td"', '"button"', '"option"'}
     # Rule 13: the drawer reads the tape and never a trace event.
     named = [kind for kind in sorted(trace_module._RECORDED_EVENTS)
              if re.search(rf"\b{kind}\b", script)]
@@ -194,11 +201,164 @@ def test_the_policy_pins_the_one_script_and_refuses_every_request(tmp_path):
     assert b"\r" not in out.read_bytes()
     policy = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]*)">', page)
     script = re.search(r"<script>(.*)</script>", page, re.S).group(1)
-    digest = base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii")
-    assert policy.group(1) == ("default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
-                               f"script-src 'sha256-{digest}'; base-uri 'none'; form-action 'none'")
+    theme = re.search(r'<script id="theme-pick">(.*?)</script>', page, re.S).group(1)
+    style = re.search(r"<style>(.*)</style>", page, re.S).group(1)
+    assert theme == player.THEME and page.index(theme) < page.index("<body>")
+    assert policy.group(1) == (f"default-src 'none'; img-src data:; style-src 'sha256-{_digest(style)}'; "
+                               f"script-src 'sha256-{_digest(theme)}' 'sha256-{_digest(script)}'; "
+                               "base-uri 'none'; form-action 'none'")
+    assert page.count("<style") == 1 and page.count("<script>") == 1 and " style=" not in page
     assert page.index("Content-Security-Policy") < page.index("<style") < page.index("<script")
     assert page.startswith("<!doctype html>") and '<meta charset="utf-8">' in page[:120]
+
+
+def _digest(text: str) -> str:
+    return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii")
+
+
+# -- the look (D697) ------------------------------------------------------------------
+def test_tokens_colour_the_page_and_stay_pinned():
+    layout, recorder = recorded("two_cell_line.json")
+    plain = player.build_player(layout, {BASELINE: recorder}, samples=50)
+    tokens = {"accent": "#AB12CD", "page": "#101010", "radius": "12", "font": "Georgia, serif"}
+    branded = player.build_player(layout, {BASELINE: recorder}, samples=50, tokens=tokens)
+    style = re.search(r"<style>(.*)</style>", branded, re.S).group(1)
+    assert "--accent: #AB12CD;" in style and "--page: #101010;" in style
+    assert "--radius: 12px;" in style and "--font: Georgia, serif;" in style
+    assert "--accent: #AB12CD;" not in plain and "--accent: #2f6fe0;" in plain   # the console's
+    assert f"style-src 'sha256-{_digest(style)}'" in branded
+    # The data block is the same: the look is the style sheet's, not the tape's.
+    assert split(plain)[0] == branded[len(player.page_shell(tokens={"accent": "#AB12CD", "page": "#101010",
+                                      "radius": "12", "font": "Georgia, serif"}).split("__TAPE__")[0]):]\
+        .split("</script>")[0]
+    for bad in ({"accent": "red;}</style><script>"}, {"font": "x</style>"}, {"radius": "1e9"},
+                {"accent": "#12345"}, {"colour": "#123456"}, {"ink": None},
+                {"light": {}, "dark": {"ink": "#12345"}}, {"dark": {"font": "Arial"}}):
+        with pytest.raises(ValueError):
+            player.build_player(layout, {BASELINE: recorder}, tokens=bad)
+
+
+def test_the_page_has_a_light_and_a_dark_look_from_the_console_palette():
+    """D703: two token sets, the spec's palette exactly; the browser's setting picks one
+    and the page's switch overrides it, all in the one pinned style sheet."""
+    light, dark = player.DEFAULT_TOKENS["light"], player.DEFAULT_TOKENS["dark"]
+    assert [light[k] for k in ("page", "panel", "raised", "line", "ink", "muted", "dim", "accent",
+                               "yours", "base", "third", "run", "blocked", "down", "idle")] == [
+        "#f4f6fa", "#ffffff", "#eef1f6", "#dde2ea", "#1a1f2b", "#586377", "#6b7588", "#2f6fe0",
+        "#2f6fe0", "#c56a12", "#0e8c7e", "#0a8a78", "#c99400", "#d23f4a", "#6b7588"]
+    assert [dark[k] for k in ("page", "panel", "raised", "line", "ink", "muted", "dim", "accent",
+                              "yours", "base", "third", "run", "blocked", "down", "idle")] == [
+        "#151b26", "#1c2331", "#242d3e", "#313c51", "#e6ebf3", "#9aa6b8", "#76839a", "#2f6fe0",
+        "#4a8af4", "#d47a24", "#16a08f", "#2fa58f", "#d39a2e", "#ef5f57", "#76839a"]
+    assert player.check_tokens(None) == player.DEFAULT_TOKENS
+    # One flat set is the light look (the shape before D703), worn over the default dark.
+    flat = player.check_tokens({"accent": "#AB12CD"})
+    assert flat["light"]["accent"] == "#AB12CD" and flat["dark"] == dark
+    both = player.check_tokens({"light": {"ink": "#000000"}, "dark": {"ink": "#FFFFFF"}})
+    assert (both["light"]["ink"], both["dark"]["ink"]) == ("#000000", "#FFFFFF")
+    css = player.style_sheet(both)
+    root, media, switched = css.split("\n")[:3]
+    assert root.startswith(":root {") and "--ink: #000000;" in root and "color-scheme: light;" in root
+    assert media.startswith("@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) {")
+    assert switched.startswith(":root[data-theme=dark] {")
+    for rule in (media, switched):
+        assert "--ink: #FFFFFF;" in rule and "--page: #151b26;" in rule and "color-scheme: dark;" in rule
+        assert "--font" not in rule and "--radius" not in rule     # the light set's alone
+    # Every colour on the page is a token: a rule names no colour of its own.
+    rules = css.split("\n", 3)[3]
+    assert not re.search(r"#[0-9A-Fa-f]{3,6}\b", rules)
+
+
+def _rows(data, scenario):
+    return {row["label"]: row for row in data["results"][scenario]}
+
+
+def test_the_results_are_the_dashboards_with_intervals_and_a_word_for_each_change():
+    """Goal 6: per dashboard result, this scenario and the baseline as 95% intervals, the
+    target, and the change as a word ("better"/"worse" when the direction is known)."""
+    from nagasim.experiments import run_scenarios
+    layout = api.load_layout(SERVER)
+    layout["dashboard"] = {"results": [
+        {"kpi": "system/Avg Queue Length", "label": "Queue (customers)"},
+        {"kpi": "system/Avg WIP", "label": ""},
+        {"kpi": "system/Avg Throughput Time", "label": "Time"}]}
+    layout["scenarios"] = [{"name": "Two servers", "overrides": [
+        {"path": "resources.Server.capacity", "value": 2}]}]
+    result = run_scenarios(layout, ["Two servers"], replications=3, seed=1, workers=1)
+    # The author's direction and target (D706, validated by the schema from G2 on) are
+    # read from the dashboard as they are.
+    layout["dashboard"]["results"][0].update(better="lower", target=0.5)
+    recordings = {name: recorded("single_server.json")[1] for name in (BASELINE, "Two servers")}
+    _block, data = split(player.build_player(layout, recordings, experiment=result, samples=50))
+    assert [row["label"] for row in data["results"][BASELINE]] == ["Queue (customers)", "Avg WIP", "Time"]
+    table = result.comparison(kpis=["system/Avg Queue Length"]).set_index("Scenario")
+    base, two = _rows(data, BASELINE)["Queue (customers)"], _rows(data, "Two servers")["Queue (customers)"]
+    assert base["base"] is None and base["verdict"] is None and base["delta_pct"] is None
+    assert two["yours"]["mean"] == pytest.approx(table.loc["Two servers", "Mean"])
+    assert (two["yours"]["lo"], two["yours"]["hi"]) == pytest.approx(
+        (table.loc["Two servers", "LB"], table.loc["Two servers", "UB"]))
+    assert two["base"] == base["yours"] and two["target"] == 0.5 and two["better"] == "lower"
+    diff = two["yours"]["mean"] - base["yours"]["mean"]
+    assert two["delta_pct"] == pytest.approx(100 * diff / base["yours"]["mean"])
+    word = ("better" if diff < 0 else "worse") if table.loc["Two servers", "Significant"] else "no clear change"
+    assert two["verdict"] == word
+    # No known direction: a direction word; a known one (the generated KPIs): better or worse.
+    assert _rows(data, "Two servers")["Avg WIP"]["verdict"] in ("higher", "lower", "no clear change")
+    assert _rows(data, "Two servers")["Avg WIP"]["better"] is None
+    assert _rows(data, "Two servers")["Time"]["better"] == "lower"
+    assert _rows(data, "Two servers")["Time"]["verdict"] in ("better", "worse", "no clear change")
+    # The trust card: the law checks of each scenario's run, the warm-up, the precision.
+    from nagasim import laws
+    trust = data["trust"]["Two servers"]
+    found = laws.summary(laws.checks(api.load_layout(SERVER) | {"scenarios": []}, result.results[BASELINE]))
+    assert data["trust"][BASELINE]["laws_pass"] == found["passed"]
+    assert data["trust"][BASELINE]["laws_warn"] == len(found["partial"])
+    assert trust["replications"] == 3 and trust["warmup"] == float(layout["simulation"].get("warmup") or 0)
+    assert trust["half_width_pct"] == pytest.approx(
+        50 * (two["yours"]["hi"] - two["yours"]["lo"]) / two["yours"]["mean"])
+
+
+def test_a_page_without_results_shows_none_and_a_plain_run_has_no_change_word():
+    layout, recorder = recorded("single_server.json")
+    assert "dashboard" not in layout
+    results = api.run_model(layout, replications=2, run_length=200, warmup=0)
+    _block, data = split(player.build_player(layout, {BASELINE: recorder}, results=results))
+    # No dashboard: the generated results, with readable labels; one run has no baseline.
+    rows = data["results"][BASELINE]
+    assert [row["label"] for row in rows] == ["Avg Throughput Time", "Throughput (per time unit)",
+                                              "Avg WIP (Little)", "Avg Resource Usage %"]
+    assert all(row["base"] is None and row["verdict"] is None and row["target"] is None for row in rows)
+    assert all(row["yours"]["lo"] <= row["yours"]["mean"] <= row["yours"]["hi"] for row in rows)
+    assert data["trust"][BASELINE]["replications"] == 2 and data["unit"] == "minutes"
+    _block, data = split(player.build_player(layout, {BASELINE: recorder}))
+    assert data["results"] is None and data["trust"] is None      # nothing to show: no panel
+
+
+def test_the_bottleneck_is_where_the_tape_waited_most_and_why():
+    """D705: the block with the most entity-time waiting, and the share of it while that
+    block was down or blocked; none when nothing waited."""
+    blocks = [{"name": "in"}, {"name": "a", "q": 1}, {"name": "b"}]
+    frames = [{"n": [0, 2, 1], "s": [0, 1, 1], "st": ["", "busy", "busy"]},
+              {"n": [0, 5, 3], "s": [0, 1, 0], "st": ["", "down", "blocked"]},
+              {"n": [0, 1, 0], "s": [0, 1, 0], "st": ["", "busy", "idle"]},
+              {"n": [0, 0, 0], "s": [0, 0, 0]}]
+    run = {"t": [0.0, 10.0, 20.0, 40.0], "frames": frames, "scene": {"blocks": blocks}}
+    # a: 1 x 10 + 4 x 10 = 50 waited, 40 of it down; b: 0 + 3 x 10 = 30, all blocked.
+    assert player._neck(run) == {"block": 1, "wait": 50 / 40, "down": 0.8, "blocked": 0.0}
+    for frame in frames:
+        frame["s"] = frame["n"]
+    assert player._neck(run) is None
+
+
+def test_a_recorded_line_with_failures_names_its_bottleneck():
+    layout, recorder = recorded("machine_with_breakdowns.json")
+    _block, data = split(player.build_player(layout, {BASELINE: recorder}, samples=250))
+    neck = data["runs"][BASELINE]["neck"]
+    assert neck["wait"] > 0 and 0 < neck["down"] <= 1
+    scene = data["runs"][BASELINE]["scene"]
+    # Its lane is the block's own resource (#840: kept among the lanes shown).
+    owner = next(b for b in layout["blocks"] if b["name"] == scene["blocks"][neck["block"]]["name"])
+    assert scene["resources"][neck["res"]] == owner["params"]["resource_name"]
 
 
 # -- only the tape leaves the machine -------------------------------------------------
@@ -228,9 +388,10 @@ def test_the_file_holds_the_tape_and_nothing_else_of_the_model_or_the_machine(tm
                    "dist_params", "svg", "w3.org"):
         assert secret not in plain, secret
     _block, data = split(page)
-    assert set(data) == {"title", "scenarios", "runs", "kpis", "pics", "art"}
-    assert set(data["runs"][BASELINE]) == {"scene", "t", "frames", "truncated", "events",
-                                           "seed", "of"}
+    assert set(data) == {"title", "scenarios", "runs", "kpis", "results", "trust", "unit", "unit_s",
+                         "pics", "art", "start"}
+    assert set(data["runs"][BASELINE]) <= {"scene", "t", "frames", "truncated", "events",
+                                           "seed", "of", "neck"}
     assert data["pics"] == []       # the engine reads no picture from a model (D198)
     assert all(row[0].startswith(("system/", "user/")) for row in data["kpis"])
 
@@ -252,7 +413,7 @@ def test_a_picture_is_the_callers_checked_svg_as_a_data_image():
     assert data["art"] == {"blocks": {name: {"w": 160.0, "h": 80.0, "states": {"idle": 0}}},
                            "types": {"DEFAULT": 0}, "fleets": {}, "fills": {"Tank": [name, 50.0]}}
     no_address(page)                    # the SVG's own namespace address is inside the base64
-    assert "w3.org" not in page and "alert" not in page.replace(player._SCRIPT, "")
+    assert "w3.org" not in page and "alert" not in page.replace(player.SCRIPT, "")
 
 
 # -- replications ---------------------------------------------------------------------
@@ -312,7 +473,7 @@ def test_two_builds_are_the_same_bytes():
 def test_the_player_is_an_exporter_that_needs_the_trace(tmp_path):
     entry = EXPORTER_REGISTRY["player"]
     assert (entry.name, entry.extension, entry.needs_trace) == ("player", ".html", True)
-    assert [name for name, other in EXPORTER_REGISTRY.items() if other.needs_trace] == ["player"]
+    assert [name for name, other in EXPORTER_REGISTRY.items() if other.needs_trace and name != "usd"] == ["player"]   # the product adds `usd` (D745)
     with pytest.raises(ValueError, match="--player"):
         entry.write({}, tmp_path / "none.html", layout={})
     assert list(tmp_path.iterdir()) == []

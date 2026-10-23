@@ -504,9 +504,11 @@ def _picks(proc) -> bool:
 # ------------------------------------------------------------------ deadlock
 def _stuck(proc) -> bool:
     space = getattr(proc, "space", None)
-    # A stopped non-accumulating belt takes nothing on, free cells or not (D115).
+    # A stopped non-accumulating belt takes nothing on, free cells or not (D115), nor
+    # does a belt whose first section before a stop is full (D732). A part held at a stop
+    # is not stuck: its time ends, and a wait for the stop's resource is not a space's.
     if (space is not None and space.content.level < space.capacity
-            and not getattr(proc, "stopped", False)):
+            and not getattr(proc, "stopped", False) and not getattr(proc, "entry_full", False)):
         return False
     if _blocks(proc) and not _held(proc):
         return False

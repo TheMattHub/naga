@@ -1,6 +1,6 @@
 """The player's script (PHASE7 7.7, D197): its pure half, run in a JavaScript engine.
 
-The script (`player._SCRIPT`) has two halves. The pure one says which sample a time
+The script (`player.SCRIPT`) has two halves. The pure one says which sample a time
 falls in and what may happen between two samples (hold a count, blend a position or a
 level); it is tested here under `node`, with no browser and no dependency. The page
 half runs only where there is a `document`: it is read by eye and was opened in a
@@ -28,7 +28,7 @@ def run_script(calls: str, **data):
     """Evaluate *calls* (a JavaScript expression) after the player's script, with each
     of *data* as a variable; returns its value. There is no `document`, so the page
     half does not start."""
-    program = (player._SCRIPT + "\n"
+    program = (player.SCRIPT + "\n"
                + "".join(f"var {name} = {json.dumps(value)};\n" for name, value in data.items())
                + f"console.log(JSON.stringify({calls}));\n")
     done = subprocess.run([NODE, "-"], input=program, capture_output=True, text=True,
@@ -133,7 +133,7 @@ def test_the_script_of_a_written_file_is_the_script_tested_here(tmp_path):
     player.build_player({}, {BASELINE: []}, path=out)
     page = out.read_text(encoding="ascii")
     start = page.index("<script>") + len("<script>")
-    assert page[start:page.index("</script>", start)] == player._SCRIPT
+    assert page[start:page.index("</script>", start)] == player.SCRIPT
     assert run_script("typeof boot") == "function"
 
 
@@ -147,13 +147,14 @@ var queue = [], wall = 0;
 function Node(tag, id) {
   this.tag = tag; this.id = id; this.children = []; this.style = {}; this.hidden = false;
   this.className = ""; this.value = ""; this._text = ""; this.clientWidth = 640; this.clientHeight = 400;
-  this.width = 0; this.height = 0;
+  this.width = 0; this.height = 0; this.dataset = {}; this.title = "";
 }
 Node.prototype = {
   appendChild: function (child) { this.children.push(child); return child; },
   removeChild: function (child) { this.children.splice(this.children.indexOf(child), 1); },
   addEventListener: function (type, fn) { listeners[this.id + ":" + type] = fn; },
-  getContext: function () { return new Proxy({}, {get: function () { return function () {}; },
+  getContext: function () { return new Proxy({}, {get: function (target, name) {
+                                                    return name === "measureText" ? function () { return {width: 30}; } : function () {}; },
                                                   set: function () { return true; }}); },
   get firstChild() { return this.children[0] || null; },
   get textContent() { return this._text; },
@@ -171,7 +172,9 @@ var document = {
   }
 };
 var window = {devicePixelRatio: 1, addEventListener: function (type, fn) { listeners["window:" + type] = fn; },
-              requestAnimationFrame: function (fn) { queue.push(fn); }};
+              requestAnimationFrame: function (fn) { queue.push(fn); },
+              getComputedStyle: function () { return {getPropertyValue: function (name) { return " " + name + " "; }}; }};
+document.documentElement = new Node("html", "");
 function Image() { this.complete = true; this.naturalWidth = 10; }
 Object.defineProperty(Image.prototype, "src", {set: function (value) { sources.push(value); }});
 function flush(rounds) {
@@ -181,7 +184,7 @@ function flush(rounds) {
     pending.forEach(function (fn) { fn(wall); });
   }
 }
-function fire(id, type) { listeners[id + ":" + type](); }
+function fire(id, type, event) { listeners[id + ":" + type](event); }
 nodes.tape = new Node("script", "tape");
 nodes.tape._text = DATA_TEXT;
 """
@@ -190,11 +193,17 @@ DRIVER = """
 flush(3);
 nodes.seek.value = 500; fire("seek", "input"); flush(3);
 fire("play", "click"); flush(40);
-nodes.speed.value = "8"; fire("speed", "change"); flush(10);
+nodes.speed.value = String(SPEEDS[SPEEDS.length - 1]); fire("speed", "change"); flush(10);
 fire("play", "click"); fire("play", "click"); flush(5);
 for (var i = 1; i < SCENARIOS.length; i += 1) {
-  nodes.scenario.value = SCENARIOS[i]; fire("scenario", "change"); flush(8);
+  fire("tabs", "click", {target: {value: SCENARIOS[i]}}); flush(8);
 }
+fire("tabs", "click", {target: {value: "constructor"}}); fire("tabs", "click", {}); flush(2);
+var themes = [];
+for (var i = 0; i < 3; i += 1) { fire("theme", "click"); themes.push(nodes.theme.textContent); }
+fire("lanes", "pointerdown", {offsetX: 300, pointerId: 1}); fire("lanes", "pointermove", {offsetX: 400});
+fire("lanes", "pointerup"); fire("lanes", "pointermove", {offsetX: 100}); flush(2);
+var dragged = Number(nodes.seek.value);
 nodes.seek.value = 0; fire("seek", "input"); flush(2);
 var at = [];
 fire("step", "click"); flush(2); at.push(Number(nodes.seek.value));
@@ -203,7 +212,8 @@ fire("back", "click"); flush(2); at.push(Number(nodes.seek.value));
 nodes.seek.value = 1000; fire("seek", "input"); flush(2);
 fire("step", "click"); flush(2); at.push(Number(nodes.seek.value));
 console.log(JSON.stringify({stepped: at, made: made.filter(function (tag, i) { return made.indexOf(tag) === i; }).sort(),
-                            sources: sources, banned: banned, titles: titles}));
+                            sources: sources, banned: banned, titles: titles, themes: themes,
+                            dragged: dragged, tabs: nodes.tabs.children.map(function (tab) { return tab.className; })}));
 """
 
 
@@ -212,7 +222,7 @@ def run_page(page: str) -> dict:
     match = re.search(r'<script type="application/json" id="tape">(.*?)</script>', page, re.S)
     data = json.loads(match.group(1))
     program = (f"var DATA_TEXT = {json.dumps(match.group(1))};\nvar SCENARIOS = {json.dumps(data['scenarios'])};\n"
-               + STUB + player._SCRIPT + "\n" + DRIVER)
+               + STUB + player.SCRIPT + "\n" + DRIVER)
     done = subprocess.run([NODE, "-"], input=program, capture_output=True, text=True,
                           encoding="utf-8", timeout=120)
     assert done.returncode == 0, done.stderr[-2000:]
@@ -221,7 +231,12 @@ def run_page(page: str) -> dict:
     first, second, play, back, end = report["stepped"]
     # One sample forward, then another (pausing a playing page), one back, none past the end.
     assert 0 < first < second and play == "Play" and back == first and end == 1000
-    assert set(report["made"]) <= {"option", "tr", "th", "td", "div", "span"}
+    assert set(report["made"]) <= {"button", "option", "tr", "th", "td", "div", "span"}
+    # The theme switch goes round, and works with no storage (the stub has none).
+    assert report["themes"] == ["Theme: light", "Theme: dark", "Theme: auto"]
+    # A drag on the lanes seeks to where it was let go, not where the pointer went after.
+    left, width = 92, 640 - 8 - 92
+    assert report["dragged"] == round(1000 * (400 - left) / width)
     assert set(report["sources"]) <= set(data["pics"])      # no `src` but a picture of the data
     assert report["titles"] == [data["title"]]
     return report
@@ -233,7 +248,8 @@ def test_the_page_half_runs_a_benign_study_end_to_end():
     page = player.build_player(layout, {BASELINE: recorder, "Again": other}, title="forklifts",
                                view="layout", samples=250)
     report = run_page(page)
-    assert {"option", "tr", "th", "td", "div", "span"} >= set(report["made"]) >= {"option", "span"}
+    assert {"button", "option", "tr", "th", "td", "div", "span"} >= set(report["made"]) >= {"button", "option", "span"}
+    assert report["tabs"] == ["tab base", "tab on"]            # the scenario last chosen
 
 
 def test_names_that_are_members_of_every_object_do_not_blank_the_page():
@@ -269,3 +285,112 @@ def test_names_that_are_members_of_every_object_do_not_blank_the_page():
                                title="constructor", view="schematic", pictures=pictures,
                                samples=250)
     run_page(page)
+
+
+# -- the look (D697) ------------------------------------------------------------------
+def test_a_block_takes_its_place_in_the_flow():
+    blocks = [{"name": "in"}, {"name": "work", "q": 1}, {"name": "decide"}, {"name": "out"},
+              {"name": "alone"}]
+    links = [[0, 1], [1, 2], [2, 3]]
+    assert run_script("roles(B, L)", B=blocks, L=links) == ["source", "work", "block", "sink", "block"]
+
+
+def test_states_are_quiet_when_normal_and_loud_with_a_word_when_not():
+    """D705: running, idle, blocked, down; only the last two carry a word."""
+    kinds = run_script('["busy", "loaded", "handling", "idle", "off", "empty", "blocked", "down", "", "constructor"]'
+                       ".map(kindOf)")
+    assert kinds == ["run", "run", "run", "idle", "idle", "idle", "blocked", "down", "", "idle"]
+    assert run_script("WORD") == {"blocked": "BLOCKED", "down": "DOWN"}
+
+
+def test_the_lanes_are_each_resources_states_from_the_tape():
+    """D708: one lane per resource, spans joined while the state holds, a mark at each
+    failure; a resource the tape does not list yet has no span."""
+    tape_run = {"t": [0, 10, 20, 30, 40], "scene": {"resources": ["M1", "M2"]}, "frames": [
+        {"r": [[0, "busy", 1, 1]]},
+        {"r": [[0, "busy", 1, 1], [1, "idle", 0, 1]]},
+        {"r": [[0, "down", 0, 1], [1, "blocked", 1, 1]]},
+        {"r": [[0, "busy", 1, 1], [1, "off", 0, 1]]},
+        {"r": [[0, "down", 0, 1], [1, "idle", 0, 1]]}]}
+    m1, m2 = run_script("lanes(R)", R=tape_run)
+    assert m1 == {"name": "M1", "spans": [[0, 20, "run"], [20, 30, "down"], [30, 40, "run"], [40, 40, "down"]],
+                  "fails": [20, 40]}
+    assert m2 == {"name": "M2", "spans": [[10, 20, "idle"], [20, 30, "blocked"], [30, 40, "idle"]], "fails": []}
+
+
+def test_a_working_block_shows_its_share_of_the_time_so_far_and_a_long_queue_its_badge():
+    """G2 polish: the % inside a block is the time its lamp said running over the time so
+    far; a block with no lamp shows none. The first FEW waiting stand before it, the badge counts all."""
+    tape_run = {"t": [0, 10, 20, 40], "scene": {"blocks": [{}, {}, {}]}, "frames": [
+        {"st": ["busy", "down", ""]}, {"st": ["idle", "busy", ""]}, {"st": ["busy", "busy", ""]}, {}]}
+    assert run_script("utilisation(R)", R=tape_run) == [[0, 1, 0.5, 0.75], [0, 0, 0.5, 0.75], None]
+    assert run_script("FEW") == 6
+
+
+SHOW = """
+function texts(node) { return node.children.length ? node.children.map(texts) : node.textContent; }
+function classes(node) { return node.children.map(function (c) { return c.className; }); }
+"""
+
+
+def run_panels(data, then=""):
+    """The page half on *data* against the stub; returns what the side panels show."""
+    program = (f"var DATA_TEXT = {json.dumps(json.dumps(data))};\n" + STUB + player.SCRIPT + SHOW
+               + "\nflush(2);\n" + then + "\nconsole.log(JSON.stringify({"
+               "results: nodes.results.children.map(function (row) { return [classes(row), texts(row)]; }),"
+               "tracks: nodes.results.children.map(function (row) { return classes(row.children[1]); }),"
+               "trust: texts(nodes.trust), neck: [nodes.neck.hidden, texts(nodes.neck)],"
+               "hidden: [nodes['results-box'].hidden, nodes['trust-box'].hidden]}));\n")
+    done = subprocess.run([NODE, "-"], input=program, capture_output=True, text=True,
+                          encoding="utf-8", timeout=120)
+    assert done.returncode == 0, done.stderr[-2000:]
+    return json.loads(done.stdout)
+
+
+def test_the_side_shows_the_results_with_words_the_trust_card_and_the_bottleneck():
+    layout, recorder = recorded("two_cell_line.json")
+    page = player.build_player(layout, {BASELINE: recorder, "Faster": recorder}, samples=50)
+    data = json.loads(re.search(r'<script type="application/json" id="tape">(.*?)</script>', page, re.S).group(1))
+    interval = {"mean": 2.5, "lo": 2.0, "hi": 3.0}
+    data["results"] = {
+        BASELINE: [{"kpi": "user/q", "label": "Queue", "unit": "parts", "yours": interval, "base": None,
+                    "target": None, "better": "lower", "delta_pct": None, "verdict": None}],
+        "Faster": [{"kpi": "user/q", "label": "Queue", "unit": "", "yours": {"mean": 1.25, "lo": 1.0, "hi": 1.5},
+                    "base": interval, "target": 2, "better": "lower", "delta_pct": -50.0, "verdict": "better"},
+                   {"kpi": "user/c", "label": "Cost", "unit": "", "yours": {"mean": 3, "lo": None, "hi": None},
+                    "base": {"mean": 2.9, "lo": None, "hi": None}, "target": None, "better": None,
+                    "delta_pct": 3.4483, "verdict": "no clear change"}]}
+    data["trust"] = {BASELINE: {"laws_pass": 5, "laws_warn": 0, "warmup": 0, "replications": 1,
+                                "half_width_pct": None},
+                     "Faster": {"laws_pass": 4, "laws_warn": 2, "warmup": 60, "replications": 10,
+                                "half_width_pct": 2.14}}
+    data["runs"][BASELINE]["neck"] = {"block": 1, "wait": 3.04, "down": 0.41, "blocked": 0.0}
+    data["runs"]["Faster"].pop("neck", None)
+    label = data["runs"][BASELINE]["scene"]["blocks"][1]["label"]
+    base = run_panels(data)
+    assert base["results"] == [[["", "r-track", "r-num"], [["Queue", "parts"], ["", ""], ["2.5", ""]]]]  # the delta line kept (#841)
+    assert base["tracks"] == [["r-range yours", "r-dot yours"]]          # no baseline, no target
+    assert base["trust"] == [["Flow and Little's law checks", [chr(0x2713) + " ", "pass"]],
+                             ["Warm-up removed", ["none"]], ["Replications, precision", ["1"]],
+                             ["Input data", ["not measured"]], ["Parameters", ["not measured"]]]
+    data["trust"][BASELINE].update(input_text="level, 40 resamples x 5 replications; a <b>x</b>",
+                                   params_text="12 of 200 samples accepted, tolerance 0.3")
+    again = run_panels(data)["trust"]
+    assert again[3:] == [["Input data", ["level, 40 resamples x 5 replications; a <b>x</b>"]],
+                         ["Parameters", ["12 of 200 samples accepted, tolerance 0.3"]]]   # as text, never markup
+    assert base["neck"] == [False, [f"Bottleneck: {label}",
+                                    "3 waiting on average; failures cause 41% of the waiting."]]
+    faster = run_panels(data, 'fire("tabs", "click", {target: {value: "Faster"}}); flush(2);')
+    assert [row[1] for row in faster["results"]] == [
+        [["Queue"], [""] * 5, ["1.25", [chr(0x25bc), " -50% better"]]],
+        [["Cost"], ["", ""], ["3", ["~", " +3.4% no clear change"]]]]
+    assert faster["tracks"] == [["r-range base", "r-dot base", "r-range yours", "r-dot yours", "r-target"],
+                                ["r-dot base", "r-dot yours"]]
+    assert faster["trust"][0] == ["Flow and Little's law checks", [chr(0x26a0) + " ", "2 warnings"]]
+    assert faster["trust"][1:] == [["Warm-up removed", ["60 minutes"]],
+                                   ["Replications, precision", [f"10, {chr(0xb1)}2.1%"]],
+                                   ["Input data", ["not measured"]], ["Parameters", ["not measured"]]]
+    assert faster["neck"] == [True, ""] and faster["hidden"] == [False, False]
+    # No results and no trust (a recording alone): both panels hidden, nothing empty shown.
+    data["results"] = data["trust"] = None
+    assert run_panels(data)["hidden"] == [True, True]

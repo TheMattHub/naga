@@ -77,9 +77,14 @@ def test_the_measured_tolerances_cover_the_statistical_tasks_without_bias():
         assert abs(entry["mean"] - TASKS[name].answer) <= entry["sd"], name
 
 
+@pytest.mark.parametrize("name", [t.id for t in TASKS.values() if t.module.TOLERANCE is None])
 @pytest.mark.slow
-def test_the_calibration_file_is_the_calibrations():
-    assert study.calibrate() == json.loads((STUDY / "calibration.json").read_text(encoding="utf-8"))
+def test_the_calibration_file_is_the_calibrations(name, monkeypatch):
+    """Each task is re-measured on its own (same seeds, same code): the 20 SimPy runs of the
+    eight tasks spread over the workers instead of making one 80 s test."""
+    monkeypatch.setattr(study, "load_tasks", lambda: {name: TASKS[name]})
+    committed = json.loads((STUDY / "calibration.json").read_text(encoding="utf-8"))
+    assert study.calibrate() == {"seeds": committed["seeds"], "tasks": {name: committed["tasks"][name]}}
 
 
 def test_reading_an_answer():
@@ -111,11 +116,17 @@ def test_a_script_that_is_not_a_simpy_script_is_not_valid(tmp_path):
 
 
 @pytest.mark.slow
-def test_a_model_file_is_graded_on_the_file_the_run_and_the_answer(tmp_path):
+def test_a_model_file_is_graded_on_the_file_the_run_and_the_answer(tmp_path, monkeypatch):
     task = TASKS["mm1"]
     document, _results = _replay(task)
     document.save(tmp_path / "model.json")
     right, wrong = f"Done.\nANSWER: {task.answer}", f"ANSWER: {task.answer + 2 * task.tolerance}"
+    checked, run = {}, study._run       # the file is run in a fresh process (~3 s) and is the same five times
+
+    def once(command, **kw):
+        return checked.setdefault(tuple(command), run(command, **kw))
+
+    monkeypatch.setattr(study, "_run", once)
     graded = lambda text, ran: study.grade_model(tmp_path / "model.json", text, task, ran, 120)
     assert graded(right, True) == {"valid": True, "runnable": True, "correct": True,
                                    "answer": task.answer, "note": ""}
@@ -123,6 +134,7 @@ def test_a_model_file_is_graded_on_the_file_the_run_and_the_answer(tmp_path):
     assert graded(right, False)["note"] == "never ran the model" and not graded(right, False)["correct"]
     assert graded("it is twelve", True)["note"] == "no answer line"
     ModelDocument().save(tmp_path / "model.json")           # what a failed turn leaves
+    checked.clear()
     empty = graded(right, True)
     assert (empty["valid"], empty["runnable"], empty["correct"]) == (False, False, False) and empty["note"]
     assert study.grade_model(tmp_path / "none.json", right, task, True, 120)["note"] == "no model file"

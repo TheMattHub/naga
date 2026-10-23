@@ -136,14 +136,44 @@ options:
   -h, --help            show this help message and exit
 ```
 
+## naga plc-write
+
+```text
+usage: naga plc-write [-h] --outbox SPEC --setpoints FILE --connections FILE
+                      --audit FILE [--write] [--id ID]
+
+Write the setpoints a person approved in a twin's outbox to a soft PLC on this
+machine, over Modbus TCP. Dry-run unless --write: it then reads the PLC and
+writes only the audit. Only a record with a "taken" reply that names who took
+it, inside your setpoints file's range, step and interval, is written, and it
+is read back. Every attempt is audited before and after.
+
+options:
+  -h, --help          show this help message and exit
+  --outbox SPEC       the twin's outbox, file:<path>; replies are read from
+                      <path>.replies beside it
+  --setpoints FILE    your setpoints file (format 1, kind naga-setpoints): the
+                      tags that may be written, each with its register, model
+                      path, range, max_step and min_interval, and the
+                      connection they are written to
+  --connections FILE  your connections file: the setpoints file's connection,
+                      kind modbus with "use": "write", on this machine
+  --audit FILE        the audit, JSON lines appended: a line before and after
+                      every attempt; also what the interval and "written
+                      before" are read from
+  --write             write; without it nothing is sent to the PLC but reads
+  --id ID             only this record (its id or the first characters of it);
+                      may repeat (default: every setpoint not yet written)
+```
+
 ## naga calibrate
 
 ```text
 usage: naga calibrate [-h] --factor FACTORS --target TARGETS [--budget BUDGET]
                       [--replications REPLICATIONS] [--run-length RUN_LENGTH]
                       [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
-                      [--out OUT] [--report REPORT]
-                      [--write-scenario WRITE_SCENARIO]
+                      [--method {optimize,abc}] [--accept ACCEPT] [--out OUT]
+                      [--report REPORT] [--write-scenario WRITE_SCENARIO]
                       model
 
 Tune model parameters until the model reproduces observed KPIs.
@@ -170,6 +200,12 @@ options:
   --warmup WARMUP       default: the model's own 'simulation.warmup'
   --seed SEED
   --workers WORKERS     replications to run in parallel processes (default: 1)
+  --method {optimize,abc}
+                        optimize: search for the best point (default); abc:
+                        rejection ABC, a posterior range per factor beside the
+                        best point
+  --accept ACCEPT       abc only: share of prior samples accepted (default:
+                        0.05, at least 20)
   --out OUT             write the target table here (.xlsx or .csv)
   --report REPORT       write an HTML report here
   --write-scenario WRITE_SCENARIO

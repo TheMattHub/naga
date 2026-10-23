@@ -5,6 +5,7 @@ from nagasim.core import blocking, costs, initial_state, timeseries
 from nagasim.core.schema import read_layout
 import math
 import logging
+import time
 
 from simpy.events import URGENT
 
@@ -17,7 +18,67 @@ STALL_TIME_EPSILON = 1e-9
 log = logging.getLogger(__name__)
 
 __all__ = ["initialize_sim_env", "prepare_model", "reset_statistics",
-           "schedule_warmup_reset", "step_until", "setup_run", "run_single_simulation"]
+           "schedule_warmup_reset", "Pacer", "step_until", "setup_run", "run_single_simulation"]
+
+
+class Pacer:
+    """The paced clock (Phase 11 H, D726): `step_until` asks it to wait before
+    each event, so one model second takes 1/*pace* wall seconds.
+
+    *pace* is model seconds per wall second (1 = real time), the player's
+    convention (D711); *unit_s* is the seconds in one model time unit. An event
+    already behind its wall time runs at once: it is counted in `late_events`
+    when more than `LATE_AFTER_S` behind, never raised (simpy.rt's strict mode
+    raises instead, so it is not used). `max_lag_s` is the largest lag seen.
+
+    Pacing changes only WHEN events run on the wall clock, never their order or
+    values: a paced run's results are an unpaced run's. It adds no input to and
+    no output from a running model (ARCHITECTURE section 6, rule 12). *clock*
+    (monotonic) and *sleep* are injectable for tests."""
+
+    SLICE_S = 0.1           # the longest sleep between two `should_stop` polls
+    # A burst of events at one instant, and a sleep's own granularity, lag by a
+    # few ms; nobody watching at the wall clock sees that.
+    LATE_AFTER_S = 0.01
+
+    def __init__(self, pace, unit_s: float = 1.0, *, clock=time.monotonic, sleep=time.sleep):
+        if isinstance(pace, bool) or not isinstance(pace, (int, float)) \
+                or not math.isfinite(pace) or pace <= 0:
+            raise ValueError(f"pace must be a positive number of model seconds per wall "
+                             f"second, not {pace!r}")
+        self.pace = float(pace)
+        self.wall_per_model = float(unit_s) / self.pace
+        self.clock, self.sleep = clock, sleep
+        self.late_events, self.max_lag_s = 0, 0.0
+        self._model0, self._wall0 = 0.0, None
+
+    def begin(self, model_t: float) -> None:
+        """Anchor model time *model_t* at the wall clock's now (each replication)."""
+        self._model0, self._wall0 = model_t, self.clock()
+
+    def wait(self, t: float, should_stop=None, *, late: bool = True) -> bool:
+        """Wait until model time *t* is due. Returns True when `should_stop`
+        asked to stop during the wait. *late* False: *t* is not an event (the
+        horizon), so being behind it is not counted."""
+        due = self._wall0 + (t - self._model0) * self.wall_per_model
+        now = self.clock()
+        if now >= due:
+            lag = now - due
+            if lag > self.max_lag_s:
+                self.max_lag_s = lag
+            if late and lag > self.LATE_AFTER_S:
+                self.late_events += 1
+            return False
+        while now < due:
+            if should_stop is not None and should_stop():
+                return True
+            self.sleep(min(due - now, self.SLICE_S))
+            now = self.clock()
+        return False
+
+    def summary(self) -> dict:
+        return {"paced": self.pace, "late_events": self.late_events,
+                "max_lag_s": round(self.max_lag_s, 6)}
 
 def initialize_sim_env(seed: int = 0, clock: float = 0.0):
     """Build the context and return its env. `env.ctx` is the only attribute the
@@ -118,7 +179,7 @@ def schedule_warmup_reset(env, warmup: float) -> None:
 
     env.process(_reset())
 
-def step_until(env, run_len: float = 0, should_stop=None) -> bool:
+def step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None = None) -> bool:
     """Step the environment until the time limit, an empty event queue, or
     `should_stop()` returns True. Returns whether `should_stop` interrupted the run.
 
@@ -126,6 +187,10 @@ def step_until(env, run_len: float = 0, should_stop=None) -> bool:
     KPIs are computed over: the time limit when the run actually reaches it,
     else the time the queue drained (DEVLOG #32 - this replaces the old
     run_len + 1 / env.now - 1 pair).
+
+    *pacer* (D726): wait for the wall clock before each event, and at the end
+    up to a reached time limit; `should_stop` is polled during the waits. The
+    only cost to an unpaced run is one `is not None` test per event.
     """
     limit = run_len if run_len and run_len > 0 else math.inf
     interrupted = False
@@ -134,6 +199,8 @@ def step_until(env, run_len: float = 0, should_stop=None) -> bool:
     ctx, inf = env.ctx, math.inf
     sampler = getattr(ctx, "sampler", None)     # getattr: a stub context has none
     next_tick = inf if sampler is None else sampler.next_tick
+    if pacer is not None:
+        pacer.begin(env.now)
     while True:
         t = peek()                  # once per event: this loop runs for every one
         if next_tick < t and (next_tick <= limit or t == inf):
@@ -156,6 +223,9 @@ def step_until(env, run_len: float = 0, should_stop=None) -> bool:
             continue
         if t == inf or t > limit:
             break
+        if pacer is not None and pacer.wait(t, should_stop):
+            interrupted = True
+            break
         if should_stop is not None and should_stop():
             interrupted = True
             break
@@ -176,6 +246,10 @@ def step_until(env, run_len: float = 0, should_stop=None) -> bool:
                     f"t={env.now:g}. Look for arrivals with a zero interarrival time, or a loop "
                     f"of blocks that takes no time.")
     reached_limit = (env.peek() != math.inf) and not interrupted   # events still pending past the limit
+    if pacer is not None and reached_limit:
+        # The run's last stretch is model time too. Stopping here cuts only the
+        # wait: every event of the run is done, so the results stand.
+        pacer.wait(limit, should_stop, late=False)
     env.ctx.sim_end_time = limit if reached_limit else env.now
     env.ctx.sim_horizon = None if limit == math.inf else limit
     if not interrupted and env.peek() == math.inf and env.ctx.blocking_nodes:
@@ -265,13 +339,14 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
     return env, model
 
 def run_single_simulation(layout_path, *, seed: int, run_len: float, warmup: float,
-                           should_stop=None, subscribers=(), controllers=None) -> dict | None:
+                           should_stop=None, subscribers=(), controllers=None,
+                           pacer: Pacer | None = None) -> dict | None:
     """Run one replication. Returns None instead of KPIs if `should_stop` cut it
     short (M4a): a partial run has no meaningful statistics to report.
-    *controllers*: see `setup_run`."""
+    *controllers*: see `setup_run`. *pacer*: see `step_until`."""
     env, _model = setup_run(layout_path, seed=seed, run_len=run_len, warmup=warmup,
                             subscribers=subscribers, controllers=controllers)
-    if step_until(env, run_len, should_stop):
+    if step_until(env, run_len, should_stop, pacer):
         return None
     # PHASE6 W4 P1, D119: a deterministic run's outcome does not depend on the
     # seed at all, so tagging its KPI frames with the seed would make two

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from nagasim import experiments, inputfit
+from nagasim import experiments, inputfit, uncertainty
 from nagasim.core import sections
 from nagasim.core.document import ModelDocument
+from nagasim.core.schema import ModelValidationError
 
 from .core import (
-    MAX_PROBLEMS, MAX_ROWS, ToolError, _document_args, _edit_result, _finite, _open, tool, workspace,
+    MAX_PROBLEMS, MAX_ROWS, ToolError, _budget, _document_args, _edit_result, _finite, _open,
+    note_asked, tool, workspace,
 )
 
 _document_args("resolve_data_bindings", model="Workspace name of the model to resolve.",
@@ -218,6 +220,90 @@ def fit_distribution(path: str | None = None, values: list | None = None,
                   "spec": {"distribution": f.distribution, "dist_params": f.dist_params}}
                  for f in fits],
     }
+
+
+_document_args("input_uncertainty", model="Workspace name of the model.",
+               inputs="One entry per input whose data is uncertain: {\"path\": a block's "
+                      "\"...params.distribution\" field, or \"schedules.<name>.points\" of an "
+                      "arrival schedule; \"data\": a CSV/TSV/XLSX file under the workspace root; "
+                      "\"column\": optional, the first numeric column by default; for a "
+                      "schedule also \"bin_width\" and \"cycle\" in base time units}.",
+               kpis="KPI keys to report; default every system/ KPI.",
+               resamples="Bootstrap resamples of the data (2 to 200).",
+               replications="Replications per resample (2 to 50); every resample runs on "
+                            "the same seeds.",
+               run_length="Run length in base time units.", warmup="Warm-up time.",
+               seed="Base seed of the runs; the resampling has its own stream from it.",
+               max_seconds="Wall-clock budget.",
+               overrides="Optional change, as in what_if: every KPI row is then the changed model "
+                         "minus the baseline, both run per resample on the same seeds (twice the "
+                         "runs); nothing is saved to the model.")
+
+
+@tool()
+def input_uncertainty(model: str, inputs: list, kpis: list | None = None, resamples: int = 20,
+                      replications: int = 5, run_length: float | None = None,
+                      warmup: float | None = None, seed: int = 0,
+                      max_seconds: float | None = None, overrides: list | None = None) -> dict:
+    """How much of each KPI's spread comes from the data its inputs were fitted to.
+
+    Each input's data is resampled with replacement and refitted in the family of its
+    best fit (an arrival schedule's timestamps are resampled by whole cycles), and the
+    model runs once for the fit to all the data and once per resample, all on the same
+    replication seeds, so resamples differ only in their inputs. Nothing is saved to the
+    model. The runs are (resamples + 1) x replications, at most 2000.
+
+    Per KPI: "run_ci", the 95% interval over the replications; "input_interval", the
+    interval with the inputs' uncertainty too (it always holds run_ci; a KPI the inputs
+    do not move keeps zero width); "input_share", the inputs' part of the variance of the
+    KPI's mean, the inputs' part being the variance of the resample means on common
+    random numbers (more replications shrink the rest, only more data shrinks it). The
+    intervals rest on "resamples_used" resamples, said in "notes"; a resample that could
+    not be refitted is counted in "failed" and left out.
+
+    With overrides (a change, as what_if takes it) each row is the change's difference
+    instead ("measure": "difference"): the baseline and the changed model run per resample on
+    the same seeds, so the interval is the difference's, not a level's. A later what_if on this
+    model quotes the latest answer in its "input_note".
+
+    Returns {"model", "completed", "measure", "overrides", "resamples", "resamples_used", "failed", "replications",
+    "runs", "seed", "inputs": [{"path", "kind", "n", "point"}], "kpis": [{"kpi", "mean",
+    "run_ci", "input_interval", "input_share", "resamples_used"}], "notes"}.
+    """
+    specs = []
+    for entry in inputs or []:
+        if not isinstance(entry, dict) or not entry.get("path") or not entry.get("data"):
+            raise ToolError("E_BAD_INPUT", "each input needs a \"path\" and a \"data\" file",
+                            "inputs=[{\"path\": \"blocks.<name>.params.distribution\", "
+                            "\"data\": \"times.csv\"}]")
+        loaded = inputfit.load_column(workspace().resolve(entry["data"], must_exist=True),
+                                      entry.get("column"))
+        specs.append({"path": entry["path"], "values": loaded.values.tolist(),
+                      "bin_width": entry.get("bin_width"), "cycle": entry.get("cycle")})
+    try:
+        out = uncertainty.input_uncertainty(
+            workspace().document(model).to_layout(), specs, kpis=kpis,
+            resamples=max(2, min(int(resamples), 200)),
+            replications=max(2, min(int(replications), 50)), seed=seed,
+            run_length=run_length, warmup=warmup, should_stop=_budget(max_seconds),
+            overrides=overrides or None)
+    except ModelValidationError as exc:
+        raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
+                        "check the input and override paths (list_override_paths shows the valid ones)")
+    except ValueError as exc:
+        raise ToolError("E_BAD_INPUT", str(exc), "fix the inputs or the counts") from None
+    rows = [{k: _finite(v) if isinstance(v, float) else v for k, v in row.items()}
+            for row in out["kpis"][:MAX_ROWS]]
+    # The answer itself is kept, so what_if can quote it and the what-next rules read it (D737).
+    note_asked(model, {"tool": "input_uncertainty", "inputs": [s["path"] for s in specs],
+                       "input_args": [{k: e[k] for k in ("path", "data", "column", "bin_width", "cycle")
+                                       if e.get(k) is not None} for e in inputs],
+                       "measure": out["measure"],
+                       "overrides": out["overrides"], "resamples_used": out["resamples_used"],
+                       "replications": out["replications"],
+                       "kpis": [{k: r[k] for k in ("kpi", "mean", "input_interval", "input_share")}
+                                for r in rows] if out["completed"] else []})
+    return {"model": model, **out, "kpis": rows}
 
 
 _document_args("get_plant_timeline", model="Workspace name of the model the mapping is for.",

@@ -308,6 +308,7 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
                            ("cost_summary", "Costs"),
                            ("fleet_summary", "Fleets"), ("segment_summary", "Segments"),
                            ("conveyor_summary", "Conveyors"),
+                           ("conveyor_stops", "Conveyor stops"),
                            ("buffer_summary", "Buffers"),
                            ("energy_summary", "Energy"),
                            ("material_flow_summary", "Material Flow"),

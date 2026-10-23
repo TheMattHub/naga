@@ -72,6 +72,7 @@ _PARTS = (
     _Part("investment", lambda: None,             # D172
           omit=lambda value: value is None),
     _Part("assertions", list, omit=lambda value: not value),                # #226
+    _Part("path_checks", list, omit=lambda value: not value),               # D722
     # G1 (D132): written only when a key holds something (the Present keys
     # included, D242).
     _Part("dashboard", lambda: {"widgets": []}, omit=lambda value: not any(value.values()),

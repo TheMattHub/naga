@@ -5,6 +5,7 @@ Windows costs more than the replications it runs for a model this small.
 """
 import copy
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -784,4 +785,4 @@ def test_cli_player_writes_one_file_with_every_scenario(tmp_path, capsys):
     assert rc == 0 and "Player written to" in capsys.readouterr().out
     assert [path.name for path in tmp_path.iterdir()] == ["scenarios.html"]
     page = out.read_text(encoding="ascii")
-    assert page.startswith("<!doctype html>") and "//" not in page
+    assert page.startswith("<!doctype html>") and "//" not in re.sub(r"'sha256-[A-Za-z0-9+/=]+'", "", page)

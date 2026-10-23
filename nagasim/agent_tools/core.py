@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-from nagasim import experiments, mdlimport, netguard, sdimport
+from nagasim import experiments, mdlimport, netguard, nextoptions, sdimport
 from nagasim.core import schema as schema_mod
 from nagasim.core.agents import PYTHON_CONSENT, PythonRefused
 from nagasim.core.document import ModelDocument
@@ -109,6 +109,8 @@ class Workspace:
         self.models: dict[str, ModelDocument] = {}
         self.results: dict[str, dict] = {}
         self.debug: dict[str, dict] = {}    # model name -> its debug run (`debug.py`, D194)
+        # model name -> what this session ran on it (D727): the facts `nextoptions.for_model` reads.
+        self.asked: dict[str, list[dict]] = {}
 
     def resolve(self, path: str | Path, *, must_exist: bool = False) -> Path:
         try:
@@ -122,6 +124,9 @@ class Workspace:
 
     def document(self, name: str) -> ModelDocument:
         doc = self.models.get(name)
+        slot = None if doc is not None else next((h for p, h in SLOTS.items() if name.startswith(p)), None)
+        if slot is not None:      # a slot a sibling resolves itself (a study's last version)
+            doc = self.models[name] = slot["load"](self, name)
         if doc is None:
             raise ToolError("E_UNKNOWN_MODEL", f"no model named '{name}' in the workspace",
                             f"open or create it first; loaded: "
@@ -130,6 +135,43 @@ class Workspace:
 
 
 _WORKSPACE = Workspace()
+
+# Model names a sibling module resolves itself, so this module imports no sibling: prefix ->
+# {"load": (workspace, name) -> ModelDocument or ToolError, "asked": (workspace, name, entry) -> None}.
+# agent_tools.study registers "study:" (a study's last version; what was asked of it is kept there).
+SLOTS: dict[str, dict] = {}
+ASKED_CAP = 50
+
+
+def note_asked(model: str, entry: dict) -> None:
+    """Remember that a tool ran on *model* (D727: the facts the what-next rules read). Never fails
+    the tool that calls it: a slot that cannot keep the note logs a warning."""
+    ws = _WORKSPACE
+    rows = ws.asked.setdefault(model, [])
+    rows.append(entry)
+    del rows[:-ASKED_CAP]
+    slot = next((h for p, h in SLOTS.items() if model.startswith(p)), None)
+    if slot is not None:
+        try:
+            slot["asked"](ws, model, entry)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("what was asked of %s was not kept", model, exc_info=True)
+
+
+def recorded(model: str) -> list[dict]:
+    """What was asked of *model*: this process's notes, and for a slot (a study's last version)
+    also what an earlier process kept on disk, so a fresh process quotes the same answers."""
+    ws = _WORKSPACE
+    mine = list(ws.asked.get(model, ()))
+    slot = next((h for p, h in SLOTS.items() if model.startswith(p)), None)
+    if slot is None or "recorded" not in slot:
+        return mine
+    try:
+        kept = slot["recorded"](ws, model)
+    except Exception:
+        return mine
+    return kept + [e for e in mine if e not in kept]
 
 
 def use_workspace(ws: Workspace) -> Workspace:
@@ -655,7 +697,10 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
     "activities_total", "resources_total", "assumptions", "dropped", "check": {"verdict",
     "findings": [{"level", "what", "means"}]} (is the log good enough, and what each gap
     means for the draft), "next_steps": {"check", "never"} (what to check in the draft, and
-    what this log cannot tell), "observed", "errors", "warnings", "problems"}, and with
+    what this log cannot tell), "path_checks": {"rules", "left_out", "from"} (route rules from
+    the log written into the draft's path_checks: `naga check` runs them on one seed, and a
+    failed one is a route the log kept that the draft breaks), "observed", "errors",
+    "warnings", "problems"}, and with
     *idle_waits* "idle_waits": [{"block", "delay"}] (the activities that got a modelled wait).
     The two lists are cut to fit one reply; the totals say how many there are, and the open
     model has them all.
@@ -695,6 +740,7 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
                        "findings": [{k: f[k] for k in ("level", "what", "means")}
                                     for f in report["check"]["findings"]]},
              "next_steps": report["next_steps"],
+             "path_checks": report["path_checks"],
              **({"idle_waits": [{k: w[k] for k in ("block", "delay")}
                                 for w in report["idle_waits"][:MAX_ROWS]]}
                 if idle_waits else {}),
@@ -774,8 +820,11 @@ def get_model_summary(model: str) -> dict:
     "variables", "tables", "timeseries_inputs", "levels", "flows", "auxiliaries",
     "delays", "schedules",
     "failures", "scenarios", "simulation",
-    "errors", "warnings"}. Each link is "source -> target"; the ORDER of a block's
-    outgoing links is its branch order (branch 0 first).
+    "errors", "warnings", "next_options"}. Each link is "source -> target"; the ORDER of a block's
+    outgoing links is its branch order (branch 0 first). "next_options" is what could be done
+    next, at most 3, ranked, each {"kind", "title", "why", "tool", "arguments", "cost"} (plus
+    "needs": arguments still to fill in), from the last run's law warnings and what this session
+    has run: offer them, never run one unasked.
     """
     doc = _WORKSPACE.document(model)
     layout = doc.to_layout()
@@ -809,6 +858,7 @@ def get_model_summary(model: str) -> dict:
         "simulation": layout["simulation"],
         "errors": sum(1 for p in problems if p.severity == "error"),
         "warnings": sum(1 for p in problems if p.severity == "warning"),
+        "next_options": nextoptions.for_model(layout, _WORKSPACE.asked.get(model), model),
     }
 
 

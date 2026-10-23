@@ -428,6 +428,13 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
             if isinstance(text, str) and text.strip() and segment.get("kind") != "move":
                 check(problems, name, text, variables,
                                   f"{at}/{key}/{index}/time", tables=tables, refs=refs)
+    if btype == "CONVEYOR":         # D732: a stop's time, per part
+        for index, stop in enumerate(params.get("stops") or [] if isinstance(
+                params.get("stops"), list) else []):
+            text = stop.get("time") if isinstance(stop, dict) else None
+            if isinstance(text, str) and text.strip():
+                check(problems, name, text, variables, f"{at}/stops/{index}/time",
+                      tables=tables, refs=refs)
     if btype in QUEUEING_BLOCK_TYPES:
         # PHASE4 A4: balk_if is the one place `queue_length` is a legal name.
         if params.get("balk_if"):
@@ -576,6 +583,19 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
         params = block.get("params", {})
         name = block.get("name", "<unnamed>")
         at = f"/blocks/{index}"
+        quantity = params.get("quantity", 1)
+        if params.get("resource_name") in sets and block in seizers.get(params["resource_name"], ()) \
+                and isinstance(quantity, (int, float)) and not isinstance(quantity, bool) \
+                and quantity > 1:
+            # D735: the wait-for-any stays as T7 left it; the ceiling is said, not silent.
+            problems.append(problem(
+                "W_SET_PARTIAL_HOLD",
+                f"{name}: seizes {quantity:g} units of resource set "
+                f"'{params['resource_name']}': waiting on every member, it can hold units of "
+                f"one it then does not take",
+                f"{at}/params/quantity", block=name,
+                hint="seize one unit of the set, or name one member: two seizes each holding "
+                     "part of two members can stall each other"))
         # `on_preempt` belongs to the block whose job is INTERRUPTED, so it is
         # checked on every block that sets it, not only on preempting ones.
         mode = params.get("on_preempt") or ON_PREEMPT_MODES[0]

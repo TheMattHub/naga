@@ -23,6 +23,10 @@ forecast, compare, report.
 * With an `advisor` (`recommend.Advisor`, 7.15) the caller's candidate actions are compared
   after each forecast, in its thread and on its seed, and never enter the history or the
   rolling score (D301).
+* With a `refit` (`refit.Refitter`, D740, D741) a held alert has the caller's factors
+  calibrated and proposed through the advisor's outbox; an adopted refit is an overrides
+  layer kept in the history, applied from the next cycle under a model identity of its own
+  (its score and alerts start again), until an `ended` reply. The model file is never written.
 
 Read-only towards the plant: nothing here sends anything to it. The one write outside the
 caller's result directory is the advisor's, to the outbox the caller named at start (D227).
@@ -45,6 +49,7 @@ import uuid
 from pathlib import Path
 
 from nagasim import netguard, plant, readers, score
+from nagasim import refit as refits
 from nagasim.core import initial_state
 from nagasim.core.playback import Timeline, resource_rows
 from nagasim.core.problems import Problem, problem
@@ -249,9 +254,16 @@ class Cycle:
     def __init__(self, source, *, horizon: float, replications: int = 50, seed: int = 0,
                  workers: int = 1, out_dir=None, forecast_every: float = 300.0,
                  every: float | None = None, background: bool = False, runner=None,
-                 advisor=None, clock=time.time, monotonic=time.monotonic):
+                 advisor=None, alert_k: float = score.K, alert_h: float = score.H,
+                 refit=None, clock=time.time, monotonic=time.monotonic):
         if not (isinstance(horizon, (int, float)) and math.isfinite(horizon) and horizon > 0):
             raise ValueError("a twin needs a positive forecast horizon")
+        # The alerts' limits are the caller's (D721): a model, a mapping or a file sets none.
+        if not (_num(alert_k) is not None and alert_k >= 0 and _num(alert_h) is not None
+                and alert_h > 0):
+            raise ValueError("an alert needs k >= 0 and h > 0")
+        if refit is not None and (advisor is None or not alert_k > 0):
+            raise ValueError("a refit needs an advisor, whose outbox proposes it, and k > 0")
         self.source = source
         self.horizon = float(horizon)
         self.replications = max(1, min(int(replications), LIMITS["replications"]))
@@ -291,13 +303,31 @@ class Cycle:
         found = history.get("forecasts") if history else None
         found = found if isinstance(found, list) else []
         self._history: list = [r for r in found if _sound(r)][-LIMITS["forecasts"]:]
+        # The refit (D740) and the layer a reply adopted (D741): judged whole, as the score.
+        self._refit, self._layer = refit, None
+        self._refused: set = set()          # ids of taken refits the file does not allow
+        kept_layer = history.get("refit") if history else None
+        if refit is not None:
+            self._layer, why = refit.layer_from(kept_layer)
+            # The ledger holds the reply: a layer is the one it says, whole, or none.
+            if self._layer is not None and (advisor is None or advisor.adopted() != self._layer):
+                self._layer, why = None, "it is not the refit the outbox ledger holds as taken"
+            if why:
+                self._carried.append(problem(
+                    "W_TWIN_REFIT", f"the adopted refit in this directory is not applied: {why}",
+                    "/refit", hint="its score is not continued; a refit the outbox ledger still "
+                                   "holds as taken is adopted again from its record"))
+        elif kept_layer is not None:
+            self._carried.append(problem(
+                "W_TWIN_REFIT", "an adopted refit is kept in this directory and no --refit file "
+                "was given: it is not applied, and the score of its model is not continued",
+                "/refit", hint="give the same --refit file to go on with it"))
         # The rolling score (D293): this model's and this horizon's, kept in the history
         # beside the forecasts it sums, or a new one, and then never in silence.
         kept = history.get("scores") if history else None
         if kept is None and self.out_dir is not None:
             kept = score.legacy(self.out_dir / score.LEGACY_FILE)   # a first build's, once
-        self._scores, why = score.Totals.load(kept, getattr(source, "model_hash", None),
-                                              self.horizon, self._born)
+        self._scores, why = score.Totals.load(kept, self._identity(), self.horizon, self._born)
         if why in ("model", "horizon", "unsound"):
             self._carried.append(problem(
                 "W_TWIN_SCORE", "the rolling score in this directory was not continued and "
@@ -306,6 +336,16 @@ class Cycle:
                     "unsound": "it cannot be read as one"}[why], "/scores",
                 hint="the stored forecasts keep their own scores; use one --out directory "
                      "a model and a horizon to keep a score"))
+        # The alerts' sums (D721), kept beside the score and judged whole as it is.
+        self._cusum, why = score.Cusum.load(history.get("alerts") if history else None,
+                                            self._identity(), alert_k, alert_h, self._born)
+        if why in ("model", "limits", "unsound"):
+            self._carried.append(problem(
+                "W_TWIN_ALERT", "the alert sums in this directory were not continued and "
+                "start again from now: " + {
+                    "model": "they are of another model",
+                    "limits": "they were kept under other limits (--alert-k, --alert-h)",
+                    "unsound": "they cannot be read as such"}[why], "/alerts"))
         self._observes = False              # whether the source offers a series to compare
         # A twin started again goes on from the counters' last readings (D378), which the
         # result in this directory holds when it is this model's. The oldest reading that
@@ -320,6 +360,10 @@ class Cycle:
             except Exception as exc:        # as `observe`: no step is lost to a file
                 log.warning("twin: the counters' last readings were not continued (%s)",
                             type(exc).__name__)
+
+    def _identity(self):
+        """The model a score is of: the file's, or the file's with the adopted layer."""
+        return refits.identity(getattr(self.source, "model_hash", None), self._layer)
 
     # ------------------------------------------------------------ one step
     def step(self) -> dict:
@@ -360,6 +404,8 @@ class Cycle:
             self._begin(mono, seen)
             problems += self._collect()
         self._compare(seen)
+        if self._refit is not None and self._advisor is not None:
+            problems += self._refit_turn(seen, wall)
         if self._advisor is not None:
             try:
                 problems += self._advisor.step(seen, wall)
@@ -367,6 +413,8 @@ class Cycle:
                 problems.append(problem(
                     "W_TWIN_RECOMMEND", f"the recommendations could not be stepped "
                     f"({type(exc).__name__})", "/recommend"))
+        if self._refit is not None and self._advisor is not None:
+            problems += self._follow(wall)      # a reply read now counts from the next cycle
         doc = self._document(seen, problems + self._standing, wall)
         self._write(RESULT_FILE, doc)
         return doc
@@ -383,7 +431,8 @@ class Cycle:
         thread = self._thread
         if thread is not None:
             thread.join(timeout)
-        return thread is None or not thread.is_alive()
+        refitted = self._refit is None or self._refit.join(timeout)
+        return (thread is None or not thread.is_alive()) and refitted
 
     def _no_set(self) -> None:
         """No recommendation is made from a forecast that was not (D302)."""
@@ -413,8 +462,21 @@ class Cycle:
         # ..., so each forecast starts where the one before it ended. The seed used is in
         # the record, which is what reproduces a forecast (D228).
         seed = self.seed + self._forecasts * self.replications
+        if self._layer is not None:
+            try:
+                model = refits.apply(model, self._layer["overrides"])
+            except Exception as exc:        # validated at load: the model's own refusal
+                self._status = ("refused", "E_TWIN_REFIT")
+                self._standing.append(problem(
+                    "E_TWIN_REFIT", f"the adopted refit does not apply to the started model "
+                    f"({type(exc).__name__}): no forecast is made with it", "/refit",
+                    hint="end it with an \"ended\" reply, or start the twin with its model"))
+                self._no_set()
+                return
         self._forecasts += 1
-        pending = {"state": doc["hash"], "model": doc["model"]["hash"], "seed": seed,
+        # A forecast of the layered model is of another model (D741): its score is its own.
+        pending = {"state": doc["hash"],
+                   "model": refits.identity(doc["model"]["hash"], self._layer), "seed": seed,
                    "from": initial_state.clock_of(model), "stamp": seen.get("stamp"),
                    "horizon": self.horizon, "replications": self.replications,
                    "approximate": bool(getattr(self.source, "approximate", False))}
@@ -425,6 +487,8 @@ class Cycle:
                 if _num((seen.get("observed") or {}).get(series)) is not None}
         if base:
             pending["base"] = base
+        if self._layer is not None:
+            pending["refit"] = self._layer["id"]
         # What the candidates need beside the forecast: the state as a document, and the
         # actions already taken, which the plant has and the model must be told (D307).
         extra = {"doc": doc, "standing": [], "cursors": seen.get("cursors")}
@@ -432,6 +496,10 @@ class Cycle:
             model, extra["standing"] = self._advisor.apply(model)
             if extra["standing"]:
                 pending["actions"] = [action["id"] for action in extra["standing"]]
+        if self._refit is not None:
+            # The start a refit's window may begin at, and the candidate scored beside it.
+            self._refit.hold(pending, model)
+            extra["shadow"] = self._refit.shadow_model(model, pending.get("refit"))
         if self._background:
             self._status = ("running", None)
             self._thread = threading.Thread(target=self._run, args=(pending, model, extra),
@@ -449,8 +517,17 @@ class Cycle:
         except Exception as exc:
             result = exc
         took = round(self._monotonic() - began, 3)      # the forecast's own
-        compared = None
-        if self._advisor is not None and not isinstance(result, Exception):
+        compared = shadowed = None
+        if extra.get("shadow") is not None and not isinstance(result, Exception):
+            # The refit's candidate, on this forecast's seed and in its thread (D740).
+            try:
+                shadowed = self._runner(extra["shadow"], horizon=self.horizon,
+                                        replications=self.replications, seed=pending["seed"],
+                                        workers=self.workers, should_stop=self._stop.is_set)
+            except Exception as exc:
+                shadowed = exc
+        if self._advisor is not None and self._advisor.recommends \
+                and not isinstance(result, Exception):
             # The candidates, on this forecast's seed and in its thread (D301).
             try:
                 compared = self._advisor.compare(
@@ -461,7 +538,8 @@ class Cycle:
         # How stale its start was when it could first be read: for whoever scores it (7.14).
         pending = {**pending, "finished": iso(self._clock()), "took": took}
         # One reference: read by `_collect`.
-        self._done = (pending, model, result, {**extra, "compared": compared})
+        self._done = (pending, model, result, {**extra, "compared": compared,
+                                                "shadowed": shadowed})
 
     def _collect(self) -> list:
         """Take in a forecast that ended since the last step; its one-time problems."""
@@ -497,7 +575,9 @@ class Cycle:
         self.forecast, self._status = result, ("ok", None)
         self._history = (self._history + [record])[-LIMITS["forecasts"]:]
         self._save_history()
-        if self._advisor is not None:
+        if self._refit is not None:
+            self._refit.shadowed(record, extra.get("shadowed"))
+        if self._advisor is not None and self._advisor.recommends:
             try:
                 self._advisor.take(pending, extra["doc"], model, extra["compared"],
                                    standing=extra["standing"], cursors=extra["cursors"])
@@ -513,9 +593,68 @@ class Cycle:
     def _save_history(self) -> None:
         # The forecasts and the score that sums them, in one write: neither is ever ahead
         # of the other on disk.
-        self._write(HISTORY_FILE, {"format": FORMAT, "kind": KIND + "-history",
-                                   "forecasts": self._history,
-                                   "scores": self._scores.document()})
+        doc = {"format": FORMAT, "kind": KIND + "-history", "forecasts": self._history,
+               "scores": self._scores.document(), "alerts": self._cusum.document()}
+        if self._layer is not None:
+            doc["refit"] = self._layer      # who adopted it and when: here, in no result
+        self._write(HISTORY_FILE, doc)
+
+    # ------------------------------------------------------------ refit (D740, D741)
+    def _refit_turn(self, seen: dict, wall: float) -> list:
+        """Fill the candidate's points, then judge it, or start a refit on a held alert."""
+        if self._stop.is_set():
+            return []
+        self._refit.fill(seen)
+        try:
+            fields = self._refit.step(
+                history=self._history, alerts=self._cusum.alerts(), k=self._cusum.k,
+                h=self._cusum.h, now=seen.get("at"), layer=self._layer,
+                open_proposal=self._refit.waiting(self._advisor.status_of),
+                background=self._background, should_stop=self._stop.is_set,
+                workers=self.workers)
+        except Exception as exc:            # as the advisor's: the class only
+            return [problem("W_TWIN_REFIT", f"the refit could not be stepped "
+                                            f"({type(exc).__name__})", "/refit")]
+        if fields is None:
+            return []
+        from nagasim.live import stamp
+
+        made = stamp(seen.get("stamp")) if isinstance(seen.get("stamp"), str) else None
+        ident = self._advisor.propose_refit(fields, wall if made is None else made)
+        if ident is None:
+            return [problem("W_TWIN_REFIT", "the refit's proposal is no record of format 1: "
+                                            "it is not proposed", "/refit")]
+        self._refit.named(ident)
+        return []
+
+    def _follow(self, wall: float) -> list:
+        """The layer follows the ledger: a `taken` reply to a refit adopts it, an `ended`
+        reply (or a later refit taken) ends it. Each change starts the score and the
+        alerts again: they are of another model now (D741)."""
+        want, have = self._advisor.adopted(), self._layer
+        if (want or {}).get("id") == (have or {}).get("id"):
+            return []
+        said = []
+        if want is not None:
+            why = self._refit.plan.check(want["overrides"])
+            if why is not None:
+                if want["id"] not in self._refused:
+                    self._refused.add(want["id"])
+                    said.append(problem(
+                        "W_TWIN_REFIT", f"the refit {want['id'][:12]} a reply took is not "
+                        f"applied: {why}", "/refit",
+                        hint="the --refit file decides what a refit may set; reply \"ended\" "
+                             "to it"))
+                want = None
+                if have is None:
+                    return said
+        self._layer = None if want is None else dict(want)
+        self._refit.reset("the model changed: a refit was adopted or ended")
+        since = iso(wall)
+        self._scores = score.Totals(self._identity(), self.horizon, since)
+        self._cusum = score.Cusum(self._identity(), self._cusum.k, self._cusum.h, since)
+        self._save_history()
+        return said
 
     # ------------------------------------------------------------ compare
     def _compare(self, seen: dict) -> None:
@@ -551,6 +690,8 @@ class Cycle:
                         self._scores.count(record)
                     for point in touched:
                         self._scores.add(record, point)
+                        if point["observed"] is not None:
+                            self._cusum.add(point)
                 record["score"] = score.of(record)
         if changed:
             self._save_history()
@@ -598,14 +739,23 @@ class Cycle:
         if not rows:
             doc["scores"]["reason"] = "not_observed" if not self._observes \
                 else "none_due" if self._history else "no_forecast"
+        # Bounded by the series (two sides each, `score.MAX_SERIES`): never cut for size.
+        doc["alerts"] = {"k": self._cusum.k, "h": self._cusum.h,
+                         "basis": self._cusum.basis(), "rows": self._cusum.alerts()}
         if seen.get("mapped"):
             doc["mapped"] = seen["mapped"]
         if seen.get("readings"):
             doc["readings"] = seen["readings"]      # for the twin started next (D378)
         if self._advice is not None:
             doc["advice"] = self._advice
-        if self._advisor is not None:
+        if self._advisor is not None and self._advisor.recommends:
             doc["recommend"] = self._advisor.document()     # bounded by its own counts
+        if self._refit is not None:
+            status_of = self._advisor.status_of if self._advisor is not None else lambda _id: None
+            layer = self._layer
+            doc["refit"] = {**self._refit.document(status_of), "adopted": None if layer is None
+                            else {"id": layer["id"], "overrides": layer["overrides"],
+                                  "series": layer["series"], "since": layer["read"]}}
         # The size bound: a source's advice goes first, then its view. What is left is the
         # cycle's own and bounded by the counts above.
         for key in ("advice", "view"):
@@ -910,6 +1060,9 @@ def _summary(doc: dict) -> list[str]:
         lines.append("counted by the plant: " + ", ".join(
             f"{_show(name, 80)} {total:g}" + (f" ({resets:g} resets)" if resets else "")
             for name, total, _since, resets in shown["counters"] if total is not None))
+    if shown["alerts"]:                 # the alerting sides, then the basis
+        lines.append("alerts: " + _show(shown["alerts"]["lines"][0], 1000))
+        lines += ["  " + _show(line, 1000) for line in shown["alerts"]["lines"][1:-1]]
     lines.append("scores: " + _show(shown["scores"]["lines"][0]))
     lines += [f"  {_show(series, 80)}, lead {lead:g}: {points:g} readings"
               + (f", coverage {coverage}, bias {bias:+.3g}, abs. error {error:.3g}, pinball "
@@ -919,6 +1072,9 @@ def _summary(doc: dict) -> list[str]:
               in shown["scores"]["rows"] if None not in (lead, points, missed, lost)]
     if len(shown["scores"]["lines"]) > 1:
         lines += [_show(line, 1000) for line in shown["scores"]["lines"][1:]]
+    if shown["refit"]:
+        lines.append("refit: " + _show(shown["refit"][0], 1000))
+        lines += ["  " + _show(line, 1000) for line in shown["refit"][1:]]
     if shown["recommend"]:
         # Plainest form (D358): what stands, the recommendation and the outbox first; the
         # rows; then the basis, indented. Nothing is hidden behind a flag.
@@ -940,6 +1096,23 @@ def _summary(doc: dict) -> list[str]:
 def _failed(doc: dict) -> bool:
     return any(isinstance(p, dict) and p.get("severity") == "error"
                for p in doc.get("problems") or [])
+
+
+def _limit(floor):
+    """An argparse type: a finite number, at least *floor* (None: over 0)."""
+    def parse(text) -> float:
+        import argparse
+
+        try:
+            value = float(text)
+        except ValueError:
+            value = math.nan
+        if not math.isfinite(value) or (value <= 0 if floor is None else value < floor):
+            raise argparse.ArgumentTypeError(
+                f"'{text}' is not a finite number " + ("over 0" if floor is None
+                                                       else f"of at least {floor:g}"))
+        return value
+    return parse
 
 
 def _cadence(every: str, forecast_every: str) -> tuple:
@@ -994,6 +1167,12 @@ def main(argv=None, *, wait=time.sleep) -> int:
                         help="only this recommendation (its id, or the first characters of "
                              "it); may repeat (default: every one whose state is kept)")
     again_.add_argument("--workers", type=int, default=1)
+    for verb in (once_, run_, again_):
+        verb.add_argument("--setpoints", default=None, metavar="FILE",
+                          help="your setpoints file (format 1, kind naga-setpoints): the tags a "
+                               "\"setpoint\" candidate may name, each with the model path that "
+                               "simulates it and its range. Only naga plc-write writes one to a "
+                               "PLC, and only after a person's reply")
     for verb in (once_, run_):
         add_model_argument(verb)
         verb.add_argument("--map", required=True, metavar="FILE",
@@ -1017,8 +1196,15 @@ def main(argv=None, *, wait=time.sleep) -> int:
                           help="your candidate actions (format 1, kind naga-candidates): each "
                                "is compared with doing nothing after every forecast, on one "
                                "KPI; at most 20, each one more forecast")
+        verb.add_argument("--refit", default=None, metavar="FILE",
+                          help="your refit file (format 1, kind naga-refit): the factors and "
+                               "bounds a held alert may refit, the calibration budget and the "
+                               "readings a candidate is scored on. Only a better-scoring "
+                               "candidate is proposed, through --outbox, and only a \"taken\" "
+                               "reply adopts it; the model file is never written. Needs --outbox")
         verb.add_argument("--outbox", default=None, metavar="SPEC",
-                          help="with --candidates: where each recommendation is also written "
+                          help="with --candidates or --refit: where each recommendation or refit "
+                               "is also written "
                                "as a record, file:<path> (one JSON line each, appended; "
                                "replies are read from <path>.replies) or mqtt:<connection> "
                                "(a connection of --connections with \"use\": \"outbox\"; "
@@ -1038,6 +1224,12 @@ def main(argv=None, *, wait=time.sleep) -> int:
         verb.add_argument("--for", dest="seconds", type=float, default=5.0, metavar="SECONDS",
                           help="how long to listen to live sources before the first cycle, so "
                                "that it starts from the whole plant (default 5)")
+        verb.add_argument("--alert-k", type=_limit(0.0), default=score.K, metavar="K",
+                          help="the alerts' allowance, in standard deviations of the band: a "
+                               "shift smaller than this is not summed (default 0.5)")
+        verb.add_argument("--alert-h", type=_limit(None), default=score.H, metavar="H",
+                          help="the alerts' limit: a series alerts while its sum of "
+                               "standardised residuals beyond K is over this (default 4)")
     run_.add_argument("--every", default="5s", metavar="INTERVAL",
                       help="between two cycles (default 5s, at least 1s)")
     run_.add_argument("--forecast-every", default="5m", metavar="INTERVAL",
@@ -1059,11 +1251,20 @@ def main(argv=None, *, wait=time.sleep) -> int:
         return int(_failed(doc))
 
     layout = api.load_layout(Path(args.model))
+    setpoints = None
+    if getattr(args, "setpoints", None):
+        from nagasim import plcwrite
+
+        try:            # the flag's file, and only the flag's (D742)
+            setpoints = plcwrite.load(args.setpoints)["tags"]
+        except plcwrite.Refused as exc:
+            print(f"{exc.code}: {exc.message}" + (f" ({exc.hint})" if exc.hint else ""))
+            return 1
     if args.verb == "reproduce":
         from nagasim import recommend
 
         lines, differences = recommend.reproduce(args.directory, layout, ids=args.id,
-                                                 workers=args.workers)
+                                                 workers=args.workers, setpoints=setpoints)
         print("\n".join(_show(line, 400) for line in lines))
         return int(bool(differences))
     mapping, problems = plant.load(args.map)
@@ -1078,21 +1279,30 @@ def main(argv=None, *, wait=time.sleep) -> int:
         lines, differences = score.recompute(args.directory, layout, mapping, observations)
         print("\n".join(_show(line, 400) for line in lines))
         return int(bool(differences))
-    asked = sink = None
-    if args.outbox and not args.candidates:
+    asked = sink = plan = None
+    if args.outbox and not (args.candidates or args.refit):
         print("--outbox needs --candidates: there is nothing to recommend without them")
         return 1
+    if args.refit and not args.outbox:
+        print("--refit needs --outbox: a refit is adopted only by a person's reply to its proposal")
+        return 1
+    if args.refit and not args.alert_k > 0:
+        print("--refit needs --alert-k over 0: a refit's window is ceil(h/k) readings")
+        return 1
     connections = None if args.log else netguard.load_connections(args.connections)
-    if args.candidates:
+    if args.candidates or args.refit:
         from nagasim import outbox, recommend
 
         try:
-            asked = recommend.load(args.candidates, layout)
+            # The refit file is the flag's, and only the flag's: none is looked for (D740).
+            plan = refits.load(args.refit, layout) if args.refit else None
+            asked = recommend.load(args.candidates, layout, setpoints) if args.candidates \
+                else None
             if args.log and str(args.outbox or "").startswith("mqtt:"):
                 raise outbox.SinkError("an mqtt outbox needs --connections",
                                        "it names a connection of your connections file")
             sink = outbox.open_sink(args.outbox, connections) if args.outbox else None
-        except (recommend.Refused, outbox.SinkError) as exc:
+        except (recommend.Refused, refits.Refused, outbox.SinkError) as exc:
             print(f"{exc.code}: {exc.message}" + (f" ({exc.hint})" if exc.hint else ""))
             return 1
     running = args.verb == "run"
@@ -1115,16 +1325,22 @@ def main(argv=None, *, wait=time.sleep) -> int:
         source = PlantSource(layout, mapping, feed, name=Path(args.model).stem, sources=names,
                              clock=clock, path=args.model, max_age=args.max_age)
         advisor = None
-        if asked is not None:
+        if asked is not None or plan is not None:
             advisor = recommend.Advisor(
                 asked, model=layout, horizon=args.horizon, name=Path(args.model).stem,
-                mapping=mapping, out_dir=args.out, sink=sink,
-                lifetime=recommend.lifetime(asked, args.horizon, source.time_unit))
+                mapping=mapping, out_dir=args.out, sink=sink, setpoints=setpoints,
+                lifetime=recommend.lifetime(asked or {}, args.horizon, source.time_unit))
+        if asked is not None:
             print(f"recommending on {_show(advisor.kpi)} ({advisor.better} is better), "
                   f"{len(advisor.actions)} candidates a forecast" + (
                       "" if advisor.series else "; the effect of an action taken cannot be "
                       "measured on this KPI (only timeseries/block/<name>/out/max of a "
                       "counted block can)"))
+        if plan is not None:
+            print(f"refit: {len(plan.factors)} factors on an alert held for "
+                  f"{math.ceil(args.alert_h / args.alert_k)} readings, a candidate scored on "
+                  f"{plan.readings} readings and proposed only when better")
+        if advisor is not None:
             if sink is not None and sink.kind == "mqtt":
                 print(netguard.describe_connection(sink.conn))
                 print(f"outbox: records are published to {sink.topic('<id>')} (QoS 1, not "
@@ -1135,7 +1351,9 @@ def main(argv=None, *, wait=time.sleep) -> int:
         cycle = Cycle(source, horizon=args.horizon, replications=args.replications,
                       seed=args.seed, workers=args.workers, out_dir=args.out,
                       forecast_every=forecast_every, every=every if running else None,
-                      background=running, advisor=advisor)
+                      background=running, advisor=advisor, alert_k=args.alert_k,
+                      alert_h=args.alert_h,
+                      refit=None if plan is None else refits.Refitter(plan))
         page = None
         if args.monitor:
             from nagasim import monitor

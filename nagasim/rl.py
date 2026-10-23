@@ -26,6 +26,8 @@ pending, the event queue drains (`terminated`), or the next event would cross
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from nagasim import api
@@ -39,6 +41,7 @@ from nagasim.core.outputs import calc_kpis
 from nagasim.core.schema import ModelValidationError, prepare, fatal_problems, format_problems
 from nagasim.core.sim_runner import prepare_model
 from nagasim.core.stats import ci95
+from nagasim.policyfile import load_policy_file
 
 __all__ = ["Space", "Discrete", "Box", "SimEnv", "evaluate_policy", "BUILTIN_REWARDS", "main"]
 
@@ -131,10 +134,16 @@ class SimEnv:
     a block). *observation_extra*, when given, is a list of such expressions,
     evaluated the same way and appended after the DECIDE block's own
     `observation` values.
+
+    *others* names a controller for the model's other Policy DECIDEs, so one
+    policy trains at a time: `{key: controller}`, the key a policy name or a
+    Policy DECIDE's block name, the controller anything `evaluate_policy`
+    accepts. A Policy DECIDE not named runs the shortest queue (reading its
+    own `observation`), not its fallback.
     """
 
     def __init__(self, layout, *, policy: str, reward: str = "neg_wip", horizon: float,
-                observation_extra: list[str] | None = None):
+                observation_extra: list[str] | None = None, others: dict | None = None):
         # One prepare pass (read/migrate/validate/flatten/expand, Wave A2): every
         # episode's reset() reuses this same flat layout (prepared=True) rather
         # than re-migrating/re-validating/re-flattening/re-expanding it, which
@@ -157,6 +166,7 @@ class SimEnv:
             raise ValueError(f"DECIDE '{first['name']}' (policy '{policy}') has no outgoing link")
         obs_dim = len(first["params"].get("observation", [])) + len(observation_extra or [])
 
+        self._others = self._other_policies(policy, others or {})
         self.policy_name = policy
         self.reward_spec = str(reward)
         self._reward_expr = None if self.reward_spec in BUILTIN_REWARDS else compile_expression(self.reward_spec)
@@ -172,6 +182,22 @@ class SimEnv:
         self._controller: PausingController | None = None
         self._episode_completions = 0
         self._done = False
+
+    def _other_policies(self, policy: str, others: dict) -> dict:
+        """{policy name: controller spec} for every other Policy DECIDE; shortest queue by default."""
+        blocks = [b for b in self.layout.get("blocks", [])
+                  if b.get("type", "").upper() == "DECIDE" and b.get("params", {}).get("mode") == "Policy"]
+        names = {b["params"].get("policy") for b in blocks}
+        by_block = {b["name"]: b["params"].get("policy") for b in blocks}
+        result = {n: "shortest" for n in names if n != policy}
+        for key, spec in others.items():
+            name = key if key in names else by_block.get(key)
+            if name is None:
+                raise ValueError(f"others names '{key}', which is no Policy DECIDE or policy of this model")
+            if name == policy:
+                raise ValueError(f"others names '{key}', the policy being trained")
+            result[name] = spec
+        return result
 
     # -- bookkeeping between decisions --------------------------------------
     def _reset_window(self, t: float) -> None:
@@ -230,7 +256,9 @@ class SimEnv:
         self.env = self.ctx.env
         self.env.ctx = self.ctx
         self._controller = PausingController()
-        self.ctx.controllers = {self.policy_name: self._controller}
+        self.ctx.controllers = {name: _resolve_controller(spec, self.seed)
+                                for name, spec in self._others.items()}
+        self.ctx.controllers[self.policy_name] = self._controller
         self.ctx.bus.subscribe(self._on_event)
         self._episode_completions = 0
         self._done = False
@@ -280,6 +308,33 @@ class SimEnv:
                 return self._terminal_observation(), False, True
             env.step()
 
+    def as_gymnasium_env(self):
+        """This environment as a real `gymnasium.Env` (passes gymnasium's `check_env`).
+        Needs gymnasium (`pip install "nagasim[ml]"`); it is imported here only."""
+        gymnasium = _import_gymnasium()
+        sim = self
+
+        class _GymSimEnv(gymnasium.Env):
+            metadata: dict = {}
+            action_space = sim.action_space.as_gymnasium()
+            observation_space = sim.observation_space.as_gymnasium()
+
+            def reset(self, *, seed=None, options=None):
+                super().reset(seed=seed)
+                # #943: SimEnv.reset(seed=None) keeps its seed, and trainers reset with none:
+                # an unseeded episode draws its seed from np_random, so episodes differ while
+                # a seeded reset (which reseeds np_random) still repeats.
+                if seed is None:
+                    seed = int(self.np_random.integers(0, 2 ** 31 - 1))
+                obs, _ = sim.reset(seed=seed)
+                return obs, {}
+
+            def step(self, action):
+                obs, reward, terminated, truncated, _ = sim.step(int(action))
+                return obs, reward, terminated, truncated, {}
+
+        return _GymSimEnv()
+
     def _terminal_observation(self) -> np.ndarray:
         return np.zeros(self.observation_space.shape, dtype=float)
 
@@ -290,6 +345,8 @@ def _resolve_controller(policy_or_controller, seed: int):
     ("random"/"shortest"/"roundrobin") the CLI/agent tool take by string."""
     if isinstance(policy_or_controller, Controller):
         return policy_or_controller
+    if isinstance(policy_or_controller, Path):
+        return load_policy_file(policy_or_controller)
     if isinstance(policy_or_controller, str):
         cls = _BUILTIN_CONTROLLERS.get(policy_or_controller)
         if cls is None:
@@ -303,12 +360,15 @@ def _resolve_controller(policy_or_controller, seed: int):
 
 def evaluate_policy(layout, policy_or_controller, episodes: int, seed: int = 0, *,
                     policy: str, reward: str = "neg_wip", horizon: float = 1000.0,
-                    observation_extra: list[str] | None = None) -> dict:
+                    observation_extra: list[str] | None = None,
+                    others: dict | None = None) -> dict:
     """Run *episodes* episodes of `SimEnv(layout, policy=policy, ...)`, driving
     the pending decision at each step with *policy_or_controller*.
 
     *policy_or_controller* is a `Controller` (e.g. `ShortestQueuePolicy()`), a
-    bare `fn(request) -> int`, or one of "random"/"shortest"/"roundrobin".
+    bare `fn(request) -> int`, one of "random"/"shortest"/"roundrobin", or a
+    `pathlib.Path` to a data-only policy file (`nagasim.policyfile`). *others*
+    is passed to `SimEnv`.
     Episode *i* uses `seed + i`.
 
     Returns {"mean", "lb", "ub", "episodes", "returns": [one per episode]} --
@@ -316,7 +376,7 @@ def evaluate_policy(layout, policy_or_controller, episodes: int, seed: int = 0, 
     """
     controller = _resolve_controller(policy_or_controller, seed)
     env = SimEnv(layout, policy=policy, reward=reward, horizon=horizon,
-                observation_extra=observation_extra)
+                observation_extra=observation_extra, others=others)
     returns = []
     for i in range(int(episodes)):
         env.reset(seed=seed + i)
@@ -346,8 +406,11 @@ def main(argv=None) -> int:
                                      description="Evaluate a controller against a Policy-mode DECIDE.")
     add_model_argument(parser)
     parser.add_argument("--policy", required=True, help="decision-point name")
-    parser.add_argument("--controller", required=True, choices=sorted(_BUILTIN_CONTROLLERS),
-                        help="built-in controller to evaluate")
+    who = parser.add_mutually_exclusive_group(required=True)
+    who.add_argument("--controller", choices=sorted(_BUILTIN_CONTROLLERS),
+                     help="built-in controller to evaluate")
+    who.add_argument("--policy-file", type=Path,
+                     help="data-only JSON policy (table or linear, see nagasim.policyfile)")
     parser.add_argument("--reward", default="neg_wip", choices=list(BUILTIN_REWARDS))
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--horizon", type=float, required=True)
@@ -355,9 +418,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     layout = api.load_layout(args.model)
-    result = evaluate_policy(layout, args.controller, args.episodes, args.seed,
+    who_name = args.controller or args.policy_file.name
+    result = evaluate_policy(layout, args.controller or args.policy_file, args.episodes, args.seed,
                              policy=args.policy, reward=args.reward, horizon=args.horizon)
-    print(f"{args.controller}: mean return = {result['mean']:.6g} "
+    print(f"{who_name}: mean return = {result['mean']:.6g} "
          f"[{result['lb']:.6g}, {result['ub']:.6g}] over {result['episodes']} episodes")
     return 0
 

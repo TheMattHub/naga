@@ -54,6 +54,10 @@ class Results(dict):
     True
     """
 
+    # D726: a paced run's `{"paced", "late_events", "max_lag_s"}`; an attribute,
+    # not a frame, so no frame or digest of a run depends on the pace.
+    pace: dict | None = None
+
     def frame(self, name: str) -> pd.DataFrame:
         """Return the KPI frame *name*; an alias for ``results[name]``.
 

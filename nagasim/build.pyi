@@ -956,6 +956,7 @@ class Level:
         exit_resource: str | dict[str, Any] = '',
         from_node: str | dict[str, Any] = '',
         to_node: str | dict[str, Any] = '',
+        stops: list[Any] | dict[str, Any] = ...,
     ) -> Block:
         """Add a CONVEYOR block. Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
 
@@ -969,6 +970,7 @@ class Level:
         exit_resource='': Resource an entity must take to leave the belt -- the end stop that makes accumulation happen. It carries the resource onward, so release it downstream (a PROCESS with action "Delay Release"). Empty: no end stop. Either way, a belt that feeds another belt keeps its end part until that belt has room (back-pressure).
         from_node='': Path-network node the belt starts at (drawing, and the length when `length` is 0).
         to_node='': Path-network node the belt ends at.
+        stops=[]: Points where each part halts on the belt: {"at": <distance from the entry, in the unit of `length`, between 0 and the length>, "time": <number or expression>, "resource"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none.
         """
 
     def buffer(
@@ -1125,6 +1127,7 @@ class Model(Level):
         investment: dict[str, Any] = ...,
         outputs: dict[str, Any] = ...,
         assertions: list[Any] = ...,
+        path_checks: list[Any] = ...,
         dashboard: dict[str, Any] = ...,
         view: dict[str, Any] = ...,
     ) -> None:

@@ -53,14 +53,19 @@ def _candidate_layout(layout, overrides) -> dict:
     return candidate
 
 
-def _values_from_frames(frames, extra=None) -> dict[str, dict[int, float]]:
-    """{KPI: {seed: value}} from one point's concatenated frames (Run == seed)."""
+def _values_from_frames(frames, extra=None, seed=None) -> dict[str, dict[int, float]]:
+    """{KPI: {seed: value}} from one point's concatenated frames (Run == seed).
+
+    A deterministic run reports Run 0 whatever its seed (D119), so its one
+    replication is filed under *seed*, the first seed it was asked for (#907)."""
     values: dict[str, dict[int, float]] = {}
     flat = experiments.flatten_kpis(frames)
     for run, kpi, value in zip(flat["Run"], flat["KPI"], flat["Value"]):
         values.setdefault(kpi, {})[int(run)] = float(value)
     for kpi, by_seed in (extra(frames) if extra is not None else {}).items():
         values.setdefault(kpi, {}).update(by_seed)
+    if seed is not None and "system/Deterministic" in values:
+        values = {kpi: {int(seed): v for v in by_seed.values()} for kpi, by_seed in values.items()}
     return values
 
 
@@ -85,7 +90,7 @@ def _evaluate_point(layout, overrides, seeds, *, run_length=None, warmup=None, w
                                run_length=run_length, warmup=warmup, workers=workers, pool=pool)
         if frames is None:
             continue
-        for kpi, by_seed in _values_from_frames(frames, extra).items():
+        for kpi, by_seed in _values_from_frames(frames, extra, seed=start).items():
             values.setdefault(kpi, {}).update(by_seed)
     return values
 
@@ -136,7 +141,8 @@ def _evaluate_points(layout, requests, *, run_length=None, warmup=None, workers=
     for key, _overrides, seeds in requests:
         pairs = collected.get(key) or []
         if len(pairs) == len(seeds):
-            out[key] = _values_from_frames(concat_runs([kpi for _, kpi in pairs]), extra)
+            out[key] = _values_from_frames(concat_runs([kpi for _, kpi in pairs]), extra,
+                                           seed=min(seeds))
     return out
 
 

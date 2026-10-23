@@ -150,10 +150,25 @@ the start of each of your turns -- use it instead of asking the user to repeat \
 the model's state.
 """
 
+# D727: the options are computed by rules over recorded numbers (`nagasim.nextoptions`); the
+# assistant only says them. Both prompts carry this routine (the editor's and the study room's).
+WHAT_NEXT = """\
+What next: the {where} carries "{field}", ranked options computed from the recorded numbers \
+(kind, title, why, tool, arguments, cost; "needs" lists arguments you still fill in). When the \
+person asks "what next?" (or anything like it), or at the end of a turn when nothing is pending, \
+offer the top option as ONE question with its reason and its cost, then name up to two others by \
+their title. Never run an option before the person picks it. "yes", "do it", "the first" or "go \
+ahead" carry on with the option you offered first; "the second" or "the third" with that one: \
+call its tool with its arguments, filling in what it needs. Never invent a number for a reason; \
+an idea of your own is said as yours, not as a measured fact.
+"""
+VOICE_NOTE = ("[Voice mode: the answer is read aloud. At most three short sentences; no tables, "
+              "lists or Markdown.]")
+
 
 def system_prompt(app: str = "Naga") -> str:
     return (f"You are the in-app assistant for {app}, a discrete-event simulation editor. "
-            + _PROMPT_BODY)
+            + _PROMPT_BODY + "\n" + WHAT_NEXT.format(where="model summary", field="next_options"))
 
 
 # ---------------------------------------------------------------- results

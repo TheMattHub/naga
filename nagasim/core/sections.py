@@ -206,6 +206,12 @@ SECTIONS: tuple[Section, ...] = (
     Section("assertions", [], doc="Model assertions: a KPI, a comparison "
                                   "operator/value and a replication/confidence budget, checked "
                                   "by `naga check`."),
+    # D722: its own section, not keys of reality_checks (those constrain sampled values
+    # over time; a path is per entity). No default: absent, a file reads and saves as before.
+    Section("path_checks", doc="Entity-path checks: rules on the blocks each entity visits "
+                               "(order, never, at most N times, always), checked by "
+                               "`naga check` on one traced replication.",
+            validate="nagasim.core.schema.sections_validation:_validate_path_checks"),
     Section("dashboard", doc="Dashboard widgets: kpi/gauge/line/bar over the "
                              "model's own expressions, sampled at the same instants as the "
                              "timeseries sampler.",

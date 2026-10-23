@@ -48,26 +48,40 @@ watch.
 
 ## What the reader sees
 
-- **The inputs** of the model's dashboard definition (its `dashboard` section): the
-  ones you wrote, or the ones generated from the model (variables, resource capacities, constant
-  auxiliaries, submodel arguments). Each stays within its range: the engine refuses a value
-  outside it. A model with no inputs says so and can still be run as it is.
-- **Replications**, from 1 to the definition's `limits.max_replications`. The seed is the
-  model's own and is shown. The run length is the model's unless you exposed it as an input.
-- **Run** and **Cancel**. Cancel stops at once; the engine then starts again (about 10 s). Cancel also stops an engine that is still starting; Run starts it again.
-- **Results**: for each result of the definition, the baseline's mean and 95% interval, the
-  reader's, and the difference with its interval (paired: both runs use the same random
-  numbers). A star marks a difference whose interval excludes 0. When an input changes, the
-  table is greyed until the next run: numbers from two sets of inputs are never mixed.
-- **"Same engine"**: on every run the page compares its own baseline with yours and says whether
-  every value is equal.
-- **Watch the author's recorded run**: the player (`naga run --player`) of your baseline's first
-  replication. It replays what you recorded and does not follow the reader's inputs.
-- The time one run takes, when it is more than a few seconds. The export warns you when the
-  longest run a reader may ask for is estimated at over five minutes: lower
-  `limits.max_replications`.
+The page is a console: the study's question and the scenario tabs on top, the levers on the
+left, the line in the middle, and the answer, the results and the trust card on the right. It
+follows the browser's light or dark setting, and a switch on the page overrides it. Below 900 px
+the panels stack in one column.
 
-Starting takes about 10 s (the page says which step it is at); your baseline is on screen at once.
+- **The question** at the top: the dashboard's `question`, else the model's title.
+- **Levers**: the inputs of the model's dashboard definition (its `dashboard` section), the ones
+  you wrote or the ones generated from the model. Each shows its range, a mark at its default,
+  "default N" once moved, and your `note` (for instance "+48 k EUR each"). The engine refuses a
+  value outside the range. "N changed" counts the moved levers; **Reset to defaults** puts them
+  back. **Replications** go from 1 to the definition's `limits.max_replications`; the seed is
+  the model's own.
+- **Scenario tabs**: Baseline, each of your scenarios whose overrides set only the levers, Yours
+  (what the levers say now), and the ones the reader saved. A tab puts its values on the levers.
+- **Run my version**, and **Cancel**. A run goes on until its answer is clear: while it is "not
+  clear yet" it runs again with the replications the comparison says it needs, up to
+  `limits.max_replications`. Cancel stops at once; the engine then starts again (about 10 s).
+- **The answer** for the first result: "Yes, very likely", "No" or "Not clear yet". With a
+  `target` and a direction (`better`, or the KPI's known one) it says whether the whole 95%
+  interval is on the right side of the target; without a target, whether the result is better
+  than the baseline. It is worked out from the numbers, never shown by colour alone.
+- **Results**: each result's 95% interval as a bar, the baseline's below it, the target as a
+  dotted line, and the change with an arrow and a word ("better", "worse", "no clear change").
+  "All numbers" holds the table: means, intervals and the paired difference. When a lever
+  moves, the results go grey until the next run.
+- **Can I trust this?**: the law checks, the warm-up removed, the replications and the precision.
+- **The line**: the recorded run of your baseline, then, after a run, yours beside the baseline,
+  both with the model's seed and recorded in the browser.
+- **The footer**: **Save as scenario** keeps the levers as a tab in this browser; **Picture for
+  the report** draws the question, the answer and the results as a picture to save as PNG;
+  **Compare two scenarios** runs one tab against another. Nothing leaves the page.
+
+Starting takes about 10 s (the page says which step it is at); your baseline is on screen at
+once, and the time a run takes is shown before it starts.
 
 ## A model fed from files or a database
 
@@ -105,7 +119,7 @@ differently between versions. Two desktops with different scipy versions differ 
   change; Firefox is checked by hand. **Safari, phones and tablets are not supported**: the page
   says so in place of starting.
 - About 40 MB, whatever the model: almost all of it is Python and its numerical libraries.
-- No step by step, no animation of the reader's own run, no scenarios, no saving.
+- Saved scenarios stay in the reader's browser: another browser or a cleared one does not have them.
 - A run is 1.3 to 2.8 times slower than on the desktop.
 - The page keeps nothing and sends nothing: a Content-Security-Policy makes the browser refuse
   every request, and the engine runs in a worker that cannot read the recipient's files, in all

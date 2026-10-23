@@ -47,6 +47,13 @@ deviations of the data (`((model - data) / sd)^2`), so series in different
 units add up fairly. The payoff is per replication like every other term, then
 averaged over the CRN seeds.
 
+ABC (D724). `method="abc"` answers "which parameter values are consistent with
+the data" instead of "which one fits best": rejection ABC over the factors'
+boxes, one replication per prior sample, the same objective as the distance,
+the nearest share accepted. The result carries the posterior sample, each
+factor's median and 90% interval, the tolerance and the accepted count beside a
+best point (`_calibrate_abc` has the details and the caveats).
+
 PASS / FAIL. A target with a `tolerance` passes when `|simulated mean -
 observed| <= tolerance`. That is a point verdict on the mean, not a statistical
 test; the per-target confidence interval is reported beside it so a "pass" with
@@ -64,12 +71,12 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-from nagasim import api, experiments, optimize as optimize_mod
+from nagasim import api, experiments, inputfit, optimize as optimize_mod
 from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import schema
 from nagasim.core.stats import ci95
 
-__all__ = ["CalibrationTarget", "SeriesTarget", "CalibrationResult", "OBJECTIVE_KPI",
+__all__ = ["CalibrationTarget", "SeriesTarget", "CalibrationResult", "OBJECTIVE_KPI", "METHODS",
            "RESIDUAL_COLUMNS", "calibrate", "series_residuals", "parse_target", "main"]
 
 log = logging.getLogger(__name__)
@@ -86,6 +93,11 @@ SAMPLE_KPIS = {"entity_log/Throughput Time": "Throughput Time",
 
 RESULT_COLUMNS = ["Target", "KPI", "Observed", "Simulated", "LB", "UB", "Error",
                   "Relative error", "Tolerance", "Pass"]
+
+METHODS = ("optimize", "abc")
+ABC_ACCEPT = 0.05          # share of prior samples ABC accepts by default
+ABC_MIN_ACCEPTED = 20      # fewer accepted points than this give no usable percentiles
+POSTERIOR_COLUMNS = ["Factor", "Median", "P5", "P95", "Low", "High"]
 
 
 @dataclass
@@ -317,6 +329,15 @@ class CalibrationResult:
     search: object | None = None
     targets: list = field(default_factory=list)
     residuals: dict = field(default_factory=dict)
+    # method="abc" only (None otherwise): every prior sample with its Distance
+    # and Accepted flag, the accepted count, the tolerance (largest accepted
+    # distance), one POSTERIOR_COLUMNS row per factor, and what to say beside them.
+    method: str = "optimize"
+    samples: pd.DataFrame | None = None
+    accepted: int | None = None
+    tolerance: float | None = None
+    posterior: pd.DataFrame | None = None
+    notes: list = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -332,11 +353,13 @@ class CalibrationResult:
 def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_point: int = 5,
               seed: int = 0, workers: int = 1, run_length=None, warmup=None,
               confidence: float = 0.95, evaluator=None, on_progress=None,
-              should_stop=None, record_logs=None) -> CalibrationResult:
+              should_stop=None, record_logs=None, method: str = "optimize",
+              accept: float = ABC_ACCEPT) -> CalibrationResult:
     """Tune factors until the model reproduces observed targets.
 
     Every target's term is summed into one objective, which `nagasim.optimize`
-    minimises.
+    minimises (the default *method*), or which rejection ABC uses as its
+    distance (``method="abc"``, see `_calibrate_abc`).
 
     Parameters
     ----------
@@ -371,6 +394,11 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
         As in `nagasim.api.run_model`.
     record_logs : bool, optional
         As in `nagasim.api.run_model`.
+    method : {"optimize", "abc"}, default "optimize"
+        "optimize" searches for the best point; "abc" draws a posterior sample
+        by rejection ABC as well (`samples`, `posterior`, `tolerance`).
+    accept : float, default 0.05
+        ABC only: the share of prior samples accepted, at least 20 of them.
 
     Returns
     -------
@@ -397,6 +425,8 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
     >>> type(fit).__name__
     'CalibrationResult'
     """
+    if method not in METHODS:
+        raise ValueError(f"unknown calibration method {method!r} (expected one of {METHODS})")
     base = api.load_layout(layout)
     wanted = _targets(targets, base)
     if not wanted:
@@ -407,6 +437,11 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
         base, run_length=run_length, warmup=warmup, workers=workers, budget=int(budget),
         extra=_extra_kpis(wanted), record_logs=record_logs,
         kpis=[t.kpi for t in wanted if isinstance(t, CalibrationTarget)])
+    if method == "abc":
+        return _calibrate_abc(base, wanted, factors, evaluator, budget=int(budget),
+                              replications_per_point=int(replications_per_point), seed=seed,
+                              accept=accept, workers=workers, run_length=run_length,
+                              warmup=warmup, on_progress=on_progress, should_stop=should_stop)
 
     search = optimize_mod.optimize(
         base, factors, response=OBJECTIVE_KPI, goal="min", budget=int(budget),
@@ -418,7 +453,19 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
     key = optimize_mod._point_key(factors, search.best)
     seeds = [seed + r for r in range(replications_per_point)]
     values = evaluator.values(key, search.best_overrides, seeds)
+    reps = 1 if getattr(evaluator, "deterministic", None) else replications_per_point
+    residuals = _residuals(base, wanted, search.best_overrides, reps=reps, seed=seed,
+                           run_length=run_length, warmup=warmup, workers=workers)
+    objective = float(np.nanmean(values.get(OBJECTIVE_KPI, [np.nan])))
+    return CalibrationResult(
+        best=dict(search.best), overrides=list(search.best_overrides),
+        table=_target_table(wanted, values), objective=objective,
+        history=search.history, budget_used=search.budget_used, converged=search.converged,
+        search=search, targets=wanted, residuals=residuals)
 
+
+def _target_table(wanted, values) -> pd.DataFrame:
+    """One `RESULT_COLUMNS` row per target, from the best point's replications."""
     rows = []
     for index, target in enumerate(wanted):
         series = values.get(target.response)
@@ -438,27 +485,124 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
             "Tolerance": tolerance,
             "Pass": bool(abs(error) <= tolerance) if tolerance is not None else None,
         })
+    return pd.DataFrame(rows, columns=RESULT_COLUMNS)
 
-    # The residual frames need the winner's timeseries, which the evaluator's
-    # cache does not keep (only per-replication numbers): one more run of it.
-    residuals = {}
+
+def _residuals(base, wanted, overrides, *, reps, seed, run_length, warmup, workers) -> dict:
+    """Each series target's residual frame at the best point, averaged over *reps*.
+    The frames need the point's timeseries, which the evaluator's cache does not
+    keep (only per-replication numbers): one more run of it."""
     series_targets = [t for t in wanted if isinstance(t, SeriesTarget)]
-    if series_targets:
-        reps = 1 if getattr(evaluator, "deterministic", None) else replications_per_point
-        frames = api.run_model(experiments.apply_overrides(base, search.best_overrides),
-                               replications=reps, seed=seed, run_length=run_length,
-                               warmup=warmup, workers=workers)
-        for target in series_targets:
-            res = series_residuals(frames, target)
-            residuals[target.series] = (res.groupby("Time", sort=True)[RESIDUAL_COLUMNS[1:]]
-                                        .mean().reset_index()[RESIDUAL_COLUMNS])
+    if not series_targets:
+        return {}
+    frames = api.run_model(experiments.apply_overrides(base, overrides),
+                           replications=reps, seed=seed, run_length=run_length,
+                           warmup=warmup, workers=workers)
+    residuals = {}
+    for target in series_targets:
+        res = series_residuals(frames, target)
+        residuals[target.series] = (res.groupby("Time", sort=True)[RESIDUAL_COLUMNS[1:]]
+                                    .mean().reset_index()[RESIDUAL_COLUMNS])
+    return residuals
 
-    objective = float(np.nanmean(values.get(OBJECTIVE_KPI, [np.nan])))
+
+def _calibrate_abc(base, wanted, factors, evaluator, *, budget, replications_per_point, seed,
+                   accept, workers, run_length, warmup, on_progress, should_stop):
+    """Rejection ABC (D724): a posterior sample of the factors, beside a best point.
+
+    PRIOR: uniform over each factor's box, sampled by a Latin hypercube (integer
+    factors stay integer) on `inputfit.bootstrap_rng(seed)`, a stream of its own
+    that shares nothing with the engine's seeds. Sample i runs ONE replication on
+    engine seed `seed + i`: ABC compares the data with independent simulated
+    datasets, so there is no common-random-numbers pairing here.
+
+    DISTANCE: the calibrate objective of that one replication. It is a
+    per-dataset distance, so the accepted set describes the parameters whose
+    single runs come near the data; a noisy model gives a wider posterior than its
+    mean alone would (the same variance penalty the default method has).
+
+    ACCEPTANCE: the nearest *accept* share of the samples, at least
+    ABC_MIN_ACCEPTED; the tolerance is the largest accepted distance. A
+    deterministic model gives exact distances, so a tolerance of 0 means every
+    accepted sample reproduces the data exactly.
+
+    BUDGET: `budget - replications_per_point` prior samples, then the nearest
+    accepted sample gets `replications_per_point` replications for the target
+    table, as the default method reports its best point. *budget* stays a hard cap.
+    """
+    if any(f.kind == "categorical" for f in factors):
+        raise ValueError("ABC needs numeric factors: a categorical factor has no median "
+                         "or percentiles")
+    if not 0 < float(accept) <= 1:
+        raise ValueError(f"accept must be a share in (0, 1], got {accept!r}")
+    reps = max(int(replications_per_point), 1)
+    planned = int(budget) - reps
+    if planned < 1:
+        raise ValueError(f"ABC needs a budget above replications_per_point ({reps}): "
+                         f"the prior sample gets budget - {reps} replications")
+
+    design = optimize_mod.latin_hypercube(factors, planned, seed=inputfit.bootstrap_rng(seed))
+    points = design.to_dict("records")
+    requests = [(("abc", i), optimize_mod.overrides_for(factors, point), [seed + i])
+                for i, point in enumerate(points)]
+    found = evaluator.values_many(requests, on_progress=on_progress, should_stop=should_stop,
+                                  total=planned)
+
+    names = [f.name for f in factors]
+    rows = []
+    for i, point in enumerate(points):
+        values = found.get(("abc", i))
+        if values is None:          # cut short by should_stop or the budget
+            continue
+        rows.append({**{f.name: f.coerce(point[f.name]) for f in factors},
+                     "Seed": seed + i, "Distance": float(values[OBJECTIVE_KPI][0])})
+    samples = pd.DataFrame(rows, columns=names + ["Seed", "Distance"])
+    if samples.empty:
+        raise ValueError("ABC: stopped before any prior sample ran")
+    finite = samples[np.isfinite(samples["Distance"].to_numpy(dtype=float))]
+    if finite.empty:
+        raise ValueError("ABC: no prior sample gave a finite distance")
+
+    wanted_count = max(int(np.ceil(float(accept) * planned)), ABC_MIN_ACCEPTED)
+    count = min(wanted_count, len(finite))
+    chosen = finite.sort_values("Distance", kind="stable").index[:count]
+    samples["Accepted"] = samples.index.isin(chosen)
+    kept = samples.loc[chosen]
+    tolerance = float(kept["Distance"].max())
+
+    posterior = pd.DataFrame(
+        [{"Factor": f.name, "Median": float(np.median(kept[f.name])),
+          "P5": float(np.percentile(kept[f.name], 5)),
+          "P95": float(np.percentile(kept[f.name], 95)), "Low": f.low, "High": f.high}
+         for f in factors], columns=POSTERIOR_COLUMNS)
+
+    notes = [f"rejection ABC: {count} of {len(samples)} prior samples accepted, tolerance "
+             f"{tolerance:.4g} (the calibrate distance of one replication per sample)"]
+    if len(samples) < planned:
+        notes.append(f"stopped after {len(samples)} of {planned} prior samples")
+    if count < ABC_MIN_ACCEPTED:
+        notes.append(f"only {count} samples accepted, fewer than {ABC_MIN_ACCEPTED}: the "
+                     f"percentiles rest on too few points; raise the budget")
+    elif count > float(accept) * len(samples):
+        notes.append(f"accepted {count / len(samples):.1%} of the samples, more than the "
+                     f"{float(accept):.1%} asked, to keep {ABC_MIN_ACCEPTED} points")
+    if tolerance == 0:
+        notes.append("tolerance 0: every accepted sample reproduces the data exactly "
+                     "(a deterministic model)")
+
+    best_row = kept.iloc[0]
+    best = {f.name: f.coerce(best_row[f.name]) for f in factors}
+    overrides = optimize_mod.overrides_for(factors, best)
+    values = evaluator.values(("abc", "best"), overrides, [seed + r for r in range(reps)])
+    residuals = _residuals(base, wanted, overrides, reps=reps, seed=seed,
+                           run_length=run_length, warmup=warmup, workers=workers)
     return CalibrationResult(
-        best=dict(search.best), overrides=list(search.best_overrides),
-        table=pd.DataFrame(rows, columns=RESULT_COLUMNS), objective=objective,
-        history=search.history, budget_used=search.budget_used, converged=search.converged,
-        search=search, targets=wanted, residuals=residuals)
+        best=best, overrides=overrides, table=_target_table(wanted, values),
+        objective=float(np.nanmean(values.get(OBJECTIVE_KPI, [np.nan]))),
+        history=samples, budget_used=int(evaluator.used),
+        converged=len(samples) == planned, search=None, targets=wanted,
+        residuals=residuals, method="abc", samples=samples, accepted=count,
+        tolerance=tolerance, posterior=posterior, notes=notes)
 
 
 # ---------------------------------------------------------------- CLI
@@ -503,6 +647,12 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=1,
                         help="replications to run in parallel processes (default: 1)")
+    parser.add_argument("--method", choices=METHODS, default="optimize",
+                        help="optimize: search for the best point (default); abc: rejection "
+                             "ABC, a posterior range per factor beside the best point")
+    parser.add_argument("--accept", type=float, default=ABC_ACCEPT,
+                        help=f"abc only: share of prior samples accepted (default: {ABC_ACCEPT}, "
+                             f"at least {ABC_MIN_ACCEPTED})")
     parser.add_argument("--out", help="write the target table here (.xlsx or .csv)")
     parser.add_argument("--report", help="write an HTML report here")
     parser.add_argument("--write-scenario",
@@ -514,12 +664,17 @@ def main(argv=None) -> int:
                        [optimize_mod.parse_factor(s) for s in args.factors],
                        budget=args.budget, replications_per_point=args.replications,
                        seed=args.seed, workers=args.workers, run_length=args.run_length,
-                       warmup=args.warmup)
+                       warmup=args.warmup, method=args.method, accept=args.accept)
 
     print(f"Best point: {optimize_mod._fmt_point(result.best)}")
     print(f"objective = {result.objective:.6g} ({result.budget_used} replications)")
     print()
     print(result.table.to_string(index=False))
+    if result.method == "abc":
+        print()
+        print(result.posterior.to_string(index=False))
+        for note in result.notes:
+            print(f"Note: {note}")
     if args.out:
         optimize_mod._write_table(result.table, args.out, "Calibration")
     if args.write_scenario:

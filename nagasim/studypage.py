@@ -327,6 +327,36 @@ def _versions_panel(folder: Path, study: dict, steps: dict) -> str:
     return _panel("versions", summary, f"<table><tr>{th}</tr>{''.join(rows)}</table>", True)
 
 
+def trust_rows(folder: Path, study: dict, steps: dict) -> list[list[str]]:
+    """The three uncertainties of the last version, [[label, plain text]], each with its own basis
+    and "not measured" when absent; never summed (D739). The input-data and parameter rows quote
+    the version's asked.json, so a study from before them reads "not measured"."""
+    from nagasim import uncertainty
+    if not study["versions"]:
+        return []
+    v = study["versions"][-1]
+    step = steps.get(v["id"]) or {}
+    n, prec = _reps(v, step), _prec(v, step)
+    parts = [f"{k} {_num(p.get('half_width'))} (target {_num(p.get('target'))})"
+             for k, p in prec.items() if isinstance(p, dict)]
+    noise = ", ".join(([f"{n} replications"] if n else []) + (["95% half-width: " + "; ".join(parts)] if parts else []))
+    try:        # a list, unlike `_read`'s objects; unreadable reads as nothing asked
+        asked = json.loads((folder / "versions" / v["id"] / "asked.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        asked = []
+    texts = uncertainty.trust_texts(asked if isinstance(asked, list) else [])
+    return [["Run noise", noise or uncertainty.NOT_MEASURED], ["Input data", texts["input"]],
+            ["Parameters", texts["params"]]]
+
+
+def _trust_panel(folder: Path, study: dict, steps: dict) -> str:
+    rows = trust_rows(folder, study, steps)
+    if not rows:
+        return ""
+    return _panel("trust", "Can I trust this? Three uncertainties, kept apart",
+                  _table(["Uncertainty", "Basis"], [[esc(a), esc(b)] for a, b in rows]), False)
+
+
 def _assumptions_panel(study: dict) -> str:
     rows = []
     for a in study["assumptions"]:
@@ -411,7 +441,7 @@ def render(folder: Path, study: dict | None = None, study_id: str | None = None,
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
             + _header(study, goals, steps, folder, study_id, room_url, in_room) + '<div id="actions"></div>'
             + _goals_panel(study, goals, folder) + _model_panel(folder, study, steps)
-            + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps) + _sensitivity_panel(folder, study)
+            + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps) + _sensitivity_panel(folder, study) + _trust_panel(folder, study, steps)
             + _assumptions_panel(study) + _deliverables_panel(folder, study)
             + f'<script type="application/json" id="study-json">{data}</script></main></body></html>\n')
     # Non-ASCII text becomes a character reference: the page stays ASCII and renders the same.

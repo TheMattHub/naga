@@ -101,3 +101,27 @@ def test_initial_bias_flag():
     assert bias["verdict"] == "partial" and "warm-up" in bias["why"]
     layout["simulation"]["warmup"] = experiments.suggest_warmup(results).warmup
     assert "initial bias" not in _by_law(_laws(layout))
+
+
+def test_naga_check_reuses_an_assertion_run_for_the_laws(tmp_path, capsys, monkeypatch):
+    """Phase 8 review (SHOULD): `naga check` ran the model again for the law check. When an
+    assertion batch runs at the model's own replication count (seed 0, like the laws), that
+    run is reused: one run, and the same output as two."""
+    from nagasim import modelcheck
+    over = _rate(_model(replications=2, time_limit=500), arrival=3.0)
+    over["assertions"] = [{"name": "made some", "kpi": "system/Total Entities Created", "op": ">",
+                           "value": 0, "replications": 2}]
+    path = tmp_path / "over.json"
+    path.write_text(json.dumps(over), encoding="utf-8")
+    real, calls = api.run_model, []
+    monkeypatch.setattr(api, "run_model", lambda *a, **k: calls.append(k) or real(*a, **k))
+    assert modelcheck.main(["check", str(path)]) == 0
+    reused = capsys.readouterr().out
+    assert len(calls) == 1 and "[WARN] law" in reused
+    calls.clear()
+    over["assertions"][0]["replications"] = 3          # another count: the laws need their own run
+    path.write_text(json.dumps(over), encoding="utf-8")
+    assert modelcheck.main(["check", str(path)]) == 0
+    assert len(calls) == 2
+    assert [l for l in capsys.readouterr().out.splitlines() if "law" in l] == \
+        [l for l in reused.splitlines() if "law" in l]

@@ -14,8 +14,10 @@ Run a model, compare scenarios and search for the best settings.
 | [`naga examples`](run-and-compare.md#naga-examples) | list the models that ship in the package |
 | [`naga run`](run-and-compare.md#naga-run) | run a model headless |
 | [`naga scenarios`](run-and-compare.md#naga-scenarios) | run named scenarios headless and compare them |
+| [`naga explain`](run-and-compare.md#naga-explain) | rank the measured contributors to a KPI and suggest one test of the top one |
 | [`naga invest`](run-and-compare.md#naga-invest) | payback, NPV and ROI of each scenario against a baseline |
 | [`naga fit`](run-and-compare.md#naga-fit) | fit an input distribution to CSV data |
+| [`naga uncertainty`](run-and-compare.md#naga-uncertainty) | how much of each KPI's spread comes from the data its inputs were fitted to |
 | [`naga doe`](run-and-compare.md#naga-doe) | design of experiments over model parameters |
 | [`naga optimize`](run-and-compare.md#naga-optimize) | search model parameters for the best KPI within a replication budget |
 | [`naga policy-eval`](run-and-compare.md#naga-policy-eval) | evaluate a controller against a Policy-mode DECIDE |
@@ -58,6 +60,7 @@ Read a plant, start a run from its state, calibrate and forecast.
 | [`naga state`](twin.md#naga-state) | take a model's state from a run, and check one before a start |
 | [`naga plant`](twin.md#naga-plant) | map what a plant sends into an observed timeline: check, replay a log, watch |
 | [`naga twin`](twin.md#naga-twin) | an operational twin: monitor a plant, forecast from its state, compare, report |
+| [`naga plc-write`](twin.md#naga-plc-write) | write the setpoints a person approved in a twin's outbox to a soft PLC on this machine (dry-run unless --write) |
 | [`naga calibrate`](twin.md#naga-calibrate) | fit model parameters to observed KPIs |
 | [`naga forecast`](twin.md#naga-forecast) | short-horizon forecast with prediction bands |
 

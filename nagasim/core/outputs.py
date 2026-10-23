@@ -144,6 +144,10 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
         "fleet_summary":    summarize_fleets(env, warmup=warmup, run_id=run_id),
         "segment_summary":  summarize_segments(env, run_id=run_id),
         "conveyor_summary": summarize_conveyors(env, warmup=warmup, run_id=run_id),
+        # D732: only a model with a belt stop has this frame at all, so every other
+        # model's results keep their keys.
+        **({"conveyor_stops": summarize_conveyor_stops(env, warmup=warmup, run_id=run_id)}
+           if any(belt._stops for belt in env.ctx.conveyors.values()) else {}),
         # Automation sub-project 2 (D164-D165), the same rule: EMPTY with their
         # fixed columns for a model with no charger and no battery fleet.
         "charging_summary": summarize_charging(env, warmup=warmup, run_id=run_id),
@@ -1056,6 +1060,8 @@ _SEGMENT_SUMMARY_COLS = ["Run", "Segment", "Length", "Traversals", "Distance Dri
                          "Wait Time", "Max Occupancy"]
 _CONVEYOR_SUMMARY_COLS = ["Run", "Conveyor", "Length", "Capacity", "Entered", "Exited",
                           "Avg Occupancy", "Max Occupancy", "Blocked %", "Avg Transit Time"]
+_CONVEYOR_STOPS_COLS = ["Run", "Conveyor", "Stop", "At", "Resource", "Parts", "Avg Wait",
+                        "Max Wait", "Busy %", "Blocked %"]
 # PHASE4 T5 (ARCHITECTURE D78): one row per BUFFER block and per station that
 # blocks after service or has a finite input queue. The first four columns
 # describe the block's INPUT SPACE (NaN for a station with none); `Blocked %`
@@ -1195,6 +1201,23 @@ def summarize_conveyors(env, *, warmup: float = 0.0,
              "Avg Transit Time": belt.transit.mean}
             for belt in conveyors.values()]
     return _frame(rows, _CONVEYOR_SUMMARY_COLS)
+
+
+def summarize_conveyor_stops(env, *, warmup: float = 0.0,
+                             run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "conveyor_stops" frame (D732): one row per stop of a CONVEYOR, entry to end.
+    `Avg Wait`/`Max Wait` are the waits for the stop's resource; `Busy %` the share of the
+    window a part is at the stop, `Blocked %` the share it waits there (for the resource,
+    or for room ahead on an accumulating belt). Only `results` of a model with stops has it."""
+    _, t1 = observed_window(env, warmup)
+    rows = [{"Run": run_id, "Conveyor": belt.name, "Stop": stop.index, "At": stop.at,
+             "Resource": stop.resource, "Parts": stop.parts,
+             "Avg Wait": stop.waits.mean if stop.resource else 0.0,
+             "Max Wait": stop.waits.max if stop.resource else 0.0,
+             "Busy %": 100.0 * stop.busy.time_avg(t1),
+             "Blocked %": 100.0 * stop.blocked.time_avg(t1)}
+            for belt in env.ctx.conveyors.values() for stop in belt._stops]
+    return _frame(rows, _CONVEYOR_STOPS_COLS)
 
 
 def summarize_buffers(env, *, warmup: float = 0.0,

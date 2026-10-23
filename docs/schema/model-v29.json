@@ -309,6 +309,12 @@
         "$ref": "#/$defs/assertion"
       }
     },
+    "path_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path_check"
+      }
+    },
     "dashboard": {
       "$ref": "#/$defs/dashboard"
     },
@@ -2775,6 +2781,20 @@
                   ],
                   "default": "",
                   "description": "Path-network node the belt ends at."
+                },
+                "stops": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "Points where each part halts on the belt: {\"at\": <distance from the entry, in the unit of `length`, between 0 and the length>, \"time\": <number or expression>, \"resource\"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "Points where each part halts on the belt: {\"at\": <distance from the entry, in the unit of `length`, between 0 and the length>, \"time\": <number or expression>, \"resource\"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none."
                 }
               },
               "required": [
@@ -10228,6 +10248,94 @@
       ],
       "additionalProperties": false
     },
+    "path_check": {
+      "type": "object",
+      "description": "A rule on the blocks each entity visits, where a visit is an arrival at a block (created there, or moved there by a link or a route). Checked by `naga check` on one traced replication, so a pass rests on one seed.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "rule": {
+          "type": "string",
+          "enum": [
+            "order",
+            "never",
+            "at_most",
+            "always"
+          ],
+          "description": "\"order\": an entity that visits both blocks reaches \"first\" before \"then\" (first visits). \"never\": no entity visits \"block\". \"at_most\": none visits it more than \"count\" times. \"always\": every entity that left through a DISPOSE visited it; one still in the system at the end is not judged by this rule."
+        },
+        "block": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The block of a never, at_most or always rule."
+        },
+        "first": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An order rule's earlier block."
+        },
+        "then": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An order rule's later block."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "An at_most rule's most visits per entity."
+        },
+        "e_type": {
+          "type": "string",
+          "description": "Judge entities of this type only: the type an entity had when last seen."
+        }
+      },
+      "required": [
+        "name",
+        "rule"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "rule": {
+                "const": "order"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "first",
+              "then"
+            ]
+          },
+          "else": {
+            "required": [
+              "block"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rule": {
+                "const": "at_most"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "count"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
     "dashboard_widget": {
       "type": "object",
       "description": "A dashboard widget: kpi/gauge read one expression, line/bar read 1-4/1-8 labelled series, sampled at the same instants as the timeseries sampler (`core/timeseries.py`). \"row\"/\"col\"/\"span\" are layout hints for the editor's dashboard panel only.",
@@ -10427,6 +10535,11 @@
           "type": "string",
           "maxLength": 80
         },
+        "note": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "A short note shown under the lever in the viewer, e.g. \"+48 k EUR each\"."
+        },
         "choices": {
           "type": "array",
           "minItems": 2,
@@ -10484,7 +10597,14 @@
           "enum": [
             "lower",
             "higher"
-          ]
+          ],
+          "description": "The direction that is better; default: the KPI's known direction, else no better/worse verdict."
+        },
+        "target": {
+          "type": "number",
+          "minimum": -1000000000000.0,
+          "maximum": 1000000000000.0,
+          "description": "The value the study aims for: the viewer's answer says whether your version reaches it."
         }
       },
       "required": [
@@ -10586,6 +10706,12 @@
       "type": "object",
       "description": "The dashboard: KPI tiles, gauges, time charts and bars over the model's own expression language, shown during playback and in the results. Since v29 also what Present mode shows a person who did not build the model: \"inputs\", \"results\", \"limits\" and \"pages\"; with no \"pages\" the definition is generated (`nagasim.dashboard.default_dashboard`). Absent for a model that declares none.",
       "properties": {
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "The question the study answers, shown at the top of the viewer (default: the model's title)."
+        },
         "widgets": {
           "type": "array",
           "maxItems": 64,

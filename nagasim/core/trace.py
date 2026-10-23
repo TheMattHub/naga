@@ -48,6 +48,9 @@ _RECORDED_EVENTS = {
     # D608: a variable an asset's picture follows, at each write (`resource` its
     # name, `value` its new value).
     "variable_changed",
+    # D734: a part's stage on a CONVEYOR (`x0` -> `x1` along the belt in
+    # `duration`, `value` the spacing), so playback places it without the belt.
+    "belt_stage",
 }
 _AGENT_EVENTS = ("agent_state", "agent_moved", "agent_removed", "agent_linked", "agent_unlinked")
 
@@ -161,6 +164,13 @@ class TraceRecorder:
             self.events.append(TraceEvent(
                 t=t, kind=name, entity_id=entity.id, e_type=getattr(entity, "e_type", "Unknown"),
                 block=block.name, target=None, duration=duration, state=state, value=value))
+            return
+        if name == "belt_stage":
+            # `state` is the stage, `x0`/`x1` distances from the belt's entry (D734).
+            self.events.append(TraceEvent(
+                t=t, kind=name, entity_id=entity.id, e_type=getattr(entity, "e_type", "Unknown"),
+                block=block.name, target=None, duration=duration, state=state, value=value,
+                x0=x0, x1=x1))
             return
         if name in ("resource_state", "level_changed", "variable_changed"):
             # Both are emitted with block=None (core/resource_manager.py,

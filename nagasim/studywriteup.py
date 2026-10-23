@@ -85,6 +85,7 @@ def facts(folder: Path, study: dict) -> dict:
         "version": last["id"], "replications": _reps(last, step), "seed": step.get("seed"),
         "precision": [(k, _hw(p.get("half_width"), k), _hw(p.get("target"), k)) for k, p in prec.items()
                       if isinstance(p, dict)],
+        "uncertainties": studypage.trust_rows(folder, study, steps),
         "simulation": model.get("simulation") or {}, "model": model,
         "target": [str(c.get("name", "")) for c in study["target"]],
         "target_pending": [str(c.get("name", "")) for c in study["target"] if not c.get("blocks")],
@@ -342,7 +343,8 @@ def _slide_list(f: dict) -> list:
               ("Validation and precision",
                [["p", f"Validation level: {f['level']}."], ["table", ["Level", "Result", "Note"], f["validation"]],
                 ["p", f"{f['replications'] or 'n/a'} replications"
-                      + "".join(f"; {k}: 95% half-width {w} (target {t})" for k, w, t in f["precision"])]])]
+                      + "".join(f"; {k}: 95% half-width {w} (target {t})" for k, w, t in f["precision"])],
+                ["table", ["Uncertainty", "Basis"], f["uncertainties"]]])]
     if f["sensitivity"]:
         slides.append(("Sensitivity", _sens_blocks(f, lambda c: c.capitalize())))
     return slides + [("Next steps", _next_steps(f))]

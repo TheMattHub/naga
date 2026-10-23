@@ -25,7 +25,8 @@ def base(ws):
 
 @pytest.fixture
 def sid(ws):
-    s = T.call("study_start", question="Is one server enough?")["study"]
+    # quick: replications cap at 50 not 200; these tests check plumbing, not a statistic
+    s = T.call("study_start", question="Is one server enough?", size="quick")["study"]
     T.call("study_update", study=s, changes={"plan_approved": True, "goals": [GOAL]})
     assert T.call("study_step", study=s, layout=base(ws), note="first")["kind"] == "version"
     return s

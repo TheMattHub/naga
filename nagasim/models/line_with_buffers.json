@@ -31,7 +31,7 @@
       "name": "station_2",
       "type": "SUBMODEL",
       "description": "Station 2",
-      "position": [500.0, 200.0],
+      "position": [540.0, 200.0],
       "layout_position": [20.0, 1.0],
       "params": {
         "definition": "Workstation",
@@ -57,7 +57,7 @@
       "name": "station_3",
       "type": "SUBMODEL",
       "description": "Station 3 -- the unreliable one (MTBF 60 min, MTTR 12 min)",
-      "position": [740.0, 200.0],
+      "position": [820.0, 200.0],
       "layout_position": [39.0, 1.0],
       "params": {
         "definition": "Workstation",
@@ -75,7 +75,7 @@
       "name": "buffer_2",
       "type": "SUBMODEL",
       "description": "Buffer 2: the space between stations 2 and 3",
-      "position": [640.0, 200.0],
+      "position": [680.0, 200.0],
       "layout_position": [31.0, 1.0],
       "params": {"definition": "Buffer", "arguments": {"places": 4}}
     },
@@ -83,7 +83,7 @@
       "name": "station_4",
       "type": "SUBMODEL",
       "description": "Station 4",
-      "position": [980.0, 200.0],
+      "position": [1100.0, 200.0],
       "layout_position": [57.0, 1.0],
       "params": {
         "definition": "Workstation",
@@ -101,7 +101,7 @@
       "name": "buffer_3",
       "type": "SUBMODEL",
       "description": "Buffer 3: the space between stations 3 and 4",
-      "position": [880.0, 200.0],
+      "position": [960.0, 200.0],
       "layout_position": [50.0, 1.0],
       "params": {"definition": "Buffer", "arguments": {"places": 4}}
     },
@@ -528,5 +528,69 @@
     "description": "A four-station line with finite buffers between the stations: when a buffer is full the machine behind it stays BLOCKED, holding its finished part. Station 3 breaks down often, so where the twelve available buffer places go decides the line's throughput -- the scenarios move them around without ever adding any."
   },
   "simulation": {"time_limit": 2400, "warmup": 240, "replications": 10},
-  "outputs": {}
+  "outputs": {},
+  "dashboard": {
+    "widgets": [],
+    "question": "Can the line make 0.72 parts a minute?",
+    "inputs": [
+      {
+        "path": "blocks.buffer_1.params.arguments.places",
+        "label": "Buffer after station 1",
+        "kind": "number",
+        "min": 0,
+        "max": 12,
+        "step": 1,
+        "unit": "places"
+      },
+      {
+        "path": "blocks.buffer_2.params.arguments.places",
+        "label": "Buffer after station 2",
+        "kind": "number",
+        "min": 0,
+        "max": 12,
+        "step": 1,
+        "unit": "places"
+      },
+      {
+        "path": "blocks.buffer_3.params.arguments.places",
+        "label": "Buffer after station 3",
+        "kind": "number",
+        "min": 0,
+        "max": 12,
+        "step": 1,
+        "unit": "places"
+      },
+      {
+        "path": "blocks.station_3.params.arguments.mttr",
+        "label": "Repair time, station 3",
+        "kind": "number",
+        "min": 2,
+        "max": 20,
+        "step": 1,
+        "unit": "min",
+        "note": "a service contract shortens it"
+      },
+      {
+        "path": "blocks.station_3.params.arguments.machines",
+        "label": "Machines at station 3",
+        "kind": "number",
+        "min": 1,
+        "max": 2,
+        "step": 1,
+        "note": "+1 machine: a capital cost"
+      }
+    ],
+    "results": [
+      {
+        "kpi": "system/Throughput (per time unit)",
+        "label": "Throughput",
+        "unit": "parts/min",
+        "better": "higher",
+        "target": 0.72
+      },
+      {"kpi": "system/Avg Throughput Time", "label": "Lead time", "unit": "min"},
+      {"kpi": "system/Avg WIP (Little)", "label": "Work in progress", "unit": "parts"},
+      {"kpi": "system/Avg Resource Usage %", "label": "Machine usage", "unit": "%"}
+    ]
+  }
 }

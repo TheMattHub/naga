@@ -22,8 +22,10 @@ def layout(ws):
     return json.loads((ws.root / "single_server.json").read_text(encoding="utf-8"))
 
 
-def start(ws, **kw):
-    r = T.call("study_start", question="Is one server enough?", **kw)
+def start(ws, size="quick", **kw):
+    # quick caps replications at 50, not 200: a goal KPI on this noisy queue always runs to the cap and
+    # these tests check plumbing (records, pages, wording), not a statistic. About 4x less per step.
+    r = T.call("study_start", question="Is one server enough?", size=size, **kw)
     assert "error" not in r, r
     return r["study"]
 
@@ -413,7 +415,7 @@ def test_step_raises_replications_for_a_noisy_goal_kpi(ws):
     sid, r = step_with(ws, [{**QGOAL, "precision": 0.05}])
     p = r["precision"]["Server/Time in Queue Avg"]
     assert r["replications"] > 10
-    assert p["met"] or r["replications"] == 200
+    assert p["met"] or r["replications"] == 50
     step = json.loads((ws.root / sid / "versions" / "v001" / "step.json").read_text(encoding="utf-8"))
     assert step["replications"] == r["replications"] and step["precision"] == r["precision"]
     assert T.call("study_status", study=sid)["last_version"].get("replications") == r["replications"]
@@ -487,7 +489,7 @@ def test_report_unknown_version(ws):
 def test_canonical_update_answer_is_unchanged(ws):
     sid = start(ws)
     up = T.call("study_update", study=sid, changes={"goals": [GOAL]})
-    assert set(up) == {"ok", "next_step"}
+    assert set(up) == {"ok", "next_step", "options"}     # options: what next (D727)
 
 
 def test_near_miss_update_is_mapped_and_reported(ws):

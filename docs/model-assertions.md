@@ -25,6 +25,32 @@ Reality checks (the existing `reality_checks` section, see [System dynamics](sys
 run in the **same pass**, as extra results with no KPI/CI of their own (one deterministic
 replication, so they stay plain `pass`/`fail`, never `inconclusive`).
 
+## Path checks
+
+A path check is a rule about the route each entity takes, such as "every part is inspected
+before it is packed". The `path_checks` section holds four kinds of rule, each optionally
+limited to one entity type with `e_type`:
+
+- `order`: an entity that visits both blocks reaches `first` before `then` (its first visits);
+- `never`: no entity visits `block`;
+- `at_most`: no entity visits `block` more than `count` times;
+- `always`: every entity that left through a DISPOSE visited `block`.
+
+```json
+"path_checks": [
+    {"name": "inspect_first", "rule": "order", "first": "Inspect", "then": "Pack"},
+    {"name": "rework_cap", "rule": "at_most", "block": "Rework", "count": 2, "e_type": "Part"}
+]
+```
+
+A visit is an arrival at a block: the block an entity is created at, then the target of every
+move, a drawn link or a route jump alike, at the instant it arrives. An entity still in the
+system when the run ends is judged by `order`, `never` and `at_most` only, since its route is
+not over. The checks run in the same `naga check` pass on one traced replication, so each
+result says it rests on one seed, and a failure names the first few entities that broke the
+rule with the time of each. A pass therefore says that this run's entities kept the rule, not
+that every run's will.
+
 ## `naga check`
 
 ```console
@@ -34,7 +60,7 @@ naga check model.json --junit out.xml
 It takes several model files, `--workers N` and `--strict`.
 
 Prints a pass/fail/inconclusive table per model. Exit code 0 when nothing failed, 1 when any
-assertion or reality check failed (or, with `--strict`, was inconclusive too), 2 on error (a
+assertion, reality check or path check failed (or, with `--strict`, was inconclusive too), 2 on error (a
 missing file, invalid JSON). `--junit` writes one JUnit XML `<testcase>` per assertion/reality
 check (`classname` is the model file's stem): a `<failure>` element for `fail`, a `<skipped>`
 element for `inconclusive` (JUnit has no native third state) -- readable by any CI system's

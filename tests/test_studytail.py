@@ -23,7 +23,8 @@ def layout(ws):
 
 
 def start(ws, goals):
-    r = T.call("study_start", question="Is one server enough?", changes={"goals": goals, "plan_approved": True})
+    # quick: replications cap at 50 not 200; the checks here are plumbing, and study_validate ignores the count
+    r = T.call("study_start", question="Is one server enough?", size="quick", changes={"goals": goals, "plan_approved": True})
     assert "error" not in r, r
     return r["study"]
 

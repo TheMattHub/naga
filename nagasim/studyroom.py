@@ -16,10 +16,16 @@ Permission is the caller's: the room is started by the person (`naga room`, or t
 `naga mcp`), never by a tool argument, and its buttons reach only the tools in `DIRECT`.
 
 The room's assistant (`StudyAdapter` under `assistant.AssistantSession`) is offered the study tools
-only, always on the room's own study, with a model's Python refused. Its network is the hosting
+plus `explain_kpi` and `what_if` (on the study's last version, never saved), always on the room's own
+study, with a model's Python refused. Its network is the hosting
 process's workspace policy (what the person granted, none by default), as in `naga mcp --room`. The provider and its key come
 from the person's configuration (`llm.resolve_config`, as for `naga assist`) and stay in this process:
-every error is redacted with the key before it becomes an event, and the conversation lives in memory."""
+every error is redacted with the key before it becomes an event, and the conversation lives in memory.
+
+What next (D727, D728): a "What next?" turn first shows the study's rule options (an "options" event);
+with an allow-listed hosted model (`nextideas.enabled`) the model's own checked ideas follow once the
+turn has ended (an "ideas" event). Neither runs anything: the person picks, and the pick is a message.
+A turn sent by voice is marked so in the text the model reads (`assistant.VOICE_NOTE`)."""
 from __future__ import annotations
 
 import argparse
@@ -27,6 +33,7 @@ import http.server
 import json
 import logging
 import mimetypes
+import re
 import secrets
 import sys
 import threading
@@ -57,6 +64,7 @@ NO_MODEL = ("No assistant model is set. Set ANTHROPIC_API_KEY, or a local model 
 # What a tool call looks like to the person in the assistant panel: its purpose, never its arguments.
 _PURPOSE = {
     "study_start": "Starting a study", "study_status": "Reading where the study stands",
+    "explain_kpi": "Explaining a KPI", "what_if": "Testing a change",
     "study_update": "Recording what was learned", "study_add_input": "Storing an input",
     "study_step": "Running the next version", "study_validate": "Checking against a textbook answer",
     "study_accept": "Recording the acceptance", "study_revert": "Going back to an earlier version",
@@ -79,18 +87,33 @@ def provider_from_env():
         return None, None
 
 
+# C14: the room may also ask what makes up a KPI and what a change would do, on the study's last
+# version; neither edits a model or records anything (a recorded change is a study_step).
+MODEL_TOOLS = ("explain_kpi", "what_if")
+# A message that is only "what next?" gets the same as the What next? button.
+_WHAT_NEXT = re.compile(r"^\s*(what('s| is)? next|what now|what else)\s*\??\s*$", re.IGNORECASE)
+
+
 class StudyAdapter:
-    """`WorkspaceAdapter`'s methods over one study: the study tools only (`study_page_html` is the
-    page's own), the study argument forced to this study, every call under the shared tool lock with
-    a model's Python refused. It uses the process's workspace (the room's root) and never installs
-    one: in `naga mcp --room` that workspace is the MCP server's. A turn is not one undo step: study
-    versions and study_revert are the undo, so the turn methods do nothing."""
+    """`WorkspaceAdapter`'s methods over one study: the study tools (`study_page_html` is the page's
+    own) plus `MODEL_TOOLS`, the study argument forced to this study, every call under the shared tool
+    lock with a model's Python refused. A `MODEL_TOOLS` call runs on the study's last version, loaded
+    into the study's own workspace slot, whatever model it names. It uses the process's workspace (the
+    room's root) and never installs one: in `naga mcp --room` that workspace is the MCP server's. A
+    turn is not one undo step: study versions and study_revert are the undo, so the turn methods do
+    nothing."""
 
     def __init__(self, root: Path, study_id: str, lock: threading.Lock, on_tool=None):
         from nagasim import agent_tools
         self.root, self.study_id, self.lock, self.on_tool = Path(root), study_id, lock, on_tool
-        self.names = sorted(n for n in agent_tools.TOOLS if n.startswith("study_") and n != "study_page_html")
+        self.names = self.tool_names()
         self.offered = frozenset()
+
+    @staticmethod
+    def tool_names() -> list[str]:
+        from nagasim import agent_tools
+        return sorted([n for n in agent_tools.TOOLS if n.startswith("study_") and n != "study_page_html"]
+                      + list(MODEL_TOOLS))
 
     def offer(self, names) -> None:
         self.offered = frozenset(names)
@@ -119,10 +142,29 @@ class StudyAdapter:
             self.on_tool(name, failed)
         return out
 
+    def _version_slot(self) -> str:
+        """Load the study's last version into its workspace slot and name the slot; ToolError when
+        the study has no version yet. The folder is confined to the workspace and the version id
+        checked (`study.version_id`), as every study tool's are."""
+        from nagasim.agent_tools import workspace
+        from nagasim.agent_tools.study import _load_slot, _open, _slot
+        folder, _s = _open(self.study_id)
+        slot = _slot(folder)
+        workspace().models[slot] = _load_slot(workspace(), slot)
+        return slot
+
     def _call(self, name: str, arguments: dict) -> dict:
         from nagasim import agent_tools
         with self.lock, agent_tools.python_consent_dropped():
-            out = agent_tools.call(name, **{**arguments, "study": self.study_id})
+            if name in MODEL_TOOLS:
+                try:
+                    model = self._version_slot()
+                except agent_tools.ToolError as exc:
+                    return exc.as_dict()
+                rest = {k: v for k, v in arguments.items() if k not in ("study", "model")}
+                out = agent_tools.call(name, model=model, **rest)
+            else:
+                out = agent_tools.call(name, **{**arguments, "study": self.study_id})
         # The person is in the room already: its link (token included) is not the assistant's to paste.
         return {k: v for k, v in out.items() if k not in ("room_url", "page_url")} if isinstance(out, dict) else out
 
@@ -148,13 +190,14 @@ class _Chat:
     def __init__(self):
         self.events: list[dict] = []
         self.running = False
+        self.pending = 0            # ideas still being asked for (layer 2): the page keeps polling
         self.cancel = threading.Event()
         self.session = None
         self.guard = threading.Lock()
 
-    def add(self, kind: str, text: str) -> None:
+    def add(self, kind: str, text: str, items: list | None = None) -> None:
         with self.guard:
-            self.events.append({"kind": kind, "text": text})
+            self.events.append({"kind": kind, "text": text, **({"items": items} if items is not None else {})})
 
 
 class _Refused(Exception):
@@ -222,8 +265,11 @@ class Room:
     def chat(self, sid: str) -> _Chat:
         return self.chats.setdefault(sid, _Chat())
 
-    def ask(self, sid: str, text: str) -> int | None:
-        """Start one assistant turn in a thread; None while one runs. Answers the index of its first event."""
+    def ask(self, sid: str, text: str, voice: bool = False, what_next: bool = False) -> int | None:
+        """Start one assistant turn in a thread; None while one runs. Answers the index of its first
+        event. `voice`: the turn is read aloud (the model is told so). `what_next` (or a question that
+        is only "what next?"): the study's rule options come first as an "options" event, and with an
+        allow-listed hosted model its own checked ideas follow the turn as an "ideas" event (D728)."""
         chat = self.chat(sid)
         with chat.guard:
             if chat.running:
@@ -232,14 +278,56 @@ class Room:
             chat.cancel.clear()
             start = len(chat.events)
             chat.events.append({"kind": "user", "text": text})
+        what_next = what_next or bool(_WHAT_NEXT.match(text))
+        options = self._options(sid) if what_next else None
+        if options:     # an empty list draws nothing in the page
+            chat.add("options", "From the study's numbers", options)
         if self.provider is None:
             chat.add("error", NO_MODEL)
             chat.running = False
             return start
-        threading.Thread(target=self._turn, args=(sid, chat, text), name="naga-room-chat", daemon=True).start()
+        from nagasim import assistant, nextideas
+        done = threading.Event()
+        if options is not None and nextideas.enabled(self.provider):
+            with chat.guard:
+                chat.pending += 1
+            threading.Thread(target=self._ideas, args=(sid, chat, options, done), name="naga-room-ideas",
+                             daemon=True).start()
+        prompt = f"{assistant.VOICE_NOTE}\n{text}" if voice else text
+        threading.Thread(target=self._turn, args=(sid, chat, prompt, done), name="naga-room-chat",
+                         daemon=True).start()
         return start
 
-    def _turn(self, sid: str, chat: _Chat, text: str) -> None:
+    def _options(self, sid: str) -> list | None:
+        from nagasim import study as study_mod
+        from nagasim.agent_tools.study import _options
+        try:
+            folder = self.folder(sid)
+            return _options(folder, study_mod.load(folder))
+        except (_Refused, study_mod.StudyError):
+            return None
+
+    def _ideas(self, sid: str, chat: _Chat, options: list, done: threading.Event) -> None:
+        """Layer 2 (D728), beside the turn: asked at once, shown once the turn has ended so it never
+        lands inside the answer. Never runs a tool."""
+        from nagasim import assistant, nextideas, study as study_mod
+        from nagasim.agent_tools.study import _read_layout
+        try:
+            folder = self.folder(sid)
+            s = study_mod.load(folder)
+            layout = _read_layout(folder, s["versions"][-1]["id"]) if s["versions"] else {}
+            got = nextideas.ideas(self.provider, nextideas.study_facts(s), options,
+                                  assistant.tool_defs(StudyAdapter.tool_names()), study_id=sid, layout=layout)
+        except Exception as exc:    # a failed extra step never touches the turn's answer
+            _LOG.warning("room ideas failed: %s", type(exc).__name__)
+            got = {"ideas": [], "note": "no ideas: the extra step failed"}
+        items = json.loads(assistant.redact(json.dumps(got["ideas"]), self.key))
+        done.wait(600)
+        chat.add("ideas", assistant.redact(got.get("note", ""), self.key), items)
+        with chat.guard:
+            chat.pending -= 1
+
+    def _turn(self, sid: str, chat: _Chat, text: str, done: threading.Event | None = None) -> None:
         from nagasim import assistant, study as study_mod
         streamed = []
         try:
@@ -251,9 +339,16 @@ class Room:
                         chat.add("tool", _PURPOSE.get(name, "Working"))
                 adapter = StudyAdapter(self.root, sid, self.lock, on_tool=on_tool)
                 system = (f"You run the simulation study in the folder {sid!r} for the person, from its live "
-                          "control room. Pass that folder as `study` to every tool. Answer in plain words, "
+                          "control room. Pass that folder as `study` to every study tool. explain_kpi "
+                          "(what makes up a KPI) and what_if (what a change would do, paired runs) run "
+                          "on the study's last version whatever `model` you name, and save nothing: "
+                          "record a change with study_step. Answer in plain words, "
                           "briefly; the page shows the numbers. The person is reading this in the room "
-                          "already: never give them its link or address.\n\n" + study_mod.skill_text())
+                          "already: never give them its link or address.\n\n"
+                          + assistant.WHAT_NEXT.format(where="study status (and every study answer)",
+                                                       field="options")
+                          + "A turn that starts with \"" + assistant.VOICE_NOTE.split(":")[0]
+                          + ":\" is spoken: keep to it.\n\n" + study_mod.skill_text())
                 chat.session = assistant.AssistantSession(
                     adapter, self.provider, system=system, select_tools=lambda kind, extra: adapter.names)
 
@@ -277,6 +372,8 @@ class Room:
         finally:
             self.changes += 1
             chat.running = False
+            if done is not None:
+                done.set()
 
     def rev(self, folder: Path) -> str:
         try:
@@ -401,7 +498,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 raise _Refused(400) from None
             chat = self.room.chat(sid)
             with chat.guard:
-                self._json({"events": chat.events[since:], "running": chat.running})
+                self._json({"events": chat.events[since:], "running": chat.running,
+                            "pending": chat.pending > 0})
         elif rest[0] == "files" and len(rest) > 1:
             path = _confined(folder, rest[1:])
             ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -414,10 +512,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if route == "api/tool":
             self._json(self._tool(sid, self._body()))
         elif route == "api/chat":
-            text = self._body().get("text")
+            body = self._body()
+            text = body.get("text")
             if not isinstance(text, str) or not text.strip():
                 raise _Refused(400)
-            turn = self.room.ask(sid, text.strip()[:20000])
+            turn = self.room.ask(sid, text.strip()[:20000], voice=body.get("voice") is True,
+                                 what_next=body.get("what_next") is True)
             if turn is None:
                 raise _Refused(409)
             self._json({"turn": turn})

@@ -23,6 +23,7 @@ import io
 import json as _json
 import logging
 import math
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -32,7 +33,8 @@ from scipy import stats as sstats
 
 __all__ = [
     "LoadResult", "Fit", "ArrivalRateResult", "load_column", "describe",
-    "fit_candidates", "best_fit", "empirical_spec", "arrival_rates", "main",
+    "fit_candidates", "best_fit", "empirical_spec", "arrival_rates", "bootstrap_rng",
+    "bootstrap_fits", "bootstrap_arrival_rates", "main",
 ]
 
 log = logging.getLogger(__name__)
@@ -460,31 +462,62 @@ def empirical_spec(values, bins: int | None = None) -> dict:
 class ArrivalRateResult:
     points: list[list[float]]   # schedules format: [[duration, rate], ...]
     warnings: list[str]         # one per bin whose count dispersion looks non-Poisson
+    bands: list[list[float]] = field(default_factory=list)  # [low, high] rate per bin
+    cycles: int = 0             # cycles the data spans (0 without a cycle)
+    resamples: int = 0          # cycle resamples the bands rest on (0: no bands)
 
 
-def arrival_rates(timestamps, *, bin_width: float, cycle: float | None = None) -> ArrivalRateResult:
-    """Turn arrival timestamps into a piecewise-constant rate table in the
-    `nagasim.core.schedules` "points" format (ROADMAP 1.8). With `cycle` (e.g.
-    one day), timestamps fold onto one cycle and each bin's rate is the mean
-    count per cycle / bin_width; a bin whose count variance/mean across
-    cycles strays far from 1 gets a dispersion warning (not consistent with a
-    Poisson/NHPP arrival process)."""
+def _relative_stamps(timestamps, bin_width: float) -> np.ndarray:
     if bin_width <= 0:
         raise ValueError("bin_width must be > 0")
     ts = np.sort(np.asarray(timestamps, dtype=float))
     if ts.size == 0:
         raise ValueError("no timestamps")
-    t0 = ts - ts[0]
+    return ts - ts[0]
+
+
+def _cycle_counts(t0: np.ndarray, bin_width: float, cycle: float) -> np.ndarray:
+    """Arrivals per (cycle, bin), from timestamps relative to the first one."""
+    n_bins = max(1, int(math.ceil(cycle / bin_width)))
+    n_cycles = max(1, int(math.floor(t0[-1] / cycle)) + 1)
+    counts = np.zeros((n_cycles, n_bins))
+    cyc_idx = np.minimum((t0 // cycle).astype(int), n_cycles - 1)
+    bin_idx = np.minimum(((t0 % cycle) // bin_width).astype(int), n_bins - 1)
+    np.add.at(counts, (cyc_idx, bin_idx), 1)
+    return counts
+
+
+def arrival_rates(timestamps, *, bin_width: float, cycle: float | None = None,
+                  resamples: int = 0, seed: int = 0,
+                  confidence: float = 0.95) -> ArrivalRateResult:
+    """Turn arrival timestamps into a piecewise-constant rate table in the
+    `nagasim.core.schedules` "points" format (ROADMAP 1.8). With `cycle` (e.g.
+    one day), timestamps fold onto one cycle and each bin's rate is the mean
+    count per cycle / bin_width; a bin whose count variance/mean across
+    cycles strays far from 1 gets a dispersion warning (not consistent with a
+    Poisson/NHPP arrival process).
+
+    With `resamples` (a `cycle` is then required), `bands` holds each bin's
+    percentile interval over that many resamples of whole cycles
+    (`bootstrap_arrival_rates`, seeded by `bootstrap_rng(seed)`): arrivals within a
+    cycle are not independent, whole cycles are taken to be (D720)."""
+    t0 = _relative_stamps(timestamps, bin_width)
     warnings: list[str] = []
+    if resamples and not cycle:
+        raise ValueError("rate bands resample whole cycles: give a cycle")
+    bands: list[list[float]] = []
+    n_cycles = 0
 
     if cycle:
-        n_bins = max(1, int(math.ceil(cycle / bin_width)))
-        n_cycles = max(1, int(math.floor(t0[-1] / cycle)) + 1)
-        counts = np.zeros((n_cycles, n_bins))
-        cyc_idx = np.minimum((t0 // cycle).astype(int), n_cycles - 1)
-        bin_idx = np.minimum(((t0 % cycle) // bin_width).astype(int), n_bins - 1)
-        for c, b in zip(cyc_idx, bin_idx):
-            counts[c, b] += 1
+        counts = _cycle_counts(t0, bin_width, cycle)
+        n_cycles, n_bins = counts.shape
+        if resamples:
+            draws = np.array([[rate for _w, rate in table] for table in bootstrap_arrival_rates(
+                timestamps, bin_width=bin_width, cycle=cycle, resamples=resamples,
+                rng=bootstrap_rng(seed))])
+            tail = 50.0 * (1.0 - confidence)
+            low, high = np.percentile(draws, [tail, 100.0 - tail], axis=0)
+            bands = [[float(lo), float(hi)] for lo, hi in zip(low, high)]
         mean_counts = counts.mean(axis=0)
         rates = mean_counts / bin_width
         if n_cycles > 1:
@@ -503,7 +536,56 @@ def arrival_rates(timestamps, *, bin_width: float, cycle: float | None = None) -
         bin_idx = np.minimum((t0 // bin_width).astype(int), n_bins - 1)
         rates = np.bincount(bin_idx, minlength=n_bins) / bin_width
 
-    return ArrivalRateResult(points=[[float(bin_width), float(r)] for r in rates], warnings=warnings)
+    return ArrivalRateResult(points=[[float(bin_width), float(r)] for r in rates], warnings=warnings,
+                             bands=bands, cycles=int(n_cycles), resamples=int(resamples))
+
+
+# ============================================================ bootstrap (input uncertainty)
+def bootstrap_rng(seed: int) -> np.random.Generator:
+    """The bootstrap's own random stream: a spawned child of `SeedSequence(seed)`, which
+    shares no state with the engine's per-block streams (`SeedSequence([seed, hash])`),
+    so the same seed gives the same resamples and every run draws what it always drew."""
+    return np.random.default_rng(np.random.SeedSequence(int(seed)).spawn(1)[0])
+
+
+def bootstrap_fits(values, family: str, resamples: int, rng: np.random.Generator, *,
+                   shift: bool = False) -> list[dict | None]:
+    """Refit *family* to *resamples* bootstrap resamples of *values* (drawn with
+    replacement, the sample's own size); each one's `dist_params`, plain floats.
+
+    The family is pinned to the caller's (the best fit to the whole sample, D719):
+    left free, integer data or a close ranking lets resamples switch families, and
+    the spread would then mix families with parameters. A resample that cannot be
+    fitted (the fit fails, or its likelihood or a parameter is not finite) is None
+    in its place, so the caller can count it."""
+    values = np.asarray(values, dtype=float)
+    out: list[dict | None] = []
+    for _ in range(int(resamples)):
+        sample = rng.choice(values, size=values.size, replace=True)
+        with warnings.catch_warnings():     # a degenerate resample is counted, not warned about
+            warnings.simplefilter("ignore", RuntimeWarning)
+            fits = fit_candidates(sample, candidates=[family], shift=shift)
+        params = ({k: v.item() if hasattr(v, "item") else v for k, v in fits[0].dist_params.items()}
+                  if fits else None)
+        usable = params is not None and math.isfinite(fits[0].aic) and all(
+            math.isfinite(v) for v in params.values() if isinstance(v, (int, float)))
+        out.append(params if usable else None)
+    return out
+
+
+def bootstrap_arrival_rates(timestamps, *, bin_width: float, cycle: float, resamples: int,
+                            rng: np.random.Generator) -> list[list[list[float]]]:
+    """*resamples* rate tables (the `arrival_rates` points format), each the mean of
+    whole cycles drawn with replacement (D720). Raises ValueError for data spanning
+    fewer than 2 cycles: one cycle says nothing about how cycles differ."""
+    counts = _cycle_counts(_relative_stamps(timestamps, bin_width), bin_width, cycle)
+    n_cycles = counts.shape[0]
+    if n_cycles < 2:
+        raise ValueError(f"the timestamps span {n_cycles} cycle(s); resampling needs at "
+                         "least 2 cycles")
+    return [[[float(bin_width), float(r)]
+             for r in counts[rng.integers(0, n_cycles, n_cycles)].mean(axis=0) / bin_width]
+            for _ in range(int(resamples))]
 
 
 # ============================================================ CLI

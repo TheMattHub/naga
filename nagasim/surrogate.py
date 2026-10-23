@@ -294,9 +294,43 @@ class Surrogate:
                 search_factors.append(Factor(f.paths, f.kind, lo_hi[0], lo_hi[1],
                                              step=f.step, name=f.name))
         candidates = latin_hypercube(search_factors, max(200, int(n) * 20), seed=0)
+        # #930: integer and categorical factors round many strata onto one level; the top n
+        # are n DISTINCT points (fewer when the space has fewer).
+        candidates = candidates.drop_duplicates().reset_index(drop=True)
         mean, _std = self.predict(candidates)
-        order = np.argsort(mean if goal == "min" else -mean)[:max(int(n), 1)]
+        order = np.argsort(mean if goal == "min" else -mean, kind="stable")[:max(int(n), 1)]
         return candidates.iloc[order].reset_index(drop=True).to_dict(orient="records")
+
+    def confirm(self, layout, n: int = 3, *, goal: str = "min", replications: int = 5,
+                max_replications: int | None = None, seed: int = 0, run_length=None,
+                warmup=None, confidence: float = 0.95, indifference: float | None = None,
+                should_stop=None):
+        """KN (`optimize.select_best`) on the top *n* `suggest` points, simulated on common
+        random numbers: the surface proposes, the simulation decides (C8). Refused with
+        ValueError when `lack_of_fit` is set, since the surface then misses structure the
+        noise does not explain and its ranking is not worth confirming. *indifference*
+        defaults to 5% of the best predicted value, as `optimize` sets it. Returns the
+        `SelectionResult`, or None when fewer than two distinct points are left."""
+        from nagasim.optimize import overrides_for, select_best
+        from nagasim.optimize.optimization import _fmt_point
+
+        if self.lack_of_fit:
+            raise ValueError(f"the {self.kind} surface shows lack of fit (CV RMSE "
+                             f"{self.cv_rmse:.3g} over 3x the replication noise): its "
+                             "suggestions are not confirmed; fit another kind or a finer design")
+        points = self.suggest(n, goal=goal)
+        if len(points) < 2:
+            return None
+        if indifference is None:
+            best, _std = self.predict(points[:1])
+            indifference = max(abs(float(best[0])) * 0.05, 1e-9)
+        reps = max(int(replications), 2)
+        return select_best(layout, [{"name": _fmt_point(p), "overrides": overrides_for(self.factors, p)}
+                                    for p in points],
+                           response=self.response, goal=goal, confidence=confidence,
+                           indifference=indifference, n0=reps,
+                           max_replications=int(max_replications or 4 * reps), seed=seed,
+                           run_length=run_length, warmup=warmup, should_stop=should_stop)
 
 
 def _fit_linear_family(kind: str, encodings, rows: pd.DataFrame, y, w, cv_folds: int, seed: int):

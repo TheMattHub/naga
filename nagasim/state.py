@@ -169,6 +169,8 @@ def _refuse_kinds(session) -> None:
             raise _unsupported("a swap station", f"'{name}'")
     for block in session.model.blocks.values():
         kind = block.block.block_type
+        if kind == "CONVEYOR" and block.stops:      # D733: a part between two stops
+            raise _unsupported("a conveyor with stops", f"'{block.name}' has stops")
         if block.hold_until_space:      # a place reserved before the job starts (D386)
             raise _unsupported("blocking before service", f"'{block.name}' holds until space")
         # A store's entities are carried by arriving again (D260); what runs beside them

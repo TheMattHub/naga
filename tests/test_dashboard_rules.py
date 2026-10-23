@@ -88,7 +88,7 @@ def test_single_server_generates_one_capacity_input_and_the_process_results():
 def test_a_records_owned_by_an_asset_are_no_inputs_but_its_instances_arguments_are():
     """A placed asset's top-level records are templates: the run reads each
     instance's clone, which takes its values from the instance's arguments."""
-    generated = dashboard.default_dashboard(_bundled("line_with_buffers"))
+    generated = dashboard.generated_dashboard(_bundled("line_with_buffers"))
     paths = [e["path"] for e in generated["inputs"]]
     assert "resources.Mfg Machine.capacity" not in paths
     assert paths[:3] == ["blocks.station_1.params.arguments.process_time",
@@ -348,6 +348,12 @@ _PAGE = {"name": "P", "activity": "what_if", "items": []}
     {"inputs": [["resources.Server.capacity"]]},
     {"results": [{"kpi": "k", "better": "bigger"}]},
     {"results": [{"kpi": "k"}, {"kpi": "k"}]},
+    {"results": [{"kpi": "k", "target": "0.75"}]},                      # D706: numbers only
+    {"results": [{"kpi": "k", "target": float("nan")}]},
+    {"inputs": [{**_INPUT, "note": "x" * 61}]},
+    {"inputs": [{**_INPUT, "note": "two\nlines"}]},
+    {"question": "x" * 201},
+    {"question": ""},
     {"limits": {"replications": 1}},
     {"limits": {"replications": 50, "max_replications": 20}},
     {"limits": {"max_replications": 1001}},
@@ -370,6 +376,19 @@ def test_a_hostile_definition_is_refused(keys):
     assert dashboard.check_inputs(doc)
     with pytest.raises(ValueError):
         dashboard.input_overrides(doc, {"variables.rate.initial": 0.5})
+
+
+def test_the_viewers_question_target_and_note_are_optional_data():
+    """D706: a question, a result's target and an input's note validate and reach the
+    resolved definition; a model without them is unchanged."""
+    doc = _model(question="Can line 2 reach 0.75 parts per minute?",
+                 inputs=[{**_INPUT, "note": "+48 k EUR each"}],
+                 results=[{"kpi": "system/Throughput (per time unit)", "better": "higher",
+                           "target": 0.75}])
+    assert _codes(doc) == [] and dashboard.check_inputs(doc) == []
+    resolved = dashboard.resolve_dashboard(doc)
+    assert resolved["inputs"][0]["note"] == "+48 k EUR each" and resolved["results"][0]["target"] == 0.75
+    assert _codes(_model(results=[{"kpi": "k"}])) == []
 
 
 def test_markup_in_a_label_stays_data_and_grants_nothing():

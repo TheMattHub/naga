@@ -325,6 +325,22 @@ and the rolling score again, prints each difference and exits 1 if there is one.
 nothing. A twin that ran on the log itself (`--log`) agrees exactly; a live twin differs by
 the events that reached it late.
 
+### Alerts
+
+The twin raises an alert when a compared series drifts away from its forecasts and stays away.
+Each filled reading becomes a residual, observed minus the forecast mean, scaled by its band
+(the 5% to 95% width read as 3.29 standard deviations), and a two-sided CUSUM sums those
+beyond an allowance `k`; a side alerts while its sum is over the limit `h`. Both come from
+your flags only, `--alert-k` (default 0.5) and `--alert-h` (default 4), never from the model
+file. On independent readings these defaults alert after about 8 readings of a one-standard-
+deviation shift and about once in 168 readings of none; a twin's readings come from
+overlapping forecasts of one plant history, so they are not independent and false alarms
+come more often. `alerts.rows` in `twin.json` lists the series alerting now, each with its
+side, the plant time it began and its sum; `alerts.basis` counts the readings summed and the
+alerts raised. The sums are kept in `twin_history.json` and go on when the twin is started
+again with the same model and limits; otherwise they start again and the twin says so once
+(`W_TWIN_ALERT`). Read an alert as a sustained shift worth a look, not as a diagnosis.
+
 ### Recommendations and the outbox
 
 Give the twin a file of candidate actions and it compares each with doing nothing after every
@@ -403,6 +419,94 @@ naga twin run line.json --map line.plantmap.json --connections conn.json --out t
 
 The page (`--monitor`) shows the recommendations read-only. An AI assistant can read them
 (`get_twin_recommendations`) and can neither deliver nor approve one.
+
+### Refit on approval
+
+A twin given a refit file proposes a correction of its own model when an alert holds, and
+applies it only after a person accepts. The file is yours, named by `--refit` and by nothing
+else; it lists the parameters a refit may change with their bounds, the calibration budget
+and the number of readings the candidate is judged on:
+
+<!-- no-run: needs a plant and your connections file -->
+```console
+naga twin run line.json --map line.plantmap.json --connections conn.json --out twin_out \
+    --horizon 480 --refit line.refit.json --outbox file:proposals.jsonl
+```
+
+```json
+{"format": 1, "kind": "naga-refit", "budget": 60, "replications": 3, "readings": 12,
+ "series": ["block/Infeed/out"],
+ "factors": [{"path": "blocks.Infeed.params.dist_params.high", "low": 1.5, "high": 6.0}]}
+```
+
+- **When.** An alert on a series (`series` narrows which, default any) starts a refit once the
+  first forecast made after the alert began has a whole horizon of readings behind it, at
+  least ceil(h/k) of them (8 with the default flags). A shorter window chases noise; an
+  alert that ends first starts nothing.
+- **What.** The factors are calibrated on that window (`calibrate`, a series target, the file's
+  bounds only); a factor may not set the state, a run setting or a data source.
+- **The proof.** Every later forecast also runs the candidate on the same seed. Once
+  `readings` readings of whole candidate forecasts are in, both are scored by their mean
+  pinball loss, and the candidate is proposed through the outbox only when it is lower: "a
+  refit of 1 parameter cuts the pinball loss 31% on the last 12 readings: adopt?". When it is
+  not, the result says so, with both numbers. One refit runs at a time, and none starts while
+  a proposal waits for its reply.
+- **Adopting.** A `taken` reply adopts it from the next cycle: the overrides become a layer
+  kept in `twin_history.json` (who replied and when), every forecast runs with it, and the
+  score and the alerts start again, since they are now of another model. An `ended` reply
+  reverts it. The model file is never written. A history whose layer was edited by hand is
+  refused whole and the layer is taken again from the outbox ledger, whose record is
+  content-addressed.
+
+### Setpoints to a soft PLC
+
+A twin can propose a setpoint, and a person can then write it to a soft PLC on this machine.
+The twin itself never writes to a PLC: a `setpoint` candidate travels through the outbox like
+any recommendation, and `naga plc-write`, a command you run, is the only writer. Your
+setpoints file lists the tags that may be written, each with the register it goes to, the model
+path that simulates it and its limits:
+
+```json
+{"format": 1, "kind": "naga-setpoints", "connection": "softplc",
+ "tags": {"line.cycle": {"register": "cycle", "path": "blocks.Press.params.dist_params.value",
+                         "min": 1, "max": 5, "max_step": 1, "min_interval": "60s"}}}
+```
+
+<!-- no-run: needs a plant, your connections file and a soft PLC -->
+```console
+naga twin run line.json --map line.plantmap.json --connections conn.json --out twin_out \
+    --horizon 480 --candidates candidates.json --setpoints line.setpoints.json \
+    --outbox file:proposals.jsonl
+naga plc-write --outbox file:proposals.jsonl --setpoints line.setpoints.json \
+    --connections plc.json --audit writes.jsonl            # dry-run; add --write to write
+```
+
+- **Proposing.** A candidate `{"verb": "setpoint", "target": "line.cycle", "value": 2}` names a
+  tag of your setpoints file (`--setpoints`) inside its range; the forecast runs it as an
+  override of the tag's model path.
+- **Where.** The file's `connection` is a modbus connection of your connections file with
+  `"use": "write"`, its registers holding registers. It must resolve to this machine
+  (127.0.0.1 or ::1): this version writes to a soft PLC only, because a plant's safety system
+  must own real writes. No source can read over that connection.
+- **When.** Only a record whose first reply is `taken` with a `by` (who took it), not ended, not
+  expired and not written before. The value must be within `min` and `max`, at most
+  `max_step` from what the PLC holds now, and `min_interval` after the tag's last write.
+  Anything else is refused by name (`E_PLC_NOT_TAKEN`, `E_PLC_STEP`, `E_PLC_INTERVAL`, ...).
+- **How.** Without `--write` the command reads the PLC and writes nothing but the audit. With
+  it, the value is written (Modbus function 6, or 16 for a 32-bit register) and read back; a
+  different value is `E_PLC_READBACK`. Every attempt gets an audit line before anything is
+  sent and one after.
+
+An AI assistant has no tool that writes a setpoint: a write is always a person's act, with
+every limit in that person's own files.
+
+Know what this guard does not do, because it trusts the files and the machine it runs on. The
+outbox and its `.replies` file are the trust boundary: whoever can write them can approve a
+write, so keep their permissions to the people who may. The `by` in a reply is a claim, not
+authentication. A loopback port can be a tunnel to a real PLC, so check what answers there.
+Deleting audit lines defeats the interval check, and two `plc-write` processes at once are not
+locked against each other, so run one. Treat these as limits of an advisory path, not as
+protection against someone with access to your files.
 
 ### A monitor page
 

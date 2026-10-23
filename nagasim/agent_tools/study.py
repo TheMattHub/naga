@@ -23,9 +23,9 @@ from nagasim import study as study_mod
 from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, step_checks
 from nagasim.studyformulas import queue_formula, wait_shares, why_not
 from nagasim.study import CHECKLIST, FIRST_PASS, LEVELS, MODES, PRECISION, SIZES, StudyError
-from nagasim.twin import write_text
+from nagasim.twin import write_json, write_text
 
-from .core import ToolError, _digest, _document_args, call, tool, workspace
+from .core import SLOTS, ToolError, _digest, _document_args, call, tool, workspace
 from .runs import _run_laws
 
 _ID = "Study folder relative to the workspace root (the id study_start returned)."
@@ -43,7 +43,8 @@ _document_args("study_update", study=_ID,
                        "replaced whole. goals and assumptions entries need a string id; a goal is "
                        "{id, text, kpi, low, high}; an assumption is {id, text, value, source}; a "
                        "target component is {name, purpose, blocks: [block names]}; a source is "
-                       "{id, text, input}; a validation entry is {level: data|known_answer|expert, "
+                       "{id, text, input, path?} (path: the model field the data feeds, e.g. "
+                       "blocks.<name>.params.distribution); a validation entry is {level: data|known_answer|expert, "
                        "passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, "
                        "\"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.")
 _document_args("study_update", **{k: f"Same as the \"{k}\" key of changes." for k in (
@@ -138,7 +139,7 @@ def _label(study: dict) -> str:
 
 def _slot(folder: Path) -> str:
     # Reserved name: a person's open model is never overwritten by a study step.
-    return f"study:{_sid(folder)}"
+    return f"{_SLOT_PREFIX}{_sid(folder)}"
 
 
 def _page(folder: Path, study: dict) -> str | None:
@@ -213,6 +214,80 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | Non
     if why:
         extra["tail_note"] = "; ".join(why)
     return out or None, extra
+
+
+def _options(folder: Path, s: dict) -> list[dict]:
+    """The top three what-next options (D727), arguments filled for this study. A record that does
+    not read must not fail the answer that carries them: none, and a warning."""
+    try:
+        return study_mod.next_options(s, folder, _sid(folder), 3)
+    except Exception:
+        logging.getLogger(__name__).warning("what-next options not computed", exc_info=True)
+        return []
+
+
+# --- the study's model slot ("study:<id>"): its last version, and what was asked of it ----------
+# The model tools the what-next rules read back (nextoptions: explain_kpi, its suggested what_if,
+# input_uncertainty, calibrate), kept per version in versions/<id>/asked.json.
+_KEPT = frozenset({"explain_kpi", "what_if", "input_uncertainty", "calibrate"})
+_ASKED_CAP = 100
+
+
+def _slot_version(ws, name: str) -> tuple[Path, dict, str, Path]:
+    sid = name[len(_SLOT_PREFIX):]
+    folder = ws.resolve(sid)        # confined to the workspace root (netguard)
+    if folder == ws.root:
+        raise _bad("model", "a study slot names a study folder inside the workspace")
+    with _study_errors():
+        s = study_mod.load(folder)
+        vid = study_mod.version_id(s)
+    return folder, s, vid, folder / "versions" / vid / "model.json"
+
+
+def _load_slot(ws, name: str):
+    """The study's last version, for a model tool sent to "study:<id>" in a process that has not
+    stepped the study."""
+    from nagasim.core.document import ModelDocument
+    from nagasim.core.schema import load_layout
+    return ModelDocument(load_layout(str(_slot_version(ws, name)[3])))
+
+
+def _keep_asked(ws, name: str, entry: dict) -> None:
+    """Append *entry* to the last version's asked.json when the slot holds that version (after a
+    failed step it holds the draft, which has no record); skipped when another process writes.
+    The first kept entry claims the study, and the claim lasts for this process's life: a model tool
+    on the study's slot makes this process the study's writer, as a study tool would."""
+    if entry.get("tool") not in _KEPT:
+        return
+    from nagasim.core.document import ModelDocument
+    from nagasim.core.schema import load_layout
+    folder, _s, _vid, path = _slot_version(ws, name)
+    if ws.models[name].to_layout() != ModelDocument(load_layout(str(path))).to_layout():
+        return
+    try:
+        study_mod.claim(folder)
+    except StudyError:
+        return
+    target = path.parent / "asked.json"
+    try:
+        rows = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        rows = []
+    rows = (rows if isinstance(rows, list) else []) + [entry]
+    write_json(target, rows[-_ASKED_CAP:])
+
+
+def _recorded(ws, name: str) -> list[dict]:
+    """The asked.json rows of the slot's last version (none when unreadable)."""
+    try:
+        rows = json.loads((_slot_version(ws, name)[3].parent / "asked.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, ToolError):
+        return []
+    return [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+
+
+_SLOT_PREFIX = "study:"
+SLOTS[_SLOT_PREFIX] = {"load": _load_slot, "asked": _keep_asked, "recorded": _recorded}
 
 
 def _validate_call(folder: Path, s: dict) -> str | None:
@@ -333,7 +408,7 @@ def study_start(question: str, study: str | None = None, mode: str = "one_go",
     s.update(checked)
     _log(s, "study_start", started)
     _save(folder, s)
-    out = {"study": _sid(folder), "next_step": _next(folder, s),
+    out = {"study": _sid(folder), "next_step": _next(folder, s), "options": _options(folder, s),
            "plan_card": study_mod.plan_card(s), "effort": study_mod.effort(s)}
     return {**out, "normalised": notes} if notes else out
 
@@ -346,9 +421,14 @@ def study_status(study: str) -> dict:
     the next step. Call it first on an existing study folder.
 
     Returns {"study", "question", "mode", "size", "sufficiency", "why_not_sufficient", "goals",
-    "checklist", "last_version", "versions", "effort", "next_step"}, plus "plan_card" until the
-    plan is approved and "validate" (a ready-to-send study_validate call) while no validation has
-    passed and the last version is a queue with a textbook answer.
+    "checklist", "last_version", "versions", "effort", "next_step", "options"}, plus "plan_card"
+    until the plan is approved and "validate" (a ready-to-send study_validate call) while no
+    validation has passed and the last version is a queue with a textbook answer.
+
+    "options" (in every answer that has next_step) is what next, at most 3, ranked fix > missing >
+    improve > extend from the study's recorded numbers: {"kind", "title", "why" (with its number),
+    "tool", "arguments", "cost", "source"}, plus "needs" for arguments still to fill in (such as the
+    whole layout). Offer them to the person; none runs unasked.
     """
     folder, s = _open(study)
     suff = study_mod.sufficiency(s)
@@ -357,7 +437,7 @@ def study_status(study: str) -> dict:
            "goals": study_mod.goals_status(s),
            "checklist": [{k: c[k] for k in ("item", "verdict", "why")} for c in study_mod.checklist(s, folder)],
            "last_version": s["versions"][-1] if s["versions"] else None, "versions": len(s["versions"]),
-           "effort": study_mod.effort(s), "next_step": _next(folder, s)}
+           "effort": study_mod.effort(s), "next_step": _next(folder, s), "options": _options(folder, s)}
     if (folder / "control-room.html").is_file():
         out["page"] = f"{_sid(folder)}/control-room.html"
     if not s["plan_approved"]:
@@ -507,7 +587,7 @@ def study_update(study: str, changes: dict | None = None, question: str | None =
     _save(folder, s)
     if s["versions"]:   # the page shows goals and assumptions too
         _page(folder, s)
-    out = {"ok": True, "next_step": _next(folder, s)}
+    out = {"ok": True, "next_step": _next(folder, s), "options": _options(folder, s)}
     return {**out, "normalised": notes} if notes else out
 
 
@@ -664,6 +744,7 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
             answer["page"] = page
     answer["sufficiency"] = _label(s)
     answer["next_step"] = _next(folder, s)
+    answer["options"] = _options(folder, s)
     if notes:
         answer["normalised"] = notes
     return answer
@@ -719,7 +800,7 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
     _save(folder, s)
     _page(folder, s)
     return {"kind": kind, "model": round(wait, 6), "formula": round(f["wq"], 6), "rel_error": round(rel, 6),
-            "passed": passed, "next_step": _next(folder, s)}
+            "passed": passed, "next_step": _next(folder, s), "options": _options(folder, s)}
 
 
 @tool()
@@ -765,6 +846,7 @@ def study_revert(study: str, version: str, note: str, request_id: str | None = N
             answer["page"] = page
     answer["sufficiency"] = _label(s)
     answer["next_step"] = _next(folder, s)
+    answer["options"] = _options(folder, s)
     return answer
 
 

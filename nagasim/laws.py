@@ -246,3 +246,43 @@ def summary(found: list[dict]) -> dict:
     """What the run digest carries: the count of passed checks and the warnings in full."""
     return {"passed": sum(c["verdict"] == "passed" for c in found),
             "partial": [c for c in found if c["verdict"] != "passed"]}
+
+
+# A search's best point is judged on its own replications (D729): a winner can be censored,
+# over-utilised or biased by the empty start, and a mean-based confirmation (KN) cannot see it.
+_POINT_NOTE = ("the law checks annotate the best point; they do not change the search's answer "
+               "or its confirmation, which are about means")
+
+
+def at_point(layout, overrides=(), *, replications: int, seed: int = 0, run_length=None,
+             warmup=None, should_stop=None) -> dict:
+    """`summary` of the laws at one point of a search (optimise, calibrate, a surrogate's
+    confirmed suggestion): *overrides* applied to *layout*, *replications* run through
+    `api.run_model` on seeds seed..seed+replications-1 -- the search's own seeds, so these are
+    the best point's runs again, now with the frames the laws read. It costs that batch, which
+    the answer says: {"passed", "partial", "replications", "seed", "note"}; replications 0 when
+    *should_stop* ended it first."""
+    from nagasim import api, experiments
+    from nagasim.core.schema import load_layout
+
+    model = experiments.apply_overrides(load_layout(layout), list(overrides))
+    n = max(int(replications), 1)
+    results = api.run_model(model, replications=n, seed=seed, run_length=run_length,
+                            warmup=warmup, should_stop=should_stop)
+    if results is None:
+        return {"passed": 0, "partial": [], "replications": 0, "seed": seed,
+                "note": "not checked: the budget ran out before the best point's batch"}
+    if warmup is not None:              # judged with the warm-up the batch used (D684)
+        model = {**model, "simulation": {**(model.get("simulation") or {}), "warmup": warmup}}
+    done = int(results["system"]["Run"].nunique()) if "system" in results else n
+    return {**summary(checks(model, results)), "replications": done, "seed": seed,
+            "note": f"an extra batch of {done} replication(s) at the best point (seeds "
+                    f"{seed}..{seed + done - 1}), not counted in the search's budget; " + _POINT_NOTE}
+
+
+def of_run(layout, results, *, warmup: float = 0.0, what: str = "run") -> dict:
+    """`summary` of the laws on runs already made (a forecast's): no extra replication."""
+    model = {**layout, "simulation": {**(layout.get("simulation") or {}), "warmup": warmup}}
+    done = int(results["system"]["Run"].nunique()) if results and "system" in results else 0
+    return {**summary(checks(model, results)), "replications": 0, "seed": None,
+            "note": f"from the {what}'s own {done} replication(s), no extra run"}

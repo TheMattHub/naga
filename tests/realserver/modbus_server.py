@@ -4,7 +4,8 @@
 
 Prints "READY" when it serves. Unit 1 holds: holding 0 = 215, holding 10..11 = float32 1.5
 (high word first), holding 20..21 = uint32 65538, input 1 = 0xFFFE (int16 -2), coil 3 = on,
-discrete input 4 = off. Needs the optional extra `nagasim[modbus]` (pymodbus 3.11+ simulator API).
+discrete input 4 = off. Its holding registers take writes (function codes 6 and 16), which
+`naga plc-write`'s real-server test writes and reads back (D743). Needs the optional extra `nagasim[modbus]` (pymodbus 3.11+ simulator API).
 """
 import asyncio
 import sys

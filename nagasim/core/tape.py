@@ -23,8 +23,8 @@ Frame keys, each left out when empty:
     tok     [[id, type, x, y], ...]                     entities on a delayed link (tokx: the rest)
     veh     [[fleet, unit, x, y, heading, state], ...]
     ag      [[population, index, x, y, colour], ...]    layout view only (agx: the rest)
-    mv      [[type, source block, target block], ...]   moves since the sample before
-            (mvx: their number, when over MAX_MOVES)
+    mv      [[type, source block, target block, t], ...]   moves since the sample before,
+            each at its own time t (mvx: their number, when over MAX_MOVES)
 """
 from __future__ import annotations
 
@@ -53,6 +53,31 @@ _BOX = {"schematic": (120.0, 60.0), "layout": (6.0, 3.0)}
 # `instantiate` names a whole-model asset "submodel_N"; its description reads better
 # (the rule of the editor's canvas, which the engine cannot import).
 _AUTO_NAME = re.compile(r"submodel_\d+")
+
+
+_STORING = ("BUFFER", "STORE")
+
+
+def _buffer(block: dict, layout: dict) -> tuple[bool, float | None]:
+    """(is *block* one that only holds entities between two others, its capacity when a
+    number says it): a BUFFER or STORE, or an asset whose one block past its entry and
+    exit is one (its capacity an argument of the asset, or that argument's default)."""
+    params = block.get("params") or {}
+    kind = str(block.get("type", "")).upper()
+    if kind == "SUBMODEL":
+        definition = (layout.get("submodels") or {}).get(params.get("definition")) or {}
+        inner = [b for b in definition.get("blocks") or ()
+                 if str(b.get("type", "")).upper() not in ("SUB_ENTRY", "SUB_EXIT")]
+        if len(inner) != 1:
+            return False, None
+        kind, capacity = str(inner[0].get("type", "")).upper(), (inner[0].get("params") or {}).get("capacity")
+        if isinstance(capacity, dict) and "$arg" in capacity:
+            defaults = {p.get("name"): p.get("default") for p in definition.get("parameters") or ()}
+            capacity = (params.get("arguments") or {}).get(capacity["$arg"], defaults.get(capacity["$arg"]))
+    else:
+        capacity = params.get("capacity")
+    numeric = isinstance(capacity, (int, float)) and not isinstance(capacity, bool) and capacity >= 0
+    return kind in _STORING, float(capacity) if numeric else None
 
 
 def default_view(layout: dict) -> str:
@@ -123,6 +148,11 @@ class TapeWriter:
                      "w": width, "h": height}
             if str(block.get("type", "")).upper() in QUEUEING_BLOCK_TYPES:
                 entry["q"] = 1      # badge "serving|waiting"
+            storing, capacity = _buffer(block, layout)
+            if storing:             # drawn as a tray between its neighbours (#842)
+                entry["buf"] = 1
+                if capacity is not None:
+                    entry["cap"] = capacity
             blocks.append(entry)
             if params.get("resource_name"):
                 lamps[name] = str(params["resource_name"])
@@ -158,7 +188,8 @@ class TapeWriter:
     # -- one sample -------------------------------------------------------------------
     def frame(self, timeline: Timeline, t: float, t_prev: float | None = None) -> dict:
         """What to draw at *t*. *t_prev* is the sample before: its moves up to *t*
-        are listed, so a renderer can show them leaving and arriving."""
+        are listed with their times, so a renderer can show each one leaving and
+        arriving when it happened (#851)."""
         state = timeline.state_at(t)
         counts, serving = state["counts"], state["in_service"]
         names = list(self._blocks)
@@ -204,8 +235,8 @@ class TapeWriter:
                 for (pop, index), (x, y, status, category)
                 in sorted((state.get("agents") or {}).items())])
         if t_prev is not None:
-            moves = [[self._type(e_type), self._blocks[source], self._blocks[target]]
-                     for entity, e_type, source, target, _t, _branch
+            moves = [[self._type(e_type), self._blocks[source], self._blocks[target], when]
+                     for entity, e_type, source, target, when, _branch
                      in timeline.moves_between(t_prev, t)
                      # A delayed link draws its entity itself (`tok`), not as a hop.
                      if entity not in in_transit and source in self._blocks

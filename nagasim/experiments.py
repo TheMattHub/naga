@@ -39,7 +39,7 @@ from nagasim.core.stats import ci95, paired_diff_ci, welch_diff_ci
 
 __all__ = ["BASELINE", "apply_overrides", "value_at", "list_override_paths", "override_targets",
            "scenarios_of", "flatten_kpis", "needs_event_logs", "KPI_PREFIXES", "ExperimentResult",
-           "run_scenarios", "what_if",
+           "run_scenarios", "what_if", "paired_until_clear",
            "record_scenarios",
            "run_until_precision", "suggest_warmup", "WarmupSuggestion", "COMPARISON_COLS", "main"]
 
@@ -786,6 +786,42 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
 WHAT_IF = "What-if"      # the temporary scenario's name; never stored in the model
 
 
+def paired_until_clear(layout, overrides: list[dict], kpis: list[str] | None = None, *,
+                       start: int = 5, cap: int = 50, seed: int = 0,
+                       run_length: float | None = None, warmup: float | None = None,
+                       should_stop=None) -> tuple:
+    """The runs behind `what_if`: the baseline against *overrides* on common random
+    numbers, replications doubled (start, 2 x start, ... up to *cap*) until every KPI
+    in *kpis* (default: the system KPIs) is separated or unchanged.
+
+    Returns (n, met, result, table): the `ExperimentResult` of the last batch (None
+    when stopped) and its comparison rows for the changed model. `nagasim.explain`
+    reads the per-replication frames of the same result.
+    """
+    base = schema.load_layout(layout)
+    base["scenarios"] = [{"name": WHAT_IF, "overrides": list(overrides)}]
+    n = max(2, start)
+    # ponytail: each doubling reruns from replication 0 (same seeds, so the
+    # first n results repeat) -- about 2x the final cost, instead of threading
+    # extra replications through run_scenarios. Upgrade if studies get long.
+    while True:
+        result = run_scenarios(base, [WHAT_IF], replications=n, seed=seed, run_length=run_length,
+                               warmup=warmup, should_stop=should_stop)
+        if not result.completed:
+            return n, False, None, None
+        table = result.comparison(kpis=kpis)
+        table = table[table["Scenario"] == WHAT_IF]
+        if kpis is None:
+            table = table[table["KPI"].str.startswith("system/")]
+        # #766: a KPI identical in every paired replication (a counter under CRN) is unchanged,
+        # not undecided, so it does not hold the doubling back.
+        unchanged = (table["Diff LB"] == 0) & (table["Diff UB"] == 0)
+        met = bool(len(table)) and bool((table["Significant"] | unchanged).all())
+        if met or n >= cap:
+            return n, met, result, table
+        n = min(cap, n * 2)
+
+
 def what_if(layout, overrides: list[dict], kpis: list[str] | None = None, *, start: int = 5,
             cap: int = 50, seed: int = 0, run_length: float | None = None,
             warmup: float | None = None, goals: dict | None = None, should_stop=None) -> dict:
@@ -799,29 +835,12 @@ def what_if(layout, overrides: list[dict], kpis: list[str] | None = None, *, sta
     "scenario", "diff", "diff_lb", "diff_ub", "verdict"}]}. An override naming
     something the model does not have raises ModelValidationError before any run.
     """
-    base = schema.load_layout(layout)
-    base["scenarios"] = [{"name": WHAT_IF, "overrides": list(overrides)}]
     goals = goals or {}
-    n = max(2, start)
-    # ponytail: each doubling reruns from replication 0 (same seeds, so the
-    # first n results repeat) -- about 2x the final cost, instead of threading
-    # extra replications through run_scenarios. Upgrade if studies get long.
-    while True:
-        result = run_scenarios(base, [WHAT_IF], replications=n, seed=seed, run_length=run_length,
-                               warmup=warmup, should_stop=should_stop)
-        if not result.completed:
-            return {"n": n, "met": False, "completed": False, "kpis": []}
-        table = result.comparison(kpis=kpis)
-        table = table[table["Scenario"] == WHAT_IF]
-        if kpis is None:
-            table = table[table["KPI"].str.startswith("system/")]
-        # #766: a KPI identical in every paired replication (a counter under CRN) is unchanged,
-        # not undecided, so it does not hold the doubling back.
-        unchanged = (table["Diff LB"] == 0) & (table["Diff UB"] == 0)
-        met = bool(len(table)) and bool((table["Significant"] | unchanged).all())
-        if met or n >= cap:
-            break
-        n = min(cap, n * 2)
+    n, met, result, table = paired_until_clear(layout, overrides, kpis, start=start, cap=cap,
+                                               seed=seed, run_length=run_length, warmup=warmup,
+                                               should_stop=should_stop)
+    if result is None:
+        return {"n": n, "met": False, "completed": False, "kpis": []}
     rows = []
     for _, r in table.iterrows():
         diff = float(r["Diff vs baseline"])

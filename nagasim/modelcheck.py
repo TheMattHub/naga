@@ -23,7 +23,9 @@ point estimate (never a straddling result from an undefined bound).
 (PHASE6 S8, `run_reality_checks` below) in the same pass, as extra `Result`s
 of kind "reality_check" -- one command, one pass, both kinds of model test.
 A reality check is one deterministic replication with no CI, so it stays
-plain pass/fail, never inconclusive.
+plain pass/fail, never inconclusive. The "path_checks" section (`nagasim.pathcheck`,
+D722) joins the same pass the same way, as results of kind "path_check": one traced
+replication, pass/fail, each message saying it rests on one seed.
 
 ENGINE side (O8, ARCHITECTURE section 10.1): this module is in
 `packages/engine/build_wheel.py`'s ENGINE list, so the engine wheel alone can
@@ -102,7 +104,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from nagasim import api, experiments, laws
+from nagasim import api, experiments, laws, pathcheck
 from nagasim.core import submodels
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.levels import LevelSystem
@@ -131,7 +133,7 @@ class Result:
     upper: float | None
     status: str  # "pass" | "fail" | "inconclusive"
     message: str
-    kind: str  # "assertion" | "reality_check"
+    kind: str  # "assertion" | "reality_check" | "path_check"
     note: str = ""  # a reality check's extra word on its outcome (D677); it is also in `message`
 
     @property
@@ -222,6 +224,26 @@ def _reality_result(row) -> Result:
         message += f" ({note})"
     return Result(name, None, None, None, None, None, None, None, status, message,
                   "reality_check", note)
+
+
+def _path_result(row: dict) -> Result:
+    """One `pathcheck.check_paths` row as a Result: the first violations with their entity
+    and time in the message, and "one seed" always, because one traced run proves only that
+    run's routes (D722)."""
+    name = row["name"]
+    seed_words = f"one seed, {row['judged']} entities judged"
+    if row["truncated"]:
+        seed_words += "; the trace stopped early, later arrivals unjudged"
+    if row["passed"]:
+        return Result(name, None, None, None, None, None, None, None, "pass",
+                      f"path check '{name}' passed ({seed_words})", "path_check", seed_words)
+    shown = "; ".join(f"entity {v['entity']} ({v['e_type']}) at t={v['t']:.6g}: {v['what']}"
+                      for v in row["examples"])
+    more = row["violations"] - len(row["examples"])
+    message = (f"path check '{name}' failed: {row['violations']} violation(s); "
+               f"{shown}" + (f"; and {more} more" if more > 0 else "") + f" ({seed_words})")
+    return Result(name, None, None, None, None, None, None, None, "fail", message,
+                  "path_check", seed_words)
 
 
 # ---------------------------------------------------------------------- reality checks
@@ -415,13 +437,14 @@ def run_reality_checks(layout, *, seed: int = 0, run_length=None, warmup=None,
 
 # ---------------------------------------------------------------------- assertions + reality checks
 
-def check(layout, *, workers: int = 1) -> list[Result]:
-    """Every "assertions" and "reality_checks" entry, as `Result`s.
+def check(layout, *, workers: int = 1, runs: dict | None = None) -> list[Result]:
+    """Every "assertions", "reality_checks" and "path_checks" entry, as `Result`s.
 
     Assertions sharing a "replications" count run in ONE batch of
     `api.run_model` replications (the KPI is read off the same run for all of
     them), so N assertions at 5 replications each cost 5 runs total, not 5N.
-    `workers` is passed straight through to that run.
+    `workers` is passed straight through to that run. *runs*, when given, receives each
+    batch's results by replication count, so the law check can reuse one (seed 0 here too).
     """
     base = api.load_layout(layout)
     results: list[Result] = []
@@ -433,6 +456,8 @@ def check(layout, *, workers: int = 1) -> list[Result]:
     for reps in sorted(by_reps):
         group = by_reps[reps]
         run_results = api.run_model(base, replications=reps, seed=0, workers=workers)
+        if runs is not None:
+            runs[reps] = run_results
         flat = experiments.flatten_kpis(run_results) if run_results is not None else None
         available = sorted(set(flat["KPI"])) if flat is not None else []
         for entry in group:
@@ -442,11 +467,14 @@ def check(layout, *, workers: int = 1) -> list[Result]:
     for _, row in reality.iterrows():
         results.append(_reality_result(row))
 
+    if base.get("path_checks"):
+        results.extend(_path_result(row) for row in pathcheck.check_paths(base))
+
     return results
 
 
 def assert_model(path_or_layout, strict: bool = False) -> None:
-    """Assert, in a test, that a model passes its own assertions and reality checks.
+    """Assert, in a test, that a model passes its own assertions, reality and path checks.
 
     Raises ``AssertionError`` naming every failed assertion, so a normal pytest
     report shows what went wrong. An inconclusive result (an assertion's
@@ -518,7 +546,7 @@ def _junit_xml(all_results: list[tuple[str, list[Result]]]) -> str:
 def _print_table(model_path: str, results: list[Result]) -> None:
     print(f"{model_path}:")
     if not results:
-        print("  (no assertions or reality checks)")
+        print("  (no assertions, reality checks or path checks)")
         return
     for r in results:
         status = r.status.upper()
@@ -526,11 +554,16 @@ def _print_table(model_path: str, results: list[Result]) -> None:
         print(f"  [{status}] {r.kind:13s} {r.name}: {detail}")
 
 
-def _print_laws(model_path: str, workers: int) -> None:
+def _print_laws(model_path: str, workers: int, runs: dict | None = None) -> None:
     """The operational-law checks of one run with the model's own settings (D684). Warnings
-    only: they never change the exit status, saturation can be the point of a model."""
+    only: they never change the exit status, saturation can be the point of a model. An
+    assertion batch run at the model's own replication count (in *runs*) is that same run,
+    so it is reused rather than run again."""
     base = api.load_layout(model_path)
-    run = api.run_model(base, seed=0, workers=workers)
+    own = api.run_settings(base, None, None, None)[0]
+    run = (runs or {}).get(own)
+    if run is None:
+        run = api.run_model(base, seed=0, workers=workers)
     found = laws.checks(base, run) if run is not None else []
     if not found:
         return
@@ -556,12 +589,13 @@ def _run_check(model_paths: list[str], *, junit: str | None, workers: int, stric
     all_results: list[tuple[str, list[Result]]] = []
     for path in model_paths:
         try:
-            results = check(path, workers=workers)
+            runs: dict = {}
+            results = check(path, workers=workers, runs=runs)
         except (OSError, ValueError) as exc:
             print(f"naga check: {path}: {exc}", file=sys.stderr)
             return 2
         _print_table(path, results)
-        _print_laws(path, workers)
+        _print_laws(path, workers, runs)
         all_results.append((path, results))
 
     if junit:
@@ -581,7 +615,8 @@ def main(argv=None) -> int:
                                      description="Model assertions and CI integration.")
     subs = parser.add_subparsers(dest="command", required=True)
 
-    check_p = subs.add_parser("check", help="run a model's assertions and reality checks")
+    check_p = subs.add_parser("check",
+                              help="run a model's assertions, reality checks and path checks")
     check_p.add_argument("models", nargs="+", help="model file(s) to check")
     check_p.add_argument("--junit", default=None, help="write a JUnit XML report here")
     check_p.add_argument("--workers", type=int, default=1)

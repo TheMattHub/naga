@@ -300,3 +300,57 @@ def test_cli_prints_ranking_and_writes_json(tmp_path, capsys):
     payload = json.loads(json_path.read_text())
     assert payload["best"]["distribution"]
     assert len(payload["ranking"]) <= inputfit.fit_candidates(values).__len__()
+
+
+# ---------------------------------------------------------------- bootstrap (input uncertainty, D719, D720)
+def test_bootstrap_fits_keep_the_family_of_integer_data():
+    """Integer data would let each resample pick its own family from the discrete
+    catalogue; the family is pinned, so every resample is a Poisson."""
+    values = np.random.default_rng(_SEED).poisson(4.0, 60)
+    draws = inputfit.bootstrap_fits(values, "Poisson", 8, inputfit.bootstrap_rng(0))
+    assert len(draws) == 8 and all(d is not None and set(d) == {"lambda"} for d in draws)
+    assert all(isinstance(d["lambda"], float) for d in draws)       # plain floats, JSON-safe
+    assert len({d["lambda"] for d in draws}) > 1
+
+
+def test_bootstrap_fits_return_none_for_a_resample_that_cannot_fit():
+    """[1, 1, 1, 2.5]: about a third of the resamples are all 1.0, and a Normal with
+    zero spread has no finite likelihood."""
+    draws = inputfit.bootstrap_fits([1.0, 1.0, 1.0, 2.5], "Normal", 30, inputfit.bootstrap_rng(1))
+    failed = sum(d is None for d in draws)
+    assert 0 < failed < 30
+
+
+def test_bootstrap_rng_is_its_own_stream():
+    a = inputfit.bootstrap_rng(3).random(4)
+    assert np.array_equal(a, inputfit.bootstrap_rng(3).random(4))
+    assert not np.array_equal(a, np.random.default_rng(3).random(4))
+
+
+def _poisson_days(rates, bin_width, cycles, seed):
+    rng = np.random.default_rng(seed)
+    stamps = [c * bin_width * len(rates) + i * bin_width + rng.random(rng.poisson(r * bin_width))
+              * bin_width for c in range(cycles) for i, r in enumerate(rates)]
+    return np.sort(np.concatenate(stamps))
+
+
+def test_arrival_rate_bands_from_whole_cycles_cover_the_true_rate():
+    true_rates = [1.0, 5.0, 8.0, 2.0]
+    stamps = np.concatenate([[0.0], _poisson_days(true_rates, 6.0, 30, _SEED)])  # cycles start at 0
+    result = inputfit.arrival_rates(stamps, bin_width=6.0, cycle=24.0, resamples=200, seed=0)
+    assert result.cycles == 30 and result.resamples == 200 and len(result.bands) == 4
+    for (lo, hi), (_w, rate), true in zip(result.bands, result.points, true_rates):
+        assert lo <= rate <= hi
+        assert lo <= true <= hi
+    # No resamples: the answer is what it always was.
+    plain = inputfit.arrival_rates(stamps, bin_width=6.0, cycle=24.0)
+    assert plain.points == result.points and plain.bands == [] and plain.resamples == 0
+
+
+def test_arrival_rate_bands_need_cycles():
+    stamps = _poisson_days([2.0, 2.0], 5.0, 3, 1)
+    with pytest.raises(ValueError, match="cycle"):
+        inputfit.arrival_rates(stamps, bin_width=5.0, resamples=10)
+    with pytest.raises(ValueError, match="2 cycles"):
+        inputfit.bootstrap_arrival_rates([0.5, 1.0, 3.0], bin_width=5.0, cycle=10.0, resamples=5,
+                                         rng=inputfit.bootstrap_rng(0))

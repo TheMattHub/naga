@@ -6,6 +6,8 @@ share (that is the player, `player.py`): whoever receives the file can read the 
     viewer_problems(layout)                why a model cannot be a viewer, or []
     what_if(layout, values)                the run both sides make: the builder for the
                                            author's baseline, the page for every Run
+    answer(row, replications)              the answer card's words for a result (D707)
+    page_run(layout, baseline, args)       what a Run in the page answers
     compare(record, baseline)              is the page's baseline the author's
     build_viewer(layout, path)             the page
     freeze_data(layout, base_dir)          the copy of a model with its data read once and
@@ -28,10 +30,12 @@ import time
 from nagasim import dashboard, experiments
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.sections_validation import DASHBOARD_LIMITS
+from nagasim.core.timeunits import units_of
+from nagasim import player
 from nagasim.viewer_runtime import Cancelled
 
 __all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_on_disk", "viewer_problems", "freeze_data",
-           "what_if", "compare", "build_viewer"]
+           "what_if", "answer", "page_run", "compare", "build_viewer"]
 
 # The model text a page may carry. The largest bundled model is 0.25 MB.
 MAX_MODEL_BYTES = 5_000_000
@@ -40,6 +44,7 @@ _NOT_SHIPPED = ("view", "background")
 # A run in a browser against the same run here (measured: 1.3 to 2.8 times).
 _BROWSER_FACTOR = 2.5
 _HINT = "share a recording instead: `naga run MODEL --player FILE.html`"
+_QUOTED = 10        # recorded answers a page carries: the latest of each kind is what is read
 
 
 # -- what a model may not carry (D325) --------------------------------------------
@@ -179,14 +184,22 @@ def _versions() -> dict:
 
 
 def what_if(layout: dict, values: dict | None = None, *, replications: int | None = None,
-            on_progress=None, should_stop=None) -> dict:
+            on_progress=None, should_stop=None, asked=None) -> dict:
     """Run *layout* with the viewer's *values* ({input path: value}) beside its baseline
-    and return one frozen record (D248), JSON-safe:
+    and return one frozen record (D248), JSON-safe. *asked*: the recorded tool answers of
+    the model (`agent_tools.core.recorded`), quoted by the trust card and the input note:
 
         inputs, replications, seed, seeds   what made it
         rows      per result KPI and scenario: mean, 95% interval, difference to the
                   baseline with its paired interval, significant
         cells     {scenario: {KPI: [the value of each replication]}}, every KPI
+        results   {scenario: the results panel's rows} (`player.result_rows`: target,
+                  direction, verdict word)
+        trust     {scenario: the trust card} (`player.trust_card`: law checks, warm-up,
+                  input data, parameters)
+        answer    the answer card for the first result (`answer`), or None
+        input_note  (when *asked* measured the input data) the answer card's input-data
+                  line, `uncertainty.what_if_note`: quoted beside the verdict, never merged
         versions, seconds
 
     The what-if is the Presenter's: `input_overrides` (which enforces each range), one
@@ -219,9 +232,13 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
         raise Cancelled("the run was cancelled")
 
     labels = {entry["kpi"]: entry.get("label") or entry["kpi"] for entry in definition["results"]}
-    rows = []
+    rows, needed, diff = [], None, None
     if labels:
         frame = result.comparison(kpis=list(labels))
+        first = frame[(frame["KPI"] == next(iter(labels))) & (frame["Scenario"] == name)]
+        if len(first):
+            needed = _number(first["Replications Needed"].iloc[0])
+            diff = (_number(first["Diff LB"].iloc[0]), _number(first["Diff UB"].iloc[0]))
         order = {kpi: index for index, kpi in enumerate(labels)}
         for row in sorted(frame.to_dict("records"), key=lambda r: order.get(r["KPI"], 0)):
             rows.append({"kpi": row["KPI"], "label": labels.get(row["KPI"], row["KPI"]),
@@ -237,11 +254,166 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
         for kpi, value in zip(flat["KPI"], flat["Value"]):
             table.setdefault(str(kpi), []).append(_number(value))
         cells[dashboard.YOURS if scenario == name else scenario] = table
-    return {"inputs": {path: item["value"] for path, item in
+    # The console's panels (D704, D707), from the same comparison the rows are.
+    names = [name, experiments.BASELINE]
+    panel = player.result_rows(made, None, result, names) or {}
+    trust = player.trust_card(made, None, result, names, {name: made["scenarios"][-1]["overrides"]},
+                              panel, {scenario: (seed, count) for scenario in names}, asked) or {}
+    shown = panel.get(name if values else experiments.BASELINE) or [None]
+    from nagasim import uncertainty
+
+    note = uncertainty.what_if_note(asked, made["scenarios"][-1]["overrides"], list(labels)) \
+        if values else None
+    return {**({"input_note": player.plain(note)} if note else {}),
+            "inputs": {path: item["value"] for path, item in
                        zip(values, made["scenarios"][-1]["overrides"])},
             "replications": count, "seed": seed,
             "seeds": [int(s) for s in result.seeds.get(experiments.BASELINE, [])],
-            "rows": rows, "cells": cells, "versions": _versions(), "seconds": seconds}
+            "rows": rows, "cells": cells,
+            "results": player.plain({_renamed(key, name): value for key, value in panel.items()}),
+            "trust": player.plain({_renamed(key, name): value for key, value in trust.items()}),
+            "answer": answer(player.plain(shown[0]), count, needed, diff),
+            "versions": _versions(), "seconds": seconds}
+
+
+def _renamed(scenario: str, name: str) -> str:
+    return dashboard.YOURS if scenario == name else scenario
+
+
+_WORDS = {"yes": "Yes, very likely", "no": "No", "unclear": "Not clear yet",
+          "same": "No change you would notice"}
+_FROM_VERDICT = {"better": "yes", "worse": "no", "no clear change": "unclear"}
+# D710: a difference whose whole 95% interval is within this share of the baseline mean
+# is no change a client would notice, and running on would not change that.
+_UNNOTICED = 0.01
+
+
+def answer(row: dict | None, replications: int, needed: float | None = None,
+           diff: tuple | None = None) -> dict | None:
+    """The answer card (D707) for *row*, a results panel row (`player.result_rows`), as
+    {"word": "yes" | "no" | "unclear" | "same", "headline", "detail", "needed"}: computed
+    from the numbers, never from a colour. With a target and a direction: "yes" when the
+    whole 95% interval is on the better side of the target, "no" when it is all on the
+    worse side, else "unclear". Without a target: the verdict against the baseline
+    (better, worse, no clear change), and "same" (final, D710) in place of "unclear" when
+    *diff*, the 95% interval (low, high) of the difference, is within +/-1% of the
+    baseline mean. None when neither says anything (no direction, or no target and no
+    baseline). *needed* is the comparison's `Replications Needed`; for a target it is
+    worked out the same way, n x (half-width / distance)^2, uncapped (the cap is
+    `_until_clear`'s, #849)."""
+    if not row or row["yours"]["mean"] is None:
+        return None
+    mean, low, high = (row["yours"][key] for key in ("mean", "lo", "hi"))
+    target, better, sure = row.get("target"), row.get("better"), low is not None and high is not None
+    if target is not None and better in ("higher", "lower"):
+        sign = 1 if better == "higher" else -1
+        worst, best = (low, high) if sign > 0 else (high, low)
+        word = "unclear"
+        if sure and sign * (worst - target) >= 0:
+            word = "yes"
+        elif sure and sign * (best - target) < 0:
+            word = "no"
+        needed = None
+        if word == "unclear" and sure and mean != target:
+            needed = math.ceil(replications * ((high - low) / 2 / abs(mean - target)) ** 2)
+        side = "above" if mean > target else "below" if mean < target else "at"
+        said = f"; {side} the {target:.4g} target"
+    elif row.get("base") is not None and row.get("verdict") in _FROM_VERDICT:
+        word, said = _FROM_VERDICT[row["verdict"]], ""
+        base = row["base"]["mean"]
+        if (word == "unclear" and base and diff and None not in diff
+                and max(abs(diff[0]), abs(diff[1])) <= _UNNOTICED * abs(base)):
+            word, said = "same", f"; the difference is within {100 * _UNNOTICED:g}% of the baseline"
+    else:
+        return None
+    unit = f" {row['unit']}" if row.get("unit") else ""
+    detail = f"{row['label']} {mean:.4g}{unit}"
+    if sure:
+        detail += f" (95% interval {low:.4g} to {high:.4g})"
+    if row.get("delta_pct") is not None:
+        detail += f", {row['delta_pct']:+.1f}% against the baseline ({row['verdict']})"
+    return {"word": word, "headline": f"{_WORDS[word]}: {mean:.4g}{unit}", "detail": detail + said + ".",
+            "needed": int(needed) if word == "unclear" and needed is not None else None}
+
+
+def _until_clear(layout: dict, values: dict, count, on_progress, say, asked=None) -> dict:
+    """`what_if`, run again with more replications while its answer is "not clear yet"
+    (the comparison's `Replications Needed`, D685), up to the definition's most: the one
+    cap on replications (#849). Each round re-runs all replications, not only the new
+    ones: common random numbers make adding to a finished run awkward."""
+    limits = dashboard.resolve_dashboard(layout)["limits"]
+    most = min(int(limits["max_replications"]), DASHBOARD_LIMITS["replications"])
+    record = what_if(layout, values, replications=count, on_progress=on_progress, asked=asked)
+    while record["answer"] and record["answer"]["word"] == "unclear" and record["replications"] < most:
+        done = record["replications"]
+        needed = record["answer"]["needed"] or 2 * done
+        count = min(most, max(done + 1, needed))
+        say(f"Not clear yet after {done} replications: running {count} for a clear answer" if needed <= most
+            else f"Not clear yet after {done} replications: running {count}, the most this page runs, "
+                 "to settle it")
+        record = what_if(layout, values, replications=count, on_progress=on_progress, asked=asked)
+    if record["answer"] and record["answer"]["word"] == "unclear":
+        record["answer"]["detail"] += (f" Still not clear after {record['replications']} "
+                                       "replications, the most this page runs.")
+    return record
+
+
+def page_run(layout: dict, baseline: dict, args: dict, *, title: str = "Model",
+             tokens: dict | None = None, on_progress=None, say=None, asked=None) -> dict:
+    """What a Run in the page answers (the worker's `_BOOT`): {"record", "same",
+    "player"}, or {"error"} for a value the engine refuses. *asked*: the recorded answers
+    the page carries (`build_viewer`); no input note against another scenario, since a
+    difference measured against the author's baseline is not this one's.
+
+    *args* is {"values", "replications"} and, to compare two of the page's scenarios,
+    "against" (the values the other one is run with, in place of the author's baseline)
+    and "names" (the two scenarios' names for the drawing). The run goes on until its
+    answer is clear (`_until_clear`); *say* is told what happens. Then yours and the
+    other are recorded for the player (`watch_page`): that is an extra, and a failure
+    there (a browser tab out of memory, #833) keeps the finished result."""
+    say = say or (lambda text: None)
+    values, against = dict(args.get("values") or {}), dict(args.get("against") or {})
+    names = [str(name)[:40] for name in args.get("names") or (dashboard.YOURS, experiments.BASELINE)][:2]
+    try:
+        base = (experiments.apply_overrides(layout, dashboard.input_overrides(layout, against))
+                if against else layout)
+        record = _until_clear(base, values, args.get("replications"), on_progress, say, asked)
+        if against:
+            record.pop("input_note", None)
+    except ValueError as exc:
+        return {"error": str(exc)[:500]}
+    say("Recording your run")
+    try:
+        watch = watch_page(base, values, title=title, tokens=tokens, names=names)
+    except Exception:                               # noqa: BLE001 (#833: any engine error)
+        watch = ""
+    return {"record": record, "same": None if against else compare(record, baseline), "player": watch}
+
+
+def watch_page(layout: dict, values: dict | None = None, *, title: str = "Model",
+               tokens: dict | None = None, names=None) -> str:
+    """The player page (`player.build_player`) of the viewer's what-if beside the author's
+    baseline: one replication of each with the model's own seed, recorded where this runs
+    (in a page: the browser) and drawn as two scenarios, *names* (default "Yours" and
+    "Baseline"): the other first, as the one compared with, and yours shown first. ""
+    when the recording is over the player's size limit.
+    Raises ValueError as `what_if` does."""
+    from nagasim.api import run_model
+    from nagasim.core.trace import TraceRecorder
+
+    yours, other = names or (dashboard.YOURS, experiments.BASELINE)
+    overrides = dashboard.input_overrides(layout, dict(values or {}))
+    # Drawn with only yours as a stored scenario, so a name cannot pick up another's overrides.
+    drawn = {**layout, "scenarios": [{"name": yours, "overrides": overrides}]}
+    seed = int((layout.get("simulation") or {}).get("seed") or 0)
+    recordings = {}
+    for scenario, model in ((other, layout), (yours, experiments.apply_overrides(layout, overrides))):
+        recordings[scenario] = TraceRecorder()
+        run_model(model, replications=1, seed=seed, trace=recordings[scenario])
+    try:
+        return player.build_player(drawn, recordings, title=title, tokens=tokens, start=yours)
+    except ValueError:
+        return ""
 
 
 def compare(record: dict, baseline: dict, tolerance: float = 1e-9) -> dict:
@@ -286,7 +458,7 @@ def compare(record: dict, baseline: dict, tolerance: float = 1e-9) -> dict:
 #   Content-Security-Policy with `default-src 'none'` makes the browser refuse every
 #   request; it pins the one script of the main thread and the one style sheet by their
 #   hashes. Text from a model reaches the main thread only as JSON in a data block (the
-#   player's `_embed`) and is put on the page with `textContent`.
+#   player's `embed`) and is put on the page with `textContent`.
 # * The engine runs in a module worker made from a `data:` URL: an origin of its own,
 #   which cannot read a file beside the page in any browser (measured: Firefox lets the
 #   main thread and a `blob:` worker do so). The worker answers Pyodide's `fetch` from
@@ -295,35 +467,60 @@ def compare(record: dict, baseline: dict, tolerance: float = 1e-9) -> dict:
 #   author's installed simpy, openpyxl and et_xmlfile, and this package without its
 #   example models and without `core/custom_logic.py` (the author's own code, which only
 #   a LOGIC block imports, and a viewer refuses those).
-_CSS = """
-:root { --ink: #1a202c; --muted: #5a6475; --line: #d8dee8; --accent: #2b6cb0; --warn: #9c4221; }
-* { box-sizing: border-box; }
-body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-       color: var(--ink); margin: 0 auto; padding: 16px; background: #fff; max-width: 1100px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 15px; margin: 20px 0 6px; }
-p { margin: 4px 0; }
-.note { color: var(--muted); font-size: 13px; }
-.warn { color: var(--warn); }
-#status { padding: 6px 10px; background: #f1f5f9; border-left: 3px solid var(--accent); margin: 12px 0; }
-.input { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
-.input label { flex: 0 0 260px; overflow: hidden; text-overflow: ellipsis; }
-.input input[type=range] { flex: 1 1 200px; }
-.input input[type=number] { width: 110px; font: inherit; }
-.input select { font: inherit; }
-#bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
-#bar button { font: inherit; padding: 6px 18px; }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: right; }
-th:first-child, td:first-child { text-align: left; }
-.stale td, .stale th { color: #a0a8b5; }
+# The viewer's own rules, after the tokens and the rules it shares with the player
+# (`player.style_sheet`, D697): one style sheet, pinned by its hash.
+_CSS = """#status { margin: 8px 0; padding: 6px 10px; background: var(--panel); border-left: 3px solid var(--accent);
+          border-radius: var(--radius); line-height: 1.4; min-height: calc(2.8em + 12px); }
+/* Lines whose text changes keep their height and width (bug 841). */
+#status.warn { border-left-color: var(--down); }
+.warn { color: var(--down); }
+.unit { color: var(--muted); }
+.lever { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.lever-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lever-head label { min-width: 0; overflow-wrap: anywhere; }
+.lever-head input[type=number] { width: 88px; padding: 2px 6px; text-align: right; font-weight: 600;
+                                 font-variant-numeric: tabular-nums; background: var(--raised);
+                                 border: 1px solid var(--line); border-radius: var(--radius); }
+.lever-track { position: relative; }
+.lever-track input[type=range] { display: block; width: 100%; margin: 6px 0 2px; accent-color: var(--accent); }
+.lever-default { position: absolute; top: 2px; bottom: 0; width: 2px; margin-left: -1px; background: var(--base);
+                 pointer-events: none; }
+.lever-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; color: var(--muted);
+              font-size: 11px; }
+.lever-state.moved { color: var(--ink); font-weight: 600; }
+#changed { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+            display: inline-block; min-width: 11ch; text-align: right; }
+.reps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 10px 0 4px; }
+.reps input { width: 70px; padding: 2px 6px; background: var(--raised); border: 1px solid var(--line);
+              border-radius: var(--radius); }
+.actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.actions button { width: 100%; padding: 8px; }
+#progress { display: block; min-height: 1.4em; font-variant-numeric: tabular-nums; }
+.answer { border-left: 4px solid var(--idle); }
+.answer.yes { border-left-color: var(--run); }
+.answer.no { border-left-color: var(--down); }
+.answer.unclear { border-left-color: var(--blocked); }
+.kicker { margin: 0 0 4px; color: var(--muted); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+#answer-head { margin: 0 0 4px; font-size: 18px; font-weight: 700; min-height: 1.4em; }
+#answer-detail { line-height: 1.4; min-height: 4.2em; }
+.stale #results, .stale #answer-box, .stale #results-table { opacity: 0.45; }
+#player { display: block; width: 100%; height: 62vh; min-height: 420px; border: 0; }
+/* One column: the frame's own panels stack too, so it needs the height of all of them. */
+@media (max-width: 900px) { #player { height: 820px; } }
+.footbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px;
+           background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.footbar .note { flex: 1 1 240px; text-align: right; font-size: 12px; }
+#compare-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#compare-pick[hidden] { display: none; }
+#picture-canvas { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); }
+pre { white-space: pre-wrap; font-size: 11px; max-height: 420px; overflow: auto; border: 1px solid var(--line);
+      padding: 8px; }
+details { margin-top: 10px; }
 .sig { font-weight: 600; }
-#foot { margin-top: 24px; }
-pre { white-space: pre-wrap; font-size: 11px; max-height: 420px; overflow: auto;
-      border: 1px solid var(--line); padding: 8px; }
-iframe { width: 100%; height: 80vh; border: 1px solid var(--line); }
-details { margin-top: 20px; }
 .gone { display: none; }
+/* Its line is kept while hidden, so the results below it do not move when it shows. */
+#stale { min-height: 1.4em; margin: 2px 0; }
+#stale.gone { display: block; visibility: hidden; }
 """
 
 # What the engine is asked, in the worker's Python. MODEL and BASELINE are the texts of
@@ -333,14 +530,12 @@ import json
 from nagasim import viewer
 _LAYOUT = json.loads(MODEL)
 _BASE = json.loads(BASELINE)
+_PAGE = json.loads(PAGE)
 def _run(args):
-    args = json.loads(args)
-    try:
-        record = viewer.what_if(_LAYOUT, args["values"], replications=args["replications"],
-                                on_progress=PROGRESS)
-    except ValueError as exc:
-        return json.dumps({"error": str(exc)[:500]})
-    return json.dumps({"record": record, "same": viewer.compare(record, _BASE)}, allow_nan=False)
+    return json.dumps(viewer.page_run(_LAYOUT, _BASE, json.loads(args), title=_PAGE["title"],
+                                      tokens=_PAGE["tokens"], on_progress=PROGRESS, say=STATUS,
+                                      asked=_PAGE.get("asked")),
+                      allow_nan=False)
 """
 
 _WORKER = """"use strict";
@@ -381,7 +576,9 @@ async function boot(cfg) {
   postMessage(["stage", 4]);
   py.globals.set("MODEL", cfg.model);
   py.globals.set("BASELINE", cfg.baseline);
+  py.globals.set("PAGE", cfg.page);
   py.globals.set("PROGRESS", function (done, total) { postMessage(["progress", done, total]); });
+  py.globals.set("STATUS", function (text) { postMessage(["status", String(text)]); });
   py.runPython(BOOT);
   postMessage(["ready"]);
 }
@@ -419,7 +616,7 @@ function span(low, high) {
   return (low === null || high === null || low === undefined) ? "-" : fmt(low) + " to " + fmt(high);
 }
 
-/* Only what the viewer moved: an untouched input stays the model's own value. */
+/* The values of *now* that differ from *initial*: what a run sets on top of initial. */
 function moved(initial, now) {
   var out = {}, path;
   for (path in now) {
@@ -431,6 +628,10 @@ function moved(initial, now) {
 function seconds(value) {
   return value < 90 ? Math.max(1, Math.round(value)) + " s" : Math.round(value / 60) + " min";
 }
+
+/* How long a run of *count* replications takes: those, and the two the page records
+   for the drawing, yours and the other (#834). */
+function estimateSeconds(perReplication, count) { return perReplication * (count + 2); }
 
 /* One line per result: [label, baseline row, yours row or null]. */
 function grouped(rows) {
@@ -453,6 +654,36 @@ function sameText(same, here, there) {
     "; the author: Python " + there.python + ", numpy " + there.numpy + ", scipy " + there.scipy + ").";
 }
 
+/* The saved scenarios read back from this browser (D709): the text is anyone's, so only
+   the page's own inputs and plain values are kept, at most 20. */
+function savedFrom(text, paths) {
+  var list, out = [];
+  try { list = JSON.parse(text); } catch (e) { return out; }
+  if (!Array.isArray(list)) { return out; }
+  list.slice(0, 20).forEach(function (item) {
+    var values = {};
+    if (!item || typeof item !== "object") { return; }
+    paths.forEach(function (path) {
+      if (Object.prototype.hasOwnProperty.call(item, path) &&
+          ["number", "boolean", "string"].indexOf(typeof item[path]) >= 0) { values[path] = item[path]; }
+    });
+    out.push(values);
+  });
+  return out;
+}
+
+/* *text* in lines no wider than *width* on the canvas pen. */
+function wrap(pen, text, width) {
+  var out = [], line = "";
+  String(text).split(" ").forEach(function (word) {
+    var next = line ? line + " " + word : word;
+    if (line && pen.measureText(next).width > width) { out.push(line); line = word; } else { line = next; }
+  });
+  if (line) { out.push(line); }
+  return out;
+}
+
+""" + player.PANELS + """
 /* ---- the page half ---- */
 
 function boot() {
@@ -460,8 +691,12 @@ function boot() {
   var D = JSON.parse(el("data").textContent);
   var modelText = el("model").textContent, baselineText = el("baseline").textContent;
   var author = JSON.parse(baselineText);
-  var state = {worker: null, ready: false, starting: false, stopped: false, pending: false,
-               running: false, shown: null, since: 0, clock: null, initial: {}, read: {}};
+  var paths = D.inputs.map(function (entry) { return entry.path; });
+  /* Saved scenarios are kept per model: its title and its inputs. */
+  var KEY = "naga-viewer:" + D.title + ":" + paths.join("|");
+  var state = {worker: null, ready: false, starting: false, stopped: false, pending: null,
+               running: false, shown: null, since: 0, clock: null, said: "Running", target: null,
+               initial: {}, read: {}, write: {}, marks: {}, tabs: [], tab: 0, saved: [], player: ""};
 
   function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
   function add(tag, parent, text, name) {
@@ -473,59 +708,72 @@ function boot() {
   }
   function status(text, bad) { el("status").textContent = text; el("status").className = bad ? "warn" : ""; }
   function buttons() {
-    el("run").disabled = state.running || state.starting || !(state.ready || state.stopped);
+    el("run").disabled = el("cmp-run").disabled = state.running || state.starting || !(state.ready || state.stopped);
     el("cancel").disabled = !(state.running || state.starting);
   }
+  function merged(base, over) {
+    var out = {}, path;
+    for (path in base) { out[path] = base[path]; }
+    for (path in over) { if (Object.prototype.hasOwnProperty.call(over, path)) { out[path] = over[path]; } }
+    return out;
+  }
+  function equal(a, b) { return !Object.keys(moved(a, b)).length && !Object.keys(moved(b, a)).length; }
 
-  /* -- inputs -- */
-  function numberInput(entry, row) {
-    var start = Number(D.values[entry.path]);
-    var slide = add("input", row), box = add("input", row);
-    slide.type = "range"; box.type = "number";
-    [slide, box].forEach(function (node) {
-      node.min = entry.min; node.max = entry.max; node.step = entry.step; node.value = start;
-    });
-    slide.setAttribute("aria-label", entry.label || entry.path);
-    slide.addEventListener("input", function () { box.value = slide.value; changed(); });
-    box.addEventListener("input", function () { slide.value = box.value; changed(); });
-    state.initial[entry.path] = start;
-    state.read[entry.path] = function () { return box.value === "" ? NaN : Number(box.value); };
-  }
-  function switchInput(entry, row) {
-    var box = add("input", row);
-    box.type = "checkbox"; box.checked = D.values[entry.path] === true;
-    box.addEventListener("change", changed);
-    state.initial[entry.path] = box.checked;
-    state.read[entry.path] = function () { return box.checked; };
-  }
-  function choiceInput(entry, row) {
-    var list = add("select", row), start = 0;
-    entry.choices.forEach(function (choice, index) {
-      var option = add("option", list, choice.label || String(choice.value));
-      option.value = String(index);
-      if (choice.value === D.values[entry.path]) { start = index; }
-    });
-    list.value = String(start);
-    list.addEventListener("change", changed);
-    state.initial[entry.path] = entry.choices[start].value;
-    state.read[entry.path] = function () { return entry.choices[Number(list.value)].value; };
+  /* -- levers (Goal 10): label, value, range, default marker, note, changed or not -- */
+  function lever(entry, index) {
+    var path = entry.path, row = add("div", el("inputs"), null, "lever");
+    var head = add("div", row, null, "lever-head"), label = add("label", head, entry.label || path);
+    var start = D.values[path], shown, control, slide, foot;
+    if (entry.unit) { add("span", label, " (" + entry.unit + ")", "unit"); }
+    if (entry.kind === "switch") {
+      control = add("input", head); control.type = "checkbox"; control.checked = start === true;
+      control.addEventListener("change", changed);
+      start = control.checked; shown = start ? "on" : "off";
+      state.read[path] = function () { return control.checked; };
+      state.write[path] = function (value) { control.checked = value === true; };
+    } else if (entry.kind === "choice") {
+      var values = entry.choices.map(function (choice) { return choice.value; });
+      var at = function (value) { return Math.max(0, values.indexOf(value)); };
+      control = add("select", head);
+      entry.choices.forEach(function (choice, i) { add("option", control, choice.label || String(choice.value)).value = String(i); });
+      control.value = String(at(start));
+      control.addEventListener("change", changed);
+      start = values[at(start)]; shown = entry.choices[at(start)].label || String(start);
+      state.read[path] = function () { return values[Number(control.value)]; };
+      state.write[path] = function (value) { control.value = String(at(value)); };
+    } else {
+      start = Number(start); shown = fmt(start);
+      control = add("input", head); control.type = "number";
+      slide = add("input", add("div", row, null, "lever-track")); slide.type = "range";
+      [slide, control].forEach(function (node) {
+        node.min = entry.min; node.max = entry.max; node.step = entry.step; node.value = start;
+      });
+      slide.setAttribute("aria-label", entry.label || path);
+      add("span", slide.parentNode, null, "lever-default").style.left =
+        Math.min(100, Math.max(0, 100 * (start - entry.min) / (entry.max - entry.min))) + "%";
+      slide.addEventListener("input", function () { control.value = slide.value; changed(); });
+      control.addEventListener("input", function () { slide.value = control.value; changed(); });
+      state.read[path] = function () { return control.value === "" ? NaN : Number(control.value); };
+      state.write[path] = function (value) { control.value = slide.value = value; };
+    }
+    control.id = "lever-" + index;
+    label.htmlFor = control.id;
+    /* One short item each side: the note (else the range) and whether it moved. The
+       range is always on hover. */
+    foot = add("div", row, null, "lever-foot");
+    if (slide) { control.title = slide.title = fmt(entry.min) + " to " + fmt(entry.max); }
+    add("span", foot, entry.note || (slide ? slide.title : ""), entry.note ? "lever-note" : "");
+    state.marks[path] = [add("span", foot, "unchanged", "lever-state"), shown];
+    state.initial[path] = start;
   }
   function inputs() {
-    var box = el("inputs");
-    D.inputs.forEach(function (entry) {
-      var row = add("div", box, null, "input");
-      add("label", row, (entry.label || entry.path) + (entry.unit ? " (" + entry.unit + ")" : ""));
-      if (entry.kind === "switch") { switchInput(entry, row); }
-      else if (entry.kind === "choice") { choiceInput(entry, row); }
-      else { numberInput(entry, row); }
-    });
-    if (!D.inputs.length) { add("p", box, "This model exposes no inputs; you can run it as it is.", "note"); }
-    if (D.frozen) { add("p", box, "Data as read on " + D.frozen + ".", "note"); }
+    D.inputs.forEach(lever);
+    if (!D.inputs.length) { add("p", el("inputs"), "This model exposes no inputs; you can run it as it is.", "note"); }
+    if (D.frozen) { add("p", el("inputs"), "Data as read on " + D.frozen + ".", "note"); }
     var reps = el("reps");
     reps.min = 1; reps.max = D.limits.max_replications; reps.value = D.limits.replications;
-    reps.addEventListener("input", changed);
-    el("reps-note").textContent = "1 to " + D.limits.max_replications + ". Seed " + author.seed +
-      ", the model's own.";
+    reps.addEventListener("input", estimate);
+    el("reps-note").textContent = "1 to " + D.limits.max_replications + ", seed " + author.seed;
   }
   function now() {
     var out = {}, path;
@@ -533,16 +781,51 @@ function boot() {
     return out;
   }
   function estimate() {
-    var count = Number(el("reps").value) || 0, wait = D.estimate * count;
-    el("estimate").textContent = wait >= 5 ? "A run of " + count + " replications takes about " +
-      seconds(wait) + " in a browser." : "";
+    var count = Number(el("reps").value) || 0, most = D.limits.max_replications;
+    var wait = estimateSeconds(D.estimate, count), longest = estimateSeconds(D.estimate, most);
+    el("estimate").textContent = (wait >= 5 ? "About " + seconds(wait) : "A few seconds") +
+      "; more, up to " + most + " replications" + (longest >= 5 ? " (" + seconds(longest) + ")" : "") +
+      ", if the answer is not clear.";
   }
+  /* A lever moved: say what differs from the defaults; a tab other than Yours is left
+     for Yours, which takes the levers; a result shown for other values goes grey. */
   function changed() {
+    var values = now(), count = 0, path, differs, tab = state.tabs[state.tab], yours = state.tabs[state.yours];
+    for (path in state.marks) {
+      differs = values[path] !== state.initial[path];
+      count += differs ? 1 : 0;
+      state.marks[path][0].textContent = differs ? "default " + state.marks[path][1] : "unchanged";
+      state.marks[path][0].className = "lever-state" + (differs ? " moved" : "");
+    }
+    el("changed").textContent = count ? count + " changed" : "";
     estimate();
-    if (state.shown) { el("results").className = "stale"; el("stale").className = "note warn"; }
+    if (tab !== yours && !equal(tab.values, values)) { state.tab = state.yours; tabs(); }
+    if (state.tab === state.yours) { yours.values = values; }
+    el("side").className = "side" + (state.shown && state.shown.values && !equal(state.shown.values, values) ? " stale" : "");
+    el("stale").className = el("side").className === "side" ? "gone" : "note warn";
   }
 
-  /* -- results -- */
+  /* -- scenario tabs: the baseline, the author's scenarios on the levers, Yours, the
+        ones saved in this browser (D709) -- */
+  function tabs() {
+    clear(el("tabs"));
+    state.tabs.forEach(function (tab, i) {
+      var button = add("button", el("tabs"), tab.name, "tab" + (tab.kind === "base" ? " base" : "") + (i === state.tab ? " on" : ""));
+      button.type = "button"; button.value = String(i);
+      button.setAttribute("aria-pressed", String(i === state.tab));
+    });
+    el("remove").hidden = !state.tabs[state.tab] || state.tabs[state.tab].kind !== "saved";
+  }
+  function pick(i) {
+    var tab = state.tabs[i], path;
+    if (!tab || i === state.tab) { return; }
+    state.tab = i;
+    for (path in state.write) { state.write[path](tab.values[path]); }
+    tabs(); changed();
+    if (tab.answer) { show(tab.answer); }
+  }
+
+  /* -- the answer, the results and the trust card (Goals 6-8) -- */
   function table(record, mine) {
     var head = el("results-head"), body = el("results-body");
     clear(head); clear(body);
@@ -563,25 +846,68 @@ function boot() {
     if (!record.rows.length) {
       add("td", add("tr", body), "The author listed no results for this model.").colSpan = titles.length;
     }
-    el("results").className = ""; el("stale").className = "gone";
   }
-  function made(record, mine) {
+  function made(record, mine, names) {
     var parts = [], path, label = {};
     D.inputs.forEach(function (entry) { label[entry.path] = entry.label || entry.path; });
     for (path in record.inputs) { parts.push((label[path] || path) + " = " + record.inputs[path]); }
     var seeds = record.seeds;
-    el("made").textContent = (mine ? "Yours: " + (parts.join(", ") || "the inputs as the model has them")
+    el("made").textContent = (mine ? names[0] + ": " + (parts.join(", ") || "the inputs as the model has them")
       : "The author's run of the model as it is") + ". " + record.replications + " replications, seeds " +
       seeds[0] + " to " + seeds[seeds.length - 1] + ", common random numbers; the model's own run length." +
       (mine ? " * the 95% interval of the difference excludes 0." : "");
   }
   function show(answer) {
-    el("results-title").textContent = "Results of your run";
-    table(answer.record, true); made(answer.record, true);
-    el("same").textContent = sameText(answer.same, answer.record.versions, author.versions);
-    el("same").className = answer.same.different || answer.same.bounds_different ? "note warn" : "note";
-    el("record").textContent = JSON.stringify(answer);
+    var record = answer.record, mine = Object.keys(record.inputs).length > 0, key = mine ? "Yours" : "Baseline";
+    var names = answer.names || ["Yours", "Baseline"], found = record.answer, trust = (record.trust || {})[key];
     state.shown = answer;
+    el("results-title").textContent = answer.names ? "Results: " + names[0] + (mine ? " against " + names[1] : "")
+      : "Results of the author's run";
+    el("key-yours").textContent = mine ? names[0] : names[1];
+    el("key-base").textContent = names[1];
+    clear(el("results"));
+    var seen = resultsPanel((record.results || {})[key] || [], el("results"), add);
+    el("key-base").hidden = !mine || !seen.base;
+    el("key-target").hidden = !seen.target;
+    clear(el("trust"));
+    if (trust) { trustPanel(trust, el("trust"), add, D.unit); }
+    el("trust-box").hidden = !trust;
+    el("answer-box").hidden = !found;
+    if (found) {
+      el("answer-box").className = "panel answer " + found.word;
+      el("answer-kicker").textContent = !answer.names ? "Answer for the author's run" :
+        "Answer for " + (names[0] === "Yours" ? "your version" : names[0]);
+      el("answer-head").textContent = found.headline;
+      el("answer-detail").textContent = found.detail;
+      /* The input data's spread, quoted beside the verdict and never merged with it (D737). */
+      var note = record.input_note && typeof record.input_note.text === "string" ? record.input_note.text : "";
+      el("answer-note").textContent = note;
+      el("answer-note").hidden = !note;
+    }
+    table(record, mine); made(record, mine, names);
+    el("same").textContent = answer.same ? sameText(answer.same, record.versions, author.versions) :
+      answer.names && names[1] !== "Baseline" ? "Run against " + names[1] + " in place of the author's baseline." : "";
+    el("same").className = answer.same && (answer.same.different || answer.same.bounds_different) ? "note warn" : "note";
+    if (answer.player) {
+      frame(answer.player);
+      el("watch-title").textContent = names[0] + " beside " + names[1];
+      el("watch-note").textContent = "One replication of each, seed " + author.seed + ", recorded in this " +
+        "browser.";
+    } else if (answer.names) {
+      el("watch-note").textContent = "This run could not be recorded for the drawing in this browser; the results stand.";
+    }
+    var kept = {};
+    Object.keys(answer).forEach(function (name) { if (name !== "player") { kept[name] = answer[name]; } });
+    el("record").textContent = JSON.stringify(kept);
+    changed();
+  }
+  /* The player, in a frame of its own origin, showing only the line and the lanes, in
+     the page's theme. */
+  function frame(text) {
+    var theme = document.documentElement.dataset.theme;
+    state.player = text;
+    el("player").srcdoc = text.replace('<html lang="en">', '<html lang="en" class="framed"' +
+      (theme === "light" || theme === "dark" ? ' data-theme="' + theme + '"' : "") + ">");
   }
 
   /* -- the engine -- */
@@ -593,13 +919,13 @@ function boot() {
     return out;
   }
   function failed(text) {
-    state.ready = false; state.starting = false; state.pending = false; state.running = false;
+    state.ready = false; state.starting = false; state.pending = null; state.running = false;
     clearInterval(state.clock); buttons();
     status("The engine could not start in this browser (" + text + "). Open this file in Chrome, Edge " +
       "or Firefox on a computer; Safari, phones and tablets are not supported.", true);
   }
   function heard(event) {
-    var message = event.data, kind = message[0];
+    var message = event.data, kind = message[0], go;
     if (kind === "stage") {
       status("Starting the engine in this browser: step " + message[1] + " of 4, " + STAGES[message[1]] +
         ". About 10 s in all.");
@@ -607,15 +933,20 @@ function boot() {
       state.ready = true; state.starting = false; buttons();
       status("Ready after " + seconds((performance.now() - state.since) / 1000) +
         ". The engine runs in this browser; nothing is sent anywhere.");
-      if (state.pending) { state.pending = false; run(); }
+      if (state.pending) { go = state.pending; state.pending = null; go(); }
     } else if (kind === "progress") {
       el("progress").textContent = "replication " + message[1] + " of " + message[2];
+    } else if (kind === "status") {
+      state.said = message[1];
+      status(message[1] + "...");
     } else if (kind === "done") {
       state.running = false; clearInterval(state.clock); buttons();
       var answer = JSON.parse(message[1]);
       el("progress").textContent = "";
       if (answer.error) { status("Not run: " + answer.error, true); return; }
       status("Run finished in " + seconds((performance.now() - state.since) / 1000) + ".");
+      answer.names = state.target.names; answer.values = state.target.values;
+      if (state.target.tab) { state.target.tab.answer = answer; }
       show(answer);
     } else if (kind === "failed") {
       if (message[1] === "boot") { failed(message[2]); return; }
@@ -633,18 +964,33 @@ function boot() {
     state.worker.onmessage = heard;
     state.worker.onerror = function (event) { failed(event.message || "the worker did not start"); };
     state.worker.postMessage(["boot", {files: files(), model: modelText, baseline: baselineText,
-                                       packages: D.packages}]);
+                                       packages: D.packages,
+                                       page: JSON.stringify({title: D.title, tokens: D.tokens, asked: D.asked || null})}]);
   }
-  function run() {
-    if (!state.ready) { state.pending = true; start(); return; }   /* stopped while starting */
-    var count = Number(el("reps").value);
-    state.running = true; state.since = performance.now(); buttons();
+  /* Run *args* in the engine; the answer goes to *target* ({names, values, tab}). */
+  function send(args, target) {
+    if (!state.ready) { state.pending = function () { send(args, target); }; start(); return; }
+    args.replications = Number(el("reps").value);
+    args.names = target.names;
+    state.running = true; state.since = performance.now(); state.said = "Running"; state.target = target; buttons();
     el("progress").textContent = "";
     status("Running...");
     state.clock = setInterval(function () {
-      status("Running: " + seconds((performance.now() - state.since) / 1000) + " so far.");
+      status(state.said + ": " + seconds((performance.now() - state.since) / 1000) + " so far.");
     }, 1000);
-    state.worker.postMessage(["run", JSON.stringify({values: moved(state.initial, now()), replications: count})]);
+    state.worker.postMessage(["run", JSON.stringify(args)]);
+  }
+  function run() {
+    var tab = state.tabs[state.tab], values = now();
+    send({values: moved(state.initial, values)},
+         {names: [tab.name, "Baseline"], values: values, tab: tab.kind === "base" ? null : tab});
+  }
+  /* Two of the tabs, one against the other: the second runs in place of the baseline. */
+  function compare() {
+    var a = state.tabs[Number(el("cmp-a").value)], b = state.tabs[Number(el("cmp-b").value)];
+    if (!a || !b || a === b) { status("Pick two different scenarios to compare.", true); return; }
+    send({values: moved(b.values, a.values), against: moved(state.initial, b.values)},
+         {names: [a.name, b.name], values: a.values, tab: null});
   }
   /* A busy worker hears nothing, so Cancel ends it: the run and the interpreter are
      lost, the inputs and the last complete result stay. After a run a new engine starts
@@ -652,7 +998,7 @@ function boot() {
   function cancel() {
     var ran = state.running;
     state.worker.terminate(); state.worker = null;
-    state.running = false; state.starting = false; state.ready = false; state.pending = false;
+    state.running = false; state.starting = false; state.ready = false; state.pending = null;
     clearInterval(state.clock);
     el("progress").textContent = "";
     if (ran) {
@@ -663,37 +1009,137 @@ function boot() {
       status("The engine was stopped before it was ready. Press Run to start it and run.");
     }
   }
-  /* The text of a compressed block, read once, when its section is first opened. */
-  function unpack(section, block, then) {
-    if (!el(section).open || !el(block).textContent) { return; }
+  /* The text of a compressed block, read once. */
+  function unpack(block, then) {
+    if (!el(block).textContent) { return; }
     var raw = Uint8Array.from(atob(el(block).textContent), function (c) { return c.charCodeAt(0); });
     el(block).textContent = "";
     new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"))).text().then(then);
   }
-  function notices() {
-    unpack("notices", "notices-data", function (text) { el("notices-text").textContent = text; });
+
+  /* -- the footer (D709): kept in this browser, nothing leaves the page -- */
+  function save() {
+    var values = now(), tab = state.tabs[state.tab];
+    state.saved.push(values);
+    keep();
+    state.made += 1;     /* never reused after a removal */
+    state.tabs.push({name: "Saved " + state.made, kind: "saved", values: values, answer: tab.answer});
+    state.tab = state.tabs.length - 1;
+    tabs();
   }
-  /* The player page of the author's run (the 7.7 player, whole), in a frame with an
-     origin of its own. It replays what the author recorded: it runs nothing. */
-  function watch() {
-    unpack("watch", "player-data", function (text) { el("player").srcdoc = text; });
+  function keep() {
+    try { window.localStorage.setItem(KEY, JSON.stringify(state.saved)); }
+    catch (e) { status("Saved for this visit only: this browser keeps nothing for this page."); }
+  }
+  /* Removes the saved scenario shown; the others keep their names until the page opens
+     again, then they are numbered afresh. */
+  function remove() {
+    var tab = state.tabs[state.tab], at = state.tabs.indexOf(tab);
+    if (!tab || tab.kind !== "saved") { return; }
+    state.saved.splice(state.tabs.filter(function (t) { return t.kind === "saved"; }).indexOf(tab), 1);
+    keep();
+    state.tabs.splice(at, 1);
+    state.tab = -1;
+    pick(Math.min(at, state.tabs.length - 1));
+  }
+  function comparePick() {
+    var box = el("compare-pick");
+    box.hidden = !box.hidden;
+    ["cmp-a", "cmp-b"].forEach(function (id, side) {
+      clear(el(id));
+      state.tabs.forEach(function (tab, i) { add("option", el(id), tab.name).value = String(i); });
+      el(id).value = String(side ? (state.tab ? 0 : state.yours) : state.tab);
+    });
+  }
+  /* A picture of the answer for a report: drawn on a canvas, which the browser saves as
+     a PNG (right-click, "Save image as"). The line is in a frame of its own origin and
+     is not in it. */
+  function picture() {
+    var canvas = el("picture-canvas"), pen = canvas.getContext("2d"), width = 960, pad = 28, lines = [], y = pad;
+    var look = window.getComputedStyle(document.documentElement), record = state.shown.record;
+    var key = Object.keys(record.inputs).length ? "Yours" : "Baseline";
+    function tok(name) { return look.getPropertyValue("--" + name).trim(); }
+    function put(text, size, colour, bold) {
+      pen.font = (bold ? "bold " : "") + size + "px " + tok("font");
+      wrap(pen, text, width - 2 * pad).forEach(function (line) { lines.push([line, size, colour, bold]); });
+    }
+    function all() {
+      lines = [];
+      put(el("title").textContent, 22, "ink", true);
+      put(el("results-title").textContent, 13, "muted", false);
+      if (record.answer) { put(record.answer.headline, 18, "ink", true); put(record.answer.detail, 14, "muted", false); }
+      ((record.results || {})[key] || []).forEach(function (row) {
+        put(row.label + ": " + fmt(row.yours.mean) + (row.unit ? " " + row.unit : "") +
+            (row.yours.lo !== null ? " (95% interval " + span(row.yours.lo, row.yours.hi) + ")" : "") +
+            (row.base ? ", baseline " + fmt(row.base.mean) : "") + (row.verdict ? ", " + row.verdict : ""), 14, "ink", false);
+      });
+      put(el("made").textContent, 12, "muted", false);
+      put("Naga viewer, " + new Date().toISOString().slice(0, 10) + ".", 12, "muted", false);
+    }
+    all();
+    canvas.width = width;
+    canvas.height = pad * 2 + lines.reduce(function (sum, line) { return sum + line[1] * 1.5; }, 0);
+    pen.fillStyle = tok("panel"); pen.fillRect(0, 0, canvas.width, canvas.height);
+    pen.textBaseline = "top";
+    lines.forEach(function (line) {
+      pen.font = (line[3] ? "bold " : "") + line[1] + "px " + tok("font");
+      pen.fillStyle = tok(line[2]);
+      pen.fillText(line[0], pad, y);
+      y += line[1] * 1.5;
+    });
+    el("picture-box").hidden = false;
   }
 
+  /* The theme switch (D703); the frame is told, so its replay goes on. Its origin is
+     opaque (sandboxed), so the message goes to "*": it carries a theme word only. */
+  themeSwitch(el("theme"), function () {
+    var win = el("player").contentWindow;
+    if (win) { win.postMessage(["theme", document.documentElement.dataset.theme || "auto"], "*"); }
+  });
+
   document.title = D.title;
-  el("title").textContent = D.title;
-  el("versions").textContent = "Naga engine " + author.versions.nagasim + " on Python " + D.python +
-    " (Pyodide " + D.pyodide + "), in this file with everything it needs. This file contains the whole " +
-    "model and the engine's source: anyone who has it can read both.";
-  inputs(); estimate();
-  table(author, false); made(author, false);
+  el("title").textContent = D.question || D.title;
+  el("subtitle").textContent = D.question ? D.title : "The model as its author left it: move the levers and run your version.";
+  el("versions").textContent = "Naga " + author.versions.nagasim + ", Python " + D.python + " (Pyodide " +
+    D.pyodide + "), all in this file. Anyone with the file can read the model.";
+  inputs();
+  try { state.saved = savedFrom(window.localStorage.getItem(KEY) || "[]", paths); } catch (e) { state.saved = []; }
+  state.made = state.saved.length;
+  state.tabs = [{name: "Baseline", kind: "base", values: state.initial, answer: {record: author, values: state.initial}}]
+    .concat(D.scenarios.map(function (scenario) {
+      return {name: scenario.name, kind: "author", values: merged(state.initial, scenario.values)};
+    }));
+  state.yours = state.tabs.length;
+  state.tabs.push({name: "Yours", kind: "yours", values: merged(state.initial, {})});
+  state.saved.forEach(function (values, i) {
+    state.tabs.push({name: "Saved " + (i + 1), kind: "saved", values: merged(state.initial, values)});
+  });
+  tabs();
+  show(state.tabs[0].answer);
+  el("tabs").addEventListener("click", function (event) {
+    var target = event && event.target;
+    if (target && target.parentNode === el("tabs")) { pick(Number(target.value)); }
+  });
   el("run").addEventListener("click", run);
   el("cancel").addEventListener("click", cancel);
-  el("notices").addEventListener("toggle", notices);
+  el("reset").addEventListener("click", function () {
+    var path;
+    for (path in state.write) { state.write[path](state.initial[path]); }
+    changed();
+  });
+  el("save").addEventListener("click", save);
+  el("remove").addEventListener("click", remove);
+  el("compare").addEventListener("click", comparePick);
+  el("cmp-run").addEventListener("click", compare);
+  el("picture").addEventListener("click", picture);
+  el("notices").addEventListener("toggle", function () {
+    if (el("notices").open) { unpack("notices-data", function (text) { el("notices-text").textContent = text; }); }
+  });
   if (el("player-data").textContent) {
-    el("watch").className = "";
-    el("watch-note").textContent = "One replication of the model as the author left it (seed " +
-      author.seed + "), recorded when this file was made. It does not follow your inputs.";
-    el("watch").addEventListener("toggle", watch);
+    el("watch-note").textContent = "One replication, seed " + author.seed + ", recorded when this file was made.";
+    unpack("player-data", frame);
+  } else {
+    el("watch").hidden = true;
   }
   buttons();
   /* The embedded files follow this script in the file: wait until they are parsed. */
@@ -708,35 +1154,75 @@ _PAGE = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-__MAIN_HASH__' 'sha256-__PLAYER_HASH__' blob: 'wasm-unsafe-eval'; style-src 'sha256-__CSS_HASH__' 'sha256-__PLAYER_CSS_HASH__'; img-src data:; worker-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-__THEME_HASH__' 'sha256-__MAIN_HASH__' 'sha256-__PLAYER_HASH__' blob: 'wasm-unsafe-eval'; style-src 'sha256-__CSS_HASH__' 'sha256-__PLAYER_CSS_HASH__'; img-src data:; worker-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Naga viewer</title>
 <style>__CSS__</style>
+<script id="theme-pick">__THEME__</script>
 </head>
 <body>
-<h1 id="title"></h1>
-<p class="note">Naga viewer: the model as its author left it. Change the inputs and run it again.</p>
+<header class="topbar">
+<div class="ident"><h1 id="title"></h1><p class="note" id="subtitle"></p></div>
+<div id="tabs" class="tabs" aria-label="Scenario"></div>
+<button id="theme" type="button" aria-label="Light or dark">Theme: auto</button>
+</header>
 <p id="status">This page needs JavaScript.</p>
-<h2>Inputs</h2>
+<main class="console levers">
+<section class="panel" aria-labelledby="levers-h">
+<div class="panel-head"><h2 id="levers-h">Levers</h2><span id="changed"></span></div>
 <div id="inputs"></div>
-<div class="input"><label for="reps">Replications</label><input id="reps" type="number" step="1">
+<div class="reps"><label for="reps">Replications</label><input id="reps" type="number" step="1">
 <span class="note" id="reps-note"></span></div>
-<div id="bar"><button id="run" type="button" disabled>Run</button>
+<div class="actions">
+<button id="run" type="button" class="primary" disabled>Run my version</button>
+<button id="reset" type="button">Reset to defaults</button>
 <button id="cancel" type="button" disabled>Cancel</button>
-<span id="progress"></span><span class="note" id="estimate"></span></div>
-<h2 id="results-title">Results of the author's run</h2>
-<p class="gone" id="stale">The inputs changed since this run: press Run.</p>
-<table id="results"><thead id="results-head"></thead><tbody id="results-body"></tbody></table>
+</div>
+<p class="note"><span id="progress"></span> <span id="estimate"></span></p>
+</section>
+<section class="centre">
+<div class="panel" id="watch">
+<div class="panel-head"><h2 id="watch-title">The author's recorded run</h2></div>
+<iframe id="player" sandbox="allow-scripts" title="The recorded run"></iframe>
+<p class="note" id="watch-note"></p>
+</div>
+</section>
+<aside class="side" id="side">
+<div class="panel answer" id="answer-box" hidden>
+<p class="kicker" id="answer-kicker"></p>
+<p id="answer-head"></p>
+<p class="note" id="answer-detail"></p>
+<p class="note" id="answer-note" hidden></p>
+</div>
+<div class="panel" id="results-box">
+<div class="panel-head"><h2 id="results-title">Results of the author's run</h2><span class="legend"><span class="key yours" id="key-yours">yours</span><span class="key base" id="key-base">baseline</span><span class="key target" id="key-target">target</span></span></div>
+<p class="gone" id="stale">Levers changed: run again to update.</p>
+<div id="results"></div>
+<details><summary class="note">All numbers</summary>
+<div class="scroll"><table id="results-table"><thead id="results-head"></thead><tbody id="results-body"></tbody></table></div>
 <p class="note" id="made"></p>
 <p class="note" id="same"></p>
-<details id="watch" class="gone"><summary>Watch the author's recorded run</summary>
-<p class="note" id="watch-note"></p>
-<iframe id="player" sandbox="allow-scripts" title="The author's recorded run"></iframe></details>
-<div id="foot">
-<p class="note" id="versions"></p>
+</details>
+</div>
+<div class="panel" id="trust-box"><div class="panel-head"><h2>Can I trust this?</h2></div><table id="trust" class="trust"></table></div>
+</aside>
+</main>
+<footer class="footbar">
+<button id="save" type="button">Save as scenario</button>
+<button id="remove" type="button" hidden>Remove this saved scenario</button>
+<button id="picture" type="button">Picture for the report</button>
+<button id="compare" type="button">Compare two scenarios</button>
+<span id="compare-pick" hidden><select id="cmp-a" aria-label="Scenario"></select> against
+<select id="cmp-b" aria-label="Against"></select>
+<button id="cmp-run" type="button" class="primary" disabled>Run the comparison</button></span>
+<span class="note" id="versions"></span>
+</footer>
+<div class="panel" id="picture-box" hidden>
+<p class="note">Right-click the picture and choose "Save image as" to keep it as a PNG.</p>
+<canvas id="picture-canvas" width="960" height="200"></canvas>
+</div>
 <details id="notices"><summary class="note">Licences of the software in this file</summary>
 <pre id="notices-text">Reading...</pre></details>
-</div>
 <pre class="gone" id="record"></pre>
 <script type="application/json" id="data">__DATA__</script>
 <script type="application/json" id="model">__MODEL__</script>
@@ -754,12 +1240,6 @@ _GZIPPED = (".wasm", ".mjs", ".json")
 _LICENCE_NAME = ("licen", "copying", "notice")
 # The pure-Python distributions a run imports besides the engine and Pyodide's wheels.
 _PURE = ("simpy", "openpyxl", "et_xmlfile")
-
-
-def _hash(text: str) -> str:
-    import base64
-    import hashlib
-    return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii")
 
 
 _NOT_ON_DISK = ("the engine's files are not on disk here (a frozen build), so a viewer cannot "
@@ -844,21 +1324,60 @@ def _notices(licences: list[tuple[str, str]]) -> str:
     return text + "".join(f"\n{bar}\n{title}\n{bar}\n\n{body.strip()}\n" for title, body in licences)
 
 
-def _recording(model: dict, baseline: dict, title: str, should_stop=None) -> str:
+def _quoted(asked) -> list:
+    """The recorded answers a page carries: the input-uncertainty and ABC calibration ones
+    the trust card and the input note quote (`uncertainty.trust_texts`, `what_if_note`),
+    the latest few, as plain JSON. Only the fields those read, each kind by an allow-list:
+    a page is shared, and a record's own arguments (data files, inputs) are not for it."""
+    rows = []
+    for a in asked or []:
+        if not isinstance(a, dict):
+            continue
+        if a.get("tool") == "input_uncertainty" and isinstance(a.get("kpis"), list):
+            row = {k: a.get(k) for k in ("tool", "measure", "resamples_used", "replications")}
+            row["kpis"] = [{k: r.get(k) for k in ("kpi", "mean", "input_interval", "input_share")}
+                           for r in a["kpis"] if isinstance(r, dict)]
+            if isinstance(a.get("overrides"), list):     # what `same_change` compares
+                row["overrides"] = [{k: o.get(k) for k in ("path", "value")}
+                                    for o in a["overrides"] if isinstance(o, dict)]
+            rows.append(row)
+        elif a.get("tool") == "calibrate" and a.get("method") == "abc":
+            rows.append({k: a.get(k) for k in ("tool", "method", "samples", "accepted", "abc_tolerance")})
+    return player.plain(rows[-_QUOTED:])
+
+
+def _recording(model: dict, baseline: dict, title: str, should_stop=None, tokens=None,
+               asked=None) -> str:
     """The player page (`player.build_player`) of the author's baseline: its first
     replication run again with its seed and a recorder. "" when it cannot be made (a
     tape over the player's size limit): the viewer is then written without it."""
     from nagasim.api import run_model
     from nagasim.core.trace import TraceRecorder
-    from nagasim.player import build_player
 
     recorder = TraceRecorder()
     try:
         results = run_model(model, replications=baseline["replications"],
                             seed=baseline["seed"], trace=recorder, should_stop=should_stop)
-        return build_player(model, {experiments.BASELINE: recorder}, results=results, title=title)
+        return player.build_player(model, {experiments.BASELINE: recorder}, results=results, title=title,
+                                   tokens=tokens, asked=asked)
     except ValueError:
         return ""
+
+
+def _lever_scenarios(model: dict, definition: dict) -> list[dict]:
+    """The author's scenarios a viewer can show as tabs: [{"name", "values"}] for each
+    one whose overrides all set the dashboard's inputs to values they allow."""
+    paths, out = {entry["path"] for entry in definition["inputs"]}, []
+    for scenario in model.get("scenarios") or []:
+        values = {o.get("path"): o.get("value") for o in scenario.get("overrides") or [] if isinstance(o, dict)}
+        if not values or not set(values) <= paths:
+            continue
+        try:
+            dashboard.input_overrides(model, values)
+        except ValueError:
+            continue
+        out.append({"name": str(scenario.get("name"))[:40], "values": values})
+    return out
 
 
 def _block(name: str, data: bytes) -> str:
@@ -874,9 +1393,14 @@ def _block(name: str, data: bytes) -> str:
 
 def build_viewer(layout, path, *, runtime=None, title: str | None = None,
                  baseline: dict | None = None, frozen: str | None = None,
-                 recording: str | None = None, on_progress=None, should_stop=None) -> dict:
+                 recording: str | None = None, tokens: dict | None = None,
+                 on_progress=None, should_stop=None, asked=None) -> dict:
     """Write the viewer page of *layout* (a model dict or file) to *path* and return
     {"bytes", "estimate", "warnings", "baseline"}.
+
+    *asked* is the recorded tool answers of the model (`agent_tools.core.recorded`): the
+    page carries the input-uncertainty and ABC ones (`_quoted`), for its trust card and
+    its answer card's input note; without them both say "not measured" / nothing.
 
     *runtime* is the folder of the browser runtime (`viewer_runtime.resolve_dir`); this
     function never downloads. The author's baseline is run here, with the definition's
@@ -884,7 +1408,9 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     *frozen* is the date the model's data was read on, when it was frozen into the copy.
     *recording* is the player page of the author's run (default: the first baseline
     replication is run again here with a recorder, D200, and `player.build_player`
-    makes it; "" for none): the page shows it in a frame, as the author's run.
+    makes it; "" for none): the page shows it in a frame, as the author's run, until a
+    run in the page replaces it with the viewer's run beside the baseline (`watch_page`).
+    *tokens* is the look of the page and of both players (`player.DEFAULT_TOKENS`).
     "estimate" is the seconds one replication takes in a browser; a warning says when
     the longest run a viewer may ask for passes five minutes, and when the definition
     lists no input or no result.
@@ -901,12 +1427,12 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     import gzip
     from pathlib import Path
 
-    from nagasim import player, viewer_runtime
+    from nagasim import viewer_runtime
     from nagasim.api import load_layout
-    from nagasim.player import _embed
 
     if not engine_on_disk():
         raise ValueError(_NOT_ON_DISK)
+    tokens = player.check_tokens(tokens)                            # a bad token: refused first
 
     def step(done: int) -> None:
         if should_stop is not None and should_stop():
@@ -925,7 +1451,7 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     step(2)
     definition = dashboard.resolve_dashboard(model)
     if baseline is None:
-        baseline = what_if(model, should_stop=should_stop)
+        baseline = what_if(model, should_stop=should_stop, asked=_quoted(asked))
     step(3)
     limits = definition["limits"]
     estimate = round(_BROWSER_FACTOR * baseline["seconds"] / baseline["replications"], 3)
@@ -953,14 +1479,17 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
         "values": {entry["path"]: experiments.value_at(model, entry["path"])
                    for entry in definition["inputs"]},
         "packages": list(viewer_runtime.PACKAGES), "pyodide": viewer_runtime.VERSION,
-        "python": str(lock["info"]["python"]), "frozen": frozen,
+        "python": str(lock["info"]["python"]), "frozen": frozen, "tokens": tokens,
+        "question": (model.get("dashboard") or {}).get("question"),
+        "scenarios": _lever_scenarios(model, definition), "unit": units_of(model.get("simulation")).time,
+        "asked": _quoted(asked),
     }
     worker = _WORKER.replace("__BOOT__", json.dumps(_BOOT))
     if not (worker.isascii() and _MAIN.isascii()) or "</script" in worker + _MAIN:
         raise AssertionError("the viewer's scripts must be ASCII and hold no closing tag")
     notices = base64.b64encode(gzip.compress(_notices(licences).encode("utf-8"), 9, mtime=0))
     if recording is None:
-        recording = _recording(model, baseline, data["title"], should_stop)
+        recording = _recording(model, baseline, data["title"], should_stop, tokens, data["asked"])
     step(4)
     packed = b""
     if recording:
@@ -970,10 +1499,15 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
                                 "this model: the viewer has no run to watch", ""))
     # The baseline's time is rounded: it is the one thing in the page that is measured.
     shipped = {**baseline, "seconds": round(baseline["seconds"], 2)}
-    parts = {"MAIN_HASH": _hash(_MAIN), "CSS_HASH": _hash(_CSS), "CSS": _CSS, "DATA": _embed(data),
-             "MODEL": _embed(model), "BASELINE": _embed(shipped), "WORKER": worker, "MAIN": _MAIN,
+    # The frame's player inherits this policy, so its sheet and its theme script are
+    # pinned here too (D697, D703).
+    css = player.style_sheet(tokens, _CSS)
+    sha = player.csp_hash
+    parts = {"THEME": player.THEME, "THEME_HASH": sha(player.THEME), "MAIN_HASH": sha(_MAIN),
+             "CSS_HASH": sha(css), "CSS": css, "DATA": player.embed(data),
+             "MODEL": player.embed(model), "BASELINE": player.embed(shipped), "WORKER": worker, "MAIN": _MAIN,
              "NOTICES": notices.decode("ascii"), "PLAYER": packed.decode("ascii"),
-             "PLAYER_HASH": _hash(player._SCRIPT), "PLAYER_CSS_HASH": _hash(player._CSS),
+             "PLAYER_HASH": sha(player.SCRIPT), "PLAYER_CSS_HASH": sha(player.style_sheet(tokens)),
              "FILES": "\n".join(_block(name, files[name]) for name in sorted(files))}
     # One pass over the constant page: a part is never searched for another part's mark.
     page = re.sub("__([A-Z_]+)__", lambda found: parts[found.group(1)], _PAGE)

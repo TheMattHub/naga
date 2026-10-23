@@ -293,7 +293,8 @@ class _OpenAICompat:
         self._opener = urllib.request.build_opener(
             _NoRedirect(), *([urllib.request.ProxyHandler({})] if self.kind == "local" else []))
 
-    def complete(self, system, tools, history, on_text=None) -> Reply:
+    def complete(self, system, tools, history, on_text=None, max_tokens=None) -> Reply:
+        # max_tokens is not sent (see the class docstring); a caller's time budget bounds the call.
         body = {"model": self.cfg.model, "messages": _openai_messages(system, history)}
         if tools:
             body["tools"] = [{"type": "function", "function": {
@@ -452,13 +453,13 @@ class _Anthropic:
         except Exception as exc:
             raise LLMError(f"cannot read the Anthropic model list ({type(exc).__name__})") from None
 
-    def complete(self, system, tools, history, on_text=None) -> Reply:
+    def complete(self, system, tools, history, on_text=None, max_tokens=None) -> Reply:
         defs = [dict(t) for t in tools]
         if defs:        # system + tools are static for a session: the one prefix worth caching
             defs[-1] = {**defs[-1], "cache_control": {"type": "ephemeral"}}
         # No empty `tools` list: like the other wire, a plain question sends none at all.
         with self.client.messages.stream(
-                model=self.cfg.model, max_tokens=MAX_TOKENS,
+                model=self.cfg.model, max_tokens=max_tokens or MAX_TOKENS,
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=_anthropic_messages(history), **({"tools": defs} if defs else {})) as stream:
             for event in stream:

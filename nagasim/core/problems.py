@@ -381,6 +381,9 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SET_RULE": "A resource set's selection rule is not a known one.",
     "E_SET_EMPTY": "A resource set has no members.",
     "E_SET_MEMBER": "A resource set names a member that is not a declared resource.",
+    "W_SET_PARTIAL_HOLD": "A block seizes more than one unit of a resource set: while it waits "
+                          "on every member it can hold units of a member it then does not "
+                          "take, and two such seizes can stall each other.",
     "E_ENTITY_COST": "An entity type's holding_cost is not a number >= 0.",
     # -- schedules and failures ---------------------------------------------
     "E_SCHEDULE_NAME": "A schedule has an empty name.",
@@ -434,6 +437,15 @@ PROBLEM_CODES: dict[str, str] = {
     "E_ASSERTION_OP": "An assertion's \"op\" field is unknown or missing.",
     "E_ASSERTION_REPLICATIONS": "An assertion's \"replications\" is not an integer >= 1.",
     "E_ASSERTION_CONFIDENCE": "An assertion's \"confidence\" is not a number between 0 and 1.",
+    # -- path checks (D722) ----------------------------------------------------
+    "E_PATH_CHECK_NAME": "A path check has an empty name.",
+    "E_DUPLICATE_PATH_CHECK": "Two path checks share a name.",
+    "E_PATH_CHECK_RULE": "A path check is not an object with one of the rules order, never, "
+                         "at_most or always, its \"e_type\" is not a name, or it carries a key "
+                         "its rule does not take.",
+    "E_PATH_CHECK_BLOCK": "A path check names no block, a block the model does not have, or "
+                          "the same block as both \"first\" and \"then\".",
+    "E_PATH_CHECK_COUNT": "An \"at_most\" path check's \"count\" is not a whole number >= 0.",
     # -- dashboard (PHASE6 G1, schema v26) ------------------------------------
     "E_DASHBOARD_NAME": "A dashboard widget has an empty or duplicate name.",
     "E_DASHBOARD_KIND": "A dashboard widget's kind is not kpi/gauge/line/bar.",
@@ -620,7 +632,17 @@ PROBLEM_CODES: dict[str, str] = {
                   "source with more events waiting than one cycle reads, read at the next cycle).",
     "W_TWIN_SCORE": "The rolling score found in a twin's directory was of another model or "
                     "horizon, or could not be read: it starts again from now (said once).",
-    "W_TWIN_MODEL_CHANGED": "The model file changed on disk while a twin runs on it: the twin keeps "
+    "W_TWIN_ALERT": "The alert sums found in a twin's directory were of another model, kept under "
+                    "other --alert-k / --alert-h limits, or could not be read: they start again "
+                    "from now (said once).",
+    "W_TWIN_REFIT": "A twin's refit could not be stepped or proposed, or an adopted refit kept "
+                    "in its directory is not applied (unsound, not the one the outbox ledger "
+                    "holds as taken, or outside the --refit file): the message says which.",
+    "E_TWIN_REFIT": "An adopted refit does not apply to the model started from the plant: no "
+                    "forecast is made with it.",
+    "E_REFIT": "A refit file is not one of format 1, is over its bound, holds a key it may not, "
+               "or names a factor that addresses no number of the model.",
+    "W_TWIN_MODEL_CHANGED":"The model file changed on disk while a twin runs on it: the twin keeps "
                             "the model it loaded until it is started again.",
     "E_CANDIDATES": "A candidates file is not one of format 1, is over its bound, holds a key or "
                     "an action it may not, or names what the model does not declare.",
@@ -716,6 +738,9 @@ PROBLEM_CODES: dict[str, str] = {
                      "does not declare.",
     "E_CONVEYOR_PARAM": "A CONVEYOR's length, speed or spacing is not a number > 0, or its "
                         "endpoints name unknown nodes.",
+    "E_CONVEYOR_STOP": "A CONVEYOR stop is not {at, time, resource?}, its `at` is not between 0 "
+                       "and the belt's length, its time is not a number >= 0 or an expression, "
+                       "or its resource is not declared.",
     # -- blocking after service (PHASE4 T5, ARCHITECTURE D78) ----------------
     "E_BUFFER_CAPACITY": "A BUFFER's capacity, or a SEIZE/PROCESS queue_capacity, is negative.",
     "E_BUFFER_LEVEL": "A BUFFER's \"level\" names a level the model does not declare.",

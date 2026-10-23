@@ -653,3 +653,33 @@ def test_a_live_timeline_has_no_moves_after_a_chunk_from_another_level():
     assert [move[2:4] for move in live.moves_between(0.0, 1.0)] == [("in", "drill")]
     live.append([moved(2.0, 2, "cell_2/in", "cell_2/drill")])
     assert live.moves_between(1.0, 2.0) == []
+
+
+# -- belt positions (D734) ----------------------------------------------------
+
+def belt_stage(t, eid, stage, x0, x1=None, duration=0.0, block="belt", spacing=1.0):
+    return TraceEvent(t=t, kind="belt_stage", entity_id=eid, e_type="A", block=block,
+                      target=None, duration=duration, state=stage, value=spacing,
+                      x0=x0, x1=x0 if x1 is None else x1)
+
+
+def test_belt_positions_are_linear_within_a_stage_and_a_spacing_behind_the_part_ahead():
+    """1 rides 0 -> 10 in 10 from t=0 and stands at the end from 10; 2 rides from t=1 and
+    is packed at the end (raw 10) from 11: it is drawn a spacing (2) behind 1, at 8."""
+    events = [belt_stage(0, 1, "ride", 0.0, 10.0, 10.0, spacing=2.0),
+              belt_stage(1, 2, "ride", 0.0, 10.0, 10.0, spacing=2.0),
+              belt_stage(10, 1, "stop", 10.0, spacing=2.0),
+              belt_stage(11, 2, "packed", 10.0, spacing=2.0),
+              belt_stage(15, 1, "off", 10.0, spacing=2.0),
+              belt_stage(15, 2, "move", 8.0, 10.0, 1.0, spacing=2.0)]
+    timeline = Timeline(events)
+    assert timeline.state_at(5.0)["belts"] == {"belt": [(1, 5.0, "ride"), (2, 3.0, "ride")]}
+    assert timeline.state_at(12.0)["belts"] == {"belt": [(1, 10.0, "stop"), (2, 8.0, "packed")]}
+    assert timeline.state_at(15.5)["belts"] == {"belt": [(2, 9.0, "move")]}
+    assert timeline.state_at(5.0)["belts"]["belt"][1] == (2, 3.0, "ride")     # a seek back
+
+
+def test_a_disposed_part_is_off_its_belt():
+    events = [created(0, 1, "belt"), belt_stage(0, 1, "ride", 0.0, 4.0, 4.0),
+              disposed(2, 1, "belt")]
+    assert Timeline(events).state_at(3.0)["belts"] == {}

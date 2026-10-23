@@ -103,16 +103,17 @@ options:
 ## naga study
 
 ```text
-usage: naga study [-h] {rerun} ...
+usage: naga study [-h] {rerun,deck} ...
 
-Checks on a study folder.
+Checks on a study folder, and its slides as a PDF.
 
 positional arguments:
-  {rerun}
-    rerun     re-run every version and compare the stored KPIs
+  {rerun,deck}
+    rerun       re-run every version and compare the stored KPIs
+    deck        the slides as a PDF, printed by this machine's Chrome or Edge
 
 options:
-  -h, --help  show this help message and exit
+  -h, --help    show this help message and exit
 ```
 
 ## naga room

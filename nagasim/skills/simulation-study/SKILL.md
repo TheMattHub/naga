@@ -14,7 +14,9 @@ decision, ask only what you cannot find out, and report honestly.
 1. `study_start(question=...)` once, or `study_status(study=...)` for an existing folder. Every answer
    carries a `next_step` with a ready-to-send call: do that, or better when you know better. The folder is
    the memory, so a new chat resumes from it. `study_start(..., changes={...})` records the whole plan card
-   in the same call.
+   in the same call. It also carries `options`: what next, ranked from the study's numbers. When the person
+   asks "what next?", or nothing is pending, offer the first as one question with its reason and name up to
+   two others; run one only after the person picks it.
 2. Intake, the person's choice:
    - a **free-flow description** (a voice message, a long text, documents): store it with
      `study_add_input(study, name="message.txt", text=...)` or `path=...`, extract the decision, goals and

@@ -849,6 +849,63 @@ def _wire_variants(kept, activities, block_of, gaps_of, used_blocks, blocks, lin
     return sequences
 
 
+MAX_RULES_PER_KIND = 4      # D731: per rule kind, so a long log cannot fill the section
+
+
+def _route_rules(counts: Counter, block_of: dict) -> tuple[list, int]:
+    """The log's route invariants over the cases the draft routes (*counts*: activity sequence
+    -> cases), as `path_checks` rules (D731), and how many more were found than kept:
+
+    * `always`: an activity every routed case visits;
+    * `order`: two activities seen together in at least two cases, the first one's first visit
+      before the other's in every such case (judged on first visits, as `pathcheck` does);
+      a before c is left out when a before b and b before c both hold (checked through b);
+    * `at_most`: the most visits one case paid an activity, for the activities a case
+      visits more than once first (rework), then the most visited.
+
+    At most MAX_RULES_PER_KIND of each kind, the best supported first. Each says it comes
+    from the log in its description; `naga check` runs them on one seed (D722)."""
+    total = sum(counts.values())
+    acts = sorted({a for seq in counts for a in seq})
+    always = [a for a in acts if all(a in seq for seq in counts)]
+    always.sort(key=lambda a: min(seq.index(a) for seq in counts))
+    together, before, seen = Counter(), Counter(), Counter()
+    for seq, n in counts.items():
+        first = {}
+        for i, a in enumerate(seq):
+            first.setdefault(a, i)
+        for a, i in first.items():
+            seen[a] += n
+            for b, j in first.items():
+                if a != b:
+                    together[(a, b)] += n
+                    before[(a, b)] += n if i < j else 0
+    pairs = {p: n for p, n in together.items() if n >= 2 and before[p] == n}
+    after = defaultdict(set)
+    for a, b in pairs:
+        after[a].add(b)
+    order = sorted(((a, b) for a, b in pairs if not any((m, b) in pairs for m in after[a])),
+                   key=lambda p: (-pairs[p], p))
+    most = {a: max(seq.count(a) for seq in counts) for a in acts}
+    at_most = sorted(acts, key=lambda a: (most[a] < 2, -seen[a], a))
+    rules = [{"name": f"log_always_{block_of[a]}", "rule": "always", "block": block_of[a],
+              "description": f"from the log: all {total} routed cases visit it"}
+             for a in always[:MAX_RULES_PER_KIND]]
+    rules += [{"name": f"log_order_{block_of[a]}_{block_of[b]}", "rule": "order",
+               "first": block_of[a], "then": block_of[b],
+               "description": f"from the log: first in each of the {pairs[(a, b)]} routed "
+                              "cases that visit both"}
+              for a, b in order[:MAX_RULES_PER_KIND]]
+    rules += [{"name": f"log_at_most_{block_of[a]}", "rule": "at_most", "block": block_of[a],
+               "count": most[a],
+               "description": f"from the log: no routed case visits it more than {most[a]} "
+                              f"time{'s' if most[a] > 1 else ''}"}
+              for a in at_most[:MAX_RULES_PER_KIND]]
+    left = (max(0, len(always) - MAX_RULES_PER_KIND) + max(0, len(order) - MAX_RULES_PER_KIND)
+            + max(0, len(at_most) - MAX_RULES_PER_KIND))
+    return rules, left
+
+
 def _arrivals(cases, assumptions) -> tuple[list, dict]:
     """The case arrivals, sorted, and the interarrival fit (D552)."""
     arrivals = sorted(_case_arrival(v) for v in cases.values())
@@ -1152,13 +1209,17 @@ _IDLE_MODELLED = ("check the idle_wait_* DELAYs against what causes the waits (a
                   "load, as a queue would")
 
 
-def _next_steps(check, mode, idle_delays: bool = False) -> dict:
+def _next_steps(check, mode, idle_delays: bool = False, rules: int = 0) -> dict:
     """What to check in the draft, and what a log never tells, tailored to this log (D591)."""
     codes = {f["code"] for f in check["findings"]}
     steps = ["run the draft (naga run) and compare its throughput and cycle time with the "
              "report's `observed`: a gap comes from one of the points here",
              "set each resource's real capacity: the draft's is the most the log ever had busy "
              "at once, a lower bound"]
+    if rules:
+        steps.append(f"run naga check: the draft carries {rules} route rules from the log "
+                     "(path_checks, one seed); a failed one is a route the log kept and the "
+                     "draft breaks" + (", as first-order routing can" if mode == "markov" else ""))
     steps.append("check the kept variants against the real products or case types"
                  if mode == "variants" else
                  "read each DECIDE's chances: they are the log's frequencies, not the rule "
@@ -1246,12 +1307,14 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
     routed = _routed(cases, log_end, dropped, assumptions)
     sequences = [[x.activity for x in v] for v in routed.values()]
     route = _choose_routing(sequences, routing)
+    routes = Counter(tuple(seq) for seq in sequences)     # the cases the draft routes (D731)
     if route["mode"] == "variants":
         kept = {v for v, _ in route["kept"]}
         left_out = [c for c, v in routed.items() if tuple(x.activity for x in v) not in kept]
         if left_out:
             dropped["cases of variants left out"] += len(left_out)
         sequences = [list(v) for v, _ in route["kept"]]
+        routes = Counter(dict(route["kept"]))
     # An activity no routed case reaches would be a block nothing links to (#570).
     activities = sorted({a for seq in sequences for a in seq})
     if len(activities) < len(seen):
@@ -1321,6 +1384,9 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
     doc = ModelDocument(layout)
     doc.move_blocks(auto_layout(doc))
     layout = minimal(doc.to_layout())
+    rules, rules_left = _route_rules(routes, block_of)
+    if rules:
+        layout["path_checks"] = rules
     assumptions.append("the draft starts empty and runs for the log's span with no warm-up; "
                        "the log started wherever the real system was")
 
@@ -1341,7 +1407,9 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
         "dropped": dict(dropped),
         "observed": _kpis(cases),
         "problems": [p.as_dict() for p in problems],
-        "next_steps": _next_steps(check, route["mode"], bool(waits)),
+        "next_steps": _next_steps(check, route["mode"], bool(waits), len(rules)),
+        "path_checks": {"rules": len(rules), "left_out": rules_left,
+                        "from": f"the log's {sum(routes.values())} routed cases"},
     }
     if idle_waits:
         report["idle_waits"] = waits
@@ -1391,6 +1459,10 @@ def report_text(report: dict) -> str:
                      f"utilisation {_num(r['utilisation'])}")
     lines += [f"idle wait: {w['delay']} before {w['block']}, {w['wait']['distribution']} "
               f"(mean {_num(w['wait']['mean'])})" for w in report.get("idle_waits", [])]
+    rules = report.get("path_checks") or {}
+    if rules.get("rules"):
+        lines.append(f"route rules from the log: {rules['rules']} in path_checks, from "
+                     f"{rules['from']} (naga check runs them on one seed)")
     lines += [f"assumed: {a}" for a in report["assumptions"]]
     lines += [f"dropped: {n} ({why})" for why, n in report["dropped"].items()]
     lines += [f"{p['severity']}: {p['code']} {p['message']}" for p in report["problems"]]

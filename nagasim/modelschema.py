@@ -1718,6 +1718,45 @@ def _defs() -> dict:
             "required": ["name", "kpi", "op", "value"],
             "additionalProperties": False,
         },
+        # D722: rules on each entity's route, checked by `nagasim.pathcheck`.
+        "path_check": {
+            "type": "object",
+            "description": "A rule on the blocks each entity visits, where a visit is an "
+                           "arrival at a block (created there, or moved there by a link or a "
+                           "route). Checked by `naga check` on one traced replication, so a "
+                           "pass rests on one seed.",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "description": {"type": "string"},
+                "rule": {"type": "string", "enum": ["order", "never", "at_most", "always"],
+                         "description": "\"order\": an entity that visits both blocks reaches "
+                                        "\"first\" before \"then\" (first visits). \"never\": "
+                                        "no entity visits \"block\". \"at_most\": none visits "
+                                        "it more than \"count\" times. \"always\": every entity "
+                                        "that left through a DISPOSE visited it; one still in "
+                                        "the system at the end is not judged by this rule."},
+                "block": {"type": "string", "minLength": 1,
+                          "description": "The block of a never, at_most or always rule."},
+                "first": {"type": "string", "minLength": 1,
+                          "description": "An order rule's earlier block."},
+                "then": {"type": "string", "minLength": 1,
+                         "description": "An order rule's later block."},
+                "count": {"type": "integer", "minimum": 0,
+                          "description": "An at_most rule's most visits per entity."},
+                "e_type": {"type": "string",
+                           "description": "Judge entities of this type only: the type an "
+                                          "entity had when last seen."},
+            },
+            "required": ["name", "rule"],
+            "allOf": [
+                {"if": {"properties": {"rule": {"const": "order"}}},
+                 "then": {"required": ["first", "then"]},
+                 "else": {"required": ["block"]}},
+                {"if": {"properties": {"rule": {"const": "at_most"}}},
+                 "then": {"required": ["count"]}},
+            ],
+            "additionalProperties": False,
+        },
         "dashboard_widget": {
             "type": "object",
             "description": "A dashboard widget: kpi/gauge read one "
@@ -1815,6 +1854,9 @@ def _defs() -> dict:
                 "step": {"type": "number", "exclusiveMinimum": 0, "default": 1,
                          "description": "number only; a hint for the control."},
                 "unit": {"type": "string", "maxLength": _DASH["label"]},
+                "note": {"type": "string", "maxLength": _DASH["note"],
+                         "description": "A short note shown under the lever in the viewer, "
+                                        "e.g. \"+48 k EUR each\"."},
                 "choices": {
                     "type": "array", "minItems": 2, "maxItems": _DASH["choices"],
                     "description": "choice only.",
@@ -1842,7 +1884,13 @@ def _defs() -> dict:
                 "kpi": {"type": "string", "minLength": 1, "maxLength": _DASH["text"]},
                 "label": {"type": "string", "maxLength": _DASH["label"]},
                 "unit": {"type": "string", "maxLength": _DASH["label"]},
-                "better": {"type": "string", "enum": ["lower", "higher"]},
+                "better": {"type": "string", "enum": ["lower", "higher"],
+                           "description": "The direction that is better; default: the KPI's "
+                                          "known direction, else no better/worse verdict."},
+                "target": {"type": "number", "minimum": -_DASH["magnitude"],
+                           "maximum": _DASH["magnitude"],
+                           "description": "The value the study aims for: the viewer's answer "
+                                          "says whether your version reaches it."},
             },
             "required": ["kpi"],
             "additionalProperties": False,
@@ -1895,6 +1943,9 @@ def _defs() -> dict:
                            "definition is generated (`nagasim.dashboard.default_dashboard`). "
                            "Absent for a model that declares none.",
             "properties": {
+                "question": {"type": "string", "minLength": 1, "maxLength": _DASH["text"],
+                             "description": "The question the study answers, shown at the top "
+                                            "of the viewer (default: the model's title)."},
                 "widgets": {"type": "array", "maxItems": _DASH["widgets"],
                             "items": {"$ref": "#/$defs/dashboard_widget"}},
                 "controls": {"type": "array", "maxItems": _DASH["controls"],

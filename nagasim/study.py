@@ -479,6 +479,14 @@ def effort(study: dict) -> dict:
             "note": "An estimate only; adjust it to your own app and model."}
 
 
+def next_options(study: dict, folder: Path, study_id: str | None = None, limit: int = 5) -> list[dict]:
+    """What next (D727): at most `limit` options ranked fix > missing > improve > extend, each with a
+    reason from the study's recorded numbers (`nagasim.nextoptions`). `next_step` stays the one
+    instruction for the first open checklist item."""
+    from nagasim import nextoptions
+    return nextoptions.for_study(study, folder, study_id, limit)
+
+
 def next_step(study: dict, folder: Path | None = None) -> str:
     text = _next_step(study, folder)
     last = _last(study)
@@ -488,25 +496,39 @@ def next_step(study: dict, folder: Path | None = None) -> str:
     return text
 
 
-def _next_step(study: dict, folder: Path | None = None) -> str:
+def open_items(study: dict, folder: Path | None = None) -> list[dict]:
+    """What still holds the study up, in order: {"item": "plan_approval"} (a one-go plan not yet
+    approved), {"item": "size_cap"} (the size's versions used and not sufficient), then each open
+    checklist step as {"item", "index" (1-based), "check"}, leaving out skipped steps and inputs
+    when the study has no sources (data is optional). `next_step` reads the first, the What next
+    options (`nagasim.nextoptions`) all of them, so the two never disagree on a gate."""
+    out = []
     if study["mode"] == "one_go" and not study["plan_approved"]:
+        out.append({"item": "plan_approval"})
+    if len(study["versions"]) >= SIZES[study["size"]]["increments"] and not sufficiency(study)["sufficient"]:
+        out.append({"item": "size_cap"})
+    skipped = study.get("skipped", [])
+    for i, c in enumerate(checklist(study, folder), 1):
+        if c["verdict"] == "passed" or c["item"] in skipped or (c["item"] == "inputs" and not study["sources"]):
+            continue
+        out.append({"item": c["item"], "index": i, "check": c})
+    return out
+
+
+def _next_step(study: dict, folder: Path | None = None) -> str:
+    items = open_items(study, folder)
+    first = items[0]["item"] if items else None
+    if first == "plan_approval":
         if not study["goals"]:      # a plan card without goals is an empty card
             return _TODO["goals"]
         return ("Show the person the plan card (goals, scope, assumptions, effort) and record their "
                 "approval with study_update(changes={\"plan_approved\": true}).")
-    if sufficiency(study)["sufficient"]:
+    if first is None or sufficiency(study)["sufficient"]:
         return "Report the result; offer extensions."
-    if len(study["versions"]) >= SIZES[study["size"]]["increments"]:
+    if first == "size_cap":
         return "The size cap is reached: report, or ask the person to raise the size."
-    skipped = study.get("skipped", [])
-    for c in checklist(study, folder):
-        # Data is optional: a study with no sources is not held up on inputs.
-        if c["item"] == "inputs" and not study["sources"]:
-            continue
-        if c["verdict"] != "passed" and c["item"] not in skipped:
-            # Components already recorded: only their blocks are missing, do not ask for the target again.
-            return _MAP_BLOCKS if c["item"] == "scope" and study["target"] else _TODO[c["item"]]
-    return "Report the result; offer extensions."
+    # Components already recorded: only their blocks are missing, do not ask for the target again.
+    return _MAP_BLOCKS if first == "scope" and study["target"] else _TODO[first]
 
 
 def plan_card(study: dict) -> dict:

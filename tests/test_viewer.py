@@ -8,6 +8,7 @@ import io
 import json
 import tarfile
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -142,6 +143,74 @@ def test_what_if_is_the_presenters_run_as_one_json_safe_record():
         flat[flat["KPI"] == "system/Avg WIP (Little)"].sort_values("Run")["Value"])
 
 
+def _row(mean, lo, hi, *, target=None, better="higher", verdict=None, base=True):
+    return {"kpi": "k", "label": "Throughput", "unit": "parts/min", "target": target, "better": better,
+            "yours": {"mean": mean, "lo": lo, "hi": hi}, "verdict": verdict,
+            "base": {"mean": 0.7, "lo": 0.69, "hi": 0.71} if base else None,
+            "delta_pct": 10.0 if verdict else None}
+
+
+def test_the_answer_is_read_from_the_numbers_against_target_and_baseline():
+    """D707: yes / no / not clear yet, from the interval against the target, else from the
+    verdict against the baseline; nothing to say without a direction."""
+    word = lambda row: (viewer.answer(row, 10) or {}).get("word")       # noqa: E731
+    # A target: the whole interval on the better side, on the worse side, or across it.
+    assert word(_row(0.77, 0.76, 0.78, target=0.75)) == "yes"
+    assert word(_row(0.72, 0.71, 0.73, target=0.75)) == "no"
+    assert word(_row(0.76, 0.74, 0.78, target=0.75)) == "unclear"
+    assert word(_row(300, 290, 310, target=331, better="lower")) == "yes"
+    assert word(_row(0.77, None, None, target=0.75)) == "unclear"       # one replication: no interval
+    # No target: the verdict against the baseline.
+    assert [word(_row(1, 0.9, 1.1, verdict=v)) for v in ("better", "worse", "no clear change")] == \
+        ["yes", "no", "unclear"]
+    # Nothing to say: no direction, or no target and no baseline (the author's own run).
+    assert word(_row(1, 0.9, 1.1, target=0.75, better=None, verdict="higher")) is None
+    assert word(_row(1, 0.9, 1.1, base=False)) is None and viewer.answer(None, 5) is None
+    said = viewer.answer(_row(0.77, 0.76, 0.78, target=0.75, verdict="better"), 10)
+    assert said["headline"] == "Yes, very likely: 0.77 parts/min" and said["needed"] is None
+    assert said["detail"] == ("Throughput 0.77 parts/min (95% interval 0.76 to 0.78), +10.0% against "
+                              "the baseline (better); above the 0.75 target.")
+    # Not clear: how many replications would make it clear, n x (half-width / distance)^2.
+    assert viewer.answer(_row(0.76, 0.74, 0.78, target=0.75), 10)["needed"] == 40
+
+
+def test_a_run_goes_on_until_its_answer_is_clear_up_to_the_most(monkeypatch):
+    """Spec Goal 7 (D685): "not clear yet" runs again with the replications needed,
+    capped at the definition's most, and the page is told why."""
+    asked, said = [], []
+
+    def fake(layout, values, replications=None, on_progress=None, **_recorded):
+        asked.append(replications)
+        clear = replications >= 24
+        return {"replications": replications, "answer": {
+            "word": "yes" if clear else "unclear", "detail": "d.", "needed": None if clear else 24}}
+    monkeypatch.setattr(viewer, "what_if", fake)
+    record = viewer._until_clear(model(), {}, 10, None, said.append)
+    assert asked == [10, 24] and record["answer"]["word"] == "yes"
+    assert said == ["Not clear yet after 10 replications: running 24 for a clear answer"]
+    asked.clear()
+    monkeypatch.setattr(viewer, "what_if", lambda *a, replications=None, **k: (asked.append(replications), {
+        "replications": replications, "answer": {"word": "unclear", "detail": "d.", "needed": 1000}})[1])
+    record = viewer._until_clear(model(), {}, 10, None, said.append)
+    assert asked == [10, 30] and record["answer"]["detail"].endswith("the most this page runs.")
+
+
+@pytest.mark.slow
+def test_two_of_the_pages_scenarios_are_run_one_against_the_other():
+    """Goal 9: "against" runs the other scenario in place of the author's baseline, and
+    the drawing names both."""
+    layout = model()
+    answer = viewer.page_run(layout, viewer.what_if(layout, replications=2),
+                             {"values": {"resources.Server.capacity": 3}, "replications": 2,
+                              "against": {"resources.Server.capacity": 2}, "names": ["Three", "Two"]})
+    assert answer["same"] is None and answer["record"]["inputs"] == {"resources.Server.capacity": 3}
+    direct = viewer.what_if({**layout, "resources": [{**layout["resources"][0], "capacity": 2}]},
+                            {"resources.Server.capacity": 3}, replications=answer["record"]["replications"])
+    assert answer["record"]["cells"] == direct["cells"]
+    data = json.loads(re.search(r'id="tape">(.*?)</script>', answer["player"], re.S).group(1))
+    assert data["scenarios"] == ["Two", "Three"] and data["start"] == "Three"
+
+
 def test_what_if_refuses_what_the_author_did_not_allow():
     layout = model()
     with pytest.raises(ValueError, match="not a number within"):
@@ -240,14 +309,17 @@ def test_the_page_is_a_constant_shell_and_data_that_cannot_break_out(tmp_path, m
     script = re.search(r"<script>(.*?)</script>", page, re.S).group(1)
     style = re.search(r"<style>(.*?)</style>", page, re.S).group(1)
     from nagasim import player
-    assert policy == ("default-src 'none'; script-src 'sha256-%s' 'sha256-%s' blob: 'wasm-unsafe-eval'; "
-                      "style-src 'sha256-%s' 'sha256-%s'; img-src data:; worker-src data:; "
+    assert policy == ("default-src 'none'; script-src 'sha256-%s' 'sha256-%s' 'sha256-%s' blob: "
+                      "'wasm-unsafe-eval'; style-src 'sha256-%s' 'sha256-%s'; img-src data:; worker-src data:; "
                       "base-uri 'none'; form-action 'none'"
-                      % (_digest(script), _digest(player._SCRIPT), _digest(style), _digest(player._CSS)))
+                      % (_digest(player.THEME), _digest(script), _digest(player.SCRIPT), _digest(style),
+                         _digest(player.style_sheet())))
+    assert f'<script id="theme-pick">{player.THEME}</script>' in page.split("<body>")[0]
+    assert page.count("<style>") == 1 and style == player.style_sheet(None, viewer._CSS)
     # The author's recorded run is the 7.7 player's page, whole, for a frame of its own origin.
     packed = re.search(r'id="player-data">([^<]+)<', page).group(1)
     recorded = gzip.decompress(base64.b64decode(packed)).decode("ascii")
-    assert recorded.startswith("<!doctype html>") and player._SCRIPT in recorded
+    assert recorded.startswith("<!doctype html>") and player.SCRIPT in recorded
     assert 'sandbox="allow-scripts"' in page and "allow-same-origin" not in page
     assert script == viewer._MAIN and "unsafe-inline" not in policy and "'unsafe-eval'" not in policy
     # Text from the model is data: no tag of its own, and no mark of the page is filled from it.
@@ -259,6 +331,7 @@ def test_the_page_is_a_constant_shell_and_data_that_cannot_break_out(tmp_path, m
     data = json.loads(blocks["data"])
     assert data["title"] == HOSTILE and data["inputs"][0]["label"] == HOSTILE
     assert data["values"] == {"resources.Server.capacity": 1} and data["frozen"] is None
+    assert data["tokens"] == player.DEFAULT_TOKENS
     assert json.loads(blocks["baseline"])["replications"] == data["limits"]["replications"]
     # The embedded files by name; no list of hashes (a file cannot vouch for itself: M1).
     names = re.findall(r'<script type="application/octet-stream" data-name="([^"]+)"', page)
@@ -277,6 +350,87 @@ def test_the_page_is_a_constant_shell_and_data_that_cannot_break_out(tmp_path, m
                                baseline=made["baseline"])
     assert [w.code for w in bare["warnings"]] == ["W_VIEWER_EMPTY"]
     assert 'id="player-data"></script>' in (tmp_path / "c.html").read_text("ascii")
+    # #980: recorded answers ride along for the trust card and the input note: only the
+    # input-uncertainty and ABC ones, as data that cannot break out.
+    measured = {"tool": "input_uncertainty", "measure": "level", "resamples_used": 4, "replications": 2,
+                "kpis": [{"kpi": HOSTILE, "mean": 1.0, "input_interval": [0.5, 1.5], "input_share": 0.5}]}
+    viewer.build_viewer(layout, tmp_path / "d.html", runtime=folder, recording="", baseline=made["baseline"],
+                        asked=[{"tool": "what_if", "overrides": "kept here"},
+                               {**measured, "input_args": {"data": "C:/Users/someone/secret.csv"}}])
+    page = (tmp_path / "d.html").read_text("ascii")
+    assert json.loads(_blocks(page)["data"])["asked"] == [measured]
+    assert page.count("<script>") == 1 and "kept here" not in page and "secret.csv" not in page
+
+
+def test_a_page_carries_only_the_allowed_fields_of_recorded_answers():
+    """#980 review: a record's own arguments (data files, inputs) never reach a shared page;
+    each kind keeps the fields its quote reads."""
+    secret = "C:/Users/someone/secret.csv"
+    rows = viewer._quoted([
+        {"tool": "input_uncertainty", "measure": "difference", "resamples_used": 4, "replications": 2,
+         "input_args": {"Arrivals": {"data": secret}}, "inputs": [secret],
+         "overrides": [{"path": "resources.Server.capacity", "value": 2, "note": secret}],
+         "kpis": [{"kpi": "K", "mean": 1.0, "input_interval": [0.5, 1.5], "input_share": 0.5, "raw": secret}]},
+        {"tool": "calibrate", "method": "abc", "samples": 200, "accepted": 12, "abc_tolerance": 0.3,
+         "data": secret, "targets": [secret]},
+        {"tool": "calibrate", "method": "grid", "data": secret}, {"tool": "what_if", "data": secret}])
+    assert secret not in json.dumps(rows)
+    assert rows[0]["overrides"] == [{"path": "resources.Server.capacity", "value": 2}]
+    assert set(rows[0]) == {"tool", "measure", "resamples_used", "replications", "kpis", "overrides"}
+    assert set(rows[1]) == {"tool", "method", "samples", "accepted", "abc_tolerance"} and len(rows) == 2
+
+
+@pytest.mark.slow
+def test_the_look_is_the_callers_tokens_on_the_page_and_its_players(tmp_path, monkeypatch):
+    """D697: one look for the viewer and the player in its frame, pinned by hash; inputs
+    keep the dashboard's label and unit."""
+    from nagasim import player
+    folder = _fake_folder(tmp_path, monkeypatch)
+    layout = model()
+    layout["dashboard"] = {"inputs": [{"path": "resources.Server.capacity", "label": "Servers",
+                                       "unit": "people", "kind": "number", "min": 1, "max": 3, "step": 1}]}
+    tokens = {"accent": "#AB12CD", "radius": "0"}
+    viewer.build_viewer(layout, tmp_path / "a.html", runtime=folder, tokens=tokens)
+    page = (tmp_path / "a.html").read_text("ascii")
+    style = re.search(r"<style>(.*?)</style>", page, re.S).group(1)
+    assert "--accent: #AB12CD;" in style and "--radius: 0px;" in style
+    assert f"'sha256-{_digest(style)}' 'sha256-{_digest(player.style_sheet(tokens))}'" in page
+    packed = re.search(r'id="player-data">([^<]+)<', page).group(1)
+    recorded = gzip.decompress(base64.b64decode(packed)).decode("ascii")
+    assert f"<style>{player.style_sheet(tokens)}</style>" in recorded
+    data = json.loads(_blocks(page)["data"])
+    assert data["tokens"]["light"]["accent"] == "#AB12CD"
+    assert data["tokens"]["dark"] == player.DEFAULT_TOKENS["dark"]
+    assert (data["inputs"][0]["label"], data["inputs"][0]["unit"]) == ("Servers", "people")
+    with pytest.raises(ValueError):
+        viewer.build_viewer(layout, tmp_path / "b.html", runtime=folder, tokens={"accent": "x"})
+    assert not (tmp_path / "b.html").exists()
+
+
+def test_the_page_animates_the_viewers_own_run_beside_the_baseline():
+    """What the worker's Python answers a run with (`_BOOT`, run here as Pyodide runs it):
+    the record, and the player of your run and the baseline's, recorded where it ran."""
+    from nagasim import player
+    layout = model()
+    space = {"MODEL": json.dumps(layout), "PROGRESS": lambda done, total: None, "STATUS": lambda text: None,
+             "BASELINE": json.dumps(viewer.what_if(layout, replications=2)),
+             "PAGE": json.dumps({"title": "Line", "tokens": {"accent": "#AB12CD"}})}
+    exec(compile(viewer._BOOT, "viewer-boot", "exec"), space)
+    answer = json.loads(space["_run"](json.dumps({"values": {"resources.Server.capacity": 2},
+                                                  "replications": 2})))
+    assert answer["record"]["inputs"] == {"resources.Server.capacity": 2}
+    page = answer["player"]
+    assert f"<style>{player.style_sheet({'accent': '#AB12CD'})}</style>" in page and player.SCRIPT in page
+    data = json.loads(re.search(r'id="tape">(.*?)</script>', page, re.S).group(1))
+    assert data["scenarios"] == [experiments.BASELINE, dashboard.YOURS] and data["title"] == "Line"
+    assert data["start"] == dashboard.YOURS                 # shown first, compared with the baseline
+    base, yours = (data["runs"][name]["frames"] for name in data["scenarios"])
+    assert yours != base                    # two servers: another run, drawn on its own layout
+    same = viewer.watch_page(layout, {}, title="Line")
+    again = json.loads(re.search(r'id="tape">(.*?)</script>', same, re.S).group(1))
+    assert again["runs"][experiments.BASELINE] == data["runs"][experiments.BASELINE]
+    assert json.loads(space["_run"](json.dumps({"values": {"resources.Server.capacity": 99},
+                                                "replications": 2}))).keys() == {"error"}
 
 
 def test_the_page_carries_the_engine_as_installed_without_the_authors_code(tmp_path):
@@ -344,7 +498,12 @@ console.log(JSON.stringify({
   same: [sameText({different: 0, bounds_different: 0, cells: 265, replications: 5, bounds: 12}, {}, {}),
          sameText({different: 2, bounds_different: 1, cells: 265, replications: 5, bounds: 12},
                   {python: "3.14.2", numpy: "2.4.6", scipy: "1.18.0"},
-                  {python: "3.12.1", numpy: "2.1.0", scipy: "1.16.3"})]}));
+                  {python: "3.12.1", numpy: "2.1.0", scipy: "1.16.3"})],
+  saved: [savedFrom('[{"a": 2, "b": true, "c": "x", "z": 9, "d": {"x": 1}}, 7, null, {"constructor": 1}]',
+                    ["a", "b", "c", "d"]),
+          savedFrom("not json", ["a"]), savedFrom('{"a": 1}', ["a"]),
+          savedFrom(JSON.stringify(Array(30).fill({a: 1})), ["a"]).length],
+  estimate: estimateSeconds(2, 10)}));
 """
 
 
@@ -357,6 +516,9 @@ def test_the_scripts_pure_half_under_node(tmp_path):
     assert out["fmt"] == ["-", "0", "4.658", "1.235e-4", "1.235e+7", "-39.46", "1"]
     assert out["span"] == ["1 to 2.5", "-"] and out["seconds"] == ["1 s", "89 s", "3 min"]
     assert out["moved"] == {"b": False, "constructor": 2}
+    # D709: what a browser kept is read back as data: the page's own inputs, plain values, 20 at most.
+    assert out["saved"] == [[{"a": 2, "b": True, "c": "x"}, {}], [], [], 20]
+    assert out["estimate"] == 24            # #834: the replications and the two recorded
     assert out["grouped"] == [["K", 1, 2], ["P", 3, None]]
     assert out["same"][0].startswith("Same engine: this browser's baseline equals the author's run in all 265")
     assert "2 of 265 baseline values and 1 of 12 interval bounds differently" in out["same"][1] \
@@ -466,6 +628,11 @@ def _drive(browser, page, tmp_path, steps):
     return out
 
 
+def _desktop(layout, values):
+    """The desktop's run of what the page runs: `what_if`, until its answer is clear."""
+    return viewer._until_clear(layout, values, None, None, lambda text: None)
+
+
 def _same_run(answer, desktop):
     """The page's record is the desktop's: every cell equal, every row to 1e-9 (D328)."""
     record = answer["record"]
@@ -492,18 +659,154 @@ def test_exit_check_a_changed_input_run_in_the_page_gives_the_desktops_numbers(t
     assert 35e6 < made["bytes"] < 45e6
     out = _drive(browser, page, tmp_path, [
         BASELINE_SHOWN, READY, _set(2), _click("run"), RAN, _text("record"),
-        _text("results-body"), _text("same"), _text("made")])
-    shown_first, ready, _value, _clicked, ran, record, shown, same, made_from = out["answers"]
+        _text("results-body"), _text("same"), _text("made"), _text("results"),
+        # D697: your run, recorded in the page, is drawn beside the baseline's; open it.
+        {"eval": 'document.getElementById("watch").open = true;'
+                 ' document.getElementById("player").srcdoc.indexOf(\'"scenarios":["Baseline","Yours"]\') > 0'},
+        {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 1500); })"}])
+    (shown_first, ready, _value, _clicked, ran, record, shown, same, made_from, cards, both,
+     _waited) = out["answers"]
+    assert both is True and "Avg WIP (Little)" in cards and "better" in cards
     assert ready.startswith("Ready after") and ran.startswith("Run finished in")
     # The page asked for nothing: no address but its own file, data: and blob:.
     assert out["asked"] == [] and out["attached"] >= 1      # the worker was watched too
     assert not [line for line in out["console"] if "Content Security" in line]
-    desktop = viewer.what_if(model(), {"resources.Server.capacity": 2})
+    desktop = _desktop(model(), {"resources.Server.capacity": 2})
     _same_run(json.loads(record), desktop)
     assert same.startswith("Same engine: this browser's baseline equals the author's run in all ")
-    assert "Yours: Server = 2. 5 replications, seeds 0 to 4" in made_from
+    count = desktop["replications"]                 # 5, and more until the answer is clear
+    assert f"Yours: Server = 2. {count} replications, seeds 0 to {count - 1}" in made_from and count >= 5
     # Shown at once, before the engine started: the author's baseline. Then both.
     assert shown_first.startswith("Avg Throughput Time") and shown.count(" to ") == 12
+
+
+def _lever_model():
+    layout = model()
+    layout["dashboard"] = {
+        "widgets": [], "question": "Is one server enough?",
+        "inputs": [{"path": "resources.Server.capacity", "label": "Servers", "kind": "number",
+                    "min": 1, "max": 3, "step": 1, "note": "+48 k EUR each"}],
+        "results": [{"kpi": "system/Avg Throughput Time", "label": "Lead time", "target": 5}]}
+    layout["scenarios"] = [{"name": "Two servers", "overrides": [{"path": "resources.Server.capacity", "value": 2}]},
+                           {"name": "Faster", "overrides": [{"path": "simulation.time_limit", "value": 9}]}]
+    return layout
+
+
+_VALUE = 'document.querySelector("#inputs input[type=number]").value'
+_TABS = {"eval": 'Array.prototype.map.call(document.querySelectorAll(".tab"), function (t) {'
+                 ' return t.textContent + (t.className.indexOf(" on") > 0 ? "*" : ""); }).join(",")'}
+
+
+def _tab(name):
+    return {"eval": 'Array.prototype.filter.call(document.querySelectorAll(".tab"), function (t) {'
+                    ' return t.textContent === "%s"; })[0].click(); %s' % (name, _VALUE)}
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not (_node22() and BROWSERS), reason="node 22 and Chrome or Edge are needed")
+def test_the_levers_tabs_footer_and_a_page_without_the_new_fields(tmp_path, monkeypatch):
+    """Goals 2, 9, 10 (D706, D709) in a browser, with no engine needed: the question on
+    top; a lever's range, note and default; "N changed"; Reset to defaults; the author's
+    scenario on the levers as a tab (one on a non-input is not); a saved scenario after a
+    reload, and with storage that throws; the picture is a PNG; a model without the new
+    fields still makes a page."""
+    folder = _fake_folder(tmp_path, monkeypatch)
+    viewer.build_viewer(_lever_model(), tmp_path / "v.html", runtime=folder, title="Clinic")
+    out = _drive(BROWSERS[0], tmp_path / "v.html", tmp_path, [
+        {"eval": 'document.getElementById("title").textContent + "|" + document.getElementById("subtitle").textContent'},
+        _TABS, _text("inputs"), _text("answer-head"),
+        _set(3), _text("changed"), _TABS, {"eval": 'document.getElementById("side").className'},
+        _click("reset"), {"eval": _VALUE + ' + "|" + document.getElementById("changed").textContent'},
+        _tab("Two servers"), _click("save"), _TABS,
+        _click("picture"), {"eval": 'document.getElementById("picture-canvas").toDataURL().slice(0, 22) + '
+                                    'document.getElementById("picture-box").hidden'},
+        # Kept in this browser: there after a reload; with storage that throws, for the visit.
+        {"eval": "location.reload(); 1"},
+        {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 2500); })"},
+        _TABS, _tab("Saved 1"),
+        {"eval": 'Object.defineProperty(window, "localStorage", {get: function () { throw new Error("no"); }});'
+                 ' document.getElementById("save").click(); document.getElementById("status").textContent'},
+        _TABS])
+    (title, tabs, levers, answer, _3, changed, forked, side, _reset, reset, two, _save, saved,
+     _picture, png, _reload, _wait, *again) = out["answers"]
+    assert title == "Is one server enough?|Clinic"
+    assert tabs == "Baseline*,Two servers,Yours"                # "Faster" sets no input: no tab
+    assert levers == "Servers+48 k EUR eachunchanged" and answer.startswith(("Yes", "No", "Not clear"))
+    assert changed == "1 changed" and forked == "Baseline,Two servers,Yours*" and side == "side stale"
+    assert reset == "1|" and two == "2"
+    assert saved == "Baseline,Two servers,Yours,Saved 1*" and png == "data:image/png;base64,false"
+    assert again ==["Baseline*,Two servers,Yours,Saved 1", "2",
+                                "Saved for this visit only: this browser keeps nothing for this page.",
+                                "Baseline,Two servers,Yours,Saved 1,Saved 2*"]
+    # No question, no target, no note: the title on top and no answer card.
+    viewer.build_viewer(model(), tmp_path / "plain.html", runtime=folder, title="Plain")
+    plain = _drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "p", [
+        {"eval": 'document.getElementById("title").textContent + "|" + document.getElementById("answer-box").hidden'},
+        _TABS, _text("results")])
+    assert plain["answers"][:2] == ["Plain|true", "Baseline*,Yours"] and "Avg Throughput Time" in plain["answers"][2]
+
+
+@pytest.mark.slow          # two pages in a browser, one of 40 MB
+@in_a_browser
+def test_the_shared_pages_fit_a_phone_and_a_wide_screen(tmp_path):
+    """D697, D704: at 360 and at 1920 px neither page scrolls sideways; the console is one
+    column on the phone, and on the wide screen two in the player and three (levers) in
+    the viewer."""
+    from nagasim import api, player
+    from nagasim.core.trace import TraceRecorder
+    layout = model("line_with_buffers.json")
+    recorder = TraceRecorder()
+    results = api.run_model(layout, replications=2, trace=recorder)
+    player.build_player(layout, {experiments.BASELINE: recorder}, results=results,
+                        path=tmp_path / "p.html")
+    viewer.build_viewer(layout, tmp_path / "v.html", runtime=RUNTIME)
+    wide = {"eval": "document.documentElement.scrollWidth - window.innerWidth"}
+    columns = {"eval": "window.getComputedStyle(document.querySelector('.console'))"
+                       ".gridTemplateColumns.split(' ').length"}
+    for page, first, wanted in (("p.html", [], 2), ("v.html", [BASELINE_SHOWN], 3)):
+        out = _drive(BROWSERS[0], tmp_path / page, tmp_path, first + [
+            {"width": 360}, wide, columns, {"width": 1920}, wide, columns])
+        narrow, narrow_rows, broad, broad_rows = out["answers"][len(first):]
+        assert narrow <= 0 and broad <= 0, (page, narrow, broad)   # a scroll bar's width under
+        assert (narrow_rows, broad_rows) == (1, wanted), page
+
+
+def _boxes(selector):
+    """Where every element of *selector* is on the page, as one string."""
+    return {"eval": 'Array.prototype.map.call(document.querySelectorAll("%s"), function (n) {'
+                    ' var r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]'
+                    '.map(Math.round).join(","); }).join(";")' % selector}
+
+
+_PAUSE = {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 1200); })"}
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not (_node22() and BROWSERS), reason="node 22 and Chrome or Edge are needed")
+def test_nothing_moves_when_a_value_changes(tmp_path, monkeypatch):
+    """#841: at 1440 px the transport, the tabs and the side panels stay where they are
+    while the player seeks, plays and changes scenario, and in the viewer while the status
+    line changes and a lever moves (the stale note keeps its line)."""
+    from nagasim import player
+    from nagasim.experiments import record_scenarios, run_scenarios
+    layout = model("line_with_buffers.json")
+    result = run_scenarios(layout, ["No buffers"], replications=2, seed=1, workers=1)
+    player.build_player(layout, record_scenarios(layout, result), experiment=result, path=tmp_path / "p.html")
+    fixed = _boxes("#play, #back, #step, #speed, #clock, #theme, .tab, .result, .trust tr, #lanes")
+    seek = {"eval": 'var s = document.getElementById("seek"); s.value = 420; s.dispatchEvent(new Event("input")); 1'}
+    tab = {"eval": 'document.querySelectorAll(".tab")[1].click(); 1'}
+    out = _drive(BROWSERS[0], tmp_path / "p.html", tmp_path, [
+        {"width": 1440}, _PAUSE, fixed, seek, _PAUSE, fixed, _click("play"), _PAUSE, fixed, tab, _PAUSE, fixed])
+    first, *later = out["answers"][1::3]
+    assert first and all(boxes == first for boxes in later), (first, later)
+
+    viewer.build_viewer(_lever_model(), tmp_path / "v.html", runtime=_fake_folder(tmp_path, monkeypatch))
+    fixed = _boxes("#run, #reset, #cancel, .tab, #theme, #answer-box, .result, .trust tr, #status, .lever, #results-box .panel-head, #stale, #results")
+    out = _drive(BROWSERS[0], tmp_path / "v.html", tmp_path / "v", [
+        {"width": 1440}, fixed, {"wait": "could not start|^Ready"}, fixed,
+        _set(3), fixed])
+    first, *later = out["answers"][0::2]
+    assert first and all(boxes == first for boxes in later), (first, later)
 
 
 @pytest.mark.slow          # three starts of the engine: 45 s of a busy machine in the fast set
@@ -530,9 +833,10 @@ def test_in_the_page_a_models_text_is_text_a_range_is_enforced_and_cancel_starts
     assert starting == "falsetrue" and then == "truefalse"
     assert stopped == "The engine was stopped before it was ready. Press Run to start it and run."
     assert first.startswith("Run finished in")
-    # Read when opened: the notices, and the author's recorded run in its frame.
+    # Read when opened: the notices, and in the frame the author's recorded run, which a run
+    # in the page replaced with yours beside it (D697).
     assert opened.startswith("Third-party notices of the Naga browser viewer|<!doctype html>|"
-                             "One replication of the model as the author left it (seed 0)")
+                             "One replication of each, seed 0, recorded in this browser.")
     assert markup.count("&lt;img src=x onerror=alert(1)&gt;") == 3 and "<img" not in markup
     # The range a slider shows is enforced by the engine in the worker, not by the control.
     assert refused.startswith("Not run: input 'resources.Server.capacity': 99 is not a number within")
@@ -552,10 +856,15 @@ def test_process_system_dynamics_and_agent_models_match_in_every_browser(
         tmp_path, name, index, value, path):
     page = tmp_path / "model.html"
     viewer.build_viewer(MODELS / name, page, runtime=RUNTIME)
-    desktop = viewer.what_if(model(name), {path: value} if path else {})
-    for number, browser in enumerate(BROWSERS):
-        steps = [READY, *([_set(value, index)] if path else []), _click("run"), RAN, _text("record")]
-        out = _drive(browser, page, tmp_path / str(number), steps)
+    steps = [READY, *([_set(value, index)] if path else []), _click("run"), RAN, _text("record")]
+    # The browsers boot the engine side by side (a boot is most of the time), the desktop's
+    # run beside them; each has a profile folder of its own.
+    with ThreadPoolExecutor() as pool:
+        runs = [pool.submit(_drive, browser, page, tmp_path / str(number), steps)
+                for number, browser in enumerate(BROWSERS)]
+        desktop = _desktop(model(name), {path: value} if path else {})
+    for run in runs:
+        out = run.result()
         assert out["answers"][-2].startswith("Run finished"), out["answers"][-2]
         _same_run(json.loads(out["answers"][-1]), desktop)
         assert out["asked"] == []
@@ -664,7 +973,7 @@ def test_a_model_with_its_data_frozen_in_runs_in_the_page_as_on_the_desktop(tmp_
                                                _text("record")])
     assert "Data as read on 2026-10-10." in out["answers"][0]
     assert out["answers"][-2].startswith("Run finished"), out["answers"][-2]
-    _same_run(json.loads(out["answers"][-1]), viewer.what_if(frozen))
+    _same_run(json.loads(out["answers"][-1]), _desktop(frozen, {}))
     assert out["asked"] == []
 
 
@@ -676,7 +985,7 @@ def test_the_pages_own_scripts_hold_nothing_that_leaves_without_a_request():
     sets a `src` other than the player's one picture (a `data:` image the builder made,
     and `img-src data:` refuses any other). An edited script is another hash: refused."""
     from nagasim import player
-    scripts = {"main": viewer._MAIN, "worker": viewer._WORKER, "player": player._SCRIPT}
+    scripts = {"main": viewer._MAIN, "worker": viewer._WORKER, "player": player.SCRIPT}
     never = (r"RTCPeerConnection", r"RTCDataChannel", r"window\.open", r"\blocation\s*=[^=]",
              r"\blocation\.(href|hash|search|pathname)\s*=[^=]", r"\blocation\.(assign|replace|reload)\s*\(",
              r"""["']iframe["']""", r"""["']meta["']""", r"""["']form["']""", r"""["']a["']""",
@@ -690,7 +999,7 @@ def test_the_pages_own_scripts_hold_nothing_that_leaves_without_a_request():
     assert sources == {"main": [], "worker": [], "player": ["image.src = source"]}
     # The only requests in the scripts: the worker's own answer to Pyodide and its two
     # imports of embedded bytes; the main thread makes none.
-    assert "fetch" not in viewer._MAIN and "fetch" not in player._SCRIPT
+    assert "fetch" not in viewer._MAIN and "fetch" not in player.SCRIPT
     assert re.findall(r"\bimport\s*\(([^)]*)\)", viewer._WORKER) == ['url("pyodide.mjs"', 'url("pyodide.asm.mjs"']
     assert re.findall(r"fetch\b[^;\n]*", viewer._WORKER) == ["fetch = async function (what) {"]
 
@@ -846,3 +1155,31 @@ def test_freezing_finds_a_location_in_another_spelling(tmp_path):
         path = _clinic(tmp_path / str(number), notes=f"Fed from {spelled} every morning.")
         with pytest.raises(ValueError, match="its location is also written in the model's info"):
             viewer.freeze_data(path, path.parent)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not (_node22() and BROWSERS), reason="node 22 and Chrome or Edge are needed")
+def test_853_a_saved_scenario_can_be_removed_and_the_legend_names_what_is_drawn(tmp_path, monkeypatch):
+    """#853: saved scenarios could not be removed. "Remove this saved scenario" shows on a
+    saved tab only and the removal lasts after a reload; a new save takes a new number.
+    #852: the legend names the target only when a row has one, the baseline only beside
+    yours."""
+    folder = _fake_folder(tmp_path, monkeypatch)
+    viewer.build_viewer(_lever_model(), tmp_path / "v.html", runtime=folder, title="Clinic")
+    hidden = {"eval": '["remove", "key-base", "key-target"].map(function (id) {'
+                      ' return document.getElementById(id).hidden; }).join(",")'}
+    out = _drive(BROWSERS[0], tmp_path / "v.html", tmp_path, [
+        hidden, _click("save"), _click("save"), _TABS, hidden,
+        _tab("Saved 1"), _click("remove"), _TABS, hidden, _click("save"), _TABS,
+        {"eval": "location.reload(); 1"},
+        {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 2500); })"},
+        _TABS])
+    first, _a, _b, saved, on_saved, _pick, _remove, removed, after, _c, again, _r, _w, reloaded = out["answers"]
+    assert first == "true,true,false"                           # the author's run: no baseline beside it
+    assert saved == "Baseline,Two servers,Yours,Saved 1,Saved 2*" and on_saved.startswith("false,")
+    assert removed == "Baseline,Two servers,Yours,Saved 2*" and after.startswith("false,")
+    assert again == "Baseline,Two servers,Yours,Saved 2,Saved 3*"
+    assert reloaded == "Baseline*,Two servers,Yours,Saved 1,Saved 2"
+    viewer.build_viewer(model(), tmp_path / "plain.html", runtime=folder, title="Plain")
+    plain = _drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "p", [hidden])
+    assert plain["answers"] == ["true,true,true"]

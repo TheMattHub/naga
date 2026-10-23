@@ -24,8 +24,9 @@ options:
 usage: naga run [-h] [--version] [--replications REPLICATIONS] [--seed SEED]
                 [--warmup WARMUP] [--run-length RUN_LENGTH] [--start ISO]
                 [--until ISO] [--timezone IANA] [--workers WORKERS]
-                [--out OUT] [--report REPORT] [--export FORMAT:PATH]
-                [--player PATH] [--state FILE] [--no-logs]
+                [--pace FACTOR] [--out OUT] [--report REPORT]
+                [--export FORMAT:PATH] [--player PATH] [--state FILE]
+                [--no-logs]
                 model
 
 Run a Naga model headless.
@@ -53,6 +54,11 @@ options:
                         schedules (default: the model's own, else UTC)
   --workers WORKERS     replications to run in parallel processes, or 'auto'
                         (default: 1)
+  --pace FACTOR         keep pace with the wall clock: FACTOR model seconds
+                        per wall second, converted from the model's time unit
+                        (1 = real time, 60 = one model minute per second);
+                        late events are counted, and the results are the
+                        unpaced run's
   --out OUT             write the 10-sheet results workbook here
   --report REPORT       write an HTML report here
   --export FORMAT:PATH  write with a registered exporter, e.g. json:out.json;
@@ -108,6 +114,34 @@ options:
                         scenario switch
 ```
 
+## naga explain
+
+```text
+usage: naga explain [-h] [--set PATH=VALUE] [--replications REPLICATIONS]
+                    [--seed SEED]
+                    model kpi
+
+Rank the measured contributors to a KPI, each with its 95% interval, and
+suggest one what-if test of the top one. With --set, compare the baseline and
+the changed model on paired seeds instead.
+
+positional arguments:
+  model                 path to the model JSON, or a bundled model's name
+                        (naga examples)
+  kpi                   e.g. 'system/Avg Throughput Time', 'system/Throughput
+                        (per time unit)' or 'resource/<name>/Usage %
+                        (snapshot)'
+
+options:
+  -h, --help            show this help message and exit
+  --set PATH=VALUE      an override (the scenario path grammar); may repeat.
+                        The value is read as JSON, else as text
+  --replications REPLICATIONS
+                        replications (default 5); with --set the first count,
+                        doubled up to 50 until the KPI's difference is clear
+  --seed SEED
+```
+
 ## naga invest
 
 ```text
@@ -147,6 +181,47 @@ options:
   --top TOP        ranking rows to print
   --shift          fit a free location offset for positive-support families
   --json JSON      write the full ranking + best spec here
+```
+
+## naga uncertainty
+
+```text
+usage: naga uncertainty [-h] --data PATH=FILE[:COLUMN] [--kpi KPI]
+                        [--resamples RESAMPLES] [--replications REPLICATIONS]
+                        [--seed SEED] [--run-length RUN_LENGTH]
+                        [--warmup WARMUP] [--bin-width BIN_WIDTH]
+                        [--cycle CYCLE]
+                        model
+
+How much of each KPI's spread comes from the data its inputs were fitted to:
+each input's data is resampled and refitted, the model run per resample on the
+same seeds, and each KPI gets its run-to-run 95% interval, its interval with
+the inputs' uncertainty, and the inputs' share.
+
+positional arguments:
+  model                 path to the model JSON, or a bundled model's name
+                        (naga examples)
+
+options:
+  -h, --help            show this help message and exit
+  --data PATH=FILE[:COLUMN]
+                        an input and its data: a '...distribution' field and a
+                        sample, or 'schedules.<name>.points' and arrival
+                        timestamps; may repeat
+  --kpi KPI             a KPI key (e.g. 'system/Avg Throughput Time'); may
+                        repeat. Default: every system KPI
+  --resamples RESAMPLES
+                        bootstrap resamples (default 20)
+  --replications REPLICATIONS
+                        replications per resample, the same seeds for each
+                        (default 5)
+  --seed SEED
+  --run-length RUN_LENGTH
+  --warmup WARMUP
+  --bin-width BIN_WIDTH
+                        an arrival table's bin width, in base time units
+  --cycle CYCLE         an arrival table's cycle (e.g. one day), in base time
+                        units
 ```
 
 ## naga doe
@@ -254,8 +329,8 @@ options:
 ## naga policy-eval
 
 ```text
-usage: naga policy-eval [-h] --policy POLICY --controller
-                        {random,roundrobin,shortest}
+usage: naga policy-eval [-h] --policy POLICY
+                        (--controller {random,roundrobin,shortest} | --policy-file POLICY_FILE)
                         [--reward {neg_wip,throughput,neg_time_in_system}]
                         [--episodes EPISODES] --horizon HORIZON [--seed SEED]
                         model
@@ -271,6 +346,9 @@ options:
   --policy POLICY       decision-point name
   --controller {random,roundrobin,shortest}
                         built-in controller to evaluate
+  --policy-file POLICY_FILE
+                        data-only JSON policy (table or linear, see
+                        nagasim.policyfile)
   --reward {neg_wip,throughput,neg_time_in_system}
   --episodes EPISODES
   --horizon HORIZON

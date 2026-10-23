@@ -5,6 +5,7 @@ hostile logs (over a ceiling, malformed, billion laughs, an external entity, odd
 CLI's output (validate, fmt, export --python), and the round trip: a bundled model's run ->
 its log -> a draft -> the draft's run -> its log, compared on `log_kpis`.
 """
+import functools
 import json
 import re
 from pathlib import Path
@@ -490,11 +491,17 @@ def test_agent_tool_opens_the_draft_and_stays_in_the_workspace(tmp_path):
 
 # ---------------------------------------------------------------- round trip
 
-def _round_trip(model, length, *, ready=True):
+@functools.lru_cache(maxsize=1)    # one trace held: up to a million events on a long run
+def _source_trace(model, length):
+    """The bundled model's run, shared by the round trips that read it with and without ready."""
     rec = TraceRecorder(max_events=10**8)
     run_model(str(MODELS / model), replications=1, seed=1, trace=rec, run_length=length,
               warmup=0)
-    log = d.log_from_trace(rec, ready=ready)
+    return rec
+
+
+def _round_trip(model, length, *, ready=True):
+    log = d.log_from_trace(_source_trace(model, length), ready=ready)
     layout, report = d.discover(log)
     assert not _errors(layout)
     rec2 = TraceRecorder(max_events=10**8)
@@ -531,14 +538,16 @@ def test_round_trip_routed_shop_uses_variants():
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("model, ready", [("single_server.json", True),
-                                          ("single_server.json", False),
-                                          ("job_shop_jackson.json", True),
-                                          ("job_shop_routed.json", True)])
-def test_round_trip_kpis_within_tolerance(model, ready):
-    """D559's tolerances on one long run each side (seed-to-seed noise of a 20 000 minute
-    run is about 10% on a wait at these loads, hence the long run)."""
-    source, draft, _layout, _report = _round_trip(model, 60_000, ready=ready)
+@pytest.mark.parametrize("model, ready, length", [("single_server.json", True, 60_000),
+                                                  ("single_server.json", False, 60_000),
+                                                  ("job_shop_jackson.json", True, 30_000),
+                                                  ("job_shop_routed.json", True, 20_000)])
+def test_round_trip_kpis_within_tolerance(model, ready, length):
+    """D559's tolerances on one long run each side, each length the shortest whose right
+    draft stayed under 0.65 of every tolerance over 10 seed pairs while a draft with one
+    service 10% slow failed on all 10; the single server at 20 000 failed 1 in 10 on its
+    cycle time, hence its longer run (measured 2026-10-22)."""
+    source, draft, _layout, _report = _round_trip(model, length, ready=ready)
     assert _close(source["throughput"], draft["throughput"], 0.05)
     assert _close(source["cycle_time"], draft["cycle_time"], 0.15)
     for name, act in source["activities"].items():

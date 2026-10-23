@@ -1452,6 +1452,17 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
     on = {}                 # belt -> [(entered, stage, until)] of the parts with a cell
     queued: dict = {}       # end stop -> parts at it, and jobs waiting to seize it (D431)
     stops = []              # (belt, end stop) of each part at one
+    stopped = {name for name, block in blocks.items() if kind(name) == "CONVEYOR"
+               and ((block.get("params") or {}).get("stops") or [])}
+    for index, entry in enumerate(state.get("entities") or []):
+        # D733: a part between two stops has no vocabulary yet, so a belt with stops
+        # starts empty or not at all.
+        names = (entry.get("block"), entry.get("held_by")) if isinstance(entry, dict) else ()
+        for name in (n for n in names if isinstance(n, str) and n in stopped):
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}' has stops: a part on it is not "
+                f"carried", f"/{SECTION}/entities/{index}", block=name,
+                hint="start the belt empty, or take the state of a model without stops"))
     for entry in state.get("entities") or []:
         block = blocks.get(entry.get("block")) if isinstance(entry, dict) \
             and isinstance(entry.get("block"), str) else None

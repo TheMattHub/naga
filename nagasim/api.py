@@ -22,7 +22,8 @@ from nagasim.core import initial_state, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
 from nagasim.core.export import concat_runs
 from nagasim.core.schema import ModelValidationError
-from nagasim.core.sim_runner import run_single_simulation
+from nagasim.core.sim_runner import Pacer, run_single_simulation
+from nagasim.core.timeunits import UNITS, units_of
 from nagasim.core.trace import TraceRecorder
 from nagasim.plugins import load_plugins
 from nagasim.results import Results
@@ -31,6 +32,8 @@ from nagasim.results import Results
 # The one "path or dict -> migrated layout" reader (Wave A2), re-exported
 # for the top-level modules that spell it `api.load_layout`.
 load_layout = schema.load_layout
+
+log = logging.getLogger(__name__)
 
 
 class _Collect(logging.Handler):
@@ -309,7 +312,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
               should_stop=None, trace=None, bind_data: bool = False, base_dir=None,
               network=None, confine_to=None, feed=None,
               controllers: dict | None = None, pool=None,
-              record_logs: bool | None = None, deterministic: bool | None = None) -> Results | None:
+              record_logs: bool | None = None, deterministic: bool | None = None,
+              pace: float | None = None) -> Results | None:
     """Run replications of a model and return its KPI frames.
 
     Replication ``r`` is seeded with ``seed + r``, so a run is reproducible.
@@ -370,6 +374,14 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         True makes every distribution sample its mean, chance branches use
         largest-remainder allocation and replications are forced to 1. None keeps
         the model's own ``simulation.deterministic`` (default: off).
+    pace : float, optional
+        Keep pace with the wall clock: *pace* model seconds per wall second
+        (1 = real time, 60 = one model minute per second), converted from the
+        model's time unit. An event already behind the wall clock runs at once
+        and is counted, never raised. The results are an unpaced run's; the
+        result's ``.pace`` is ``{"paced", "late_events", "max_lag_s"}``.
+        Replications run one after another (``workers`` must be 1). Nothing is
+        fed into or read out of the running model.
 
     Returns
     -------
@@ -402,6 +414,14 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     # distributions registered on its first run_model() call; a no-op after
     # the first time in this process.
     load_plugins()
+
+    pacer = None
+    if pace is not None:
+        if workers != 1:
+            raise ValueError(f"a paced run keeps one clock, so its replications run one "
+                             f"after another: workers must be 1, not {workers!r}")
+        unit = units_of((path if isinstance(path, dict) else load_layout(path)).get("simulation")).time
+        pacer = Pacer(pace, UNITS.get(unit, 1))
 
     if controllers and workers != 1:
         import pickle
@@ -472,7 +492,7 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         subscribers = (trace,) if trace is not None and s == seed else ()
         kpi = run_single_simulation(path, seed=s, run_len=run_length,
                                      warmup=warmup, should_stop=should_stop, subscribers=subscribers,
-                                     controllers=controllers)
+                                     controllers=controllers, pacer=pacer)
         if kpi is None:  # cut short mid-replication
             stopped = True
             break
@@ -489,6 +509,10 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     if not collected:
         return None
     results = Results(concat_runs([kpi for _, kpi in collected]))
+    if pacer is not None:
+        results.pace = pacer.summary()
+        log.info("Paced at %gx: %d late events, max lag %.3f s", pacer.pace,
+                 pacer.late_events, pacer.max_lag_s)
     if bindings is not None:
         results["data_inputs"] = bindings.frame()
     return results
@@ -523,6 +547,11 @@ def main(argv=None) -> int:
                              "(default: the model's own, else UTC)")
     parser.add_argument("--workers", type=_workers_type, default=1,
                         help="replications to run in parallel processes, or 'auto' (default: 1)")
+    parser.add_argument("--pace", type=_pace_type, default=None, metavar="FACTOR",
+                        help="keep pace with the wall clock: FACTOR model seconds per wall "
+                             "second, converted from the model's time unit (1 = real time, "
+                             "60 = one model minute per second); late events are counted, "
+                             "and the results are the unpaced run's")
     parser.add_argument("--out", help="write the 10-sheet results workbook here")
     parser.add_argument("--report", help="write an HTML report here")
     parser.add_argument("--export", action="append", default=[], metavar="FORMAT:PATH",
@@ -567,8 +596,12 @@ def main(argv=None) -> int:
     recorder = TraceRecorder() if _needs_trace(exports) else None
     results = run_model(model, replications=args.replications, seed=args.seed,
                         warmup=args.warmup, run_length=args.run_length, workers=args.workers,
-                        record_logs=False if args.no_logs else None, trace=recorder)
+                        record_logs=False if args.no_logs else None, trace=recorder,
+                        pace=args.pace)
     print(results["system"].to_string(index=False))
+    if results.pace is not None:
+        print(f"paced at {results.pace['paced']:g}x: {results.pace['late_events']} late events, "
+              f"max lag {results.pace['max_lag_s']:.3f} s")
     layout = model if isinstance(model, dict) else None
     for spec in exports:
         try:
@@ -634,6 +667,16 @@ def _run_export(spec: str, results, model_path: str, layout=None, trace=None) ->
     exporter.write(results, out_path, layout=_layout(layout, model_path),
                    title=Path(model_path).stem, **extra)
     print(f"{exporter.name} written to {out_path}")
+
+
+def _pace_type(value: str) -> float:
+    try:
+        pace = float(value)
+    except ValueError:
+        pace = 0.0
+    if not 0 < pace < float("inf"):
+        raise argparse.ArgumentTypeError(f"must be a positive number, not {value}")
+    return pace
 
 
 def _workers_type(value: str) -> int | str:

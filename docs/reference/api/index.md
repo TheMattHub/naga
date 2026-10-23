@@ -16,7 +16,7 @@ The functions and classes a script calls most. Each page is its docstring: param
 | [`nagasim.calibrate.calibrate`](calibrate.md) | Tune factors until the model reproduces observed targets. |
 | [`nagasim.forecast.forecast`](forecast.md) | Run a short terminating horizon from the system's current state. |
 | [`nagasim.inputfit.best_fit`](best_fit.md) | Fit candidate distributions to a sample and return the winner. |
-| [`nagasim.modelcheck.assert_model`](assert_model.md) | Assert, in a test, that a model passes its own assertions and reality checks. |
+| [`nagasim.modelcheck.assert_model`](assert_model.md) | Assert, in a test, that a model passes its own assertions, reality and path checks. |
 | [`nagasim.modelschema.build_json_schema`](build_json_schema.md) | Return the current model file format as a draft 2020-12 JSON Schema. |
 | [`nagasim.build.Model`](Model.md) | A model written in Python; the file it produces is the model. |
 | [`nagasim.results.Results`](Results.md) | What a run returns: KPI frames by name, with notebook conveniences. |

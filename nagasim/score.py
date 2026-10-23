@@ -32,8 +32,8 @@ from pathlib import Path
 
 from nagasim.core.utils import is_finite_number
 
-__all__ = ["LEGACY_FILE", "NOMINAL", "LEADS", "MAX_SERIES", "MAX_BYTES", "point", "of", "lead",
-           "Totals", "legacy", "recompute"]
+__all__ = ["LEGACY_FILE", "NOMINAL", "LEADS", "MAX_SERIES", "MAX_BYTES", "K", "H", "point", "of",
+           "lead", "residual", "Totals", "Cusum", "legacy", "recompute"]
 
 # Where the first build of 7.14 kept the rolling score: read once when a history has none,
 # never written (D293 as amended).
@@ -48,6 +48,10 @@ _SUM = 1e150            # a sum read back is under this: sums of such never reac
 # the scored readings were not whole numbers.
 _N, _INSIDE, _ERROR, _ABS, _PINBALL, _MISSED, _LOST, _FRACTION = range(8)
 _COUNTS = (_N, _INSIDE, _MISSED, _LOST, _FRACTION)
+# The alerts' CUSUM (D721): the defaults of the caller's flags, never of a model file.
+K, H = 0.5, 4.0
+_SPREAD = 3.29          # a normal's 5% to 95% band, in standard deviations
+_Z = 1e6                # a residual is clipped here: a band of almost no width stays finite
 
 
 def _num(value):
@@ -73,6 +77,16 @@ def point(mean, q05, q95, observed) -> dict | None:
         return None
     return {"inside": q05 <= observed <= q95, "error": observed - mean,
             "pinball": (_rho(0.05, observed - q05) + _rho(0.95, observed - q95)) / 2}
+
+
+def residual(mean, q05, q95, observed) -> float | None:
+    """The standardised residual of one point: observed minus the forecast mean, over the
+    band's width read as a normal's (3.29 standard deviations). None when a value is
+    missing or the band has no width (a deterministic series: nothing to scale by)."""
+    mean, q05, q95, observed = (_num(v) for v in (mean, q05, q95, observed))
+    if None in (mean, q05, q95, observed) or not q95 - q05 > 0:
+        return None
+    return max(-_Z, min(_Z, (observed - mean) / ((q95 - q05) / _SPREAD)))
 
 
 def _scored(found: dict):
@@ -232,6 +246,115 @@ class Totals:
                             ("coverage", _INSIDE), ("bias", _ERROR), ("error", _ABS),
                             ("pinball", _PINBALL))}})
         return out
+
+
+_ROW = ("high", "low", "points", "above", "below", "high_since", "low_since")
+
+
+class Cusum:
+    """The alerts of one twin (D721): per compared series, a two-sided CUSUM of the
+    standardised residuals (`residual`) of its filled points, in the order they are filled.
+
+        S+ = max(0, S+ + z - k)    S- = max(0, S- - z - k)
+
+    A side is ALERTING while its sum is over *h*: a sustained shift above (S+) or below
+    (S-) the forecast. Each sum is capped at 2h, so the state is bounded and an alert ends
+    about h/k in-band readings after its shift does; `above` / `below` count the alerts
+    raised. Readings of overlapping forecasts share one plant history, so they are not
+    independent and *h* does not set a false-alarm rate: the alert says so."""
+
+    def __init__(self, model, k: float = K, h: float = H, since: str = ""):
+        self.model, self.k, self.h, self.since = model, float(k), float(h), since
+        self.flat = 0                       # points with no band or one of no width: not fed
+        self.rows: dict[str, dict] = {}
+
+    @classmethod
+    def load(cls, doc, model, k: float, h: float, since: str) -> tuple:
+        """(the state *doc* holds, None) when it is this model's, on these limits and sound;
+        else (a new one beginning at *since*, why): "absent", "model", "limits" or
+        "unsound". Judged whole, as `Totals.load`: the file is read back from disk."""
+        new = cls(model, k, h, since)
+        if not isinstance(doc, dict):
+            return new, "absent"
+        if isinstance(doc.get("model"), str) and doc["model"] != model:
+            return new, "model"
+        if (_num(doc.get("k")), _num(doc.get("h"))) != (new.k, new.h) \
+                and None not in (_num(doc.get("k")), _num(doc.get("h"))):
+            return new, "limits"
+        rows, cap = doc.get("rows"), 2 * new.h
+
+        def sound(row) -> bool:
+            if not (isinstance(row, dict) and set(row) == set(_ROW)
+                    and all(_whole(row[key]) for key in ("points", "above", "below"))):
+                return False
+            for side, since_key in (("high", "high_since"), ("low", "low_since")):
+                value, at = _num(row[side]), row[since_key]
+                if value is None or not 0 <= value <= cap \
+                        or (at is not None and _num(at) is None) or (value <= new.h and at is not None):
+                    return False
+            return True
+        if not (isinstance(doc.get("model"), str) and _num(doc.get("k")) is not None
+                and _num(doc.get("h")) is not None and isinstance(doc.get("since"), str)
+                and len(doc["since"]) <= 64 and _whole(doc.get("flat"))
+                and isinstance(rows, dict) and len(rows) <= MAX_SERIES
+                and all(isinstance(name, str) and sound(row) for name, row in rows.items())):
+            return new, "unsound"
+        new.since, new.flat = doc["since"], doc["flat"]
+        new.rows = {name: {key: (float(row[key]) if key in ("high", "low") else row[key])
+                           for key in _ROW} for name, row in rows.items()}
+        return new, None
+
+    def add(self, found: dict) -> None:
+        """A point that was just filled (a missed one carries nothing to add)."""
+        z = residual(found.get("mean"), found.get("q05"), found.get("q95"), found.get("observed"))
+        if z is None:
+            self.flat += _num(found.get("observed")) is not None
+            return
+        series = found["series"]
+        if series not in self.rows and len(self.rows) >= MAX_SERIES:
+            return
+        row = self.rows.setdefault(series, {"high": 0.0, "low": 0.0, "points": 0, "above": 0,
+                                            "below": 0, "high_since": None, "low_since": None})
+        row["points"] += 1
+        at = _num(found.get("observed_at"))
+        for side, since, count, step in (("high", "high_since", "above", z),
+                                         ("low", "low_since", "below", -z)):
+            was = row[side]
+            row[side] = min(max(0.0, was + step - self.k), 2 * self.h)
+            if row[side] > self.h >= was:
+                # A point with no observed_at keeps the instant unknown, said "?" (#941).
+                row[since], row[count] = at, row[count] + 1
+            elif row[side] <= self.h:
+                row[since] = None
+
+    def alerts(self) -> list[dict]:
+        """The sides alerting now, by series: the product's alert shape (rule, severity,
+        subject, message, numbers) and `side` and `since` (model time)."""
+        out = []
+        for series in sorted(self.rows):
+            row = self.rows[series]
+            for side, statistic, since in (("above", row["high"], row["high_since"]),
+                                           ("below", row["low"], row["low_since"])):
+                if statistic <= self.h:
+                    continue
+                out.append({
+                    "rule": "sustained shift", "severity": "warning", "subject": series,
+                    "side": side, "since": since,
+                    "message": f"a sustained shift {side} the forecast on {series} since t = "
+                               f"{'?' if since is None else format(since, 'g')}: the CUSUM of its standardised residuals is "
+                               f"{statistic:.3g}, over the limit h = {self.h:g} (k = {self.k:g})",
+                    "numbers": {"statistic": statistic, "limit": self.h, "k": self.k,
+                                "points": row["points"]}})
+        return out
+
+    def basis(self) -> dict:
+        return {"points": sum(row["points"] for row in self.rows.values()), "flat": self.flat,
+                "raised": sum(row["above"] + row["below"] for row in self.rows.values()),
+                "since": self.since}
+
+    def document(self) -> dict:
+        return {"model": self.model, "k": self.k, "h": self.h, "since": self.since,
+                "flat": self.flat, "rows": self.rows}
 
 
 # ---------------------------------------------------------------- from the log (D295)

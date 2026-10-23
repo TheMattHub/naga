@@ -39,13 +39,15 @@ from nagasim.core.utils import canonical_json, is_finite_number, sha256_text
 __all__ = ["FORMAT", "KIND", "VERBS", "BUILT", "ORDER_VERBS", "LEVEL", "LIMITS", "REASONS",
            "Refused", "load", "check_action", "override_of", "applied", "effects", "RECORD_KIND",
            "LEDGER_FILE", "LEDGER_KIND", "STATES", "STATUSES", "identity", "lifetime", "record_id",
-           "check", "Advisor", "reproduce"]
+           "check", "REFIT_KIND", "refit_id", "check_refit", "Advisor", "reproduce"]
 
 FORMAT = 1
 KIND = "naga-candidates"
 # Vocabulary 1 (D228). A verb is built by a decision, with its scoring rule (D299). The
-# order verbs since the state carries the plant's order book (D486; D407 lifted).
-VERBS = ("set_capacity", "resequence", "expedite", "hold", "release", "reroute")
+# order verbs since the state carries the plant's order book (D486; D407 lifted). A
+# `setpoint` is a tag of the caller's setpoints file, simulated by the model path that file
+# gives it (D742): proposed here like any action, written only by `naga plc-write` (D743).
+VERBS = ("set_capacity", "resequence", "expedite", "hold", "release", "reroute", "setpoint")
 BUILT = VERBS
 ORDER_VERBS = ("resequence", "expedite", "hold", "release")
 _PRIORITY = re.compile(r"\bentity\.priority\b")
@@ -60,6 +62,7 @@ LIMITS = {
     "value": 10_000,            # units of a capacity
     "name": 200,                # characters of a block a reroute names, or of an order's id
     "priority": 1e9,            # the size of a priority an expedite gives
+    "setpoint": 1e9,            # the size of a setpoint, either way
     "expires": 86400.0,         # seconds a record may live
     "entries": 200,             # records of the ledger, the newest
     "states": 20,               # state documents kept for reproduction, the newest
@@ -83,6 +86,11 @@ _RECORD_KEYS = frozenset({"format", "kind", "id", "created", "expires", "action"
 _EXPECTED_KEYS = frozenset({"kpi", "better", "level", "baseline", "with_action", "effect", "low",
                             "high", "q05", "q95"})
 _EFFECTS = ("waiting", "measured", "missed", "lost", "not_observable")
+# A refit proposal (D740, D741): the other record kind of the ledger. It changes the model's
+# parameters for the twin's forecasts, not the plant: no action, no effect to measure.
+REFIT_KIND = "naga-refit-proposal"
+_REFIT_KEYS = frozenset({"format", "kind", "id", "created", "expires", "overrides", "series",
+                         "side", "window", "scores", "seed", "budget", "base", "model", "engine"})
 _BUDGET = 5.0                   # seconds of one step spent delivering (D410)
 _PULLS = 10                     # of the replies in one step, 100 replies each
 _HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -116,13 +124,17 @@ def _value_ok(verb, value) -> bool:
         return is_finite_number(value) and abs(value) <= LIMITS["priority"]
     if verb in ("hold", "release"):
         return value is True
+    if verb == "setpoint":
+        return is_finite_number(value) and not isinstance(value, bool) \
+            and abs(value) <= LIMITS["setpoint"]
     return verb == "set_capacity" and _whole(value) and 1 <= value <= LIMITS["value"]
 
 
 # ---------------------------------------------------------------- the vocabulary
-def check_action(action, model: dict) -> dict:
+def check_action(action, model: dict, setpoints=None) -> dict:
     """*action* as `{"verb", "target", "value"}` when the migrated *model* can answer it,
-    else `Refused`. Exactly those three keys: a record has no room for free text (D228)."""
+    else `Refused`. Exactly those three keys: a record has no room for free text (D228).
+    *setpoints*: the caller's setpoints file, loaded (`plcwrite.load`), or None."""
     def refuse(text, hint=None):
         return Refused("E_CANDIDATES", text, hint)
 
@@ -143,6 +155,8 @@ def check_action(action, model: dict) -> dict:
             "expedite": f"expedite: the value for '{short}' is the priority it gets, a number "
                         f"of at most {LIMITS['priority']:g} either way",
             "hold": "hold: the value is true", "release": "release: the value is true",
+            "setpoint": f"setpoint: the value for '{short}' is a number of at most "
+                        f"{LIMITS['setpoint']:g} either way",
         }.get(verb, f"set_capacity: the value for '{short}' must be a whole number from 1 to "
                     f"{LIMITS['value']}"))
     if len(target) > LIMITS["name"] or not target.isprintable():
@@ -152,11 +166,11 @@ def check_action(action, model: dict) -> dict:
     if verb in ORDER_VERBS:
         _orders_answerable(action, model)   # the order itself is the state's (D487)
     else:
-        override_of(action, model)      # the model can answer it, or `Refused` says why not
+        override_of(action, model, setpoints)   # the model can answer it, or `Refused` says why
     return action
 
 
-def override_of(action: dict, model: dict) -> dict:
+def override_of(action: dict, model: dict, setpoints=None) -> dict:
     """The one override an action is on the migrated (started) *model*, or `Refused` (D298):
     a path of the grammar (`experiments.apply_overrides`), or, for an order verb, the whole
     state with the action applied (path `initial_state`, D486; see `applied`)."""
@@ -164,16 +178,18 @@ def override_of(action: dict, model: dict) -> dict:
         return _order_verb(action, model)
     if action["verb"] == "reroute":
         return _reroute(action, model)
+    if action["verb"] == "setpoint":
+        return _setpoint(action, model, setpoints)
     return _capacity(action, model)
 
 
-def applied(model: dict, action: dict) -> dict:
+def applied(model: dict, action: dict, setpoints=None) -> dict:
     """A new *model* with *action* applied. An order verb's state replaces the model's
     here and nowhere else: the shared grammar has no whole-state path, so no binding or
     scenario can write one (D486)."""
     from nagasim import experiments
 
-    override = override_of(action, model)
+    override = override_of(action, model, setpoints)
     if override["path"] != "initial_state":
         return experiments.apply_overrides(model, [override])
     new = copy.deepcopy(model)
@@ -305,6 +321,41 @@ def _reroute(action: dict, model: dict) -> dict:
     return {"path": f"blocks.{target}.params", "value": params}
 
 
+def _setpoint(action: dict, model: dict, setpoints) -> dict:
+    """`setpoint` (D742): the tag's model path in the caller's setpoints file set to the
+    value, inside that file's range. The tag, its path and its range are the caller's, not
+    the candidates file's: a candidate names a tag and a number, nothing more."""
+    from nagasim import experiments, refit
+
+    target, value, short = action["target"], action["value"], action["target"][:80]
+
+    def refuse(text, hint=None):
+        return Refused("E_CANDIDATES", f"setpoint: {text}", hint)
+
+    if setpoints is None:
+        raise refuse("no setpoints file was given, so no tag is allowed",
+                     "pass your setpoints file (--setpoints): each tag with the model path "
+                     "that simulates it and its limits")
+    entry = setpoints.get(target)
+    if entry is None:
+        raise refuse(f"the tag '{short}' is not in your setpoints file",
+                     "a candidate names a tag of that file")
+    if refit.forbidden(entry["path"]):      # the refit file's rule, one check (#981)
+        raise refuse(f"the path '{entry['path'][:80]}' of '{short}' sets no state, run "
+                     f"setting or data source", "name a parameter of a block, a resource or a variable")
+    if not entry["min"] <= value <= entry["max"]:
+        raise refuse(f"{value:g} for '{short}' is outside its range of {entry['min']:g} to "
+                     f"{entry['max']:g}", "the range is your setpoints file's")
+    try:
+        now = experiments.value_at(model, entry["path"])
+    except Exception as exc:            # the grammar's own refusal: its class only
+        raise refuse(f"the path of '{short}' addresses nothing in the model "
+                     f"({type(exc).__name__})") from None
+    if not is_finite_number(now) or isinstance(now, bool):
+        raise refuse(f"the path of '{short}' does not address a number of the model")
+    return {"path": entry["path"], "value": value}
+
+
 def _capacity(action: dict, model: dict) -> dict:
     """`set_capacity`. A resource of the model itself: its capacity. A
     resource of an asset instance, named as it is after flattening (`<instance>/<name>`):
@@ -366,10 +417,11 @@ def _capacity(action: dict, model: dict) -> dict:
     return override
 
 
-def load(path, model) -> dict:
+def load(path, model, setpoints=None) -> dict:
     """The caller's candidates file, checked against *model*: `{"kpi", "better", "expires"
     (seconds, or None for one horizon), "actions"}`. Raises `Refused`. The file is data: it
-    selects no code, no path and no sink."""
+    selects no code, no path and no sink. *setpoints*: the caller's setpoints file, loaded
+    (`plcwrite.load`), which a `setpoint` candidate needs."""
     from nagasim import twin
 
     def refuse(text, hint="see the candidates file in the twin's documentation"):
@@ -405,7 +457,7 @@ def load(path, model) -> dict:
         raise refuse(f"\"candidates\" is a list of 1 to {LIMITS['candidates']} actions",
                      "each candidate is one more forecast at every forecast")
     migrated = load_layout(model)
-    actions = [check_action(action, migrated) for action in listed]
+    actions = [check_action(action, migrated, setpoints) for action in listed]
     if len({json.dumps(a, sort_keys=True) for a in actions}) < len(actions):
         raise refuse("two candidates are the same action")
     return {"kpi": kpi, "better": better, "expires": expires, "actions": actions}
@@ -447,7 +499,8 @@ def _row(action: dict, base: dict, mine: dict, better: str) -> dict:
 
 
 def effects(model, actions, *, kpi: str, better: str, horizon: float, replications: int,
-            seed: int, workers=1, should_stop=None, runner=None, baseline=None) -> tuple:
+            seed: int, workers=1, should_stop=None, runner=None, baseline=None,
+            setpoints=None) -> tuple:
     """(one row an action, the reason no action is recommended or None): each of *actions*
     on the started *model* against the baseline, on the SAME seed (D301). *baseline* is a
     forecast of *model* already run on that seed, or None to run it here. A `better` row
@@ -467,7 +520,7 @@ def effects(model, actions, *, kpi: str, better: str, horizon: float, replicatio
         if should_stop is not None and should_stop():
             return None, None
         try:
-            candidate = applied(model, action)
+            candidate = applied(model, action, setpoints)
             rows.append(_row(action, base, _values(run(candidate, **asked), kpi), better))
         except Exception as exc:        # the class only: the text may be a model's
             rows.append({"action": action, "verdict": "failed", "why": type(exc).__name__})
@@ -565,6 +618,55 @@ def check(record) -> bool:
         return False
 
 
+def refit_id(model: str, base, overrides: list, series: str, state: str, seed: int) -> str:
+    """A refit's id names what was fitted, on what and from where: the same on every
+    machine for the same window, seed and layer it was fitted on."""
+    return _sha([model, base, overrides, series, state, seed])
+
+
+def check_refit(record) -> bool:
+    """Whether *record* is a refit proposal of format 1 and nothing more (as `check`)."""
+    from nagasim.refit import LIMITS as REFIT
+
+    try:
+        if not (isinstance(record, dict) and set(record) == _REFIT_KEYS
+                and record["format"] == FORMAT and record["kind"] == REFIT_KIND
+                and len(canonical_json(record)) <= outbox.LIMITS["record_bytes"]):
+            return False
+        overrides, window, scores, model = (record[k] for k in ("overrides", "window",
+                                                                 "scores", "model"))
+        return bool(
+            isinstance(overrides, list) and 0 < len(overrides) <= REFIT["factors"]
+            and all(isinstance(o, dict) and set(o) == {"path", "value"}
+                    and isinstance(o["path"], str) and 0 < len(o["path"]) <= REFIT["path"]
+                    and is_finite_number(o["value"]) and not isinstance(o["value"], bool)
+                    for o in overrides)
+            and isinstance(record["series"], str) and len(record["series"]) <= 400
+            and record["side"] in ("above", "below")
+            and isinstance(window, dict) and set(window) == {"readings", "from", "until", "state"}
+            and _count(window["readings"]) and window["readings"] > 0
+            and is_finite_number(window["from"]) and is_finite_number(window["until"])
+            and isinstance(window["state"], str) and len(window["state"]) <= 64
+            and isinstance(scores, dict) and set(scores) == {"readings", "current", "candidate"}
+            and _count(scores["readings"]) and scores["readings"] > 0
+            and all(is_finite_number(scores[k]) and scores[k] >= 0 for k in ("current", "candidate"))
+            and _whole(record["seed"]) and _count(record["budget"])
+            and (record["base"] is None or _hex(record["base"]))
+            and isinstance(model, dict) and set(model) == {"name", "hash"}
+            and isinstance(model["name"], str) and len(model["name"]) <= 200
+            and _hex(model["hash"])
+            and isinstance(record["engine"], str) and len(record["engine"]) <= 40
+            and all(_stamp(record[k]) is not None for k in ("created", "expires"))
+            and record["id"] == refit_id(model["hash"], record["base"], overrides,
+                                         record["series"], window["state"], record["seed"]))
+    except (TypeError, ValueError, KeyError, RecursionError, OverflowError):
+        return False
+
+
+def _refit(entry) -> bool:
+    return entry["record"]["kind"] == REFIT_KIND
+
+
 def _stamp(value) -> float | None:
     from nagasim.live import stamp
 
@@ -581,22 +683,25 @@ class Advisor:
     *asked* is `load`'s answer; *sink* an `outbox.open_sink` of the caller's own flag, or
     None: recommendations are then shown and nothing is written outside *out_dir* (D227).
     *lifetime* is a record's, in seconds. With no *out_dir* nothing is kept, and so
-    nothing is delivered: a delivered record must reproduce (D303)."""
+    nothing is delivered: a delivered record must reproduce (D303). *asked* None: no
+    candidates, a ledger for refit proposals only (`propose_refit`, D740). *setpoints* is
+    the caller's setpoints file, loaded, that `load` checked a `setpoint` candidate with."""
 
     def __init__(self, asked: dict, *, model, horizon: float, name: str = "", mapping=None,
                  lifetime: float = 3600.0, out_dir=None, sink=None, wall=time.time,
-                 monotonic=time.monotonic):
+                 monotonic=time.monotonic, setpoints=None):
         from nagasim import state
 
+        asked = asked or {"kpi": None, "better": None, "actions": []}
         self.kpi, self.better = asked["kpi"], asked["better"]
         self.actions = [dict(a) for a in asked["actions"]][:LIMITS["candidates"]]
         self.model_hash, self.name = state.model_hash(model), str(name)[:200]
         self.horizon, self.lifetime = float(horizon), float(lifetime)
         self.mapping = identity(mapping)
         self.out_dir = None if out_dir is None else Path(out_dir)
-        self.sink = sink
+        self.sink, self.setpoints = sink, setpoints
         self._wall, self._monotonic = wall, monotonic
-        counted = _COUNTED.match(self.kpi)
+        counted = _COUNTED.match(self.kpi or "")
         self.series = counted.group(1) if counted else None     # what a plant can count
         self._set: dict | None = None       # the latest set, as the result shows it
         self._entries: list = []            # the ledger, oldest first
@@ -691,6 +796,8 @@ class Advisor:
                 twin.write_text(path, text)
             wanted = []
             for entry in reversed(self._entries):
+                if _refit(entry):           # it names no kept state
+                    continue
                 digest = entry["record"]["state"]["hash"]
                 if digest not in wanted and len(wanted) < LIMITS["states"] - 1:
                     wanted.append(digest)
@@ -707,10 +814,49 @@ class Advisor:
         return True
 
     # ------------------------------------------------------------ one forecast
+    @property
+    def recommends(self) -> bool:
+        """Whether there are candidates to compare: a ledger for refits only has none."""
+        return bool(self.actions)
+
     def _standing(self) -> list:
         return [{"id": e["record"]["id"], "action": e["record"]["action"],
                  "since": e["reply"]["read"]}
-                for e in self._entries if e.get("stands")][-LIMITS["shown"]:]
+                for e in self._entries if e.get("stands") and not _refit(e)][-LIMITS["shown"]:]
+
+    # ------------------------------------------------------------ refits (D740, D741)
+    def propose_refit(self, fields: dict, made: float) -> str | None:
+        """A refit proposal made from *fields* (`refit.Refitter.step`) at *made*, kept and
+        delivered like a recommendation; its id, or None when it is no record."""
+        record = {"format": FORMAT, "kind": REFIT_KIND, "created": iso(made),
+                  "expires": iso(made + self.lifetime),
+                  "model": {"name": self.name, "hash": self.model_hash},
+                  "engine": nagasim_version(), **fields}
+        record["id"] = refit_id(self.model_hash, record["base"], record["overrides"],
+                                record["series"], record["window"]["state"], record["seed"])
+        if not check_refit(record):
+            return None
+        if self._entry(record["id"]) is None:
+            self._entries = (self._entries + [{
+                "record": record, "status": "proposed", "attempts": 0, "kept": True,
+                "counts": [], "standing": []}])[-LIMITS["entries"]:]
+            self._unsaved = True
+        return record["id"]
+
+    def adopted(self) -> dict | None:
+        """The refit a person's reply adopted and nothing ended: the layer the twin applies
+        (D741), with who and when. None for none."""
+        for entry in reversed(self._entries):
+            if entry.get("stands") and _refit(entry):
+                reply = entry["reply"]
+                return {"id": entry["record"]["id"], "overrides": entry["record"]["overrides"],
+                        "series": entry["record"]["series"], "by": reply["by"],
+                        "at": reply["at"], "read": reply["read"]}
+        return None
+
+    def status_of(self, record_id: str) -> str | None:
+        entry = self._entry(record_id)
+        return None if entry is None else entry["status"]
 
     def apply(self, model) -> tuple:
         """(the started *model* with the actions that stand applied, those actions): what
@@ -718,7 +864,7 @@ class Advisor:
         stand = []
         for standing in self._standing():
             try:
-                model = applied(model, standing["action"])
+                model = applied(model, standing["action"], self.setpoints)
             except Exception as exc:        # the model's own refusal: the class only
                 self._entry(standing["id"])["stands"], self._unsaved = False, True
                 self._warn(f"the action taken on '{standing['action']['target'][:80]}' no "
@@ -738,7 +884,7 @@ class Advisor:
         rows, reason = effects(
             model, actions, kpi=self.kpi, better=self.better, horizon=pending["horizon"],
             replications=pending["replications"], seed=pending["seed"], workers=workers,
-            should_stop=should_stop, runner=runner, baseline=baseline)
+            should_stop=should_stop, runner=runner, baseline=baseline, setpoints=self.setpoints)
         if rows is None:
             return None
         ids = {canonical_json(s["action"]): s["id"] for s in standing}
@@ -887,11 +1033,16 @@ class Advisor:
         entry["reply"] = {"decision": kind, "at": at, "by": reply["by"], "note": reply["note"],
                           "read": iso(present)}
         entry["status"] = kind
-        if kind == "taken":
+        if kind == "taken" and _refit(entry):
+            for other in self._entries:     # one layer at a time: the later replaces it
+                if other.get("stands") and _refit(other):
+                    other["stands"] = False
+            entry["stands"] = True
+        elif kind == "taken":
             action = entry["record"]["action"]
             for other in self._entries:     # a later action on a target replaces the earlier
-                if other.get("stands") and all(other["record"]["action"][k] == action[k]
-                                               for k in ("verb", "target")):
+                if other.get("stands") and not _refit(other) and all(
+                        other["record"]["action"][k] == action[k] for k in ("verb", "target")):
                     other["stands"] = False
             entry["stands"] = True
             entry["effect"] = self._effect(entry["record"], seen)
@@ -1013,7 +1164,7 @@ class Advisor:
                 "ended": [{"id": e["record"]["id"], "action": e["record"]["action"],
                            "since": e["reply"]["read"], "ended": e["ended"].get("read")}
                           for e in self._entries
-                          if "ended" in e and "reply" in e][-LIMITS["shown"]:],
+                          if "ended" in e and "reply" in e and not _refit(e)][-LIMITS["shown"]:],
                 "effects": [{"id": e["record"]["id"], "action": e["record"]["action"],
                              "q05": e["record"]["expected"]["q05"],
                              "q95": e["record"]["expected"]["q95"],
@@ -1027,7 +1178,9 @@ class Advisor:
 
 def _sound(entry) -> bool:
     """Whether a ledger entry read back is one the advisor can walk."""
-    return (isinstance(entry, dict) and check(entry.get("record"))
+    return (isinstance(entry, dict)
+            and (check(entry.get("record")) or (check_refit(entry.get("record"))
+                                                 and "effect" not in entry))
             and entry.get("status") in STATUSES and _count(entry.get("attempts"))
             and isinstance(entry.get("kept"), bool)
             and isinstance(entry.get("counts"), list) and len(entry["counts"]) <= 1000
@@ -1068,7 +1221,7 @@ def nagasim_version() -> str:
 
 
 # ---------------------------------------------------------------- reproduction (D303)
-def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
+def reproduce(directory, model, *, ids=None, workers=1, setpoints=None) -> tuple:
     """(lines to print, how many of them are differences): every recommendation stored in
     the twin's *directory* whose state document is still kept, computed again from that
     state, its seed and the model *model*, and set beside what was stored. Row 7.15's exit
@@ -1076,14 +1229,16 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
 
     The same engine on the same numbers gives the same replications: a number differs
     when it is not equal to nine digits. A record of another engine version is still
-    compared, and the version is said."""
+    compared, and the version is said. A `setpoint` needs the *setpoints* file it was
+    proposed with."""
     from nagasim import state, twin
     from nagasim.score import _same
 
     directory = Path(directory)
     doc = twin._read(directory / LEDGER_FILE, LEDGER_KIND, LIMITS["ledger_bytes"])
     found = doc.get("entries") if doc else None
-    entries = [e for e in found if _sound(e)] if isinstance(found, list) else []
+    # Recommendations only: a refit's proof is its scores, kept in its record.
+    entries = [e for e in found if _sound(e) and not _refit(e)] if isinstance(found, list) else []
     if ids:
         entries = [e for e in entries
                    if any(isinstance(i, str) and i and e["record"]["id"].startswith(i) for i in ids)]
@@ -1096,12 +1251,20 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
         differences += 1
         lines.append("DIFFERENT " + text)
 
-    # One baseline a set: the records of one state, seed and standing actions.
+    # A recommendation made while an adopted refit stood names the layered model (D741):
+    # it is computed again with that refit's overrides, found by the model it names.
+    from nagasim import refit
+
+    plain = state.model_hash(model)
+    layers = {refit.identity(plain, e["record"]): e["record"]["overrides"]
+              for e in found if _sound(e) and _refit(e)}
+    # One baseline a set: the records of one model, state, seed and standing actions.
     for entry in entries:
         record = entry["record"]
-        key = canonical_json([record["state"]["hash"], record["seed"], record["replications"],
-                          record["horizon"], record["expected"]["kpi"],
-                          record["expected"]["better"], entry["standing"], entry["counts"]])
+        key = canonical_json([record["model"]["hash"], record["state"]["hash"], record["seed"],
+                              record["replications"], record["horizon"],
+                              record["expected"]["kpi"], record["expected"]["better"],
+                              entry["standing"], entry["counts"]])
         groups.setdefault(key, []).append(entry)
     version = nagasim_version()
     for group in groups.values():
@@ -1140,12 +1303,15 @@ def reproduce(directory, model, *, ids=None, workers=1) -> tuple:
         if group[0]["counts"]:
             started["simulation"]["timeseries_counts"] = list(group[0]["counts"])
         try:
+            if first["model"]["hash"] in layers:
+                started = refit.apply(started, layers[first["model"]["hash"]])
             for action in group[0]["standing"]:
-                started = applied(started, action)
+                started = applied(started, action, setpoints)
             rows, _reason = effects(
                 started, [e["record"]["action"] for e in group], kpi=first["expected"]["kpi"],
                 better=first["expected"]["better"], horizon=first["horizon"],
-                replications=first["replications"], seed=first["seed"], workers=workers)
+                replications=first["replications"], seed=first["seed"], workers=workers,
+                setpoints=setpoints)
         except Exception as exc:
             differs(f"{said}: it could not be computed again ({type(exc).__name__})")
             continue

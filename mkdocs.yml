@@ -87,6 +87,7 @@ nav:
       - Semantic diff and merge: semantic-diff.md
       - Share a model (the browser viewer): sharing-a-model.md
       - Event log to model: event-log-to-model.md
+      - From a SimPy script: simpy-script.md
       - Use from Python: python-api.md
       - Use with an agent: mcp.md
       - Run a study with an assistant: ai-study.md

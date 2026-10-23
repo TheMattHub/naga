@@ -323,6 +323,13 @@ class Timeline:
         `variables` (D608) is the last value of each variable an asset's
         picture follows (flattening marks them `trace`).
 
+        `belts` (D734) is `{conveyor: [(entity id, position, stage), ...]}`, the parts
+        on each belt from the lead one back, `position` their distance from the
+        entry. It is derived from the `belt_stage` events alone: linear within a
+        stage, and never closer than one spacing behind the part ahead, which is
+        where a packed part stands. A part handed over by the belt's end stays on
+        it until it is off.
+
         `resources` (ROADMAP 2.3 part C) is built from `entity_seized`/
         `entity_released` (busy count) and `resource_state` events (capacity/
         down/up/blocked): "down" wins over everything, else "off" when the
@@ -387,6 +394,7 @@ class Timeline:
                             if t < t0 + span},
                 "levels": {name: self.level_at(name, t) for name in self._levels},
                 "variables": dict(self._variables),
+                "belts": self._belts_state(t),
                 "agents": self._agents_state(t),
                 "agent_links": sorted(self._agent_links),
                 "entity_agents": self._entity_agents_state()}
@@ -487,6 +495,9 @@ class Timeline:
         self._agent_links: set[tuple] = set()           # PHASE6 A5: (population, i, j)
         self._entity_agents: dict[int, tuple] = {}      # PHASE6 H4: entity id -> (population, index)
         self._variables: dict[str, float] = {}          # D608: a traced variable's last value
+        # D734: belt -> {entity: (started, x0, x1, duration, stage, spacing)}, boarding order
+        self._belts: dict[str, dict[int, tuple]] = {}
+        self._belt_of: dict[int, str] = {}
         # Live mode only (PHASE6 L1): running totals instead of the sorted
         # timestamp lists `created_until`/`disposed_until` bisect over, this
         # chunk's moves, and a raw-event counter for `__len__` -- see
@@ -541,6 +552,8 @@ class Timeline:
                 self._placed[e.block] = self._placed.get(e.block, 0) + 1
         elif e.kind == "variable_changed":
             self._variables[e.resource] = e.value
+        elif e.kind == "belt_stage":
+            self._belt_stage(e)
         elif e.kind == "tend":
             self._tends[(e.target, e.entity_id)] = (e.t, e.duration, e.resource, e.state)
         elif e.kind == "agent_moved":
@@ -582,6 +595,7 @@ class Timeline:
                 self._enter(e.entity_id, e.e_type, e.target)
         elif e.kind == "entity_disposed":
             self._leave(e.entity_id)
+            self._off_belt(e.entity_id)
             if self.live:
                 self._disposed_count += 1
             self._entity_agents.pop(e.entity_id, None)   # PHASE6 H4: token gone for good
@@ -589,6 +603,7 @@ class Timeline:
             # #319: gone into a batch (or a batch split up): out of its block,
             # without counting as a disposal.
             self._leave(e.entity_id)
+            self._off_belt(e.entity_id)
             self._entity_agents.pop(e.entity_id, None)
         elif e.kind == "entity_seized":
             if e.block:     # "" = seized by a block outside the level being viewed
@@ -649,6 +664,44 @@ class Timeline:
                 self._in_service_counts[block] = left
             else:
                 self._in_service_counts.pop(block, None)
+
+    def _belt_stage(self, e) -> None:
+        """D734: a part's new stage on a belt; "off" takes it off."""
+        if e.state == "off":
+            self._off_belt(e.entity_id)
+            return
+        if self._belt_of.get(e.entity_id, e.block) != e.block:
+            self._off_belt(e.entity_id)        # a trace that never said it left the last one
+        self._belt_of[e.entity_id] = e.block
+        self._belts.setdefault(e.block, {})[e.entity_id] = (e.t, e.x0, e.x1, e.duration,
+                                                           e.state, e.value)
+
+    def _off_belt(self, entity_id: int) -> None:
+        block = self._belt_of.pop(entity_id, None)
+        if block is None:
+            return
+        parts = self._belts[block]
+        parts.pop(entity_id, None)
+        if not parts:
+            del self._belts[block]
+
+    def _belts_state(self, t: float) -> dict:
+        """`{belt: [(id, position, stage)]}` at *t*, lead part first (D734). Each stage
+        is linear from x0 to x1; a part is never less than a spacing behind the one ahead
+        (a packed part's own stage puts it AT the place it waits for), nor behind the
+        entry. A minimum of non-decreasing positions, so a part only ever moves forward."""
+        out = {}
+        for block, parts in self._belts.items():
+            rows, ahead = [], None
+            for entity_id, (t0, x0, x1, span, stage, spacing) in parts.items():
+                x = x0 + (x1 - x0) * _progress(t, t0, span)
+                if ahead is not None:
+                    x = min(x, ahead - spacing)
+                x = max(x, 0.0)
+                rows.append((entity_id, x, stage))
+                ahead = x
+            out[block] = rows
+        return out
 
     def _mark_in_service(self, entity_id: int, block: str) -> None:
         if entity_id in self._in_service:

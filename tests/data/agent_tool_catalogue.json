@@ -149,7 +149,7 @@
     "read_only": false
   },
   {
-    "description": "Draft a model from an event log: what happened to each case, activity by activity.\n\nThe log needs a case id, an activity and a timestamp per row (CSV), or XES traces;\nlifecycle (schedule/start/complete) and resource columns make the draft better. The\ndraft has one CREATE fitted to the case arrivals, one block per activity with its fitted\ntime, routing from the observed transitions and resources from the resource column,\nand opens in the workspace under *name* like `open_model`. Nothing is written to disk.\n\nIt is a first draft: read `assumptions` (what the log could not tell, such as shifts or\nthe wait before a case's first activity) and `dropped` before trusting its numbers.\nThe file must be under the workspace root; a log over a size ceiling, or an XES file\nwith a DOCTYPE, is refused outright, and there is no argument that changes either.\n\nReturns {\"ok\", \"model\", \"routing\", \"activities\": [{\"block\", \"original\", \"count\",\n\"lifecycle\", \"distribution\", \"mean\", \"mean_wait\", \"resource\"}], \"resources\",\n\"activities_total\", \"resources_total\", \"assumptions\", \"dropped\", \"check\": {\"verdict\",\n\"findings\": [{\"level\", \"what\", \"means\"}]} (is the log good enough, and what each gap\nmeans for the draft), \"next_steps\": {\"check\", \"never\"} (what to check in the draft, and\nwhat this log cannot tell), \"observed\", \"errors\", \"warnings\", \"problems\"}, and with\n*idle_waits* \"idle_waits\": [{\"block\", \"delay\"}] (the activities that got a modelled wait).\nThe two lists are cut to fit one reply; the totals say how many there are, and the open\nmodel has them all.",
+    "description": "Draft a model from an event log: what happened to each case, activity by activity.\n\nThe log needs a case id, an activity and a timestamp per row (CSV), or XES traces;\nlifecycle (schedule/start/complete) and resource columns make the draft better. The\ndraft has one CREATE fitted to the case arrivals, one block per activity with its fitted\ntime, routing from the observed transitions and resources from the resource column,\nand opens in the workspace under *name* like `open_model`. Nothing is written to disk.\n\nIt is a first draft: read `assumptions` (what the log could not tell, such as shifts or\nthe wait before a case's first activity) and `dropped` before trusting its numbers.\nThe file must be under the workspace root; a log over a size ceiling, or an XES file\nwith a DOCTYPE, is refused outright, and there is no argument that changes either.\n\nReturns {\"ok\", \"model\", \"routing\", \"activities\": [{\"block\", \"original\", \"count\",\n\"lifecycle\", \"distribution\", \"mean\", \"mean_wait\", \"resource\"}], \"resources\",\n\"activities_total\", \"resources_total\", \"assumptions\", \"dropped\", \"check\": {\"verdict\",\n\"findings\": [{\"level\", \"what\", \"means\"}]} (is the log good enough, and what each gap\nmeans for the draft), \"next_steps\": {\"check\", \"never\"} (what to check in the draft, and\nwhat this log cannot tell), \"path_checks\": {\"rules\", \"left_out\", \"from\"} (route rules from\nthe log written into the draft's path_checks: `naga check` runs them on one seed, and a\nfailed one is a route the log kept that the draft breaks), \"observed\", \"errors\",\n\"warnings\", \"problems\"}, and with\n*idle_waits* \"idle_waits\": [{\"block\", \"delay\"}] (the activities that got a modelled wait).\nThe two lists are cut to fit one reply; the totals say how many there are, and the open\nmodel has them all.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -250,7 +250,7 @@
     "read_only": true
   },
   {
-    "description": "A compact picture of a model: its blocks with their key parameters, its\nlinks in branch order, its resources, and how many problems it has.\n\nThis is the tool to call before editing an existing model, and after a\nbatch of edits to check the shape is what you intended. It is deliberately\nmuch smaller than `get_model_json`; reach for that only when you need every\nfield.\n\nReturns {\"model\", \"blocks\", \"links\", \"resources\", \"resource_sets\",\n\"variables\", \"tables\", \"timeseries_inputs\", \"levels\", \"flows\", \"auxiliaries\",\n\"delays\", \"schedules\",\n\"failures\", \"scenarios\", \"simulation\",\n\"errors\", \"warnings\"}. Each link is \"source -> target\"; the ORDER of a block's\noutgoing links is its branch order (branch 0 first).",
+    "description": "A compact picture of a model: its blocks with their key parameters, its\nlinks in branch order, its resources, and how many problems it has.\n\nThis is the tool to call before editing an existing model, and after a\nbatch of edits to check the shape is what you intended. It is deliberately\nmuch smaller than `get_model_json`; reach for that only when you need every\nfield.\n\nReturns {\"model\", \"blocks\", \"links\", \"resources\", \"resource_sets\",\n\"variables\", \"tables\", \"timeseries_inputs\", \"levels\", \"flows\", \"auxiliaries\",\n\"delays\", \"schedules\",\n\"failures\", \"scenarios\", \"simulation\",\n\"errors\", \"warnings\", \"next_options\"}. Each link is \"source -> target\"; the ORDER of a block's\noutgoing links is its branch order (branch 0 first). \"next_options\" is what could be done\nnext, at most 3, ranked, each {\"kind\", \"title\", \"why\", \"tool\", \"arguments\", \"cost\"} (plus\n\"needs\": arguments still to fill in), from the last run's law warnings and what this session\nhas run: offer them, never run one unasked.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -1584,7 +1584,7 @@
     "read_only": false
   },
   {
-    "description": "Search model parameters for the best value of one KPI within a\nreplication budget, then confirm the winner statistically.\n\nEvery factor is an override path plus a range, exactly like a scenario\noverride but varying. The budget is a HARD cap on replications, so start\nsmall (a few hundred) and raise it if `converged` is false. Constraints are\njudged on confidence intervals, so a point may come back \"unknown\" rather\nthan feasible or infeasible. The best `confirm_top` points go through a\nranking-and-selection (KN) step; `confirmed` says whether the winner holds.\n`method=\"optuna-nsga2\"` with `objectives` returns the non-dominated set\nunder `pareto` instead of `confirmed`.\n\nReturns {\"model\", \"best\", \"best_mean\", \"converged\", \"budget_used\",\n\"feasible\", \"history\": [{\"point\", \"mean\", \"feasibility\"}] (last 20),\n\"confirmed\": {\"best\", \"confidence\", \"guaranteed\", \"candidates\"} or null,\n\"pareto\": [{\"point\", \"objectives\"}] (nsga2 only), \"sampler\"}.",
+    "description": "Search model parameters for the best value of one KPI within a\nreplication budget, then confirm the winner statistically.\n\nEvery factor is an override path plus a range, exactly like a scenario\noverride but varying. The budget is a HARD cap on replications, so start\nsmall (a few hundred) and raise it if `converged` is false. Constraints are\njudged on confidence intervals, so a point may come back \"unknown\" rather\nthan feasible or infeasible. The best `confirm_top` points go through a\nranking-and-selection (KN) step; `confirmed` says whether the winner holds.\n`method=\"optuna-nsga2\"` with `objectives` returns the non-dominated set\nunder `pareto` instead of `confirmed`.\n\nReturns {\"model\", \"best\", \"best_mean\", \"converged\", \"budget_used\",\n\"feasible\", \"history\": [{\"point\", \"mean\", \"feasibility\"}] (last 20),\n\"confirmed\": {\"best\", \"confidence\", \"guaranteed\", \"candidates\"} or null,\n\"pareto\": [{\"point\", \"objectives\"}] (nsga2 only), \"sampler\", \"laws\": {\"passed\",\n\"partial\", \"replications\", \"seed\", \"note\"}}: the law checks of the best point, from an\nextra batch of `replications_per_point` replications on the search's own seeds (not in\n`budget_used`). A law warning annotates the winner (censored, over-utilised, biased by the\nempty start); it never changes `best` or `confirmed`, which are about means. Say the\nwarning beside the answer.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -1737,10 +1737,15 @@
     "read_only": false
   },
   {
-    "description": "Tune model parameters until the model reproduces measured KPIs.\n\nGive what the real system did (`targets`) and which parameters may move\n(`factors`, the same shape `optimize` takes). The objective is the weighted\nsum of squared RELATIVE errors, so KPIs on different scales count equally.\nA target with a `tolerance` gets a pass/fail verdict; read the per-target\nconfidence interval too -- a pass whose interval is far wider than the\ntolerance has not really been demonstrated.\n\nReturns {\"model\", \"best\", \"objective\", \"passed\", \"budget_used\", \"converged\",\n\"overrides\", \"targets\": [{\"kpi\", \"observed\", \"simulated\", \"lb\", \"ub\",\n\"error\", \"tolerance\", \"pass\"}]}.",
+    "description": "Tune model parameters until the model reproduces measured KPIs.\n\nGive what the real system did (`targets`) and which parameters may move\n(`factors`, the same shape `optimize` takes). The objective is the weighted\nsum of squared RELATIVE errors, so KPIs on different scales count equally.\nA target with a `tolerance` gets a pass/fail verdict; read the per-target\nconfidence interval too -- a pass whose interval is far wider than the\ntolerance has not really been demonstrated.\n\n`method=\"abc\"` draws budget - replications_per_point prior samples over the\nfactors' boxes, one replication each, and keeps the nearest `accept` share\nby the same objective. Say the tolerance and the accepted count with the\nranges: they describe single runs near the data, not a mean.\n\nReturns {\"model\", \"best\", \"objective\", \"passed\", \"budget_used\", \"converged\",\n\"overrides\", \"targets\": [{\"kpi\", \"observed\", \"simulated\", \"lb\", \"ub\",\n\"error\", \"tolerance\", \"pass\"}]}; with abc also \"method\", \"samples\",\n\"accepted\", \"abc_tolerance\", \"posterior\": [{\"factor\", \"median\", \"p5\",\n\"p95\"}] and \"notes\". \"laws\" are the best point's law checks, as `optimize` gives them (an\nextra batch of `replications_per_point`, not in `budget_used`): a warning annotates the\nfit, it never changes it.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "accept": {
+          "default": 0.05,
+          "description": "abc only: share of prior samples accepted (default 0.05, at least 20).",
+          "type": "number"
+        },
         "apply": {
           "default": false,
           "description": "Store the fitted values as a \"Calibrated\" scenario on the model.",
@@ -1761,6 +1766,11 @@
             "number",
             "null"
           ]
+        },
+        "method": {
+          "default": "optimize",
+          "description": "\"optimize\" (default): search for the best point. \"abc\": rejection ABC as well, a posterior range per factor.",
+          "type": "string"
         },
         "model": {
           "description": "Workspace name of the model to calibrate.",
@@ -1792,7 +1802,7 @@
     "read_only": false
   },
   {
-    "description": "Forecast a short horizon from the model's CURRENT state, with\nuncertainty bands and event probabilities.\n\nStarts from the model's data bindings and initial state, runs a terminating\nhorizon with no warm-up, and answers \"where is this heading\". The band is\nthe empirical 5-95% range across replications -- where a single future run\nis likely to land -- NOT a confidence interval of the mean, which is the\nnarrower `lb`/`ub` pair beside it.\n\nAn event's `kpi` may be any run KPI or a time-series peak,\n`timeseries/<series>/max`, which is how you ask \"was the queue EVER above\n8\" rather than \"was it on average\".\n\nReturns {\"model\", \"horizon\", \"replications\", \"kpis\": [{\"kpi\", \"mean\", \"lb\",\n\"ub\", \"q05\", \"q95\", \"min\", \"max\"}], \"events\": [{\"event\", \"kpi\", \"condition\",\n\"probability\", \"wilson_lb\", \"wilson_ub\"}], \"series\": [names]}.",
+    "description": "Forecast a short horizon from the model's CURRENT state, with\nuncertainty bands and event probabilities.\n\nStarts from the model's data bindings and initial state, runs a terminating\nhorizon with no warm-up, and answers \"where is this heading\". The band is\nthe empirical 5-95% range across replications -- where a single future run\nis likely to land -- NOT a confidence interval of the mean, which is the\nnarrower `lb`/`ub` pair beside it.\n\nAn event's `kpi` may be any run KPI or a time-series peak,\n`timeseries/<series>/max`, which is how you ask \"was the queue EVER above\n8\" rather than \"was it on average\".\n\nReturns {\"model\", \"horizon\", \"replications\", \"kpis\": [{\"kpi\", \"mean\", \"lb\",\n\"ub\", \"q05\", \"q95\", \"min\", \"max\"}], \"events\": [{\"event\", \"kpi\", \"condition\",\n\"probability\", \"wilson_lb\", \"wilson_ub\"}], \"series\": [names], \"laws\": {\"passed\",\n\"partial\", \"replications\": 0, \"seed\", \"note\"}}: the law checks of the forecast's own runs\n(no extra run); a warning says why a KPI cannot be read at face value.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -1896,6 +1906,79 @@
     "read_only": true
   },
   {
+    "description": "How much of each KPI's spread comes from the data its inputs were fitted to.\n\nEach input's data is resampled with replacement and refitted in the family of its\nbest fit (an arrival schedule's timestamps are resampled by whole cycles), and the\nmodel runs once for the fit to all the data and once per resample, all on the same\nreplication seeds, so resamples differ only in their inputs. Nothing is saved to the\nmodel. The runs are (resamples + 1) x replications, at most 2000.\n\nPer KPI: \"run_ci\", the 95% interval over the replications; \"input_interval\", the\ninterval with the inputs' uncertainty too (it always holds run_ci; a KPI the inputs\ndo not move keeps zero width); \"input_share\", the inputs' part of the variance of the\nKPI's mean, the inputs' part being the variance of the resample means on common\nrandom numbers (more replications shrink the rest, only more data shrinks it). The\nintervals rest on \"resamples_used\" resamples, said in \"notes\"; a resample that could\nnot be refitted is counted in \"failed\" and left out.\n\nWith overrides (a change, as what_if takes it) each row is the change's difference\ninstead (\"measure\": \"difference\"): the baseline and the changed model run per resample on\nthe same seeds, so the interval is the difference's, not a level's. A later what_if on this\nmodel quotes the latest answer in its \"input_note\".\n\nReturns {\"model\", \"completed\", \"measure\", \"overrides\", \"resamples\", \"resamples_used\", \"failed\", \"replications\",\n\"runs\", \"seed\", \"inputs\": [{\"path\", \"kind\", \"n\", \"point\"}], \"kpis\": [{\"kpi\", \"mean\",\n\"run_ci\", \"input_interval\", \"input_share\", \"resamples_used\"}], \"notes\"}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "description": "One entry per input whose data is uncertain: {\"path\": a block's \"...params.distribution\" field, or \"schedules.<name>.points\" of an arrival schedule; \"data\": a CSV/TSV/XLSX file under the workspace root; \"column\": optional, the first numeric column by default; for a schedule also \"bin_width\" and \"cycle\" in base time units}.",
+          "type": "array"
+        },
+        "kpis": {
+          "description": "KPI keys to report; default every system/ KPI.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "overrides": {
+          "description": "Optional change, as in what_if: every KPI row is then the changed model minus the baseline, both run per resample on the same seeds (twice the runs); nothing is saved to the model.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "replications": {
+          "default": 5,
+          "description": "Replications per resample (2 to 50); every resample runs on the same seeds.",
+          "type": "integer"
+        },
+        "resamples": {
+          "default": 20,
+          "description": "Bootstrap resamples of the data (2 to 200).",
+          "type": "integer"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed of the runs; the resampling has its own stream from it.",
+          "type": "integer"
+        },
+        "warmup": {
+          "description": "Warm-up time.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "inputs"
+      ],
+      "type": "object"
+    },
+    "name": "input_uncertainty",
+    "read_only": false
+  },
+  {
     "description": "Write the last run's results to a file: an Excel workbook, CSV folder,\na self-contained HTML report, or JSON.\n\nUse `html` for the client-facing deliverable (it embeds the charts) and\n`json` when another program will read the numbers. Run the model first.\n\nReturns {\"ok\", \"format\", \"path\"}.",
     "input_schema": {
       "additionalProperties": false,
@@ -1972,10 +2055,15 @@
     "read_only": false
   },
   {
-    "description": "Run a design of experiments and fit a response-surface surrogate over it\n-- a fast stand-in for the simulation, for optimisation or\nwhat-if exploration without spending more replications.\n\nEvery factor is swept per `design` and simulated `replications` times; the\nsurrogate is then fit on the point means, weighted by their precision.\nCheck `lack_of_fit` before trusting `suggest`-style extrapolation: it means\nthe model misses structure the replication noise does not explain, so\n\"quadratic\" or \"auto\" (or \"gp\"/\"forest\" with scikit-learn) may do better\nthan \"linear\".\n\nReturns {\"model\", \"response\", \"kind\", \"n_points\", \"r2\", \"r2_adj\",\n\"cv_rmse\", \"lack_of_fit\", \"coefficients\": [{\"term\", \"coefficient\",\n\"std_error\"}] (empty for gp/forest)}.",
+    "description": "Run a design of experiments and fit a response-surface surrogate over it\n-- a fast stand-in for the simulation, for optimisation or\nwhat-if exploration without spending more replications.\n\nEvery factor is swept per `design` and simulated `replications` times; the\nsurrogate is then fit on the point means, weighted by their precision.\nCheck `lack_of_fit` before trusting `suggest`-style extrapolation: it means\nthe model misses structure the replication noise does not explain, so\n\"quadratic\" or \"auto\" (or \"gp\"/\"forest\" with scikit-learn) may do better\nthan \"linear\".\n\nWith `confirm_top` N, the surface's best N distinct points are simulated and compared\nby KN (as `optimize` confirms its winner): the surface proposes, the runs decide. It is\nrefused when `lack_of_fit` is true (\"confirm_refused\" says why), since that surface's\nranking is not worth runs. The confirmed winner carries its \"laws\", as optimize's does.\n\nReturns {\"model\", \"response\", \"kind\", \"n_points\", \"r2\", \"r2_adj\",\n\"cv_rmse\", \"lack_of_fit\", \"coefficients\": [{\"term\", \"coefficient\",\n\"std_error\"}] (empty for gp/forest)}; with confirm_top also \"confirmed\": {\"best\",\n\"overrides\", \"confidence\", \"guaranteed\", \"candidates\": [{\"point\", \"mean\", \"lb\", \"ub\",\n\"n\"}], \"runs\"} or null, \"confirm_refused\" (text or null) and \"laws\".",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "confirm_top": {
+          "default": 0,
+          "description": "Confirm the surface's best N suggestions by simulation (KN ranking and selection on common random numbers); 0 (default) fits only. Refused when the surface shows lack of fit.",
+          "type": "integer"
+        },
         "design": {
           "default": "full:2",
           "description": "full[:levels] (default full:2), lhs:<n>, or oat -- same grammar as `naga doe --design`.",
@@ -1985,13 +2073,18 @@
           "description": "[{\"path\": \"resources.Server.capacity\", \"kind\": \"integer\", \"low\": 1, \"high\": 5}], same shape as the `optimize` tool's factors.",
           "type": "array"
         },
+        "goal": {
+          "default": "min",
+          "description": "\"min\" or \"max\": the direction the suggestions and their confirmation look for (with confirm_top).",
+          "type": "string"
+        },
         "kind": {
           "default": "quadratic",
           "description": "\"linear\", \"quadratic\", \"auto\" (picks by CV RMSE), or -- only if scikit-learn is installed -- \"gp\"/\"forest\".",
           "type": "string"
         },
         "max_seconds": {
-          "description": "Wall-clock budget for the whole design.",
+          "description": "Wall-clock budget for the whole design and its confirmation.",
           "type": [
             "number",
             "null"
@@ -2362,7 +2455,7 @@
     "read_only": false
   },
   {
-    "description": "Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the\nlast version's KPIs with how confident they are (precision of the confidence intervals) and\nthe next step. Call it first on an existing study folder.\n\nReturns {\"study\", \"question\", \"mode\", \"size\", \"sufficiency\", \"why_not_sufficient\", \"goals\",\n\"checklist\", \"last_version\", \"versions\", \"effort\", \"next_step\"}, plus \"plan_card\" until the\nplan is approved and \"validate\" (a ready-to-send study_validate call) while no validation has\npassed and the last version is a queue with a textbook answer.",
+    "description": "Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the\nlast version's KPIs with how confident they are (precision of the confidence intervals) and\nthe next step. Call it first on an existing study folder.\n\nReturns {\"study\", \"question\", \"mode\", \"size\", \"sufficiency\", \"why_not_sufficient\", \"goals\",\n\"checklist\", \"last_version\", \"versions\", \"effort\", \"next_step\", \"options\"}, plus \"plan_card\"\nuntil the plan is approved and \"validate\" (a ready-to-send study_validate call) while no\nvalidation has passed and the last version is a queue with a textbook answer.\n\n\"options\" (in every answer that has next_step) is what next, at most 3, ranked fix > missing >\nimprove > extend from the study's recorded numbers: {\"kind\", \"title\", \"why\" (with its number),\n\"tool\", \"arguments\", \"cost\", \"source\"}, plus \"needs\" for arguments still to fill in (such as the\nwhole layout). Offer them to the person; none runs unasked.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2392,7 +2485,7 @@
           ]
         },
         "changes": {
-          "description": "Optional if the keys are sent as parameters. Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input}; a validation entry is {level: data|known_answer|expert, passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, \"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.",
+          "description": "Optional if the keys are sent as parameters. Keys to set: question, decision, mode, size, plan_approved, goals, target, assumptions, sources, validation, experiments, skipped. A list key is replaced whole. goals and assumptions entries need a string id; a goal is {id, text, kpi, low, high}; an assumption is {id, text, value, source}; a target component is {name, purpose, blocks: [block names]}; a source is {id, text, input, path?} (path: the model field the data feeds, e.g. blocks.<name>.params.distribution); a validation entry is {level: data|known_answer|expert, passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, \"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.",
           "type": [
             "object",
             "null"
@@ -2985,7 +3078,7 @@
     "read_only": true
   },
   {
-    "description": "Ask \"what if I change this?\" without editing the model: run the baseline\nand the changed model on paired seeds, doubling replications (start, 2x, ...\nup to cap) until every KPI's difference interval excludes zero or the cap.\n\nVerdict per KPI is \"better\"/\"worse\" (when goals names the direction),\n\"higher\"/\"lower\" (otherwise) or \"not distinguishable\" (the cap was reached\nwith the interval still across zero: the change is too small to see at this\neffort, not proven absent), or \"unchanged\" (identical in every paired\nreplication, such as a count the change does not touch).\n\nReturns {\"model\", \"n\", \"met\", \"completed\", \"kpis\": [{\"kpi\", \"baseline\",\n\"scenario\", \"diff\", \"diff_lb\", \"diff_ub\", \"verdict\"}]}.",
+    "description": "Ask \"what if I change this?\" without editing the model: run the baseline\nand the changed model on paired seeds, doubling replications (start, 2x, ...\nup to cap) until every KPI's difference interval excludes zero or the cap.\n\nVerdict per KPI is \"better\"/\"worse\" (when goals names the direction),\n\"higher\"/\"lower\" (otherwise) or \"not distinguishable\" (the cap was reached\nwith the interval still across zero: the change is too small to see at this\neffort, not proven absent), or \"unchanged\" (identical in every paired\nreplication, such as a count the change does not touch).\n\nWhen input_uncertainty has run on this model, \"input_note\" quotes it beside the\nverdict, never merged with it: the change's difference measured for these same\noverrides, else the level's spread, labelled \"level\" (a level's spread is not the\ndifference's). No note when nothing was measured.\n\nReturns {\"model\", \"n\", \"met\", \"completed\", \"kpis\": [{\"kpi\", \"baseline\",\n\"scenario\", \"diff\", \"diff_lb\", \"diff_ub\", \"verdict\"}], \"input_note\" (when recorded):\n{\"measure\", \"resamples\", \"replications\", \"kpis\", \"text\"}}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -3055,6 +3148,79 @@
       "type": "object"
     },
     "name": "what_if",
+    "read_only": false
+  },
+  {
+    "description": "What makes up a KPI, in one call: its contributors, ranked, each a measured number\nwith its 95% interval, plus one suggested what_if test of the top one (never run).\n\nTime KPIs (and WIP, by Little's law): per resource, the wait a completed entity spent\nthere, and the rest as \"processing and moving\"; \"coverage\" says how much of the KPI the\nwaits add up to. Throughput: per resource its bottleneck share (when the model collects\nit, outputs.bottleneck) or else its usage, with down and blocked beside. A resource KPI:\nthat resource's usage, down, blocked and wait. With overrides: the same rows for the\nbaseline and the changed model, ranked by the paired difference, each with a verdict\n(\"higher\", \"lower\", \"not distinguishable\", \"unchanged\").\n\nA ranking says how the KPI is made up, not why: every row is labelled \"measured\", and\nthe suggested test is how to check the top row -- pass its \"arguments\" to what_if to\nspend that run.\n\n\"factors\" is a hypothesis to search, not a finding: the capacities of the top resource\nrows that hold 95% of the rows (integer, from one below to two above the current value),\nthen the sensitivity paths that change the answer, at most 4; pass it to optimize as\n`factors` unchanged. \"factors_from\" says where each one came from.\n\nReturns {\"model\", \"kpi\", \"mode\": \"level\" | \"change\", \"n\", \"completed\", \"unit\", \"value\",\n\"rows\": [{\"row\", \"label\", \"resource\", ...}], \"coverage\" (time and WIP), \"summary\",\n\"notes\", \"suggested_test\": {\"label\", \"tool\", \"arguments\", \"text\"} or null,\n\"factors\": [{\"path\", \"kind\", \"low\", \"high\"}], \"factors_from\": [text]}.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cap": {
+          "default": 50,
+          "description": "Most replications to try with overrides.",
+          "type": "integer"
+        },
+        "kpi": {
+          "description": "The KPI to explain: \"system/Avg Throughput Time\", \"system/Avg WIP\", \"system/Avg WIP (Little)\", \"system/Throughput (per time unit)\" or one resource's \"resource/<name>/<metric>\".",
+          "type": "string"
+        },
+        "max_seconds": {
+          "description": "Wall-clock budget.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        },
+        "overrides": {
+          "description": "Optional scenario-style overrides, as in what_if: with them the rows compare the baseline and the changed model on paired seeds; nothing is saved to the model.",
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "replications": {
+          "default": 5,
+          "description": "Replications of the one batch; with overrides the first count, doubled until the KPI's difference is clear.",
+          "type": "integer"
+        },
+        "run_length": {
+          "description": "Run length in base time units.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seed": {
+          "default": 0,
+          "description": "Base seed.",
+          "type": "integer"
+        },
+        "sensitivity": {
+          "description": "Optional study_sensitivity answer (or its sensitivity.json): its changes_answer paths join the factors for optimize.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "warmup": {
+          "description": "Warm-up time.",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "kpi"
+      ],
+      "type": "object"
+    },
+    "name": "explain_kpi",
     "read_only": false
   }
 ]

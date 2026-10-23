@@ -247,24 +247,25 @@ def test_the_published_model_schema_is_the_generators_at_its_id(tmp_path):
 
 # -- snippets: code and output shown on a pages are the generator's -------------
 
-@pytest.mark.docs
-@pytest.mark.slow
-def test_the_snippet_outputs_are_the_generators(tmp_path):
-    """Only a snippet that imports salabim or mesa is skipped where that library is absent
-    (both are pinned in requirements-docs.txt, not in requirements-dev.txt)."""
+def test_every_snippet_has_an_output_file_and_no_other_does():
     folder = DOCS / "snippets"
     assert sorted(p.name for p in folder.glob("*-output.txt")) == sorted(
         gen.output_name(p) for p in folder.glob("*.py"))
-    stale = []
-    for source in sorted(folder.glob("*.py")):
-        library = next((name for name in ("salabim", "mesa") if f"import {name}" in
-                        source.read_text(encoding="utf-8")), None)
-        if library and importlib.util.find_spec(library) is None:
-            continue
-        gen.gen_snippets_one(source, tmp_path)
-        if not _same(tmp_path / gen.output_name(source), folder / gen.output_name(source)):
-            stale.append(source.name)
-    assert not stale, f"{stale} {REGENERATE}"
+
+
+@pytest.mark.parametrize("source", sorted((DOCS / "snippets").glob("*.py")), ids=lambda p: p.name)
+@pytest.mark.docs
+@pytest.mark.slow
+def test_the_snippet_outputs_are_the_generators(source, tmp_path):
+    """One test a snippet, so the long ones run side by side under xdist. Only a snippet that
+    imports salabim or mesa is skipped where that library is absent (both are pinned in
+    requirements-docs.txt, not in requirements-dev.txt)."""
+    for library in ("salabim", "mesa"):
+        if f"import {library}" in source.read_text(encoding="utf-8"):
+            pytest.importorskip(library)
+    gen.gen_snippets_one(source, tmp_path)
+    name = gen.output_name(source)
+    assert _same(tmp_path / name, DOCS / "snippets" / name), f"{source.name} {REGENERATE}"
 
 
 def _numbers(name: str) -> list[float]:

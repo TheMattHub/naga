@@ -8,6 +8,7 @@ through the block package). core/ never imports a top-level module, so their
 file-format names (`DATA_SOURCE_KINDS`, ...) are declared here."""
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import replace
 
@@ -197,6 +198,83 @@ def _validate_assertions(layout: dict, problems: list) -> None:
                                     f"{at}/confidence"))
 
 
+_PATH_RULES = ("order", "never", "at_most", "always")
+
+
+def _validate_path_checks(layout: dict, problems: list) -> None:
+    """The "path_checks" section (D722): unique non-empty names, a known rule, the block
+    names the rule needs and, for "at_most", a whole "count" >= 0. Block names are checked
+    against the model's blocks unless it holds a submodel instance: then a rule names a
+    flattened `instance/block`, judged when the flattened model is validated."""
+    entries = layout.get("path_checks")
+    if entries is None:
+        return
+    if not isinstance(entries, list):
+        problems.append(problem("E_PATH_CHECK_RULE", "path_checks must be a list of rules",
+                                "/path_checks",
+                                hint='[{"name": "no_scrap", "rule": "never", "block": "Scrap"}]'))
+        return
+    blocks = [b for b in layout.get("blocks") or [] if isinstance(b, dict)]
+    names = {b.get("name") for b in blocks}
+    nested = any(str(b.get("type", "")).upper() == "SUBMODEL" for b in blocks)
+    seen: set[str] = set()
+    for index, entry in enumerate(entries):
+        at = f"/path_checks/{index}"
+        if not isinstance(entry, dict):
+            problems.append(problem("E_PATH_CHECK_RULE", "a path check must be an object",
+                                    at, hint=f"one of the rules {', '.join(_PATH_RULES)}"))
+            continue
+        name = entry.get("name", "")
+        if not isinstance(name, str) or not name:
+            problems.append(problem("E_PATH_CHECK_NAME", "path check: name must not be empty",
+                                    f"{at}/name", hint="give every path check a unique name"))
+            continue
+        if name in seen:
+            problems.append(problem("E_DUPLICATE_PATH_CHECK", f"duplicate path check name: "
+                                    f"{name}", f"{at}/name",
+                                    hint="rename one of the two path checks"))
+        seen.add(name)
+        rule = entry.get("rule")
+        if rule not in _PATH_RULES:
+            problems.append(problem("E_PATH_CHECK_RULE", f"path check '{name}': unknown rule "
+                                    f"{rule!r}", f"{at}/rule",
+                                    hint=f"use one of {', '.join(_PATH_RULES)}"))
+            continue
+        e_type = entry.get("e_type")
+        if e_type is not None and not isinstance(e_type, str):
+            problems.append(problem("E_PATH_CHECK_RULE", f"path check '{name}': \"e_type\" "
+                                    "must be an entity type name", f"{at}/e_type"))
+        keys = ("first", "then") if rule == "order" else ("block",)
+        # A key the rule does not read is most likely a typo ("block" on an order rule).
+        stray = sorted(set(entry) - {"name", "description", "rule", "e_type", *keys}
+                       - ({"count"} if rule == "at_most" else set()))
+        if stray:
+            problems.append(problem("E_PATH_CHECK_RULE", f"path check '{name}': a {rule} rule "
+                                    f"does not take {', '.join(map(repr, stray))[:120]}",
+                                    f"{at}/{stray[0]}",
+                                    hint=f"a {rule} rule takes {', '.join(keys)}"
+                                         + (" and count" if rule == "at_most" else "")))
+        for key in keys:
+            block = entry.get(key)
+            if not isinstance(block, str) or not block:
+                problems.append(problem("E_PATH_CHECK_BLOCK", f"path check '{name}': "
+                                        f"\"{key}\" must name a block", f"{at}/{key}"))
+            elif not nested and block not in names:
+                problems.append(problem(
+                    "E_PATH_CHECK_BLOCK", f"path check '{name}': no block named "
+                    f"'{block[:80]}'", f"{at}/{key}",
+                    hint=f"its blocks: {', '.join(sorted(map(str, names))[:20]) or '(none)'}"))
+        if rule == "order" and entry.get("first") and entry.get("first") == entry.get("then"):
+            problems.append(problem("E_PATH_CHECK_BLOCK", f"path check '{name}': \"first\" "
+                                    "and \"then\" name the same block", f"{at}/then"))
+        if rule == "at_most":
+            count = entry.get("count")
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                problems.append(problem("E_PATH_CHECK_COUNT", f"path check '{name}': "
+                                        "\"count\" must be a whole number >= 0", f"{at}/count",
+                                        hint="the most visits an entity may make to the block"))
+
+
 _DASHBOARD_KINDS = ("kpi", "gauge", "line", "bar")
 _DASHBOARD_SERIES_LIMITS = {"line": 4, "bar": 8}
 _SAMPLER_CALLS = frozenset(functions_with("sampler"))
@@ -275,7 +353,7 @@ def _validate_dashboard_gauge(widget: dict, problems: list, name: str, at: str) 
 DASHBOARD_LIMITS = {"widgets": 64, "controls": 64, "inputs": 32, "results": 32, "pages": 8,
                     "hidden": 200, "items": 40, "choices": 20, "names": 64, "label": 80,
                     "text": 200, "steps": 10_000, "magnitude": 1e12, "replications": 1000,
-                    "grid": 100}
+                    "grid": 100, "note": 60}
 DASHBOARD_INPUT_KINDS = ("number", "switch", "choice")
 DASHBOARD_VIEW_MODES = ("schematic", "layout", "3d")
 # activity -> the item kinds a page of it may hold. "live" (2026-10-16) reads what a
@@ -293,8 +371,8 @@ DASHBOARD_ACTIVITIES = {
 # The run settings a viewer's results are labelled with (D248): never inputs.
 _DASHBOARD_FORBIDDEN_INPUTS = ("simulation.seed", "simulation.replications")
 _DASHBOARD_ENTRY_KEYS = {
-    "inputs": {"path", "label", "kind", "min", "max", "step", "unit", "choices"},
-    "results": {"kpi", "label", "unit", "better"},
+    "inputs": {"path", "label", "kind", "min", "max", "step", "unit", "choices", "note"},
+    "results": {"kpi", "label", "unit", "better", "target"},
     "pages": {"name", "activity", "items"},
     "items": {"kind", "ref", "row", "col", "span", "mode", "names"},
 }
@@ -331,9 +409,12 @@ def validate_dashboard_definition(layout: dict) -> list:
     if not isinstance(section, dict):
         bad("must be an object")
         return problems
-    known = {"widgets", "controls", "inputs", "results", "limits", "pages", "hidden"}
+    known = {"widgets", "controls", "inputs", "results", "limits", "pages", "hidden", "question"}
     if set(section) - known:
         bad(f"unknown key {sorted(set(section) - known)[0][:40]!r}")
+    if "question" in section and not _text(section["question"]):
+        bad(f"\"question\" must be printable text of at most {DASHBOARD_LIMITS['text']} characters",
+            "/question")
     lists: dict[str, list] = {}
     for key in ("widgets", "controls", "inputs", "results", "pages", "hidden"):
         entries, limit = section.get(key, []), DASHBOARD_LIMITS[key]
@@ -369,6 +450,9 @@ def validate_dashboard_definition(layout: dict) -> list:
         at = f"/inputs/{index}"
         labels(entry, at)
         kind = entry.get("kind")
+        if "note" in entry and not _text(entry["note"], "note"):
+            bad(f"\"note\" must be printable text of at most {DASHBOARD_LIMITS['note']} characters",
+                f"{at}/note")
         if entry.get("path") in _DASHBOARD_FORBIDDEN_INPUTS:
             bad("the seed and the replications cannot be inputs", f"{at}/path")
         if kind == "number":
@@ -395,6 +479,8 @@ def validate_dashboard_definition(layout: dict) -> list:
         labels(entry, f"/results/{index}")
         if entry.get("better", "lower") not in ("lower", "higher"):
             bad("\"better\" is \"lower\" or \"higher\"", f"/results/{index}/better")
+        if "target" in entry and not _number(entry["target"]):
+            bad("\"target\" must be a finite number", f"/results/{index}/target")
 
     limits = section.get("limits", {})
     if not isinstance(limits, dict) or set(limits) - {"replications", "max_replications"}:
@@ -818,6 +904,50 @@ def _validate_data(layout: dict, problems: list) -> None:
     _validate_data_bindings(layout, _validate_data_sources(layout, problems), problems)
 
 
+def _check_belt_stops(problems: list, name: str, params: dict, at: str, resources: set) -> None:
+    """A CONVEYOR's `stops` (D732): each a point strictly on the belt with a time of 0 or
+    more (an expression is checked with the others) and, when named, a declared resource.
+    A belt whose length comes from the network has its `at` checked when it is built."""
+    stops = params.get("stops") or []
+    if not isinstance(stops, list):
+        stops = [stops]
+    length = params.get("length", 0.0)
+    known = isinstance(length, (int, float)) and not isinstance(length, bool) and length > 0
+
+    def number(value) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) \
+            and math.isfinite(value)
+
+    for index, stop in enumerate(stops):
+        where = f"{at}/stops/{index}"
+        if not isinstance(stop, dict) or set(stop) - {"at", "time", "resource"}:
+            problems.append(problem(
+                "E_CONVEYOR_STOP", f"{name}: stop {index} must be {{\"at\", \"time\", "
+                f"\"resource\"?}}", where, block=name,
+                hint="at is a distance from the belt's entry; time a number or an expression"))
+            continue
+        place = stop.get("at")
+        if not number(place) or place <= 0 or (known and place >= length):
+            problems.append(problem(
+                "E_CONVEYOR_STOP", f"{name}: stop {index} at {place!r} is not on the belt",
+                f"{where}/at", block=name,
+                hint="at is between 0 and the belt's length, both excluded: the end is the "
+                     "belt's own stop (exit_resource)"))
+        time = stop.get("time", 0)
+        if not (isinstance(time, str) and time.strip()) and not (number(time) and time >= 0):
+            problems.append(problem(
+                "E_CONVEYOR_STOP", f"{name}: stop {index} time must be a number >= 0 or an "
+                f"expression", f"{where}/time", block=name,
+                hint="the time the part halts there, in the model's time unit"))
+        resource = stop.get("resource", "")
+        if resource and (not isinstance(resource, str) or resource.strip() not in resources):
+            problems.append(problem(
+                "E_CONVEYOR_STOP", f"{name}: stop {index}: unknown resource {resource!r}",
+                f"{where}/resource", block=name,
+                hint="the stop seizes an ordinary resource or set; declare it under "
+                     "\"resources\""))
+
+
 def _validate_travel(layout: dict, problems: list, nodes: set, fleets: set) -> None:
     """The travel blocks (PHASE4 E1): TRANSPORT, CONVEYOR and a ROUTE in
     network mode, plus the connectivity every declared trip needs.
@@ -924,6 +1054,7 @@ def _validate_travel(layout: dict, problems: list, nodes: set, fleets: set) -> N
                     "E_CONVEYOR_PARAM", f"{name}: unknown resource '{exit_resource}'",
                     f"{at}/exit_resource", block=name,
                     hint="the end stop is an ordinary resource; declare it under \"resources\""))
+            _check_belt_stops(problems, name, params, at, resources)
 
     if not gantry_fleets:
         for entry in layout.get("sequences", []) or []:

@@ -228,7 +228,8 @@ def test_chat_turn_runs_study_tools(room):
     assert out["events"][1]["text"] == "Reading where the study stands" and "study" not in out["events"][1]
     call = room.provider.calls[0]
     assert "study_step" in call["tools"] and "study_page_html" not in call["tools"]
-    assert all(n.startswith("study_") for n in call["tools"]) and room.sid in call["system"]
+    assert all(n.startswith("study_") or n in studyroom.MODEL_TOOLS for n in call["tools"])
+    assert set(studyroom.MODEL_TOOLS) <= set(call["tools"]) and room.sid in call["system"]
     log = json.loads((room.root / room.sid / "study.json").read_text(encoding="utf-8"))["usage"]
     assert log[-1]["tool"] == "study_start"     # status is read-only; it ran on this study, not "some/other"
     assert not (room.root / "some").exists()

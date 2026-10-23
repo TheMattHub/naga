@@ -36,13 +36,13 @@ from nagasim.core.utils import is_finite_number
 from nagasim.live import stamp
 
 __all__ = ["KEPT", "PER_STEP", "PAGE_FILE", "APPROXIMATE", "IN_DISTRIBUTION", "COUNTED", "SCORED",
-           "SAME_SEED", "NO_SCORE", "MISSED", "ADVICE", "ASSUMES", "NO_ADVICE", "Log", "Page", "summary",
+           "SAME_SEED", "NO_SCORE", "MISSED", "ALERTED", "REFITTED", "ADVICE", "ASSUMES", "NO_ADVICE", "Log", "Page", "summary",
            "state", "action_text"]
 
 KEPT = 200              # event lines of one twin
 PER_STEP = 100          # of one step; the rest is counted
 PAGE_FILE = "monitor.html"
-_KPIS, _POINTS, _TEXT, _SCORES, _ADVICE = 12, 60, 400, 300, 20
+_KPIS, _POINTS, _TEXT, _SCORES, _ADVICE, _ALERTS = 12, 60, 400, 300, 20, 100
 
 APPROXIMATE = ("Counts are approximate: this plant names no items, so the numbers of items in "
                "a block are estimates, and item events in the list are inferred from those "
@@ -59,6 +59,16 @@ SCORED = ("How the stored forecasts held, by how far ahead they looked. Coverage
           "distribution, not a test.")
 MISSED = ("Missed: the twin was not there in time, or a source was not ready. Not compared: a "
           "counter lost count, or was first seen, after the forecast started.")
+ALERTED = ("An alert is a sustained shift of what the plant shows against the forecasts: a "
+           "two-sided CUSUM of each series' residuals, scaled by their 5% to 95% bands, over its "
+           "limit h (the twin's --alert-k and --alert-h). Readings of overlapping forecasts share "
+           "one plant history and are not independent, so h sets no false-alarm rate: an alert "
+           "is a signal to look into, not a diagnosis.")
+REFITTED = ("A refit calibrates the factors of the twin's --refit file on the readings under a "
+            "held alert, then runs the candidate beside each later forecast on the same seed. It "
+            "is proposed only when its pinball loss on those later readings is below the current "
+            "model's, and adopted only by a person's \"taken\" reply; \"ended\" reverts it. The "
+            "model file is never written.")
 SAME_SEED = ("{n} of these forecasts ran on the seed of the one before (a twin stepped by a "
              "scheduler): they are not independent samples.")
 NO_SCORE = {"not_observed": "No score: this twin's source gives no observed series to set a "
@@ -170,6 +180,69 @@ def _scores(doc: dict, unit: str) -> dict:
                       _number(r.get("missed")), _number(r.get("lost")), share(r),
                       _number(r.get("bias")), _number(r.get("error")), _number(r.get("pinball"))]
                      for r in rows[:_SCORES]]}
+
+
+def _alerts(doc: dict) -> dict | None:
+    """The alerts of a result as lines: one an alerting side, then the basis and ALERTED.
+    None for a result written before alerts existed."""
+    if "alerts" not in doc:
+        return None
+    said = _table(doc.get("alerts"))
+    basis, rows = _table(said.get("basis")), _rows(said.get("rows"))
+    lines = [f"Alert: {_text(row.get('message'))}." for row in rows[:_ALERTS]] or [
+        f"No alert: no compared series shows a sustained shift (k = {_g(said.get('k'))}, "
+        f"h = {_g(said.get('h'))})."]
+    if len(rows) > _ALERTS:
+        lines.append(f"+{len(rows) - _ALERTS} more alerts not listed.")
+    lines += [f"{_g(basis.get('points'))} readings summed since {_text(basis.get('since')) or '?'}, "
+              f"{_g(basis.get('raised'))} alerts raised"
+              + (f", {_g(basis.get('flat'))} readings with no band or a band with no width "
+                 "not summed" if _number(basis.get("flat")) else "") + ".", ALERTED]
+    return {"lines": lines, "alerting": min(len(rows), _ALERTS)}
+
+
+def _overrides(value) -> str:
+    return ", ".join(f"{_text(o.get('path'))[:120]} = {_g(o.get('value'))}" for o in _rows(value)[:8])
+
+
+def _refit(doc: dict) -> list | None:
+    """The refit of a result as lines (D740, D741): what it is doing, the candidate, the
+    layer adopted, then REFITTED. None for a twin given no --refit file."""
+    if "refit" not in doc:
+        return None
+    said = _table(doc.get("refit"))
+    status, series = _text(said.get("status")), _text(said.get("series"))
+    window, scores = _table(said.get("window")), _table(said.get("scores"))
+    message = _text(said.get("message"))
+    if status == "proposed":
+        outbox = _text(said.get("outbox"))
+        lines = [f"Proposed: {message}" + (f" (outbox: {outbox}, id {_text(said.get('id'))[:12]})"
+                                          if outbox else "")]
+    elif status == "not_better":
+        lines = [f"Not proposed: {message}."]
+    elif status == "waiting":
+        lines = [f"Waiting: {_g(window.get('readings'))} of {_g(window.get('needed'))} readings of "
+                 f"{series} under its alert since t = {_g(said.get('since'))} (a shorter window "
+                 f"chases noise)."]
+    elif status == "calibrating":
+        factors = said.get("factors") if isinstance(said.get("factors"), list) else []
+        lines = [f"Calibrating {len(factors)} factors on {_g(window.get('readings'))} readings of {series}."]
+    elif status == "scoring":
+        lines = [f"Scoring the candidate against the current model: {_g(scores.get('readings'))} "
+                 f"of {_g(said.get('readings'))} readings of {series}."]
+    elif status in ("failed", "unscored", "dropped"):
+        lines = [f"No refit: it {'was ' if status == 'dropped' else ''}{status.replace('_', ' ')} "
+                 f"({_text(said.get('reason')) or 'no reason was given'})."]
+    else:
+        lines = ["No refit: no alert on a refitted series has held long enough."]
+    if said.get("candidate") and status in ("scoring", "proposed", "not_better"):
+        lines.append(f"Candidate: {_overrides(said.get('candidate'))}.")
+    adopted = _table(said.get("adopted"))
+    lines.append(f"Adopted: refit {_text(adopted.get('id'))[:12]} since "
+                 f"{_text(adopted.get('since')) or '?'}: {_overrides(adopted.get('overrides'))}; "
+                 f"the score and the alerts started again then." if adopted
+                 else "No refit is adopted: the forecasts are of the model file.")
+    return lines + [REFITTED]
 
 
 def action_text(value) -> str:
@@ -339,6 +412,8 @@ def summary(doc) -> dict:
                      if isinstance(said, dict)],
         "counted": COUNTED,
         "scores": _scores(doc, unit),
+        "alerts": _alerts(doc),
+        "refit": _refit(doc),
         "recommend": _recommend(doc),
         "forecast": {
             "status": status, "lines": lines,
@@ -458,13 +533,13 @@ class Log:
 # Constant markup and script around the player's own (D199): nothing below is built from a
 # result. The script is given the player's `el`, `add` and `clear`, so every text it shows
 # goes through `textContent`.
-_STYLE = """<style>
-.stale { color: #c92a2a; font-weight: bold; }
-.warn { color: #9c4a00; }
+# Its own rules, after the player's in the one style sheet the policy pins.
+_STYLE = """
+.stale { color: var(--down); font-weight: bold; }
+.warn { color: var(--down); }
 table.text th, table.text td { text-align: left; }
 section { margin-top: 8px; font-size: 13px; }
 #view { height: 45vh; }
-</style>
 """
 _TOP = """<p id="m-head"></p>
 <p id="m-state" class="note"></p>
@@ -477,6 +552,8 @@ _BOTTOM = """<section><h2>Sources</h2><table id="m-sources" class="text"></table
 <section id="m-advice-box"><h2>Recommendations</h2><div id="m-advice"></div>
 <details><summary>Basis, explanation and the candidates compared</summary>
 <div id="m-advice-fold"></div><table id="m-advice-rows" class="text"></table></details></section>
+<section id="m-alerts-box"><h2>Alerts</h2><div id="m-alerts"></div></section>
+<section id="m-refit-box"><h2>Refit</h2><div id="m-refit"></div></section>
 <section><h2>Scores</h2><div id="m-scores"></div><table id="m-score-rows"></table></section>
 <section id="m-counted-box"><h2>Counted by the plant</h2><p class="note" id="m-counted"></p>
 <table id="m-counters"></table></section>
@@ -499,8 +576,9 @@ function monitor(m, el, add, clear) {
       cells(item).forEach(function (cell) { add("td", line, cell); });
     });
   }
-  ["bar", "all-h", "allnote", "all", "seed"].forEach(function (id) { el(id).style.display = "none"; });
+  ["bar", "seek", "all-box", "seed", "lanes-box"].forEach(function (id) { el(id).style.display = "none"; });
   el("run-h").textContent = "The plant now";
+  el("run-box").open = true;           /* the present is what this page is for */
   el("m-head").textContent = s.head;
   /* The sentence is the summary's; only the age is worked out here, by this clock. */
   if (old) { el("m-state").className = "stale"; }
@@ -547,6 +625,20 @@ function monitor(m, el, add, clear) {
       });
     }
   }
+  el("m-alerts-box").style.display = s.alerts ? "" : "none";
+  clear(el("m-alerts"));
+  if (s.alerts) {
+    s.alerts.lines.forEach(function (line, index) {
+      add("p", el("m-alerts"), line, index < s.alerts.alerting ? "warn" : "note");
+    });
+  }
+  el("m-refit-box").style.display = s.refit ? "" : "none";
+  clear(el("m-refit"));
+  if (s.refit) {
+    s.refit.forEach(function (line, index) {
+      add("p", el("m-refit"), line, index === s.refit.length - 1 ? "note" : "");
+    });
+  }
   clear(el("m-scores"));
   s.scores.lines.forEach(function (line, index) { add("p", el("m-scores"), line, index ? "note" : ""); });
   if (s.scores.more) { add("p", el("m-scores"), "+" + s.scores.more + " more rows not listed", "note"); }
@@ -588,10 +680,10 @@ class Page:
         self.path = Path(path)
         self._refused: str | None = None        # what the last write was refused with
         self.refresh = 30 if not every else int(min(max(every / 2, 1), 30))
-        self.shell = player._shell(
-            _SCRIPT + player._SCRIPT,
-            head=f'<meta http-equiv="refresh" content="{self.refresh}">\n' + _STYLE,
-            top=_TOP, bottom=_BOTTOM)
+        self.shell = player.page_shell(
+            _SCRIPT + player.SCRIPT,
+            head=f'<meta http-equiv="refresh" content="{self.refresh}">\n',
+            top=_TOP, bottom=_BOTTOM, rules=player.CSS + _STYLE)
         # The model's own name, or a constant: never a result's (it may be a file's, D282).
         info = layout.get("info") if isinstance(layout, dict) else None
         self._title = title or str((info or {}).get("name") or "") or "Plant monitor"
@@ -616,7 +708,7 @@ class Page:
                             "more": self._log.more,
                             "tail": f"Twin started {shown['started']}. This page reloads every "
                                     f"{self.refresh} s."}}
-        return self.shell.replace("__TAPE__", player._embed(data))
+        return self.shell.replace("__TAPE__", player.embed(data))
 
     def write(self, doc, events) -> str | None:
         """Replace the page with this step's, or leave it as it was. Returns what to say

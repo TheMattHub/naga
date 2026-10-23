@@ -267,6 +267,45 @@ def test_the_modbus_reader_against_a_pymodbus_server_process(plant_net):
         proc.wait(10)
 
 
+def test_plc_write_against_a_pymodbus_server_process(plant_net, tmp_path):
+    """D743: an approved setpoint written to pymodbus's server (FC 6 and 16) and read back."""
+    pytest.importorskip("pymodbus", reason="the optional extra nagasim[modbus] is not installed")
+    from test_plcwrite import proposal, queued
+    from nagasim import plcwrite
+
+    port = _free_port()
+    proc = subprocess.Popen([sys.executable, str(HERE / "modbus_server.py"), str(port)],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        assert proc.stdout.readline().startswith("READY")
+        connections = tmp_path / "plc.json"
+        connections.write_text(json.dumps({"format": 1, "connections": {"softplc": {
+            "kind": "modbus", "url": f"modbus://127.0.0.1:{port}", "use": "write", "registers": {
+                "temp": {"address": 0, "kind": "holding", "type": "uint16", "scale": 0.1},
+                "flow": {"address": 10, "kind": "holding", "type": "float32"}}}}}), encoding="utf-8")
+        setpoints = tmp_path / "s.json"
+        tag = {"path": "blocks.p.params.dist_params.value", "max_step": 1, "min_interval": "1s"}
+        setpoints.write_text(json.dumps({"format": 1, "kind": "naga-setpoints", "connection": "softplc",
+                                         "tags": {"oven.temp": {**tag, "register": "temp", "min": 20, "max": 25},
+                                                  "oven.flow": {**tag, "register": "flow", "min": 0, "max": 5}}}),
+                             encoding="utf-8")
+        queued(tmp_path, proposal(22.0, tag="oven.temp"), proposal(2.25, tag="oven.flow"))
+        said = []
+        for _ in range(50):                     # the server needs a moment after READY
+            said.clear()
+            code = plcwrite.run(f"file:{tmp_path / 'q.jsonl'}", setpoints, connections,
+                                tmp_path / "audit.jsonl", write=True, out=said.append)
+            if not any("E_DATA_READ" in line for line in said):
+                break
+            time.sleep(0.1)
+        assert code == 0, said
+        assert said[-2].endswith("written (was 21.5, read back 22)")
+        assert said[-1].endswith("written (was 1.5, read back 2.25)")
+    finally:
+        proc.kill()
+        proc.wait(10)
+
+
 # ---------------------------------------------------------------- the MQTT outbox sink
 def test_the_outbox_publishes_to_mosquitto_and_reads_replies_from_its_clients(mosquitto):
     record_id = "d" * 64

@@ -250,6 +250,8 @@ def test_tool_names_are_snake_case_verbs():
              "find",            # find_tool
              "what",            # what_if: the question the spec names
              "check",           # check_draft
+             "explain",         # explain_kpi
+             "input",           # input_uncertainty: the name the spec uses
              "view")            # view_model, view_3d: a picture of the model
     for name in T.TOOLS:
         assert name == name.lower() and " " not in name

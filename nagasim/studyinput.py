@@ -19,7 +19,7 @@ _FIELDS = {
     "goals": ("id", "text", "kpi", "low", "high", "precision", "share_above"),
     "target": ("name", "purpose", "blocks"),
     "assumptions": ("id", "text", "value", "source", "check"),
-    "sources": ("id", "text", "input"),
+    "sources": ("id", "text", "input", "path"),     # path: the model field the data feeds
     "validation": ("level", "passed", "text"),
     "experiments": ("id", "text", "result"),
 }
