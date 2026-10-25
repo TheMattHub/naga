@@ -68,3 +68,14 @@ def test_fmt_refuses_a_file_that_is_not_a_model(tmp_path):
     with pytest.raises(ValueError, match="not a model file"):
         modelfmt.main([str(path)])
     assert path.read_text(encoding="utf-8") == text
+
+
+def test_counter_offsets_follow_label_offset_in_a_blocks_key_order():
+    c, d = create("c"), dispose("d")
+    c["counter_offsets"] = {"out": [4, -6]}
+    c["label_offset"] = [1, 2]
+    out = json.loads(modelfmt.dumps(modelfmt.minimal(layout([c, d], chain(c, d)))))
+    keys = list(out["blocks"][0])
+    assert keys.index("label_offset") < keys.index("counter_offsets")
+    assert out["blocks"][0]["counter_offsets"] == {"out": [4, -6]}
+    assert "counter_offsets" in modelfmt.BLOCK_KEYS

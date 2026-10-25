@@ -67,7 +67,7 @@
       }
     },
     {
-      "name": "horizontal_transport_1",
+      "name": "transport",
       "type": "SUBMODEL",
       "description": "Horizontal transport",
       "position": [600.0, 100.0],
@@ -116,13 +116,13 @@
       "name": "to_a",
       "type": "TRANSPORT",
       "position": [750.0, 40.0],
-      "params": {"fleet": "horizontal_transport_1/CT Vehicles", "destination": "Yard A in"}
+      "params": {"fleet": "transport/CT Vehicles", "destination": "Yard A in"}
     },
     {
       "name": "to_b",
       "type": "TRANSPORT",
       "position": [750.0, 160.0],
-      "params": {"fleet": "horizontal_transport_1/CT Vehicles", "destination": "Yard B in"}
+      "params": {"fleet": "transport/CT Vehicles", "destination": "Yard B in"}
     },
     {"name": "split", "type": "DECIDE", "position": [600.0, 100.0], "params": {"probs": [0.5, 0.5]}},
     {
@@ -179,8 +179,8 @@
     {"source": "Yard B in", "target": "yard_block_2", "target_port": "in"},
     {"source": "yard_block_2", "target": "Yard out", "source_port": "out"},
     {"source": "Yard out", "target": "stacked"},
-    {"source": "horizontal_transport_1", "target": "done", "source_port": "done"},
-    {"source": "Yard out", "target": "horizontal_transport_1", "target_port": "in"},
+    {"source": "transport", "target": "done", "source_port": "done"},
+    {"source": "Yard out", "target": "transport", "target_port": "in"},
     {"source": "Quay load", "target": "quay_crane_1", "target_port": "load_in"},
     {"source": "quay_crane_1", "target": "loaded", "source_port": "load_out"}
   ],

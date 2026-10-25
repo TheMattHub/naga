@@ -628,3 +628,57 @@ def test_the_run_reality_checks_agent_tool(tmp_path):
     assert result["checks"] == [
         {"check": "shutdown", "passed": True, "violation_time": None, "snapshot": None, "note": ""},
     ]
+
+
+# ------------------------------------------------------- W_LONG_NAME (Phase 13 D)
+def _long_name_problems(doc):
+    return [p for p in validate_model_structured(doc) if p.code == "W_LONG_NAME"]
+
+
+def _line_with(name):
+    c, d = create(), dispose()
+    p = process(name)
+    return layout([c, p, d], chain(c, p, d), resources=[{"name": "Server", "capacity": 1}])
+
+
+def test_long_name_20_chars_is_silent_and_21_warns_with_its_path():
+    assert not _long_name_problems(_line_with("x" * 20))
+    found = _long_name_problems(_line_with("x" * 21))
+    assert len(found) == 1
+    assert found[0].severity == "warning"
+    assert found[0].block == "x" * 21 and found[0].path == "/blocks/1"
+    assert "21 characters" in found[0].message and found[0].hint
+
+
+def test_long_name_warns_for_a_block_nobody_links():
+    doc = _line_with("ok")
+    doc["blocks"].append(process("y" * 30, resource="Server"))
+    assert [p.block for p in _long_name_problems(doc)] == ["y" * 30]
+
+
+def test_long_name_in_a_submodel_warns_with_its_own_flattened_name():
+    def blk(name, type_name, **params):
+        return {"name": name, "description": "", "type": type_name, "position": [0, 0],
+                "params": params}
+    long = "a_rather_long_inner_block"
+    inner = {"info": {}, "parameters": [], "annotations": [],
+             "blocks": [blk("in", "SUB_ENTRY", port="in"),
+                        blk(long, "DELAY", distribution="Constant", dist_params={"value": 1.0}),
+                        blk("out", "SUB_EXIT", port="out")],
+             "links": [{"source": "in", "target": long}, {"source": long, "target": "out"}]}
+    c, d = create(), dispose()
+    cell = blk("cell", "SUBMODEL", definition="Cell", arguments={})
+    doc = layout([c, cell, d], chain(c, cell, d), submodels={"Cell": inner})
+    doc["schema_version"] = schema.CURRENT_VERSION
+    found = _long_name_problems(doc)
+    assert len(found) == 1 and found[0].block == "cell/" + long
+    assert found[0].path.startswith("/blocks/")
+
+
+def test_cli_validate_prints_the_long_name_warning(tmp_path, capsys):
+    from nagasim import cli
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps(_line_with("n" * 25)), encoding="utf-8")
+    cli.main(["validate", str(path)])
+    out = capsys.readouterr().out
+    assert "n" * 25 in out and "canvas wraps it past 20" in out

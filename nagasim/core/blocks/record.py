@@ -131,6 +131,6 @@ SPEC = BlockSpec(
                               "used by kind=cost only.", quantity="none"),
     ),
     factory=lambda env, block: Record(env, block),
-    family="stats",
+    family="stats", shape="record",
     transparent=True,
 )

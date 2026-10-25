@@ -717,3 +717,67 @@ def test_copy_paste_keeps_both_parallel_links():
     assert len(fragment["links"]) == 3
     new_names = clipboard.paste_fragment(doc, fragment)
     assert doc.link_count(new_names[1], new_names[2]) == 2
+
+
+# -- counter offsets (Phase 13 B1, D755) ------------------------------------
+
+def _counter_doc():
+    doc = ModelDocument()
+    return doc, doc.add_block("DECIDE", (0, 0))
+
+
+def test_set_counter_offsets_is_one_undo_step_and_none_clears_a_key():
+    doc, name = _counter_doc()
+    assert doc.blocks[name].counter_offsets is None
+    depth = len(doc._undo_stack)
+    doc.set_counter_offsets({name: {"out": (4, -6), "exit:1": (10, 2)}})
+    assert len(doc._undo_stack) == depth + 1
+    assert doc.blocks[name].counter_offsets == {"out": (4.0, -6.0), "exit:1": (10.0, 2.0)}
+    doc.set_counter_offsets({name: {"out": None}})
+    assert doc.blocks[name].counter_offsets == {"exit:1": (10.0, 2.0)}
+    doc.set_counter_offsets({name: {"exit:1": None}})
+    assert doc.blocks[name].counter_offsets is None       # empty collapses to absent
+    doc.undo()
+    assert doc.blocks[name].counter_offsets == {"exit:1": (10.0, 2.0)}
+    doc.undo()
+    doc.undo()
+    assert doc.blocks[name].counter_offsets is None
+    depth = len(doc._undo_stack)
+    doc.set_counter_offsets({name: {"out": None}, "ghost": {"out": (1, 1)}})
+    assert len(doc._undo_stack) == depth                  # a no-op pushes nothing
+
+
+def test_counter_offsets_round_trip_and_a_model_without_them_saves_unchanged(tmp_path):
+    doc, name = _counter_doc()
+    plain = tmp_path / "plain.json"
+    doc.save(plain)
+    assert "counter_offsets" not in plain.read_text()
+    doc.set_counter_offsets({name: {"entry:0": (-8, 5)}})
+    path = tmp_path / "counters.json"
+    doc.save(path)
+    assert json.loads(path.read_text())["blocks"][0]["counter_offsets"] == {"entry:0": [-8.0, 5.0]}
+    reloaded = ModelDocument.load(path)
+    assert reloaded.blocks[name].counter_offsets == {"entry:0": (-8.0, 5.0)}
+    reloaded.set_counter_offsets({name: {"entry:0": None}})
+    reloaded.save(path)
+    assert path.read_text() == plain.read_text()
+
+
+def test_copy_paste_carries_counter_offsets():
+    from nagasim.core import clipboard
+
+    doc, name = _counter_doc()
+    doc.set_counter_offsets({name: {"out": (3, 4)}})
+    new_names = clipboard.paste_fragment(doc, clipboard.copy_selection(doc, [name]))
+    assert doc.blocks[new_names[0]].counter_offsets == {"out": (3.0, 4.0)}
+
+
+def test_counter_offsets_through_a_submodel_definition_view():
+    doc = ModelDocument()
+    inner = doc.add_block("DELAY", (0, 0))
+    doc.create_submodel_from_selection([inner], "Cell")
+    view = doc.open_definition("Cell")
+    (member,) = view.blocks
+    view.set_counter_offsets({member: {"out": (1, 2)}})
+    assert view.blocks[member].counter_offsets == {"out": (1.0, 2.0)}
+    assert inner not in doc.blocks                        # the instance was left alone

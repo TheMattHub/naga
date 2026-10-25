@@ -30,7 +30,7 @@ __all__ = ["minimal", "dumps", "render", "main", "BLOCK_KEYS", "WIDTH"]
 WIDTH = 100         # an array or object goes on one line when it fits in this many columns
 _SECTION_ORDER = {s.name: i for i, s in enumerate(sections.SECTIONS)}
 _BLOCK_ORDER = ("name", "type", "description", "position", "layout_position", "layout_rotation",
-                "label_offset", "params")
+                "label_offset", "counter_offsets", "params")
 # A block's own keys besides name, type and params (the builder takes them as keywords).
 BLOCK_KEYS = _BLOCK_ORDER[2:-1]
 _DEFINITION_ORDER = ("info", "parameters", "scoped", "extends", "remove", "blocks", "links",

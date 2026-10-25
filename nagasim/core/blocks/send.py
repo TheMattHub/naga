@@ -59,5 +59,5 @@ SPEC = BlockSpec(
                               "transition reads it as `payload`.", quantity="none"),
     ),
     factory=lambda env, block: Send(env, block),
-    family="control",
+    family="control", shape="send",
 )

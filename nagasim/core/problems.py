@@ -363,6 +363,7 @@ PROBLEM_CODES: dict[str, str] = {
     "E_DECIDE_QUEUE_EXPRS": "A Policy-mode DECIDE with fallback \"shortest\" needs one "
                             "queue_exprs entry per outgoing link.",
     "W_UNREACHABLE": "A block cannot be reached from any CREATE.",
+    "W_LONG_NAME": "A block name is over 20 characters; the canvas wraps it.",
     # -- resources, sets, entities ------------------------------------------
     "E_DUPLICATE_RESOURCE": "Two resources (or a resource and a set) share a name.",
     "E_RESOURCE_UNKNOWN": "A SEIZE/PROCESS/RELEASE block's resource_name names no declared "

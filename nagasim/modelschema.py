@@ -186,6 +186,12 @@ def _block_variant(type_name: str, spec) -> dict:
                                             ", in scene units from its default "
                                             "anchor, measured in the UNROTATED frame. Absent "
                                             "means the default position. Editor-only."},
+            "counter_offsets": {"type": "object",
+                                "additionalProperties": {"$ref": "#/$defs/point"},
+                                "description": "Where the block's counters were dragged to, keyed "
+                                               "`out`, `exit:<branch>` or `entry:<port>`, in scene "
+                                               "units from each counter's default place. Absent "
+                                               "means every counter is home. Editor-only."},
             "locals": _LOCALS,
             "params": {"type": "object", "properties": properties, "required": required,
                        "additionalProperties": False},

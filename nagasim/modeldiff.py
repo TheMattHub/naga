@@ -25,7 +25,7 @@ treatment by name, one level down (ARCHITECTURE, W7 plan Q1).
 Canvas-only fields -- geometry the editor writes for the user to look at, the
 engine never reads -- are reported as kind "moved" instead of "changed", and
 `naga diff` hides them unless asked with `--all`: `position`,
-`layout_position`, `layout_rotation`, `label_offset` (block/segment/node
+`layout_position`, `layout_rotation`, `label_offset`, `counter_offsets` (block/segment/node
 geometry, ARCHITECTURE 5.21/6.18/6.20) and `diagram` (an SD record's or an
 agent state's diagram position, ARCHITECTURE 5.25 -- an agent type's `states`
 are matched by name for this, `_NESTED_RECORDS`). Everything else -- including an
@@ -74,7 +74,8 @@ __all__ = ["Change", "Conflict", "diff", "merge", "textconv", "main", "merge_mai
 # Purely visual fields: absent means "wherever the engine put it" / "default
 # spot", the engine reads none of them, and their only effect is where
 # something is drawn.
-_CANVAS_FIELDS = {"position", "layout_position", "layout_rotation", "label_offset", "diagram"}
+_CANVAS_FIELDS = {"position", "layout_position", "layout_rotation", "label_offset", "counter_offsets",
+                  "diagram"}
 
 # Record lists one level inside a record, matched by identity like a section
 # (DEVLOG #219): an agent type's statechart states by name, so dragging a

@@ -134,7 +134,10 @@ def test_family_and_shape_are_derived_and_match_the_pre_b3_snapshot():
     expected_shapes = {"CREATE": "pill", "DISPOSE": "cap", "DECIDE": "diamond", "PROCESS": "double",
                         "MOTION": "motion",
                         "SUB_ENTRY": "pill", "SUB_EXIT": "cap", "SUBMODEL": "submodel",
-                        "STATION": "pill", "ROUTE": "diamond"}
+                        "STATION": "pill", "ROUTE": "diamond",
+                        # Phase 13 (D749): the four silhouettes of the new canvas look.
+                        "SEIZE": "seize", "RELEASE": "release", "SEND": "send",
+                        "RECORD": "record"}
     expected_type_names = {
         "CREATE", "DISPOSE", "ASSIGN", "DECIDE", "SEIZE", "PROCESS", "MOTION", "DELAY", "RELEASE",
         "BATCH", "MATCH", "SEPARATE", "DUPLICATE", "HOLD", "SIGNAL", "LOGIC", "RECORD",
@@ -192,7 +195,8 @@ def test_every_registered_spec_has_a_family_and_shape_known_to_the_ui():
     still expected to name a family, and whatever shape it names (or falls
     back to) must be one ui/style.block_path actually draws."""
     style = pytest.importorskip("product.ui.style")
-    known_shapes = {"rect", "pill", "cap", "diamond", "double", "submodel", "motion"}
+    known_shapes = {"rect", "pill", "cap", "diamond", "double", "submodel", "motion",
+                    "seize", "release", "send", "record"}
 
     for type_name, spec in BLOCK_REGISTRY.items():
         assert spec.family, f"{type_name}: BlockSpec has no family"

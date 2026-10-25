@@ -224,7 +224,7 @@ def field_rows(panel):
         # properties._add_row inserts a zero-width space after each "_" so a
         # long param name can wrap (item 5, U1.9); strip it back out here so
         # the label still reads as the plain param name it labels.
-        label = (label_item.widget().text().replace("​", "")
+        label = (label_item.widget().property("param")
                  if label_item is not None and label_item.widget() else None)
         rows.append((label, field_item.widget()))
     return rows
@@ -325,6 +325,8 @@ def qapp():
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
+    from product.ui import appfont
+    appfont.apply_app_font(app)   # the same start-up path as the real app (D783)
     app.setOrganizationName("NagaTests")
     # One QSettings store PER xdist worker: with a shared one, a theme test's
     # teardown on worker A removed the key worker B had just written.

@@ -9,7 +9,7 @@ from pathlib import Path
 from nagasim.core import sd, submodels
 from nagasim.core.orders import ORDERS_MODE
 from nagasim.core.problems import Problem, problem
-from nagasim.core.schema.graph import validate_graph_structured
+from nagasim.core.schema.graph import long_name_problem, validate_graph_structured
 from nagasim.core.schema.layout import validate_layout_structured
 from nagasim.core.schema.migrate import migrate
 from nagasim.core.schema.submodels import _library_clashes, validate_submodels_structured
@@ -57,7 +57,31 @@ def _prepare_structured(layout: dict) -> tuple[dict, list[Problem]]:
                          hint="fix the submodel section, then validate again")
             for found in exc.items]
     flat = sd.expand(flat)
-    return flat, problems + validate_layout_structured(flat) + validate_graph_structured(flat)
+    # The flattened model has no instance block, only `instance/inner` ones, so an instance's own
+    # name is checked here, on the top-level blocks as saved (#1025). The inner blocks keep their
+    # check in validate_graph_structured; the two never name the same block.
+    return flat, (problems + _long_instance_names(layout)
+                  + validate_layout_structured(flat) + validate_graph_structured(flat))
+
+
+def _long_instance_names(layout: dict) -> list[Problem]:
+    """W_LONG_NAME for each SUBMODEL instance name, top level and inside every definition
+    (#1038), once per name: a definition is checked once, however many instances it has."""
+    places = [("", layout.get("blocks", []))] + [
+        (f"/submodels/{name}", definition.get("blocks", []))
+        for name, definition in (layout.get("submodels") or {}).items()
+        if isinstance(definition, dict)]
+    found, seen = [], set()
+    for prefix, blocks in places:
+        for i, b in enumerate(blocks):
+            name = b.get("name", "")
+            if b.get("type", "").upper() != "SUBMODEL" or name in seen:
+                continue
+            seen.add(name)
+            p = long_name_problem(name, name, f"{prefix}/blocks/{i}")
+            if p:
+                found.append(p)
+    return found
 
 
 def validate_model_structured(layout: dict) -> list[Problem]:

@@ -31,11 +31,11 @@ def _run_overloaded(window, tmp_path):
 def test_law_warnings_show_after_a_run_and_clear_on_edit(window, tmp_path):
     _run_overloaded(window, tmp_path)
     texts = _texts(window)
-    assert any(t.startswith("warning: offered load") for t in texts)
+    assert any(t.startswith("offered load") for t in texts)      # the pill says "warning" (#1113)
     assert any("censoring" in t for t in texts)
     assert not window.problems.has_errors()
-    assert not any(t.startswith("warning: offered load: offered load") for t in texts)
-    assert window.problems_button.text() == f"{len(texts)} problems"      # the status bar says so
+    assert not any(t.startswith("offered load: offered load") for t in texts)
+    assert window.problems_button.accessibleName() == f"0 errors, {len(texts)} warning{'s' * (len(texts) != 1)}"  # the bar
     window.document.set_simulation(seed=7)
     assert not any("offered load" in t for t in _texts(window))
 

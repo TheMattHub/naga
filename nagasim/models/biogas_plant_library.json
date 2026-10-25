@@ -140,7 +140,7 @@
       }
     },
     {
-      "name": "gas_holder_with_flare_1",
+      "name": "gas_holder",
       "type": "SUBMODEL",
       "description": "Gas holder with flare",
       "position": [200.0, -300.0],

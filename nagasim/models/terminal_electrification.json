@@ -67,7 +67,7 @@
       }
     },
     {
-      "name": "horizontal_transport_1",
+      "name": "transport",
       "type": "SUBMODEL",
       "description": "Horizontal transport",
       "position": [600.0, 100.0],
@@ -119,13 +119,13 @@
       "name": "to_a",
       "type": "TRANSPORT",
       "position": [750.0, 40.0],
-      "params": {"fleet": "horizontal_transport_1/CT Vehicles", "destination": "Yard A in"}
+      "params": {"fleet": "transport/CT Vehicles", "destination": "Yard A in"}
     },
     {
       "name": "to_b",
       "type": "TRANSPORT",
       "position": [750.0, 160.0],
-      "params": {"fleet": "horizontal_transport_1/CT Vehicles", "destination": "Yard B in"}
+      "params": {"fleet": "transport/CT Vehicles", "destination": "Yard B in"}
     },
     {"name": "split", "type": "DECIDE", "position": [600.0, 100.0], "params": {"probs": [0.5, 0.5]}},
     {
@@ -212,8 +212,8 @@
     {"source": "Yard B in", "target": "yard_block_2", "target_port": "in"},
     {"source": "yard_block_2", "target": "Yard out", "source_port": "out"},
     {"source": "Yard out", "target": "stacked"},
-    {"source": "horizontal_transport_1", "target": "done", "source_port": "done"},
-    {"source": "Yard out", "target": "horizontal_transport_1", "target_port": "in"},
+    {"source": "transport", "target": "done", "source_port": "done"},
+    {"source": "Yard out", "target": "transport", "target_port": "in"},
     {"source": "Quay load", "target": "quay_crane_1", "target_port": "load_in"},
     {"source": "quay_crane_1", "target": "loaded", "source_port": "load_out"}
   ],
@@ -222,18 +222,15 @@
       "name": "Battery straddle carriers",
       "description": "Battery straddle carriers topping up whenever idle and a point is free.",
       "overrides": [
-        {"path": "blocks.horizontal_transport_1.params.arguments.fuel_kw", "value": 0.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.drive_kw", "value": 90.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.battery_kwh", "value": 300.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.cost_per_hour", "value": 90.0},
-        {
-          "path": "blocks.horizontal_transport_1.params.arguments.battery_strategy",
-          "value": "opportunity"
-        },
-        {"path": "blocks.horizontal_transport_1.params.arguments.opportunity_below", "value": 0.8},
-        {"path": "blocks.horizontal_transport_1.params.arguments.idle_share", "value": 0.05},
-        {"path": "blocks.horizontal_transport_1.params.arguments.vehicles", "value": 9},
-        {"path": "blocks.horizontal_transport_1.params.preset", "value": "Straddle carrier battery"},
+        {"path": "blocks.transport.params.arguments.fuel_kw", "value": 0.0},
+        {"path": "blocks.transport.params.arguments.drive_kw", "value": 90.0},
+        {"path": "blocks.transport.params.arguments.battery_kwh", "value": 300.0},
+        {"path": "blocks.transport.params.arguments.cost_per_hour", "value": 90.0},
+        {"path": "blocks.transport.params.arguments.battery_strategy", "value": "opportunity"},
+        {"path": "blocks.transport.params.arguments.opportunity_below", "value": 0.8},
+        {"path": "blocks.transport.params.arguments.idle_share", "value": 0.05},
+        {"path": "blocks.transport.params.arguments.vehicles", "value": 9},
+        {"path": "blocks.transport.params.preset", "value": "Straddle carrier battery"},
         {"path": "chargers.Quay chargers.points", "value": 6},
         {"path": "chargers.Swap station.points", "value": 1},
         {"path": "fixed_costs.Vehicles.amount", "value": 3600000},
@@ -244,15 +241,15 @@
       "name": "AGV with swap",
       "description": "AGVs that swap their pack at the quay instead of charging.",
       "overrides": [
-        {"path": "blocks.horizontal_transport_1.params.arguments.fuel_kw", "value": 0.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.drive_kw", "value": 60.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.battery_kwh", "value": 150.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.cost_per_hour", "value": 45.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.speed_kmh", "value": 21.0},
-        {"path": "blocks.horizontal_transport_1.params.arguments.battery_strategy", "value": "swap"},
-        {"path": "blocks.horizontal_transport_1.params.arguments.idle_share", "value": 0.02},
-        {"path": "blocks.horizontal_transport_1.params.arguments.vehicles", "value": 12},
-        {"path": "blocks.horizontal_transport_1.params.preset", "value": "AGV Li-ion"},
+        {"path": "blocks.transport.params.arguments.fuel_kw", "value": 0.0},
+        {"path": "blocks.transport.params.arguments.drive_kw", "value": 60.0},
+        {"path": "blocks.transport.params.arguments.battery_kwh", "value": 150.0},
+        {"path": "blocks.transport.params.arguments.cost_per_hour", "value": 45.0},
+        {"path": "blocks.transport.params.arguments.speed_kmh", "value": 21.0},
+        {"path": "blocks.transport.params.arguments.battery_strategy", "value": "swap"},
+        {"path": "blocks.transport.params.arguments.idle_share", "value": 0.02},
+        {"path": "blocks.transport.params.arguments.vehicles", "value": 12},
+        {"path": "blocks.transport.params.preset", "value": "AGV Li-ion"},
         {"path": "chargers.Quay chargers.points", "value": 4},
         {"path": "chargers.Swap station.points", "value": 2},
         {"path": "fixed_costs.Vehicles.amount", "value": 9600000},
@@ -525,7 +522,7 @@
     {
       "name": "Diesel",
       "description": "Fuel burnt by the carriers, kW of fuel (1 l/h = 10 kW); priced per kWh of fuel and emitting its CO2. Zero once the fleet has a battery.",
-      "rate": "POWER(\"horizontal_transport_1/CT Vehicles\")",
+      "rate": "POWER(\"transport/CT Vehicles\")",
       "price": 0.16,
       "emission_factor": 0.268,
       "rate_time_unit": "hours"
@@ -2221,7 +2218,7 @@
     ],
     "inputs": [
       {
-        "path": "blocks.horizontal_transport_1.params.arguments.vehicles",
+        "path": "blocks.transport.params.arguments.vehicles",
         "label": "Carriers",
         "kind": "number",
         "min": 6,

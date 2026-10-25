@@ -3,7 +3,7 @@
   "schema_version": 29,
   "blocks": [
     {
-      "name": "walk_in_arrivals_by_time_of_day_1",
+      "name": "walk_ins",
       "type": "SUBMODEL",
       "description": "Walk-in arrivals by time of day",
       "position": [-620.0, 0.0],
@@ -32,7 +32,7 @@
       "params": {"definition": "Service target", "arguments": {"target": 45.0}}
     },
     {
-      "name": "service_desk_with_impatient_customers_1",
+      "name": "impatient_desk",
       "type": "SUBMODEL",
       "description": "Service desk with impatient customers",
       "position": [100.0, 0.0],
@@ -49,7 +49,7 @@
       }
     },
     {
-      "name": "consultation_treatment_room_1",
+      "name": "consult_room",
       "type": "SUBMODEL",
       "description": "Consultation / treatment room",
       "position": [340.0, 0.0],
@@ -73,31 +73,22 @@
     }
   ],
   "links": [
-    {
-      "source": "walk_in_arrivals_by_time_of_day_1",
-      "target": "triage_1",
-      "source_port": "out",
-      "target_port": "in"
-    },
+    {"source": "walk_ins", "target": "triage_1", "source_port": "out", "target_port": "in"},
     {"source": "triage_1", "target": "service_target_1", "source_port": "out", "target_port": "in"},
     {
       "source": "service_target_1",
-      "target": "service_desk_with_impatient_customers_1",
+      "target": "impatient_desk",
       "source_port": "out",
       "target_port": "in"
     },
     {
-      "source": "service_desk_with_impatient_customers_1",
-      "target": "consultation_treatment_room_1",
+      "source": "impatient_desk",
+      "target": "consult_room",
       "source_port": "served",
       "target_port": "in"
     },
-    {
-      "source": "service_desk_with_impatient_customers_1",
-      "target": "dispose_2",
-      "source_port": "left"
-    },
-    {"source": "consultation_treatment_room_1", "target": "dispose_1", "source_port": "out"}
+    {"source": "impatient_desk", "target": "dispose_2", "source_port": "left"},
+    {"source": "consult_room", "target": "dispose_1", "source_port": "out"}
   ],
   "resources": [
     {"name": "Svc Impatient Staff", "capacity": 1, "discipline": "FIFO"},

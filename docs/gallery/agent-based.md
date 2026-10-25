@@ -31,7 +31,7 @@ naga run abm_nagel_schreckenberg
 
 | KPI | Mean | 95% half-width |
 |---|---|---|
-| `agent/nagel_schreckenberg_1/Cars/Alive/Avg Count` | 6 |  |
+| `agent/nagel_schreckenberg/Cars/Alive/Avg Count` | 6 |  |
 
 ## Schelling segregation (grid)
 
@@ -45,8 +45,8 @@ naga run abm_schelling_segregation
 
 | KPI | Mean | 95% half-width |
 |---|---|---|
-| `agent/schelling_segregation_1/Schelling People/Red/Avg Count` | 160 |  |
-| `agent/schelling_segregation_1/Schelling People/Blue/Avg Count` | 160 |  |
+| `agent/schelling/Schelling People/Red/Avg Count` | 160 |  |
+| `agent/schelling/Schelling People/Blue/Avg Count` | 160 |  |
 
 ## SIR on a small-world network
 
@@ -105,8 +105,8 @@ naga run agents_bass_diffusion_agents
 
 | KPI | Mean | 95% half-width |
 |---|---|---|
-| `agent/bass_diffusion_agents_1/Market/Potential/Avg Count` | 1,660 |  |
-| `agent/bass_diffusion_agents_1/Market/Adopter/Avg Count` | 337 |  |
+| `agent/bass_agents/Market/Potential/Avg Count` | 1,670 |  |
+| `agent/bass_agents/Market/Adopter/Avg Count` | 333 |  |
 
 ## Machine agent with repair
 

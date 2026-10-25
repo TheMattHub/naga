@@ -4,9 +4,22 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.16: results that say how far to trust them
+## 0.17: models that stay readable
 
 <!-- --8<-- [start:latest] -->
+- **Name warnings.** `W_LONG_NAME` flags a block or instance name over 20 characters, so a model
+  stays readable on a canvas and in a report.
+- **Richer playback.** `Timeline.state_at` now reports departures per exit and per block, and what
+  ended in each sink, which is what per-exit counters draw.
+- **Pictures for assets.** A library asset can carry a small `graphics.icon` line icon, and the 89
+  bundled assets do. Auto-layout spaces blocks by their real width.
+- **Before you upgrade.** Bundled names are shorter, so `clinic_library` and the three agent-based
+  models that had long names draw a new random sample, statistically equal to the old one. Every
+  other bundled model gives the same results.
+<!-- --8<-- [end:latest] -->
+
+## 0.16: results that say how far to trust them
+
 - **Input uncertainty.** `naga uncertainty` resamples the data behind your distributions and reruns the
   model, so a KPI gets an interval for the run's noise and one for the input's, with the share each
   contributes. `what_if` now says when a verdict is smaller than the input spread.
@@ -27,7 +40,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 ```console
 naga explain single_server "system/Avg Throughput Time"
 ```
-<!-- --8<-- [end:latest] -->
 
 ## 0.15: runs you can trust
 

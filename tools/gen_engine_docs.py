@@ -1570,7 +1570,7 @@ def terminal_page(out: Path) -> str:
     q = _kpis(quay.results["Baseline"])
     vessels = quay.results["Baseline"]["order_summary"]["Order"].str.split("-").str[0].nunique()
     moves, cranes = q["resource/CT Quay cranes/Total Seizes"], q["resource/CT Quay cranes/Scheduled Capacity Avg"]
-    carriers = q["fleet/horizontal_transport_1/CT Vehicles/Vehicles"]
+    carriers = q["fleet/transport/CT Vehicles/Vehicles"]
 
     battery, agv = list(electric.results)[1:]
     rows, ek = [], {}
@@ -1591,7 +1591,7 @@ def terminal_page(out: Path) -> str:
     peak = {name: ek[name]["flow/grid_connection_1/Nrg import/Peak Rate"] for name in (battery, agv)}
     co2 = {name: 100 * (1 - ek[name]["system/Total Impact"] / ek["Baseline"]["system/Total Impact"])
            for name in (battery, agv)}
-    carrier = "horizontal_transport_1"
+    carrier = "transport"
     cost = {name: _argument(layout, carrier, "cost_per_hour", name) for name in (None, battery, agv)}
     diesel = _named(layout["flows"], "Diesel")
     settings = layout["investment"]

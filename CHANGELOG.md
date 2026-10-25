@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.0 (2026-10-26)
+
+0.17.0 helps a model stay readable and lets a picture follow a run in more detail. A block or instance name over 20 characters now draws a warning, the playback state counts departures per exit and what ended in each sink, library assets can carry a small line icon, and auto-layout spaces blocks by their real width. The bundled models use shorter names, which changes results in four of them (see below).
+
+- `W_LONG_NAME` (warning): a block name, or a library instance name, over 20 characters. It checks instances nested in a submodel definition too, once per name.
+- Playback: `Timeline.state_at` gains `departures` (moves out of each block per outgoing branch), `departed` (the same moves summed per block) and `disposed` (what ended in each sink), the data behind per-exit counters.
+- Blocks accept `counter_offsets`, a dict that moves a counter beside an exit; the builder stubs carry it.
+- Auto-layout spaces blocks by their drawn width, so long names no longer overlap their neighbours.
+- Library assets take an optional `graphics.icon`, an SVG line icon under 2000 bytes that passes the same safety check as state graphics. The 89 bundled assets (airport, container terminals, energy, biogas, supply chain, system dynamics, agents, manufacturing, demo, automation, logistics, services) each ship one.
+- Bundled names are shorter: the `clinic_library` model and the three agent-based models that had names over 20 characters now use shorter ones. Their random draws follow the names, so each draws a new sample that is statistically equal to the old one. Every other bundled model gives identical results on two seed sets.
+
 ## 0.16.0 (2026-10-23)
 
 0.16.0 makes a result say how far to trust it and lets the twin act on what it sees. Input data now carries its own uncertainty, a twin raises alerts on sustained shifts and proposes a refit for you to approve, and a recommended setpoint can be written to a soft PLC on request. Conveyors gain stops, models gain entity-path checks, and reinforcement learning, ABC calibration, a paced clock and a SimPy log helper join the toolbox. Results keep their values except for one case: an accumulating conveyor whose end blocks.

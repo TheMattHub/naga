@@ -22,7 +22,9 @@ EXPECTED = {
     "hold_signal_flow": (200, 228, "f78ed4d3b11cbb5c"),
     "biogas_plant_library": (400, 1431, "f6dcaada3408fdd2"),
     "mes_twin_shop": (300, 78, "c8725c488d833801"),
-    "clinic_library": (200, 571, "596b2336934d5e9a"),
+    # Re-pinned when the instances were renamed (Phase 13 R): a block's random stream is seeded
+    # from its name, so a renamed block draws a different, statistically equal, sample.
+    "clinic_library": (200, 733, "2a27116fd37383ed"),
 }
 
 

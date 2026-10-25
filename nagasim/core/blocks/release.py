@@ -102,6 +102,6 @@ SPEC = BlockSpec(
                                     description="Name of the resource or resource set to release.", quantity="none"),
             WORKER_WHEN_BLOCKED),
     factory=lambda env, block: Release(env, block, resource=None),
-    family="resource",
+    family="resource", shape="release",
     duration=True, uses_resource=True,
 )

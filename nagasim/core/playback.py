@@ -16,7 +16,7 @@ from bisect import bisect_right, insort_right
 import nagasim.settings.color_palette as cp
 
 __all__ = ["Timeline", "visible_name", "asset_state_sources", "asset_states", "unit_sources",
-           "unit_counts", "resource_rows", "kpi_snapshot", "node_blocks", "state_colors"]
+           "unit_counts", "arrivals_per_port", "resource_rows", "kpi_snapshot", "node_blocks", "state_colors"]
 
 
 def visible_name(name: str | None, view: str = "") -> str | None:
@@ -318,6 +318,11 @@ class Timeline:
         every unit at work in a block: `{block: {slot: (kind, index, progress)}}`,
         a part keeping its slot for its whole cycle.
 
+        `departures` (Phase 13, D753) is `{(block, branch): n}`, the moves out
+        of each block so far per outgoing branch (-1 when the trace does not say);
+        `departed` is `{block: n}`, the same moves summed over the branches
+        (the single counter of a block: 0 at the start, only grows).
+
         `levels` (PHASE4 T2, D75) is each level's value at t, interpolated
         linearly between its recorded breakpoints -- see `level_at`.
         `variables` (D608) is the last value of each variable an asset's
@@ -385,6 +390,8 @@ class Timeline:
                              for unit, (t0, span, unloading) in self._handling.items()
                              if t < t0 + span},
                 "placed": dict(self._placed),
+                "departures": dict(self._departures), "departed": dict(self._departed),
+                "disposed": dict(self._disposed),
                 "phases_all": {block: {slot: (kind, index, _progress(t, t0, span))
                                        for t0, span, kind, index, slot in arms.values()
                                        if t < t0 + span}
@@ -477,6 +484,11 @@ class Timeline:
         self._tends: dict[tuple, tuple] = {}
         self._arms: dict[str, dict[int, tuple]] = {}    # block -> entity -> (..., slot)
         self._placed: dict[str, int] = {}           # block -> `place` segments begun so far
+        # Phase 13 D753: moves out of a block so far, per outgoing branch (-1 =
+        # unknown). A derivation for the canvas counters; no run reads it.
+        self._departures: dict[tuple[str, int], int] = {}
+        self._departed: dict[str, int] = {}         # block -> moves out of it, all branches
+        self._disposed: dict[str, int] = {}         # block -> entities that ended in it (a sink's counter)
         self._handling: dict[tuple, tuple] = {}     # (fleet, unit) -> (started, duration, unloading)
         # Per-block occupants in arrival order (dict: insertion-ordered, O(1)
         # removal) -- queues() filters out the in-service ones on read.
@@ -587,6 +599,9 @@ class Timeline:
                     del self._phases[e.block]
                 return
             self._leave(e.entity_id)
+            key = (e.block, e.branch)
+            self._departures[key] = self._departures.get(key, 0) + 1
+            self._departed[e.block] = self._departed.get(e.block, 0) + 1
             if e.target and e.duration > 0:
                 self._in_transit[e.entity_id] = (e.block, e.target, e.t,
                                                  e.travel or e.duration, e.e_type, tuple(e.path),
@@ -594,6 +609,8 @@ class Timeline:
             elif e.target:
                 self._enter(e.entity_id, e.e_type, e.target)
         elif e.kind == "entity_disposed":
+            if e.block:
+                self._disposed[e.block] = self._disposed.get(e.block, 0) + 1
             self._leave(e.entity_id)
             self._off_belt(e.entity_id)
             if self.live:
@@ -972,6 +989,20 @@ def unit_counts(state: dict, sources: dict) -> dict[str, list[tuple[str, int]]]:
             rows = [("busy", busy),
                     ("out" if info["state"] == "down" else "free", int(capacity) - busy)]
         out[block] = [(label, count) for label, count in rows if count > 0]
+    return out
+
+
+def arrivals_per_port(departures: dict, exits: dict) -> dict:
+    """Cumulative arrivals per entry (Phase 13, D753): `departures` is
+    `state_at()["departures"]`, `exits` maps `(block, branch)` to the
+    `(target block, target port or None)` of that outgoing link, in the
+    caller's link order. Returns `{(target, port): n}`; a departure whose exit
+    is unknown (branch -1 with several links) is left out."""
+    out: dict = {}
+    for key, n in departures.items():
+        entry = exits.get(key)
+        if entry is not None:
+            out[entry] = out.get(entry, 0) + n
     return out
 
 

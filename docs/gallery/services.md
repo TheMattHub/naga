@@ -44,11 +44,11 @@ naga run clinic_library --replications 3
 
 ```mermaid
 flowchart LR
-    b0["walk_in_arrivals_by_time_of_day_1 (SUBMODEL)"]
+    b0["walk_ins (SUBMODEL)"]
     b1["triage_1 (SUBMODEL)"]
     b2["service_target_1 (SUBMODEL)"]
-    b3["service_desk_with_impatient_customers_1 (SUBMODEL)"]
-    b4["consultation_treatment_room_1 (SUBMODEL)"]
+    b3["impatient_desk (SUBMODEL)"]
+    b4["consult_room (SUBMODEL)"]
     b5["dispose_1 (DISPOSE)"]
     b6["dispose_2 (DISPOSE)"]
     b0 --> b1
@@ -63,10 +63,10 @@ flowchart LR
 
 | KPI | Mean | 95% half-width |
 |---|---|---|
-| `system/Total Entities Completed` | 118 | 20 |
-| `system/Avg Throughput Time` | 27.4 | 15 |
-| `system/Avg Queue Length` | 3.38 | 3.1 |
-| `system/Avg Resource Usage %` | 69.2 | 22 |
+| `system/Total Entities Completed` | 135 | 52 |
+| `system/Avg Throughput Time` | 25 | 10 |
+| `system/Avg Queue Length` | 3.41 | 2.6 |
+| `system/Avg Resource Usage %` | 74.5 | 18 |
 
 ## Walk-in clinic digital twin
 

@@ -2317,6 +2317,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -2383,6 +2390,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -2519,6 +2533,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -2604,6 +2625,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -2844,6 +2872,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -3140,6 +3175,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -3293,6 +3335,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -3439,6 +3488,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -3601,6 +3657,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -3670,6 +3733,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -3810,6 +3880,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -3876,6 +3953,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -4002,6 +4086,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -4523,6 +4614,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -5054,6 +5152,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -5164,6 +5269,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -5341,6 +5453,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -5542,6 +5661,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -5889,6 +6015,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -5985,6 +6118,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -6065,6 +6205,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -6227,6 +6374,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -6321,6 +6475,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -6417,6 +6578,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -6484,6 +6652,13 @@
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
             },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
@@ -6550,6 +6725,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",
@@ -6668,6 +6850,13 @@
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
             },
             "locals": {
               "type": "object",

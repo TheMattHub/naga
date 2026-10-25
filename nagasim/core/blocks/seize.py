@@ -181,6 +181,6 @@ SPEC = BlockSpec(
     # construction. A freshly dropped block has no resource_name yet; the
     # Problems dock flags that until the user fills it in (schema.validate_layout_structured).
     factory=lambda env, block: Seize(env, block, resource=None, delay=1),
-    family="resource",
+    family="resource", shape="seize",
     duration=True, holding=True, service=True, queueing=True, uses_resource=True,
 )

@@ -123,3 +123,13 @@ def test_cli_missing_file_exits_2(capsys):
     code = launcher_main(["diff", "does-not-exist-a.json", "does-not-exist-b.json"])
     assert code == 2
     assert "naga diff" in capsys.readouterr().err
+
+
+def test_gaining_counter_offsets_is_a_canvas_only_change():
+    c, d = create(), dispose()
+    a = layout([c, d], chain(c, d))
+    gained = {**c, "counter_offsets": {"out": [4, -6]}}
+    b = layout([gained, d], chain(c, d))
+    changes = modeldiff.diff(a, b)
+    assert [(ch.kind, ch.path) for ch in changes] == [("moved", "blocks.create_1.counter_offsets")]
+    assert modeldiff._only_moved(c, gained)

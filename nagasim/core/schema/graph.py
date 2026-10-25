@@ -11,7 +11,19 @@ from nagasim.core.seizing import QUEUEING_BLOCK_TYPES
 from nagasim.core.sequences import station_blocks
 
 
-_PROB_SUM_EPS = 1e-9  # tolerance for float sums that should equal 1.0 (e.g. 0.3 + 0.7)
+LONG_NAME_CHARS = 20   # the widest name the canvas draws on one line (Phase 13 D)
+_PROB_SUM_EPS = 1e-9 # tolerance for float sums that should equal 1.0 (e.g. 0.3 + 0.7)
+
+
+def long_name_problem(block: str, shown: str, at: str) -> Problem | None:
+    """W_LONG_NAME for a block whose drawn name *shown* is over LONG_NAME_CHARS, else None.
+    Shared with prepare, which checks a SUBMODEL instance name before it is flattened away."""
+    if len(shown) <= LONG_NAME_CHARS:
+        return None
+    return problem(
+        "W_LONG_NAME",
+        f"{block}: name is {len(shown)} characters; the canvas wraps it past {LONG_NAME_CHARS}",
+        at, block=block, hint="shorten it or move the detail to the description")
 
 
 def validate_graph_structured(layout: dict) -> list[Problem]:
@@ -214,6 +226,12 @@ def validate_graph_structured(layout: dict) -> list[Problem]:
         name = block["name"]
         btype = block.get("type", "").upper()
         at = f"/blocks/{index_of[name]}"
+        # Counted in characters, not pixels: the engine never measures fonts. Checked before
+        # the reachability `continue` so an unlinked block warns too. Advisory only.
+        # A flattened submodel block is `instance/inner`; the canvas draws only the last segment.
+        long_name = long_name_problem(name, name.rsplit("/", 1)[-1], at)
+        if long_name:
+            problems.append(long_name)
         if name not in visited:
             problems.append(problem("W_UNREACHABLE", f"{name} is unreachable from any CREATE",
                                     at, block=name,

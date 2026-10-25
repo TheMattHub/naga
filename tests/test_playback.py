@@ -683,3 +683,115 @@ def test_a_disposed_part_is_off_its_belt():
     events = [created(0, 1, "belt"), belt_stage(0, 1, "ride", 0.0, 4.0, 4.0),
               disposed(2, 1, "belt")]
     assert Timeline(events).state_at(3.0)["belts"] == {}
+
+
+# -- departures per exit (Phase 13 B1, D753) --------------------------------
+
+def _branch_move(t, eid, block, target, branch):
+    return TraceEvent(t=t, kind="entity_moved", entity_id=eid, e_type="A", block=block,
+                      target=target, branch=branch)
+
+
+def test_departures_count_each_move_under_its_block_and_branch():
+    events = [created(0, 1, "c"), _branch_move(0, 1, "c", "d", -1),
+              _branch_move(1, 1, "d", "x", 0),
+              created(1, 2, "c"), _branch_move(1, 2, "c", "d", -1),
+              _branch_move(2, 2, "d", "y", 1),
+              created(2, 3, "c"), _branch_move(2, 3, "c", "d", -1),
+              _branch_move(3, 3, "d", "x", 0)]
+    timeline = Timeline(events)
+    assert timeline.state_at(0.5)["departures"] == {("c", -1): 1}
+    final = timeline.state_at(10)["departures"]
+    assert final == {("c", -1): 3, ("d", 0): 2, ("d", 1): 1}
+    assert sum(n for (block, _b), n in final.items() if block == "d") == final[("c", -1)]
+
+
+def test_departures_match_the_moves_the_timeline_lists():
+    events = [created(0, 1, "c"), _branch_move(0, 1, "c", "d", -1),
+              _branch_move(1, 1, "d", "x", 0), created(1, 2, "c"),
+              _branch_move(1, 2, "c", "d", -1), _branch_move(2, 2, "d", "y", 1)]
+    timeline = Timeline(events)
+    expected = {}
+    for _eid, _ty, src, _dst, _t, branch in timeline.moves_between(-1, 10):
+        expected[(src, branch)] = expected.get((src, branch), 0) + 1
+    assert timeline.state_at(10)["departures"] == expected
+
+
+def test_a_seek_back_restores_the_earlier_departures_and_state_returns_copies():
+    events = [created(0, 1, "c"), _branch_move(0, 1, "c", "d", -1),
+              _branch_move(1, 1, "d", "x", 0), created(2, 2, "c"),
+              _branch_move(2, 2, "c", "d", -1)]
+    timeline = Timeline(events)
+    late = timeline.state_at(5)["departures"]
+    assert late == {("c", -1): 2, ("d", 0): 1}
+    early = timeline.state_at(0.5)["departures"]
+    assert early == {("c", -1): 1}
+    early[("c", -1)] = 99
+    assert timeline.state_at(0.5)["departures"] == {("c", -1): 1}
+    assert late == {("c", -1): 2, ("d", 0): 1}
+
+
+def test_a_delayed_move_counts_as_a_departure_when_it_leaves():
+    events = [created(0, 1, "c"),
+              TraceEvent(t=0, kind="entity_moved", entity_id=1, e_type="A", block="c",
+                         target="d", duration=5.0, branch=0)]
+    assert Timeline(events).state_at(1)["departures"] == {("c", 0): 1}
+
+
+def test_departures_on_a_real_traced_decide_sum_to_the_arrivals():
+    from nagasim import api
+    from nagasim.core.document import ModelDocument
+    from nagasim.core.trace import TraceRecorder
+
+    doc = ModelDocument()
+    c = doc.add_block("CREATE", (0, 0))
+    d = doc.add_block("DECIDE", (100, 0))
+    outs = [doc.add_block("DISPOSE", (200, y)) for y in (0, 100, 200)]
+    doc.add_link(c, d)
+    for out in outs:
+        doc.add_link(d, out)
+    doc.set_params(c, {**doc.blocks[c].params, "max_arrivals": 40,
+                       "distribution": "Constant", "dist_params": {"value": 1.0}})
+    doc.set_params(d, {**doc.blocks[d].params, "mode": "Chance", "probs": [0.3, 0.3],
+                       "conditions": []})
+    trace = TraceRecorder()
+    api.run_model(doc.to_layout(), replications=1, run_length=60, seed=0, trace=trace)
+    timeline = Timeline(trace.events)
+    departures = timeline.state_at(60)["departures"]
+    into_d = sum(1 for m in timeline.moves_between(-1, 60) if m[3] == d)
+    leaving_d = {b: n for (block, b), n in departures.items() if block == d}
+    assert sum(leaving_d.values()) == into_d == 40
+    assert set(leaving_d) == {0, 1, 2}
+
+
+def test_departed_is_the_per_block_total_and_never_falls_on_a_seek_forward():
+    events = [created(0, 1, "c"), _branch_move(0, 1, "c", "d", -1),
+              _branch_move(1, 1, "d", "x", 0), created(1, 2, "c"),
+              _branch_move(1, 2, "c", "d", -1), _branch_move(2, 2, "d", "y", 1)]
+    timeline = Timeline(events)
+    assert timeline.state_at(-1)["departed"] == {}
+    assert timeline.state_at(0)["departed"] == {"c": 1}
+    totals = [timeline.state_at(t)["departed"].get("d", 0) for t in (0, 1, 2, 3)]
+    assert totals == sorted(totals) and totals[-1] == 2
+    state = timeline.state_at(3)
+    for block in ("c", "d"):
+        assert state["departed"][block] == sum(
+            n for (b, _br), n in state["departures"].items() if b == block)
+
+
+def test_disposed_counts_the_entities_that_ended_in_each_block_and_rewinds():
+    events = [created(0, 1, "c"), disposed(1, 1, "sink"), created(1, 2, "c"),
+              disposed(2, 2, "sink"), disposed(2, 3, "other")]
+    timeline = Timeline(events)
+    assert timeline.state_at(0)["disposed"] == {}
+    assert timeline.state_at(1)["disposed"] == {"sink": 1}
+    assert timeline.state_at(2)["disposed"] == {"sink": 2, "other": 1}
+    assert timeline.state_at(0.5)["disposed"] == {}             # a seek back rewinds it
+
+
+def test_arrivals_per_port_joins_departures_to_the_exits_ports():
+    from nagasim.core.playback import arrivals_per_port
+
+    departures = {("d", 0): 2, ("d", 1): 1, ("d", 2): 4, ("c", -1): 9}
+    exits = {("d", 0): ("m", "in_a"), ("d", 1): ("m", "in_b"), ("d", 2): ("m", "in_a")}
+    assert arrivals_per_port(departures, exits) == {("m", "in_a"): 6, ("m", "in_b"): 1}

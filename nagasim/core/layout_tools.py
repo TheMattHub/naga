@@ -17,7 +17,7 @@ DEFAULT_SIZE = (120.0, 60.0)
 
 # Auto-layout spacing, in scene units; both multiples of GRID so a laid-out
 # model needs no further snapping.
-LAYER_SPACING_X = 200.0
+LAYER_GAP_X = 80.0  # between a layer's widest block and the next layer (D760)
 LAYER_SPACING_Y = 100.0
 COMPONENT_GAP_Y = 160.0
 
@@ -254,7 +254,8 @@ def _order_within_layers(members: list[str], layer: dict[str, int],
     return order_index
 
 
-def auto_layout(doc: ModelDocument, block_names: list[str] | None = None) -> Positions:
+def auto_layout(doc: ModelDocument, block_names: list[str] | None = None,
+                sizes: dict | None = None) -> Positions:
     """Layered left-to-right layout of *block_names* (default: every block in
     *doc*): longest-path layering from the roots of the forward-edge graph
     (a CREATE block always has no incoming edge, so it is always a root),
@@ -264,7 +265,12 @@ def auto_layout(doc: ModelDocument, block_names: list[str] | None = None) -> Pos
     order, never by set/dict iteration order. The result is translated so its
     bounding box starts at the selection's own original top-left corner
     (laying out the whole model keeps it roughly where it was; laying out a
-    handful of selected blocks doesn't fling them off to the origin)."""
+    handful of selected blocks doesn't fling them off to the origin).
+
+    *sizes* maps name -> (w, h) from the editor's built items; each layer's x
+    is the previous layer's right edge plus LAYER_GAP_X, the widest block in
+    the layer deciding. Without it every block is DEFAULT_SIZE, so the pitch
+    is 120 + 80 = 200 as before (the engine has no font: D760)."""
     names = list(block_names) if block_names is not None else list(doc.blocks)
     names = [n for n in names if n in doc.blocks]
     if not names:
@@ -292,8 +298,17 @@ def auto_layout(doc: ModelDocument, block_names: list[str] | None = None) -> Pos
         layer = _layer_component(members, forward)
         order_index = _order_within_layers(members, layer, forward)
         max_slot = max(order_index.values(), default=0)
+        widest: dict[int, float] = {}
         for n in members:
-            x = layer[n] * LAYER_SPACING_X
+            w = (sizes or {}).get(n, DEFAULT_SIZE)[0]
+            widest[layer[n]] = max(widest.get(layer[n], 0.0), w)
+        layer_x: dict[int, float] = {}
+        edge = 0.0
+        for li in range(max(widest) + 1):
+            layer_x[li] = edge
+            edge += widest.get(li, DEFAULT_SIZE[0]) + LAYER_GAP_X
+        for n in members:
+            x = layer_x[layer[n]]
             y = y_offset + order_index[n] * LAYER_SPACING_Y
             raw[n] = (x, y)
         y_offset += (max_slot + 1) * LAYER_SPACING_Y + COMPONENT_GAP_Y

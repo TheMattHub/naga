@@ -114,6 +114,10 @@ class BlockData:
     # units relative to its default anchor, in the UNROTATED frame. None (the
     # usual case) means the default position.
     label_offset: tuple[float, float] | None = None
+    # Where each of the block's counters is dragged to (Phase 13, D755), keyed
+    # `out`, `exit:<branch>` or `entry:<port>`: (dx, dy) in scene units from the
+    # counter's home. Schematic canvas only. None means every counter is home.
+    counter_offsets: dict[str, tuple[float, float]] | None = None
 
 
 @dataclasses.dataclass
@@ -268,6 +272,9 @@ class ModelDocument:
                  # Same rule for a dragged label (D82): absent = default place.
                  **({"label_offset": [b.label_offset[0], b.label_offset[1]]}
                     if b.label_offset else {}),
+                 # Same rule for dragged counters (D755).
+                 **({"counter_offsets": {k: [v[0], v[1]] for k, v in b.counter_offsets.items()}}
+                    if b.counter_offsets else {}),
                  "params": copy.deepcopy(b.params)}
                 for b in self._level(scope).blocks.values()]
 
@@ -332,6 +339,9 @@ class ModelDocument:
                 layout_rotation=network.normalise_rotation(b.get("layout_rotation")),
                 label_offset=(tuple(float(v) for v in b["label_offset"])
                               if b.get("label_offset") else None),
+                counter_offsets=({str(k): (float(v[0]), float(v[1]))
+                                  for k, v in b["counter_offsets"].items()} or None
+                                 if b.get("counter_offsets") else None),
             )
         for link in section.get("links", []):
             if isinstance(link, dict):
@@ -762,6 +772,36 @@ class ModelDocument:
             level.blocks[name] = dataclasses.replace(level.blocks[name], label_offset=value)
         self.dirty = True
         self._notify("blocks", action="label", names=list(changed), scope=scope)
+
+    def set_counter_offsets(self, offsets: dict, *, scope: str = "") -> None:
+        """Move block counters (Phase 13, D755), one undo step for the whole
+        drag. *offsets* is `{block: {counter key: (dx, dy) | None}}`; the keys
+        are `out`, `exit:<branch>`, `entry:<port>`, the value is in scene units
+        from the counter's home, and None sends that counter home. A block left
+        with no offset stores none."""
+        level = self._level(scope)
+        changed = {}
+        for name, moves in offsets.items():
+            if name not in level.blocks:
+                continue
+            current = dict(level.blocks[name].counter_offsets or {})
+            merged = dict(current)
+            for key, value in moves.items():
+                # (0, 0) is the home position: a click with no drag must not dirty the model.
+                if value and (value[0] or value[1]):
+                    merged[key] = (float(value[0]), float(value[1]))
+                else:
+                    merged.pop(key, None)
+            if merged != current:
+                changed[name] = merged or None
+        if not changed:
+            return
+        self._push_undo(f"Move {next(iter(changed))} counter" if len(changed) == 1
+                        else f"Move {len(changed)} counters")
+        for name, value in changed.items():
+            level.blocks[name] = dataclasses.replace(level.blocks[name], counter_offsets=value)
+        self.dirty = True
+        self._notify("blocks", action="counter", names=list(changed), scope=scope)
 
     def set_layout_rotations(self, rotations: dict, *, scope: str = "") -> None:
         """Turn blocks on the FLOOR PLAN (PHASE4 T2, D74), one undo step for the
@@ -1882,6 +1922,9 @@ class DefinitionView:
 
     def set_label_offsets(self, offsets):
         self.document.set_label_offsets(offsets, scope=self.name)
+
+    def set_counter_offsets(self, offsets):
+        self.document.set_counter_offsets(offsets, scope=self.name)
 
     def set_params(self, name, params):
         self.document.set_params(name, params, scope=self.name)

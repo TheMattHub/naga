@@ -379,6 +379,9 @@ def _compare(model, simulated, events, *, lost=(), instants=None, approximate=()
     derive, previous = _derived(model), None
     for t in instants or _instants(simulated):
         ours, theirs = run.state_at(t), _renamed(plant_.state_at(t), events, simulated)
+        # A plant log does not say which exit a part took (branch -1, Phase 13 D753), so the
+        # split (and, for a batch, the source block) differs by design.
+        ours, theirs = ({k: v for k, v in s.items() if k not in ("departures", "departed")} for s in (ours, theirs))
         for key in lost:
             assert not theirs[key], key
         if ours["in_transit"]:

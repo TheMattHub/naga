@@ -69,7 +69,7 @@ flowchart LR
     b3["feed_line_2 (SUBMODEL)"]
     b4["digester_1 (SUBMODEL)"]
     b5["digester_2 (SUBMODEL)"]
-    b6["gas_holder_with_flare_1 (SUBMODEL)"]
+    b6["gas_holder (SUBMODEL)"]
     b7["chp_unit_1 (SUBMODEL)"]
     b8["upgrading_unit_1 (SUBMODEL)"]
     b9["grid_injection_1 (SUBMODEL)"]

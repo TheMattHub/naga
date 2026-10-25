@@ -296,7 +296,7 @@ naga run mfg_line_library
 ```mermaid
 flowchart LR
     b0["release (CREATE)"]
-    b1["wip_cap_conwip_kanban_loop_1 (SUBMODEL)"]
+    b1["wip_cap (SUBMODEL)"]
     b2["batch_oven_1 (SUBMODEL)"]
     b3["workstation_1 (SUBMODEL)"]
     b4["inspection_1 (SUBMODEL)"]

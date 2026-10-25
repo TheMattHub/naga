@@ -3,7 +3,7 @@
   "schema_version": 29,
   "blocks": [
     {
-      "name": "schelling_segregation_1",
+      "name": "schelling",
       "type": "SUBMODEL",
       "description": "Schelling segregation (grid)",
       "position": [0.0, 0.0],

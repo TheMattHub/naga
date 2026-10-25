@@ -3,7 +3,7 @@
   "schema_version": 29,
   "blocks": [
     {
-      "name": "nagel_schreckenberg_1",
+      "name": "nagel_schreckenberg",
       "type": "SUBMODEL",
       "description": "Nagel-Schreckenberg traffic (ring)",
       "position": [0.0, 0.0],

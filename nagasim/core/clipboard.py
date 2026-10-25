@@ -41,6 +41,8 @@ def copy_selection(doc: ModelDocument, block_names, annotation_ids=()) -> dict:
             # A dragged name label travels with its block (D82); absent when
             # the label sits where it always did.
             **({"label_offset": list(b.label_offset)} if b.label_offset else {}),
+            **({"counter_offsets": {k: list(v) for k, v in b.counter_offsets.items()}}
+               if b.counter_offsets else {}),
         })
     links = []
     for link in doc.link_records():
@@ -118,6 +120,8 @@ def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40)) -> list[
                 doc.set_params(new_name, entry["params"])
             if entry.get("label_offset"):
                 doc.set_label_offsets({new_name: entry["label_offset"]})
+            if entry.get("counter_offsets"):
+                doc.set_counter_offsets({new_name: entry["counter_offsets"]})
             new_names.append(new_name)
 
         for entry in fragment.get("links", []):

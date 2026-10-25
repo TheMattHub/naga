@@ -3,7 +3,7 @@
   "schema_version": 29,
   "blocks": [
     {
-      "name": "bass_diffusion_agents_1",
+      "name": "bass_agents",
       "type": "SUBMODEL",
       "description": "Bass diffusion (agents)",
       "position": [0.0, 0.0],
