@@ -1,11 +1,25 @@
 name: tests
 
+# A push to main that touches code or tests, a pull request that does, or a manual run.
 on:
   push:
+    branches: [main]
+    paths:
+      - "nagasim/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "pytest.ini"
+      - "requirements-dev.txt"
+      - ".github/workflows/tests.yml"
   pull_request:
+    paths:
+      - "nagasim/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "pytest.ini"
+      - "requirements-dev.txt"
+      - ".github/workflows/tests.yml"
   workflow_dispatch:
-  schedule:
-    - cron: "17 4 * * 1"
 
 concurrency:
   group: tests-${{ github.ref }}-${{ github.event_name }}
@@ -38,7 +52,7 @@ jobs:
   # The browser viewer: its real-browser tests need the pinned Pyodide runtime (29 MB, kept
   # in a cache keyed on the pin and fetched on a miss, every file checked against the
   # pin), node 22 and Chrome, and skip wherever one is missing. This job has all three,
-  # so "the same engine in the page" is checked on every push. Nothing else here downloads.
+  # so "the same engine in the page" is checked on every run. Nothing else here downloads.
   viewer:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
