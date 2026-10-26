@@ -948,6 +948,113 @@ def _check_belt_stops(problems: list, name: str, params: dict, at: str, resource
                      "\"resources\""))
 
 
+def _belt_places(params: dict, *fields: str) -> list:
+    """The `at` of every stop, divert or merge already on the belt (the fields named)."""
+    return [p.get("at") for field in fields
+            for p in (params.get(field) if isinstance(params.get(field), list) else [])
+            if isinstance(p, dict) and is_finite_number(p.get("at"))]
+
+
+def _check_belt_at(problems: list, name: str, params: dict, code: str, label: str, index: int,
+                   item: dict, where: str, taken: list, off_hint: str, taken_hint: str) -> None:
+    """The `at` of a divert or merge: strictly on the belt and not on another point (D851,
+    D854). Records the point in *taken* when it is fine."""
+    length = params.get("length", 0.0)
+    known = isinstance(length, (int, float)) and not isinstance(length, bool) and length > 0
+    place = item.get("at")
+    if not is_finite_number(place) or place <= 0 or (known and place >= length):
+        problems.append(problem(
+            code, f"{name}: {label} {index} at {place!r} is not on the belt",
+            f"{where}/at", block=name, hint=off_hint))
+    elif any(abs(place - other) <= 1e-9 for other in taken):
+        problems.append(problem(
+            code, f"{name}: {label} {index} at {place!r} is on another point of the belt",
+            f"{where}/at", block=name, hint=taken_hint))
+    else:
+        taken.append(place)
+
+
+def _check_belt_diverts(problems: list, name: str, params: dict, at: str) -> None:
+    """A CONVEYOR's `diverts` (D851, D852): each a point strictly on the belt, not on another
+    point, with a condition, a push time of 0 or more (expressions are checked with the
+    others) and a when_full of "wait" or "pass". Its links are checked with the graph."""
+    diverts = params.get("diverts") or []
+    if not isinstance(diverts, list):
+        diverts = [diverts]
+    taken = _belt_places(params, "stops")
+    for index, divert in enumerate(diverts):
+        where = f"{at}/diverts/{index}"
+        if not isinstance(divert, dict) or set(divert) - {"at", "condition", "time", "when_full"}:
+            problems.append(problem(
+                "E_CONVEYOR_DIVERT", f"{name}: divert {index} must be {{\"at\", \"condition\", "
+                f"\"time\"?, \"when_full\"?}}", where, block=name,
+                hint="at is a distance from the belt's entry; condition an expression"))
+            continue
+        _check_belt_at(problems, name, params, "E_CONVEYOR_DIVERT", "divert", index, divert,
+                       where, taken,
+                       "at is between 0 and the belt's length, both excluded: the end is link 0",
+                       "move it, or the stop or divert already there")
+        condition = divert.get("condition", "")
+        if not (isinstance(condition, bool) or (isinstance(condition, str) and condition.strip())):
+            problems.append(problem(
+                "E_CONVEYOR_DIVERT", f"{name}: divert {index} needs a condition",
+                f"{where}/condition", block=name,
+                hint="an expression read as the part reaches it, e.g. entity.lane == 2"))
+        time = divert.get("time", 0)
+        if not (isinstance(time, str) and time.strip())                 and not (is_finite_number(time) and time >= 0):
+            problems.append(problem(
+                "E_CONVEYOR_DIVERT", f"{name}: divert {index} time must be a number >= 0 or "
+                f"an expression", f"{where}/time", block=name,
+                hint="the push time, in the model's time unit"))
+        if divert.get("when_full", "wait") not in ("wait", "pass"):
+            problems.append(problem(
+                "E_CONVEYOR_DIVERT", f"{name}: divert {index} when_full must be \"wait\" or "
+                f"\"pass\"", f"{where}/when_full", block=name,
+                hint="wait: the part stays until its target has room; pass: it rides on"))
+
+
+def _check_belt_merges(problems: list, name: str, params: dict, at: str) -> None:
+    """A CONVEYOR's `merges` (D854): each a point strictly on the belt, not on another
+    point, naming its source block once, with a priority of "belt" or "merge", on an
+    accumulating belt. That the source links to the belt is checked with the graph."""
+    merges = params.get("merges") or []
+    if not isinstance(merges, list):
+        merges = [merges]
+    if not merges:
+        return
+    if params.get("accumulating", True) is False:
+        problems.append(problem(
+            "E_CONVEYOR_MERGE", f"{name}: merges need an accumulating belt", f"{at}/merges",
+            block=name, hint="set accumulating to true, or feed the belt at its entry"))
+    taken = _belt_places(params, "stops", "diverts")
+    sources = set()
+    for index, merge in enumerate(merges):
+        where = f"{at}/merges/{index}"
+        if not isinstance(merge, dict) or set(merge) - {"at", "from", "priority"}:
+            problems.append(problem(
+                "E_CONVEYOR_MERGE", f"{name}: merge {index} must be {{\"at\", \"from\", "
+                f"\"priority\"?}}", where, block=name,
+                hint="at is a distance from the belt's entry; from the block whose parts join"))
+            continue
+        _check_belt_at(problems, name, params, "E_CONVEYOR_MERGE", "merge", index, merge,
+                       where, taken,
+                       "at is between 0 and the belt's length, both excluded: the entry is 0",
+                       "move it, or the stop, divert or merge already there")
+        source = merge.get("from")
+        if not isinstance(source, str) or not source.strip() or source in sources:
+            problems.append(problem(
+                "E_CONVEYOR_MERGE", f"{name}: merge {index} needs its own `from` block",
+                f"{where}/from", block=name,
+                hint="the block linking to this belt whose parts join here, one merge each"))
+        else:
+            sources.add(source)
+        if merge.get("priority", "belt") not in ("belt", "merge"):
+            problems.append(problem(
+                "E_CONVEYOR_MERGE", f"{name}: merge {index} priority must be \"belt\" or "
+                f"\"merge\"", f"{where}/priority", block=name,
+                hint="belt: merging parts wait for a gap; merge: the belt makes room"))
+
+
 def _validate_travel(layout: dict, problems: list, nodes: set, fleets: set) -> None:
     """The travel blocks (PHASE4 E1): TRANSPORT, CONVEYOR and a ROUTE in
     network mode, plus the connectivity every declared trip needs.
@@ -1055,6 +1162,8 @@ def _validate_travel(layout: dict, problems: list, nodes: set, fleets: set) -> N
                     f"{at}/exit_resource", block=name,
                     hint="the end stop is an ordinary resource; declare it under \"resources\""))
             _check_belt_stops(problems, name, params, at, resources)
+            _check_belt_diverts(problems, name, params, at)
+            _check_belt_merges(problems, name, params, at)
 
     if not gantry_fleets:
         for entry in layout.get("sequences", []) or []:

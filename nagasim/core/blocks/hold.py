@@ -106,6 +106,14 @@ class Hold(BaseProcess):
                     keys.add(("var", name))
             for func in expr.calls - _STEADY_CALLS:
                 kind = _WATCHED_CALLS.get(func)
+                if func == "LEVEL" and func in expr.computed_refs:
+                    # A level picked by a parameter (a library asset bound to someone else's
+                    # stock, D810) cannot be named here, so watch them all: still exact at
+                    # every announced change, and the scan stays for continuous drift.
+                    levels = getattr(self.ctx.level_system, "levels", None) or {}
+                    keys.update(("level", n) for n in levels)
+                    polled = True
+                    continue
                 if kind is None or func in expr.computed_refs:
                     polled = True       # a clock, a sample, a series, a computed name
                     continue

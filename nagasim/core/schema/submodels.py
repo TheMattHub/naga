@@ -106,6 +106,7 @@ def _check_structural_arguments(def_name: str, definition: dict, problems: list)
                 block.get("params", {}))
                for i, block in enumerate(definition.get("blocks", []) or [])]
     sources.append((f"/submodels/{def_name}/scoped", None, definition.get("scoped") or {}))
+    sources.append((f"/submodels/{def_name}/repeat", None, definition.get("repeat") or []))
     for base, block_name, value in sources:
         for name, path in submodels.argument_names(value):
             if name in declared:
@@ -118,9 +119,91 @@ def _check_structural_arguments(def_name: str, definition: dict, problems: list)
                 hint=f"declare '{name}' in the definition's parameters; it has: {known}"))
 
 
+def _repeat_fault(def_name: str, message: str, path: str, hint: str, block=None) -> Problem:
+    return problem("E_SUBMODEL_REPEAT", f"submodel '{def_name}': {message}", path,
+                   block=block, hint=hint)
+
+
+def _check_repeat(def_name: str, definition: dict, problems: list) -> None:
+    """A definition's repeat groups (Phase 15 M7, D840), checked on the
+    UNFLATTENED definition; a count is checked per instance, at flattening."""
+    base = f"/submodels/{def_name}"
+    index = submodels.INDEX
+    groups = definition.get("repeat")
+    blocks = [b for b in definition.get("blocks", []) or [] if isinstance(b, dict)]
+    by_name = {b.get("name"): b for b in blocks}
+    member: dict[str, int] = {}
+    if groups is not None and not isinstance(groups, list):
+        problems.append(_repeat_fault(def_name, "repeat must be a list of groups", f"{base}/repeat",
+                                      'write [{"count": ..., "blocks": [...]}]'))
+        groups = []
+    for g, group in enumerate(groups or []):
+        at = f"{base}/repeat/{g}"
+        names = group.get("blocks") if isinstance(group, dict) else None
+        if not isinstance(names, list) or not names or "count" not in group:
+            problems.append(_repeat_fault(def_name, f'repeat group {g} needs "count" and a '
+                                          f'non-empty "blocks" list', at,
+                                          "name the blocks to repeat and how many copies"))
+            continue
+        indexed = [index in str(n) for n in names]
+        if any(indexed) and not all(indexed):
+            problems.append(_repeat_fault(def_name, f"repeat group {g} mixes names with and "
+                                          f"without {index}", f"{at}/blocks",
+                                          f"put {index} in every name to repeat, or in none for "
+                                          f"an optional group (count 0 or 1)"))
+        for name in names:
+            name = str(name)
+            block = by_name.get(name)
+            if block is None:
+                problems.append(_repeat_fault(def_name, f"repeat group {g}: no block '{name}'",
+                                              f"{at}/blocks", "name a block of this definition"))
+                continue
+            if name in member:
+                problems.append(_repeat_fault(def_name, f"block '{name}' is in repeat groups "
+                                              f"{member[name]} and {g}", f"{at}/blocks",
+                                              "a block belongs to one group", block=name))
+                continue
+            member[name] = g
+            port = (block.get("params") or {}).get("port")
+            if all(indexed) and str(block.get("type", "")).upper() in submodels.PORT_TYPES.values() \
+                    and index not in str(port):
+                problems.append(_repeat_fault(def_name, f"repeated port block '{name}' has port "
+                                              f"{port!r} with no {index}", f"{at}/blocks",
+                                              f"write the port as e.g. 'lane_{index}'", block=name))
+    for b, block in enumerate(blocks):
+        name = str(block.get("name", ""))
+        if index in name and name not in member:
+            problems.append(_repeat_fault(def_name, f"block '{name}' has {index} in its name but "
+                                          f"is in no repeat group", f"{base}/blocks/{b}/name",
+                                          "add it to a repeat group, or rename it", block=name))
+    for n, link in enumerate(definition.get("links", []) or []):
+        if not isinstance(link, dict):
+            continue
+        ends = {member.get(link.get("source")), member.get(link.get("target"))} - {None}
+        if len(ends) > 1:
+            problems.append(_repeat_fault(def_name, f"link {link.get('source')}->"
+                                          f"{link.get('target')} joins two repeat groups",
+                                          f"{base}/links/{n}",
+                                          "copies of two groups cannot be paired: merge the "
+                                          "groups or route through a block in neither"))
+
+
+def _check_top_level_repeat(layout: dict, problems: list) -> None:
+    """`{i}` and `$repeat` mean something only inside a definition."""
+    for b, block in enumerate(layout.get("blocks", []) or []):
+        name = str(block.get("name", ""))
+        if submodels.INDEX in name or submodels.has_repeat_item(block.get("params")):
+            problems.append(problem(
+                "E_SUBMODEL_REPEAT", f'{name}: {submodels.INDEX} and "$repeat" are only '
+                                     f'allowed inside a submodel definition',
+                f"/blocks/{b}", block=name,
+                hint="move the block into a definition with a repeat group, or write it out"))
+
+
 def _check_instances(blocks, links, definitions: dict, label: str,
-                     problems: list, base: str) -> None:
-    """Instances and port-bearing links of ONE level (the model, or a definition)."""
+                     problems: list, base: str, outer_locals: dict | None = None) -> None:
+    """Instances and port-bearing links of ONE level (the model, or a definition,
+    whose parameter defaults are *outer_locals*)."""
     by_name = {b.get("name"): b for b in blocks}
     known = ", ".join(sorted(definitions)) or "(none)"
     for index, block in enumerate(blocks):
@@ -175,7 +258,10 @@ def _check_instances(blocks, links, definitions: dict, label: str,
             definition = definitions.get(def_name)
             if definition is None:
                 continue  # already reported above
-            ports = submodels.definition_ports(definition, port_side)
+            # This instance's ports: a repeat group's count comes from its
+            # arguments (Phase 15 M7, D842).
+            ports = submodels.instance_ports(definition, block.get("params", {}).get("arguments"),
+                                             port_side, outer_locals)
             port = link.get(f"{side}_port")
             if port is None:
                 if len(ports) != 1:
@@ -219,6 +305,7 @@ def validate_submodels_structured(layout: dict) -> list[Problem]:
                 hint="move it into a submodel definition, or delete it"))
 
     _check_definition_cycles(definitions, problems)
+    _check_top_level_repeat(layout, problems)
 
     for def_name, definition in definitions.items():
         label = f"submodel '{def_name}'"
@@ -239,8 +326,10 @@ def validate_submodels_structured(layout: dict) -> list[Problem]:
         _check_definition_terminals(def_name, definition, problems)
         _check_scoped_names(def_name, definition, layout, problems)
         _check_structural_arguments(def_name, definition, problems)
+        _check_repeat(def_name, definition, problems)
         _check_instances(definition.get("blocks", []), definition.get("links", []),
-                         definitions, label, problems, base)
+                         definitions, label, problems, base,
+                         submodels.instance_locals(definition, {}))
 
     _check_instances(layout.get("blocks", []), layout.get("links", []), definitions,
                      "model", problems, "")

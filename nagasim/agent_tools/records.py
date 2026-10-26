@@ -82,8 +82,8 @@ def list_records(model: str, section: str) -> dict:
 
     Record sections: resources, resource_sets, schedules, failures, tables,
     sequences, variables, entities, timeseries_inputs, levels, flows,
-    conversions, fixed_costs, fleets, motion_profiles, chargers, auxiliaries,
-    delays, subscripts, agent_types, populations, reality_checks and orders
+    conversions, fixed_costs, fleets, motion_profiles, zones, chargers,
+    auxiliaries, delays, subscripts, agent_types, populations, reality_checks and orders
     (keyed by "id"; every other section by "name"). Record shape: schema
     $defs/<item>, see get_record_schema.
 

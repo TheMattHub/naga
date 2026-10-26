@@ -39,20 +39,35 @@ a capacity and an entry rhythm, which is what a free-running belt is.
 * non-accumulating: the whole belt STOPS. Nobody moves, nothing new gets on,
   and every entity's remaining travel resumes exactly where it stopped.
 
-Ceiling (ARCHITECTURE D68, kept by D115): only the entity at the END can block
-the belt, so a mid-belt divert ends the section there: one conveyor per zone,
-now linked belt to belt with back-pressure.
+The END blocks on a downstream belt only (ARCHITECTURE D68, kept by D115); a
+divert along the belt blocks on any finite space (D852, below).
 
 **Stops** (D732): `stops` are points along the belt -- `at` a distance from
 the entry, `time` an expression, an optional `resource` seized for the stop --
 where each part halts. A stop is one more place the lead part can wait, with
 the end's rules. On an accumulating belt the parts behind pack against it: a
 part reaches a stop no sooner than `spacing / speed` after the one before left
-it, and each section between two stops holds floor(gap / spacing) parts (at
-least one), so a queue backs up past a stop only by holding the part there. On
+it, and each section between two stops holds ceil(gap / spacing) parts (at
+least one; `_Section`, #1270), so a queue backs up past a stop only by holding
+the part there. On
 a non-accumulating belt the whole belt stops while a part is at a stop. The
 resource is released when the stop's time ends, before the part waits for room
 ahead. With no `stops` nothing here changes.
+
+**Diverts** (D851, D852): a divert is a stop that releases sideways. Every part
+reaches it by the stop chain; its `condition` is read once there. A part it
+takes is pushed for `time` (holding its cell, so the parts behind pack against
+it), then handed over on link k + 1 with the D78 token: a full target keeps it
+at the divert ("wait"). In "pass" mode a target with no room lets it ride on. A
+part it does not take passes with no dwell and no hold. A part reaches a divert by the
+section rule of the section after it, taken or not: that section's last part stands
+less than a spacing past the divert, so the part's front cannot be there sooner.
+
+**Merges** (D854, accumulating belts only): the parts `from` names join at
+`at`. A main part claims the point while its front is within a spacing of it;
+a merging part joins with no claim, a spacing after the last part passed and
+room in the section after it. Priority "belt" never makes a main part wait;
+"merge" holds the main parts a spacing before the point until the join.
 
 **Positions** (D734): every stage change writes one `belt_stage` trace event
 (where the part is, where it goes, how long it takes), and `playback.Timeline`
@@ -60,6 +75,7 @@ derives each part's position from them; tracing never touches results.
 """
 import logging
 import math
+from collections import deque
 
 import simpy
 
@@ -80,23 +96,137 @@ __all__ = ["Conveyor", "SPEC"]
 _EPS = 1e-9
 
 
-class _Stop:
-    """One stop's run-time state (D732): the chain of parts through it, and its stats."""
+class _Point:
+    """What every stop, divert and merge keeps (D732, D851, D854): its place in `_points`
+    (`slot`), the chain of the parts through it, and its waits."""
 
-    def __init__(self, env, index: int, at: float, time, resource: str):
-        self.index, self.at, self.time, self.resource = index, at, time, resource
+    code = ""                           # the problem code of a bad point
+
+    def __init__(self, index: int, at: float):
+        self.index, self.at = index, at
+        self.slot = 0
         self.clear = None               # fires when the last part to reach it leaves it
         self.left = -math.inf           # when that part left
+        self.waits = Tally()
+
+    def reset_stats(self, t: float) -> None:
+        self.waits.reset()
+
+
+class _Stop(_Point):
+    """One stop's run-time state (D732); `waits` are for its resource."""
+
+    code = "E_CONVEYOR_STOP"
+
+    def __init__(self, env, index: int, at: float, time, resource: str):
+        super().__init__(index, at)
+        self.time, self.resource = time, resource
         self.parts = 0
-        self.waits = Tally()            # for the resource
         self.busy = TimeWeighted(env.now)       # a part is at the stop
         self.blocked = TimeWeighted(env.now)    # it waits there: for the resource or room ahead
 
     def reset_stats(self, t: float) -> None:
+        super().reset_stats(t)
         self.parts = 0
-        self.waits.reset()
         self.busy.reset(t)
         self.blocked.reset(t)
+
+
+class _Divert(_Point):
+    """One divert's run-time state (D851): a stop that releases sideways. Divert *index*
+    (declared order) leaves by outgoing link index + 1; link 0 is the belt's end. `waits`:
+    a diverted part's, from the end of the push to acceptance."""
+
+    code = "E_CONVEYOR_DIVERT"
+
+    def __init__(self, env, index: int, at: float, condition, time, when_full: str):
+        super().__init__(index, at)
+        self.condition, self.time, self.when_full = condition, time, when_full
+        self.exit = index + 1
+        self.diverted = self.passed = self.skipped = 0
+        self.busy = TimeWeighted(env.now)       # a part pushes or waits there
+        self.blocked = TimeWeighted(env.now)    # it waits for its target
+
+    def reset_stats(self, t: float) -> None:
+        super().reset_stats(t)
+        self.diverted = self.passed = self.skipped = 0
+        self.busy.reset(t)
+        self.blocked.reset(t)
+
+
+class _Merge(_Point):
+    """One merge's run-time state (D854): parts from `source` join the belt at `at`.
+
+    A main part claims the point while its front is within a spacing of it; a merging
+    part joins with no claim and a spacing after the last part passed. `door` lets one
+    merging part at a time wait there. `changed` fires when a claim ends, a part joins or
+    one leaves the section after it (what the join rule reads), `joined` when a merging
+    part is on. `waits`: from arriving at the merge to joining."""
+
+    code = "E_CONVEYOR_MERGE"
+
+    def __init__(self, env, index: int, at: float, source: str, priority: str, cells: int):
+        super().__init__(index, at)
+        self.source, self.priority = source, priority
+        self.claims = 0
+        self.door = simpy.Resource(env, 1)
+        self.waiting = False
+        self.changed = env.event()
+        self.joined = env.event()
+        self.passers = deque(maxlen=max(cells, 1))   # ids, in the order they passed `at`
+        self.merged = 0
+        self.waiting_share = TimeWeighted(env.now)      # a merging part waits there
+
+    def reset_stats(self, t: float) -> None:
+        super().reset_stats(t)
+        self.merged = 0
+        self.waiting_share.reset(t)
+
+
+class _MergeEntry:
+    """What the merge's `source` block links to instead of the belt (D854): the belt in
+    every respect (name, space, token rules, via `__getattr__`), but a part handed to it
+    joins at the merge."""
+
+    def __init__(self, belt, index: int):
+        self._belt, self._index = belt, index
+
+    def __getattr__(self, name):
+        return getattr(self._belt, name)
+
+    def self_run(self, entity):
+        belt = self._belt
+        belt.env.process(belt._merge_in(entity, self._index))
+
+
+class _Section:
+    """The belt between two points of an accumulating belt (D732, D853).
+
+    It holds ceil(gap / spacing) parts, the number of fronts that fit in it in free flow
+    (#1270: floor() throttled a belt nothing stopped). When that is not a whole number of
+    spacings, a full section's last part stands less than a spacing past the start, so a
+    part reaches the start no sooner than `lag` after the part `cells` places ahead of it
+    left the section's end. `entrants` are the leave events of the last `cells` parts in,
+    each succeeded with the time it left, so a tie in event order cannot change the rule."""
+
+    def __init__(self, env, gap: float, spacing: float, speed: float):
+        self.cells = max(math.ceil(gap / spacing - _EPS), 1)
+        self.pool = simpy.Resource(env, self.cells)
+        lag = (self.cells * spacing - gap) / speed
+        self.lag = lag if lag > _EPS else 0.0
+        self.entrants = deque(maxlen=self.cells)
+
+    def due(self):
+        """The leave event a part reaching this section's start waits for, or None."""
+        if self.lag and len(self.entrants) == self.cells:
+            return self.entrants[0]
+        return None
+
+    def enter(self, env):
+        """A part is in: its leave event, to succeed with the time it leaves the end."""
+        out = env.event()
+        self.entrants.append(out)
+        return out
 
 
 class Conveyor(BaseProcess):
@@ -117,6 +247,9 @@ class Conveyor(BaseProcess):
         self.from_node = ""
         self.to_node = ""
         self.stops: list = []           # as declared: [(at, time, resource)] (D732)
+        # as declared: [(at, condition, time, when_full)] (D851)
+        self.diverts: list = []
+        self.merges: list = []          # as declared: [(at, source block, priority)] (D854)
         # Built lazily: the cell space needs the resolved length, which may come
         # from the network, which is only there once the model is loaded. The
         # stops are built with it, entry to end, and `_sections` are the cells of
@@ -124,7 +257,12 @@ class Conveyor(BaseProcess):
         self._space = None
         self._length = None             # the resolved belt length, with the space
         self._stops: list = []
+        self._diverts: list = []
+        self._merges: list = []
+        self._points: list = []         # stops, diverts and merges, entry to end
+        self._on: set = set()           # ids of the parts on the belt (a merge's `ahead`)
         self._sections: list = []
+        self._divert_waits = 0          # parts waiting at a divert for its target
         self._next_entry = 0.0
         self._prev_clear = None
         self._end_left = -math.inf      # when the last part left the end (#950)
@@ -136,9 +274,10 @@ class Conveyor(BaseProcess):
         self._holds = 0
         self._stop_event = None
         self._resume_event = None
-        # The end part waits for a downstream belt to take it (D115); what the
-        # deadlock check reads, since `blocked` also covers the exit_resource wait.
-        self.held_downstream = False
+        # The end part waits for a downstream belt to take it (D115); with a part
+        # waiting at a divert (D852), what the deadlock check reads (`held_downstream`),
+        # since `blocked` also covers the exit_resource wait.
+        self._end_held = False
         self.entered = 0
         self.exited = 0
         self.occupancy = TimeWeighted(env.now)
@@ -181,21 +320,61 @@ class Conveyor(BaseProcess):
         return self._space
 
     def _build_stops(self) -> None:
-        """The stops from the entry on, and on an accumulating belt the cells of each
-        section between two of them (D732). A stop off the belt is refused."""
+        """The points along the belt, stops and diverts, from the entry on, and on an
+        accumulating belt the cells of each section between two of them (D732, D851). A
+        point off the belt, or two at one place, is refused."""
         length = self._length = self.belt_length
         self._stops, self._sections = [], []
         for index, (at, time, resource) in enumerate(sorted(self.stops, key=lambda s: s[0])):
-            if not 0.0 < at < length:
-                raise RuntimeError(
-                    f"Conveyor '{self.name}': a stop at {at:g} is not on the belt, which is "
-                    f"{length:g} long; `at` is between 0 and the length, both excluded "
-                    f"(E_CONVEYOR_STOP).")
             self._stops.append(_Stop(self.env, index, at, time, resource))
-        if self._stops and self.accumulating:
-            ends = [0.0, *(stop.at for stop in self._stops), length]
-            self._sections = [simpy.Resource(self.env, max(int((b - a) // self.spacing), 1))
+        self._diverts = [_Divert(self.env, index, *divert)
+                         for index, divert in enumerate(self.diverts)]
+        self._merges = [_Merge(self.env, index, *merge, self.capacity)
+                        for index, merge in enumerate(self.merges)]
+        if self._merges and not self.accumulating:
+            raise RuntimeError(f"Conveyor '{self.name}': merges need an accumulating belt "
+                               f"(E_CONVEYOR_MERGE).")
+        self._points = sorted([*self._stops, *self._diverts, *self._merges], key=lambda p: p.at)
+        for slot, point in enumerate(self._points):
+            code = point.code
+            if not 0.0 < point.at < length:
+                raise RuntimeError(
+                    f"Conveyor '{self.name}': a point at {point.at:g} is not on the belt, which "
+                    f"is {length:g} long; `at` is between 0 and the length, both excluded "
+                    f"({code}).")
+            before = self._points[slot - 1] if slot else None
+            # Two stops at one place stay legal (D732); a divert shares its place with none.
+            if before is not None and abs(point.at - before.at) <= _EPS \
+                    and not (isinstance(point, _Stop) and isinstance(before, _Stop)):
+                raise RuntimeError(f"Conveyor '{self.name}': two points share the place "
+                                   f"{point.at:g}; a divert or a merge has one of its own "
+                                   f"({code}).")
+            point.slot = slot
+        if self._points and self.accumulating:
+            ends = [0.0, *(point.at for point in self._points), length]
+            self._sections = [_Section(self.env, b - a, self.spacing, self.speed)
                               for a, b in zip(ends, ends[1:])]
+
+    @property
+    def held_downstream(self) -> bool:
+        """A part waits for a downstream space: the end's (D115) or a divert's (D852)."""
+        return self._end_held or self._divert_waits > 0
+
+    def room_now(self) -> bool:
+        """A part handed to this belt now would be on it in this instant: a free cell nobody
+        queues for, a first section with room, a running belt and an entry slot due. What
+        an upstream divert in "pass" mode reads (D852)."""
+        space, now = self.space, self.env.now
+        if space.content.level >= space.capacity or space.waiting or self.entry_full:
+            return False
+        if (not self.accumulating and self._stopped) or self._next_entry > now + _EPS:
+            return False
+        if self._sections:
+            first = self._sections[0]
+            due = first.due()
+            if due is not None and (not due.triggered or due.value + first.lag > now + _EPS):
+                return False
+        return True
 
     # -- the belt clock (non-accumulating only) ------------------------------
     @property
@@ -208,7 +387,7 @@ class Conveyor(BaseProcess):
     def entry_full(self) -> bool:
         """The first section of a belt with stops is full: free cells or not, nothing
         gets on until a part there moves on (the deadlock check, D732)."""
-        return bool(self._sections) and self._sections[0].count >= self._sections[0].capacity
+        return bool(self._sections) and self._sections[0].pool.count >= self._sections[0].cells
 
     def _end_blocked(self, on: bool) -> None:
         """The end part cannot leave: an accumulating belt records it, a
@@ -255,11 +434,13 @@ class Conveyor(BaseProcess):
                 self._resume_event.succeed()
 
     def _at(self, entity, stage: str, x0: float, x1: float | None = None,
-            duration: float = 0.0) -> None:
+            duration: float = 0.0, ahead: int = -1) -> None:
         """One trace event per belt stage (D734): from *x0* to *x1* (standing when None)
-        in *duration*, distances from the entry. `Timeline` reads nothing else."""
+        in *duration*, distances from the entry; *ahead*, the part a merged one lands
+        behind (D854). `Timeline` reads nothing else."""
         self.emit("belt_stage", entity=entity, state=stage, x0=x0,
-                  x1=x0 if x1 is None else x1, duration=duration, value=self.spacing)
+                  x1=x0 if x1 is None else x1, duration=duration, value=self.spacing,
+                  ahead=ahead)
 
     def _ride(self, distance_time: float, entity=None, x0: float = 0.0, stage: str = "ride"):
         """Generator: spend *distance_time* of BELT time, pausing while stopped,
@@ -295,17 +476,24 @@ class Conveyor(BaseProcess):
         # the part is only off it once it is physically on the belt, which is
         # after the stopped-belt wait and the entry rhythm below (PHASE4 T7).
         cell = yield from self.space.take(entity, accepts=False)
-        section = None
+        section, not_before = None, self.env.now
         if self._sections:
             # Room in the first section (D732): parts packed back to the entry stop it.
-            section = self._sections[0].request()
-            yield section
+            first = self._sections[0]
+            request = first.pool.request()
+            yield request
+            due = first.due()
+            if due is not None:
+                if not due.triggered:
+                    yield due
+                not_before = due.value + first.lag      # D853: boarding is its start
+            section = (request, first.enter(self.env))
         if not self.accumulating and self._stopped:
             yield self._resume_event                # a stopped belt takes nothing on
         # Reserve the entry slot BEFORE sleeping on it: two entities that both
         # read a slot 2 s away would otherwise both take it and ride side by
         # side, which is exactly what spacing forbids.
-        slot = max(self._next_entry, self.env.now)
+        slot = max(self._next_entry, self.env.now, not_before)
         self._next_entry = slot + spacing_time
         if slot - self.env.now > _EPS:
             # not `slot`: the float the timeout lands on (a state taken again matches)
@@ -318,16 +506,22 @@ class Conveyor(BaseProcess):
         entered_at = self.env.now
         self.entered += 1
         self.occupancy.add(1, entered_at)
+        if self._merges:
+            self._on.add(entity.id)
         yield from self._carry(entity, cell, entered_at, section=section)
 
-    def _carry(self, entity, cell, entered_at, end=None, section=None):
+    def _carry(self, entity, cell, entered_at, end=None, section=None, slot=0, start=0.0):
         """The ride to the end (until *end*, put back by a state), then the way off.
-        *section*: the cells held in the first section of a belt with stops."""
+        *section*: the cells held in the first section of a belt with stops; *slot* and
+        *start*: the first point still ahead and where the part is (a merged part)."""
         length = self._length
         if end is None:
-            ride, start = self.travel_time, 0.0
-            if self._stops:
-                section, start = yield from self._through_stops(entity, section)
+            ride = (length - start) / self.speed
+            if self._points:
+                section, start = yield from self._through_points(entity, section, cell,
+                                                                 entered_at, slot, start)
+                if start is None:
+                    return                          # diverted off the belt (D851)
                 ride = (length - start) / self.speed
             entity._belt = ("ride", self.env.now + ride, entered_at)
             yield from self._ride(ride, entity, start)
@@ -341,26 +535,41 @@ class Conveyor(BaseProcess):
         self._prev_clear = clear
         yield from self._leave(entity, cell, entered_at, ahead, clear, section=section)
 
-    def _through_stops(self, entity, section):
-        """Generator: ride from the entry through every stop (D732); returns the cells
-        held in the last section and where the last stop is."""
-        gap, at = self.spacing / self.speed, 0.0
-        for stop in self._stops:
-            yield from self._ride((stop.at - at) / self.speed, entity, at)
-            at = stop.at
-            ahead, clear = stop.clear, self.env.event()
-            stop.clear = clear
+    def _through_points(self, entity, section, cell, entered_at, slot=0, start=0.0):
+        """Generator: ride from *start* through every stop, divert and merge from *slot*
+        on (D732, D851, D854); returns the cells held in the last section and where the
+        last point is, or (None, None) once a divert has taken the part off the belt."""
+        gap, at = self.spacing / self.speed, start
+        for point in self._points[slot:]:
+            if isinstance(point, _Merge):
+                section = yield from self._pass_merge(entity, point, at, section)
+                at = point.at
+                continue
+            yield from self._ride((point.at - at) / self.speed, entity, at)
+            at = point.at
+            ahead, clear = point.clear, self.env.event()
+            point.clear = clear
             if self.accumulating:
                 if ahead is not None and not ahead.triggered:
                     self._at(entity, "packed", at)      # Timeline puts it behind the one ahead
                     yield ahead
                     catch_up = gap
                 else:
-                    catch_up = stop.left + gap - self.env.now
+                    catch_up = point.left + gap - self.env.now
                 if catch_up > _EPS:
                     # held a spacing behind the part ahead until it left: the rest of the way
                     yield from self._ride(catch_up, entity, at - catch_up * self.speed, "move")
-            else:
+                yield from self._reach_section(entity, self._sections[point.slot + 1], at)
+            if isinstance(point, _Divert):
+                if self._diverts_it(point, entity):
+                    yield from self._divert(entity, point, cell, entered_at, section, clear)
+                    return None, None
+                section = yield from self._room_ahead(entity, point, section)
+                point.left = self.env.now
+                clear.succeed()
+                continue
+            stop = point
+            if not self.accumulating:
                 self._hold(1)
             stop.parts += 1
             stop.busy.set(1.0, self.env.now)
@@ -373,21 +582,13 @@ class Conveyor(BaseProcess):
                 yield from acquire(self, entity, stop.resource)
                 stop.blocked.set(0.0, self.env.now)
                 stop.waits.add(self.env.now - asked)
-            duration = self._stop_time(stop, entity)
+            duration = self._point_time(stop, entity, "stops")
             self._at(entity, "dwell", at, duration=duration)
             if duration > 0:
                 yield self.env.timeout(duration)
             if stop.resource:
                 release(self, entity, stop.resource)
-            if section is not None:
-                ahead_room = self._sections[stop.index + 1].request()
-                if not ahead_room.triggered:
-                    self._at(entity, "blocked", at)
-                    stop.blocked.set(1.0, self.env.now)
-                    yield ahead_room
-                    stop.blocked.set(0.0, self.env.now)
-                self._sections[stop.index].release(section)
-                section = ahead_room
+            section = yield from self._room_ahead(entity, stop, section, stop.blocked)
             stop.busy.set(0.0, self.env.now)
             stop.left = self.env.now
             clear.succeed()
@@ -395,15 +596,245 @@ class Conveyor(BaseProcess):
                 self._hold(-1)
         return section, at
 
-    def _stop_time(self, stop, entity) -> float:
-        """A stop's `time` for *entity*, in the model's time unit; a negative one is 0."""
-        value = stop.time
+    def _room_ahead(self, entity, point, section, blocked=None):
+        """Generator: a part leaving *point* on an accumulating belt takes a cell in the
+        section after it (waiting there for one), and gives back the one it had; returns
+        the cells it now holds. *blocked*: the point's blocked share, when it counts."""
+        if section is None:
+            return None
+        nxt = self._sections[point.slot + 1]
+        ahead_room = nxt.pool.request()
+        if not ahead_room.triggered:
+            self._at(entity, "blocked", point.at)
+            if blocked is not None:
+                blocked.set(1.0, self.env.now)
+            yield ahead_room
+            if blocked is not None:
+                blocked.set(0.0, self.env.now)
+        self._leave_section(point.slot, section)
+        return ahead_room, nxt.enter(self.env)
+
+    def _diverts_it(self, divert, entity) -> bool:
+        """Does *divert* take *entity* (D851)? Its condition, read once as the part's front
+        reaches it; in "pass" mode a target with no room lets the part ride on (D852)."""
+        value = divert.condition
         if isinstance(value, str):
             try:
                 value = evaluate_expression(self, value, entity)
             except (ExpressionError, TypeError, ValueError) as exc:
                 raise ExpressionError(
-                    f"Block '{self.name}': stops[{stop.index}].time: {exc}") from None
+                    f"Block '{self.name}': diverts[{divert.index}].condition: {exc}") from None
+        if not value:
+            divert.passed += 1
+            return False
+        if divert.when_full == "pass" and not self._room_at(divert):
+            divert.skipped += 1
+            return False
+        return True
+
+    def _room_at(self, divert) -> bool:
+        """The "pass" room check (D852) on the block divert's link goes straight to."""
+        target = self.next_process[divert.exit]
+        room = getattr(target, "room_now", None)
+        if room is not None:
+            return room()
+        space = getattr(target, "space", None)
+        if space is None or space.capacity <= 0:
+            raise RuntimeError(
+                f"Conveyor '{self.name}': divert {divert.index} passes when full, so its link "
+                f"must go straight to a CONVEYOR, a BUFFER or a station with queue_capacity; "
+                f"'{getattr(target, 'name', target)}' has no places (E_CONVEYOR_DIVERT).")
+        return space.content.level < space.capacity and not space.waiting
+
+    def _divert(self, entity, divert, cell, entered_at, section, clear):
+        """Generator: push *entity* off at *divert* (its `time`, holding its cell), hand it
+        over on the divert's link with the D78 token -- a full target keeps it at the
+        divert -- then take it off the belt (D851, D852)."""
+        at = divert.at
+        if not self.accumulating:
+            self._hold(1)
+        divert.busy.set(1.0, self.env.now)
+        duration = self._point_time(divert, entity, "diverts")
+        self._at(entity, "divert", at, duration=duration)
+        if duration > 0:
+            yield self.env.timeout(duration)
+        asked = self.env.now
+        token = arm(self, entity)
+        token.entered = entered_at
+        self.forward(entity, divert.exit)
+        if not token.triggered:
+            self._divert_waits += 1
+            divert.blocked.set(1.0, asked)
+            self._at(entity, "handover", at)
+            check_deadlock(self)
+            yield token
+            self._divert_waits -= 1
+            divert.blocked.set(0.0, self.env.now)
+        t = self.env.now
+        divert.waits.add(t - asked)
+        divert.diverted += 1
+        divert.busy.set(0.0, t)
+        self.exited += 1
+        self.occupancy.add(-1, t)
+        self.transit.add(t - entered_at)
+        self.space.give_back(cell)
+        if section is not None:
+            self._leave_section(divert.slot, section)
+        divert.left = t
+        clear.succeed()
+        if not self.accumulating:
+            self._hold(-1)
+        self._on.discard(entity.id)
+        self._at(entity, "off", at)
+
+    # -- merges (D854) -------------------------------------------------------
+    def wire_merges(self, blocks: dict) -> None:
+        """Called once every link is wired, before `blocking.analyse`: each merge's source
+        links to a `_MergeEntry` instead of the belt, so its parts join at the merge."""
+        for index, (_at, source, _priority) in enumerate(self.merges):
+            block = blocks.get(source)
+            nexts = getattr(block, "next_process", None) or []
+            if not any(target is self for target in nexts):
+                raise RuntimeError(f"Conveyor '{self.name}': merge {index} names '{source}', "
+                                   f"which does not link to it (E_CONVEYOR_MERGE).")
+            block.next_process = [_MergeEntry(self, index) if target is self else target
+                                  for target in nexts]
+
+    def _may_join(self, merge) -> bool:
+        """A merging part may join now: no main part within a spacing of the point, a
+        spacing since the last part passed it, and room in the section after it."""
+        now = self.env.now
+        if merge.claims or now < merge.left + self.spacing / self.speed - _EPS:
+            return False
+        section = self._sections[merge.slot + 1]
+        if section.pool.count >= section.cells or section.pool.queue:
+            return False
+        due = section.due()
+        return due is None or (due.triggered and due.value + section.lag <= now + _EPS)
+
+    def _join_wakeup(self, merge):
+        """The events after which a waiting merging part looks again."""
+        now, section = self.env.now, self._sections[merge.slot + 1]
+        events = [merge.changed]
+        later = merge.left + self.spacing / self.speed - now
+        if later > _EPS:
+            events.append(self.env.timeout(later))
+        due = section.due()
+        if due is not None:
+            if not due.triggered:
+                events.append(due)
+            elif due.value + section.lag - now > _EPS:
+                events.append(self.env.timeout(due.value + section.lag - now))
+        return simpy.AnyOf(self.env, events)
+
+    def _fire(self, merge, name: str) -> None:
+        fired = getattr(merge, name)
+        setattr(merge, name, self.env.event())
+        fired.succeed()
+
+    def _pass_merge(self, entity, merge, at, section):
+        """Generator: a main part goes past a merge (D854). It rides to a spacing before
+        the point, keeps a spacing behind the part that passed last, gives way to a
+        merging part that may join (always, with priority "merge"), then claims the point
+        while its front is within a spacing of it, and passes."""
+        gap = self.spacing / self.speed
+        pre = max(merge.at - self.spacing, at)
+        if pre - at > _EPS:
+            yield from self._ride((pre - at) / self.speed, entity, at)
+        ahead, clear = merge.clear, self.env.event()
+        merge.clear = clear
+        if ahead is not None and not ahead.triggered:
+            self._at(entity, "packed", pre)
+            yield ahead
+        while True:
+            if merge.waiting and (merge.priority == "merge" or self._may_join(merge)):
+                self._at(entity, "packed", pre)
+                yield merge.joined
+                continue
+            late = merge.left + gap - (merge.at - pre) / self.speed - self.env.now
+            if late <= _EPS:
+                break
+            self._at(entity, "packed", pre)
+            yield self.env.timeout(late)
+        merge.claims += 1
+        yield from self._ride((merge.at - pre) / self.speed, entity, pre)
+        yield from self._reach_section(entity, self._sections[merge.slot + 1], merge.at)
+        section = yield from self._room_ahead(entity, merge, section)
+        merge.left = self.env.now
+        merge.passers.append(entity.id)
+        merge.claims -= 1
+        clear.succeed()
+        self._fire(merge, "changed")
+        return section
+
+    def _merge_in(self, entity, index: int):
+        """Generator: a part from merge *index*'s source joins the belt at its point
+        (D854): a belt cell, the merge's door (one waits there at a time), then the gap
+        rule; it is on the belt -- and its source free -- once it joins."""
+        merge, ready = self._merges[index], self.env.now
+        entity._belt = ("cell", None, None)
+        cell = yield from self.space.take(entity, accepts=False)
+        door = merge.door.request()
+        yield door
+        merge.waiting = True
+        merge.waiting_share.set(1.0, self.env.now)
+        while not self._may_join(merge):
+            yield self._join_wakeup(merge)
+        nxt = self._sections[merge.slot + 1]
+        request = nxt.pool.request()        # free: `_may_join` saw room
+        section = (request, nxt.enter(self.env))
+        accept(entity)
+        t = self.env.now
+        ahead = next((pid for pid in reversed(merge.passers) if pid in self._on), -1)
+        merge.waiting = False
+        merge.waiting_share.set(0.0, t)
+        merge.waits.add(t - ready)
+        merge.merged += 1
+        merge.left = t
+        merge.passers.append(entity.id)
+        self.entered += 1
+        self.occupancy.add(1, t)
+        self._on.add(entity.id)
+        self._at(entity, "merge", merge.at, ahead=ahead)
+        merge.door.release(door)
+        self._fire(merge, "joined")
+        self._fire(merge, "changed")
+        yield from self._carry(entity, cell, t, section=section, slot=merge.slot + 1,
+                               start=merge.at)
+
+    def _reach_section(self, entity, section, at: float):
+        """Generator, D853: a part reaches the start of *section* (at *at*) no sooner than
+        its lag after the part `cells` places ahead of it there left the section's end."""
+        due = section.due()
+        if due is None:
+            return
+        if not due.triggered:
+            self._at(entity, "packed", at)          # Timeline puts it behind the one ahead
+            yield due
+        late = due.value + section.lag - self.env.now
+        if late > _EPS:
+            yield from self._ride(late, entity, at - late * self.speed, "move")
+
+    def _leave_section(self, index: int, section) -> None:
+        """A part leaves section *index*'s end: its cell back, its leave time recorded."""
+        request, out = section
+        part = self._sections[index]
+        part.pool.release(request)
+        out.succeed(self.env.now)
+        # Section *index* starts at point index - 1; a merge there reads its room (D854).
+        if index and isinstance(self._points[index - 1], _Merge):
+            self._fire(self._points[index - 1], "changed")
+
+    def _point_time(self, point, entity, field: str) -> float:
+        """A stop's or a divert's `time` for *entity*, in the model's time unit; a negative
+        one is 0."""
+        value = point.time
+        if isinstance(value, str):
+            try:
+                value = evaluate_expression(self, value, entity)
+            except (ExpressionError, TypeError, ValueError) as exc:
+                raise ExpressionError(
+                    f"Block '{self.name}': {field}[{point.index}].time: {exc}") from None
         return max(float(value), 0.0)
 
     def _leave(self, entity, cell, entered_at, ahead, clear, stage=None, until=None,
@@ -460,7 +891,8 @@ class Conveyor(BaseProcess):
         self.transit.add(t - entered_at)
         self.space.give_back(cell)
         if section is not None:
-            self._sections[-1].release(section)
+            self._leave_section(len(self._sections) - 1, section)
+        self._on.discard(entity.id)
         self._at(entity, "off", length)
         if self.ctx.debug:
             log.debug("Entity %s left conveyor '%s' at time %s.", entity.id, self.name, t)
@@ -479,12 +911,12 @@ class Conveyor(BaseProcess):
             self.forward(entity, 0)
         if token.triggered:
             return
-        self.held_downstream = True
+        self._end_held = True
         self._at(entity, "handover", self._length)
         self._end_blocked(True)
         check_deadlock(self)
         yield token
-        self.held_downstream = False
+        self._end_held = False
         self._end_blocked(False)
 
     def self_run(self, entity):
@@ -530,15 +962,20 @@ class Conveyor(BaseProcess):
         self.transit.reset()
         if self._space is not None:
             self._space.reset_stats(t)
-        for stop in self._stops:
-            stop.reset_stats(t)
+        for point in self._points:
+            point.reset_stats(t)
 
     def get_params_dict(self):
         return {"length": self.length, "speed": self.speed, "spacing": self.spacing,
                 "accumulating": self.accumulating, "exit_resource": self.exit_resource,
                 "from_node": self.from_node, "to_node": self.to_node,
                 "stops": [{"at": at, "time": time, "resource": resource}
-                          for at, time, resource in self.stops]}
+                          for at, time, resource in self.stops],
+                "diverts": [{"at": at, "condition": condition, "time": time,
+                             "when_full": when_full}
+                            for at, condition, time, when_full in self.diverts],
+                "merges": [{"at": at, "from": source, "priority": priority}
+                           for at, source, priority in self.merges]}
 
     def set_params_from_dict(self, param_dict):
         units = self.ctx.units
@@ -558,6 +995,15 @@ class Conveyor(BaseProcess):
         self.stops = [(scaled(float(stop.get("at", 0.0)), at_factor), stop.get("time", 0.0) or 0.0,
                        str(stop.get("resource", "") or "").strip())
                       for stop in param_dict.get("stops") or []]
+        # A divert's `at` likewise; its condition and time are read per part (D851).
+        self.diverts = [(scaled(float(divert.get("at", 0.0)), at_factor),
+                         divert.get("condition", ""), divert.get("time", 0.0) or 0.0,
+                         str(divert.get("when_full", "wait") or "wait"))
+                        for divert in param_dict.get("diverts") or []]
+        self.merges = [(scaled(float(merge.get("at", 0.0)), at_factor),
+                        str(merge.get("from", "") or "").strip(),
+                        str(merge.get("priority", "belt") or "belt"))
+                       for merge in param_dict.get("merges") or []]
         self._space = None
 
 
@@ -598,6 +1044,23 @@ SPEC = BlockSpec(
                               "\"time\": <number or expression>, \"resource\"?: <seized for the "
                               "stop>}. Parts behind pack against a stop on an accumulating belt; "
                               "a non-accumulating belt stops while a part is at one. Empty: none.",
+                  quantity="none", kinds=("table",)),
+        ParamSpec("diverts", list, [],
+                  description="Points where a part may leave the belt sideways: {\"at\": "
+                              "<distance from the entry, in the unit of `length`>, "
+                              "\"condition\": <expression, read once as the part reaches it>, "
+                              "\"time\"?: <push time, number or expression>, \"when_full\"?: "
+                              "\"wait\" (default: the part waits there for room) or \"pass\" "
+                              "(it rides on)}. Divert k leaves by outgoing link k + 1; link 0 "
+                              "is the belt's end. Empty: none.",
+                  quantity="none", kinds=("table",)),
+        ParamSpec("merges", list, [],
+                  description="Points where parts from another block join the belt: {\"at\": "
+                              "<distance from the entry, in the unit of `length`>, \"from\": "
+                              "<the block linking to this belt whose parts join there>, "
+                              "\"priority\"?: \"belt\" (default: they wait for a gap of two "
+                              "spacings) or \"merge\" (parts on the belt make room)}. "
+                              "Accumulating belts only. Empty: none.",
                   quantity="none", kinds=("table",)),
     ),
     factory=lambda env, block: Conveyor(env, block),

@@ -546,6 +546,15 @@ def _check_holds_and_members(c, entry, name, block, count, at) -> None:
     """What an entity holds from an earlier block, the members of a formed batch, and what it must hold to go on."""
     layout, blocks, sets, start, serving = c.layout, c.blocks, c.sets, c.start, c.serving
     linked, before, created, needs, batches, problems = c.linked, c.before, c.created, c.needs, c.batches, c.problems
+    carrier_type = str((block.get("params") or {}).get("carrier_type") or "").strip() \
+        if _kind(block) == "BATCH" else ""
+    if carrier_type and str(entry.get("e_type") or "").upper() == carrier_type.upper():
+        problems.append(problem(
+            "E_INITIAL_CARRIER", f"initial_state: block '{name}': a {carrier_type} waiting at a "
+            f"carrier BATCH cannot be put back: where its loading stood and its cut-off are not "
+            f"carried", at, block=name,
+            hint="start the state with the carrier before the BATCH (at its door SEIZE), or "
+                 "after it"))
     if entry.get("holds") is not None:
         _validate_holds(layout, entry, block, blocks, sets, start, serving, at, problems)
     if entry.get("members") is not None:
@@ -785,11 +794,17 @@ def _splits(name, blocks, after) -> bool:
     def kind(n) -> str:
         return _kind(blocks.get(n) or {})
 
+    def disposes(n) -> bool:        # Phase 15 M2: a kept carrier may have no members
+        params = (blocks.get(n) or {}).get("params") or {}
+        return kind(n) == "SEPARATE" and (params.get("carrier") or "dispose") != "keep"
+
     if _forms(blocks.get(name) or {}):
         return False
-    return kind(name) == "SEPARATE" or "SEPARATE" in map(kind, blocking.stops(
+    if kind(name) == "SEPARATE":
+        return disposes(name)
+    return any(map(disposes, blocking.stops(
         name, after, lambda n: kind(n) == "SEPARATE" or _forms(blocks.get(n) or {}),
-        lambda n: True))
+        lambda n: True)))
 
 
 def _formed_by(name, blocks, before) -> list:
@@ -1452,16 +1467,18 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
     on = {}                 # belt -> [(entered, stage, until)] of the parts with a cell
     queued: dict = {}       # end stop -> parts at it, and jobs waiting to seize it (D431)
     stops = []              # (belt, end stop) of each part at one
+    # D855: a belt with diverts or merges is refused the same way.
     stopped = {name for name, block in blocks.items() if kind(name) == "CONVEYOR"
-               and ((block.get("params") or {}).get("stops") or [])}
+               and any((block.get("params") or {}).get(field)
+                       for field in ("stops", "diverts", "merges"))}
     for index, entry in enumerate(state.get("entities") or []):
         # D733: a part between two stops has no vocabulary yet, so a belt with stops
         # starts empty or not at all.
         names = (entry.get("block"), entry.get("held_by")) if isinstance(entry, dict) else ()
         for name in (n for n in names if isinstance(n, str) and n in stopped):
             problems.append(problem(
-                "E_INITIAL_BELT", f"initial_state: belt '{name}' has stops: a part on it is not "
-                f"carried", f"/{SECTION}/entities/{index}", block=name,
+                "E_INITIAL_BELT", f"initial_state: belt '{name}' has stops, diverts or merges: a part "
+                f"on it is not carried", f"/{SECTION}/entities/{index}", block=name,
                 hint="start the belt empty, or take the state of a model without stops"))
     for entry in state.get("entities") or []:
         block = blocks.get(entry.get("block")) if isinstance(entry, dict) \

@@ -68,6 +68,30 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
                _p("max_inflow", float, None, "rate", min=0, unit_key="rate_time_unit"),
                _p("max_outflow", float, None, "rate", min=0, unit_key="rate_time_unit"),
                _p("blend_tolerance", float, None, "ratio", min=0, min_exclusive=True), _unit("rate_time_unit")),
+    # Phase 15 M8 (D847): a storage the dispatch plan may drive. `setpoint` is a
+    # VARIABLE name; it is an expression kind only so that the field table makes
+    # submodels scope a `$name` per instance. The rates are per the PARENT
+    # level's `rate_time_unit`, which a child spec cannot name as its unit key
+    # (`fill_units` would write the key into the child), so they are "none"
+    # here and `core/dispatch.py` scales them by the level's own unit.
+    "levels.storage": (_p("setpoint", str, None, "none", kinds=("expression",)),
+                       _p("charge_max", float, None, "none", min=0),
+                       _p("discharge_max", float, None, "none", min=0),
+                       _p("charge_efficiency", float, 1.0, "ratio", min=0, min_exclusive=True,
+                          max=1),
+                       _p("discharge_efficiency", float, 1.0, "ratio", min=0,
+                          min_exclusive=True, max=1),
+                       _p("loss", float, 0.0, "none", min=0)),
+    # The grid role of a flow (D847): `limit` per the flow's own rate unit, as above.
+    "flows.grid": (_p("limit", float, None, "none", min=0),),
+    # The dispatch plan (D846): every time field in the section's own unit.
+    "dispatch": (_p("horizon", float, 24.0, "time", min=0, min_exclusive=True,
+                    unit_key="time_unit"),
+                 _p("step", float, 0.25, "time", min=0, min_exclusive=True, unit_key="time_unit"),
+                 _p("replan_every", float, 1.0, "time", min=0, min_exclusive=True,
+                    unit_key="time_unit"),
+                 _unit("time_unit", "hours"),
+                 _p("voll", float, None, "money", min=0)),
     "levels.conveyor": (_p("transit_time", str, None, "time", kinds=_NUMEXPR, min=0,
                            unit_key="time_unit"), _unit("time_unit")),
     "flows": (_p("rate", str, "0", "rate", kinds=_NUMEXPR, unit_key="rate_time_unit"),
@@ -109,6 +133,8 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
                            unit_key="payload_unit"),
                         _unit("payload_unit", "kg"),
                         _p("payload_derate", float, None, "ratio", min=0, min_exclusive=True, max=1)),
+    # radius_m is metres by name (unit_key ""), as a fleet's length_m (D830).
+    "zones": (_p("radius_m", float, None, "length", min=0, min_exclusive=True, unit_key=""),),
     # power_kw is kW by name (unit_key ""); swap_time is in swap_time_unit.
     "chargers": (_p("points", int, 1, "count", min=1),
                  _p("power_kw", float, None, "power", min=0, min_exclusive=True, unit_key=""),

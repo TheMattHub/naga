@@ -359,18 +359,62 @@ def test_every_reader_refuses_a_write_connection(fake, tmp_path):
         netguard.load_connections(connections)
 
 
+# Imports by name (`importlib.import_module`, `__import__`) whose name is not a literal,
+# reviewed one by one: {(folder/file, the name expression's source): why it may stay}.
+_DYNAMIC_IMPORTS_REVIEWED = {
+    ("product/cli.py", 'f"product.{module}"'): "the person's command line, product commands",
+    ("product/cli.py", 'f"nagasim.{module}"'): "the person's command line: `product "
+                                                 "plc-write` is a person's command, as naga's",
+}
+
+
 def _imports_plcwrite(path: Path) -> bool:
     """Whether *path* imports `nagasim.plcwrite`, by an AST walk (a word in a comment or a
-    string is not an import; nothing is imported)."""
+    string is not an import; nothing is imported). An import by name counts too: one whose
+    literal name ends in plcwrite, or whose name is not a literal at all, unless that call
+    is in `_DYNAMIC_IMPORTS_REVIEWED` (Phase 15 FA)."""
     import ast
 
-    for node in ast.walk(ast.parse(path.read_text("utf-8"))):
+    source = path.read_text("utf-8")
+    for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import) and any(a.name.split(".")[-1] == "plcwrite" for a in node.names):
             return True
         if isinstance(node, ast.ImportFrom) and ((node.module or "").split(".")[-1] == "plcwrite"
                                                  or any(a.name == "plcwrite" for a in node.names)):
             return True
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if called not in ("import_module", "__import__"):
+            continue
+        name = node.args[0] if node.args else next(
+            (k.value for k in node.keywords if k.arg == "name"), None)
+        if isinstance(name, ast.Constant) and isinstance(name.value, str):
+            if name.value.split(".")[-1] == "plcwrite":
+                return True
+        else:
+            where = f"{path.parent.name}/{path.name}"
+            if (where, ast.get_source_segment(source, name) if name else "") \
+                    not in _DYNAMIC_IMPORTS_REVIEWED:
+                return True
     return False
+
+
+def test_the_scan_sees_an_import_by_name(tmp_path):
+    """An import by name reaches the writer when it names it, or when its name is computed
+    (it could be anything); a literal other name does not."""
+    cases = {"import importlib\nimportlib.import_module('nagasim.plcwrite')\n": True,
+             "__import__('nagasim.plcwrite')\n": True,
+             "from importlib import import_module\nimport_module(name='plcwrite')\n": True,
+             "import importlib\nm = 'plc' + 'write'\nimportlib.import_module(m)\n": True,
+             "__import__(f'nagasim.{x}')\n": True,
+             "import importlib\nimportlib.import_module('nagasim.readers.modbus')\n": False,
+             "import importlib\nimportlib.reload(importlib)\n": False}
+    for text, reaches in cases.items():
+        probe = tmp_path / "probe.py"
+        probe.write_text(text, encoding="utf-8")
+        assert _imports_plcwrite(probe) is reaches, text
 
 
 def test_the_writer_sends_only_codes_6_and_16_and_the_reader_only_reads(fake, tmp_path):
@@ -390,7 +434,7 @@ def test_the_writer_sends_only_codes_6_and_16_and_the_reader_only_reads(fake, tm
     assert not _imports_plcwrite(Path(modbus.__file__))
 
 
-def test_no_agent_tool_reaches_the_writer():
+def test_no_agent_tool_reaches_the_writer(tmp_path):
     """D743: no tool, no assistant and no MCP server imports `plcwrite` or takes a setpoint."""
     from nagasim import agent_tools as T
 
@@ -399,7 +443,9 @@ def test_no_agent_tool_reaches_the_writer():
                 root / "nagasim" / "assistant.py", *(root / "product").rglob("*.py")]
     reached = [p.name for p in surfaces if p.exists() and _imports_plcwrite(p)]
     assert reached == []
-    assert _imports_plcwrite(Path(plcwrite.__file__).parent / "twin.py")   # the walk finds one
+    probe = tmp_path / "probe.py"                 # the walk finds an import when there is one
+    probe.write_text("from nagasim import plcwrite" + chr(10), encoding="utf-8")
+    assert _imports_plcwrite(probe)
     for tool in T.tool_schemas():
         names = set(tool["input_schema"].get("properties") or {})
         assert not names & {"setpoints", "setpoint", "register", "write"}, tool["name"]

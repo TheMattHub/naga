@@ -26,7 +26,7 @@
       "layout_position": [26.0, 0.0],
       "params": {
         "definition": "Cobot cell",
-        "arguments": {"hrc": "separation", "zone": "safety_zone_1/zone"}
+        "arguments": {"hrc": "separation", "zone": "safety_zone_1/Auto Safety zone"}
       }
     },
     {
@@ -300,6 +300,7 @@
       "collaborative_speed": 0.25
     }
   ],
+  "zones": [{"name": "Auto Safety zone", "node": "$zone", "radius_m": 1.5}],
   "chargers": [
     {"name": "Auto AMR charger", "node": "$base", "kind": "charge", "points": 1, "power_kw": 1.0},
     {"name": "Auto Charger", "node": "$bay", "kind": "charge", "points": 2, "power_kw": 1.0},
@@ -359,7 +360,7 @@
     "Robot arm cell": {
       "info": {
         "description": "A robot arm that picks a part, carries it over the reach distance, places it and works on it. The cycle time follows from the arm's speed, acceleration and payload (Results > Motion shows the time per motion). The cell brings its purchase price as capex for the investment case, its power and a maintenance cost per hour. Its \"cell\" node is where vehicles deliver to; leave it unjoined in a model with no vehicles.",
-        "library": {"library": "automation", "asset": "robot_arm_cell", "version": "1.0.0"},
+        "library": {"library": "automation", "asset": "robot_arm_cell", "version": "2.0.0"},
         "parameters": [
           {
             "name": "station",
@@ -834,20 +835,64 @@
     },
     "Safety zone": {
       "info": {
-        "description": "The place a cobot watches for people: one node, \"zone\". Put it where the people come close and join it to the walkways; a Cobot cell in \"separation\" mode names it as <instance>/zone and slows down while a worker is within the cell's zone radius of it, by path distance.",
-        "library": {"library": "automation", "asset": "safety_zone", "version": "1.0.0"},
+        "description": "The place a cobot watches for people: one node, \"zone\", and the zone's own radius. Put it where the people come close and join it to the walkways. A Cobot cell in \"separation\" mode names it as <instance>/Auto Safety zone and slows down while a worker is within the radius: by path distance, or in a straight line as a safety laser scanner measures it. Cells that name the same zone share its radius.",
+        "library": {"library": "automation", "asset": "safety_zone", "version": "2.0.0"},
+        "parameters": [
+          {
+            "name": "radius_m",
+            "type": "number",
+            "default": 1.5,
+            "unit": "m",
+            "label": "Zone radius",
+            "help": "A worker this close to the zone node, or closer, slows every cobot bound to it.",
+            "group": "Safety",
+            "min": 1e-09,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          },
+          {
+            "name": "measure",
+            "type": "choice",
+            "default": "path",
+            "unit": "",
+            "label": "Distance measure",
+            "help": "path: the walk along the aisles. straight: the straight line, as a safety laser scanner measures it; the layout view draws it as a circle.",
+            "group": "Safety",
+            "min": null,
+            "max": null,
+            "choices": ["path", "straight"],
+            "refers_to": ""
+          }
+        ],
         "geometry": {"nodes": [{"name": "zone", "dx": 0.0, "dy": 0.0, "attach": true}]},
-        "owns": {}
+        "owns": {"zones": ["Auto Safety zone"]}
       },
-      "parameters": [],
+      "parameters": [
+        {
+          "name": "radius_m",
+          "default": 1.5,
+          "type": "number",
+          "description": "A worker this close to the zone node, or closer, slows every cobot bound to it."
+        },
+        {
+          "name": "measure",
+          "default": "path",
+          "type": "choice",
+          "description": "path: the walk along the aisles. straight: the straight line, as a safety laser scanner measures it; the layout view draws it as a circle."
+        }
+      ],
+      "scoped": {
+        "zones": {"Auto Safety zone": {"radius_m": "radius_m", "measure": {"$arg": "measure"}}}
+      },
       "blocks": [],
       "links": [],
       "annotations": []
     },
     "Cobot cell": {
       "info": {
-        "description": "A collaborative arm working next to people. \"collaborative\": every move runs at the collaborative speed. \"separation\": a move starts at the collaborative speed only while a worker is within the zone radius of a Safety zone, by path distance, and at full speed otherwise. Name the zone as <safety zone instance>/zone. The rest is a Robot arm cell.",
-        "library": {"library": "automation", "asset": "cobot_cell", "version": "1.0.0"},
+        "description": "A collaborative arm working next to people. \"collaborative\": every move runs at the collaborative speed. \"separation\": a move starts at the collaborative speed only while a worker is inside a Safety zone, and at full speed otherwise. Name the zone as <safety zone instance>/Auto Safety zone; with none named, the cell watches its own place with its own radius. The rest is a Robot arm cell.",
+        "library": {"library": "automation", "asset": "cobot_cell", "version": "2.0.0"},
         "parameters": [
           {
             "name": "station",
@@ -1049,21 +1094,21 @@
             "type": "name",
             "default": "",
             "unit": "",
-            "label": "Safety zone node",
-            "help": "With \"separation\": the node of a Safety zone, written <instance>/zone, e.g. \"safety_zone_1/zone\".",
+            "label": "Safety zone",
+            "help": "With \"separation\": the zone of a Safety zone, written <instance>/Auto Safety zone, e.g. \"safety_zone_1/Auto Safety zone\". Its radius wins. Empty: the cell's own place and radius.",
             "group": "Safety",
             "min": null,
             "max": null,
             "choices": [],
-            "refers_to": ""
+            "refers_to": "zone"
           },
           {
             "name": "zone_radius_m",
             "type": "number",
             "default": 1.5,
             "unit": "m",
-            "label": "Zone radius",
-            "help": "With \"separation\": a worker within this path distance of the zone node slows the cobot.",
+            "label": "Own zone radius",
+            "help": "With \"separation\" and no Safety zone named: a worker within this path distance of the cell slows the cobot.",
             "group": "Safety",
             "min": 1e-09,
             "max": null,
@@ -1327,13 +1372,14 @@
           "name": "zone",
           "default": "",
           "type": "name",
-          "description": "With \"separation\": the node of a Safety zone, written <instance>/zone, e.g. \"safety_zone_1/zone\"."
+          "refers_to": "zone",
+          "description": "With \"separation\": the zone of a Safety zone, written <instance>/Auto Safety zone, e.g. \"safety_zone_1/Auto Safety zone\". Its radius wins. Empty: the cell's own place and radius."
         },
         {
           "name": "zone_radius_m",
           "default": 1.5,
           "type": "number",
-          "description": "With \"separation\": a worker within this path distance of the zone node slows the cobot."
+          "description": "With \"separation\" and no Safety zone named: a worker within this path distance of the cell slows the cobot."
         },
         {"name": "power_kw", "default": 0.35, "type": "number"},
         {
@@ -1386,7 +1432,11 @@
           "params": {
             "profile": "$Auto Cobot arm",
             "hrc": {"$arg": "hrc"},
-            "zone": {"node": {"$arg": "zone"}, "radius_m": {"$arg": "zone_radius_m"}},
+            "zone": {
+              "name": {"$arg": "zone"},
+              "node": "$cell",
+              "radius_m": {"$arg": "zone_radius_m"}
+            },
             "segments": [
               {"kind": "move", "distance_m": {"$arg": "reach_m"}},
               {"kind": "pick", "time": "pick_time"},
@@ -1414,7 +1464,7 @@
     "Palletiser": {
       "info": {
         "description": "A robot that stacks cases onto a pallet: one motion cycle per case, and after the last case of a pallet the same robot is held for the pallet change. Cases go in, full pallets come out.",
-        "library": {"library": "automation", "asset": "palletiser", "version": "1.0.0"},
+        "library": {"library": "automation", "asset": "palletiser", "version": "2.0.0"},
         "parameters": [
           {
             "name": "cases_per_pallet",
@@ -1856,7 +1906,7 @@
     "AMR fleet": {
       "info": {
         "description": "Autonomous mobile robots that carry parts between stations, and the ONE block that moves them: wire every station's exit into this asset's \"in\" port. The robots charge whenever they are idle below 80 % and a point is free, must charge below 25 %, and leave at 90 %. The fleet brings one charger of its own at its \"base\" node -- join that node to the aisles -- and also uses every Charger in the model. Its purchase price is capex for the investment case.",
-        "library": {"library": "automation", "asset": "amr_fleet", "version": "1.0.0"},
+        "library": {"library": "automation", "asset": "amr_fleet", "version": "2.0.0"},
         "parameters": [
           {
             "name": "vehicles",
@@ -2229,7 +2279,7 @@
     "Charger": {
       "info": {
         "description": "Charging points at one place on the floor, for every battery fleet in the model. Join its \"bay\" node to the aisles: a robot that needs charge drives to the charger that costs it the least drive and wait. Power tapers above 80 %. The price per point is capex for the investment case; a charger has no maintenance cost of its own.",
-        "library": {"library": "automation", "asset": "charger", "version": "1.0.0"},
+        "library": {"library": "automation", "asset": "charger", "version": "2.0.0"},
         "parameters": [
           {
             "name": "points",
@@ -2320,7 +2370,7 @@
     "Mobile cobot fleet": {
       "info": {
         "description": "AMRs that carry an arm: a mobile cobot brings a part to a Tended machine, puts it in, and takes the finished part out and on. Wire every station's exit into this asset's \"in\" port, as for an AMR fleet. With \"exchange\" the cobot has a second holding place and swaps a finished part for a new one in one visit; one cobot without it can stall at a single machine. Battery and charger are an AMR fleet's; the base defaults are the 300 kg AMR class. Capex is base plus arm.",
-        "library": {"library": "automation", "asset": "mobile_cobot_fleet", "version": "1.0.0"},
+        "library": {"library": "automation", "asset": "mobile_cobot_fleet", "version": "2.0.0"},
         "parameters": [
           {
             "name": "vehicles",
@@ -2905,7 +2955,7 @@
     "Tended machine": {
       "info": {
         "description": "A machine loaded and unloaded by a Mobile cobot fleet. Name it as a step of the part's routing: the cobot arriving with a part runs the place cycle, the machine works, and the finished part stays in the machine until a cobot has run the pick cycle. Wire \"out\" into the fleet's \"in\" port and join the \"machine\" node to the aisles. \"stay\" keeps the cobot at the machine until the part is done. A price of 0 is a machine that is already there.",
-        "library": {"library": "automation", "asset": "tended_machine", "version": "1.0.0"},
+        "library": {"library": "automation", "asset": "tended_machine", "version": "2.0.0"},
         "parameters": [
           {
             "name": "station",

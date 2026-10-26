@@ -17,7 +17,7 @@ Outputs: 1.
 
 ## BATCH
 
-Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.
+Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
@@ -25,6 +25,10 @@ Groups parts or orders into batches, pallets or lots of a set size, or after a m
 | `batched_entity_type` | str | `'BATCH'` |  |  |  | Entity type assigned to the batch entity. |
 | `max_wait` | str | `''` |  | time | `max_wait_time_unit` | How long a partial batch waits before it leaves anyway, e.g. "30" or "entity.deadline"; measured from the arrival that started the group. A batch that fills in the same instant wins. Empty, 0 or less = wait for a full batch for ever. |
 | `max_wait_time_unit` | str | `'base'` |  |  |  | Unit `max_wait` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days. |
+| `carrier_type` | str | `''` |  |  |  | Carrier mode: an arriving entity of this type (a truck) is a CARRIER that waits here and loads the other arrivals one at a time, until it is full or its max_wait (the cut-off, measured from the carrier's arrival) runs out, then leaves as itself. Empty = a plain BATCH. |
+| `carrier_capacity` | str | `''` |  | count |  | Carrier mode: how many members a carrier takes, e.g. "entity.capacity", evaluated for each carrier when it arrives. Empty = batch_size. |
+| `member_time` | str | `''` |  | time | `member_time_unit` | Carrier mode: time to load one member, evaluated in the member's own scope when its load starts. Empty = loading takes no time. |
+| `member_time_unit` | str | `'base'` |  |  |  | Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days. |
 
 Outputs: 1.
 
@@ -36,6 +40,25 @@ Finite storage of waiting places between two machines or stations; when all plac
 |---|---|---|---|---|---|---|
 | `capacity` | int | `1` | yes | count |  | Places in the buffer, 0 or more. A part takes one on the way in and holds it until the next station accepts it, so an upstream machine blocks while the buffer is full. 0 means no place at all (blocking after service with no buffer); for an unlimited queue, do not draw a buffer. |
 | `level` | str | `''` |  |  |  | Optional level whose value mirrors the buffer's content, so an asset can draw it as a fill indicator. Empty = no level. |
+
+Outputs: 1.
+
+## CHARGE
+
+Charges an entity (an electric vehicle, a battery pack) with the energy it needs at up to its own power, sharing a site power cap with every other entity at this block; it leaves when full or when its time is up. The block's total grid kW (what the entities take over `efficiency`) is kept in `power_variable`, so a flow with `rate: VAR("name")` puts it on the electricity bus; `site_limit` caps that grid kW. On leaving the entity carries `charged_kwh`, `charge_full` (1 or 0) and `charge_time` (entry to full, or to leaving when not full, in `time_limit_unit`).
+
+| Parameter | Type | Default | Required | Quantity | Unit key | Description |
+|---|---|---|---|---|---|---|
+| `energy` | str | `'0'` | yes | energy |  | Energy the entity needs, kWh: an expression, e.g. entity.need_kwh. |
+| `max_power` | str | `'0'` | yes | power |  | Most power the entity takes, kW: an expression, e.g. min(11, entity.max_kw). |
+| `time_limit` | str | `''` |  | time | `time_limit_unit` | Longest time the entity stays (an expression); it leaves then, full or not. Empty = until full. |
+| `time_limit_unit` | str | `'base'` |  |  |  | Unit of `time_limit` and of the `charge_time` the entity carries: "base" (the model's) or one of its quantity's units. |
+| `time_limit_from` | str | `''` |  |  |  | Instant, in model time, the time limit counts from: an expression such as entity.arrived_at. Empty = when the entity enters. A deadline already past sends it on at once, charged 0. |
+| `leave_when_full` | bool | `True` |  |  |  | Leave as soon as the need is met. Off: stay (drawing nothing) until the time limit, as a car stays plugged in. |
+| `site_limit` | float | `0.0` |  | power |  | Most power all entities at this block draw together from the grid, kW; 0 = no cap. |
+| `efficiency` | float | `1.0` |  | ratio |  | Energy the entity stores per unit drawn from the grid (charger losses); 1 = none. The site limit and power_variable are grid side. |
+| `sharing` | str | `'equal'` |  |  |  | How the cap is shared: "equal" (an equal share each; what a slow entity cannot use goes to the others) or "first_come" (in order of arrival, each as much as it can take). |
+| `power_variable` | str | `''` |  |  |  | Model variable kept equal to the block's total grid kW, for a flow rate VAR("name") on the electricity bus. Empty = none. |
 
 Outputs: 1.
 
@@ -56,6 +79,8 @@ Conveyor belt that carries parts from one end to the other at a set speed, holds
 | `from_node` | str | `''` |  |  |  | Path-network node the belt starts at (drawing, and the length when `length` is 0). |
 | `to_node` | str | `''` |  |  |  | Path-network node the belt ends at. |
 | `stops` | list | `[]` |  |  |  | Points where each part halts on the belt: {"at": <distance from the entry, in the unit of `length`, between 0 and the length>, "time": <number or expression>, "resource"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none. |
+| `diverts` | list | `[]` |  |  |  | Points where a part may leave the belt sideways: {"at": <distance from the entry, in the unit of `length`>, "condition": <expression, read once as the part reaches it>, "time"?: <push time, number or expression>, "when_full"?: "wait" (default: the part waits there for room) or "pass" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none. |
+| `merges` | list | `[]` |  |  |  | Points where parts from another block join the belt: {"at": <distance from the entry, in the unit of `length`>, "from": <the block linking to this belt whose parts join there>, "priority"?: "belt" (default: they wait for a gap of two spacings) or "merge" (parts on the belt make room)}. Accumulating belts only. Empty: none. |
 
 Outputs: 1.
 
@@ -177,8 +202,8 @@ Robot or cobot station whose service is a cycle of timed moves, picks, places an
 |---|---|---|---|---|---|---|
 | `action` | str | `'Seize Delay Release'` |  |  |  | Which of seize/delay/release run: "Seize Delay Release", "Seize Delay", "Delay Release" or "Delay". |
 | `profile` | str | `''` |  |  |  | Name of a record in "motion_profiles": speed, acceleration, payload derating and collaborative speed of whoever does the motions. |
-| `hrc` | str | `'none'` |  |  |  | Human-robot collaboration: "none", "collaborative" (every move at the profile's collaborative_speed) or "separation" (a move starts at collaborative_speed when a worker-fleet unit is within zone.radius_m of zone.node by network distance). |
-| `zone` | dict | `{}` |  |  |  | With hrc "separation": {"node": <network node>, "radius_m": <metres>}. |
+| `hrc` | str | `'none'` |  |  |  | Human-robot collaboration: "none", "collaborative" (every move at the profile's collaborative_speed) or "separation" (a move starts at collaborative_speed when a worker-fleet unit is within the zone's radius of its node, by path or straight distance). |
+| `zone` | dict | `{}` |  |  |  | With hrc "separation": {"name": <a "zones" record>} -- the record's node and radius win -- or, with no name, {"node": <network node>, "radius_m": <metres>, "measure"?: "path"|"straight"}. |
 | `segments` | list | `[]` |  | time | `time_unit` | The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?} or {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}. The service time is their sum. |
 | `time_unit` | str | `'seconds'` |  |  |  | Unit of every segment `time`: "base" or seconds/minutes/hours/days. Moves are always computed in seconds. |
 | `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource. |
@@ -321,12 +346,16 @@ Outputs: 1.
 
 ## SEPARATE
 
-Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.
+Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty.
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
 | `mode` | str | `'Retain original entity values'` |  |  |  | How children get their attributes: retain their own values, take all of the parent's, or take only the ones listed in attrs. |
 | `attrs` | list | `[]` |  |  |  | Attribute labels to copy from the parent, used when mode is "specific". |
+| `carrier` | str | `'dispose'` |  |  |  | "dispose": the batch ends here and its parts leave together. "keep": the batch is a carrier (a truck) that lives on -- its members leave one at a time by the first link, each after member_time, and the carrier leaves by the SECOND link once it is empty. |
+| `member_time` | str | `''` |  | time | `member_time_unit` | Keep mode only: time for one member to come off, e.g. "2" or "TRIA(1, 2, 3)", evaluated for each member in its own scope when its turn starts. Empty = every member leaves in the same instant. |
+| `member_time_unit` | str | `'base'` |  |  |  | Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days. |
+| `release_order` | str | `'fifo'` |  |  |  | Order the members leave in: "fifo" (the order they were loaded) or "lifo" (last loaded first off, a rear-door truck). |
 
 Outputs: 1.
 
@@ -409,5 +438,6 @@ Moves a part, order or load between locations with a vehicle (truck, AGV, forkli
 | `fleet` | str | `''` | yes |  |  | Name of the mover fleet whose vehicles do the carrying. |
 | `destination` | str | `''` |  |  |  | STATION the entity is carried to. Empty: the next station of the entity's routing, exactly as ROUTE would choose it. |
 | `priority` | int | `0` |  |  |  | Request priority for a vehicle; lower is served first, and outranks the fleet's dispatching rule. |
+| `keep_vehicle` | bool | `False` |  |  |  | Keep the vehicle after the drop: it waits there, busy, and the entity's next TRANSPORT on this fleet drives it. A RELEASE naming the fleet, or the entity leaving the model, frees it. |
 
 Outputs: 1.

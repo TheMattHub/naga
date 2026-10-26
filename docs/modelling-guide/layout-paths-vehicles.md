@@ -117,6 +117,33 @@ stands, then every drop in nearest-neighbour order, and each entity goes on from
 It never waits to fill, the fleet still counts vehicles (utilization is vehicle time), and the
 `fleet_summary` column **Loads per Trip** shows how full the trips were. A worker fleet carries one load.
 
+### Keeping the vehicle across legs
+
+`"keep_vehicle": true` on a TRANSPORT keeps its vehicle after the drop. A realistic case is an AGV
+that carries a part to a machine, waits there while the part is processed, then carries the same
+part on. The vehicle stays at the drop, busy, and no other request can take it. The entity's next
+TRANSPORT on that fleet drives the same vehicle without asking the fleet: it drives empty to the
+part if the part has moved on, loads, carries and unloads. That TRANSPORT keeps the vehicle again
+with `keep_vehicle`, or frees it at its own drop without. A RELEASE naming the fleet frees it where
+it stands, and so does the part leaving the model (a DISPOSE, being absorbed into a BATCH, or a
+dispose-mode SEPARATE). One switch is enough to give the part its own vehicle for a whole job.
+
+While kept, the vehicle counts as busy in `resource_summary` and as **Held %** in
+`fleet_summary`. It draws the fleet's idle power, charges only once it is freed, and parks home
+only then. A kept vehicle holds no segment, so it blocks no aisle. Validation warns
+(`W_TRANSPORT_KEEP_UNFREED`) when nothing after the TRANSPORT frees the vehicle, and refuses
+`keep_vehicle` on a cobot fleet with an `arm` (`E_TRANSPORT_KEEP_ARM`), which stays with its part
+through tending instead. These limits hold:
+
+* a kept vehicle is never failed mid-job: like every vehicle it follows the WAIT rule, so a
+  breakdown or shift end due during a hold starts only when the vehicle is freed, and long holds
+  make a model optimistic;
+* a part processed on board still pays the fleet's load and unload time on every leg (write
+  `load_time`/`unload_time` as an expression of an entity attribute to make them 0);
+* a kept vehicle carries one load and never rides a multi-load tour;
+* vehicle cost is not charged to the entity, as for every TRANSPORT;
+* a state document cannot carry a kept vehicle.
+
 ### Gantry cranes
 
 `"motion": "gantry"` (default `"network"`) is a different kind of fleet: a bridge crane that
@@ -138,8 +165,8 @@ axis moves would imply.
 
 ### What you get back
 
-`fleet_summary`: trips, loaded and empty distance, the four-way split of vehicle time
-(loaded / empty / loading-unloading / idle) and the wait for a vehicle. `segment_summary`:
+`fleet_summary`: trips, loaded and empty distance, the split of vehicle time
+(loaded / empty / loading-unloading / held / idle) and the wait for a vehicle. `segment_summary`:
 traversals and distance driven per aisle -- where the kilometres actually went -- plus, for a
 segment with a `capacity`, **Wait Time** (total time vehicles stood waiting to enter it) and
 **Max Occupancy**.
@@ -223,10 +250,60 @@ average transit time.
 ```
 
 On an accumulating belt the parts behind pack against a stop as they do against the end, and
-each section between two stops holds `floor(gap / spacing)` parts, so a queue reaches back past
-a stop only by holding the part that is there. A non-accumulating belt stops whole while a part
+each section between two stops holds `ceil(gap / spacing)` parts, so a queue reaches back past
+a stop only by holding the part that is there. When the gap is not a whole number of spacings,
+the last part of a full section stands less than a spacing past the stop before it, and the next
+part reaches that stop only once the queue has moved up enough to leave it a spacing. A non-accumulating belt stops whole while a part
 is at a stop. The `conveyor_stops` frame, present only when a belt has stops, gives each stop's
-parts, resource waits, busy share and blocked share.
+parts, resource waits, busy share and blocked share. Each of those numbers is also a KPI key,
+`stop/<belt>/<index>/<column>` (the index counts the stops from the entry, starting at 0), so a
+scenario comparison, an optimisation or a reality check names it like any other:
+`stop/Line/0/Avg Wait`.
+
+**Diverts along the belt.** A sorter belt pushes parts off sideways at points along one belt,
+with `diverts`: `at` is the distance from the entry, `condition` an expression read once as
+the part reaches it, `time` an optional push time, and `when_full` says what a full target does.
+Divert k leaves by the belt's outgoing link k + 1, while link 0 stays the end.
+
+```json
+{"length": 30, "speed": 1, "spacing": 1,
+ "diverts": [{"at": 10, "condition": "entity.lane == 1"},
+             {"at": 20, "condition": "entity.lane == 2", "when_full": "pass"}]}
+```
+
+A divert works like a stop that lets the part go sideways. The part it takes is pushed for
+`time` while it keeps its place, so on an accumulating belt the parts behind pack against it,
+and a non-accumulating belt stops. With `when_full` "wait" (the default) the part then stays at
+the divert until its target has room: a belt, a buffer, a station with `queue_capacity` or a
+DECIDE's chosen branch holds it there, and the belt backs up behind it. With "pass" the divert
+looks before it pushes, and a part whose target (a belt, buffer or `queue_capacity` station
+linked straight to it) has no room rides on, as a sorter recirculates. A part it does not take
+passes with no stop at all. The `conveyor_diverts` frame gives each divert's diverted, passed
+and skipped counts, waits, busy share and blocked share, and each is a KPI key,
+`divert/<belt>/<index>/<column>`, so `divert/Sorter/0/Diverted` is one number a study can name.
+
+**Merges along the belt.** A spur can join an accumulating belt part-way along, with
+`merges`: `at` is where it joins, `from` the block that links to the belt and whose parts join
+there, and `priority` decides who gives way. Every other block linked to the belt still feeds
+its entry.
+
+```json
+{"length": 30, "speed": 1, "spacing": 1, "merges": [{"at": 12, "from": "Spur", "priority": "belt"}]}
+```
+
+A merging part needs a gap: no part on the belt within a spacing before the point, a spacing
+since the last part went past it, and room in the section after it. With "belt" (the default)
+the parts on the belt never wait, so the merging part waits for a gap of two spacings and the
+block feeding it stays blocked meanwhile. With "merge" the parts on the belt stop a spacing
+before the point once a merging part is ready, and go on after it has joined. The
+`conveyor_merges` frame gives each merge's count, waits and waiting share, as the KPI keys
+`merge/<belt>/<index>/<column>`.
+
+A stop must not seize what the part already holds. A part that took `Op` at a SEIZE (or a
+PROCESS "Seize Delay", or as a belt's `exit_resource`) and reaches a stop naming `Op` before a
+RELEASE would ask for it twice, and the run stops with an error when it does. Validation warns
+of it first with `W_CONVEYOR_STOP_HELD`, following the drawn links from where the hold starts;
+it is a warning because the path may lie behind a DECIDE branch no part takes.
 
 !!! note "A full belt stops the machine feeding it"
     A conveyor's cells are a finite space, exactly like a buffer's places: a station that has
@@ -240,10 +317,12 @@ Recorded so a model written today keeps meaning the same thing later:
 
 * segment capacity binds vehicles only: walking entities (ROUTE `travel = "network"`) pass
   freely, and there is no deadlock avoidance -- only detection;
-* no way to hold a vehicle across several legs outside a TRANSPORT; a multi-load tour is
-  planned nearest-neighbour (not the shortest tour) and never waits for more loads;
-* a conveyor's stops hold a part on the belt, but only its **end** hands a part on, so a belt
-  with mid-line diverts needs one conveyor per zone; a state cannot carry a belt with stops;
+* a multi-load tour is planned nearest-neighbour (not the shortest tour) and never waits for
+  more loads; a kept vehicle has the limits listed under "Keeping the vehicle across legs";
+* a divert decides once, as the part reaches it, and seizes no resource (put a stop before it
+  for a pusher crew); its side move is drawn from the block, not from the divert point; a
+  merge needs an accumulating belt and names a block, not a submodel port; a state cannot
+  carry a belt with stops, diverts or merges;
 * gantry cranes sharing a runway do not collide with each other -- there is no ordering
   constraint on the shared axis, only each crane's own two-axis geometry.
 

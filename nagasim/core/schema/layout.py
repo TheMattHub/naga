@@ -18,8 +18,10 @@ from nagasim.core.expressions import (LOOKUP_SECTION, RESERVED_NAMES, Expression
                                       is_variable_name, parse_target)
 from nagasim.core.initial_state_validation import validate_initial_state_structured
 from nagasim.core.levels import TRANSFER_MODES
+from nagasim.core.blocks.charge import SHARING_RULES
 from nagasim.core.levels_validation import validate_levels_structured
-from nagasim.core.movers import validate_fleets_structured, validate_workers_structured
+from nagasim.core.movers import (validate_fleets_structured, validate_vehicle_holds_structured,
+                                  validate_workers_structured)
 from nagasim.core.network import block_nodes, validate_network_structured
 from nagasim.core.orders import validate_orders_structured
 from nagasim.core.problems import Problem, problem
@@ -435,6 +437,14 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
             if isinstance(text, str) and text.strip():
                 check(problems, name, text, variables, f"{at}/stops/{index}/time",
                       tables=tables, refs=refs)
+        # D851: a divert's condition and push time, per part
+        diverts = params.get("diverts")
+        for index, divert in enumerate(diverts if isinstance(diverts, list) else []):
+            for field in ("condition", "time"):
+                text = divert.get(field) if isinstance(divert, dict) else None
+                if isinstance(text, str) and text.strip():
+                    check(problems, name, text, variables, f"{at}/diverts/{index}/{field}",
+                          tables=tables, refs=refs)
     if btype in QUEUEING_BLOCK_TYPES:
         # PHASE4 A4: balk_if is the one place `queue_length` is a legal name.
         if params.get("balk_if"):
@@ -446,6 +456,11 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
     if btype == "BATCH" and params.get("max_wait"):     # PHASE4 B6
         check(problems, name, params["max_wait"], variables, f"{at}/max_wait",
                           tables=tables, refs=refs)
+    # Phase 15 M2 (D819): a carrier's per-member time and a carrier's own capacity.
+    for key in ("member_time", "carrier_capacity"):
+        text = params.get(key) if btype in ("BATCH", "SEPARATE") else None
+        if isinstance(text, str) and text.strip():
+            check(problems, name, text, variables, f"{at}/{key}", tables=tables, refs=refs)
     if btype == "ASSIGN":
         for index, assignment in enumerate(params.get("assignments", [])):
             where = f"{at}/assignments/{index}"
@@ -583,19 +598,6 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
         params = block.get("params", {})
         name = block.get("name", "<unnamed>")
         at = f"/blocks/{index}"
-        quantity = params.get("quantity", 1)
-        if params.get("resource_name") in sets and block in seizers.get(params["resource_name"], ()) \
-                and isinstance(quantity, (int, float)) and not isinstance(quantity, bool) \
-                and quantity > 1:
-            # D735: the wait-for-any stays as T7 left it; the ceiling is said, not silent.
-            problems.append(problem(
-                "W_SET_PARTIAL_HOLD",
-                f"{name}: seizes {quantity:g} units of resource set "
-                f"'{params['resource_name']}': waiting on every member, it can hold units of "
-                f"one it then does not take",
-                f"{at}/params/quantity", block=name,
-                hint="seize one unit of the set, or name one member: two seizes each holding "
-                     "part of two members can stall each other"))
         # `on_preempt` belongs to the block whose job is INTERRUPTED, so it is
         # checked on every block that sets it, not only on preempting ones.
         mode = params.get("on_preempt") or ON_PREEMPT_MODES[0]
@@ -639,6 +641,66 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
                 f"{at}/params/preempt", block=name,
                 hint="give the interrupting block a LOWER priority number than the jobs it should "
                      "interrupt"))
+
+
+def _validate_belt_stop_holds(layout: dict, problems: list) -> None:
+    """W_CONVEYOR_STOP_HELD (D796): a part still holding a stop's resource when it reaches the
+    stop asks for it again, which `seizing.acquire` refuses mid-run whatever the capacity.
+
+    A hold starts at a SEIZE, a PROCESS "Seize Delay" or a belt's `exit_resource` and ends at a
+    RELEASE or a PROCESS "Delay Release" of the same name; the walk follows the drawn links
+    from each start. A warning, as W_BLOCKING_LOOP is: the path may sit behind a DECIDE branch
+    no part takes. Names are matched exactly, so a member held through its set is not traced."""
+    blocks = layout.get("blocks", [])
+    out_links: dict[str, list[str]] = {}
+    for src, tgt in _link_pairs(layout):
+        out_links.setdefault(src, []).append(tgt)
+    by_name = {b.get("name"): b for b in blocks}
+    index_of = {b.get("name"): i for i, b in enumerate(blocks)}
+
+    def held_from(block: dict) -> str:
+        params = block.get("params") or {}
+        btype = block.get("type", "").upper()
+        if btype == "CONVEYOR":
+            return str(params.get("exit_resource") or "")
+        if btype == "SEIZE" or (btype == "PROCESS" and params.get("action") == "Seize Delay"):
+            return str(params.get("resource_name") or "")
+        return ""
+
+    def releases(block: dict, resource: str) -> bool:
+        params = block.get("params") or {}
+        btype = block.get("type", "").upper()
+        return params.get("resource_name") == resource and (
+            btype == "RELEASE" or (btype == "PROCESS" and params.get("action") == "Delay Release"))
+
+    reported: set[tuple[str, int]] = set()
+    for start in blocks:
+        resource = held_from(start)
+        if not resource:
+            continue
+        seen, todo = {start.get("name")}, list(out_links.get(start.get("name"), []))
+        while todo:
+            name = todo.pop()
+            block = by_name.get(name)
+            if name in seen or block is None or releases(block, resource):
+                continue
+            seen.add(name)
+            if block.get("type", "").upper() == "CONVEYOR":
+                stops = (block.get("params") or {}).get("stops") or []
+                for index, stop in enumerate(stops if isinstance(stops, list) else []):
+                    if not isinstance(stop, dict) or stop.get("resource") != resource \
+                            or (name, index) in reported:
+                        continue
+                    reported.add((name, index))
+                    problems.append(problem(
+                        "W_CONVEYOR_STOP_HELD",
+                        f"{name}: stop {index} seizes '{resource}', which a part still holds "
+                        f"from {start.get('name')}; the run stops with an error when one "
+                        f"gets there",
+                        f"/blocks/{index_of[name]}/params/stops/{index}/resource", block=name,
+                        hint=f"release '{resource}' before the belt, or drop the stop's "
+                             f"resource: the part already has it"))
+            todo.extend(out_links.get(name, []))
 
 
 def _validate_match(layout: dict, problems: list) -> None:
@@ -853,6 +915,40 @@ def _check_transfer(problems: list, name: str, params: dict, levels: set, convey
                       tables=tables, refs=refs)
 
 
+def _check_charge(problems: list, name: str, params: dict, variables: set[str], tables: dict,
+                  refs: dict, at: str) -> None:
+    """A CHARGE block's expressions, sharing rule, stay rule and power
+    variable (Phase 15 M4, D825-D829)."""
+    for key, default in (("energy", "0"), ("max_power", "0"), ("time_limit", ""),
+                         ("time_limit_from", "")):
+        text = str(params.get(key, default) or "")
+        if text.strip():
+            _check_expression(problems, name, text, variables, f"{at}/{key}", tables=tables,
+                              refs=refs)
+    if params.get("sharing", "equal") not in SHARING_RULES:
+        problems.append(problem(
+            "E_CHARGE", f"{name}: unknown sharing rule '{params.get('sharing')}'",
+            f"{at}/sharing", block=name, hint=f"use one of: {', '.join(SHARING_RULES)}"))
+    if params.get("leave_when_full", True) is False \
+            and not str(params.get("time_limit") or "").strip():
+        problems.append(problem(
+            "E_CHARGE", f"{name}: an entity that stays after it is full needs a time limit",
+            f"{at}/time_limit", block=name,
+            hint="set time_limit (e.g. the dwell), or turn leave_when_full back on"))
+    efficiency = params.get("efficiency", 1.0)
+    if not (isinstance(efficiency, (int, float)) and not isinstance(efficiency, bool)
+            and 0 < efficiency <= 1):
+        problems.append(problem(
+            "E_CHARGE", f"{name}: efficiency must be above 0 and at most 1", f"{at}/efficiency",
+            block=name, hint="stored kWh per grid kWh, e.g. 0.92; 1 = no charger losses"))
+    variable = str(params.get("power_variable") or "")
+    if variable and variable not in variables:
+        problems.append(problem(
+            "E_UNDECLARED_VARIABLE", f"{name}: power_variable '{variable}': undeclared variable",
+            f"{at}/power_variable", block=name,
+            hint=f"add '{variable}' to the model's \"variables\""))
+
+
 def _without_stray_structural_args(layout: dict, problems: list) -> dict:
     """A `{"$arg": ...}` is legal only inside a submodel definition, where
     flattening replaces it. One that reaches this validator (a top-level block,
@@ -958,6 +1054,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                                                          allow_self=True)))
     _validate_travel(layout, problems, node_names, fleet_names)            # PHASE4 E1
     problems.extend(validate_workers_structured(layout))                   # PHASE6 W3-M3
+    problems.extend(validate_vehicle_holds_structured(layout))             # Phase 15 M6
     _validate_flow_expressions(layout, problems, variables, table_dims, refs)
     _validate_sd_expressions(layout, problems, variables, table_dims, refs)
     validate_conversion_expressions(
@@ -981,6 +1078,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
     _validate_resource_refs(layout, problems)                             # #284
     _validate_queue_behaviour(layout, problems)
     _validate_blocking(layout, problems, level_names)                     # PHASE4 T5
+    _validate_belt_stop_holds(layout, problems)                           # D796
     _validate_match(layout, problems)                                     # PHASE5 O4
     _validate_scenarios(layout, problems)
     _validate_reality_checks(layout, problems, variables, table_dims, refs)   # PHASE6 S8
@@ -1019,6 +1117,8 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
         if btype == "TRANSFER":
             _check_transfer(problems, name, params, level_names, conveyor_names, in_scope,
                             table_dims, refs, f"{at}/params")
+        elif btype == "CHARGE":                                             # Phase 15 M4
+            _check_charge(problems, name, params, in_scope, table_dims, refs, f"{at}/params")
         elif btype == "SEND":                                               # PHASE5 AB-2
             _check_send(problems, name, params, layout, in_scope, table_dims, refs,
                         f"{at}/params")

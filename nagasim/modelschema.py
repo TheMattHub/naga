@@ -574,6 +574,30 @@ def _defs() -> dict:
                                                    "engine re-evaluates. The crossing instant is "
                                                    "solved in closed form; the component is "
                                                    "conserved exactly whatever this is set to."},
+                "storage": {
+                    "type": "object",
+                    "description": "A storage the `dispatch` plan may drive: its "
+                                   "power limits, efficiencies and the variable the plan "
+                                   "writes its bus-side setpoint to (positive charges). "
+                                   "Rates are per this level's rate_time_unit. Inert "
+                                   "without a `dispatch` section.",
+                    "properties": {
+                        "optimal": {"type": "boolean", "default": False,
+                                    "description": "The plan drives this storage; false "
+                                                   "keeps it on its own rule."},
+                        "setpoint": {"type": "string",
+                                     "description": "A declared variable; the plan writes "
+                                                    "charge minus discharge, bus-side."},
+                        "charge_max": {"description": "Largest power drawn while charging."},
+                        "discharge_max": {"description": "Largest power delivered while "
+                                                         "discharging."},
+                        "charge_efficiency": {"description": "Stored per unit drawn."},
+                        "discharge_efficiency": {"description": "Delivered per unit taken "
+                                                                "out."},
+                        "loss": {"description": "Constant standby loss."},
+                    },
+                    "additionalProperties": False,
+                },
                 "conveyor": {
                     "type": "object",
                     "description": "Makes the stock a Stella conveyor: material "
@@ -661,6 +685,20 @@ def _defs() -> dict:
                                               "flow's Peak Rate (per its rate_time_unit), billed "
                                               "ONCE at the end of the run. A time-varying tariff "
                                               "is \"price\"."},
+                "grid": {
+                    "type": "object",
+                    "description": "This flow's role in the `dispatch` plan: the "
+                                   "site's grid import or export. The plan prices it with "
+                                   "this flow's own `price`. Inert without a `dispatch` "
+                                   "section.",
+                    "properties": {
+                        "role": {"enum": ["import", "export"]},
+                        "limit": {"description": "Largest rate, per this flow's "
+                                                 "rate_time_unit; omit for no limit."},
+                    },
+                    "required": ["role"],
+                    "additionalProperties": False,
+                },
                 "min_rate": {
                              "description": "Minimum load: the flow runs at 0 or at "
                                             "least this rate, never in between. The gate is "
@@ -849,6 +887,45 @@ def _defs() -> dict:
                                               "parts\"); empty is the system's completed "
                                               "entities."},
             },
+            "additionalProperties": False,
+        },
+        "dispatch": {
+            "type": "object",
+            "description": "OPTIONAL storage dispatch plan: a rolling-horizon LP over "
+                           "the bus that sets every `levels[].storage` with optimal true at "
+                           "the cheapest cost of the `flows[].grid` flows, replanned from the "
+                           "measured state. Absent, nothing of it runs.",
+            "properties": {
+                "name": {"type": "string", "default": "site",
+                         "description": "The dispatch_summary row and KPI key part."},
+                "supply_tags": {"type": "array", "items": {"type": "string"}, "minItems": 1,
+                                "description": "Bus tags forecast as supply, e.g. "
+                                               "[\"generation\", \"dispatchable\"]."},
+                "demand_tags": {"type": "array", "items": {"type": "string"}, "minItems": 1,
+                                "description": "Bus tags forecast as demand, e.g. "
+                                               "[\"demand\"]."},
+                "horizon": {"description": "How far each plan looks ahead; clipped at the "
+                                           "run's end."},
+                "step": {"description": "The plan's grid: setpoints are constant per step."},
+                "replan_every": {"description": "How often the plan is solved again from the "
+                                                "measured state; a multiple of step."},
+                "time_unit": _time_unit("Unit of horizon, step and replan_every."),
+                "terminal": {"enum": ["hold", "free"], "default": "hold",
+                             "description": "hold: each plan ends with every storage at least "
+                                            "at its starting level; free: it may end empty."},
+                "forecast": {"enum": ["model", "persistence"], "default": "model",
+                             "description": "model: the rates and prices evaluated ahead "
+                                            "(perfect foresight of the profiles); "
+                                            "persistence: their values at the replan "
+                                            "instant, held over the horizon."},
+                "voll": {"description": "Cost per unit of unserved demand in the plan; "
+                                        "default 100 x the dearest import price."},
+                "status_variable": {"type": "string", "default": "dispatch_ok",
+                                    "description": "A declared variable the plan sets to 1 "
+                                                   "while it holds and to 0 when a solve "
+                                                   "fails."},
+            },
+            "required": ["supply_tags", "demand_tags"],
             "additionalProperties": False,
         },
         "subscript": {
@@ -1462,6 +1539,27 @@ def _defs() -> dict:
             "required": ["name", "speed", "accel"],
             "additionalProperties": False,
         },
+        "zone": {
+            "type": "object",
+            "description": "A safety zone: a network node and a radius that a MOTION "
+                           "block's or a tending group's `zone.name` binds to, so blocks "
+                           "sharing a zone share its radius. With hrc \"separation\", a worker "
+                           "within the radius slows the robot to its collaborative speed.",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "description": {"type": "string"},
+                "node": {"type": "string", "description": "The network node the zone is around."},
+                "radius_m": {"description": "Metres, > 0; a worker this close or closer is "
+                                            "inside."},
+                "measure": {"type": "string", "enum": ["path", "straight"], "default": "path",
+                            "description": "\"path\": the walk along the network; "
+                                           "\"straight\": the straight line between the "
+                                           "worker's floor point and the node, as a safety "
+                                           "laser scanner measures it."},
+            },
+            "required": ["name", "node", "radius_m"],
+            "additionalProperties": False,
+        },
         "fleet": {
             "type": "object",
             "description": "A pool of vehicles that carry entities on the network. A "
@@ -2031,6 +2129,31 @@ def _defs() -> dict:
                 },
                 "scoped": {"type": "object",
                            "description": "Per-instance field overrides on `$`-scoped records."},
+                "repeat": {
+                    "type": "array",
+                    "description": "Repeat groups (Phase 15 M7): per instance, the named "
+                                   "blocks and every link touching them are stamped `count` "
+                                   "times, `{i}` = 1..count in every string inside them. A group "
+                                   "with no `{i}` in its names is optional (count 0 or 1). In a "
+                                   "list param, an item {\"$repeat\": <count>, \"item\": <value>} "
+                                   "is spliced in as count copies the same way.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "count": {"description": "An int 0..500, a {\"$arg\": <parameter>} "
+                                                     "or an expression of the definition's "
+                                                     "parameters.",
+                                      "anyOf": [{"type": "integer", "minimum": 0,
+                                                 "maximum": 500},
+                                                {"type": "string", "minLength": 1},
+                                                {"type": "object"}]},
+                            "blocks": {"type": "array", "minItems": 1,
+                                       "items": {"type": "string", "minLength": 1}},
+                        },
+                        "required": ["count", "blocks"],
+                        "additionalProperties": False,
+                    },
+                },
                 "extends": {"type": "string", "minLength": 1,
                             "description": "Inherit another definition: "
                                            "this one is the parent's with its own blocks and "
@@ -2485,6 +2608,8 @@ _SECTION_PATHS = {"entities": ("entity_type",), "links": ("link",), "simulation"
                   "agent_types.transitions": ("agent_transition",),
                   "agent_types.space": ("agent_type", "space", 1),
                   "levels.conveyor": ("level", "conveyor"), "initial_state": ("initial_state",),
+                  "levels.storage": ("level", "storage"), "flows.grid": ("flow", "grid"),
+                  "dispatch": ("dispatch",),
                   "initial_state.entities": ("initial_state", "entities", "items"),
                   "agent_types.tick": ("agent_tick",), "populations.tick": ("agent_tick",)}
 
@@ -2653,6 +2778,7 @@ def build_json_schema() -> dict:
         "initial_state": {"$ref": "#/$defs/initial_state"},
         "simulation": {"$ref": "#/$defs/simulation"},
         "investment": {"$ref": "#/$defs/investment"},
+        "dispatch": {"$ref": "#/$defs/dispatch"},
         "outputs": {
             "type": "object",
             "description": "OPTIONAL extra output collection whose cost is opt-in "

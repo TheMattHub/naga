@@ -299,6 +299,75 @@ A rate is an ordinary expression, so a rule-based dispatch is just arithmetic ov
 rates read. Writing a variable re-evaluates the rates immediately, so the setpoint takes effect at
 that instant. `nagasim.rl.SimEnv` drives that loop unchanged.
 
+## Optimal storage dispatch: the `dispatch` section
+
+A merit order sequences the storage exactly, but it never looks ahead. It does not weigh a cheap
+hour now against a dear one tonight, the round-trip losses of two different batteries, or an
+export cap that wastes midday PV. The optional `dispatch` section solves that as a
+**rolling-horizon linear programme**, which is what a real energy management system does:
+
+1. Every `replan_every` (default 1 h), the plan solves the cheapest dispatch over the next
+   `horizon` (default 24 h, clipped at the run's end). It works on a grid of `step` (default
+   15 min) and starts from the measured levels.
+2. At each step boundary, it writes each driven storage's setpoint variable: charge minus
+   discharge, bus-side.
+3. The engine then runs the physics as usual, with the saturation rule, the power limits and the
+   grid flows.
+
+The cost it minimises is the grid flows' own `price` (export revenue counts as a negative cost)
+plus a demand charge on the peak import.
+
+Two child records tell the plan what it may drive. A level's `storage` gives `optimal`,
+`setpoint` (a declared variable), `charge_max`, `discharge_max`, `charge_efficiency`,
+`discharge_efficiency` and a constant `loss`. Its rates are per the level's own
+`rate_time_unit`. A flow's `grid` gives `role` (`import` or `export`) and `limit`, per the
+flow's own `rate_time_unit`. A submodel fills them per instance through dotted `scoped`
+overrides (`"storage.charge_max": "charge_kw"`), and a `$name` setpoint is scoped like any other.
+Then add the section:
+
+```json
+"dispatch": {"supply_tags": ["generation", "dispatchable"], "demand_tags": ["demand"],
+             "horizon": 24, "step": 0.25, "replan_every": 1, "time_unit": "hours",
+             "terminal": "hold", "forecast": "model"}
+```
+
+The plan needs a forecast of the bus, and `forecast` sets how honest that forecast is:
+
+- `"model"` evaluates every tagged flow's rate and every grid price ahead, at each step's
+  midpoint. This is **perfect foresight of the profiles**, so it is the optimistic bound.
+- `"persistence"` holds each value seen at the replan instant over the whole horizon, as a naive
+  EMS does. Run both, and you bracket what a real controller is worth.
+
+Some inputs cannot be seen ahead. A flow rate has no random stream, so noise reaches the bus
+only through a variable (an ASSIGN that draws it) or a series. A variable is read at its current
+value. A rate that reads model state (`LEVEL`, `FLOW`, `FLOWSUM`, a resource) is held at its
+current rate, with the warning `W_DISPATCH_FORECAST`.
+
+The plan also has to decide where each horizon ends. With `terminal: "hold"` (the default), every
+plan ends with each storage at least at the level it started the run with. `"free"` lets the plan
+empty it. Compare like with like: a hold run that ends at 50% state of charge is not cheaper or
+dearer than a rule run that ends at 17% until you value the energy left over.
+
+When reality deviates from the plan, the battery still tracks its setpoint and the grid absorbs
+the difference. The next replan starts from what really happened. If a solve fails, or the
+forecast is not finite, the plan sets its `status_variable` (default `dispatch_ok`) to 0 and
+logs a warning. A storage whose rates read that variable falls back to its rule until the next
+good plan. The `dispatch_summary` frame
+reports `Solves`, `Fallbacks`, `Planned Cost` (what the plans expected over the steps they ran)
+and `Realised Cost`. These are scenario keys too, for example `dispatch/site/Realised Cost`.
+
+Cost per run is the number of solves. One solve over 3 storages and 96 steps takes about 10 ms,
+so a week replanned hourly takes about 2 s. Raise `replan_every` for year-long runs.
+
+Some limits are stated plainly:
+
+- There is one dispatched bus per model.
+- The plan is linear. There is no degradation cost beyond a throughput price, no minimum power,
+  no on/off state and no SoC-dependent efficiency.
+- Setpoints are constant per step.
+- The grid keeps its own rule, so with a negative export price, power is still exported up to
+  the limit.
+
 ## What you get back
 
 | Frame | Columns |
@@ -310,6 +379,7 @@ that instant. `nagasim.rl.SimEnv` drives that loop unchanged.
 | `cost_summary` | a `peak` row per flow that carries a `peak_price`: its Peak Rate times the tariff, billed once (see [Costing](costing.md)) |
 | `system` | `Total Flow Cost` and `Total Impact`, present only for a model that has flows; flow cost joins `Total Cost`, and so does the demand charge |
 | `timeseries` | a `level/<name>` curve per level |
+| `dispatch_summary` | only with a `dispatch` section: Solves, Fallbacks, Planned Cost, Realised Cost |
 
 Every one of those is addressable as a scenario or optimizer response:
 `level/Battery/Average`, `flow/grid_import/Total`, `system/Total Cost`.

@@ -47,6 +47,7 @@ m.add_resource(name="Server", capacity=2)     # returns 'Server'
 | `add_fixed_cost` | `fixed_costs` | `name` | Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter. |
 | `add_fleet` | `fleets` | `name` | Pools of vehicles that carry entities on the network; a fleet is a resource under its own name. |
 | `add_motion_profile` | `motion_profiles` | `name` | How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's `profile`. |
+| `add_zone` | `zones` | `name` | Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed. |
 | `add_charger` | `chargers` | `name` | Chargers and battery-swap stations at network nodes, used by fleets that declare a `battery`. |
 | `add_auxiliary` | `auxiliaries` | `name` | Named expressions read by AUX("name"), evaluated on read. |
 | `add_delay` | `delays` | `name` | Delays read by DELAY("name"): input, delay time, kind and order. |

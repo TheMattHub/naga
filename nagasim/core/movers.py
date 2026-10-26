@@ -26,9 +26,12 @@ Two rule families, both deliberately small:
 * **`select`** -- which idle vehicle serves a granted request: `nearest` (the
   default), `longest_idle` or `cyclic`.
 
-Ceilings, recorded in ARCHITECTURE D68:
-
-* no `keep the mover` seize: a vehicle is held for one TRANSPORT cycle.
+A TRANSPORT with `keep_vehicle` (Phase 15 M6, D835-D839) HOLDS its vehicle at
+the drop instead of freeing it: the hold is a `req_params` entry shaped like a
+worker's seize (plus `"vehicle": True`), the next TRANSPORT on the fleet drives
+that vehicle without a request, and a RELEASE naming the fleet -- or the entity
+leaving the flow (`free_held`) -- frees it where it stands. While held it is in
+state "held": busy for the resource, stationary, drained at idle power.
 
 `loads: k` (PHASE6 W3-M4, ARCHITECTURE D116) lifts "one entity per trip": the
 request granted a vehicle LEADS, and up to k-1 further TRANSPORT requests still
@@ -82,6 +85,7 @@ from simpy.resources.resource import PriorityRequest, SortedQueue
 from nagasim.core.base_process import deterministic_hash
 from nagasim.core.battery import battery_of, drain_kw
 from nagasim.core.block_spec import WORKER_BLOCKED_MODES
+from nagasim.core.blocking import stops
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.problems import problem
 from nagasim.core.resource_manager import ENERGY_STATES, _Resource, capacity_controller
@@ -95,7 +99,7 @@ log = logging.getLogger(__name__)
 
 __all__ = ["Mover", "MoverFleet", "SegmentTraffic", "build_fleets", "DISPATCH_RULES", "SELECT_RULES",
            "validate_fleets_structured", "validate_workers_structured", "fleet_skills", "FLEET_KINDS",
-           "FLEET_MOTIONS"]
+           "FLEET_MOTIONS", "free_held", "validate_vehicle_holds_structured"]
 
 DISPATCH_RULES = ("fifo", "nearest")
 SELECT_RULES = ("nearest", "longest_idle", "cyclic")
@@ -104,8 +108,9 @@ FLEET_KINDS = ("vehicle", "worker")
 FLEET_MOTIONS = ("network", "gantry")
 
 # Mover states, in the order the KPI frame reports their time shares.
-# "charging" (D165) stays 0 for a fleet without a battery.
-STATES = ("empty", "loaded", "handling", "idle", "charging")
+# "charging" (D165) stays 0 for a fleet without a battery; "held" (D836) for a
+# fleet no `keep_vehicle` TRANSPORT uses.
+STATES = ("empty", "loaded", "handling", "held", "idle", "charging")
 
 
 class _TaggedRequest(PriorityRequest):
@@ -627,7 +632,9 @@ class MoverFleet:
         vehicle. Blockers and worker summons carry no job and stay queued."""
         if self.loads <= 1:
             return []
-        waiting = [r for r in self.resource._core.put_queue if r.job is not None]
+        # D838: a `keep_vehicle` TRANSPORT's request never rides another's tour.
+        waiting = [r for r in self.resource._core.put_queue
+                   if r.job is not None and not getattr(r.job[0], "keep_vehicle", False)]
         if not waiting:
             return []
         if self.dispatch == "nearest":
@@ -1040,6 +1047,43 @@ class MoverFleet:
         else:
             mover.homing = self.env.process(self._charge_free(mover, until, block))
 
+    # -- a vehicle held across legs (Phase 15 M6, D835-D839) -------------------
+    def hold(self, request, mover: Mover, entity, block) -> None:
+        """Keep *mover* for *entity* at the drop instead of freeing it: its unit stays
+        seized, it leaves no `entity_released`, plans no charge and does not park.
+        The caller records the hold BEFORE handing the entity on, which may reach a
+        RELEASE or another TRANSPORT in the same call."""
+        mover.enter("held", self.env.now)
+        mover.task = None
+        if not hasattr(entity, "req_params"):
+            entity.req_params = {}
+        entity.req_params[self.name] = {"resource": self.resource, "requests": [request],
+                                        "set": None, "seized_at": self.env.now,
+                                        "mover": mover, "fleet": self, "vehicle": True}
+        self._moved(block, mover, (mover.node,), 0.0, "held")
+
+    def take_held(self, entity):
+        """(request, mover) of the vehicle *entity* holds in this fleet, the hold
+        ended (a TRANSPORT drives it now); None without one. A worker unit held by a
+        SEIZE is not a vehicle hold and is left alone (it requests as before)."""
+        held = getattr(entity, "req_params", None)
+        info = held.get(self.name) if held else None
+        if info is None or not info.get("vehicle"):
+            return None
+        held.pop(self.name)
+        if not held:
+            del entity.req_params
+        mover = info["mover"]
+        mover.trips += 1                  # each leg is a trip and a load, as a cobot's stay
+        self.loads_carried += 1
+        return info["requests"][0], mover
+
+    def release_held(self, info, block, entity) -> None:
+        """A hold ends where the vehicle stands: free (charge plan, `entity_released`)
+        and park, as a worker's RELEASE does. The caller drops the entry."""
+        self.free(info["requests"][0], info["mover"], block=block, entity=entity)
+        self.park_home(info["mover"], block=block)
+
     # -- battery and charging (D164-D166) -------------------------------------
     def warn_once(self, code: str, text: str) -> None:
         """One run-log line per fleet and code, however often it happens."""
@@ -1438,6 +1482,7 @@ class MoverFleet:
             "empty_pct": 100.0 * shares["empty"] / span,
             "loaded_pct": 100.0 * shares["loaded"] / span,
             "handling_pct": 100.0 * shares["handling"] / span,
+            "held_pct": 100.0 * shares["held"] / span,
             "idle_pct": 100.0 * shares["idle"] / span,
             "avg_wait": wait.mean,
             "max_wait": wait.max,
@@ -1459,6 +1504,20 @@ class MoverFleet:
             "depleted": sum(m.depleted for m in movers),
             "drain_kwh": sum(m.drain_kwh for m in movers),
         }
+
+
+def free_held(block, entity) -> None:
+    """D837: an entity leaving the flow -- disposed, absorbed into a batch, or the
+    parent a dispose-mode SEPARATE destroys -- frees every vehicle it holds, at this
+    instant and where the vehicle stands, so no vehicle is lost with it."""
+    held = getattr(entity, "req_params", None)
+    if not held:
+        return
+    for name in [n for n, info in held.items() if info.get("vehicle")]:
+        info = held.pop(name)
+        info["fleet"].release_held(info, block, entity)
+    if not held:
+        del entity.req_params
 
 
 def build_fleets(env, layout: dict, network, resource_manager) -> dict[str, MoverFleet]:
@@ -1712,6 +1771,71 @@ def validate_workers_structured(layout: dict) -> list:
                 f"{at}/node", block=name,
                 hint="set `node` to the network node the worker walks to"))
     _validate_worker_preempt(layout, problems)
+    return problems
+
+
+def validate_vehicle_holds_structured(layout: dict) -> list:
+    """TRANSPORT `keep_vehicle` (D835-D838): refused on an arm fleet, whose cobot
+    "stay" is that fleet's hold (E_TRANSPORT_KEEP_ARM); a warning when nothing
+    downstream frees the hold -- a TRANSPORT on the same fleet without
+    `keep_vehicle`, or a RELEASE (or a PROCESS ending in Release) naming the fleet --
+    so the vehicle waits with the part until it leaves the model
+    (W_TRANSPORT_KEEP_UNFREED). The walk follows links, a TRANSPORT's named
+    `destination`, and every STATION from a ROUTE or a TRANSPORT routed by sequence."""
+    blocks = {b.get("name"): b for b in layout.get("blocks", []) or [] if isinstance(b, dict)}
+    keeps = [(i, b) for i, b in enumerate(layout.get("blocks", []) or [])
+             if isinstance(b, dict) and str(b.get("type", "")).upper() == "TRANSPORT"
+             and (b.get("params") or {}).get("keep_vehicle")]
+    if not keeps:
+        return []
+    arms = {str(f.get("name", "")).strip() for f in layout.get("fleets", []) or []
+            if isinstance(f, dict) and str(f.get("arm") or "").strip()}
+    links: dict = {}
+    for link in layout.get("links", []) or []:
+        if isinstance(link, dict):
+            links.setdefault(link.get("source"), []).append(link.get("target"))
+    stations = {}
+    for name, b in blocks.items():
+        if str(b.get("type", "")).upper() == "STATION":
+            stations[name] = stations[str((b.get("params") or {}).get("station") or name)] = name
+
+    def after(name):
+        b = blocks.get(name) or {}
+        kind = str(b.get("type", "")).upper()
+        out = list(links.get(name, []))
+        if kind == "TRANSPORT" and (b.get("params") or {}).get("destination"):
+            out.append(stations.get(str(b["params"]["destination"])))
+        elif kind in ("ROUTE", "TRANSPORT"):
+            out.extend(stations.values())
+        return out
+
+    def frees(b, fleet) -> bool:
+        params, kind = b.get("params") or {}, str(b.get("type", "")).upper()
+        if kind == "TRANSPORT":
+            return str(params.get("fleet", "")).strip() == fleet and not params.get("keep_vehicle")
+        if kind == "RELEASE" or (kind == "PROCESS" and str(
+                params.get("action") or "Seize Delay Release").endswith("Release")):
+            return str(params.get("resource_name", "") or "").strip() == fleet
+        return False
+
+    problems = []
+    for index, block in keeps:
+        name, fleet = block.get("name"), str((block.get("params") or {}).get("fleet", "")).strip()
+        at = f"/blocks/{index}/params/keep_vehicle"
+        if fleet in arms:
+            problems.append(problem(
+                "E_TRANSPORT_KEEP_ARM", f"{name}: keep_vehicle on arm fleet '{fleet}'", at,
+                block=name, hint="a cobot stays with its part through the station's tending "
+                                 "\"cobot\": \"stay\"; drop keep_vehicle"))
+            continue
+        # The walk `blocking.analyse` uses: through any block, ending at one that frees it.
+        if not stops(name, after, lambda n: n in blocks and frees(blocks[n], fleet),
+                     lambda n: n in blocks):
+            problems.append(problem(
+                "W_TRANSPORT_KEEP_UNFREED", f"{name}: nothing downstream frees the vehicle it "
+                f"keeps; it waits with the part until the part leaves the model", at,
+                block=name, hint=f"add a RELEASE naming '{fleet}' where the vehicle should go, "
+                                 "or a TRANSPORT on that fleet without keep_vehicle"))
     return problems
 
 

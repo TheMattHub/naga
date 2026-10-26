@@ -878,3 +878,25 @@ def test_validation_of_computed_rate_names_folds_locals_and_reads_conversions():
         ("W_RATE_UNIT_UNCHECKED", "/flows/1/rate")]
     for bad in (["t"], "t", 5):
         assert isinstance(codes([{"name": "r", "rate": "FLOWSUM(t)", "locals": bad}]), list)
+
+
+def test_a_hold_reading_a_computed_level_name_wakes_at_the_exact_draw():
+    """D810: a Condition HOLD whose LEVEL name is computed (a library asset bound to
+    another asset's stock) cannot name the level it watches, so it watches every
+    level: it releases at the draw's instant (t=2.5), not at the next scan (t=100)."""
+    waiter = create("waiter", max_arrivals=1)
+    hold = {"name": "gate", "description": "gate", "type": "HOLD", "position": [1, 0],
+            "params": {"mode": "Condition", "signal_name": "", "scan_interval": 100.0,
+                       "conditions": ['LEVEL("Stock" if 1 > 0 else "Other") <= 3']}}
+    drawer = create("drawer", max_arrivals=1, start_time=2.5)
+    draw = {"name": "draw", "description": "draw", "type": "TRANSFER", "position": [1, 1],
+            "params": {"level": "Stock", "amount": "8", "mode": "remove", "wait": False}}
+    out_a, out_b = dispose("out_a"), dispose("out_b")
+    env = _run(make_layout(
+        [waiter, hold, out_a, drawer, draw, out_b],
+        chain(waiter, hold, out_a) + chain(drawer, draw, out_b),
+        levels=[{"name": "Stock", "capacity": 100, "initial": 10},
+                {"name": "Other", "capacity": 100, "initial": 10}]), run_len=50)
+
+    left = {e.creation_time: e.deletion_time for e in env.ctx.all_entities}
+    assert left[0.0] == pytest.approx(2.5)

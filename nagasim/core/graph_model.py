@@ -7,7 +7,7 @@ from nagasim.core.costs import build_energy_price, build_fixed_costs
 from nagasim.core.levels import build_level_system
 from nagasim.core.agents import build_agent_system
 from nagasim.core.chargers import build_chargers
-from nagasim.core.motion import build_motion_profiles
+from nagasim.core.motion import build_motion_profiles, build_zones
 from nagasim.core.movers import build_fleets
 from nagasim.core.network import block_nodes, build_network
 from nagasim.core.orders import build_orders
@@ -191,6 +191,12 @@ class GraphModel:
         # sampler at the exact same instants (core/timeseries.py).
         env.ctx.dashboard_widgets = timeseries.build_dashboard_widgets(layout)
         env.ctx.level_system = build_level_system(env, layout, env.ctx.series)
+        # The storage dispatch plan (Phase 15 M8, D846) reads the levels and flows
+        # just built; a model without the section never imports its module.
+        env.ctx.dispatch = None
+        if layout.get("dispatch"):
+            from nagasim.core.dispatch import build_dispatch
+            env.ctx.dispatch = build_dispatch(env, layout, env.ctx.level_system)
         # Agents (PHASE5 AB-1) after the variables and the level engine they
         # may read; initialised by `start`, beside the level system.
         env.ctx.agent_system = build_agent_system(env, layout)
@@ -242,6 +248,7 @@ class GraphModel:
         # name, so a failure or a capacity schedule may name it like any other.
         env.ctx.fleets = build_fleets(env, layout, env.ctx.network, env.ctx.resource_manager)
         env.ctx.motion_profiles = build_motion_profiles(layout)     # D157
+        env.ctx.zones = build_zones(layout)                         # D830
         env.ctx.chargers = build_chargers(layout, env)              # D165
         env.ctx.resource_manager.load_failures_from_json(layout.get("failures", []), env.ctx.seed,
                                                           base_unit=env.ctx.time_unit)
@@ -299,6 +306,11 @@ class GraphModel:
                         delay_spec.get("distribution", "Constant"), delay_spec.get("dist_params", {}),
                         time_unit=delay_spec.get("time_unit", "base"))
                 self.link((block_map[src], block_map[tgt], delay))  # wire the link into the runnable graph
+
+        # Belt merges (D854): a merge's source links to the belt's entry at the merge.
+        for process in block_map.values():
+            if getattr(process, "merges", None) and hasattr(process, "wire_merges"):
+                process.wire_merges(block_map)
 
         # Blocking after service (PHASE4 T5, ARCHITECTURE D78): once every link
         # is wired, decide which blocks must hold their resource until the part

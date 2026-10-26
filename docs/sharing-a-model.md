@@ -73,7 +73,8 @@ the panels stack in one column.
   dotted line, and the change with an arrow and a word ("better", "worse", "no clear change").
   "All numbers" holds the table: means, intervals and the paired difference. When a lever
   moves, the results go grey until the next run.
-- **Can I trust this?**: the law checks, the warm-up removed, the replications and the precision.
+- **Can I trust this?**: the law checks, the warm-up removed, the replications and the precision,
+  and what was measured on the input data and the parameters, or "not measured" (see below).
 - **The line**: the recorded run of your baseline, then, after a run, yours beside the baseline,
   both with the model's seed and recorded in the browser.
 - **The footer**: **Save as scenario** keeps the levers as a tab in this browser; **Picture for
@@ -82,6 +83,16 @@ the panels stack in one column.
 
 Starting takes about 10 s (the page says which step it is at); your baseline is on screen at
 once, and the time a run takes is shown before it starts.
+
+## Measured rows on the trust card
+
+The trust card's input-data and parameter rows quote measurements, never estimates: the latest
+`input_uncertainty` answer and the latest ABC `calibrate` answer. A study version keeps them in
+`versions/<id>/asked.json`; `naga viewer model.json -o model.html --asked asked.json` (and
+`--asked` on `naga run --player` and `naga scenarios --player`) quotes such a file. A file that is
+not a list of answers, or holds an answer whose numbers the card cannot read, is refused with
+`E_ASKED_MALFORMED` before anything runs. The page carries only the fields the card quotes, and
+the file is the caller's word: nothing checks that it was measured on this model.
 
 ## A model fed from files or a database
 

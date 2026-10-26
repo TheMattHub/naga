@@ -468,11 +468,15 @@ def analyse(ctx) -> None:
         reached = stops(proc, successors, is_stop, is_transparent)
         if getattr(proc, "can_block", False) and any(is_space(t) or _picks(t) for t in reached):
             proc.block_after_service = True
-        elif _is_belt(proc) and any(_is_belt(t) for t in reached):
+        elif _is_belt(proc) and any(_is_belt(t) for t in stops(
+                proc, lambda p: successors(p)[:1] if p is proc else successors(p),
+                is_stop, is_transparent)):
             # Belt-to-belt back-pressure (PHASE6 W3 M6, D115): a belt's end is a
             # blocking station whose next space is the downstream belt's cells.
             # Only a BELT downstream turns it on, so a belt feeding a BUFFER or
-            # a station keeps its free-running exit and its golden numbers.
+            # a station keeps its free-running exit and its golden numbers. Its
+            # END is link 0 alone: links 1.. are its diverts' (D852), which hand
+            # over with the token anyway, and are in `reached` for the loop edges.
             proc.block_after_service = True
         if is_space(proc) or proc.block_after_service or holds_first:
             nodes[proc.name] = proc

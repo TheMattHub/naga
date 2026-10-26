@@ -39,8 +39,9 @@ _MAX_UNDO_DEPTH = 100
 _DEFAULT_SIMULATION = {"time_limit": None, "warmup": 0, "replications": 1, "time_unit": "minutes",
                        "length_unit": "meters",
                        "currency": "EUR", "energy_price": 0}
-# Definition fields kept verbatim for `extends` (core/submodels.py item 13).
-_INHERIT_KEYS = ("extends", "remove")
+# Definition fields kept verbatim, omitted when unused: `extends` (core/submodels.py
+# item 13) and the repeat groups (item 14, Phase 15 M7).
+_INHERIT_KEYS = ("extends", "remove", "repeat")
 
 
 class _Part(NamedTuple):
@@ -70,6 +71,8 @@ _PARTS = (
     _Part("simulation", lambda: dict(_DEFAULT_SIMULATION)),
     _Part("outputs", dict),                       # PHASE6 W3 M2, D113: opt-in extra output
     _Part("investment", lambda: None,             # D172
+          omit=lambda value: value is None),
+    _Part("dispatch", lambda: None,               # D846
           omit=lambda value: value is None),
     _Part("assertions", list, omit=lambda value: not value),                # #226
     _Part("path_checks", list, omit=lambda value: not value),               # D722
@@ -1050,6 +1053,8 @@ class ModelDocument:
                     self.set_params(block.name, {**params, **touched})
             self.set_fleets([{**f, "home": new} if f.get("home") == old else f
                              for f in self.fleets])
+            self.set_zones([{**z, "node": new} if z.get("node") == old else z
+                            for z in self.zones])
 
     def upsert_segment(self, entry: dict) -> None:
         """Add a segment, or replace the one joining the same two nodes."""
@@ -1486,6 +1491,25 @@ class ModelDocument:
         want = submodels.PORT_TYPES[side]
         return [str(b.params.get("port", "")) for b in level.blocks.values() if b.type == want]
 
+    def instance_ports(self, block_name: str, side: str, *, scope: str = "") -> list[str]:
+        """Port names of the SUBMODEL instance *block_name* on *side*; empty for
+        any other block. A definition with repeat groups has as many ports as
+        THIS instance's arguments ask for (core/submodels.py item 14, D842)."""
+        level = self._levels.get(scope)
+        block = level.blocks.get(block_name) if level is not None else None
+        if block is None or block.type != "SUBMODEL":
+            return []
+        name = block.params.get("definition", "")
+        meta = self.submodels.get(name)
+        if meta is None:
+            return []
+        if meta.get("repeat") is None and meta.get("extends") is None:
+            return self.definition_ports(name, side)
+        outer = (submodels.instance_locals(self._effective_definition(scope), {})
+                 if scope else None)
+        return submodels.instance_ports(self._effective_definition(name),
+                                        block.params.get("arguments"), side, outer)
+
     # -- selection <-> submodel (ROADMAP 2.3 part B item 6) ------------------
     def create_submodel_from_selection(self, block_names, def_name: str, *, scope: str = "",
                                        instance_name: str | None = None) -> str:
@@ -1877,6 +1901,9 @@ class DefinitionView:
 
     def branch_index(self, src, tgt, index=0):
         return self.document.branch_index(src, tgt, index=index, scope=self.name)
+
+    def instance_ports(self, block_name, side):
+        return self.document.instance_ports(block_name, side, scope=self.name)
 
     @property
     def annotations(self):

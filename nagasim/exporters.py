@@ -73,14 +73,16 @@ def _write_json(results, path, *, layout=None, **_):
     return Path(path)
 
 
-def _write_player(results, path, *, layout=None, title=None, trace=None, **_):
-    """The shareable HTML player of the recorded replication (PHASE7 7.7, D201)."""
+def _write_player(results, path, *, layout=None, title=None, trace=None, asked=None, **_):
+    """The shareable HTML player of the recorded replication (PHASE7 7.7, D201); *asked*
+    feeds its trust card (`naga run --asked`)."""
     if trace is None:
         raise ValueError("the player is drawn from the run's recorded trace: use "
                          "`naga run MODEL --player PATH`, or pass trace= (a TraceRecorder)")
     from nagasim.experiments import BASELINE    # local, like the report above
     from nagasim.player import build_player
-    build_player(layout or {}, {BASELINE: trace}, results=results, title=title, path=path)
+    build_player(layout or {}, {BASELINE: trace}, results=results, title=title, path=path,
+                 asked=asked)
     return Path(path)
 
 

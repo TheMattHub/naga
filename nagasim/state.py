@@ -171,6 +171,9 @@ def _refuse_kinds(session) -> None:
         kind = block.block.block_type
         if kind == "CONVEYOR" and block.stops:      # D733: a part between two stops
             raise _unsupported("a conveyor with stops", f"'{block.name}' has stops")
+        if kind == "CONVEYOR" and (block.diverts or block.merges):   # D855: as stops (D733)
+            raise _unsupported("a conveyor with diverts or merges",
+                               f"'{block.name}' has diverts or merges")
         if block.hold_until_space:      # a place reserved before the job starts (D386)
             raise _unsupported("blocking before service", f"'{block.name}' holds until space")
         # A store's entities are carried by arriving again (D260); what runs beside them
@@ -301,6 +304,8 @@ def _fleets(session) -> tuple:
             trips[id(job[1])] = (job[0].name, trip_of(job), float(resource._enqueued[request]))
         vehicles = []
         for mover in fleet.movers:
+            if mover.state == "held":       # D835: a hold no state document carries
+                raise _unsupported("a vehicle held across legs", f"{mover.name}")
             record = {"node": mover.node, "idle_since": float(mover.idle_since)}
             if fleet.capacity_kwh:
                 mover.settle(now)       # drained up to now, as the reset at a warm-up does
@@ -502,6 +507,13 @@ def _entities(session, tap: Tap, trips: dict | None = None) -> list:
                 entry["since"] = asked
             riding[id(entity)] = entry
             continue
+        if (kind == "SEPARATE" and getattr(block, "carrier", "") == "keep") or (
+                kind == "BATCH" and getattr(block, "carrier_type", "")
+                and entity.id not in block.store._entry_times):
+            # Phase 15 M2: a truck mid-load or mid-unload, or the pallet being loaded;
+            # its place in the loading loop and its cut-off are not carried.
+            raise _unsupported("a carrier loading or unloading",
+                               f"entity {entity.id} in '{block_name}'")
         if arrives is not None and arrives >= now:
             others.append({**entry, "arrives": float(arrives), **_holds(entity, held)})
         elif kind == "CONVEYOR":

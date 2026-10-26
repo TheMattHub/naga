@@ -690,8 +690,19 @@ class Timeline:
         if self._belt_of.get(e.entity_id, e.block) != e.block:
             self._off_belt(e.entity_id)        # a trace that never said it left the last one
         self._belt_of[e.entity_id] = e.block
-        self._belts.setdefault(e.block, {})[e.entity_id] = (e.t, e.x0, e.x1, e.duration,
-                                                           e.state, e.value)
+        parts = self._belts.setdefault(e.block, {})
+        row = (e.t, e.x0, e.x1, e.duration, e.state, e.value)
+        if e.state == "merge" and e.entity_id not in parts:
+            # D854: a part that joins mid-belt lands right behind `ahead` (first with
+            # none), not at the back: the rows are the belt's order, lead part first.
+            ahead = e.ahead
+            items = list(parts.items())
+            at = next((i + 1 for i, (pid, _) in enumerate(items) if pid == ahead), 0)
+            items.insert(at, (e.entity_id, row))
+            parts.clear()
+            parts.update(items)
+            return
+        parts[e.entity_id] = row
 
     def _off_belt(self, entity_id: int) -> None:
         block = self._belt_of.pop(entity_id, None)

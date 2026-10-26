@@ -47,6 +47,12 @@ def canonical_json(value) -> str:
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+
+def sha256_file(path) -> str:
+    """The sha256 of the bytes of the file at *path* (OSError when it cannot be read)."""
+    with open(path, "rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
 # -------- generic log structures --------
 @dataclass(slots=True)
 class ResourceSnapshot:      # LoggedSimpyResource.log

@@ -84,7 +84,12 @@ def open_sink(spec, connections=None):
 
 
 def _open(path, flags: int) -> int:
-    """A descriptor on *path* when it is a regular file and no link; else OSError."""
+    """A descriptor on *path* when it is a regular file and no link; else OSError.
+
+    Not `netguard.read_caller_file` (review S5): the sink is opened to append and create,
+    and the replies file (up to `sink_bytes`) is read from a cursor a bounded chunk at a
+    time, where that reader reads a whole file. Its rules are the same, plus one name only:
+    a write through a hard link would change the file's other name too."""
     # No link is followed where the system can refuse one, and a pipe is not waited for.
     extra = getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
     fd = os.open(path, flags | extra, 0o644)

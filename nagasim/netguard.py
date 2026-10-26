@@ -20,28 +20,47 @@ Two halves, one rule each:
   an agent stays under one root, symlinks resolved, with Windows UNC, device
   and alternate-data-stream paths refused outright.
 
+DNS rebinding is closed (Phase 15 FA, ARCHITECTURE section 8 #31): `fetch` connects
+through pinned connections (`_pinned`) that resolve the host, judge every address and
+dial one of THOSE addresses, for every hop, so an answer that changes between
+`check_url` and the connection is judged again rather than followed. The Host header,
+SNI and certificate check keep the host name.
+
+A proxy is used only when the CALLER configured one for https (`HTTPS_PROXY` and
+`NO_PROXY` in the process environment, or the system's proxy settings, as
+`urllib.request.getproxies` reads them; never anything a model file says). Then the
+target is still resolved and judged here first, the proxy is asked for a CONNECT tunnel
+to the target's NAME, and TLS inside the tunnel is verified against that name. Plain
+http through a proxy is refused: the proxy would read and answer it with nothing left
+to check.
+
 RESIDUAL RISK (deliberate, documented rather than papered over):
 
-* DNS rebinding. `check_url` resolves the host and vets every address, then
-  `urlopen` resolves it AGAIN when it connects. Pinning the socket to the
-  vetted address needs a custom `HTTPConnection` plus TLS hostname plumbing --
-  far more than the few lines this is worth -- so a hostile resolver that
-  answers differently within that window can still get one request through to
-  an address this module would have refused. Redirects are re-vetted per hop,
-  the response is size-capped, and nothing about the response reaches the model
-  except parsed data, which bounds what such a request can achieve.
+* A `sql` source is not pinned: its database driver resolves and connects by itself,
+  so `check_sql_url`'s address check still has the rebinding window. It needs
+  `--allow-network` and a driver the caller installed.
+* Through a proxy the PROXY resolves the target again, and its resolver (or a hostile
+  DNS answering it differently) may give an address that was never judged here. The
+  certificate check by host name is then the remaining defence: an intranet server
+  reached that way cannot present a valid certificate for the attacker's public name,
+  so the handshake fails and nothing is read. What leaks is at most whether the tunnel
+  opened. An approved private host (`allow_private`) is fetched through the proxy too.
 * A refusal is per address FAMILY of what the resolver returned at check time:
   a host answering with both a public and a private address is refused
   entirely, which is the safe direction.
 """
 from __future__ import annotations
 
+import errno
+import functools
+import http.client
 import ipaddress
 import json
 import os
 import re
 import socket
 import ssl
+import stat
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,7 +70,8 @@ __all__ = ["NetworkPolicy", "GuardError", "NetworkRefused", "PathRefused", "chec
            "check_sql_url", "fetch", "confine_path", "is_unc_path", "host_of", "describe_url",
            "add_arguments", "policy_from_args", "Secret", "Connection", "ConnectionsError",
            "CONNECTION_KINDS", "LIMITS", "Register", "load_connections", "connection_for",
-           "describe_connection", "vet_connection", "open_connection"]
+           "describe_connection", "vet_connection", "open_connection", "FileRefused",
+           "read_caller_file", "CONNECTIONS_FILE_BYTES"]
 
 MAX_REDIRECTS = 3
 # The only parameters a `sql` location may carry in its query string (`check_sql_url`).
@@ -227,10 +247,133 @@ class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def _dial(addresses, port: int, timeout) -> socket.socket:
+    """A socket connected to the first of *addresses* (already judged) that answers: a
+    literal address, so nothing resolves again. Raises the last OSError."""
+    failure: OSError = OSError("no address to connect to")
+    for ip in addresses:
+        sock = socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET,
+                             socket.SOCK_STREAM)
+        if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+            sock.settimeout(timeout)
+        try:
+            sock.connect((str(ip), port))
+            return sock
+        except OSError as exc:
+            sock.close()
+            failure = exc
+    raise failure
+
+
+def _pinned(connection_class):
+    """*connection_class* (http.client's HTTP or HTTPS connection) with its socket pinned
+    (ARCHITECTURE section 8 #31): the host is resolved and every address judged at
+    connect time, and the socket goes to an address that was judged, so a resolver that
+    answered a public address to `check_url` and a private one now is refused, not
+    followed. Only the socket changes: the Host header and, for https, the SNI name and
+    the certificate check still use the host name (`HTTPSConnection.connect` wraps the
+    socket with `server_hostname=self.host`)."""
+
+    class Pinned(connection_class):
+        def __init__(self, *args, policy: NetworkPolicy, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._policy = policy
+            self._create_connection = self._connect_pinned
+
+        def _connect_pinned(self, address, timeout, source_address=None):
+            host, port = address
+            if self._tunnel_host:
+                # Through the caller's proxy: the TARGET is judged (the proxy will resolve
+                # it again, module docstring), and the proxy itself, the caller's own
+                # choice and often a private address, is dialled without a judgement.
+                _check_host(self._tunnel_host, self._tunnel_port, self._policy)
+                return socket.create_connection(address, timeout, source_address)
+            return _dial(_check_host(host, port, self._policy), port, timeout)
+
+        def connect(self):
+            if not self._tunnel_host:
+                return super().connect()
+            try:
+                return super().connect()
+            except ssl.SSLError:
+                raise           # the target's certificate: reported as the TLS error it is
+            except OSError as exc:
+                # Named by host and port only: the proxy URL's credentials never reach here.
+                raise NetworkRefused(
+                    "E_DATA_PROXY",
+                    f"the proxy {self.host}:{self.port} did not open a tunnel to "
+                    f"{self._tunnel_host}:{self._tunnel_port} ({exc})",
+                    "check HTTPS_PROXY, or list the host in NO_PROXY if it is reachable "
+                    "directly") from None
+
+    Pinned.__name__ = f"Pinned{connection_class.__name__}"
+    return Pinned
+
+
+_PinnedHTTP = _pinned(http.client.HTTPConnection)
+_PinnedHTTPS = _pinned(http.client.HTTPSConnection)
+
+
+def _refuse_plain_proxy(req) -> None:
+    """A request the proxy would fetch itself (plain http, or any request sent to an
+    `https://` proxy URL without a tunnel) is refused: nothing checks what the proxy
+    answers. Only a CONNECT tunnel with TLS to the target goes through a proxy."""
+    if req.has_proxy():
+        raise NetworkRefused(
+            "E_DATA_PROXY",
+            f"'{req.full_url}' would be fetched by this machine's proxy {req.host} in plain "
+            f"text, which nothing here can check",
+            "use the https URL, or list the host in NO_PROXY if it is reachable directly")
+
+
+def _caller_proxies() -> dict:
+    """The CALLER's proxies for http and https: the process environment, else the
+    system settings (`urllib.request.getproxies`). NO_PROXY is honoured by urllib's
+    ProxyHandler through `proxy_bypass`, which reads the same places."""
+    return {scheme: url for scheme, url in urllib.request.getproxies().items()
+            if scheme in ("http", "https")}
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, policy: NetworkPolicy):
+        super().__init__()
+        self.policy = policy
+
+    def http_open(self, req):
+        _refuse_plain_proxy(req)
+        return self.do_open(functools.partial(_PinnedHTTP, policy=self.policy), req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, policy: NetworkPolicy):
+        # An explicit verifying context, not urllib's process-wide default (which an
+        # environment can swap for an unverified one): certificate and host name checked.
+        super().__init__(context=ssl.create_default_context())
+        self.policy = policy
+
+    def https_open(self, req):
+        _refuse_plain_proxy(req)
+        return self.do_open(functools.partial(_PinnedHTTPS, policy=self.policy), req,
+                            context=self._context)
+
+
 def _opener(policy: NetworkPolicy):
     """A fresh opener per fetch: the redirect handler counts hops, so it is
-    stateful and must not be shared. The test seam, too."""
-    return urllib.request.build_opener(_CheckedRedirects(policy))
+    stateful and must not be shared. The test seam, too.
+
+    The caller's proxies (`_caller_proxies`): urllib's ProxyHandler turns an https request
+    into a CONNECT tunnel (with `Proxy-Authorization: Basic` when the proxy URL carries
+    user:password) that the pinned https connection judges by its target.
+
+    The handlers are listed, not `build_opener`'s defaults: no file, ftp or data handler is
+    there to reach even if `check_url` let such a scheme through (review S10)."""
+    opener = urllib.request.OpenerDirector()
+    for handler in (urllib.request.ProxyHandler(_caller_proxies()), _PinnedHTTPHandler(policy),
+                    _PinnedHTTPSHandler(policy), _CheckedRedirects(policy),
+                    urllib.request.HTTPDefaultErrorHandler(), urllib.request.HTTPErrorProcessor(),
+                    urllib.request.UnknownHandler()):
+        opener.add_handler(handler)
+    return opener
 
 
 def fetch(url: str, policy: NetworkPolicy) -> bytes:
@@ -295,6 +438,67 @@ def confine_path(candidate, root) -> Path:
     return full
 
 
+class FileRefused(GuardError):
+    """A caller's file `read_caller_file` would not read. `code` is E_FILE_MISSING when
+    nothing is there (some callers take that as empty), else E_FILE_REFUSED."""
+
+
+def read_caller_file(path, *, max_bytes: int, what: str = "the file") -> bytes:
+    """The bytes of a file the CALLER named on a command line (a refit, setpoints,
+    connections, outbox or audit file), or `FileRefused`.
+
+    The path is taken as the caller wrote it (relative to their working directory, never
+    to a model's folder): this is no confinement, only the rules any such read keeps. A
+    local regular file only: a UNC share or device path is refused before anything is
+    touched (stat-ing one is already an SMB connection, #268), an alternate data stream
+    on Windows too; a symbolic link is refused (O_NOFOLLOW where the system has it, an
+    lstat elsewhere), and so is a FIFO, socket or device, judged on the OPENED handle
+    (O_NONBLOCK, so opening a FIFO cannot hang). At most *max_bytes* are read, also when
+    the file grows after the size was checked. *what* names the file in the message.
+
+    A hard link is read: it is the caller's own file under a name they gave, and a read
+    through it shows only what they can already read (the outbox refuses one because it
+    WRITES, and a write would land in the file's other name too).
+    """
+    text = str(path)
+    if is_unc_path(text):
+        raise FileRefused("E_FILE_REFUSED", f"{what} is a UNC or device path",
+                          "opening one is a network connection; use a local path")
+    if os.name == "nt" and ":" in os.path.splitdrive(text)[1]:
+        raise FileRefused("E_FILE_REFUSED", f"{what}'s path holds a ':' after its drive",
+                          "that names a stream inside another file, not a file")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) \
+        | getattr(os, "O_BINARY", 0)
+    try:
+        if not hasattr(os, "O_NOFOLLOW") and os.path.islink(text):
+            raise FileRefused("E_FILE_REFUSED", f"{what} is a symbolic link",
+                              "name the file it points to")
+        fd = os.open(text, flags)
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise FileRefused("E_FILE_REFUSED", f"{what} is not a plain file")
+            # Where there is no O_NOFOLLOW the islink check above runs before the open; the
+            # name must still be that plain file now (no link swapped in between, review S4).
+            named = os.lstat(text)
+            if not stat.S_ISREG(named.st_mode) or not os.path.samestat(info, named):
+                raise FileRefused("E_FILE_REFUSED", f"{what} is a symbolic link",
+                                  "name the file it points to")
+            if info.st_size > max_bytes:
+                raise FileRefused("E_FILE_REFUSED", f"{what} is over {max_bytes} bytes")
+            data = handle.read(max_bytes + 1)
+    except FileNotFoundError:
+        raise FileRefused("E_FILE_MISSING", f"{what} does not exist") from None
+    except OSError as exc:
+        # ELOOP is what O_NOFOLLOW answers for a link; said as such, not as an errno.
+        link = exc.errno == errno.ELOOP
+        raise FileRefused("E_FILE_REFUSED", f"{what} is a symbolic link" if link
+                          else f"{what} cannot be read ({type(exc).__name__})") from None
+    if len(data) > max_bytes:
+        raise FileRefused("E_FILE_REFUSED", f"{what} is over {max_bytes} bytes")
+    return data
+
+
 # ---------------------------------------------------------------- connections (D215, D216)
 # A live source (rest, mqtt, opcua, modbus) never names a host: it names a CONNECTION, and a
 # connection exists only in a file the caller passed (`--connections FILE`) or the product's
@@ -326,6 +530,8 @@ _AUTHS = ("bearer", "basic", "header")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 _FORBIDDEN_HEADERS = frozenset({"host", "content-length", "transfer-encoding", "connection"})
 _OPCUA_SECURITY = ("None", "Basic256Sha256")
+# The connections file: a thousand registers of a modbus map fit many times over.
+CONNECTIONS_FILE_BYTES = 2 ** 20
 _CONNECTIONS_HINT = ("only a human can define a connection: it lives in the file passed as "
                      "--connections, or chosen in the editor's connections dialog")
 
@@ -570,8 +776,11 @@ def load_connections(path, secrets=None) -> dict[str, Connection]:
     """
     path = Path(path)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+        data = json.loads(read_caller_file(path, max_bytes=CONNECTIONS_FILE_BYTES,
+                                           what=f"the connections file '{path}'").decode("utf-8"))
+    except FileRefused as exc:
+        raise ConnectionsError("E_CONN_FORMAT", exc.message, exc.hint or _CONNECTIONS_HINT) from None
+    except (ValueError, RecursionError) as exc:
         raise ConnectionsError("E_CONN_FORMAT", f"the connections file '{path}' cannot be read "
                                f"({type(exc).__name__})", _CONNECTIONS_HINT) from None
     if not isinstance(data, dict) or data.get("format") != 1 or set(data) != {"format", "connections"} \
@@ -666,23 +875,14 @@ def open_connection(conn: Connection, timeout: float = CONNECT_TIMEOUT) -> socke
     name with no way to turn it off, and no proxy is involved. A reconnect calls this
     again, which resolves and vets again."""
     addresses = vet_connection(conn)
-    sock, failure = None, None
-    for ip in addresses:
-        sock = socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET,
-                             socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        try:
-            sock.connect((str(ip), conn.port))      # a literal address: nothing resolves again
-            break
-        except OSError as exc:
-            sock.close()
-            sock, failure = None, exc
-    if sock is None:
+    try:
+        sock = _dial(addresses, conn.port, timeout)     # literal addresses: no second resolve
+    except OSError as failure:
         raise NetworkRefused("E_DATA_READ",
                              f"connection '{conn.name}' could not be reached "
                              f"({type(failure).__name__})",
                              "check the address in the connections file and that the service "
-                             "is up")
+                             "is up") from None
     if conn.scheme not in _TLS_SCHEMES:
         return sock
     # With a `ca_file` ONLY that CA is trusted; without one, the system store.

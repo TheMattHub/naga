@@ -120,7 +120,7 @@ def test_family_and_shape_are_derived_and_match_the_pre_b3_snapshot():
     expected_family = {
         "CREATE": "source", "SUB_ENTRY": "source",
         "DISPOSE": "sink", "SUB_EXIT": "sink",
-        "PROCESS": "work", "DELAY": "work", "MOTION": "work",
+        "PROCESS": "work", "DELAY": "work", "MOTION": "work", "CHARGE": "work",
         "SEIZE": "resource", "RELEASE": "resource",
         "DECIDE": "control", "ROUTE": "control", "HOLD": "control", "SIGNAL": "control",
         "LOGIC": "control", "SEND": "control",
@@ -141,7 +141,7 @@ def test_family_and_shape_are_derived_and_match_the_pre_b3_snapshot():
     expected_type_names = {
         "CREATE", "DISPOSE", "ASSIGN", "DECIDE", "SEIZE", "PROCESS", "MOTION", "DELAY", "RELEASE",
         "BATCH", "MATCH", "SEPARATE", "DUPLICATE", "HOLD", "SIGNAL", "LOGIC", "RECORD",
-        "STATION", "ROUTE", "TRANSFER", "TRANSPORT", "CONVEYOR", "BUFFER", "SEND",
+        "STATION", "ROUTE", "TRANSFER", "CHARGE", "TRANSPORT", "CONVEYOR", "BUFFER", "SEND",
         "SUBMODEL", "SUB_ENTRY", "SUB_EXIT",
     }
 

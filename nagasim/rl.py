@@ -266,6 +266,8 @@ class SimEnv:
         self._model = prepare_model(self.env, self.layout, prepared=True)
         if self.ctx.level_system is not None:       # PHASE4 D1
             self.ctx.level_system.start(self.horizon)
+        if self.ctx.dispatch is not None:           # Phase 15 M8
+            self.ctx.dispatch.start(self.horizon)
         if self.ctx.agent_system is not None:       # PHASE5 AB-1
             self.ctx.agent_system.start(self.horizon)
         for start in self._model.start_blocks():

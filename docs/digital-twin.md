@@ -500,6 +500,26 @@ naga plc-write --outbox file:proposals.jsonl --setpoints line.setpoints.json \
 An AI assistant has no tool that writes a setpoint: a write is always a person's act, with
 every limit in that person's own files.
 
+The monitor shows what an approval would lead to. With `--monitor`, a setpoint waiting for an
+answer gets a line on the page such as "Setpoint line.cycle = 2: range 1 to 5, at most 1 from
+the value the PLC holds, at most once every 60 s", with the numbers taken from your setpoints
+file and never from the result. The page is read-only, so you approve in the editor's Plant
+monitor or with a reply line of your own. Approving writes that reply line and nothing else:
+the PLC changes only when you run `naga plc-write --write`.
+
+The writer has a smoke test against a real soft PLC, the OpenPLC v3 runtime in Docker. It is
+skipped unless Docker is installed and you ask for it:
+
+<!-- no-run: needs Docker and an OpenPLC image built from its repository -->
+```console
+docker build -t openplc:v3 https://github.com/thiagoralves/OpenPLC_v3.git
+NAGA_OPENPLC_SMOKE=1 pytest -q -m live tests/test_plcwrite_openplc.py
+```
+
+The test publishes the container's ports on 127.0.0.1 only, loads a one-register program,
+runs a dry run and then one write, and checks the value read back and the audit. It removes
+the container at the end, whether the test passes or fails.
+
 Know what this guard does not do, because it trusts the files and the machine it runs on. The
 outbox and its `.replies` file are the trust boundary: whoever can write them can approve a
 write, so keep their permissions to the people who may. The `by` in a reply is a claim, not

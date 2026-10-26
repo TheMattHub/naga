@@ -98,9 +98,48 @@ Chains work (`A` extends `B` extends `C`). A cycle is `E_EXTENDS_CYCLE` and an u
 combo's tooltip names the parent. A definition that others extend cannot be deleted; renaming it
 updates their `extends`.
 
+## Repeated blocks: `repeat`
+
+A definition can hold a block group that each instance copies as many times as one of its
+parameters says. A sorter with one lane per chute, or a buffer row with one bay per slot, is one
+definition whose lane count is an argument, not a chain of fixed-size copies:
+
+```json
+"Sorter": {
+  "parameters": [{"name": "lanes", "type": "int", "default": 4}],
+  "repeat": [{"count": {"$arg": "lanes"}, "blocks": ["lane_{i}", "out_{i}"]}],
+  "blocks": [... {"name": "lane_{i}", "type": "PROCESS",
+                  "params": {"resource_name": "$Lane {i}", ...}},
+             {"name": "out_{i}", "type": "SUB_EXIT", "params": {"port": "lane_{i}"}} ...],
+  "links": [{"source": "divert", "target": "lane_{i}"}, {"source": "lane_{i}", "target": "out_{i}"}]
+}
+```
+
+The rules, applied per instance before anything else reads the definition:
+
+- **Stamping.** Copy k (1 to `count`) of each named block, and of every link that touches one,
+  has `{i}` replaced by k in every string inside it. The copies take the group's first place,
+  copy by copy, so a DECIDE's branches to the group come out as lane 1, lane 2, and so on.
+- **List items.** An item `{"$repeat": <count>, "item": <value>}` in a list param is spliced in as
+  `count` copies the same way, which is how a DECIDE gets one condition per lane.
+- **Count.** It is an int, a `{"$arg": ...}`, or an expression of the definition's parameters,
+  from 0 to 500. A group whose block names hold no `{i}` is **optional**: its count must be 0 or 1,
+  which is how an asset has a reject chute and its port only when a parameter asks for one.
+- **Ports.** An instance has the ports its own arguments give it. Lowering the count below a wired
+  port is refused with `E_SUBMODEL_PORT_UNKNOWN`, never dropped silently.
+- **Templates.** `$Lane 7` with no record of that exact name clones the template named
+  `Lane {i}`, which is declared once. A failure on it needs `{i}` in its own name too
+  (`Jam {i}`), so each copy gets its own. A record whose name holds `{i}` is never live itself.
+- **Order.** Copies register in number order, so lane 2 comes before lane 10 in every result frame.
+
+Malformed groups are `E_SUBMODEL_REPEAT`; bad counts are `E_SUBMODEL_REPEAT_COUNT`. The Logistics
+library's Sortation asset is the worked example: N lanes and an optional reject chute.
+
 ## Known ceilings
 
 - A `{"$arg": ...}` written inside a **top-level record** only resolves where that record is cloned
   for an instance (a `$` template). Use the definition's `scoped` overrides for a record that is
   not `$`-scoped.
 - A link key in `remove` drops every parent link between those two blocks, whatever its ports.
+- A repeat group has one index, `{i}`, and one level: a group cannot repeat inside another group.
+  One `scoped` override serves every copy of a `{i}` template, so copies cannot differ there.

@@ -116,10 +116,17 @@ own.
 
 ## Residual risks
 
-- **DNS rebinding window**: the address is vetted, then resolved again to connect; a hostile
-  resolver could in principle answer differently in between. Bounded by per-hop redirect
-  re-vetting, a response size cap, and the fact that only parsed data -- never the raw response --
-  ever reaches the model.
+- **A `sql` source is not pinned to its vetted address**: the database driver resolves the host
+  itself, so a hostile resolver could answer differently between the check and the connection.
+  An `http(s)` source (`json_url`) is pinned: the address that was vetted is the one connected
+  to, at every redirect hop, with the host name kept for the request and the certificate.
+- **Through a proxy, the proxy resolves the host again.** An `https` source goes through the
+  proxy you set in `HTTPS_PROXY` (or in the system's settings), never one a model names, and
+  `NO_PROXY` hosts are fetched directly. The host is still vetted here first, then reached through
+  a CONNECT tunnel by its name, with the certificate checked against that name. The proxy's own
+  lookup could still land somewhere that was never vetted, and the certificate check is what then
+  stops the read: a server there has no valid certificate for that name. Plain `http` through a
+  proxy is refused, because nothing could check what the proxy answers.
 - **A live connection's root**: a model file can read anything under a connection's `root` with
   your credential and show it in results, so keep each root narrow.
 - **A plain channel can be forged**, and a forged value is a wrong forecast. A text from a plant

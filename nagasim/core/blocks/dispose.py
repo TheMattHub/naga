@@ -4,6 +4,7 @@ from nagasim.core import tending
 from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, DIST_PARAMS, ParamSpec
 from nagasim.core.distributions import StochasticDistribution
+from nagasim.core.movers import free_held
 from nagasim.core.stats import account_and_retain
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class Dispose(BaseProcess):
             if self.ctx.debug:
                 log.debug("Entity %s has been disposed at time %s.", entity.id, self.env.now)
             tending.cobot_of(self, entity)     # D169: a cobot that stayed with it is freed
+            free_held(self, entity)            # D837: and a vehicle a TRANSPORT kept
 
     def _finish(self, entity):
             entity.deletion_time = self.env.now

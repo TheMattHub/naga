@@ -175,6 +175,10 @@ Flattening rules, as built
     FULL name, so two instances draw independently and a clone equals the same
     model written flat under the scoped names, bit for bit.
 
+    A ZONE (D831) clones like a charger, and also when a block names it as
+    `"zone": {"name": "$Zone"}`; its template is consumed and `"node": "$x"`
+    is the instance's node. A zone named by an argument is a shared binding.
+
     A CHARGER (D167) clones only when named under `scoped.chargers`, and its
     template is consumed like a fleet's; `"node": "$bay"` binds it to the
     instance's own geometry node.
@@ -199,6 +203,20 @@ Flattening rules, as built
     refuses either with a SubmodelError. `core/submodels.py` cannot reuse
     `modeldiff`'s identity discovery (that module sits ABOVE core), and a
     definition has only three record lists, so the keys are written here.
+
+14. REPEATED BLOCKS (Phase 15 M7, D840-D842). A definition may declare
+    `"repeat": [{"count": <n>, "blocks": ["lane_{i}", "out_{i}"]}]`: per
+    instance, the named blocks -- and every link with an end among them -- are
+    STAMPED `count` times, `{i}` replaced by 1..count in every string inside
+    them, before anything else reads the lists (`stamp`). The copies take the
+    group's first position, copy by copy, so a source's branch order is lane 1
+    first. A list item `{"$repeat": <n>, "item": <value>}` in a block param is
+    spliced in as n copies the same way (a DECIDE's conditions). `count` is an
+    int, a `{"$arg": ...}` or an expression in the instance's locals; a group
+    with no `{i}` in its names is OPTIONAL, its count 0 or 1. An instance's
+    ports therefore depend on its arguments (`instance_ports`). A `$name` with
+    no template of its own clones the template whose name holds `{i}` (`$Lane
+    7` clones `Lane {i}` with i = 7, D841); such a template is never live.
 """
 from __future__ import annotations
 
@@ -214,7 +232,9 @@ from nagasim.core.quantities import SECTION_FIELDS
 __all__ = ["SUBMODEL", "SUB_ENTRY", "SUB_EXIT", "PORT_TYPES", "ARG_KEY", "LITERAL_TYPES",
            "REFERS_SECTIONS", "RECORD_SECTIONS", "LOCALS_SECTIONS", "SubmodelError", "flatten",
            "has_submodels", "definition_ports", "port_block_name", "definition_references",
-           "argument_names", "merge_definition", "merge_named", "resolve_extends"]
+           "argument_names", "merge_definition", "merge_named", "resolve_extends",
+           "REPEAT_ITEM", "INDEX", "MAX_REPEAT", "stamp", "instance_locals", "instance_ports",
+           "repeat_count", "has_repeat_item"]
 
 SUBMODEL = "SUBMODEL"
 SUB_ENTRY = "SUB_ENTRY"
@@ -240,6 +260,8 @@ REFERS_SECTIONS = {
     "entity": ("entities",),
     # PHASE4 E2: a station asset picks the fleet that carries work away from it.
     "fleet": ("fleets",),
+    # Phase 15 M5 (D833): a Cobot cell names another instance's Safety zone.
+    "zone": ("zones",),
 }
 
 # The record sections (a list of NAME-addressable records), the subset cloned
@@ -254,10 +276,11 @@ _QUOTED_SCOPED = re.compile(r"(['\"])\$([^'\"]*)\1")
 
 # The sections a `$name` clones from, tried in this order (a name in two takes the first).
 _BY_REFERENCE = ("populations", "agent_types", "resource_sets", "resources", "schedules",
-                 "levels", "fleets", "variables", "auxiliaries", "delays", "motion_profiles")
+                 "levels", "fleets", "variables", "auxiliaries", "delays", "motion_profiles",
+                 "zones")
 # The sections a definition's `scoped` entry clones, in this order: the flattened record order.
-_SCOPED_ORDER = ("levels", "flows", "fixed_costs", "conversions", "chargers", "variables",
-                 "auxiliaries", "delays", "agent_types", "populations")
+_SCOPED_ORDER = ("levels", "flows", "fixed_costs", "conversions", "chargers", "zones",
+                 "variables", "auxiliaries", "delays", "agent_types", "populations")
 # Records whose expressions read the instance's parameters by name: a clone carries them as
 # `locals` (a level only when its `initial` is an expression). The published schema declares
 # `locals` on exactly these and on a block (#694).
@@ -375,6 +398,177 @@ def argument_names(value, path: str = "") -> list[tuple[str, str]]:
             found += argument_names(item, f"{path}/{index}")
         return found
     return []
+
+
+# -- repeated blocks (item 14) ------------------------------------------------
+REPEAT_ITEM = "$repeat"     # {"$repeat": <count>, "item": <value>} inside a list param
+INDEX = "{i}"               # the copy number placeholder
+# A typo guard, not a modelling limit: every copy is real blocks (D840).
+MAX_REPEAT = 500
+
+
+def repeat_count(raw, locals_: dict) -> tuple[int | None, Problem | None]:
+    """(count, None) or (None, the Problem): *raw* is an int, a `{"$arg": p}`
+    or an expression evaluated in *locals_*; a bool counts as 0/1."""
+    if isinstance(raw, dict) and len(raw) == 1 and ARG_KEY in raw:
+        name = str(raw[ARG_KEY])
+        if name not in locals_:
+            return None, problem("E_SUBMODEL_ARG_UNKNOWN",
+                                 f"repeat count: $arg '{name}' is not a parameter of this submodel",
+                                 hint=f"use one of: {', '.join(sorted(locals_)) or '(none)'}")
+        value = locals_[name]
+        if not isinstance(value, (bool, int, float)) or int(value) != value:
+            return None, problem("E_SUBMODEL_ARG_TYPE",
+                                 f"repeat count: $arg '{name}' is {value!r}, not an int",
+                                 hint="pass an int argument")
+        raw = value
+    elif isinstance(raw, str):
+        try:
+            raw = compile_expression(raw).evaluate(ExpressionScope(locals=locals_))
+        except ExpressionError as exc:
+            return None, problem("E_SUBMODEL_REPEAT_COUNT", f"repeat count {raw!r}: {exc}",
+                                 hint="an int, a {\"$arg\": ...} or an expression of the "
+                                      "definition's parameters")
+    if not isinstance(raw, (bool, int, float)) or int(raw) != raw:
+        return None, problem("E_SUBMODEL_REPEAT_COUNT", f"repeat count {raw!r} is not an int",
+                             hint="an int, a {\"$arg\": ...} or an expression of the "
+                                  "definition's parameters")
+    count = int(raw)
+    if not 0 <= count <= MAX_REPEAT:
+        return None, problem("E_SUBMODEL_REPEAT_COUNT",
+                             f"repeat count {count} is outside 0..{MAX_REPEAT}",
+                             hint=f"use 0 to {MAX_REPEAT} copies")
+    return count, None
+
+
+def _substitute(value, k: int):
+    """*value* with `{i}` replaced by *k* in every string inside it."""
+    if isinstance(value, str):
+        return value.replace(INDEX, str(k)) if INDEX in value else value
+    if isinstance(value, dict):
+        return {key: _substitute(v, k) for key, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute(v, k) for v in value]
+    return value
+
+
+def has_repeat_item(value) -> bool:
+    if isinstance(value, dict):
+        return REPEAT_ITEM in value or any(has_repeat_item(v) for v in value.values())
+    if isinstance(value, list):
+        return any(has_repeat_item(v) for v in value)
+    return False
+
+
+def _splice(value, locals_: dict, problems: list):
+    """*value* with every `{"$repeat": n, "item": x}` list item replaced by n
+    copies of x, `{i}` = 1..n; a deep copy only where something changed."""
+    if isinstance(value, dict):
+        return {key: _splice(v, locals_, problems) for key, v in value.items()}
+    if not isinstance(value, list):
+        return value
+    out = []
+    for item in value:
+        if isinstance(item, dict) and REPEAT_ITEM in item:
+            count, fault = repeat_count(item.get(REPEAT_ITEM), locals_)
+            if fault is not None:
+                problems.append(fault)
+                continue
+            out.extend(_substitute(copy.deepcopy(item.get("item")), k)
+                       for k in range(1, count + 1))
+        else:
+            out.append(_splice(item, locals_, problems))
+    return out
+
+
+def stamp(definition: dict, locals_: dict, problems: list | None = None) -> tuple[list, list]:
+    """(blocks, links) of *definition* for one instance whose parameter values
+    are *locals_*: repeat groups stamped and `$repeat` items spliced (item 14).
+    A definition with neither returns its own lists, so nothing else pays."""
+    blocks = definition.get("blocks", []) or []
+    links = definition.get("links", []) or []
+    groups = definition.get("repeat") or []
+    if not groups and not any(has_repeat_item(b.get("params")) for b in blocks
+                              if isinstance(b, dict)):
+        return blocks, links
+    problems = [] if problems is None else problems
+    member: dict[str, int] = {}
+    counts: list[int] = []
+    for index, group in enumerate(groups if isinstance(groups, list) else []):
+        names = group.get("blocks") if isinstance(group, dict) else None
+        count, fault = repeat_count(group.get("count") if isinstance(group, dict) else None,
+                                    locals_)
+        if fault is not None:
+            problems.append(fault)
+            count = 0
+        elif count > 1 and not any(INDEX in str(n) for n in names or []):
+            # An optional group keeps its names: two copies would collide.
+            problems.append(problem(
+                "E_SUBMODEL_REPEAT_COUNT",
+                f"repeat group {index}: count {count} on blocks with no {INDEX} in their names",
+                hint=f"an optional group's count is 0 or 1; put {INDEX} in the names to repeat"))
+            count = 1
+        counts.append(count)
+        for name in names or []:
+            member.setdefault(str(name), index)
+
+    def emit(records, group_of):
+        out, done = [], set()
+        for record in records:
+            group = group_of(record)
+            if group is None:
+                out.append(record)
+                continue
+            if group in done:
+                continue
+            done.add(group)
+            mine = [r for r in records if group_of(r) == group]
+            for k in range(1, counts[group] + 1):
+                out.extend(_substitute(copy.deepcopy(r), k) for r in mine)
+        return out
+
+    def link_group(link):
+        found = {member.get(link.get("source")), member.get(link.get("target"))} - {None}
+        return min(found) if found else None     # two groups: refused by validation
+
+    stamped = emit(blocks, lambda b: member.get(b.get("name")))
+    stamped = [dict(b, params=_splice(b["params"], locals_, problems))
+               if isinstance(b, dict) and has_repeat_item(b.get("params")) else b
+               for b in stamped]
+    return stamped, emit(links, link_group)
+
+
+def instance_locals(definition: dict, arguments: dict | None,
+                    outer_locals: dict | None = None) -> dict:
+    """The parameter values an instance sees -- its arguments over the
+    defaults, a non-literal string evaluated in *outer_locals* -- without
+    reporting anything: for drawing and validation, which report faults on
+    their own (flattening uses `_Flattener._arguments`)."""
+    given = arguments if isinstance(arguments, dict) else {}
+    outer = outer_locals or {}
+    values = {}
+    for spec in definition.get("parameters", []) or []:
+        name = str(spec.get("name", "")) if isinstance(spec, dict) else ""
+        if not name:
+            continue
+        raw = given.get(name, spec.get("default"))
+        if isinstance(raw, dict) and len(raw) == 1 and ARG_KEY in raw:
+            raw = outer.get(str(raw[ARG_KEY]), spec.get("default"))
+        if isinstance(raw, str) and str(spec.get("type", "")) not in LITERAL_TYPES:
+            try:
+                raw = compile_expression(raw).evaluate(ExpressionScope(locals=outer))
+            except ExpressionError:
+                raw = spec.get("default")
+        values[name] = raw
+    return values
+
+
+def instance_ports(definition: dict, arguments: dict | None, side: str,
+                   outer_locals: dict | None = None) -> list[str]:
+    """Port names on *side* of one instance of *definition*: its repeat groups
+    stamped for these *arguments* (item 14), else `definition_ports`."""
+    blocks, _links = stamp(definition, instance_locals(definition, arguments, outer_locals))
+    return definition_ports({"blocks": blocks}, side)
 
 
 def _param_type(block_type: str, key: str):
@@ -540,6 +734,18 @@ class _Flattener:
         # `<instance>/<name>` of every instance whose asset picture follows a state
         # source: a variable among them is marked `trace` (D608).
         self._state_sources: set[str] = set()
+        # Flattened instance name -> (definition, its locals, stamped blocks,
+        # stamped links), made by `_prepare` (item 14).
+        self._prepared: dict[str, tuple] = {}
+        # The copy number of the `{i}` clone being made, inherited by the
+        # records it reaches (D841); None outside one.
+        self._index: int | None = None
+        # `{i}` templates (D841): (section, template name, pattern matching a
+        # stamped name), in `_BY_REFERENCE` order; empty for every model without one.
+        self._indexed = [(section, name, re.compile(
+                              re.escape(name).replace(re.escape(INDEX), "([1-9][0-9]*)") + "$"))
+                         for section in _BY_REFERENCE for name in self.templates[section]
+                         if isinstance(name, str) and INDEX in name]
 
     # -- entry point --------------------------------------------------------
     def run(self) -> dict:
@@ -558,8 +764,10 @@ class _Flattener:
         out["links"] = links
         templates = self._continuous_templates()
         for section in _CLONABLE_SECTIONS:
+            # A `{i}` template is never live, cloned or not (D841).
             kept = [r for r in out.get(section, [])
-                    if str(r.get("name", "")) not in templates.get(section, ())]
+                    if str(r.get("name", "")) not in templates.get(section, ())
+                    and INDEX not in str(r.get("name", ""))]
             out[section] = kept + list(self.clones[section].values())
         for record in out.get("variables") or []:
             if record.get("name") in self._state_sources:
@@ -587,9 +795,12 @@ class _Flattener:
         instances; emit every link with instance endpoints redirected to the
         matching port block (contracted away in phase 2)."""
         instances = []
+        # Each instance's locals and STAMPED lists (item 14), made before this
+        # level's links: an instance's ports depend on its arguments.
         for block in blocks:
             if _type(block) == SUBMODEL:
                 instances.append(block)
+                self._prepare(block, prefix + block["name"], scope_locals, stack)
                 continue
             new = copy.deepcopy(block)
             new["name"] = prefix + block["name"]
@@ -620,6 +831,19 @@ class _Flattener:
         for block in instances:
             self._expand_instance(block, prefix + block["name"], prefix, scope_locals, stack)
 
+    def _prepare(self, block, name, scope_locals, stack) -> None:
+        """The instance's locals and its stamped lists (item 14), once."""
+        definition_name = str(block.get("params", {}).get("definition", ""))
+        definition = self.definitions.get(definition_name)
+        if definition is None or definition_name in stack:
+            return      # _expand_instance reports it
+        inner_locals = self._arguments(definition, block, name, scope_locals)
+        faults: list = []
+        blocks, links = stamp(definition, inner_locals, faults)
+        self.problems.extend(problem(p.code, f"{name}: {p.message}", block=name, hint=p.hint)
+                             for p in faults)
+        self._prepared[name] = (definition, inner_locals, blocks, links)
+
     def _expand_instance(self, block, name, prefix, scope_locals, stack) -> None:
         definition_name = str(block.get("params", {}).get("definition", ""))
         definition = self.definitions.get(definition_name)
@@ -630,14 +854,13 @@ class _Flattener:
             self.problems.append(
                 f"{name}: submodel definition cycle: {' -> '.join(stack + (definition_name,))}")
             return
-        inner_locals = self._arguments(definition, block, name, scope_locals)
+        _definition, inner_locals, blocks, links = self._prepared[name]
         self._scoped[name] = (definition.get("scoped") or {}, inner_locals)
         source = ((definition.get("info") or {}).get("graphics") or {}).get("state_source")
         if source:
             self._state_sources.add(f"{name}/{source}")
         self._clone_scoped_records(name, blockless=not definition.get("blocks"))
-        self._expand(definition.get("blocks", []), definition.get("links", []),
-                     prefix=f"{name}/", scope_locals=inner_locals,
+        self._expand(blocks, links, prefix=f"{name}/", scope_locals=inner_locals,
                      stack=stack + (definition_name,))
 
     def _endpoint(self, by_name: dict, prefix: str, link: dict, side: str,
@@ -659,12 +882,20 @@ class _Flattener:
             return None     # _expand_instance already reported the unknown definition
         port_side = "out" if side == "source" else "in"
         port = link.get(f"{side}_port")
-        inner = port_block_name(definition, port_side, port)
+        prepared = self._prepared.get(prefix + raw)
+        stamped = {"blocks": prepared[2]} if prepared else definition
+        inner = port_block_name(stamped, port_side, port)
         if inner is None:
-            self.problems.append(
+            # Coded (D842): a repeat count lowered below a wired port lands here.
+            ports = definition_ports(stamped, port_side)
+            self.problems.append(problem(
+                "E_SUBMODEL_PORT_UNKNOWN",
                 f"link {link.get('source')}->{link.get('target')}: "
                 f"{side}_port {port!r} is not a {port_side} port of definition "
-                f"'{block['params']['definition']}'")
+                f"'{block['params']['definition']}'",
+                f"{at}/{side}_port" if at else "", block=prefix + raw,
+                hint=f"this instance has: {', '.join(ports) or '(none)'}; delete the link "
+                     f"or change the instance's arguments"))
             return None
         return f"{prefix}{raw}/{inner}"
 
@@ -804,9 +1035,32 @@ class _Flattener:
             return copy.deepcopy(value)
         found: set[str] = set()
         rewritten = self._walk(value, scope, found)
-        for name in sorted(found):
+        for name in sorted(found, key=self._clone_order):
             self._clone(name, scope)
         return rewritten
+
+    def _template_of(self, name: str):
+        """(section, `{i}` template, index) a stamped *name* clones from (D841),
+        or None; a template of the exact name always wins (checked by the caller)."""
+        for section, template, pattern in self._indexed:
+            match = pattern.match(name)
+            if match:
+                return section, template, int(match.group(1))
+        return None
+
+    def _clone_order(self, name: str) -> tuple:
+        """Sort key of the names one block references: plain names by their
+        text, as always; a stamped name by (its template text before the index,
+        the index as a NUMBER, the text after), so lane 2 registers before lane
+        10. Only a model with a `{i}` template ever sees the second form."""
+        if not self._indexed or any(name in self.templates[s] for s in _BY_REFERENCE):
+            return (name,)
+        found = self._template_of(name)
+        if found is None:
+            return (name,)
+        _section, template, index = found
+        before, _sep, after = template.partition(INDEX)
+        return (before, index, after)
 
     def _walk(self, value, scope: str, found: set):
         if isinstance(value, dict):
@@ -839,17 +1093,35 @@ class _Flattener:
         # top-level record: the scoped name is all it needs.
         if section is not None:
             self._clone_record(section, name, scope)
+            return
+        found = self._template_of(name) if self._indexed else None
+        if found is not None:
+            section, template, index = found
+            self._clone_record(section, template, scope, index)
 
-    def _clone_record(self, section: str, name: str, scope: str) -> str:
+    def _clone_record(self, section: str, name: str, scope: str, index: int | None = None) -> str:
         """A per-instance copy `<scope>/<name>` of the template record *name*
         of *section*, made once: the instance's `scoped` overrides and `$arg`s
         applied, its parameters as `locals` where the section reads them, every
         `$` name in an expression field scoped (and cloned in turn), then the
         section's own step from `_AFTER`. A continuous template is consumed:
-        it leaves the flattened layout (item 9)."""
-        new_name = f"{scope}/{name}"
+        it leaves the flattened layout (item 9).
+
+        *index* is the copy number of a `{i}` template (D841); records reached
+        from that clone (its schedule, its failures) inherit it, so a `{i}` in
+        THEIR names is stamped with the same number."""
+        index = self._index if index is None else index
+        stamped = name.replace(INDEX, str(index)) if index is not None and INDEX in name else name
+        new_name = f"{scope}/{stamped}"
         if new_name in self.clones[section]:
             return new_name
+        outer, self._index = self._index, index
+        try:
+            return self._clone_new(section, name, scope, new_name)
+        finally:
+            self._index = outer
+
+    def _clone_new(self, section: str, name: str, scope: str, new_name: str) -> str:
         record = copy.deepcopy(self.templates[section][name])
         record["name"] = new_name
         self.clones[section][new_name] = record     # before recursing: cycle-safe
@@ -892,7 +1164,7 @@ class _Flattener:
                              for m in record.get("members", [])]
 
     def _after_charger(self, record, name, scope, bound) -> None:
-        """`"node": "$bay"` is the instance's own geometry node (D167)."""
+        """`"node": "$bay"` is the instance's own geometry node (D167); a zone's too (D831)."""
         node = record.get("node")
         if isinstance(node, str) and node.startswith("$"):
             record["node"] = f"{scope}/{node[1:]}"
@@ -936,7 +1208,8 @@ class _Flattener:
                                     f"{scope}/"))
 
     _AFTER = {"resources": _after_resource, "fleets": _after_resource,
-              "resource_sets": _after_set, "chargers": _after_charger, "levels": _after_level,
+              "resource_sets": _after_set, "chargers": _after_charger, "zones": _after_charger,
+              "levels": _after_level,
               "flows": _after_flow, "populations": _after_population,
               "agent_types": _after_agent_type}
 
@@ -1035,6 +1308,15 @@ class _Flattener:
         rewritten to the instance's copy, under a distinct per-instance name."""
         for failure_name, entry in self.templates["failures"].items():
             if name in entry.get("resources", []):
+                if self._index is not None and INDEX in name and INDEX not in failure_name:
+                    # Every copy would share ONE failure clone, rewired to copy 1 only.
+                    self.problems.append(problem(
+                        "E_SUBMODEL_REPEAT",
+                        f"{scope}: failure '{failure_name}' is on the repeated resource "
+                        f"'{name}' but its own name has no {INDEX}",
+                        block=scope, hint=f"rename it, e.g. '{failure_name} {INDEX}', so each "
+                                          f"copy gets its own failure"))
+                    continue
                 clone = self.clones["failures"][self._clone_record("failures", failure_name,
                                                                    scope)]
                 clone["resources"] = [new_name if r == name else r for r in clone["resources"]]

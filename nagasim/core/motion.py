@@ -22,12 +22,18 @@ from nagasim.core.utils import is_finite_number
 
 __all__ = ["SEGMENT_KINDS", "TIMED_KINDS", "PROFILE_KINDS", "HRC_MODES", "derate",
            "move_speed", "move_time", "move_seconds", "collaborative_now", "segment_seconds",
-           "nominal_cycle_seconds", "build_motion_profiles", "validate_motion"]
+           "nominal_cycle_seconds", "build_motion_profiles", "validate_motion",
+           "ZONE_MEASURES", "resolve_zone", "worker_point", "build_zones", "validate_zones",
+           "zone_names"]
 
 SEGMENT_KINDS = ("move", "pick", "place", "tool_change", "dwell", "process")
 TIMED_KINDS = SEGMENT_KINDS[1:]            # every kind but "move" carries a `time`
 PROFILE_KINDS = ("robot", "human", "mechanism")      # descriptive only: one set of rules (D157)
 HRC_MODES = ("none", "collaborative", "separation")  # D158
+# D834: how far a worker is from a zone node. "path" walks the network (D158's
+# rule); "straight" is the line a safety laser scanner sees.
+ZONE_MEASURES = ("path", "straight")
+_ZONE_FIELDS = frozenset({"name", "description", "node", "radius_m", "measure"})
 
 
 def _number(value) -> float | None:
@@ -86,10 +92,92 @@ def collaborative_now(ctx, hrc: str, zone: dict) -> bool:
         return True
     if hrc != "separation":
         return False
+    zone = resolve_zone(ctx, zone)
     node, radius = str(zone.get("node", "")), float(zone.get("radius_m", 0.0))
-    return any(unit.distance_to(ctx.network, node) <= radius
-               for fleet in ctx.fleets.values() if fleet.kind == "worker"
-               for unit in fleet.movers)
+    units = [unit for fleet in ctx.fleets.values() if fleet.kind == "worker"
+             for unit in fleet.movers]
+    if (zone.get("measure") or "path") == "straight":
+        zx, zy = ctx.network.point(node)
+        return any(math.hypot(x - zx, y - zy) <= radius
+                   for x, y in (worker_point(ctx.network, unit) for unit in units))
+    return any(unit.distance_to(ctx.network, node) <= radius for unit in units)
+
+
+def resolve_zone(ctx, zone: dict) -> dict:
+    """The zone a block's `zone` dict means (D830): the `zones` record its
+    non-empty `name` names, whose node and radius then replace the inline
+    ones; the inline dict itself when it names none (D158 as it was)."""
+    name = str(zone.get("name") or "")
+    if not name:
+        return zone
+    record = ctx.zones.get(name)
+    if record is None:
+        raise RuntimeError(f"unknown zone '{name}' (E_MOTION_ZONE_UNKNOWN).")
+    return record
+
+
+def worker_point(network, unit) -> tuple[float, float]:
+    """A worker's floor point for a "straight" zone (D834), in layout
+    coordinates: mid-segment on an interruptible drive (the position
+    `Mover.distance_to` reads), a gantry's own `pos`, else its node -- so a
+    non-interruptible walk counts at the node it left, as under "path"."""
+    if unit.fleet.motion == "gantry":
+        return unit.pos if unit.pos is not None else network.point(unit.node)
+    at = unit.progress()
+    if at is None:
+        return network.point(unit.node)
+    a, b, seg, along, _before = at
+    (ax, ay), (bx, by) = network.point(a), network.point(b)
+    share = along / seg.length if seg.length > 0 else 0.0
+    return ax + (bx - ax) * share, ay + (by - ay) * share
+
+
+def build_zones(layout: dict) -> dict[str, dict]:
+    """{name: zone record} for the run (D830); MOTION and tending read it from ctx."""
+    return {str(z["name"]): dict(z) for z in layout.get("zones") or []
+            if isinstance(z, dict) and z.get("name")}
+
+
+def validate_zones(layout: dict, problems: list) -> None:
+    """The `zones` section's hook (core/sections.py): E_ZONE per bad record."""
+    nodes = _node_names(layout)
+    seen: set[str] = set()
+    for index, record in enumerate(layout.get("zones") or []):
+        at = f"/zones/{index}"
+        name = str(record.get("name", "")).strip() if isinstance(record, dict) else ""
+
+        def bad(field, text, hint, name=name, at=at):
+            problems.append(problem("E_ZONE", f"zone '{name}': {text}", f"{at}/{field}",
+                                    hint=hint))
+
+        if not name or name in seen:
+            problems.append(problem("E_ZONE", f"zone {index}: empty or duplicate name '{name}'",
+                                    f"{at}/name", hint="give every zone its own name"))
+            if not isinstance(record, dict):
+                continue
+        seen.add(name)
+        for field in sorted(set(record) - _ZONE_FIELDS):
+            bad(field, f"unknown field '{field}'", f"one of: {', '.join(sorted(_ZONE_FIELDS))}")
+        node = str(record.get("node", "") or "").strip()
+        if node not in nodes:
+            bad("node", f"node '{node}' is not a network node",
+                f"declared: {', '.join(sorted(nodes)) or '(none)'}")
+        if not _positive(record.get("radius_m")):
+            bad("radius_m", "radius_m must be a number > 0", "the distance in metres")
+        if (record.get("measure") or "path") not in ZONE_MEASURES:
+            bad("measure", f"unknown measure '{record.get('measure')}'",
+                f"one of: {', '.join(ZONE_MEASURES)}")
+
+
+def _node_names(layout: dict) -> set:
+    return {str(n.get("name", "")).strip()
+            for n in (layout.get("network") or {}).get("nodes") or [] if isinstance(n, dict)}
+
+
+def zone_names(layout: dict) -> set:
+    """The declared zone names, for a block's `zone.name` check."""
+    return {str(z.get("name", "")).strip() for z in layout.get("zones") or []
+            if isinstance(z, dict)} - {""}
 
 
 def segment_seconds(block, entity, segments, profile: dict, time_unit: str = "seconds",
@@ -177,11 +265,10 @@ def validate_motion(layout: dict, problems: list) -> None:
     only the profile names and the network node names, both read here from
     the layout (validated flattened, so a `$arg` is already a value)."""
     profiles = _validate_profiles(layout, problems)
-    nodes = {str(n.get("name", "")).strip()
-             for n in (layout.get("network") or {}).get("nodes") or [] if isinstance(n, dict)}
+    nodes, zones = _node_names(layout), zone_names(layout)
     for index, block in enumerate(layout.get("blocks") or []):
         if str(block.get("type", "")).upper() == "MOTION":
-            _validate_block(block, f"/blocks/{index}/params", profiles, nodes, problems)
+            _validate_block(block, f"/blocks/{index}/params", profiles, nodes, zones, problems)
 
 
 def _validate_profiles(layout: dict, problems: list) -> dict[str, dict]:
@@ -216,7 +303,8 @@ def _validate_profiles(layout: dict, problems: list) -> dict[str, dict]:
     return profiles
 
 
-def _validate_block(block: dict, at: str, profiles: dict, nodes: set, problems: list) -> None:
+def _validate_block(block: dict, at: str, profiles: dict, nodes: set, zones: set,
+                    problems: list) -> None:
     name = block.get("name", "<unnamed>")
     params = block.get("params") or {}
 
@@ -235,7 +323,7 @@ def _validate_block(block: dict, at: str, profiles: dict, nodes: set, problems: 
         segments = []
     for index, segment in enumerate(segments):
         validate_segment(segment, index, profile, report)
-    validate_hrc(params, profile, nodes, report)
+    validate_hrc(params, profile, nodes, report, zones)
 
 
 def validate_segment(segment, index: int, profile: dict | None, report) -> None:
@@ -282,7 +370,8 @@ def validate_segment(segment, index: int, profile: dict | None, report) -> None:
                f"{where}/time", "a duration cannot be negative")
 
 
-def validate_hrc(params: dict, profile: dict | None, nodes: set, report) -> None:
+def validate_hrc(params: dict, profile: dict | None, nodes: set, report,
+                 zones: set = frozenset()) -> None:
     mode = params.get("hrc", "none")
     if mode not in HRC_MODES:
         report("E_MOTION_ZONE", f"unknown hrc mode '{mode}'", "hrc",
@@ -296,6 +385,17 @@ def validate_hrc(params: dict, profile: dict | None, nodes: set, report) -> None
     if mode != "separation":
         return
     zone = params.get("zone") if isinstance(params.get("zone"), dict) else {}
+    name = str(zone.get("name", "") or "").strip()
+    if name:
+        # D830: a named zone's node and radius are the record's (E_ZONE checks
+        # those); the inline fields are only the fallback and go unchecked.
+        if name not in zones:
+            report("E_MOTION_ZONE_UNKNOWN", f"unknown zone '{name}'", "zone/name",
+                   f"declare it under \"zones\"; declared: {', '.join(sorted(zones)) or '(none)'}")
+        return
+    if (zone.get("measure") or "path") not in ZONE_MEASURES:
+        report("E_MOTION_ZONE", f"unknown zone measure '{zone.get('measure')}'", "zone/measure",
+               f"one of: {', '.join(ZONE_MEASURES)}")
     node = str(zone.get("node", "") or "").strip()
     if node not in nodes:
         report("E_MOTION_ZONE", f"zone node '{node}' is not a network node", "zone/node",

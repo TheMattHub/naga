@@ -4,9 +4,25 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.17: models that stay readable
+## 0.18: logistics and energy sites as they run
 
 <!-- --8<-- [start:latest] -->
+- **Trucks, AGVs and belts.** Trucks unload and load pallet by pallet as carriers, an AGV can stay
+  with a part across legs (`keep_vehicle`), and conveyors divert and merge at points along the belt.
+- **Bigger sorters.** Sortation takes 1 to 200 lanes and a reject chute, built from a block group that
+  a submodel `repeat`s by a parameter.
+- **Energy sites.** A CHARGE block charges each EV at its own power under a shared site cap, and a
+  `dispatch` section plans storage with a rolling-horizon optimiser.
+- **Exact multi-unit seizes.** A seize of several units takes them all at once or none, so
+  utilisation and busy cost are exact; `W_SET_PARTIAL_HOLD` is gone.
+- **Before you upgrade.** Bundled models give the same results. `fleet_summary` has a new `Held %`
+  column, and a model that seizes several units at once may give different (now exact) results.
+  Logistics 3.x and Automation 2.x change assets you place from now on; a saved model keeps its own
+  copy. A plain http data source behind a proxy is now refused: use its https address.
+<!-- --8<-- [end:latest] -->
+
+## 0.17: models that stay readable
+
 - **Name warnings.** `W_LONG_NAME` flags a block or instance name over 20 characters, so a model
   stays readable on a canvas and in a report.
 - **Richer playback.** `Timeline.state_at` now reports departures per exit and per block, and what
@@ -16,7 +32,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 - **Before you upgrade.** Bundled names are shorter, so `clinic_library` and the three agent-based
   models that had long names draw a new random sample, statistically equal to the old one. Every
   other bundled model gives the same results.
-<!-- --8<-- [end:latest] -->
 
 ## 0.16: results that say how far to trust them
 

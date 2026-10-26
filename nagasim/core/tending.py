@@ -378,6 +378,7 @@ class _Graph:
                       if isinstance(n, dict)}
         self.routed = {step.get("station") for s in layout.get("sequences") or []
                        for step in s.get("steps") or []}
+        self.zones = motion.zone_names(layout)
 
     def kind(self, name) -> str:
         return str((self.by_name.get(name) or {}).get("type", "")).upper()
@@ -456,7 +457,7 @@ def _validate_station(block: dict, at: str, arms: dict, profiles: dict, graph: _
     if unit != "base" and unit not in UNITS:
         report("E_TENDING", f"unknown time_unit '{unit}'", "time_unit",
                f"\"base\" or one of: {', '.join(UNITS)}")
-    motion.validate_hrc(group, None, graph.nodes, report)
+    motion.validate_hrc(group, None, graph.nodes, report, graph.zones)
     if group.get("hrc", "none") in motion.HRC_MODES[1:]:
         for fleet, record in sorted(arms.items()):
             profile = profiles.get(str(record.get("arm") or "").strip())

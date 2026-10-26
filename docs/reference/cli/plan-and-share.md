@@ -67,8 +67,9 @@ options:
 
 ```text
 usage: naga viewer [-h] [-o OUTPUT] [--title TITLE] [--runtime DIR] [--fetch]
-                   [--freeze] [--allow-network] [--allow-private-network]
-                   [--allow-host HOST] [--connections FILE]
+                   [--freeze] [--asked FILE] [--allow-network]
+                   [--allow-private-network] [--allow-host HOST]
+                   [--connections FILE]
                    [model]
 
 Write one HTML file in which the engine runs in a browser and re-runs the
@@ -95,6 +96,10 @@ options:
                         values read into the copy as plain model data: the
                         file then names no source, path or address (without it
                         a model with data sources is refused)
+  --asked FILE          recorded answers for the trust card: a study version's
+                        asked.json, or a file of the editor's answers store;
+                        its input-data and parameter rows quote them instead
+                        of 'not measured'
   --allow-network       permit sql / json_url data sources (refused by
                         default: opening a model must not make outbound
                         connections on its own)

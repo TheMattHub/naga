@@ -570,13 +570,21 @@ class Level:
         batched_entity_type: str | dict[str, Any] = 'BATCH',
         max_wait: float | str | dict[str, Any] = '',
         max_wait_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
+        carrier_type: str | dict[str, Any] = '',
+        carrier_capacity: float | str | dict[str, Any] = '',
+        member_time: float | str | dict[str, Any] = '',
+        member_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
     ) -> Block:
-        """Add a BATCH block. Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.
+        """Add a BATCH block. Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard.
 
         batch_size=2: Number of entities grouped into one batch entity.
         batched_entity_type='BATCH': Entity type assigned to the batch entity.
         max_wait='': How long a partial batch waits before it leaves anyway, e.g. "30" or "entity.deadline"; measured from the arrival that started the group. A batch that fills in the same instant wins. Empty, 0 or less = wait for a full batch for ever.
         max_wait_time_unit='base': Unit `max_wait` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days.
+        carrier_type='': Carrier mode: an arriving entity of this type (a truck) is a CARRIER that waits here and loads the other arrivals one at a time, until it is full or its max_wait (the cut-off, measured from the carrier's arrival) runs out, then leaves as itself. Empty = a plain BATCH.
+        carrier_capacity='': Carrier mode: how many members a carrier takes, e.g. "entity.capacity", evaluated for each carrier when it arrives. Empty = batch_size.
+        member_time='': Carrier mode: time to load one member, evaluated in the member's own scope when its load starts. Empty = loading takes no time.
+        member_time_unit='base': Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days.
         """
 
     def match(
@@ -616,11 +624,19 @@ class Level:
         counter_offsets: dict[str, Any] | None = None,
         mode: str | dict[str, Any] = 'Retain original entity values',
         attrs: list[Any] | dict[str, Any] = ...,
+        carrier: str | dict[str, Any] = 'dispose',
+        member_time: float | str | dict[str, Any] = '',
+        member_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
+        release_order: str | dict[str, Any] = 'fifo',
     ) -> Block:
-        """Add a SEPARATE block. Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.
+        """Add a SEPARATE block. Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty.
 
         mode='Retain original entity values': How children get their attributes: retain their own values, take all of the parent's, or take only the ones listed in attrs.
         attrs=[]: Attribute labels to copy from the parent, used when mode is "specific".
+        carrier='dispose': "dispose": the batch ends here and its parts leave together. "keep": the batch is a carrier (a truck) that lives on -- its members leave one at a time by the first link, each after member_time, and the carrier leaves by the SECOND link once it is empty.
+        member_time='': Keep mode only: time for one member to come off, e.g. "2" or "TRIA(1, 2, 3)", evaluated for each member in its own scope when its turn starts. Empty = every member leaves in the same instant.
+        member_time_unit='base': Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days.
+        release_order='fifo': Order the members leave in: "fifo" (the order they were loaded) or "lifo" (last loaded first off, a rear-door truck).
         """
 
     def duplicate(
@@ -815,8 +831,8 @@ class Level:
 
         action='Seize Delay Release': Which of seize/delay/release run: "Seize Delay Release", "Seize Delay", "Delay Release" or "Delay".
         profile='': Name of a record in "motion_profiles": speed, acceleration, payload derating and collaborative speed of whoever does the motions.
-        hrc='none': Human-robot collaboration: "none", "collaborative" (every move at the profile's collaborative_speed) or "separation" (a move starts at collaborative_speed when a worker-fleet unit is within zone.radius_m of zone.node by network distance).
-        zone={}: With hrc "separation": {"node": <network node>, "radius_m": <metres>}.
+        hrc='none': Human-robot collaboration: "none", "collaborative" (every move at the profile's collaborative_speed) or "separation" (a move starts at collaborative_speed when a worker-fleet unit is within the zone's radius of its node, by path or straight distance).
+        zone={}: With hrc "separation": {"name": <a "zones" record>} -- the record's node and radius win -- or, with no name, {"node": <network node>, "radius_m": <metres>, "measure"?: "path"|"straight"}.
         segments=[]: The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?} or {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}. The service time is their sum.
         time_unit='seconds': Unit of every segment `time`: "base" or seconds/minutes/hours/days. Moves are always computed in seconds.
         priority=0: Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource.
@@ -937,6 +953,41 @@ class Level:
         wait=False: Wait until the level can pay the full amount (the backorder pattern); otherwise move what it can and record the rest as unmet.
         """
 
+    def charge(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        position: list[Any] | None = None,
+        layout_position: list[Any] | None = None,
+        layout_rotation: float | None = None,
+        label_offset: list[Any] | None = None,
+        counter_offsets: dict[str, Any] | None = None,
+        energy: float | str | dict[str, Any] = '0',
+        max_power: float | str | dict[str, Any] = '0',
+        time_limit: float | str | dict[str, Any] = '',
+        time_limit_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
+        time_limit_from: str | dict[str, Any] = '',
+        leave_when_full: bool | dict[str, Any] = True,
+        site_limit: float | dict[str, Any] = 0.0,
+        efficiency: float | dict[str, Any] = 1.0,
+        sharing: str | dict[str, Any] = 'equal',
+        power_variable: str | dict[str, Any] = '',
+    ) -> Block:
+        """Add a CHARGE block. Charges an entity (an electric vehicle, a battery pack) with the energy it needs at up to its own power, sharing a site power cap with every other entity at this block; it leaves when full or when its time is up. The block's total grid kW (what the entities take over `efficiency`) is kept in `power_variable`, so a flow with `rate: VAR("name")` puts it on the electricity bus; `site_limit` caps that grid kW. On leaving the entity carries `charged_kwh`, `charge_full` (1 or 0) and `charge_time` (entry to full, or to leaving when not full, in `time_limit_unit`).
+
+        energy='0' (required): Energy the entity needs, kWh: an expression, e.g. entity.need_kwh.
+        max_power='0' (required): Most power the entity takes, kW: an expression, e.g. min(11, entity.max_kw).
+        time_limit='': Longest time the entity stays (an expression); it leaves then, full or not. Empty = until full.
+        time_limit_unit='base': Unit of `time_limit` and of the `charge_time` the entity carries: "base" (the model's) or one of its quantity's units.
+        time_limit_from='': Instant, in model time, the time limit counts from: an expression such as entity.arrived_at. Empty = when the entity enters. A deadline already past sends it on at once, charged 0.
+        leave_when_full=True: Leave as soon as the need is met. Off: stay (drawing nothing) until the time limit, as a car stays plugged in.
+        site_limit=0.0: Most power all entities at this block draw together from the grid, kW; 0 = no cap.
+        efficiency=1.0: Energy the entity stores per unit drawn from the grid (charger losses); 1 = none. The site limit and power_variable are grid side.
+        sharing='equal': How the cap is shared: "equal" (an equal share each; what a slow entity cannot use goes to the others) or "first_come" (in order of arrival, each as much as it can take).
+        power_variable='': Model variable kept equal to the block's total grid kW, for a flow rate VAR("name") on the electricity bus. Empty = none.
+        """
+
     def transport(
         self,
         name: str | None = None,
@@ -950,12 +1001,14 @@ class Level:
         fleet: str | dict[str, Any] = '',
         destination: str | dict[str, Any] = '',
         priority: int | dict[str, Any] = 0,
+        keep_vehicle: bool | dict[str, Any] = False,
     ) -> Block:
         """Add a TRANSPORT block. Moves a part, order or load between locations with a vehicle (truck, AGV, forklift, robot) from a fleet: fetch, carry, unload, free the vehicle.
 
         fleet='' (required): Name of the mover fleet whose vehicles do the carrying.
         destination='': STATION the entity is carried to. Empty: the next station of the entity's routing, exactly as ROUTE would choose it.
         priority=0: Request priority for a vehicle; lower is served first, and outranks the fleet's dispatching rule.
+        keep_vehicle=False: Keep the vehicle after the drop: it waits there, busy, and the entity's next TRANSPORT on this fleet drives it. A RELEASE naming the fleet, or the entity leaving the model, frees it.
         """
 
     def conveyor(
@@ -979,6 +1032,8 @@ class Level:
         from_node: str | dict[str, Any] = '',
         to_node: str | dict[str, Any] = '',
         stops: list[Any] | dict[str, Any] = ...,
+        diverts: list[Any] | dict[str, Any] = ...,
+        merges: list[Any] | dict[str, Any] = ...,
     ) -> Block:
         """Add a CONVEYOR block. Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
 
@@ -993,6 +1048,8 @@ class Level:
         from_node='': Path-network node the belt starts at (drawing, and the length when `length` is 0).
         to_node='': Path-network node the belt ends at.
         stops=[]: Points where each part halts on the belt: {"at": <distance from the entry, in the unit of `length`, between 0 and the length>, "time": <number or expression>, "resource"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none.
+        diverts=[]: Points where a part may leave the belt sideways: {"at": <distance from the entry, in the unit of `length`>, "condition": <expression, read once as the part reaches it>, "time"?: <push time, number or expression>, "when_full"?: "wait" (default: the part waits there for room) or "pass" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none.
+        merges=[]: Points where parts from another block join the belt: {"at": <distance from the entry, in the unit of `length`>, "from": <the block linking to this belt whose parts join there>, "priority"?: "belt" (default: they wait for a gap of two spacings) or "merge" (parts on the belt make room)}. Accumulating belts only. Empty: none.
         """
 
     def buffer(
@@ -1152,6 +1209,7 @@ class Model(Level):
         initial_state: dict[str, Any] = ...,
         simulation: dict[str, Any] = ...,
         investment: dict[str, Any] = ...,
+        dispatch: dict[str, Any] = ...,
         outputs: dict[str, Any] = ...,
         assertions: list[Any] = ...,
         path_checks: list[Any] = ...,
@@ -1433,6 +1491,7 @@ class Model(Level):
         thresholds: list[Any] = ...,
         components: list[Any] = ...,
         blend_tolerance: float = ...,
+        storage: dict[str, Any] = ...,
         conveyor: dict[str, Any] = ...,
         locals: dict[str, Any] = ...,
     ) -> Any:
@@ -1453,6 +1512,7 @@ class Model(Level):
         thresholds: Level values that fire discrete logic when crossed.
         components: Named components the level's content is tracked in: a gas holder's ch4. Each inflow carries a share, each outflow draws at the level's own blend, and the component is conserved exactly. Read by FRACTION(name, component).
         blend_tolerance: How far the fraction may drift from the value the outflows are drawing at before the engine re-evaluates. The crossing instant is solved in closed form; the component is conserved exactly whatever this is set to.
+        storage: A storage the `dispatch` plan may drive: its power limits, efficiencies and the variable the plan writes its bus-side setpoint to (positive charges). Rates are per this level's rate_time_unit. Inert without a `dispatch` section.
         conveyor: Makes the stock a Stella conveyor: material rides round(transit_time/dt) slats of the SD grid (euler only), leaves as the one primary outflow (rate "") and may leak on the way through "leak" flows. The stock is the sum of the slats and changes only at grid points.
         locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
@@ -1475,6 +1535,7 @@ class Model(Level):
         tag: str = ...,
         priority: float = ...,
         peak_price: float = ...,
+        grid: dict[str, Any] = ...,
         min_rate: float = ...,
         components: dict[str, Any] = ...,
         leak: dict[str, Any] = ...,
@@ -1500,6 +1561,7 @@ class Model(Level):
         tag: Bus tag: every flow carrying it is summed by FLOWSUM("tag"), so a site's generation or demand is one number however many assets contribute to it.
         priority: Merit order within a tag: FLOWSUM("tag", p) sums only the flows with a priority below p -- what the devices dispatched before this one actually took.
         peak_price: Demand charge: money per unit of the flow's Peak Rate (per its rate_time_unit), billed ONCE at the end of the run. A time-varying tariff is "price".
+        grid: This flow's role in the `dispatch` plan: the site's grid import or export. The plan prices it with this flow's own `price`. Inert without a `dispatch` section.
         min_rate: Minimum load: the flow runs at 0 or at least this rate, never in between. The gate is applied to the rate the expression ASKED for, before saturation, so it adds no event of its own and cannot chatter.
         components: Share of what this flow moves that is each component, a number or an expression. Omit a component to carry the SOURCE level's own blend.
         leak: A conveyor's leakage outflow; set "rate": "" and "from" the conveyor.
@@ -1645,6 +1707,24 @@ class Model(Level):
         payload_unit: Unit `payload_max` is in.
         payload_derate: Speed fraction at payload_max, linear from 1.0 at 0 kg.
         collaborative_speed: m/s; required when a block uses hrc "collaborative" or "separation".
+        """
+
+    def add_zone(
+        self,
+        *,
+        name: str = ...,
+        description: str = ...,
+        node: str = ...,
+        radius_m: float = ...,
+        measure: str = ...,
+    ) -> Any:
+        """Add one entry to `zones` and return its name. Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed.
+
+        name
+        description
+        node: The network node the zone is around.
+        radius_m: Metres, > 0; a worker this close or closer is inside.
+        measure: "path": the walk along the network; "straight": the straight line between the worker's floor point and the node, as a safety laser scanner measures it.
         """
 
     def add_charger(

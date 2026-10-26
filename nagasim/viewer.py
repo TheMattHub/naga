@@ -31,11 +31,12 @@ from nagasim import dashboard, experiments
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.sections_validation import DASHBOARD_LIMITS
 from nagasim.core.timeunits import units_of
+from nagasim.core.utils import is_finite_number
 from nagasim import player
 from nagasim.viewer_runtime import Cancelled
 
 __all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_on_disk", "viewer_problems", "freeze_data",
-           "what_if", "answer", "page_run", "compare", "build_viewer"]
+           "what_if", "answer", "page_run", "compare", "build_viewer", "read_asked"]
 
 # The model text a page may carry. The largest bundled model is 0.25 MB.
 MAX_MODEL_BYTES = 5_000_000
@@ -45,6 +46,12 @@ _NOT_SHIPPED = ("view", "background")
 _BROWSER_FACTOR = 2.5
 _HINT = "share a recording instead: `naga run MODEL --player FILE.html`"
 _QUOTED = 10        # recorded answers a page carries: the latest of each kind is what is read
+# An `--asked` file: a study version's asked.json holds at most 100 rows of a few hundred bytes.
+ASKED_BYTES = 1_000_000
+# One help text for every command that takes `--asked FILE` (viewer, run --player, experiment).
+ASKED_HELP = ("recorded answers for the trust card: a study version's asked.json, or a file of "
+              "the editor's answers store; its input-data and parameter rows quote them "
+              "instead of 'not measured'")
 
 
 # -- what a model may not carry (D325) --------------------------------------------
@@ -1329,21 +1336,89 @@ def _quoted(asked) -> list:
     the trust card and the input note quote (`uncertainty.trust_texts`, `what_if_note`),
     the latest few, as plain JSON. Only the fields those read, each kind by an allow-list:
     a page is shared, and a record's own arguments (data files, inputs) are not for it."""
-    rows = []
-    for a in asked or []:
+    return _quoting(asked)[0][-_QUOTED:]
+
+
+def _quoting(asked) -> tuple:
+    """(every row `_quoted` keeps, in order; the index in *asked* of the first entry that is
+    no object, or of a kind it quotes but not well formed, or None). One pass serves both
+    the page, which drops such an entry, and `read_asked`, which names it."""
+    rows, bad = [], None
+    for index, a in enumerate(asked or []):
+        row = None
         if not isinstance(a, dict):
-            continue
-        if a.get("tool") == "input_uncertainty" and isinstance(a.get("kpis"), list):
-            row = {k: a.get(k) for k in ("tool", "measure", "resamples_used", "replications")}
-            row["kpis"] = [{k: r.get(k) for k in ("kpi", "mean", "input_interval", "input_share")}
-                           for r in a["kpis"] if isinstance(r, dict)]
-            if isinstance(a.get("overrides"), list):     # what `same_change` compares
-                row["overrides"] = [{k: o.get(k) for k in ("path", "value")}
-                                    for o in a["overrides"] if isinstance(o, dict)]
-            rows.append(row)
+            pass
+        elif a.get("tool") == "input_uncertainty":
+            if isinstance(a.get("kpis"), list):
+                row = {k: a.get(k) for k in ("tool", "measure", "resamples_used", "replications")}
+                row["kpis"] = [{k: r.get(k) for k in ("kpi", "mean", "input_interval", "input_share")}
+                               for r in a["kpis"] if isinstance(r, dict)]
+                if isinstance(a.get("overrides"), list):     # what `same_change` compares
+                    row["overrides"] = [{k: o.get(k) for k in ("path", "value")}
+                                        for o in a["overrides"] if isinstance(o, dict)]
         elif a.get("tool") == "calibrate" and a.get("method") == "abc":
-            rows.append({k: a.get(k) for k in ("tool", "method", "samples", "accepted", "abc_tolerance")})
-    return player.plain(rows[-_QUOTED:])
+            row = {k: a.get(k) for k in ("tool", "method", "samples", "accepted", "abc_tolerance")}
+        else:
+            continue                    # another tool's row: not for a page, and no fault
+        row = None if row is None else player.plain(row)
+        if row is not None and _well_formed(row):
+            rows.append(row)
+        elif bad is None:
+            bad = index
+    return rows, bad
+
+
+def _well_formed(row: dict) -> bool:
+    """The fields the quotes format hold what they format (`uncertainty.trust_texts`): a row
+    read from a file (the editor's store, an `--asked` file) is as easily written by hand as
+    by a tool, and a string where a number goes would break the whole trust card."""
+    def number(value):
+        # is_finite_number also refuses an int too large for a float (#1132), where
+        # math.isfinite raised OverflowError.
+        return value is None or is_finite_number(value)
+
+    if row["tool"] == "calibrate":
+        return all(number(row[k]) for k in ("samples", "accepted", "abc_tolerance"))
+    if not (row["measure"] in (None, "level", "difference")
+            and number(row["resamples_used"]) and number(row["replications"])):
+        return False
+    for r in row["kpis"]:
+        pair = r["input_interval"]
+        if not (isinstance(r["kpi"], str) and number(r["mean"]) and number(r["input_share"])
+                and (pair is None or (isinstance(pair, list) and len(pair) == 2
+                                      and all(number(v) for v in pair)))):
+            return False
+    return all(isinstance(o["path"], str) for o in row.get("overrides", []))
+
+
+def read_asked(path) -> list:
+    """The recorded answers in the CALLER's file *path* (`--asked FILE`), as a page carries
+    them (`_quoted`). The file is the JSON list a study version's asked.json holds, or a
+    store file the editor keeps; other tools' rows in it are skipped. Raises
+    `netguard.GuardError`: E_FILE_MISSING or E_FILE_REFUSED (`netguard.read_caller_file`),
+    E_ASKED_MALFORMED for a file that is no such list, or holds an input-uncertainty or ABC
+    row the trust card cannot quote (named by its index)."""
+    from nagasim import netguard
+
+    data = netguard.read_caller_file(path, max_bytes=ASKED_BYTES, what="the --asked file")
+    try:
+        rows = json.loads(data)
+    except (ValueError, RecursionError) as exc:
+        raise netguard.GuardError("E_ASKED_MALFORMED",
+                                  f"the --asked file is not JSON ({type(exc).__name__})") from None
+    if not isinstance(rows, list):
+        raise netguard.GuardError("E_ASKED_MALFORMED", "the --asked file is not a JSON list",
+                                  "it holds the rows of a study version's asked.json")
+    kept, bad = _quoting(rows)
+    if bad is not None and not isinstance(rows[bad], dict):
+        raise netguard.GuardError("E_ASKED_MALFORMED",
+                                  f"row {bad} of the --asked file is not an object")
+    if bad is not None:
+        raise netguard.GuardError("E_ASKED_MALFORMED",
+                                  f"row {bad} of the --asked file is not a well-formed "
+                                  f"{rows[bad]['tool']} answer",
+                                  "the trust card quotes its numbers, KPI names and intervals")
+    return kept[-_QUOTED:]
 
 
 def _recording(model: dict, baseline: dict, title: str, should_stop=None, tokens=None,
@@ -1555,6 +1630,7 @@ def main(argv=None) -> int:
                              "read into the copy as plain model data: the file then names no "
                              "source, path or address (without it a model with data sources "
                              "is refused)")
+    parser.add_argument("--asked", metavar="FILE", help=ASKED_HELP)
     netguard.add_arguments(parser)
     args = parser.parse_args(argv)
     out = sys.stdout.write
@@ -1566,6 +1642,11 @@ def main(argv=None) -> int:
             return 0
     if not args.model or not args.output:
         parser.error("a model and -o FILE are needed (or --fetch alone)")
+    try:
+        asked = read_asked(args.asked) if args.asked else None
+    except netguard.GuardError as exc:
+        sys.stderr.write(f"--asked: {exc.code}: {exc.message}\n")
+        return 2
     layout, frozen = args.model, None
     if args.freeze:
         layout, read = freeze_data(args.model, Path(args.model).parent,
@@ -1574,7 +1655,7 @@ def main(argv=None) -> int:
         out(f"data read once from {len(read)} source(s) ({', '.join(read) or 'none'}) and "
             "written into the copy, which names no source\n")
     made = build_viewer(layout, args.output, runtime=args.runtime,
-                        title=args.title or Path(args.model).stem, frozen=frozen)
+                        title=args.title or Path(args.model).stem, frozen=frozen, asked=asked)
     for warning in made["warnings"]:
         sys.stderr.write(f"warning {warning.code}: {warning.message}\n")
     out(f"wrote {args.output}: {made['bytes'] / 1e6:.1f} MB; one replication takes about "

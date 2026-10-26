@@ -1442,7 +1442,7 @@ def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked
 
 
 # A lamp that says the block serves something (the script's KIND "run").
-_SERVING = ("busy", "loaded", "handling")
+_SERVING = ("busy", "loaded", "handling", "held")
 
 
 def _neck(run: dict, layout: dict | None = None) -> dict | None:

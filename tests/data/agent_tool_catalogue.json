@@ -555,7 +555,7 @@
     "read_only": true
   },
   {
-    "description": "List every record of one section of the model, as stored.\n\nRecord sections: resources, resource_sets, schedules, failures, tables,\nsequences, variables, entities, timeseries_inputs, levels, flows,\nconversions, fixed_costs, fleets, motion_profiles, chargers, auxiliaries,\ndelays, subscripts, agent_types, populations, reality_checks and orders\n(keyed by \"id\"; every other section by \"name\"). Record shape: schema\n$defs/<item>, see get_record_schema.\n\nReturns {\"model\", \"section\", \"key\", \"records\": [...]}.",
+    "description": "List every record of one section of the model, as stored.\n\nRecord sections: resources, resource_sets, schedules, failures, tables,\nsequences, variables, entities, timeseries_inputs, levels, flows,\nconversions, fixed_costs, fleets, motion_profiles, zones, chargers,\nauxiliaries, delays, subscripts, agent_types, populations, reality_checks and orders\n(keyed by \"id\"; every other section by \"name\"). Record shape: schema\n$defs/<item>, see get_record_schema.\n\nReturns {\"model\", \"section\", \"key\", \"records\": [...]}.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

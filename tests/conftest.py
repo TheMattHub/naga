@@ -478,9 +478,12 @@ def _find_tool_state():
 
 
 @pytest.fixture(autouse=True)
-def _no_real_llm(monkeypatch):
+def _no_real_llm(monkeypatch, request):
     """Tests never reach a real model: the local default points at the discard port and no
-    key or provider setting leaks in from the developer's shell."""
+    key or provider setting leaks in from the developer's shell. A `live` test is the
+    exception: it runs only on request, with the caller's key (test_assistant_live.py)."""
+    if request.node.get_closest_marker("live"):
+        return
     monkeypatch.setenv("NAGASIM_LLM_BASE_URL", "http://127.0.0.1:9/v1")
     for name in ("ANTHROPIC_API_KEY", "NAGASIM_LLM_API_KEY", "NAGASIM_LLM_PROVIDER",
                  "NAGASIM_LLM_MODEL", "NAGASIM_LLM_REASONING"):

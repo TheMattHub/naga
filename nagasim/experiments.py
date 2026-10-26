@@ -384,6 +384,9 @@ _OBJECT_FRAMES = (("resource_summary", "Resource", "resource"),
                   # address them like any other KPI.
                   ("level_summary", "Level", "level"),
                   ("flow_summary", "Flow", "flow"),
+                  # Phase 15 M8 (D850): `dispatch/<name>/Realised Cost` and friends --
+                  # nothing for a model without a `dispatch` section.
+                  ("dispatch_summary", "Dispatch", "dispatch"),
                   # Bio-1: `conversion/<name>/<substrate>/Produced` and
                   # `component/<level>/<component>/Avg Fraction` -- the id
                   # column already carries both halves of the key.
@@ -398,6 +401,12 @@ _OBJECT_FRAMES = (("resource_summary", "Resource", "resource"),
                   ("fleet_summary", "Fleet", "fleet"),
                   ("segment_summary", "Segment", "segment"),
                   ("conveyor_summary", "Conveyor", "conveyor"),
+                  # D795: `stop/<belt>/<index>/Avg Wait`, `.../Parts`, `.../Busy %` --
+                  # the frame exists only for a model with belt stops.
+                  ("conveyor_stops", ("Conveyor", "Stop"), "stop"),
+                  # D855: `divert/<belt>/<index>/Diverted` and friends, the same rule.
+                  ("conveyor_diverts", ("Conveyor", "Divert"), "divert"),
+                  ("conveyor_merges", ("Conveyor", "Merge"), "merge"),
                   # D164-D165: `charger/<name>/Grid kWh` and
                   # `battery/<fleet>/Charging %` -- nothing without batteries.
                   ("charging_summary", "Charger", "charger"),
@@ -443,6 +452,9 @@ def flatten_kpis(results: dict) -> pd.DataFrame:
         entity/<type>/<column>
         user/<statistic>             the RECORD statistic's own Value
         cost/<item>/Amount           a fixed, per-event or peak cost
+        stop/<belt>/<index>/<column> a conveyor stop, e.g. stop/Line/0/Avg Wait
+        divert/<belt>/<index>/<column> a conveyor divert, e.g. divert/Line/0/Diverted
+        merge/<belt>/<index>/<column>  a conveyor merge, e.g. merge/Line/0/Merged
 
     Parameters
     ----------
@@ -488,7 +500,8 @@ def flatten_kpis(results: dict) -> pd.DataFrame:
         objects = (df[obj_col] if isinstance(obj_col, str)
                    else df[list(obj_col)].astype(str).agg("/".join, axis=1))
         for column in df.select_dtypes("number").columns:
-            if column == "Run":
+            # An id column is part of the key, not a KPI (a stop's numeric index, D795).
+            if column == "Run" or column in ((obj_col,) if isinstance(obj_col, str) else obj_col):
                 continue
             for run, obj, value in zip(df["Run"], objects, df[column]):
                 if pd.notna(value):
@@ -1132,7 +1145,20 @@ def main(argv=None) -> int:
                         help="write a shareable HTML player here: the first replication of "
                              "every scenario, run again with its seed and recorded, in one "
                              "self-contained file with a scenario switch")
+    from nagasim import netguard
+    from nagasim.viewer import ASKED_HELP, read_asked     # late: viewer builds on this module
+    parser.add_argument("--asked", metavar="FILE", help="with --player: " + ASKED_HELP)
     args = parser.parse_args(argv)
+    asked = None
+    if args.asked:
+        if not args.player:
+            print("--asked: it feeds a player's trust card: pass --player PATH too")
+            return 2
+        try:            # read before the runs, so a refused file costs none
+            asked = read_asked(args.asked)
+        except netguard.GuardError as exc:
+            print(f"--asked: {exc.code}: {exc.message}")
+            return 2
 
     result = run_scenarios(args.model, args.scenarios, replications=args.replications,
                            seed=args.seed, run_length=args.run_length, warmup=args.warmup,
@@ -1184,7 +1210,7 @@ def main(argv=None) -> int:
                                           warmup=args.warmup)
             try:
                 build_player(layout, recordings, experiment=result, title=Path(args.model).stem,
-                             path=args.player)
+                             path=args.player, asked=asked)
             except ValueError as exc:       # over the size limit
                 print(f"--player: {exc}")
                 return 1

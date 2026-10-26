@@ -8,11 +8,14 @@ and get it:
     request a vehicle  ->  it drives EMPTY to the entity's node
     ->  load  ->  it drives LOADED to the destination  ->  unload  ->  free
 
-One block for the whole cycle, deliberately: Arena's Request/Transport/Free
-triple only earns its keep when a model holds a vehicle across several legs
-(ARCHITECTURE D68). The entity is
+One block for the whole cycle, deliberately (ARCHITECTURE D68). The entity is
 delivered when the unload finishes; the vehicle is busy for the whole cycle and,
 with the fleet's `park: "home"`, for the drive home as well.
+
+`keep_vehicle` (Phase 15 M6, D835) holds a vehicle across several legs, which is
+what Arena's Request/Transport/Free triple is for: the vehicle is kept at the
+drop, the entity's next TRANSPORT on that fleet drives it with no request, and a
+RELEASE naming the fleet, or the entity leaving the flow, frees it.
 
 A fleet with `loads: k` (PHASE6 W3-M4, D116) turns the cycle into a TOUR when
 other TRANSPORT requests are waiting as a vehicle is granted: up to k-1 of them
@@ -48,6 +51,7 @@ class Transport(BaseProcess):
         self.fleet_name = ""
         self.destination = ""
         self.priority = 0
+        self.keep_vehicle = False
         self.trip_count = 0
 
     @property
@@ -129,7 +133,10 @@ class Transport(BaseProcess):
             blocking.accept(entity)
         arrived = self.env.now
         held = tending.cobot_of(self, entity, fleet)
-        if held is not None:
+        kept = fleet.take_held(entity) if held is None else None  # D835: its own, no request
+        if kept is not None:
+            request, mover = kept
+        elif held is not None:
             request, mover = held         # the cobot that stayed with the part: no dispatch
             mover.trips += 1
             fleet.loads_carried += 1
@@ -155,11 +162,13 @@ class Transport(BaseProcess):
         """Generator: wait for a vehicle for *job*; (request, vehicle), or None when
         another vehicle's tour or exchange carries it, or this one's tour is done."""
         _block, entity, origin, _destination, _target = job
+        # D838: a vehicle to be kept rides no tour (`MoverFleet.attach` skips its job) and
+        # leads none: a tour ends at its last drop, not this one.
         request, mover = yield from fleet.acquire(self, entity, origin, self.priority, job=job,
                                                   since=since)
         if mover is None:
             return None       # attached to another vehicle's tour or exchange, which carries it
-        jobs = fleet.attach(mover)
+        jobs = [] if self.keep_vehicle else fleet.attach(mover)
         if jobs:
             yield from self._tour(fleet, mover, [job] + jobs)
             fleet.free(request, mover, block=self, entity=entity)
@@ -250,7 +259,13 @@ class Transport(BaseProcess):
         """The entity is delivered the moment it is unloaded, and the vehicle is
         free the moment it is empty: under `park: "home"` the drive home is
         its own interruptible process, so a request arriving mid-return
-        diverts it from wherever it has got to (PHASE4 T7, ARCHITECTURE D68)."""
+        diverts it from wherever it has got to (PHASE4 T7, ARCHITECTURE D68).
+        With `keep_vehicle` (D835) the vehicle is held instead, the hold recorded
+        before the entity goes on: it may reach a RELEASE in this same call."""
+        if self.keep_vehicle:
+            fleet.hold(request, mover, entity, self)
+            target.self_run(entity)
+            return
         target.self_run(entity)
         fleet.free(request, mover, block=self, entity=entity)
         fleet.park_home(mover, block=self)
@@ -360,12 +375,13 @@ class Transport(BaseProcess):
 
     def get_params_dict(self):
         return {"fleet": self.fleet_name, "destination": self.destination,
-                "priority": self.priority}
+                "priority": self.priority, "keep_vehicle": self.keep_vehicle}
 
     def set_params_from_dict(self, param_dict):
         self.fleet_name = str(param_dict.get("fleet", "") or "").strip()
         self.destination = str(param_dict.get("destination", "") or "").strip()
         self.priority = int(param_dict.get("priority", 0))
+        self.keep_vehicle = bool(param_dict.get("keep_vehicle", False))
 
 
 SPEC = BlockSpec(
@@ -379,6 +395,11 @@ SPEC = BlockSpec(
         ParamSpec("priority", int, 0,
                   description="Request priority for a vehicle; lower is served first, and "
                               "outranks the fleet's dispatching rule.", quantity="none"),
+        ParamSpec("keep_vehicle", bool, False,
+                  description="Keep the vehicle after the drop: it waits there, busy, and the "
+                              "entity's next TRANSPORT on this fleet drives it. A RELEASE naming "
+                              "the fleet, or the entity leaving the model, frees it.",
+                  quantity="none"),
     ),
     factory=lambda env, block: Transport(env, block),
     family="move",

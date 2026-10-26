@@ -5,10 +5,11 @@ from __future__ import annotations
 
 from nagasim.core import tending
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
+from nagasim.core.movers import free_held
 from nagasim.core.sim_classes import Entity
 
 __all__ = ["evaluate_expression", "entity_scope", "compiled_closure", "make_batch_entity", "validated_probs", "SEPARATE_EXCLUDED_FIELDS",
-           "DUPLICATE_EXCLUDED_FIELDS"]
+           "DUPLICATE_EXCLUDED_FIELDS", "absorb_member", "member_time_of"]
 
 
 def entity_scope(block, entity):
@@ -67,22 +68,53 @@ def make_batch_entity(block, members, e_type):
     batch._auto_cost = sum(getattr(m, "_auto_cost", 0.0) for m in members)
     batch._holding_cost = sum(getattr(m, "_holding_cost", 0.0) for m in members)
 
-    gates = block.ctx.plan_gates
     for member in members:
-        member.in_batch = batch.id
-        tending.cobot_of(block, member)      # D169: a cobot staying with it has nothing to wait for
-        if member in block.ctx.live_entities:
-            block.ctx.live_entities.remove(member)
-        # An absorbed member never passes Dispose: give its planned stations
-        # back now, or every job planned after it waits at the gate (#206).
-        if gates is not None:
-            gates.drop(member)
-        # #319: playback has to hear that the member is no longer a part of its
-        # own in this block, or it counts it here for the rest of the run.
-        block.emit("entity_absorbed", entity=member)
+        _absorbed(block, member, batch)
 
     block.emit("entity_created", entity=batch)
     return batch
+
+
+def _absorbed(block, member, batch, **traced):
+    """The member half of batching: *member* stops being a part of its own."""
+    member.in_batch = batch.id
+    tending.cobot_of(block, member)      # D169: a cobot staying with it has nothing to wait for
+    free_held(block, member)             # D837: nor a vehicle a TRANSPORT kept for it
+    if member in block.ctx.live_entities:
+        block.ctx.live_entities.remove(member)
+    # An absorbed member never passes Dispose: give its planned stations
+    # back now, or every job planned after it waits at the gate (#206).
+    if block.ctx.plan_gates is not None:
+        block.ctx.plan_gates.drop(member)
+    # #319: playback has to hear that the member is no longer a part of its
+    # own in this block, or it counts it here for the rest of the run.
+    block.emit("entity_absorbed", entity=member, **traced)
+
+
+def absorb_member(block, member, carrier):
+    """A carrier BATCH (D819) loads *member* onto an existing *carrier*: the same
+    accounting as `make_batch_entity`, but the carrier keeps its identity and no
+    entity is created. The member's cost moves into the carrier's totals and stays
+    frozen on the member, so a keep-mode SEPARATE can give back exactly that."""
+    carrier.batch_elems.append(member)
+    carrier.cost += getattr(member, "cost", 0.0)
+    carrier._auto_cost += getattr(member, "_auto_cost", 0.0)
+    carrier._holding_cost += getattr(member, "_holding_cost", 0.0)
+    # No `entity_created` follows to say which batch it went into (D461), so the
+    # absorption names the carrier itself: `value` is its id (ids start at 1).
+    _absorbed(block, member, carrier, value=float(carrier.id))
+
+
+def member_time_of(block, text, factor, entity, label="member_time") -> float:
+    """A carrier's per-member time (D820): *text* evaluated in the member's scope,
+    in base units, never negative. Empty text is 0: everything in one instant."""
+    if not text:
+        return 0.0
+    try:
+        value = float(compile_expression(text).evaluate(block.expression_scope(entity)))
+    except (ExpressionError, TypeError, ValueError) as exc:
+        raise ExpressionError(f"Block '{block.name}': {label}: {exc}") from None
+    return max(value * factor, 0.0)
 
 
 def validated_probs(probs, block_name):

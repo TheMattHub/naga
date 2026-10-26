@@ -27,6 +27,7 @@ from nagasim.core.blocks.record import Record, SPEC as _RECORD_SPEC
 from nagasim.core.blocks.station import Station, SPEC as _STATION_SPEC
 from nagasim.core.blocks.route import Route, SPEC as _ROUTE_SPEC
 from nagasim.core.blocks.transfer import Transfer, SPEC as _TRANSFER_SPEC
+from nagasim.core.blocks.charge import Charge, SPEC as _CHARGE_SPEC
 from nagasim.core.blocks.transport import Transport, SPEC as _TRANSPORT_SPEC
 from nagasim.core.blocks.conveyor import Conveyor, SPEC as _CONVEYOR_SPEC
 from nagasim.core.blocks.submodel import (
@@ -39,7 +40,7 @@ ALL_SPECS = [
     _DELAY_SPEC, _RELEASE_SPEC, _BATCH_SPEC, _MATCH_SPEC, _SEPARATE_SPEC,
     _DUPLICATE_SPEC, _HOLD_SPEC, _SIGNAL_SPEC, _LOGIC_SPEC, _PROCESS_SPEC,
     _MOTION_SPEC,
-    _RECORD_SPEC, _STATION_SPEC, _ROUTE_SPEC, _TRANSFER_SPEC,
+    _RECORD_SPEC, _STATION_SPEC, _ROUTE_SPEC, _TRANSFER_SPEC, _CHARGE_SPEC,
     _TRANSPORT_SPEC, _CONVEYOR_SPEC, _BUFFER_SPEC, _SEND_SPEC,
     _SUBMODEL_SPEC, _SUB_ENTRY_SPEC, _SUB_EXIT_SPEC,
 ]
@@ -48,6 +49,6 @@ __all__ = [
     "Create", "Dispose", "Assign", "Decide", "Seize", "Delay", "Release",
     "Batch", "Buffer", "Match", "Separate", "Duplicate", "Hold", "Signal", "Send", "Logic", "Process",
     "Motion",
-    "Record", "Station", "Route", "Transfer", "Transport", "Conveyor",
+    "Record", "Station", "Route", "Transfer", "Charge", "Transport", "Conveyor",
     "SubmodelBlock", "ALL_SPECS",
 ]

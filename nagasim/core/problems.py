@@ -103,6 +103,9 @@ PROBLEM_CODES: dict[str, str] = {
                   "(flows sharing a tag are summed by FLOWSUM, so one tag must not mix time units).",
     "E_FLOW_PEAK_PRICE": "A flow's \"peak_price\" is not a number (a demand charge "
                          "is a tariff per unit of Peak Rate, billed once at the end of the run).",
+    "E_CHARGE": "A CHARGE block's sharing rule is neither \"equal\" nor \"first_come\", its "
+                "efficiency is not in (0, 1], or it keeps a full entity (leave_when_full off) "
+                "with no time limit to leave by.",
     "E_TRANSFER_MODE": "A TRANSFER block's or an agent transfer action's mode is neither "
                        "\"remove\" nor \"add\".",
     # -- system dynamics (PHASE5 SD-1, D89-D91) ------------------------------
@@ -335,7 +338,17 @@ PROBLEM_CODES: dict[str, str] = {
     "W_PLAN_STATION_UNKNOWN": "An order's `plan` names a station with no STATION block "
                               ".",
     # -- queue behaviours (PHASE4 A4) ----------------------------------------
-    "E_QUEUE_NO_LEAVE_LINK": "A block with balk_if/renege_after has no second outgoing link for "
+    "E_SEPARATE_CARRIER": "A SEPARATE's carrier is not \"dispose\" or \"keep\".",
+    "E_SEPARATE_CARRIER_LINK": "A SEPARATE that keeps the carrier does not have exactly two "
+                               "outgoing links (0 = the members, 1 = the carrier).",
+    "E_SEPARATE_MEMBER_TIME": "A SEPARATE has a member_time but disposes of the carrier.",
+    "E_SEPARATE_RELEASE_ORDER": "A SEPARATE's release_order is not \"fifo\" or \"lifo\".",
+    "E_BATCH_MEMBER_TIME": "A BATCH has a member_time or a carrier_capacity but no carrier_type.",
+    "E_BATCH_CARRIER_CAPACITY": "A carrier BATCH's carrier_capacity came out below 0 for a "
+                                "carrier (a run-time error).",
+    "E_INITIAL_CARRIER": "An initial_state entry of the carrier type waits at a carrier BATCH: "
+                         "its cut-off cannot be put back.",
+    "E_QUEUE_NO_LEAVE_LINK":"A block with balk_if/renege_after has no second outgoing link for "
                              "the entities that leave without service.",
     "W_QUEUE_LEAVE_LINK_UNUSED": "A SEIZE/PROCESS has a second outgoing link but neither balk_if "
                                  "nor renege_after, so nothing ever takes it.",
@@ -382,9 +395,6 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SET_RULE": "A resource set's selection rule is not a known one.",
     "E_SET_EMPTY": "A resource set has no members.",
     "E_SET_MEMBER": "A resource set names a member that is not a declared resource.",
-    "W_SET_PARTIAL_HOLD": "A block seizes more than one unit of a resource set: while it waits "
-                          "on every member it can hold units of a member it then does not "
-                          "take, and two such seizes can stall each other.",
     "E_ENTITY_COST": "An entity type's holding_cost is not a number >= 0.",
     # -- schedules and failures ---------------------------------------------
     "E_SCHEDULE_NAME": "A schedule has an empty name.",
@@ -503,7 +513,11 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SUBMODEL_ARGUMENT_UNKNOWN": "An instance passes an argument the definition does not declare.",
     "E_SUBMODEL_ARGUMENT_MISSING": "An instance omits a declared parameter that has no default.",
     "E_SUBMODEL_PORT_REQUIRED": "A link to/from an instance must name a port.",
-    "E_SUBMODEL_PORT_UNKNOWN": "A link names a port the definition does not have.",
+    "E_SUBMODEL_PORT_UNKNOWN": "A link names a port the definition (or, with repeat groups, "
+                               "this instance) does not have.",
+    "E_SUBMODEL_REPEAT": "A definition's repeat group or {i} placeholder is malformed.",
+    "E_SUBMODEL_REPEAT_COUNT": "A repeat count is not an int in 0..500, or an optional group's "
+                               "count is above 1.",
     # -- structural arguments (PHASE4 B6, ARCHITECTURE D59) -------------------
     "E_SUBMODEL_ARG_UNKNOWN": "A {\"$arg\": ...} names a parameter the definition does not declare.",
     "E_SUBMODEL_ARG_TYPE": "A {\"$arg\": ...} value does not fit the type its target declares.",
@@ -535,6 +549,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_DATA_URL_HOST": "A source URL has no usable hostname, or one outside the allowed hosts.",
     "E_DATA_URL_PRIVATE": "A source URL resolves to a loopback, link-local or private address.",
     "E_DATA_URL_REDIRECT": "A fetch redirected too many times, downgraded, or landed somewhere refused.",
+    "E_DATA_PROXY": "A fetch through the caller's proxy was refused: plain http, or the proxy "
+                    "did not open the tunnel.",
     "E_DATA_TOO_LARGE": "A fetched response is over the size cap.",
     "E_DATA_PATH_OUTSIDE_ROOT": "A source path escapes the root the caller confined it to.",
     "E_DATA_CONNECTION": "A live source names no connection, or one its caller did not define "
@@ -681,6 +697,11 @@ PROBLEM_CODES: dict[str, str] = {
     "E_FLEET_POWER_STATE": "A fleet's \"power\" names a state that is not "
                            "busy/idle/blocked/down/off_shift.",
     "E_FLEET_UNKNOWN": "A TRANSPORT block names a fleet the model does not declare.",
+    "E_TRANSPORT_KEEP_ARM": "A TRANSPORT keeps its vehicle (keep_vehicle) on a fleet with an "
+                            "arm; a cobot stays with its part through tending instead.",
+    "W_TRANSPORT_KEEP_UNFREED": "Nothing downstream of a TRANSPORT with keep_vehicle frees the "
+                                "vehicle (no RELEASE naming the fleet, no TRANSPORT on it without "
+                                "keep_vehicle): it waits with the part until the part leaves.",
     "E_FLEET_LOADS": "A fleet's \"loads\" is not an integer >= 1, or is above 1 on a worker "
                      "fleet.",
     "E_FLEET_UNITS":"A fleet's \"units\" is not a list of named units with skill lists, has "
@@ -700,7 +721,11 @@ PROBLEM_CODES: dict[str, str] = {
                         "negative value; or the cycle has no segments.",
     "E_MOTION_PAYLOAD": "A move's payload_kg is above its profile's payload_max.",
     "E_MOTION_ZONE": "A MOTION block's hrc mode is unknown, or a separation zone names no network "
-                     "node or has radius_m <= 0.",
+                     "node, has radius_m <= 0 or an unknown measure.",
+    "E_MOTION_ZONE_UNKNOWN": "A MOTION block's zone names a zone the model does not declare "
+                             "under \"zones\".",
+    "E_ZONE": "A zone has an empty or duplicate name, a node that is not a network node, "
+              "radius_m <= 0, a measure other than path/straight, or an unknown field.",
     "E_MOTION_PROFILE": "A motion profile has an empty/duplicate name, an unknown kind, speed or "
                         "accel <= 0, a bad payload_max/payload_derate/collaborative_speed, or "
                         "lacks the collaborative_speed an HRC block needs.",
@@ -735,6 +760,17 @@ PROBLEM_CODES: dict[str, str] = {
                              "capex, in the model or in a scenario.",
     "W_INVESTMENT_ONE_SCENARIO": "The model has an investment section and no scenario to "
                                  "compare with its baseline.",
+    # -- storage dispatch plan (Phase 15 M8, D846-D850) ------------------------
+    "E_DISPATCH": "The dispatch section is malformed (a missing tag list, a step, horizon or "
+                  "replan_every that does not fit, an unknown terminal or forecast, an "
+                  "unknown field), two flows hold the same grid role, a storage marked "
+                  "optimal has no dispatch section or no declared setpoint variable, or the "
+                  "section drives no storage.",
+    "W_DISPATCH_MIXED": "A storage on the dispatched bus keeps its own rule; the plan does "
+                        "not see it.",
+    "W_DISPATCH_FORECAST": "A forecast flow's rate reads model state (a level, a flow, the "
+                           "bus, a resource), so the plan holds its current rate over the "
+                           "horizon.",
     "E_TRAVEL_MODE": "A ROUTE/TRANSPORT travel mode is unknown, or needs a network the model "
                      "does not declare.",
     "E_CONVEYOR_PARAM": "A CONVEYOR's length, speed or spacing is not a number > 0, or its "
@@ -742,6 +778,18 @@ PROBLEM_CODES: dict[str, str] = {
     "E_CONVEYOR_STOP": "A CONVEYOR stop is not {at, time, resource?}, its `at` is not between 0 "
                        "and the belt's length, its time is not a number >= 0 or an expression, "
                        "or its resource is not declared.",
+    "E_CONVEYOR_DIVERT": "A CONVEYOR divert is not {at, condition, time?, when_full?}, its `at` "
+                         "is off the belt or on another point, its condition is empty, its time "
+                         "is not a number >= 0 or an expression, its when_full is not wait/pass, "
+                         "the belt has fewer links than 1 + diverts, or a \"pass\" divert's link "
+                         "does not go straight to a CONVEYOR, BUFFER or queue_capacity station.",
+    "E_CONVEYOR_MERGE": "A CONVEYOR merge is not {at, from, priority?}, its `at` is off the belt "
+                        "or on another point, its `from` is not a block linking to the belt or "
+                        "is named twice, its priority is not belt/merge, or the belt is not "
+                        "accumulating.",
+    "W_CONVEYOR_STOP_HELD": "A CONVEYOR stop seizes a resource a part still holds when it gets "
+                            "there (seized upstream, not yet released); the run stops with an "
+                            "error when a part asks for it twice.",
     # -- blocking after service (PHASE4 T5, ARCHITECTURE D78) ----------------
     "E_BUFFER_CAPACITY": "A BUFFER's capacity, or a SEIZE/PROCESS queue_capacity, is negative.",
     "E_BUFFER_LEVEL": "A BUFFER's \"level\" names a level the model does not declare.",

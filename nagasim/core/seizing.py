@@ -244,14 +244,14 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
     if isinstance(target, ResourceSet):
         member, requests = yield from _acquire_from_set(block, target, quantity, priority, scope,
                                                         patience, since, member, until,
-                                                        held_since)
+                                                        held_since, charged=not resumed)
         granted = member is not None
     else:
         member = target
-        requests = [target.request(priority=priority, rank=target.rank_for(scope, since),
-                                   preempt=preempt, charged=not resumed, scope=scope,
-                                   since=since)
-                    for _ in range(quantity)]
+        # D857: more than one unit is granted all at once, so a waiting seize holds nothing.
+        requests = target.request_units(quantity, priority=priority,
+                                        rank=target.rank_for(scope, since), preempt=preempt,
+                                        charged=not resumed, scope=scope, since=since)
         _as_of(target, requests, since if held_since is None else held_since)
         if patience is None:
             # Waited for here, not in `_wait`: the usual seize has no patience
@@ -379,8 +379,7 @@ def _wait(block, resource, requests, patience, until=None):
         # event that can no longer fire.
         yield env.all_of(requests)
         return True
-    for request in requests:
-        resource.cancel(request)
+    resource.cancel_all(requests)
     return False
 
 
@@ -397,20 +396,19 @@ def _granted(requests) -> bool:
 
 
 def _acquire_from_set(block, rset, quantity, priority, scope, patience=None, since=None,
-                      forced=None, until=None, held_since=None):
+                      forced=None, until=None, held_since=None, charged=True):
     """Pick a member with enough free units; if there is none, queue on ALL of
     them and take the first that comes through.
 
     The set owns the queue statistics for both paths (member requests are made
     with counted=False), so an entity queued on three members is one entity in
-    one queue, and the losing requests leave no trace: a request granted in the
-    same instant as the winner is released immediately, one still queued is
-    cancelled through the wrapper, which un-counts it.
+    one queue, and the losing requests leave no trace (D860): a request granted
+    in the same instant as the winner is released with no seize and no busy
+    time, one still queued is cancelled through the wrapper, which un-counts it.
 
-    ponytail: with quantity > 1 the wait-for-any holds partially granted units
-    of the losing members until the winner completes; two entities each holding
-    half of two members can stall. Per-member atomic reservation is the upgrade
-    path if a model ever needs it.
+    With quantity > 1 each member's requests are one group, granted all at once
+    (D856), so the entity holds no unit of any member until one member can serve
+    it whole. *charged* False: a preempted job resuming, not a new seize (#1284).
 
     Returns (None, []) when *patience* ran out while the entity was pending on
     every member (PHASE4 A4): all the pending halves are cancelled, so a renege
@@ -422,17 +420,15 @@ def _acquire_from_set(block, rset, quantity, priority, scope, patience=None, sin
               else next(m for m in rset.members if m.name == forced))
 
     if member is not None:
-        requests = [member.request(priority=priority, rank=member.rank_for(scope, since),
-                                   counted=False,
-                                   scope=scope)
-                    for _ in range(quantity)]
+        requests = member.request_units(quantity, priority=priority,
+                                        rank=member.rank_for(scope, since), counted=False,
+                                        charged=charged, scope=scope)
         _as_of(member, requests, held_since)
         for request in requests:
             yield request
     else:
-        pending = {m: [m.request(priority=priority, rank=m.rank_for(scope, since), counted=False,
-                                 scope=scope)
-                       for _ in range(quantity)]
+        pending = {m: m.request_units(quantity, priority=priority, rank=m.rank_for(scope, since),
+                                      counted=False, charged=charged, scope=scope)
                    for m in rset.members}
         groups = {m: block.env.all_of(reqs) for m, reqs in pending.items()}
         if patience is None:
@@ -444,16 +440,14 @@ def _acquire_from_set(block, rset, quantity, priority, scope, patience=None, sin
                 yield block.env.timeout(0)      # same tie rule as _wait
             if not any(_granted(reqs) for reqs in pending.values()):
                 for loser, reqs in pending.items():
-                    for request in reqs:
-                        loser.cancel(request)
+                    loser.cancel_all(reqs)
                 rset.left(enqueued_at)
                 return None, []
         # Member order breaks a tie when two members come free in the same instant.
         member = next(m for m in rset.members if _granted(pending[m]))
         requests = pending.pop(member)
         for loser, reqs in pending.items():
-            for request in reqs:
-                loser.cancel(request)
+            loser.cancel_all(reqs)
 
     rset.granted(enqueued_at, quantity)
     return member, requests
@@ -496,6 +490,14 @@ def release(block, entity, target_name):
     info = getattr(entity, "req_params", {}).get(target_name)
     if info is None:
         raise ValueError(f"Entity {entity.id} has no resource '{target_name}' to be released.")
+    if info.get("vehicle"):
+        # D839: a vehicle a TRANSPORT kept (D835) is not a seize: no busy cost, no
+        # schedule-log row, as for every TRANSPORT; freed where it stands.
+        del entity.req_params[target_name]
+        if not entity.req_params:
+            del entity.req_params
+        info["fleet"].release_held(info, block, entity)
+        return
 
     member = info["resource"]
     _accrue_busy_cost(block, entity, member, len(info["requests"]), info.get("seized_at", block.env.now))

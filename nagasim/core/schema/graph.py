@@ -26,6 +26,39 @@ def long_name_problem(block: str, shown: str, at: str) -> Problem | None:
         at, block=block, hint="shorten it or move the detail to the description")
 
 
+def _divert_link_problems(name: str, diverts: list, outs: list, by_name: dict,
+                          at: str) -> list[Problem]:
+    """A belt's divert links (D851, D852): one per divert after the end's, and a "pass"
+    divert's link straight to a block with places it can read for room."""
+    found = []
+    if len(outs) < 1 + len(diverts):
+        found.append(problem(
+            "E_CONVEYOR_DIVERT", f"{name}: {len(diverts)} diverts need {1 + len(diverts)} "
+            f"outgoing links, it has {len(outs)}", at, block=name,
+            hint="link 0 is the belt's end; divert k leaves by link k + 1"))
+    for index, divert in enumerate(diverts):
+        if not isinstance(divert, dict) or divert.get("when_full") != "pass" \
+                or index + 1 >= len(outs):
+            continue
+        target = by_name.get(outs[index + 1]) or {}
+        kind = str(target.get("type", "")).upper()
+        params = target.get("params") or {}
+
+        def places(field: str) -> bool:
+            value = params.get(field, 0)
+            return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+        if not (kind == "CONVEYOR" or (kind == "BUFFER" and places("capacity"))
+                or (kind in ("SEIZE", "PROCESS", "MOTION") and places("queue_capacity"))):
+            found.append(problem(
+                "E_CONVEYOR_DIVERT", f"{name}: divert {index} passes when full, but its link "
+                f"goes to '{outs[index + 1]}', which has no places to read for room",
+                f"{at}/params/diverts/{index}/when_full", block=name,
+                hint="link it straight to a CONVEYOR, a BUFFER with capacity > 0 or a "
+                     "SEIZE/PROCESS with queue_capacity > 0, or use when_full \"wait\""))
+    return found
+
+
 def validate_graph_structured(layout: dict) -> list[Problem]:
     """Pure-dict flow-graph checks as coded Problems (ROADMAP 3.1 item 1):
     reachability, branch counts, DECIDE branch coverage. An iterative DFS, so
@@ -123,6 +156,34 @@ def validate_graph_structured(layout: dict) -> list[Problem]:
         # A queueing block may always be DRAWN with two outputs; the second one
         # is an error only past two, and a warning when nothing takes it.
         allowed = 2 if queueing else 1
+        if btype == "SEPARATE":
+            problems.extend(_separate_problems(name, params, len(outs), at))
+            # D819: a kept carrier leaves by link 1, checked exactly above -- so keep mode's
+            # link count is reported once, by E_SEPARATE_CARRIER_LINK (review P7).
+            allowed = max(2, len(outs)) if params.get("carrier", "dispose") == "keep" else 1
+        if btype == "CONVEYOR" and isinstance(params.get("diverts"), list) \
+                and params.get("diverts"):
+            # D851: divert k leaves by link k + 1, so each needs its link.
+            allowed = 1 + len(params["diverts"])
+            problems.extend(_divert_link_problems(name, params["diverts"], outs, by_name, at))
+        if btype == "CONVEYOR" and isinstance(params.get("merges"), list):
+            for index, merge in enumerate(params["merges"]):
+                source = merge.get("from") if isinstance(merge, dict) else None
+                if isinstance(source, str) and source.strip() \
+                        and name not in drawn_links.get(source, []):
+                    problems.append(problem(
+                        "E_CONVEYOR_MERGE", f"{name}: merge {index} names '{source}', which "
+                        f"does not link to this belt", f"{at}/params/merges/{index}/from",
+                        block=name, hint="link that block to the belt, or name the one that "
+                                         "does"))
+        if btype == "BATCH" and not str(params.get("carrier_type") or "").strip() and (
+                str(params.get("member_time") or "").strip()
+                or str(params.get("carrier_capacity") or "").strip()):
+            problems.append(problem(
+                "E_BATCH_MEMBER_TIME",
+                f"{name}: member_time and carrier_capacity apply only to a carrier BATCH", at,
+                block=name, hint="set carrier_type to the carrier's entity type (a truck), or "
+                                 "clear member_time and carrier_capacity"))
         if not (spec is not None and spec.multi_output) and len(outs) > allowed:
             problems.append(problem(
                 "E_TOO_MANY_OUTPUTS",
@@ -246,6 +307,32 @@ def validate_graph_structured(layout: dict) -> list[Problem]:
                 at, block=name, hint="add a DISPOSE block or link this block to one"))
 
     return problems
+
+
+def _separate_problems(name: str, params: dict, n_outs: int, at: str) -> list[Problem]:
+    """A SEPARATE's carrier mode (Phase 15 M2, D819): its choices, its second link,
+    and a member_time only where a carrier lives on."""
+    out = []
+    carrier = params.get("carrier", "dispose") or "dispose"
+    if carrier not in ("dispose", "keep"):
+        out.append(problem("E_SEPARATE_CARRIER", f"{name}: carrier {carrier!r} is not "
+                           f"\"dispose\" or \"keep\"", f"{at}/params/carrier", block=name,
+                           hint="\"dispose\" ends the batch here; \"keep\" lets the carrier "
+                                "(a truck) leave by a second link"))
+    if (params.get("release_order", "fifo") or "fifo") not in ("fifo", "lifo"):
+        out.append(problem("E_SEPARATE_RELEASE_ORDER", f"{name}: release_order "
+                           f"{params.get('release_order')!r} is not \"fifo\" or \"lifo\"",
+                           f"{at}/params/release_order", block=name,
+                           hint="\"fifo\": the order they were loaded; \"lifo\": last loaded first"))
+    if carrier == "keep" and n_outs != 2:
+        out.append(problem("E_SEPARATE_CARRIER_LINK", f"{name}: a SEPARATE that keeps the "
+                           f"carrier needs exactly 2 outgoing links, has {n_outs}", at, block=name,
+                           hint="link 0 takes the members, link 1 the carrier once it is empty"))
+    if carrier == "dispose" and str(params.get("member_time") or "").strip():
+        out.append(problem("E_SEPARATE_MEMBER_TIME", f"{name}: member_time applies only when "
+                           f"the carrier is kept", f"{at}/params/member_time", block=name,
+                           hint="set carrier to \"keep\", or clear member_time"))
+    return out
 
 
 def _is_endless_zero_gap(params: dict) -> bool:

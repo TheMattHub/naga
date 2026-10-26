@@ -1566,11 +1566,14 @@ def log_of(events, mapping, source: str = "plant", attributes=None) -> list[dict
 
     # D461: the members a BATCH (or a MATCH) absorbs are followed by the batch's creation, in
     # the same block and instant (`make_batch_entity`); a SEPARATE's absorbed batch is not.
+    # A member loaded onto a carrier (Phase 15 M2) names the carrier in `value` instead.
     into: dict[int, int] = {}                       # a member's absorption -> its batch
     gathering: list = []
     for n, e in enumerate(events):
         at = e.t
-        if e.kind == "entity_absorbed":
+        if e.kind == "entity_absorbed" and e.value > 0:
+            into[n] = int(e.value)
+        elif e.kind == "entity_absorbed":
             gathering.append((n, e.block, e.t))
         elif e.kind == "entity_created":
             into.update((m, e.entity_id) for m, block, t in gathering if (block, t) == (e.block, e.t))

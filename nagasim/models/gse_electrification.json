@@ -1747,6 +1747,7 @@
       "emission_factor": "TS(intensity_profile)",
       "tag": "import",
       "peak_price": 0.0,
+      "grid": {"role": "import"},
       "rate_time_unit": "hours"
     },
     {
@@ -1762,6 +1763,7 @@
       "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
       "price": "-export_price",
       "tag": "export",
+      "grid": {"role": "export"},
       "rate_time_unit": "hours"
     },
     {
@@ -2887,8 +2889,8 @@
     },
     "Grid connection": {
       "info": {
-        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
-        "library": {"library": "energy", "asset": "grid_connection", "version": "1.5.0"},
+        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run. Its import and export carry the grid roles a \"dispatch\" plan prices and limits.",
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.7.0"},
         "parameters": [
           {
             "name": "import_profile",
@@ -3034,9 +3036,12 @@
       ],
       "scoped": {
         "flows": {
-          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
+          "Nrg import": {
+            "peak_price": {"$arg": "demand_charge_per_kw"},
+            "grid.limit": "import_limit_kw"
+          },
           "Nrg unserved": {},
-          "Nrg export": {},
+          "Nrg export": {"grid.limit": "export_limit_kw"},
           "Nrg curtailed": {}
         }
       },
@@ -3047,7 +3052,7 @@
     "Equipment draw": {
       "info": {
         "description": "Puts the kW a resource, fleet or charger draws on the site bus, so the grid connection prices it. Name the equipment in Source: its busy, idle and other states come from the power it declares, and the draw follows those states through the run. Set Source before running; a name the model does not declare is reported as an unknown resource, fleet or charger. No ports: this is a continuous asset.",
-        "library": {"library": "energy", "asset": "equipment_draw", "version": "1.5.0"},
+        "library": {"library": "energy", "asset": "equipment_draw", "version": "1.7.0"},
         "parameters": [
           {
             "name": "source",

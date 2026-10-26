@@ -28,6 +28,7 @@ Current schema version: **29** (`nagasim/core/schema/migrate.py`). See [Model fi
 | `fixed_costs` | Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter. |
 | `fleets` | Pools of vehicles that carry entities on the network; a fleet is a resource under its own name. |
 | `motion_profiles` | How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's `profile`. |
+| `zones` | Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed. |
 | `chargers` | Chargers and battery-swap stations at network nodes, used by fleets that declare a `battery`. |
 | `auxiliaries` | Named expressions read by AUX("name"), evaluated on read. |
 | `delays` | Delays read by DELAY("name"): input, delay time, kind and order. |

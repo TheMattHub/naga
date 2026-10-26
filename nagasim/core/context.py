@@ -138,6 +138,9 @@ class SimulationContext:
     # or None when the model declares neither -- so every existing model pays
     # nothing at all for the feature (one `is None` test per ASSIGN).
     level_system: object = None
+    # Storage dispatch plan (Phase 15 M8, D846): a `core.dispatch.Dispatcher`,
+    # or None for a model without a `dispatch` section.
+    dispatch: object = None
     # Agents (PHASE5 AB-1): the one `agents.AgentSystem` of this run, or None
     # for a model without populations -- the same "pays nothing" rule.
     agent_system: object = None
@@ -163,6 +166,8 @@ class SimulationContext:
     fleets: dict = field(default_factory=dict)
     # Automation sub-project 1 (D157): {name: profile record}, read by MOTION.
     motion_profiles: dict = field(default_factory=dict)
+    # Phase 15 M5 (D830): {name: zone record}, read by MOTION and tending.
+    zones: dict = field(default_factory=dict)
     # Automation sub-project 2 (D165): {name: Charger}, used by battery fleets.
     chargers: dict = field(default_factory=dict)
     # Automation sub-project 3 (D169): {(station, fleet): TendingStats}, filled

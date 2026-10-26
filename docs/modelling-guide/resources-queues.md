@@ -48,12 +48,24 @@ the **Resource sets** table: `members` (resource names) and a selection `rule`.
 A block's `resource_name` may name either a plain resource or a set -- they share one namespace.
 `two_teller_set.json` is the minimal worked example.
 
-## Ceiling: quantity > 1 on a set
+## Seizing more than one unit
 
-Wait-for-any across a set's members works by requesting every member and cancelling the losers.
-With `quantity > 1`, a losing member can briefly hold a partially granted subset of units before
-being cancelled -- a known ceiling, not a correctness bug
-for `quantity = 1`.
+A seize of `quantity > 1` gets all its units at once or none of them. A job that needs 2
+operators from any one of three crews waits on every crew, holds nobody while it waits, and takes
+the first crew that has 2 free; a plain resource follows the same rule. Utilisation therefore counts
+only real work, and a shift end or breakdown takes a free unit on time instead of waiting for the
+job to find its crew.
+
+- **Order.** The waiting seize keeps its place in the member's queue. Nothing behind it overtakes
+  it, so a unit can stay idle while it waits for a second one, as in an Arena SEIZE. A request
+  ranked ahead of it (a better priority, or an earlier rank under the queue discipline) takes a free
+  unit at once, so a stream of urgent one-unit jobs can delay it for a long time.
+- **Capacity.** A member whose capacity in force stays below `quantity` never serves the seize. A
+  `quantity` above every member's capacity waits for ever, or until `renege_after`.
+- **Preemption.** A preempting PROCESS that needs more than one unit interrupts whole jobs, the
+  lowest priority first, and only when they free enough units; otherwise it waits.
+
+A set's losing members keep no trace of the seize: no seize count, no busy time and no use cost.
 
 ## Queue behaviours: balking, reneging, preemption
 

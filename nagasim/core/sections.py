@@ -146,6 +146,12 @@ SECTIONS: tuple[Section, ...] = (
             "speed, acceleration, payload derating and a collaborative speed, named by a "
             "MOTION block's `profile`.", overridable=True, tab="Motion profiles",
             validate="nagasim.core.motion:validate_motion", **_CLONE),
+    # D830-D831: continuous like chargers -- a cloned template (`"node": "$zone"`)
+    # leaves the flattened layout, so its `$` node never reaches validation.
+    _record("zones", "zone", "Safety zones: a network node and a radius that a MOTION block's "
+            "or a tending group's `zone.name` binds to; a worker inside slows the robot to its "
+            "collaborative speed.", overridable=True, tab="Safety zones",
+            validate="nagasim.core.motion:validate_zones", **_CONT),
     _record("chargers", "charger", "Chargers and battery-swap stations at network nodes, used "
             "by fleets that declare a `battery`.", overridable=True, tab="Chargers",
             validate="nagasim.core.chargers:validate_chargers", **_CONT),
@@ -200,6 +206,11 @@ SECTIONS: tuple[Section, ...] = (
                               "throughput KPI that `naga invest` compares every scenario with. "
                               "Absent by default.",
             tab="Investment", validate="nagasim.investment:validate_investment"),
+    # Phase 15 M8 (D846-D850). No tab: written by hand from the docs snippet.
+    Section("dispatch", doc="Optional storage dispatch plan: a rolling-horizon LP over the "
+                            "bus tags that drives every storage level marked optimal at the "
+                            "cheapest grid cost. Absent by default.",
+            validate="nagasim.core.dispatch:validate_dispatch"),
     Section("outputs", doc="Optional extra output collection whose cost is opt-in, e.g. "
                            "`bottleneck` for the Roser active-period analyser. "
                            "Absent, none of it runs."),
@@ -230,6 +241,7 @@ _FAMILY_OF_TAB = {
     "Variables": "Data", "Lookup tables": "Data", "Time series": "Data",
     "Data sources": "Data", "Bindings": "Data", "Initial state": "Data", "Dashboard": "Data",
     "Fleets": "Logistics", "Chargers": "Logistics", "Motion profiles": "Logistics",
+    "Safety zones": "Logistics",
     "Stocks": "Dynamics", "Conversions": "Dynamics", "Agents": "Dynamics",
     "Costs": "Money", "Investment": "Money",
 }

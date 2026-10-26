@@ -36,8 +36,8 @@ from nagasim.core.utils import is_finite_number
 from nagasim.live import stamp
 
 __all__ = ["KEPT", "PER_STEP", "PAGE_FILE", "APPROXIMATE", "IN_DISTRIBUTION", "COUNTED", "SCORED",
-           "SAME_SEED", "NO_SCORE", "MISSED", "ALERTED", "REFITTED", "ADVICE", "ASSUMES", "NO_ADVICE", "Log", "Page", "summary",
-           "state", "action_text"]
+           "SAME_SEED", "NO_SCORE", "MISSED", "ALERTED", "REFITTED", "ADVICE", "ASSUMES", "NO_ADVICE", "WRITES", "Log", "Page", "summary",
+           "state", "action_text", "setpoint_text"]
 
 KEPT = 200              # event lines of one twin
 PER_STEP = 100          # of one step; the rest is counted
@@ -87,6 +87,10 @@ ADVICE = ("What this model says each action would change, compared with doing no
           "candidates that change nothing, about 1 in 20 pass by chance, so of N of them about "
           "N/20. Evidence in distribution from the model, not a promise about the plant.")
 ASSUMES = "This forecast assumes {n} taken action(s): see Recommendations."
+# D812: who writes a setpoint, said once wherever one is offered.
+WRITES = ("A setpoint is never written by the twin or this monitor. Approving one writes one "
+          "reply line to your outbox; only `naga plc-write`, run by a person as its own "
+          "process, writes it to the PLC on this machine, and only with --write.")
 NO_ADVICE = {"no_forecast": "No recommendation: no forecast was made at the last attempt (see "
                             "Forecast for why).",
              "none_better": "No recommendation: no candidate's interval excludes \"no effect\" on "
@@ -245,6 +249,27 @@ def _refit(doc: dict) -> list | None:
     return lines + [REFITTED]
 
 
+def setpoint_text(action, setpoints=None) -> str | None:
+    """What approving a `setpoint` action would lead `naga plc-write` to write (D812): the
+    tag, the value and the tag's range, step and interval from the caller's setpoints file
+    (`setpoints.load(...)["tags"]`, or None when the caller gave none). None for any other
+    action. The file's numbers only: nothing of a result selects a tag's limits."""
+    said = _table(action)
+    if said.get("verb") != "setpoint":
+        return None
+    tag = _text(said.get("target"))[:80]
+    head = f"Setpoint {tag} = {_g(said.get('value'))}"
+    target = said.get("target")
+    # #1134: a result's target is data; only a string names a tag (a list is unhashable).
+    spec = setpoints.get(target) if isinstance(setpoints, dict) and isinstance(target, str) else None
+    if not isinstance(spec, dict):
+        return head + (": its range, step and interval are in your setpoints file, which "
+                       "this monitor was not given.")
+    return (head + f": range {_g(spec.get('min'))} to {_g(spec.get('max'))}, at most "
+            f"{_g(spec.get('max_step'))} from the value the PLC holds, at most once every "
+            f"{_g(spec.get('min_interval'))} s.")
+
+
 def action_text(value) -> str:
     """An action as a person reads it: `hold WO-1`, `resequence A before B`, `reroute s = f`."""
     said = _table(value)
@@ -258,12 +283,13 @@ def action_text(value) -> str:
     return f"{head} = {shown}"
 
 
-def _recommend(doc: dict) -> dict | None:
+def _recommend(doc: dict, setpoints=None) -> dict | None:
     """The recommendations of a result in two parts (D358), or None for a twin that was asked
     for none. `lead`: what stands now, the recommended action, the outbox -- always at least
     the outbox line. `fold`: the basis and the explanation (KPI line, ADVICE, effects). Rows:
     rank, action, effect, low, high, confidence, verdict, the record's status, the first
-    characters of its id. No sink, no path, no reply text."""
+    characters of its id. No sink, no path, no reply text. A setpoint waiting for an
+    answer gets a lead line of what it would write (*setpoints*, D812)."""
     if "recommend" not in doc:
         return None
     said = _table(doc.get("recommend"))
@@ -287,6 +313,9 @@ def _recommend(doc: dict) -> dict | None:
                 f"Recommended: {action_text(top.get('action'))}, effect {_g(top.get('effect'))} "
                 f"(95% interval {_g(top.get('low'))} to {_g(top.get('high'))})"
                 + (f"; {len(better) - 1} more in the table" if len(better) > 1 else "") + ".")
+        offered = [setpoint_text(i.get("action"), setpoints) for i in better[:_ADVICE]]
+        if any(offered):
+            lead += [text for text in offered if text] + [WRITES]
     if said.get("reproducible") is False:
         lead.append("This set's state could not be kept: it does not reproduce, and none of "
                     "it is delivered.")
@@ -342,9 +371,10 @@ def state(shown: dict, now: float) -> tuple:
     return text.replace("{age}", "?" if age is None else f"{age:.0f}"), old
 
 
-def summary(doc) -> dict:
+def summary(doc, setpoints=None) -> dict:
     """What a monitor shows of one result, as plain data. Read defensively: the document may
-    come from a file, and is then only known to be format 1."""
+    come from a file, and is then only known to be format 1. *setpoints*: the caller's
+    setpoints file, loaded (`setpoints.load(...)["tags"]`), for what a setpoint would write."""
     doc = _table(doc)
     model, view, forecast = _table(doc.get("model")), _table(doc.get("view")), _table(doc.get("forecast"))
     unit = _text(model.get("time_unit"))
@@ -414,7 +444,7 @@ def summary(doc) -> dict:
         "scores": _scores(doc, unit),
         "alerts": _alerts(doc),
         "refit": _refit(doc),
-        "recommend": _recommend(doc),
+        "recommend": _recommend(doc, setpoints),
         "forecast": {
             "status": status, "lines": lines,
             "kpis": [[_text(k.get("kpi")), _number(k.get("mean")), _number(k.get("q05")),
@@ -676,8 +706,10 @@ class Page:
     result's `view` was read at. *every* is the twin's cadence in seconds (None for one
     stepped by a scheduler); the page reloads at half of it (D284)."""
 
-    def __init__(self, layout, path, *, every: float | None = None, title: str | None = None):
+    def __init__(self, layout, path, *, every: float | None = None, title: str | None = None,
+                 setpoints=None):
         self.path = Path(path)
+        self.setpoints = setpoints              # the caller's, loaded: what a setpoint writes
         self._refused: str | None = None        # what the last write was refused with
         self.refresh = 30 if not every else int(min(max(every / 2, 1), 30))
         self.shell = player.page_shell(
@@ -696,7 +728,7 @@ class Page:
         events = list(events)
         self._timeline.append(events)
         self._log.add(doc, events)
-        shown = summary(doc)
+        shown = summary(doc, self.setpoints)
         name = self._title
         t = self._timeline.duration
         frame = self._writer.frame(self._timeline, t)

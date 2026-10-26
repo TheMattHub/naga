@@ -192,10 +192,12 @@ _MOTION_PARAMS = (
               description="Human-robot collaboration: \"none\", \"collaborative\" (every "
                           "move at the profile's collaborative_speed) or \"separation\" (a move "
                           "starts at collaborative_speed when a worker-fleet unit is within "
-                          "zone.radius_m of zone.node by network distance).", quantity="none"),
+                          "the zone's radius of its node, by path or straight distance).", quantity="none"),
     ParamSpec("zone", dict, {},
-              description="With hrc \"separation\": {\"node\": <network node>, \"radius_m\": "
-                          "<metres>}.", quantity="none"),
+              description="With hrc \"separation\": {\"name\": <a \"zones\" record>} -- the "
+                          "record's node and radius win -- or, with no name, {\"node\": <network "
+                          "node>, \"radius_m\": <metres>, \"measure\"?: \"path\"|\"straight\"}.",
+              quantity="none"),
     ParamSpec("segments", list, [],
               description="The cycle, in order: {\"kind\": \"move\", \"distance_m\", "
                           "\"payload_kg\"?} or {\"kind\": pick|place|tool_change|dwell|process, "

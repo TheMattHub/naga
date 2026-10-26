@@ -25,8 +25,8 @@ usage: naga run [-h] [--version] [--replications REPLICATIONS] [--seed SEED]
                 [--warmup WARMUP] [--run-length RUN_LENGTH] [--start ISO]
                 [--until ISO] [--timezone IANA] [--workers WORKERS]
                 [--pace FACTOR] [--out OUT] [--report REPORT]
-                [--export FORMAT:PATH] [--player PATH] [--state FILE]
-                [--no-logs]
+                [--export FORMAT:PATH] [--player PATH] [--asked FILE]
+                [--state FILE] [--no-logs]
                 model
 
 Run a Naga model headless.
@@ -69,6 +69,11 @@ options:
                         here: one self-contained file that replays the run in
                         a browser, with no server (the same as --export
                         player:PATH)
+  --asked FILE          with --player or --export player:PATH: recorded
+                        answers for the trust card: a study version's
+                        asked.json, or a file of the editor's answers store;
+                        its input-data and parameter rows quote them instead
+                        of 'not measured'
   --state FILE          start from this state document (`naga state take`):
                         the run's clock starts where the state was taken and
                         its statistics cover the run from there
@@ -85,6 +90,7 @@ usage: naga scenarios [-h] [--scenario SCENARIOS]
                       [--replications REPLICATIONS] [--run-length RUN_LENGTH]
                       [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
                       [--no-crn] [--out OUT] [--report REPORT] [--player PATH]
+                      [--asked FILE]
                       model
 
 Run named scenarios headless and compare them.
@@ -112,6 +118,10 @@ options:
                         replication of every scenario, run again with its seed
                         and recorded, in one self-contained file with a
                         scenario switch
+  --asked FILE          with --player: recorded answers for the trust card: a
+                        study version's asked.json, or a file of the editor's
+                        answers store; its input-data and parameter rows quote
+                        them instead of 'not measured'
 ```
 
 ## naga explain

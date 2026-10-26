@@ -318,6 +318,8 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
     # initial level, so the first rate evaluation already sees it.
     if env.ctx.level_system is not None:
         env.ctx.level_system.start(run_len)
+    if env.ctx.dispatch is not None:                # Phase 15 M8, after the levels
+        env.ctx.dispatch.start(run_len)
     if env.ctx.agent_system is not None:            # PHASE5 AB-1
         env.ctx.agent_system.start(run_len)
     # #467: put back, the CREATEs start in the order their next arrivals were drawn, so

@@ -130,6 +130,12 @@
         "$ref": "#/$defs/motion_profile"
       }
     },
+    "zones": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/zone"
+      }
+    },
     "chargers": {
       "type": "array",
       "items": {
@@ -285,6 +291,9 @@
     },
     "investment": {
       "$ref": "#/$defs/investment"
+    },
+    "dispatch": {
+      "$ref": "#/$defs/dispatch"
     },
     "outputs": {
       "type": "object",
@@ -2358,7 +2367,7 @@
         },
         {
           "title": "BATCH",
-          "description": "Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp.",
+          "description": "Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard.",
           "type": "object",
           "properties": {
             "name": {
@@ -2486,6 +2495,95 @@
                   ],
                   "default": "base",
                   "description": "Unit `max_wait` is expressed in: \"base\" (the model's own unit) or one of seconds/minutes/hours/days."
+                },
+                "carrier_type": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Carrier mode: an arriving entity of this type (a truck) is a CARRIER that waits here and loads the other arrivals one at a time, until it is full or its max_wait (the cut-off, measured from the carrier's arrival) runs out, then leaves as itself. Empty = a plain BATCH."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Carrier mode: an arriving entity of this type (a truck) is a CARRIER that waits here and loads the other arrivals one at a time, until it is full or its max_wait (the cut-off, measured from the carrier's arrival) runs out, then leaves as itself. Empty = a plain BATCH."
+                },
+                "carrier_capacity": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "x-quantity": "count",
+                      "default": "",
+                      "description": "Carrier mode: how many members a carrier takes, e.g. \"entity.capacity\", evaluated for each carrier when it arrives. Empty = batch_size."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Carrier mode: how many members a carrier takes, e.g. \"entity.capacity\", evaluated for each carrier when it arrives. Empty = batch_size.",
+                  "x-quantity": "count"
+                },
+                "member_time": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "x-quantity": "time",
+                      "x-unit-key": "member_time_unit",
+                      "default": "",
+                      "description": "Carrier mode: time to load one member, evaluated in the member's own scope when its load starts. Empty = loading takes no time."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Carrier mode: time to load one member, evaluated in the member's own scope when its load starts. Empty = loading takes no time.",
+                  "x-quantity": "time",
+                  "x-unit-key": "member_time_unit"
+                },
+                "member_time_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "milliseconds",
+                        "seconds",
+                        "minutes",
+                        "hours",
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
+                      "default": "base",
+                      "description": "Unit `member_time` is expressed in: \"base\" (the model's own unit) or one of seconds/minutes/hours/days."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "base",
+                  "description": "Unit `member_time` is expressed in: \"base\" (the model's own unit) or one of seconds/minutes/hours/days."
                 }
               },
               "required": [],
@@ -2581,6 +2679,256 @@
               },
               "required": [
                 "capacity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "CHARGE",
+          "description": "Charges an entity (an electric vehicle, a battery pack) with the energy it needs at up to its own power, sharing a site power cap with every other entity at this block; it leaves when full or when its time is up. The block's total grid kW (what the entities take over `efficiency`) is kept in `power_variable`, so a flow with `rate: VAR(\"name\")` puts it on the electricity bus; `site_limit` caps that grid kW. On leaving the entity carries `charged_kwh`, `charge_full` (1 or 0) and `charge_time` (entry to full, or to leaving when not full, in `time_limit_unit`).",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Unique block name; the model's identifier for it."
+            },
+            "description": {
+              "type": "string",
+              "description": "Label shown on the canvas."
+            },
+            "type": {
+              "const": "CHARGE"
+            },
+            "position": {
+              "$ref": "#/$defs/point",
+              "description": "Block CENTRE in scene units."
+            },
+            "layout_position": {
+              "$ref": "#/$defs/point",
+              "description": "Where the block sits on the FLOOR PLAN, in layout units. Absent for a block that has never been placed in layout mode, and unnecessary for one attached to a network node."
+            },
+            "layout_rotation": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 360,
+              "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "label_offset": {
+              "$ref": "#/$defs/point",
+              "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
+            "locals": {
+              "type": "object",
+              "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "energy": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "x-quantity": "energy",
+                      "default": "0",
+                      "description": "Energy the entity needs, kWh: an expression, e.g. entity.need_kwh."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "0",
+                  "description": "Energy the entity needs, kWh: an expression, e.g. entity.need_kwh.",
+                  "x-quantity": "energy"
+                },
+                "max_power": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "x-quantity": "power",
+                      "default": "0",
+                      "description": "Most power the entity takes, kW: an expression, e.g. min(11, entity.max_kw)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "0",
+                  "description": "Most power the entity takes, kW: an expression, e.g. min(11, entity.max_kw).",
+                  "x-quantity": "power"
+                },
+                "time_limit": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "x-quantity": "time",
+                      "x-unit-key": "time_limit_unit",
+                      "default": "",
+                      "description": "Longest time the entity stays (an expression); it leaves then, full or not. Empty = until full."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Longest time the entity stays (an expression); it leaves then, full or not. Empty = until full.",
+                  "x-quantity": "time",
+                  "x-unit-key": "time_limit_unit"
+                },
+                "time_limit_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "milliseconds",
+                        "seconds",
+                        "minutes",
+                        "hours",
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
+                      "default": "base",
+                      "description": "Unit of `time_limit` and of the `charge_time` the entity carries: \"base\" (the model's) or one of its quantity's units."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "base",
+                  "description": "Unit of `time_limit` and of the `charge_time` the entity carries: \"base\" (the model's) or one of its quantity's units."
+                },
+                "time_limit_from": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Instant, in model time, the time limit counts from: an expression such as entity.arrived_at. Empty = when the entity enters. A deadline already past sends it on at once, charged 0."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Instant, in model time, the time limit counts from: an expression such as entity.arrived_at. Empty = when the entity enters. A deadline already past sends it on at once, charged 0."
+                },
+                "leave_when_full": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "Leave as soon as the need is met. Off: stay (drawing nothing) until the time limit, as a car stays plugged in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": true,
+                  "description": "Leave as soon as the need is met. Off: stay (drawing nothing) until the time limit, as a car stays plugged in."
+                },
+                "site_limit": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "power",
+                      "default": 0.0,
+                      "description": "Most power all entities at this block draw together from the grid, kW; 0 = no cap."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.0,
+                  "description": "Most power all entities at this block draw together from the grid, kW; 0 = no cap.",
+                  "x-quantity": "power"
+                },
+                "efficiency": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1,
+                      "x-quantity": "ratio",
+                      "default": 1.0,
+                      "description": "Energy the entity stores per unit drawn from the grid (charger losses); 1 = none. The site limit and power_variable are grid side."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 1.0,
+                  "description": "Energy the entity stores per unit drawn from the grid (charger losses); 1 = none. The site limit and power_variable are grid side.",
+                  "x-quantity": "ratio"
+                },
+                "sharing": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "equal",
+                      "description": "How the cap is shared: \"equal\" (an equal share each; what a slow entity cannot use goes to the others) or \"first_come\" (in order of arrival, each as much as it can take)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "equal",
+                  "description": "How the cap is shared: \"equal\" (an equal share each; what a slow entity cannot use goes to the others) or \"first_come\" (in order of arrival, each as much as it can take)."
+                },
+                "power_variable": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Model variable kept equal to the block's total grid kW, for a flow rate VAR(\"name\") on the electricity bus. Empty = none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Model variable kept equal to the block's total grid kW, for a flow rate VAR(\"name\") on the electricity bus. Empty = none."
+                }
+              },
+              "required": [
+                "energy",
+                "max_power"
               ],
               "additionalProperties": false
             }
@@ -2823,6 +3171,34 @@
                   ],
                   "default": [],
                   "description": "Points where each part halts on the belt: {\"at\": <distance from the entry, in the unit of `length`, between 0 and the length>, \"time\": <number or expression>, \"resource\"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none."
+                },
+                "diverts": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "Points where a part may leave the belt sideways: {\"at\": <distance from the entry, in the unit of `length`>, \"condition\": <expression, read once as the part reaches it>, \"time\"?: <push time, number or expression>, \"when_full\"?: \"wait\" (default: the part waits there for room) or \"pass\" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "Points where a part may leave the belt sideways: {\"at\": <distance from the entry, in the unit of `length`>, \"condition\": <expression, read once as the part reaches it>, \"time\"?: <push time, number or expression>, \"when_full\"?: \"wait\" (default: the part waits there for room) or \"pass\" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none."
+                },
+                "merges": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "Points where parts from another block join the belt: {\"at\": <distance from the entry, in the unit of `length`>, \"from\": <the block linking to this belt whose parts join there>, \"priority\"?: \"belt\" (default: they wait for a gap of two spacings) or \"merge\" (parts on the belt make room)}. Accumulating belts only. Empty: none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "Points where parts from another block join the belt: {\"at\": <distance from the entry, in the unit of `length`>, \"from\": <the block linking to this belt whose parts join there>, \"priority\"?: \"belt\" (default: they wait for a gap of two spacings) or \"merge\" (parts on the belt make room)}. Accumulating belts only. Empty: none."
                 }
               },
               "required": [
@@ -4134,28 +4510,28 @@
                     {
                       "type": "string",
                       "default": "none",
-                      "description": "Human-robot collaboration: \"none\", \"collaborative\" (every move at the profile's collaborative_speed) or \"separation\" (a move starts at collaborative_speed when a worker-fleet unit is within zone.radius_m of zone.node by network distance)."
+                      "description": "Human-robot collaboration: \"none\", \"collaborative\" (every move at the profile's collaborative_speed) or \"separation\" (a move starts at collaborative_speed when a worker-fleet unit is within the zone's radius of its node, by path or straight distance)."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
                   "default": "none",
-                  "description": "Human-robot collaboration: \"none\", \"collaborative\" (every move at the profile's collaborative_speed) or \"separation\" (a move starts at collaborative_speed when a worker-fleet unit is within zone.radius_m of zone.node by network distance)."
+                  "description": "Human-robot collaboration: \"none\", \"collaborative\" (every move at the profile's collaborative_speed) or \"separation\" (a move starts at collaborative_speed when a worker-fleet unit is within the zone's radius of its node, by path or straight distance)."
                 },
                 "zone": {
                   "anyOf": [
                     {
                       "type": "object",
                       "default": {},
-                      "description": "With hrc \"separation\": {\"node\": <network node>, \"radius_m\": <metres>}."
+                      "description": "With hrc \"separation\": {\"name\": <a \"zones\" record>} -- the record's node and radius win -- or, with no name, {\"node\": <network node>, \"radius_m\": <metres>, \"measure\"?: \"path\"|\"straight\"}."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
                   "default": {},
-                  "description": "With hrc \"separation\": {\"node\": <network node>, \"radius_m\": <metres>}."
+                  "description": "With hrc \"separation\": {\"name\": <a \"zones\" record>} -- the record's node and radius win -- or, with no name, {\"node\": <network node>, \"radius_m\": <metres>, \"measure\"?: \"path\"|\"straight\"}."
                 },
                 "segments": {
                   "anyOf": [
@@ -6085,7 +6461,7 @@
         },
         {
           "title": "SEPARATE",
-          "description": "Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'.",
+          "description": "Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty.",
           "type": "object",
           "properties": {
             "name": {
@@ -6159,6 +6535,85 @@
                   ],
                   "default": [],
                   "description": "Attribute labels to copy from the parent, used when mode is \"specific\"."
+                },
+                "carrier": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "dispose",
+                      "description": "\"dispose\": the batch ends here and its parts leave together. \"keep\": the batch is a carrier (a truck) that lives on -- its members leave one at a time by the first link, each after member_time, and the carrier leaves by the SECOND link once it is empty."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "dispose",
+                  "description": "\"dispose\": the batch ends here and its parts leave together. \"keep\": the batch is a carrier (a truck) that lives on -- its members leave one at a time by the first link, each after member_time, and the carrier leaves by the SECOND link once it is empty."
+                },
+                "member_time": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "x-quantity": "time",
+                      "x-unit-key": "member_time_unit",
+                      "default": "",
+                      "description": "Keep mode only: time for one member to come off, e.g. \"2\" or \"TRIA(1, 2, 3)\", evaluated for each member in its own scope when its turn starts. Empty = every member leaves in the same instant."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Keep mode only: time for one member to come off, e.g. \"2\" or \"TRIA(1, 2, 3)\", evaluated for each member in its own scope when its turn starts. Empty = every member leaves in the same instant.",
+                  "x-quantity": "time",
+                  "x-unit-key": "member_time_unit"
+                },
+                "member_time_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "milliseconds",
+                        "seconds",
+                        "minutes",
+                        "hours",
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
+                      "default": "base",
+                      "description": "Unit `member_time` is expressed in: \"base\" (the model's own unit) or one of seconds/minutes/hours/days."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "base",
+                  "description": "Unit `member_time` is expressed in: \"base\" (the model's own unit) or one of seconds/minutes/hours/days."
+                },
+                "release_order": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "fifo",
+                      "description": "Order the members leave in: \"fifo\" (the order they were loaded) or \"lifo\" (last loaded first off, a rear-door truck)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "fifo",
+                  "description": "Order the members leave in: \"fifo\" (the order they were loaded) or \"lifo\" (last loaded first off, a rear-door truck)."
                 }
               },
               "required": [],
@@ -6906,6 +7361,20 @@
                   ],
                   "default": 0,
                   "description": "Request priority for a vehicle; lower is served first, and outranks the fleet's dispatching rule."
+                },
+                "keep_vehicle": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "Keep the vehicle after the drop: it waits there, busy, and the entity's next TRANSPORT on this fleet drives it. A RELEASE naming the fleet, or the entity leaving the model, frees it."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": false,
+                  "description": "Keep the vehicle after the drop: it waits there, busy, and the entity's next TRANSPORT on this fleet drives it. A RELEASE naming the fleet, or the entity leaving the model, frees it."
                 }
               },
               "required": [
@@ -7687,6 +8156,54 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "storage": {
+          "type": "object",
+          "description": "A storage the `dispatch` plan may drive: its power limits, efficiencies and the variable the plan writes its bus-side setpoint to (positive charges). Rates are per this level's rate_time_unit. Inert without a `dispatch` section.",
+          "properties": {
+            "optimal": {
+              "type": "boolean",
+              "default": false,
+              "description": "The plan drives this storage; false keeps it on its own rule."
+            },
+            "setpoint": {
+              "type": "string",
+              "description": "A declared variable; the plan writes charge minus discharge, bus-side."
+            },
+            "charge_max": {
+              "description": "Largest power drawn while charging.",
+              "type": "number",
+              "minimum": 0
+            },
+            "discharge_max": {
+              "description": "Largest power delivered while discharging.",
+              "type": "number",
+              "minimum": 0
+            },
+            "charge_efficiency": {
+              "description": "Stored per unit drawn.",
+              "x-quantity": "ratio",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "default": 1.0
+            },
+            "discharge_efficiency": {
+              "description": "Delivered per unit taken out.",
+              "x-quantity": "ratio",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "default": 1.0
+            },
+            "loss": {
+              "description": "Constant standby loss.",
+              "type": "number",
+              "minimum": 0,
+              "default": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
         "conveyor": {
           "type": "object",
           "description": "Makes the stock a Stella conveyor: material rides round(transit_time/dt) slats of the SD grid (euler only), leaves as the one primary outflow (rate \"\") and may leak on the way through \"leak\" flows. The stock is the sum of the slats and changes only at grid points.",
@@ -7880,6 +8397,27 @@
           "description": "Demand charge: money per unit of the flow's Peak Rate (per its rate_time_unit), billed ONCE at the end of the run. A time-varying tariff is \"price\".",
           "x-quantity": "money",
           "type": "number"
+        },
+        "grid": {
+          "type": "object",
+          "description": "This flow's role in the `dispatch` plan: the site's grid import or export. The plan prices it with this flow's own `price`. Inert without a `dispatch` section.",
+          "properties": {
+            "role": {
+              "enum": [
+                "import",
+                "export"
+              ]
+            },
+            "limit": {
+              "description": "Largest rate, per this flow's rate_time_unit; omit for no limit.",
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "role"
+          ],
+          "additionalProperties": false
         },
         "min_rate": {
           "description": "Minimum load: the flow runs at 0 or at least this rate, never in between. The gate is applied to the rate the expression ASKED for, before saturation, so it adds no event of its own and cannot chatter.",
@@ -8213,6 +8751,105 @@
           "description": "A KPI key counting good parts (a `flatten_kpis` key such as \"user/Good parts\"); empty is the system's completed entities."
         }
       },
+      "additionalProperties": false
+    },
+    "dispatch": {
+      "type": "object",
+      "description": "OPTIONAL storage dispatch plan: a rolling-horizon LP over the bus that sets every `levels[].storage` with optimal true at the cheapest cost of the `flows[].grid` flows, replanned from the measured state. Absent, nothing of it runs.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "default": "site",
+          "description": "The dispatch_summary row and KPI key part."
+        },
+        "supply_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Bus tags forecast as supply, e.g. [\"generation\", \"dispatchable\"]."
+        },
+        "demand_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Bus tags forecast as demand, e.g. [\"demand\"]."
+        },
+        "horizon": {
+          "description": "How far each plan looks ahead; clipped at the run's end.",
+          "x-quantity": "time",
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 24.0
+        },
+        "step": {
+          "description": "The plan's grid: setpoints are constant per step.",
+          "x-quantity": "time",
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 0.25
+        },
+        "replan_every": {
+          "description": "How often the plan is solved again from the measured state; a multiple of step.",
+          "x-quantity": "time",
+          "x-unit-key": "time_unit",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 1.0
+        },
+        "time_unit": {
+          "type": "string",
+          "enum": [
+            "base",
+            "milliseconds",
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "weeks",
+            "months",
+            "years"
+          ],
+          "default": "hours",
+          "description": "Unit of horizon, step and replan_every."
+        },
+        "terminal": {
+          "enum": [
+            "hold",
+            "free"
+          ],
+          "default": "hold",
+          "description": "hold: each plan ends with every storage at least at its starting level; free: it may end empty."
+        },
+        "forecast": {
+          "enum": [
+            "model",
+            "persistence"
+          ],
+          "default": "model",
+          "description": "model: the rates and prices evaluated ahead (perfect foresight of the profiles); persistence: their values at the replan instant, held over the horizon."
+        },
+        "voll": {
+          "description": "Cost per unit of unserved demand in the plan; default 100 x the dearest import price.",
+          "x-quantity": "money",
+          "type": "number",
+          "minimum": 0
+        },
+        "status_variable": {
+          "type": "string",
+          "default": "dispatch_ok",
+          "description": "A declared variable the plan sets to 1 while it holds and to 0 when a solve fails."
+        }
+      },
+      "required": [
+        "supply_tags",
+        "demand_tags"
+      ],
       "additionalProperties": false
     },
     "subscript": {
@@ -9829,6 +10466,44 @@
       ],
       "additionalProperties": false
     },
+    "zone": {
+      "type": "object",
+      "description": "A safety zone: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to, so blocks sharing a zone share its radius. With hrc \"separation\", a worker within the radius slows the robot to its collaborative speed.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "node": {
+          "type": "string",
+          "description": "The network node the zone is around."
+        },
+        "radius_m": {
+          "description": "Metres, > 0; a worker this close or closer is inside.",
+          "x-quantity": "length",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "measure": {
+          "type": "string",
+          "enum": [
+            "path",
+            "straight"
+          ],
+          "default": "path",
+          "description": "\"path\": the walk along the network; \"straight\": the straight line between the worker's floor point and the node, as a safety laser scanner measures it."
+        }
+      },
+      "required": [
+        "name",
+        "node",
+        "radius_m"
+      ],
+      "additionalProperties": false
+    },
     "fleet": {
       "type": "object",
       "description": "A pool of vehicles that carry entities on the network. A fleet IS a resource under its own name, so schedules, failures, utilization and costs all work on it unchanged.",
@@ -11057,6 +11732,45 @@
         "scoped": {
           "type": "object",
           "description": "Per-instance field overrides on `$`-scoped records."
+        },
+        "repeat": {
+          "type": "array",
+          "description": "Repeat groups (Phase 15 M7): per instance, the named blocks and every link touching them are stamped `count` times, `{i}` = 1..count in every string inside them. A group with no `{i}` in its names is optional (count 0 or 1). In a list param, an item {\"$repeat\": <count>, \"item\": <value>} is spliced in as count copies the same way.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "description": "An int 0..500, a {\"$arg\": <parameter>} or an expression of the definition's parameters.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 500
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "blocks": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "count",
+              "blocks"
+            ],
+            "additionalProperties": false
+          }
         },
         "extends": {
           "type": "string",

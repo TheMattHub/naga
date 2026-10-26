@@ -427,6 +427,7 @@ KPI_DEFINITIONS: dict[str, str] = {
                        "shares sum to 100.",
     "Travel Empty %": "Share spent driving empty.",
     "Load/Unload %": "Share spent loading or unloading, standing still.",
+    "Held %": "Share kept by a TRANSPORT with keep_vehicle, waiting with its part between legs.",
     "Idle %": "Share spent holding no job.",
     "Avg Request Wait": "Mean time a TRANSPORT waited for a vehicle to become free.",
     "Max Request Wait": "Longest such wait.",

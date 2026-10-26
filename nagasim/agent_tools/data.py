@@ -8,6 +8,7 @@ from nagasim import experiments, inputfit, uncertainty
 from nagasim.core import sections
 from nagasim.core.document import ModelDocument
 from nagasim.core.schema import ModelValidationError
+from nagasim.core.utils import sha256_file
 
 from .core import (
     MAX_PROBLEMS, MAX_ROWS, ToolError, _budget, _document_args, _edit_result, _finite, _open,
@@ -270,14 +271,17 @@ def input_uncertainty(model: str, inputs: list, kpis: list | None = None, resamp
     "runs", "seed", "inputs": [{"path", "kind", "n", "point"}], "kpis": [{"kpi", "mean",
     "run_ci", "input_interval", "input_share", "resamples_used"}], "notes"}.
     """
-    specs = []
+    specs, read = [], {}
     for entry in inputs or []:
         if not isinstance(entry, dict) or not entry.get("path") or not entry.get("data"):
             raise ToolError("E_BAD_INPUT", "each input needs a \"path\" and a \"data\" file",
                             "inputs=[{\"path\": \"blocks.<name>.params.distribution\", "
                             "\"data\": \"times.csv\"}]")
-        loaded = inputfit.load_column(workspace().resolve(entry["data"], must_exist=True),
-                                      entry.get("column"))
+        full = workspace().resolve(entry["data"], must_exist=True)
+        loaded = inputfit.load_column(full, entry.get("column"))
+        # What was read, by the name given (root-relative), so a store that keeps the answer
+        # can drop it once a file no longer holds these bytes (#1135).
+        read[str(entry["data"])] = sha256_file(full)
         specs.append({"path": entry["path"], "values": loaded.values.tolist(),
                       "bin_width": entry.get("bin_width"), "cycle": entry.get("cycle")})
     try:
@@ -298,7 +302,7 @@ def input_uncertainty(model: str, inputs: list, kpis: list | None = None, resamp
     note_asked(model, {"tool": "input_uncertainty", "inputs": [s["path"] for s in specs],
                        "input_args": [{k: e[k] for k in ("path", "data", "column", "bin_width", "cycle")
                                        if e.get(k) is not None} for e in inputs],
-                       "measure": out["measure"],
+                       "read": read, "measure": out["measure"],
                        "overrides": out["overrides"], "resamples_used": out["resamples_used"],
                        "replications": out["replications"],
                        "kpis": [{k: r[k] for k in ("kpi", "mean", "input_interval", "input_share")}

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.0 (2026-10-26)
+
+0.18.0 widens what a model can say about real logistics and energy sites. Trucks unload and load as carriers, AGVs can be kept across legs, belts divert and merge, sorters take up to 200 lanes, EVs charge per vehicle under a site cap, storage can be dispatched by an optimiser, and robots share named safety zones. Bundled models give the same results as 0.17.0.
+
+- Trucks are carriers: SEPARATE `carrier: keep` releases members one at a time (FIFO or LIFO) while the carrier leaves on its own link, and BATCH `carrier_type` loads members onto an arriving carrier up to its own capacity or a cut-off. Logistics 3.0.0: the inbound dock unloads pallet by pallet and the truck can leave by `trucks_out`; empty trucks are loaded at a new Truck loading dock; door times are statistics.
+- TRANSPORT `keep_vehicle` keeps a vehicle for the same part across several legs (an AGV that waits at a machine and carries the part on), freed by a RELEASE naming the fleet or when the part leaves; `fleet_summary` gains `Held %` (all zero in models that do not use it).
+- Conveyor `diverts` (a part leaves the belt at a point onto its own link, waiting or riding on when the target is full) and `merges` (a side stream joins at a point on a gap), with `conveyor_diverts` and `conveyor_merges` frames and `divert/` and `merge/` KPI keys. Conveyor stops get `stop/<belt>/<index>/<column>` KPI keys, and `W_CONVEYOR_STOP_HELD` flags a stop that seizes a resource the part still holds. Fixed: a zero-time belt stop no longer slows a free-flowing belt.
+- Logistics 3.1.0: Sortation with 1 to 200 lanes and an optional reject chute (`max_recirculations`); a submodel definition can repeat a block group by a parameter (`repeat`), each copy with its own port.
+- A new CHARGE block and the Energy asset "EV charging (per vehicle)" (Energy 1.6.0): each vehicle charges at its own and its charger's power under a shared site cap, so a small site's peak demand is right.
+- Optimal storage dispatch: a `dispatch` section plans storage on a rolling-horizon linear program over the site's tariffs and profiles, with a perfect (`model`) or naive (`persistence`) forecast and a fallback to the battery's own rule; Energy 1.7.0 adds the battery's `optimal` mode and a `dispatch_summary` frame.
+- Safety zones: a `zones` section that robots and cobots share by name, measured along the paths or in a straight line. Automation library 2.0.0: the Safety zone owns its radius.
+- Supply chain library 1.3.0: the Warehouse can draw from, report on and refill another asset's stock; its default is unchanged.
+- A seize of more than one unit, from a resource set or a plain resource, now gets all its units at once or none: a waiting seize holds nothing, so utilisation, busy cost and shift or failure timing are exact. `W_SET_PARTIAL_HOLD` is removed. Fixed: a crash when preempting a multi-unit seize.
+- A Condition HOLD whose `LEVEL` name is computed now wakes at every level change, not only on its scan.
+- Network: an `http(s)` data source connects to the very address that was vetted, at every redirect hop. An https source works behind a proxy the caller set (`HTTPS_PROXY`/`NO_PROXY` or the system settings) as a tunnel, with the host checked first and the certificate verified by name; plain http through a proxy is refused. Caller files (`--refit`, `--setpoints`, `--connections`, outbox, audit, `--asked`, twin results) are read under one rule: a local regular file, no link, a size cap.
+- `--asked FILE` on `naga run --player`, `naga scenarios --player` and `naga viewer` quotes recorded input-uncertainty and ABC answers on the trust card.
+- The plant monitor takes a setpoints file: a setpoint recommendation shows the range, step and interval it would be written with, and approving it writes the reply for `naga plc-write`. An opt-in OpenPLC smoke test covers `plc-write` against a real soft PLC.
+- `--export "usd:PATH?fps=..&start=..&end=..&speed=.."`, and the USD replay draws asset state lamps and fill bars.
+- `nagasim.modeldiff.record_changes(a, b)`: record-level changes (section, key, label, kind, old, new) on `naga diff`'s identity rules.
+
 ## 0.17.0 (2026-10-26)
 
 0.17.0 helps a model stay readable and lets a picture follow a run in more detail. A block or instance name over 20 characters now draws a warning, the playback state counts departures per exit and what ended in each sink, library assets can carry a small line icon, and auto-layout spaces blocks by their real width. The bundled models use shorter names, which changes results in four of them (see below).

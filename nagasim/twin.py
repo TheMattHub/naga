@@ -41,7 +41,6 @@ import logging
 import math
 import os
 import re
-import stat
 import sys
 import threading
 import time
@@ -144,17 +143,11 @@ def write_text(path, text: str, *, level: int = logging.WARNING) -> None:
 
 def _read(path, kind: str, ceiling: int):
     """The document in *path* when it is one of ours and under its bound, else None."""
+    # The one checked reader (D790): a plain file judged on the opened handle, so a FIFO,
+    # device or link is not read, and bounded by the bytes read (#522).
     try:
-        # Opened first, checked on the descriptor: a link to a FIFO or a device is not read (a
-        # FIFO would block the reader for good) and the size bound is that of the bytes read
-        # (#522). O_NONBLOCK lets the open of a FIFO return so the check can refuse it.
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
-        with os.fdopen(fd, "rb") as handle:
-            info = os.fstat(handle.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_size > ceiling:
-                return None
-            doc = json.loads(handle.read(ceiling + 1))
-    except (OSError, ValueError, RecursionError):
+        doc = json.loads(netguard.read_caller_file(path, max_bytes=ceiling))
+    except (netguard.FileRefused, ValueError, RecursionError):
         return None
     return doc if isinstance(doc, dict) and doc.get("format") == FORMAT \
         and doc.get("kind") == kind else None
@@ -1253,11 +1246,11 @@ def main(argv=None, *, wait=time.sleep) -> int:
     layout = api.load_layout(Path(args.model))
     setpoints = None
     if getattr(args, "setpoints", None):
-        from nagasim import plcwrite
+        from nagasim import setpoints as setpoints_file    # the reader, not the writer (D811)
 
         try:            # the flag's file, and only the flag's (D742)
-            setpoints = plcwrite.load(args.setpoints)["tags"]
-        except plcwrite.Refused as exc:
+            setpoints = setpoints_file.load(args.setpoints)["tags"]
+        except setpoints_file.Refused as exc:
             print(f"{exc.code}: {exc.message}" + (f" ({exc.hint})" if exc.hint else ""))
             return 1
     if args.verb == "reproduce":
@@ -1359,7 +1352,7 @@ def main(argv=None, *, wait=time.sleep) -> int:
             from nagasim import monitor
 
             page = monitor.Page(layout, Path(args.out) / monitor.PAGE_FILE,
-                                every=every if running else None)
+                                every=every if running else None, setpoints=setpoints)
             print(f"monitor page: {page.path} (it reloads every {page.refresh} s)")
 
         def shown() -> dict:

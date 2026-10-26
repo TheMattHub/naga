@@ -3,7 +3,7 @@
 Every expected time is derived by hand in the test's docstring from the rules in
 `core/blocks/conveyor.py`: travel = distance / speed, a part reaches a stop no sooner than
 spacing / speed after the one before left it, a section between two stops holds
-floor(gap / spacing) parts, a non-accumulating belt stops while a part is at a stop.
+ceil(gap / spacing) parts (#1270, D853), a non-accumulating belt stops while a part is at a stop.
 """
 
 import pytest
@@ -11,6 +11,7 @@ import pytest
 from conftest import create, dispose, layout, problem_codes, process
 
 from nagasim import api, state
+from nagasim.core.schema import validate_model_structured
 from nagasim.core.playback import Timeline
 from nagasim.core.trace import TraceRecorder
 
@@ -95,6 +96,19 @@ def test_a_stop_with_a_resource_waits_for_it_and_its_wait_shows_in_conveyor_stop
     assert row["Blocked %"] == pytest.approx(100 * 15 / 27)
 
 
+def test_each_stop_flattens_into_kpi_keys_a_study_can_name():
+    """D795: `stop/<belt>/<index>/<column>` for every numeric column but the ids, with the
+    values of the frame (from `_packed_model`: 3 parts, mean wait 5)."""
+    from nagasim.experiments import flatten_kpis, needs_event_logs
+    flat = flatten_kpis(api.run_model(_packed_model(), replications=1))
+    stops = {k: v for k, v in zip(flat["KPI"], flat["Value"]) if k.startswith("stop/")}
+    assert set(stops) == {f"stop/belt/0/{c}" for c in
+                          ("At", "Parts", "Avg Wait", "Max Wait", "Busy %", "Blocked %")}
+    assert stops["stop/belt/0/Parts"] == 3
+    assert stops["stop/belt/0/Avg Wait"] == pytest.approx(5.0)
+    assert not needs_event_logs(["stop/belt/0/Avg Wait"])
+
+
 def test_no_stops_means_no_conveyor_stops_frame_and_the_same_results():
     """An empty `stops` and no key at all run the same belt as before."""
     plain = api.run_model(line(belt(stops=None), arrivals=5, gap=0.5), replications=1)
@@ -176,11 +190,12 @@ def test_a_belt_loop_with_room_and_stops_runs_without_a_deadlock(accumulating):
 
 def test_a_belt_loop_closed_by_full_sections_is_a_deadlock_at_once():
     """A (length 10, spacing 1: 10 cells) has stops at 2.5, 5 and 7.5, so its four sections
-    hold 2 parts each, 8 in all; B holds 2. With 10 parts both fill while A still has a free
-    cells: A's first section full is what stops its entry, and the loop check says so when it
-    closes, not only once nothing is left to happen."""
+    hold ceil(2.5) = 3 parts each (#1270, D853), more than its 10 cells; B holds 2. With 12
+    parts both fill: A's sections full is what stops its entry once its last part is in, and
+    the loop check says so when it closes, not only once nothing is left to happen. (Before
+    #1270 the sections held 2 each, 8 in all, and 10 parts closed the loop.)"""
     stops = [{"at": a, "time": 0} for a in (2.5, 5, 7.5)]
-    blocks = [create(max_arrivals=10, dist_params={"value": 0.1}), belt("A", stops=stops),
+    blocks = [create(max_arrivals=12, dist_params={"value": 0.1}), belt("A", stops=stops),
               belt("B", length=2.0),
               {"name": "again", "description": "again", "type": "DECIDE", "position": [2, 0],
                "params": {"mode": "Condition", "conditions": ["1 == 1"]}}, dispose()]
@@ -293,17 +308,43 @@ def test_a_belt_without_stops_traces_its_positions_too():
     assert "belt" not in timeline.state_at(6.0)["belts"]
 
 
-# -- W_SET_PARTIAL_HOLD (D735) ------------------------------------------------
+# -- W_CONVEYOR_STOP_HELD (D796) ---------------------------------------------
 
-def _set_model(quantity):
-    blocks = [create(max_arrivals=1), process(resource="Crew", quantity=quantity), dispose()]
-    links = [{"source": "create_1", "target": "process_1"},
-             {"source": "process_1", "target": "dispose_1"}]
-    return layout(blocks, links, resources=[{"name": "A", "capacity": 2},
-                                            {"name": "B", "capacity": 2}],
-                  resource_sets=[{"name": "Crew", "members": ["A", "B"]}])
+def _held_model(*between, first="seize"):
+    """CREATE -> <first, which holds Op> -> *between* -> DISPOSE, linked in that order."""
+    if first == "seize":
+        start = process(name="hold", resource="Op", value=0.0, action="Seize Delay")
+    else:
+        start = belt(name="hold", exit_resource="Op")
+    blocks = [create(max_arrivals=1), start, *between, dispose()]
+    names = [b["name"] for b in blocks]
+    links = [{"source": a, "target": b} for a, b in zip(names, names[1:])]
+    return layout(blocks, links, resources=[{"name": "Op", "capacity": 2}])
 
 
-def test_a_set_seize_of_more_than_one_unit_warns_of_a_partial_hold():
-    assert "W_SET_PARTIAL_HOLD" in problem_codes(_set_model(2), severity="warning")
-    assert "W_SET_PARTIAL_HOLD" not in problem_codes(_set_model(1), severity=None)
+def _op_stop_belt():
+    return belt(name="line", stops=[{"at": 4, "time": 1, "resource": "Op"}])
+
+
+def _give_back():
+    return process(name="give", resource="Op", value=0.0, action="Delay Release")
+
+
+def test_a_stop_on_a_resource_the_part_still_holds_warns():
+    problems = validate_model_structured(_held_model(_op_stop_belt(), _give_back()))
+    [held] = [p for p in problems if p.code == "W_CONVEYOR_STOP_HELD"]
+    assert held.severity == "warning" and held.block == "line"
+    assert held.path == "/blocks/2/params/stops/0/resource"
+    # What the warning foretells: the engine refuses the second request, mid-run.
+    with pytest.raises(RuntimeError, match="already requested resource 'Op'"):
+        api.run_model(_held_model(_op_stop_belt(), _give_back()), replications=1)
+
+
+def test_a_hold_released_before_the_belt_does_not_warn():
+    model = _held_model(_give_back(), _op_stop_belt())
+    assert "W_CONVEYOR_STOP_HELD" not in problem_codes(model, severity=None)
+
+
+def test_a_belts_exit_resource_held_onto_the_next_belts_stop_warns():
+    model = _held_model(_op_stop_belt(), _give_back(), first="belt")
+    assert "W_CONVEYOR_STOP_HELD" in problem_codes(model, severity="warning")

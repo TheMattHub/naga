@@ -308,7 +308,7 @@ NO_BATTERY = {"name": "AMR", "count": 2, "speed": 10.0, "home": "A", "park": "ho
 NO_BATTERY_ROW = {
     "Run": 0, "Fleet": "AMR", "Vehicles": 2, "Trips": 5, "Loads per Trip": 1.0,
     "Distance Loaded": 50.0, "Distance Empty": 50.0, "Travel Loaded %": 30.12048192771084,
-    "Travel Empty %": 30.12048192771085, "Load/Unload %": 9.036144578313252,
+    "Travel Empty %": 30.12048192771085, "Load/Unload %": 9.036144578313252, "Held %": 0.0,
     "Idle %": 30.722891566265066, "Avg Request Wait": 0.0, "Max Request Wait": 0.0}
 NO_BATTERY_ENERGY = {
     "Run": 0, "Resource": "AMR", "Busy kWh": 13.0, "Idle kWh": 5.05, "Blocked kWh": 0.0,

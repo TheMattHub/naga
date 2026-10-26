@@ -100,7 +100,7 @@ continuous levels with exact crossing times, so one model can hold all four.
 Whichever way you use, the model is the same JSON file, so what one person builds in Python an
 agent can check and a colleague can open.
 
-## What's new in 0.17
+## What's new in 0.18
 
 --8<-- "docs/whats-new.md:latest"
 

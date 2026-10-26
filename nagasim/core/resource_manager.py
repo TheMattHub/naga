@@ -16,6 +16,10 @@ queue/wait collectors and is reported as one pseudo-resource row, because an
 entity waiting for "any member" sits in every member's SimPy queue and must be
 counted exactly once (see `LoggedSimpyResource.request(counted=...)`).
 
+A seize of more than one unit is one `_Group` of requests (D856, D857): `_do_put`
+grants it whole once that many units are free, or not at all, in the member's
+own queue order, so a waiting seize never holds part of its units.
+
 The SimPy object underneath is a `PreemptiveResource` (PHASE4 A4), but every
 request made here is `preempt=False` unless a PROCESS block declares
 `preempt` -- with that flag off a PreemptiveResource behaves exactly like the
@@ -40,7 +44,7 @@ from operator import attrgetter
 
 import numpy as np
 import simpy
-from simpy.resources.resource import Preempted, SortedQueue
+from simpy.resources.resource import PriorityRequest, Preempted, SortedQueue
 
 from nagasim.core.base_process import deterministic_hash
 from nagasim.core.distributions import StochasticDistribution
@@ -324,12 +328,35 @@ class _InsortQueue(SortedQueue):
         insort_right(self, item, key=_request_key)
 
 
+class _Group(list):
+    """The requests of one seize of more than one unit (D856, D857): granted all in one
+    `_do_put` call or not at all, so no request ever holds part of its units while it
+    waits. `size` is the number asked; the list fills as the requests are made."""
+
+    def __init__(self, size):
+        super().__init__()
+        self.size = size
+
+
+class _GroupRequest(PriorityRequest):
+    """A request that belongs to a `_Group`. The group is set BEFORE `Put.__init__`,
+    whose `_trigger_put` would otherwise grant the first unit on its own."""
+
+    def __init__(self, resource, priority, preempt, group):
+        self.group = group
+        group.append(self)
+        super().__init__(resource, priority, preempt)
+
+
 class _Resource(simpy.PreemptiveResource):
     """The SimPy resource every engine resource is built on."""
 
     PutQueue = _InsortQueue
 
     def _do_put(self, event):
+        group = getattr(event, "group", None)
+        if group is not None:
+            return self._put_group(event, group)
         # SimPy's own choice of the job to preempt, but for holders of EQUAL key: SimPy
         # leaves that tie to its implementation, and 4.1.2 changed it (`sorted()[-1]`,
         # the last granted, became `max()`, the first). Decided here, as the last
@@ -341,6 +368,50 @@ class _Resource(simpy.PreemptiveResource):
                 victim.proc.interrupt(Preempted(by=event.proc, usage_since=victim.usage_since,
                                                 resource=self))
         return simpy.Resource._do_put(self, event)
+
+    def _put_group(self, event, group):
+        """D856: grant the whole group when its units are free, else nothing. Returning
+        None stops SimPy's loop at this head, so nothing behind the group overtakes it."""
+        if len(group) < group.size:
+            return None                 # its last requests are still being made
+        need = group.size - (self.capacity - len(self.users))
+        if need > 0:
+            victims = self._victims(event, need) if event.preempt else None
+            if victims is None:
+                return None
+            for job in victims:         # D859: a job leaves whole and is interrupted once
+                for unit in job:
+                    self.users.remove(unit)
+                job[0].proc.interrupt(Preempted(by=event.proc, usage_since=job[0].usage_since,
+                                                resource=self))
+        now = self._env.now
+        for request in group:
+            if request is not event:    # the head itself is popped by `_trigger_put`
+                self.put_queue.remove(request)
+            self.users.append(request)
+            request.usage_since = now
+            request.succeed()
+        return None
+
+    def _victims(self, event, need):
+        """D859: the jobs a preempting group takes, worst key first and, on equal keys, the
+        last granted first (#363); None when the jobs it outranks hold fewer than *need*
+        units, so a group never preempts for a partial grant."""
+        jobs = {}
+        for index, unit in enumerate(self.users):
+            if unit.key > event.key:
+                group = getattr(unit, "group", None)
+                # Only the units still held count: a 1-unit preemption may already have taken
+                # one of a group job's units before its Interrupt was delivered.
+                job = [u for u in self.users if getattr(u, "group", None) is group] if group                     else [unit]
+                jobs[id(group) if group else id(unit)] = (unit.key, index, job)
+        taken, freed = [], 0
+        for _key, _index, job in sorted(jobs.values(), key=lambda j: (j[0], j[1]), reverse=True):
+            if freed >= need:
+                break
+            taken.append(job)
+            freed += len(job)
+        return taken if freed >= need else None
 
 
 class _RerankResource(_Resource):
@@ -494,7 +565,7 @@ class LoggedSimpyResource:
         return -value if self.discipline == "HighestValueFirst" else value
 
     def request(self, priority=0, rank=0, counted=True, preempt=False, charged=True, scope=None,
-                since=None):
+                since=None, group=None):
         """Queue a request. *counted* False means a ResourceSet is waiting for
         any of its members with this request and owns the queue statistics, so
         the entity is not counted twice (once here, once per other member).
@@ -505,9 +576,11 @@ class LoggedSimpyResource:
         seize (ARCHITECTURE D55). *scope* (D131) is the expression scope this
         request was made in; kept on the request only when this resource
         reranks, so `_RerankResource` can re-evaluate `ranking_expr` in it
-        before every grant.
+        before every grant. *group*: the `_Group` of a seize of more than one unit
+        (`request_units`), granted whole or not at all.
         """
-        req = self._core.request(priority=(priority, rank), preempt=preempt)
+        req = (self._core.request(priority=(priority, rank), preempt=preempt) if group is None
+               else _GroupRequest(self._core, (priority, rank), preempt, group))
         if self.rerank and scope is not None:
             req.rerank_scope = scope
         t = self.env.now
@@ -523,6 +596,15 @@ class LoggedSimpyResource:
         req.callbacks.append(self._on_granted)
         return req
 
+    def request_units(self, quantity, **kwargs):
+        """The requests of one seize of *quantity* units: one plain request for a single
+        unit (today's path, so 1-unit models run unchanged), else one `_Group` that is
+        granted all at once (D856)."""
+        if quantity == 1:
+            return [self.request(**kwargs)]
+        group = _Group(quantity)
+        return [self.request(group=group, **kwargs) for _ in range(quantity)]
+
     def _seized(self, req) -> None:
         """Count one grant, unless this request is a preempted job resuming."""
         self.busy.add(1, self.env.now)
@@ -532,6 +614,7 @@ class LoggedSimpyResource:
         # off the set lookup entirely.
         if self._uncharged and req in self._uncharged:
             self._uncharged.discard(req)
+            req.resumed_grant = True    # what `cancel` reads to take no seize back (D860)
             return
         self.seize_count += 1
 
@@ -582,16 +665,46 @@ class LoggedSimpyResource:
         """Withdraw a request that may or may not have been granted yet -- the
         losing halves of a wait-for-any over a resource set. A request granted
         in the same instant is released; one still queued leaves the queue, so
-        no dangling request is left behind and the collectors return to zero."""
-        if req.triggered:
-            return self.release(req)
+        no dangling request is left behind and the collectors return to zero.
+
+        D860: a losing grant leaves no seize and no busy time. Granted requests only
+        reach here from a set's wait-for-any, whose requests are uncounted (the set
+        owns the queue and wait statistics), so there is no wait sample to take back.
+        Processed already (#1281): its seize and busy unit are taken back in the
+        instant they were added. Not yet processed (#1280): `_on_granted` is taken
+        off it, so it never counts, and `busy` is left alone."""
         t = self.env.now
+        if req.triggered:
+            self._uncounted.discard(req)
+            self._uncharged.discard(req)
+            if req.callbacks is None:           # processed: `_on_granted` has run
+                self.busy.add(-1, t)
+                self._notify_bottleneck(t)
+                self.env.ctx.wake_power()
+                if not getattr(req, "resumed_grant", False):
+                    self.seize_count -= 1
+            else:
+                req.callbacks.remove(self._on_granted)
+            result = self._core.release(req)
+            self.log_usage(t, event_type="release")
+            return result
         self._uncounted.discard(req)
         self._uncharged.discard(req)
         if self._enqueued.pop(req, None) is not None:
             self.queue_len.add(-1, t)
         req.cancel()
         self.log_usage(t, event_type="cancel")
+
+    def cancel_all(self, requests):
+        """`cancel` every request of one seize. D858: a group withdrawn while it still
+        waited may leave free units behind it that no event would hand out, so the next
+        head is offered them now -- the instant today's partial unit was given back. Only
+        once every request is gone: a re-offer between two would grant the group itself."""
+        for request in requests:
+            self.cancel(request)
+        if requests and getattr(requests[0], "group", None) is not None \
+                and not requests[0].triggered:
+            self._core._trigger_put(None)
 
     # -- blockers (capacity schedules and failures, ROADMAP 1.4) -----------
     def request_blocker(self, down: bool = False):

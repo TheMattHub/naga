@@ -72,6 +72,9 @@ class TraceEvent:
     # "up") and the value that goes with it (a capacity number, or 1/0 for
     # down/up). Defaulted so an older trace (pickled, or built by hand in a
     # test) still loads with no resource_state events in it.
+    # entity_absorbed: the carrier's id when a carrier BATCH loads the member
+    # (D819, `_common.absorb_member`), else 0.0. The plant log (D461) reads any
+    # value > 0 as that id, so no other emitter may set `value` on an absorption.
     resource: str | None = None
     state: str | None = None
     value: float = 0.0
@@ -97,6 +100,9 @@ class TraceEvent:
     y0: float = 0.0
     x1: float = 0.0
     y1: float = 0.0
+    # belt_stage only, state "merge" (D854): the id of the part a merged part lands
+    # behind on the belt, -1 for none or any other event.
+    ahead: int = -1
 
 
 class TraceRecorder:
@@ -119,7 +125,7 @@ class TraceRecorder:
     def __call__(self, name, *, block=None, entity=None, t=0.0, target=None, resource=None,
                  duration=0.0, state=None, value=0.0, path=(), travel=None, unit=-1,
                  next_index=-1, pop=None, index=-1, e_type="", x0=0.0, y0=0.0, x1=0.0, y1=0.0,
-                 color=None, fleet=None, **_):
+                 color=None, fleet=None, ahead=-1, **_):
         if name not in _RECORDED_EVENTS:
             return
         if len(self.events) >= self.max_events:
@@ -170,7 +176,7 @@ class TraceRecorder:
             self.events.append(TraceEvent(
                 t=t, kind=name, entity_id=entity.id, e_type=getattr(entity, "e_type", "Unknown"),
                 block=block.name, target=None, duration=duration, state=state, value=value,
-                x0=x0, x1=x1))
+                x0=x0, x1=x1, ahead=ahead))
             return
         if name in ("resource_state", "level_changed", "variable_changed"):
             # Both are emitted with block=None (core/resource_manager.py,

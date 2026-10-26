@@ -128,6 +128,10 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
         # that declares no levels and no flows.
         "level_summary":    summarize_levels(env, warmup=warmup, run_id=run_id),
         "flow_summary":     summarize_flows(env, warmup=warmup, run_id=run_id),
+        # Phase 15 M8 (D850), the D732 rule: only a model with a `dispatch`
+        # section has this frame at all, so every other model keeps its keys.
+        **({"dispatch_summary": summarize_dispatch(env, run_id=run_id)}
+           if env.ctx.dispatch is not None else {}),
         # Bio-1, same rule again: EMPTY with their fixed columns for a model
         # with no delayed conversion and no blended level.
         "conversion_summary": summarize_conversions(env, warmup=warmup, run_id=run_id),
@@ -148,6 +152,11 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
         # model's results keep their keys.
         **({"conveyor_stops": summarize_conveyor_stops(env, warmup=warmup, run_id=run_id)}
            if any(belt._stops for belt in env.ctx.conveyors.values()) else {}),
+        # D855: the same rule for belt diverts.
+        **({"conveyor_diverts": summarize_conveyor_diverts(env, warmup=warmup, run_id=run_id)}
+           if any(belt._diverts for belt in env.ctx.conveyors.values()) else {}),
+        **({"conveyor_merges": summarize_conveyor_merges(env, warmup=warmup, run_id=run_id)}
+           if any(belt._merges for belt in env.ctx.conveyors.values()) else {}),
         # Automation sub-project 2 (D164-D165), the same rule: EMPTY with their
         # fixed columns for a model with no charger and no battery fleet.
         "charging_summary": summarize_charging(env, warmup=warmup, run_id=run_id),
@@ -291,6 +300,8 @@ def _pending_resource_cost(entity, ctx, t_end: float) -> float:
         return 0.0
     total = 0.0
     for info in getattr(entity, "req_params", {}).values():
+        if info.get("vehicle"):
+            continue        # D839: a kept vehicle is not charged to the entity
         member = info.get("resource")
         rate = getattr(member, "cost_busy", 0.0)
         if not rate:
@@ -994,6 +1005,18 @@ def summarize_flows(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -
     return _frame(rows, _FLOW_SUMMARY_COLS)
 
 
+def summarize_dispatch(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "dispatch_summary" frame (Phase 15 M8, D850): one row for the plan.
+
+    `Planned Cost` is what the plans expected over the steps they actually
+    ran, inside the observed window (voll and the tie-break left out);
+    `Realised Cost` is the grid-role flows' Cost plus the import's demand
+    charge, from the same integrals as `flow_summary` and `cost_summary`.
+    Solve wall time is not here: it is not reproducible (`ctx.dispatch.solve_seconds`)."""
+    from nagasim.core.dispatch import SUMMARY_COLUMNS
+    return _frame([{"Run": run_id, **env.ctx.dispatch.summary_row()}], SUMMARY_COLUMNS)
+
+
 def summarize_conversions(env, *, warmup: float = 0.0,
                           run_id: Optional[int] = None) -> pd.DataFrame:
     """The "conversion_summary" frame (Bio-1 G1): one row per substrate of each
@@ -1054,14 +1077,18 @@ def flow_totals(env) -> tuple[float, float]:
 
 # -- lump-sum and fixed costs (PHASE4 D5, ARCHITECTURE D63) ------------------
 _FLEET_SUMMARY_COLS = ["Run", "Fleet", "Vehicles", "Trips", "Loads per Trip", "Distance Loaded",
-                       "Distance Empty", "Travel Loaded %", "Travel Empty %", "Load/Unload %", "Idle %",
-                       "Avg Request Wait", "Max Request Wait"]
+                       "Distance Empty", "Travel Loaded %", "Travel Empty %", "Load/Unload %",
+                       "Held %", "Idle %", "Avg Request Wait", "Max Request Wait"]
 _SEGMENT_SUMMARY_COLS = ["Run", "Segment", "Length", "Traversals", "Distance Driven",
                          "Wait Time", "Max Occupancy"]
 _CONVEYOR_SUMMARY_COLS = ["Run", "Conveyor", "Length", "Capacity", "Entered", "Exited",
                           "Avg Occupancy", "Max Occupancy", "Blocked %", "Avg Transit Time"]
 _CONVEYOR_STOPS_COLS = ["Run", "Conveyor", "Stop", "At", "Resource", "Parts", "Avg Wait",
                         "Max Wait", "Busy %", "Blocked %"]
+_CONVEYOR_DIVERTS_COLS = ["Run", "Conveyor", "Divert", "At", "Exit", "Diverted", "Passed",
+                          "Skipped", "Avg Wait", "Max Wait", "Busy %", "Blocked %"]
+_CONVEYOR_MERGES_COLS = ["Run", "Conveyor", "Merge", "At", "From", "Merged", "Avg Wait",
+                         "Max Wait", "Waiting %"]
 # PHASE4 T5 (ARCHITECTURE D78): one row per BUFFER block and per station that
 # blocks after service or has a finite input queue. The first four columns
 # describe the block's INPUT SPACE (NaN for a station with none); `Blocked %`
@@ -1078,8 +1105,9 @@ def summarize_fleets(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
     The fleet's UTILIZATION, seize count and costs are already in
     `resource_summary` -- a fleet IS a resource (ARCHITECTURE D68). What lives
     only here is what a vehicle pool adds on top: how far it drove loaded versus
-    empty, and how its time split between the four states. The four percentages
-    sum to 100 across all the vehicles in the pool.
+    empty, and how its time split between the states. The five percentages, with
+    charging (`battery_summary`), sum to 100 across all the vehicles in the pool;
+    `Held %` is a vehicle a TRANSPORT kept for its part (D836).
     """
     fleets = env.ctx.fleets
     if not fleets:
@@ -1096,6 +1124,7 @@ def summarize_fleets(env, *, warmup: float = 0.0, run_id: Optional[int] = None) 
                      "Travel Loaded %": totals["loaded_pct"],
                      "Travel Empty %": totals["empty_pct"],
                      "Load/Unload %": totals["handling_pct"],
+                     "Held %": totals["held_pct"],
                      "Idle %": totals["idle_pct"],
                      "Avg Request Wait": totals["avg_wait"],
                      "Max Request Wait": totals["max_wait"]})
@@ -1218,6 +1247,39 @@ def summarize_conveyor_stops(env, *, warmup: float = 0.0,
              "Blocked %": 100.0 * stop.blocked.time_avg(t1)}
             for belt in env.ctx.conveyors.values() for stop in belt._stops]
     return _frame(rows, _CONVEYOR_STOPS_COLS)
+
+
+def summarize_conveyor_diverts(env, *, warmup: float = 0.0,
+                               run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "conveyor_diverts" frame (D855): one row per divert of a CONVEYOR, in declared
+    order. Passed: its condition was false; Skipped: "pass" mode found no room. `Avg Wait`/
+    `Max Wait` are the diverted parts' waits for their target after the push; `Busy %` the
+    share of the window a part pushes or waits there, `Blocked %` the share it waits."""
+    _, t1 = observed_window(env, warmup)
+    rows = [{"Run": run_id, "Conveyor": belt.name, "Divert": divert.index, "At": divert.at,
+             "Exit": divert.exit, "Diverted": divert.diverted, "Passed": divert.passed,
+             "Skipped": divert.skipped,
+             "Avg Wait": divert.waits.mean if divert.diverted else 0.0,
+             "Max Wait": divert.waits.max if divert.diverted else 0.0,
+             "Busy %": 100.0 * divert.busy.time_avg(t1),
+             "Blocked %": 100.0 * divert.blocked.time_avg(t1)}
+            for belt in env.ctx.conveyors.values() for divert in belt._diverts]
+    return _frame(rows, _CONVEYOR_DIVERTS_COLS)
+
+
+def summarize_conveyor_merges(env, *, warmup: float = 0.0,
+                              run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "conveyor_merges" frame (D855): one row per merge of a CONVEYOR, in declared
+    order. `Avg Wait`/`Max Wait` run from a part's arrival at the merge to its join;
+    `Waiting %` is the share of the window a merging part waits there for its gap."""
+    _, t1 = observed_window(env, warmup)
+    rows = [{"Run": run_id, "Conveyor": belt.name, "Merge": merge.index, "At": merge.at,
+             "From": merge.source, "Merged": merge.merged,
+             "Avg Wait": merge.waits.mean if merge.merged else 0.0,
+             "Max Wait": merge.waits.max if merge.merged else 0.0,
+             "Waiting %": 100.0 * merge.waiting_share.time_avg(t1)}
+            for belt in env.ctx.conveyors.values() for merge in belt._merges]
+    return _frame(rows, _CONVEYOR_MERGES_COLS)
 
 
 def summarize_buffers(env, *, warmup: float = 0.0,

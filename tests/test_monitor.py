@@ -565,3 +565,36 @@ def test_the_script_leads_with_the_action_and_folds_the_explanation_escaped(tmp_
     assert shown["m-advice"].startswith("Recommended: set_capacity " + HOSTILE)
     assert monitor.ADVICE not in shown["m-advice"] and monitor.ADVICE in shown["m-advice-fold"]
     assert HOSTILE in shown["m-advice-fold"] and HOSTILE in shown["m-advice-rows"]
+
+
+def test_a_setpoint_says_what_it_would_write_from_the_callers_file_only(tmp_path):
+    """D812: a setpoint waiting for an answer is shown with the tag's range, step and interval
+    from the caller's setpoints file, and who writes it; a result's text is data; the page
+    approves nothing."""
+    tags = {"line.cycle": {"register": "cycle", "path": "blocks.p.params.dist_params.value",
+                           "min": 1, "max": 5, "max_step": 1, "min_interval": 60.0}}
+    page = monitor.Page(slow_line(), tmp_path / "m.html", every=5.0, setpoints=tags)
+    doc = result()
+    item = {"rank": 1, "verdict": "better", "status": "delivered", "effect": 1.0, "low": 0.5,
+            "high": 1.5, "confidence": 1.0, "id": "a" * 64,
+            "action": {"verb": "setpoint", "target": "line.cycle", "value": 2.0}}
+    hostile = {**item, "id": "b" * 64, "action": {**item["action"], "target": HOSTILE}}
+    doc["recommend"] = {"status": "ok", "kpi": "k", "better": "higher",
+                        "outbox": {"sink": "file"}, "items": [item, hostile]}
+    lead = monitor.summary(doc, tags)["recommend"]["lead"]
+    assert lead[1] == ("Setpoint line.cycle = 2: range 1 to 5, at most 1 from the value the PLC "
+                       "holds, at most once every 60 s.")
+    # A tag the file does not hold gets no numbers: none come from the result.
+    assert lead[2].startswith("Setpoint " + HOSTILE + " = 2: its range, step and interval")
+    assert lead[3] == monitor.WRITES and "naga plc-write" in monitor.WRITES
+    assert "range 1 to 5" not in monitor.summary(doc)["recommend"]["lead"][1]
+    # Only an action waiting for an answer is offered; any other verb says nothing of it.
+    doc["recommend"]["items"] = [{**item, "status": "taken"}, {**item, "action": {
+        "verb": "set_capacity", "target": "Server", "value": 2}}]
+    assert monitor.WRITES not in monitor.summary(doc, tags)["recommend"]["lead"]
+    assert monitor.setpoint_text({"verb": "hold", "target": "x", "value": True}, tags) is None
+    doc["recommend"]["items"] = [item, hostile]
+    text = page.build(doc, [])
+    assert "<img src=x" not in text.replace(HOSTILE, "") and text.count("</script>") == 3
+    assert "range 1 to 5" in data_of(page, text)["monitor"]["summary"]["recommend"]["lead"][1]
+    assert "fetch(" not in text and "XMLHttpRequest" not in text    # read-only: it sends nothing

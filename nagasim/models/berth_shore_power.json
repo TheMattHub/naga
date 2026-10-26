@@ -1047,7 +1047,8 @@
       "price": "TS(import_profile)",
       "emission_factor": "TS(intensity_profile)",
       "tag": "import",
-      "peak_price": 0.0
+      "peak_price": 0.0,
+      "grid": {"role": "import"}
     },
     {
       "name": "Nrg unserved",
@@ -1060,7 +1061,8 @@
       "description": "Surplus sold to the grid, up to the export limit, kW. A negative price is revenue.",
       "rate": "min(max(FLOWSUM(\"generation\") + FLOWSUM(\"storage_out\") + FLOWSUM(\"dispatchable\") - FLOWSUM(\"demand\") - FLOWSUM(\"storage_in\"), 0), export_limit_kw)",
       "price": "-export_price",
-      "tag": "export"
+      "tag": "export",
+      "grid": {"role": "export"}
     },
     {
       "name": "Nrg curtailed",
@@ -1082,7 +1084,7 @@
     "Shore power": {
       "info": {
         "description": "A ship at a berth. A call enters by \"in\" with its hotel load (kW), reefer count, a ready flag and its dwell in hours, and leaves by \"out\" after that dwell. While it is at the berth its load, hotel plus reefers, counts as at-berth demand. A ready ship whose dwell is longer than connect plus disconnect time plugs in after the connect time and draws shore power until the disconnect starts; any other ship burns auxiliary power for its whole stay. Two flows show the split: \"Nrg shore\" is the shore part, tagged demand and capped at the connection limit across all ships at once, so the grid connection prices it; \"Nrg auxiliary\" is the rest, from the ships' own engines, priced and counted for emissions here. A negative dwell counts as 0, so a call never waits a negative time. The four ship attributes are expressions on the entity, so a model that names them differently (or has no reefers) passes its own.",
-        "library": {"library": "energy", "asset": "shore_power", "version": "1.5.0"},
+        "library": {"library": "energy", "asset": "shore_power", "version": "1.7.0"},
         "parameters": [
           {
             "name": "connection_kw",
@@ -1408,8 +1410,8 @@
     },
     "Grid connection": {
       "info": {
-        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run.",
-        "library": {"library": "energy", "asset": "grid_connection", "version": "1.5.0"},
+        "description": "The meter: whatever the site cannot cover itself is imported and priced on a tariff profile, whatever it cannot use or store is exported up to the export limit, and the rest is curtailed. Import beyond the import limit is recorded as unserved demand rather than silently supplied. Emissions follow a grid intensity profile, so a sustainability assessment is the same run. Place exactly one per site: it is the slack that closes the energy balance. No ports: this is a continuous asset. A demand charge on the peak import power is billed once at the end of the run. Its import and export carry the grid roles a \"dispatch\" plan prices and limits.",
+        "library": {"library": "energy", "asset": "grid_connection", "version": "1.7.0"},
         "parameters": [
           {
             "name": "import_profile",
@@ -1555,9 +1557,12 @@
       ],
       "scoped": {
         "flows": {
-          "Nrg import": {"peak_price": {"$arg": "demand_charge_per_kw"}},
+          "Nrg import": {
+            "peak_price": {"$arg": "demand_charge_per_kw"},
+            "grid.limit": "import_limit_kw"
+          },
           "Nrg unserved": {},
-          "Nrg export": {},
+          "Nrg export": {"grid.limit": "export_limit_kw"},
           "Nrg curtailed": {}
         }
       },

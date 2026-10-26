@@ -63,13 +63,14 @@ from dataclasses import asdict, dataclass
 from functools import lru_cache
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from nagasim.core import schema as schema_mod
 from nagasim.core import submodels
 from nagasim.modelschema import build_json_schema
 
-__all__ = ["Change", "Conflict", "diff", "merge", "textconv", "main", "merge_main"]
+__all__ = ["Change", "Conflict", "RecordChange", "diff", "record_changes", "merge", "textconv", "main",
+           "merge_main"]
 
 # Purely visual fields: absent means "wherever the engine put it" / "default
 # spot", the engine reads none of them, and their only effect is where
@@ -324,6 +325,95 @@ def diff(a: dict, b: dict, *, include_moved: bool = True) -> list:
     if not include_moved:
         changes = [c for c in changes if c.kind != "moved"]
     return sorted(changes, key=lambda c: (c.path, c.kind))
+
+
+# --------------------------------------------------------- record changes ----
+
+class RecordChange(NamedTuple):
+    """One record-level change (D883): a whole record or top-level setting that was added,
+    removed, changed, or only "moved" (every difference is a canvas field). `key` is the
+    record's identity tuple (`("QC",)` for a block, `(source, target, source_port,
+    target_port)` for a link, `(name,)` for a `submodels` entry), None for a setting;
+    `label` is the record path `diff` prints (`blocks.QC`, `links.Assembly->QC`,
+    `simulation`). `old`/`new` are the callers' own objects (None when absent), not copies."""
+    section: str
+    key: tuple | None
+    label: str
+    kind: str  # "added" | "removed" | "changed" | "moved"
+    old: Any = None
+    new: Any = None
+
+
+def _without_canvas(value):
+    if isinstance(value, dict):
+        return {k: _without_canvas(v) for k, v in value.items() if k not in _CANVAS_FIELDS}
+    if isinstance(value, list):
+        return [_without_canvas(v) for v in value]
+    return value
+
+
+def _record_kind(old, new) -> str:
+    if old is None:
+        return "added"
+    if new is None:
+        return "removed"
+    return "moved" if _without_canvas(old) == _without_canvas(new) else "changed"
+
+
+def _record_list_changes(section: str, old_list: list, new_list: list, fields) -> list:
+    groups_old = _group_by_identity(old_list, fields)
+    groups_new = _group_by_identity(new_list, fields)
+    out = []
+    for key in sorted(set(groups_old) | set(groups_new), key=str):
+        label = f"{section}.{_record_label(key, fields)}"
+        for o, n in zip_longest(groups_old.get(key, []), groups_new.get(key, [])):
+            if o != n:
+                out.append(RecordChange(section, key, label, _record_kind(o, n), o, n))
+    return out
+
+
+def _setting_change(section: str, old, new) -> RecordChange:
+    return RecordChange(section, None, section, _record_kind(old, new), old, new)
+
+
+def record_changes(a: dict, b: dict) -> list:
+    """The changes from layout *a* to *b*, one per record or top-level setting, on `diff`'s
+    identity rules: the record sections and `network.nodes`/`network.segments` by identity,
+    the `{name: record}` sections by name, every other top-level key (and every other key of
+    `network`) as one setting. The assistant's per-change review is built on it (D877).
+
+    Unlike `diff`, the layouts are compared as given, NOT migrated, so `old`/`new` are the
+    records exactly as the caller holds them: migrate both first when they come from
+    different schema versions. A section without an identity key compares whole, as one
+    setting."""
+    identities = _section_identities()
+    out = []
+    for key in sorted(set(a) | set(b)):
+        old, new = a.get(key), b.get(key)
+        if old == new:
+            continue
+        if key == "network" and _objects(old, new):
+            old, new = old or {}, new or {}
+            net = _network_identities()
+            for sub in sorted(set(old) | set(new)):
+                o, n = old.get(sub), new.get(sub)
+                if o == n:
+                    continue
+                if net.get(sub) is not None and _record_lists(o or [], n or []):
+                    out.extend(_record_list_changes(f"network.{sub}", o or [], n or [], net[sub]))
+                else:
+                    out.append(_setting_change(f"network.{sub}", o, n))
+        elif identities.get(key) is not None and _record_lists(old or [], new or []):
+            out.extend(_record_list_changes(key, old or [], new or [], identities[key]))
+        elif key in _dict_record_sections() and _objects(old, new):
+            old, new = old or {}, new or {}
+            for name in sorted(set(old) | set(new)):
+                o, n = old.get(name), new.get(name)
+                if o != n:
+                    out.append(RecordChange(key, (name,), f"{key}.{name}", _record_kind(o, n), o, n))
+        else:
+            out.append(_setting_change(key, old, new))
+    return out
 
 
 # ----------------------------------------------------------------- merge ----

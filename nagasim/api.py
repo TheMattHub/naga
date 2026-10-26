@@ -524,6 +524,8 @@ def main(argv=None) -> int:
     # (e.g. a Unicode path). Tests force PYTHONIOENCODING=utf-8 (see conftest.py), but
     # a real user running the CLI -- especially the frozen build -- may not have that set.
     setup_cli()
+    from nagasim import netguard
+    from nagasim.viewer import ASKED_HELP, read_asked     # late: viewer builds on this module
 
     parser = argparse.ArgumentParser(prog="naga run", description="Run a Naga model headless.")
     parser.add_argument("--version", action="version", version=f"nagasim {__version__}")
@@ -563,6 +565,8 @@ def main(argv=None) -> int:
                         help="write a shareable HTML player of the first replication here: one "
                              "self-contained file that replays the run in a browser, with no "
                              "server (the same as --export player:PATH)")
+    parser.add_argument("--asked", metavar="FILE",
+                        help="with --player or --export player:PATH: " + ASKED_HELP)
     parser.add_argument("--state", default=None, metavar="FILE",
                         help="start from this state document (`naga state take`): "
                              "the run's clock starts where the state was taken and its "
@@ -591,6 +595,16 @@ def main(argv=None) -> int:
     exports = [*([f"xlsx:{args.out}"] if args.out else []),
                *([f"html:{args.report}"] if args.report else []), *args.export,
                *([f"player:{args.player}"] if args.player else [])]
+    asked = None
+    if args.asked:
+        if not any(spec.startswith("player:") for spec in exports):
+            print("--asked: it feeds a player's trust card: pass --player PATH too")
+            return 2
+        try:            # read before the run, so a refused file costs no run
+            asked = read_asked(args.asked)
+        except netguard.GuardError as exc:
+            print(f"--asked: {exc.code}: {exc.message}")
+            return 2
     # D201: an exporter drawn from the run's trace needs the first replication recorded.
     # (`python -m nagasim.api` loads no plugins before this: a plugin's needs_trace is not seen)
     recorder = TraceRecorder() if _needs_trace(exports) else None
@@ -605,7 +619,7 @@ def main(argv=None) -> int:
     layout = model if isinstance(model, dict) else None
     for spec in exports:
         try:
-            _run_export(spec, results, args.model, layout, recorder)
+            _run_export(spec, results, args.model, layout, recorder, asked)
         except ValueError as exc:       # e.g. a player over its size limit
             print(f"--export: {exc}")
             return 1
@@ -650,9 +664,10 @@ def _needs_trace(specs) -> bool:
     return any(exporter is not None and exporter.needs_trace for exporter in found)
 
 
-def _run_export(spec: str, results, model_path: str, layout=None, trace=None) -> None:
+def _run_export(spec: str, results, model_path: str, layout=None, trace=None, asked=None) -> None:
     """One `--export FORMAT:PATH` entry (ROADMAP 2.4 C): FORMAT is a key in
-    `nagasim.exporters.EXPORTER_REGISTRY` (built-in or plugin-added)."""
+    `nagasim.exporters.EXPORTER_REGISTRY` (built-in or plugin-added). *asked* (`--asked`)
+    reaches the player only."""
     from nagasim.exporters import EXPORTER_REGISTRY
 
     fmt, _, out_path = spec.partition(":")
@@ -664,6 +679,8 @@ def _run_export(spec: str, results, model_path: str, layout=None, trace=None) ->
     # Only an exporter that asks for the trace is given it (D201): a plugin's writer
     # may take no keyword it does not know.
     extra = {"trace": trace} if exporter.needs_trace else {}
+    if asked is not None and fmt == "player":
+        extra["asked"] = asked
     exporter.write(results, out_path, layout=_layout(layout, model_path),
                    title=Path(model_path).stem, **extra)
     print(f"{exporter.name} written to {out_path}")

@@ -36,9 +36,7 @@ from __future__ import annotations
 import copy
 import json
 import math
-import os
 import re
-import stat
 import threading
 from dataclasses import dataclass
 
@@ -129,27 +127,13 @@ def _whole(value, low: int, high: int) -> bool:
 
 
 def _read(path) -> dict:
-    """The JSON object in the caller's file: a local regular file under the bound, opened
-    without following a link where the system can. Raises Refused."""
-    text = str(path)
-    if netguard.is_unc_path(text):
-        raise Refused("the refit file is a UNC or device path",
-                      "opening one is a network connection; use a local path")
-    if ":" in os.path.splitdrive(text)[1]:
-        raise Refused("the refit file's path holds a ':' after its drive",
-                      "that names a stream inside another file, not a file")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) \
-        | getattr(os, "O_BINARY", 0)
+    """The JSON object in the caller's file (`netguard.read_caller_file`). Raises Refused."""
     try:
-        fd = os.open(text, flags)
-        with os.fdopen(fd, "rb") as handle:
-            info = os.fstat(handle.fileno())
-            if not stat.S_ISREG(info.st_mode):
-                raise Refused("the refit file is not a plain file")
-            if info.st_size > LIMITS["file_bytes"]:
-                raise Refused(f"the refit file is over {LIMITS['file_bytes']} bytes")
-            doc = json.loads(handle.read(LIMITS["file_bytes"] + 1))
-    except (OSError, ValueError, RecursionError) as exc:
+        doc = json.loads(netguard.read_caller_file(path, max_bytes=LIMITS["file_bytes"],
+                                                   what="the refit file"))
+    except netguard.FileRefused as exc:
+        raise Refused(exc.message, exc.hint) from None
+    except (ValueError, RecursionError) as exc:
         raise Refused(f"the refit file cannot be read ({type(exc).__name__})") from None
     if not (isinstance(doc, dict) and doc.get("format") == FORMAT and doc.get("kind") == KIND):
         raise Refused(f"this is not a refit file of format {FORMAT} (kind \"{KIND}\")")
@@ -264,12 +248,18 @@ class Refitter:
 
     # ------------------------------------------------------------ fed by the cycle
     def hold(self, pending: dict, model: dict) -> None:
-        """A forecast start: the model as it was started, for a window that begins here."""
+        """A forecast start: the model as it was started, for a window that begins here.
+
+        Held by reference, not copied (Phase 15 FA): a start is a new model per forecast
+        (`source.start`, then `apply` or the advisor's, which return new dicts), the cycle
+        never writes one once started, and the forecast, the advisor and a calibration each
+        work on their own copy (`schema.migrate` deep-copies). Most holds are dropped
+        unread, so the one copy is made when a refit really starts from one (`_begin`)."""
         self._held = (self._held + [{
             "state": pending["state"], "from": float(pending["from"]),
             "horizon": float(pending["horizon"]), "seed": pending["seed"],
             "base": copy.deepcopy(pending.get("base") or {}), "layer": pending.get("refit"),
-            "model": copy.deepcopy(model)}])[-LIMITS["held"]:]
+            "model": model}])[-LIMITS["held"]:]
 
     def busy(self) -> bool:
         """A refit in flight, or a dropped calibration's thread still running: one at a
@@ -420,7 +410,8 @@ class Refitter:
         if start["layer"] != (layer or {}).get("id"):
             self._job.update(status="dropped", reason="the model changed")
             return
-        args = (start["model"], series, [list(pair) for pair in data], self.plan)
+        # Its own copy: the calibration runs in another thread for minutes.
+        args = (copy.deepcopy(start["model"]), series, [list(pair) for pair in data], self.plan)
         token, stop = object(), threading.Event()
         self._token, self._stop = token, stop
         more = {"seed": start["seed"], "workers": workers,

@@ -301,6 +301,29 @@ def test_one_refit_at_a_time_and_none_while_a_proposal_waits(tmp_path):
     assert sorted(f["series"] for f in t.fits) == ["level/tank", "system/WIP"]
 
 
+def test_a_start_is_held_uncopied_and_a_calibration_gets_its_own_copy(tmp_path):
+    """Phase 15 FA: `hold` keeps the started model by reference (no copy every forecast);
+    the one copy is made when a refit starts from it, so the calibration's thread cannot
+    write into what the twin holds."""
+    t = make(tmp_path)
+    held = []
+    real_hold = t.cycle._refit.hold
+    t.cycle._refit.hold = lambda pending, model: held.append(model) or real_hold(pending, model)
+    t.source.values = {"system/WIP": 10 * TRUE}
+    for _ in range(30):
+        step(t)
+        if t.fits:
+            break
+    assert t.fits and all(s["model"] is m for s, m in zip(t.cycle._refit._held, held[-12:]))
+    copies = []
+    t.cycle._refit._calibrate = lambda started, *a, **k: copies.append(started) or {
+        "overrides": [], "objective": 0.0, "used": 0}
+    start = t.cycle._refit._held[0]
+    t.cycle._refit._begin(start, "system/WIP", "high", 0.0, [[1.0, 2.0]], 1, None, False,
+                          None, 1)
+    assert copies[0] == start["model"] and copies[0] is not start["model"]
+
+
 def test_a_calibration_runs_in_its_own_thread_and_no_second_one_starts_meanwhile(tmp_path):
     import threading
 

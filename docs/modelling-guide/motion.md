@@ -66,8 +66,38 @@ seconds:
 
 `hrc` is `none`, `collaborative` (every move at `collaborative_speed`) or
 `separation`: a move starts at `collaborative_speed` when a unit of a worker fleet
-is within `zone.radius_m` of `zone.node`, measured along the path network. A move
-already under way keeps its speed.
+is within the zone's radius of its node. A move already under way keeps its speed.
+
+A safety zone is best declared once, as a record of the `zones` section, and
+named by every block it protects. The record holds `name`, `node`, `radius_m` and
+an optional `measure`, and a block names it with `"zone": {"name": "Cell A zone"}`.
+Blocks that name the same zone share its radius, and a scenario or DOE factor can
+vary it as `zones.<name>.radius_m`. A block that names no zone keeps its own
+`"zone": {"node": ..., "radius_m": ...}`, which is also the fallback the inline
+fields give when `name` is empty. A STATION's `tending` group takes the same
+`zone`.
+
+```json
+"zones": [{"name": "Cell A zone", "node": "cell_a", "radius_m": 1.5, "measure": "straight"}]
+```
+
+`measure` says how the distance is taken. `"path"`, the default, walks the path
+network from the worker to the zone node, so a worker behind a rack is far away.
+`"straight"` takes the straight line between the worker's floor point and the
+node, as a safety laser scanner measures it, and the layout view draws it as a
+circle. A walking worker's floor point is its place along the aisle it is on. A
+worker summoned to a station counts at the node it left until it arrives. The
+choice matters most beside racks and corners, where the two distances differ.
+
+The zone has these limits:
+
+- The speed is decided when each move starts, or once per tending cycle. A
+  worker who walks in during a move does not slow that move.
+- A zone only slows, to the profile's collaborative speed. There is no
+  protective stop and no speed ramp.
+- Only worker fleets count, and `"straight"` ignores walls and line of sight.
+- Only straight `zones` records are drawn, and only in the 2D layout view.
+- The Automation library's Tended machine always tends with `hrc` `none`.
 
 ## Results
 

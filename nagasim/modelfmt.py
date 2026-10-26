@@ -33,7 +33,7 @@ _BLOCK_ORDER = ("name", "type", "description", "position", "layout_position", "l
                 "label_offset", "counter_offsets", "params")
 # A block's own keys besides name, type and params (the builder takes them as keywords).
 BLOCK_KEYS = _BLOCK_ORDER[2:-1]
-_DEFINITION_ORDER = ("info", "parameters", "scoped", "extends", "remove", "blocks", "links",
+_DEFINITION_ORDER = ("info", "parameters", "scoped", "repeat", "extends", "remove", "blocks", "links",
                      "annotations")      # ModelDocument's order
 _MISSING = object()
 
