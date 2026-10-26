@@ -107,15 +107,24 @@ def _resolver(monkeypatch, answers: dict) -> list:
     return asked
 
 
+def _tcp_pair():
+    """Two connected loopback TCP sockets. Not `socket.socketpair()`: on Linux and macOS that is a
+    Unix socket, which refuses the TCP_NODELAY http.client sets (Errno 95); on Windows it is TCP."""
+    with socket.create_server(("127.0.0.1", 0)) as server:
+        ours = socket.create_connection(server.getsockname())
+        theirs, _ = server.accept()
+    return ours, theirs
+
+
 @pytest.fixture
 def dialled(monkeypatch):
-    """What `_dial` is asked to connect to; it hands back one end of a socketpair whose
+    """What `_dial` is asked to connect to; it hands back one end of a TCP pair whose
     other end (`peer`) has already answered `_OK`."""
     seen = {"addresses": []}
 
     def dial(addresses, port, timeout):
         seen["addresses"].append(([str(ip) for ip in addresses], port))
-        ours, seen["peer"] = socket.socketpair()
+        ours, seen["peer"] = _tcp_pair()
         seen["peer"].sendall(_OK)
         return ours
 
@@ -153,13 +162,16 @@ def test_https_keeps_the_host_name_for_sni_and_the_certificate(monkeypatch):
     """The pinned HTTPS connection dials the judged address and wraps that socket for the
     HOST NAME; the handler's context verifies certificates."""
     _resolver(monkeypatch, {"public.example.com": ["93.184.216.34"]})
-    ours, theirs = socket.socketpair()
+    ours, theirs = _tcp_pair()
     dials = []
     monkeypatch.setattr(netguard, "_dial",
                         lambda addresses, port, timeout: dials.append((addresses, port)) or ours)
     wrapped = {}
 
     class Context:
+        # what http.client reads of a context on 3.11-3.14
+        verify_mode, check_hostname, post_handshake_auth = netguard.ssl.CERT_REQUIRED, True, None
+
         def wrap_socket(self, sock, server_hostname=None):
             wrapped.update(sock=sock, name=server_hostname)
             return sock

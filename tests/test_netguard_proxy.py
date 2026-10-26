@@ -120,7 +120,8 @@ def test_https_goes_through_the_callers_proxy_as_a_tunnel_to_the_name(
     monkeypatch.setenv("HTTPS_PROXY", f"http://user:secret@127.0.0.1:{proxy.port}")
     assert netguard.fetch(f"https://plant.test:{target}/d.json", ON) == b"ok"
     head = proxy.heads[0]
-    assert head.startswith(f"CONNECT plant.test:{target} HTTP/1.1\r\n")
+    assert head.startswith((f"CONNECT plant.test:{target} HTTP/1.1\r\n",    # Python 3.12+
+                            f"CONNECT plant.test:{target} HTTP/1.0\r\n"))   # Python 3.11
     assert f"Proxy-Authorization: Basic {base64.b64encode(b'user:secret').decode()}" in head
 
 
