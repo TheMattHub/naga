@@ -775,7 +775,10 @@ def test_the_levers_tabs_footer_and_a_page_without_the_new_fields(tmp_path, monk
                                     'document.getElementById("picture-box").hidden'},
         # Kept in this browser: there after a reload; with storage that throws, for the visit.
         {"eval": "location.reload(); 1"},
-        {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 2500); })"},
+        # Wait for the tabs, not a fixed time: a slow CI runner drew them after 2.5 s.
+        {"eval": "new Promise(function (done) { var t0 = Date.now(); (function poll() {"
+                 " if (document.querySelectorAll('.tab').length || Date.now() - t0 > 20000) { done(1); }"
+                 " else { setTimeout(poll, 100); } })(); })"},
         _TABS, _tab("Saved 1"),
         {"eval": 'Object.defineProperty(window, "localStorage", {get: function () { throw new Error("no"); }});'
                  ' document.getElementById("save").click(); document.getElementById("status").textContent'},

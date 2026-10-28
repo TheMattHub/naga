@@ -54,7 +54,8 @@ jobs:
             pyproject.toml
             requirements-docs.txt
       - name: Install
-        run: pip install -e . -r requirements-docs.txt
+        # [plan]: the "plan or schedule jobs" goal page runs a CP-SAT snippet.
+        run: pip install -e ".[plan]" -r requirements-docs.txt
       - name: The generated pages (reference, gallery numbers, llms.txt) are the generator's
         run: |
           python tools/gen_engine_docs.py
