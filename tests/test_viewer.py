@@ -665,7 +665,8 @@ def _text(name):
 # The author's baseline is drawn by the page's script, which follows 40 MB of data: on a
 # slow runner the markup is there before the table is. Wait for the table, then read it.
 BASELINE_SHOWN = {"eval": 'new Promise(function (done) { var tries = 0; (function look() {'
-                          ' var text = document.getElementById("results-body").textContent;'
+                          ' var body = document.getElementById("results-body");'   # not parsed yet on a slow runner
+                          ' var text = body ? body.textContent : "";'
                           ' if (text || (tries += 1) > 300) { done(text); } else { setTimeout(look, 100); }'
                           ' })(); })'}
 

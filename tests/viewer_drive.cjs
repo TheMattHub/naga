@@ -59,7 +59,9 @@ const LOCAL = /^(file|data|blob|about|edge|chrome|devtools):/;
     };
     const value = async expression => {
       const got = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-      return got.result ? got.result.value : "EVALUATION FAILED " + JSON.stringify(got).slice(0, 300);
+      // A thrown error comes back as a result too (an empty object): name it instead.
+      return got.result && !got.exceptionDetails ? got.result.value
+        : "EVALUATION FAILED " + JSON.stringify(got.exceptionDetails || got).slice(0, 300);
     };
     await send("Network.enable"); await send("Log.enable");
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
