@@ -179,6 +179,15 @@ SECTIONS: tuple[Section, ...] = (
     Section("background", None, doc="Optional floor-plan image: path, position, scale, opacity, "
                                     "lock, real-world scale.",
             validate=f"{_LAYOUT}:_validate_background"),
+    # Phase 20 P3 (D1005): layout-only like background; no default, so a file without it
+    # reads and saves as before.
+    Section("building", doc="Optional building: rooms, walls, wall openings, floor markings, "
+                            "labels and plan fixtures in metres; the walls are the walled rooms' outlines and "
+                            "the free-standing wall lines, each with a height, thickness and "
+                            "finish. Drawn by the "
+                            "editor and written as the floor plan, 3D walls and floor texture; "
+                            "ignored by the engine.",
+            validate="nagasim.core.building:validate_building"),
     Section("info", {}, doc="Optional model metadata: description, author, notes; shown in the "
                             "report header."),
     Section("data_sources", [], "name", "data_source", tab="Data sources",
@@ -272,6 +281,10 @@ CAPABILITIES: dict[str, tuple[str, tuple[str, ...]]] = {
                   ("network", "fleets")),
     "planning": ("Orders with due dates and routings through stations.",
                  ("orders", "sequences")),
+    # D1028: showing the model to people. The building is model data the run ignores; the
+    # editor adds what it presents with (films, renders), which never enters this list.
+    "presentation": ("A building around the model (rooms, walls, labels) for the floor plan, "
+                     "renders and films.", ("building",)),
 }
 
 

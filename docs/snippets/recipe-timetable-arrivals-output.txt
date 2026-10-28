@@ -1,0 +1,2 @@
+5 trucks unloaded
+mean wait 5.0 minutes (the trucks at 25 and 30 queue behind the one before)

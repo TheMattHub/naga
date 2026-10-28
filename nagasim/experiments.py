@@ -517,6 +517,23 @@ def flatten_kpis(results: dict) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Run", "KPI", "Value"])
 
 
+def headline_keys(means: dict) -> list[str]:
+    """The KPI keys of the few numbers that say what a run gave, from {key: mean}: the
+    system's when entities flowed, the model's own RECORD statistics, its levels' averages
+    and its agents' state counts. The docs gallery and the Results panel's tiles share it."""
+    picked: list[str] = []
+    if means.get("system/Total Entities Completed", 0.0) > 0:
+        picked += ["system/Total Entities Completed", "system/Avg Throughput Time"]
+        if any(m.startswith("resource/") for m in means):
+            picked += ["system/Avg Queue Length", "system/Avg Resource Usage %"]
+    picked += [m for m in means if m.startswith("user/")][:3]
+    picked += [m for m in means if m.startswith("level/") and m.endswith("/Average")][:3]
+    picked += [m for m in means if m.startswith("agent/") and m.endswith("/Avg Count")][:4]
+    if means.get("system/Total Cost", 0.0) > 0:
+        picked.append("system/Total Cost")
+    return [m for m in picked if m in means and means[m] == means[m]]
+
+
 def needs_event_logs(kpis) -> bool:
     """Whether any of the KPI keys *kpis* is computed from the per-event logs,
     so a study asking for it must not run with `record_logs` off.

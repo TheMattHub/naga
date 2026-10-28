@@ -1,0 +1,2 @@
+Erlang, 4 steps:  mean wait 9.02 minutes
+one exponential:  mean wait 11.57 minutes

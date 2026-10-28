@@ -104,7 +104,15 @@ def _dispatch(entry, argv: list, prog: str, name: str) -> int:
     except _INPUT_ERRORS as exc:
         if os.environ.get("NAGASIM_CLI_DEBUG"):
             raise
-        sys.stderr.write(f"{prog} {name}: {exc}\n")
+        structured = getattr(exc, "structured", None)
+        if structured:      # a ModelValidationError that kept its Problems (D913)
+            sys.stderr.write(f"{prog} {name}: the model does not validate\n")
+            for p in dict.fromkeys(structured):     # each once; the order kept
+                # The line `naga validate` prints (modelschema.main_validate).
+                sys.stderr.write(f"{p.severity.upper()} {p.code} {p.path or '/'}: {p.message}\n"
+                                 + (f"    hint: {p.hint}\n" if p.hint else ""))
+        else:
+            sys.stderr.write(f"{prog} {name}: {exc}\n")
         return 2
 
 
@@ -126,18 +134,21 @@ def main(argv=None, prog: str = "naga") -> int:
     # replications).
     multiprocessing.freeze_support()
 
+    args = list(sys.argv[1:] if argv is None else argv)
+
+    # Help comes before the plugins load: loading them imports most of the
+    # engine. Plugins add blocks, distributions and exporters, never commands
+    # (COMMANDS is the whole list), so the help is the same either way.
+    if not args or args[0] in ("-h", "--help", "help"):
+        _print_help(prog)
+        return 0
+
     # Plugin blocks/distributions/exporters (ROADMAP 2.4 B): registered once
     # here, before any subcommand runs, so they show up in --export alike.
     from nagasim.plugins import load_plugins
     load_plugins()
 
-    args = list(sys.argv[1:] if argv is None else argv)
-
-    if args and args[0] in ("-h", "--help", "help"):
-        _print_help(prog)
-        return 0
-
-    name = args[0] if args else None
+    name = args[0]
 
     if name in ("doe", "optimize"):
         from nagasim.optimize import main as optimize_main

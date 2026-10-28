@@ -103,6 +103,9 @@ class TraceEvent:
     # belt_stage only, state "merge" (D854): the id of the part a merged part lands
     # behind on the belt, -1 for none or any other event.
     ahead: int = -1
+    # entity_seized / entity_released of a fleet only (#1470): the unit seized or released, so
+    # playback knows which unit carries which entity; -1 for any other resource or event.
+    unit: int = -1
 
 
 class TraceRecorder:
@@ -207,4 +210,5 @@ class TraceRecorder:
             travel=duration if travel is None else travel,
             branch=next_index,
             value=float(agent[1]) if agent is not None else value,
+            unit=unit,
         ))

@@ -1,0 +1,2 @@
+plant says {'arrivals': 1.0, 'service': 1.25}: mean wait 3.19 minutes
+plant says {'arrivals': 1.0, 'service': 1.1}: mean wait 8.52 minutes

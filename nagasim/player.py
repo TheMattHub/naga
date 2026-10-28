@@ -199,6 +199,7 @@ summary h2 { display: inline; }
 .tab::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px;
                border-radius: 50%; background: var(--yours); }
 .tab.base::before { background: var(--base); }
+.toggle { color: var(--muted); font-size: 12px; cursor: pointer; }
 @media (max-width: 900px) { .console, .console.levers { grid-template-columns: minmax(0, 1fr); } }
 """
 
@@ -344,6 +345,9 @@ var WORD = {blocked: "BLOCKED", down: "DOWN"};
 var MAX_LANES = 8;
 /* The waiting entities drawn one by one before a block; the queue badge says how many in all. */
 var FEW = 6;
+/* On a floor plan, people and fleets are drawn this many times their size on the schematic (D967,
+   as the video's film look does, D956): at the plan's scale a person is a few pixels. */
+var PEOPLE = 2;
 var SLIDE_MS = 250;
 var MAX_SLIDES = 200;
 /* The speeds (D711): model seconds per wall second, so 1x is real time in any time unit. */
@@ -455,8 +459,9 @@ function frameAt(run, t) {
 
 /* Where scene coordinates land on a canvas of w by h pixels: the middle of the box in
    the middle of the canvas, also when the box is a line or a single point. */
-function fit(box, w, h) {
-  var pad = 36, bw = Math.max(box[2] - box[0], 1e-6), bh = Math.max(box[3] - box[1], 1e-6);
+function fit(box, w, h, pad) {
+  pad = pad === undefined ? 36 : pad;
+  var bw = Math.max(box[2] - box[0], 1e-6), bh = Math.max(box[3] - box[1], 1e-6);
   var scale = Math.min((w - 2 * pad) / bw, (h - 2 * pad) / bh);
   return {scale: scale, x: w / 2 - (box[0] + box[2]) / 2 * scale,
           y: h / 2 - (box[1] + box[3]) / 2 * scale};
@@ -609,7 +614,7 @@ function boot() {
   });
   var state = {name: own(data.runs, data.start) !== undefined ? data.start : data.scenarios[0], t: 0, playing: false, speed: 1, wall: null,
                slides: [], busy: false, shown: -1, roles: [], lanes: [], queues: [], seeking: false,
-               use: [], pitch: null, trays: [], stock: [], fed: {}};
+               use: [], pitch: null, trays: [], stock: [], fed: {}, overlay: false};
   /* The page's tokens, as the style sheet holds them for the theme shown: the drawing
      wears the page's look, and reads it again when the theme changes. */
   var INK, MUTED, LINE, RAISED, PANEL, FONT, RADIUS, FILL, STATE, YOURS, BASE, THIRD;
@@ -622,6 +627,10 @@ function boot() {
     STATE = {run: tok("run"), blocked: tok("blocked"), down: tok("down"), idle: tok("idle")};
   }
   readLook();
+  var root = document.documentElement, framed = !!(root.classList && root.classList.contains("framed"));
+  /* On a floor plan the look is the plan, the people and the fleets (D967): the network, links,
+     block boxes, tags and counters are the model's wiring, brought back by "Show model blocks". */
+  function clean() { return !!art.floor && !state.overlay; }
 
   function run() { return own(data.runs, state.name); }
   function duration() { var times = run().t; return times[times.length - 1]; }
@@ -693,17 +702,32 @@ function boot() {
     return state.t - run().t[j];
   }
 
+  /* The scene's box, grown to hold the floor plan: the whole plan shows, not only the part with blocks. */
+  function boxOf(scene) {
+    var f = art.floor, b = scene.box;
+    return f ? [Math.min(b[0], f.x), Math.min(b[1], f.y), Math.max(b[2], f.x + f.w), Math.max(b[3], f.y + f.h)] : b;
+  }
   function draw(frame, wall) {
-    var scene = run().scene, box = scene.box, size, w, h, view, j;
+    var scene = run().scene, box = boxOf(scene), size, w, h, view, j;
     /* As tall as the scene needs at this width (a long thin line gets a short panel). */
-    var want = Math.round(Math.max(160, Math.min((window.innerHeight || 800) * 0.6,
-      canvas.clientWidth * (box[3] - box[1]) / Math.max(box[2] - box[0], 1e-6) + 110)));
+    var gap = art.floor ? 8 : 36;     /* a plan runs nearly to the panel's edges */
+    var tall = (canvas.clientWidth - 2 * gap) * (box[3] - box[1]) / Math.max(box[2] - box[0], 1e-6) + (art.floor ? 2 * gap : 110);
+    /* A floor plan keeps its aspect at the panel's width (D968); in the viewer's frame the page
+       outside sizes the frame to it, elsewhere it stops at most of the window. */
+    var want = Math.round(Math.max(160, art.floor ? Math.min(framed ? 1e6 : (window.innerHeight || 800) * 0.9, tall)
+      : Math.min((window.innerHeight || 800) * 0.6, tall)));
     if (canvas.clientHeight !== want) { canvas.style.height = want + "px"; }
     size = sized(canvas); w = size.w; h = size.h;
     if (!(w > 80 && h > 80)) { return; }        /* not laid out yet: a fit would turn the scene inside out */
-    view = fit(scene.box, w, h);
+    view = fit(box, w, h, gap);
     function px(x) { return view.x + x * view.scale; }
     function py(y) { return view.y + y * view.scale; }
+    var plan = art.floor ? ready(art.floor.i) : null, people = clean() ? PEOPLE : 1;
+    if (plan) {
+      ctx.globalAlpha = art.floor.a;
+      ctx.drawImage(plan, px(art.floor.x), py(art.floor.y), art.floor.w * view.scale, art.floor.h * view.scale);
+      ctx.globalAlpha = 1;
+    }
     /* A label or chip line is no wider than the gap to the next block's centre (#846). */
     var room = state.pitch === null ? Infinity : state.pitch * view.scale - 6;
     function measure(text) { return ctx.measureText(text).width; }
@@ -762,24 +786,37 @@ function boot() {
 
     ctx.lineWidth = 2;
     ctx.strokeStyle = LINE;
-    scene.segments.forEach(function (s) {
+    (clean() ? [] : scene.segments).forEach(function (s) {
       ctx.beginPath(); ctx.moveTo(px(s[0]), py(s[1])); ctx.lineTo(px(s[2]), py(s[3])); ctx.stroke();
     });
     ctx.lineWidth = 1;
     ctx.strokeStyle = MUTED;
-    scene.links.forEach(function (link) {
+    (clean() ? [] : scene.links).forEach(function (link) {
       var a = scene.blocks[link[0]], b = scene.blocks[link[1]];
       ctx.beginPath(); ctx.moveTo(px(a.x), py(a.y)); ctx.lineTo(px(b.x), py(b.y)); ctx.stroke();
     });
 
     ctx.font = "11px " + FONT;
     ctx.textBaseline = "middle";
+    /* The head of the queue stands before the block, the people in service on it (k: larger on a plan). */
+    function waiting(rows, index, left, y, bottom, k) {
+      var j;
+      if (!rows) { return; }
+      for (j = 0; !state.fed[index] && j < Math.min(FEW, rows[0].length); j += 1) { token(left - 8 * k - j * 9 * k, y, scene.types[rows[0][j]], 3.5 * k); }
+      for (j = 0; j < rows[1].length; j += 1) { token(left + 8 * k + j * 9 * k, bottom - 7 * k, scene.types[rows[1][j]], 3.5 * k); }
+    }
     scene.blocks.forEach(function (block, index) {
       var picture = own(art.blocks, block.name), lamp = frame.st[index] || "", kind = kindOf(lamp);
       var bw = (picture ? picture.w : block.w) * view.scale, bh = (picture ? picture.h : block.h) * view.scale;
       var x = px(block.x), y = py(block.y), left = x - bw / 2, top = y - bh / 2;
       var image = picture ? ready(own(picture.states, lamp) !== undefined ? own(picture.states, lamp) : own(picture.states, "idle")) : null;
       var n = frame.n[index], s = frame.s[index], rows = frame.q[index], chips = frame.u[index], text;
+      if (clean()) {
+        /* The plan shows the block's own picture and the people waiting at it, no box, tag or count. */
+        if (image) { ctx.drawImage(image, left, top, bw, bh); }
+        waiting(rows, index, left, y, top + bh, people);
+        return;
+      }
       if (state.trays[index]) {
         j = state.stock[index];
         text = tray(block, index, j >= 0 && frame.lv[j] !== undefined ? Math.round(frame.lv[j]) : n);
@@ -834,16 +871,12 @@ function boot() {
         ctx.strokeStyle = LINE; ctx.stroke();
         ctx.font = "11px " + FONT;
       }
-      if (rows) {
-        /* The head of the queue stands before the block; the badge counts the rest. */
-        for (j = 0; !state.fed[index] && j < Math.min(FEW, rows[0].length); j += 1) { token(left - 8 - j * 9, y, scene.types[rows[0][j]], 3.5); }
-        for (j = 0; j < rows[1].length; j += 1) { token(left + 8 + j * 9, top + bh - 7, scene.types[rows[1][j]], 3.5); }
-      }
+      waiting(rows, index, left, y, top + bh, 1);
     });
 
     scene.levels.forEach(function (level, index) {
       var fill = own(art.fills, level.name), block, value = frame.lv[index], share, x, y, bh;
-      if (!fill || value === undefined) { return; }
+      if (clean() || !fill || value === undefined) { return; }
       block = scene.blocks.filter(function (b) { return b.name === fill[0]; })[0];
       if (!block || !(fill[1] > 0)) { return; }
       share = Math.min(1, Math.max(0, value / fill[1]));
@@ -854,12 +887,13 @@ function boot() {
       ctx.fillStyle = YOURS; ctx.fillRect(x, y - bh * share, 5, bh * share);
     });
 
-    frame.tok.forEach(function (entry) { token(px(entry[2]), py(entry[3]), scene.types[entry[1]], 5); });
+    frame.tok.forEach(function (entry) { token(px(entry[2]), py(entry[3]), scene.types[entry[1]], 5 * people); });
     frame.veh.forEach(function (entry) {
       var image = ready(own(art.fleets, scene.fleets[entry[0]]));
       ctx.save();
       ctx.translate(px(entry[2]), py(entry[3]));
       ctx.rotate(entry[4] * Math.PI / 180);
+      if (people !== 1) { ctx.scale(people * 0.75, people * 0.75); }   /* on a plan a fleet's picture is larger than a person; elsewhere it is as before D967 */
       if (image) {
         ctx.drawImage(image, -11, -11, 22, 22);
       } else {
@@ -870,7 +904,7 @@ function boot() {
       ctx.restore();
     });
     frame.ag.forEach(function (entry) {
-      ctx.beginPath(); ctx.arc(px(entry[2]), py(entry[3]), 3, 0, 2 * Math.PI);
+      ctx.beginPath(); ctx.arc(px(entry[2]), py(entry[3]), 3 * people, 0, 2 * Math.PI);
       ctx.fillStyle = entry[4] >= 0 ? scene.colors[entry[4]] : YOURS; ctx.fill();
     });
 
@@ -879,7 +913,7 @@ function boot() {
     state.slides = state.slides.filter(function (slide) { return wall - slide.start < j; });
     state.slides.forEach(function (slide) {
       var a = scene.blocks[slide.move[1]], b = scene.blocks[slide.move[2]], f = (wall - slide.start) / j;
-      token(px(a.x + (b.x - a.x) * f), py(a.y + (b.y - a.y) * f), scene.types[slide.move[0]], 5);
+      token(px(a.x + (b.x - a.x) * f), py(a.y + (b.y - a.y) * f), scene.types[slide.move[0]], 5 * people);
     });
   }
 
@@ -1072,6 +1106,7 @@ function boot() {
     frame = frameAt(current, state.t);
     draw(frame, wall);
     panel(frame);
+    tell();
     if (state.playing || state.slides.length) {
       window.requestAnimationFrame(tick);
     } else {
@@ -1101,6 +1136,12 @@ function boot() {
 
   document.title = data.title;
   el("title").textContent = data.title;
+  if (art.floor) {
+    /* A plan is a place, not a line (D969); the model's wiring is one tick away. */
+    el("line-h").textContent = "Layout";
+    el("overlay-box").hidden = false;
+    el("overlay").addEventListener("change", function () { state.overlay = el("overlay").checked; wake(); });
+  }
   data.scenarios.forEach(function (name) { add("button", el("tabs"), name, "tab").value = name; });
   el("tabs").hidden = data.scenarios.length < 2;
   el("tabs").addEventListener("click", function (event) {
@@ -1150,6 +1191,13 @@ function boot() {
   el("speed").value = String(state.speed);
   el("speed").addEventListener("change", function () { state.speed = Number(el("speed").value) || state.speed; });
   window.addEventListener("resize", wake);
+  /* In the viewer's frame the page outside cannot see how tall the plan wants to be: say so
+     (a height only; a sandboxed frame has no origin to name, so the parent checks the sender). */
+  function tell() {
+    if (!(framed && art.floor && window.parent !== window)) { return; }
+    var box = document.body.getBoundingClientRect(), height = Math.ceil(box.top + box.height) + 8;
+    if (height !== state.told) { state.told = height; window.parent.postMessage(["height", height], "*"); }
+  }
   chosen();
   /* A page with one sample, the present, and a panel of its own (the twin's monitor). */
   if (data.monitor) { state.t = duration(); monitor(data.monitor, el, add, clear); }
@@ -1186,7 +1234,7 @@ __HEAD__</head>
 __TOP__<main class="console">
 <section class="centre">
 <div class="panel">
-<div class="panel-head"><h2>The line</h2><span class="legend"><span class="key run">working</span><span class="key">idle</span><span class="key down">down</span><span class="key blocked">blocked</span></span></div>
+<div class="panel-head"><h2 id="line-h">The line</h2><label id="overlay-box" class="toggle" hidden><input id="overlay" type="checkbox"> Show model blocks</label><span class="legend"><span class="key run">working</span><span class="key">idle</span><span class="key down">down</span><span class="key blocked">blocked</span></span></div>
 <canvas id="view"></canvas>
 <p id="neck" class="callout" hidden></p>
 </div>
@@ -1303,8 +1351,47 @@ def _art(pictures: dict | None) -> tuple[list, dict]:
             blocks[str(name)] = {"w": float(size[0]), "h": float(size[1]), "states": states}
     fills = {str(level): [str(block), float(capacity)]
              for level, (block, capacity) in (pictures.get("fills") or {}).items()}
-    return images, {"blocks": blocks, "types": one(pictures.get("entities")),
-                    "fleets": one(pictures.get("fleets")), "fills": fills}
+    art = {"blocks": blocks, "types": one(pictures.get("entities")),
+           "fleets": one(pictures.get("fleets")), "fills": fills}
+    floor = _floor_plan(pictures.get("background"), image, images)
+    if floor is not None:
+        art["floor"] = floor
+    return images, art
+
+
+# The floor plan as a raster: a data URI of one of these types, no larger than this (the
+# player's own cap, MAX_BYTES, still applies to the whole page).
+_RASTER = re.compile(r"data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}")
+MAX_FLOOR_BYTES = 3_000_000
+
+
+def _floor_plan(entry, image, images: list) -> dict | None:
+    """The model's `background` as the layout view draws it, or None: {"i": the picture's
+    index, "x", "y", "w", "h": its rectangle in layout units, "a": opacity}.
+
+    *entry* is the caller's `{"svg": text}` (checked like every picture, D198) or
+    `{"image": "data:image/png|jpeg|webp;base64,..."}`, with `x`, `y`, `w`, `h` (layout units)
+    and `opacity`. The engine reads no file: the caller did (the model names one on its
+    machine). A picture refused, over `MAX_FLOOR_BYTES`, or with a rectangle that is not
+    finite and positive is left out: the layout is drawn on the plain page."""
+    if not isinstance(entry, dict):
+        return None
+    try:
+        x, y, w, h = (float(entry[key]) for key in ("x", "y", "w", "h"))
+        opacity = min(max(float(entry.get("opacity", 1.0)), 0.0), 1.0)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in (x, y, w, h, opacity)) or w <= 0 or h <= 0:
+        return None
+    index = image(entry.get("svg")) if "svg" in entry else None
+    raster = entry.get("image")
+    if index is None and isinstance(raster, str) and len(raster) <= MAX_FLOOR_BYTES \
+            and _RASTER.fullmatch(raster):
+        images.append(raster)
+        index = len(images) - 1
+    if index is None:
+        return None
+    return {"i": index, "x": x, "y": y, "w": w, "h": h, "a": opacity}
 
 
 def _replications(results, experiment, names) -> tuple[dict, list | None]:

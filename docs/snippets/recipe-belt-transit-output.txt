@@ -1,0 +1,2 @@
+belt at 1.0 m/s: transit 30.0 s, 3.0 parts on the belt on average
+belt at 2.0 m/s: transit 15.0 s, 1.5 parts on the belt on average

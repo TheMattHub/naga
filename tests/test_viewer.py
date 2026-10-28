@@ -457,6 +457,59 @@ def test_the_page_carries_the_engine_as_installed_without_the_authors_code(tmp_p
         assert owed in notices, owed
 
 
+def _frozen_layout(tmp_path, monkeypatch, with_zip=True):
+    """A frozen build's data folder, from a path with a space and a non-ASCII letter
+    (Review Focus 1): `<_MEIPASS>/nagasim/viewer_engine.zip` as build.ps1 writes it."""
+    import sys
+    base = tmp_path / "Program Files" / "José"
+    (base / "nagasim").mkdir(parents=True)
+    if with_zip:
+        assert viewer.write_engine_zip(base / "nagasim" / "viewer_engine.zip") > 0
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(base), raising=False)
+    return base
+
+
+def test_engine_zip_round_trip(tmp_path, monkeypatch):
+    """D919: the zip the build writes is what a frozen build carries, licences and all."""
+    unfrozen = viewer._engine_zip()
+    base = _frozen_layout(tmp_path, monkeypatch)
+    assert viewer.engine_available() and viewer.engine_on_disk()
+    assert viewer._engine_zip() == unfrozen
+    assert (base / "nagasim" / "viewer_engine.zip").read_bytes() == unfrozen[0]
+
+
+def test_zip_holds_no_models_or_custom_logic(tmp_path):
+    out = tmp_path / "viewer_engine.zip"
+    assert viewer.write_engine_zip(out) == out.stat().st_size
+    with zipfile.ZipFile(out) as archive:
+        names = archive.namelist()
+    assert not [n for n in names if n.startswith("nagasim/models/")]
+    assert "nagasim/core/custom_logic.py" not in names
+    assert [n for n in names if n.startswith("simpy/")]
+    assert [n for n in names if ".dist-info/" in n and "licen" in n.lower()]
+
+
+def test_frozen_build_viewer(tmp_path, monkeypatch):
+    folder = _fake_folder(tmp_path, monkeypatch)
+    baseline = viewer.what_if(model())
+    _frozen_layout(tmp_path, monkeypatch)
+    # A frozen build has no engine files on disk: the zip it ships is the one read.
+    monkeypatch.setattr(viewer, "_build_engine_zip", lambda: pytest.fail("built the zip"))
+    made = viewer.build_viewer(model(), tmp_path / "a.html", runtime=folder, baseline=baseline)
+    page = (tmp_path / "a.html").read_bytes().decode("ascii")
+    assert made["bytes"] == len(page) and made["warnings"] == []
+    assert page.count('data-name="engine.zip"') == 1
+
+
+def test_frozen_without_zip_refuses(tmp_path, monkeypatch):
+    _frozen_layout(tmp_path, monkeypatch, with_zip=False)
+    assert not viewer.engine_available()
+    monkeypatch.setattr(vr, "load", lambda *a, **k: pytest.fail("read the runtime"))
+    with pytest.raises(ValueError, match=re.escape(viewer._NOT_ON_DISK)):
+        viewer.build_viewer(model(), tmp_path / "a.html", runtime=tmp_path / "none")
+
+
 def test_a_model_is_refused_before_anything_is_read_or_run(tmp_path, monkeypatch):
     layout = model()
     layout["data_sources"] = [{"name": "plant_db", "kind": "csv", "location": "x.csv"}]
@@ -1060,6 +1113,7 @@ def test_a_cancelled_download_keeps_only_whole_pinned_files(tmp_path, monkeypatc
 def test_the_engines_files_are_checked_before_anything_else(tmp_path, monkeypatch):
     import sys
     monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", "frozen-data", raising=False)
     monkeypatch.setattr(vr, "load", lambda *a, **k: pytest.fail("read the runtime"))
     monkeypatch.setattr(viewer, "what_if", lambda *a, **k: pytest.fail("ran the baseline"))
     with pytest.raises(ValueError, match="engine's files are not on disk here.*naga viewer"):
@@ -1183,3 +1237,86 @@ def test_853_a_saved_scenario_can_be_removed_and_the_legend_names_what_is_drawn(
     viewer.build_viewer(model(), tmp_path / "plain.html", runtime=folder, title="Plain")
     plain = _drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "p", [hidden])
     assert plain["answers"] == ["true,true,true"]
+
+
+# ---------------------------------------------------------------- floor plan look (D967-D969)
+_PLAN_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">'
+             '<rect width="400" height="200" fill="#e8e8e8"/></svg>')
+_PLAN = {"background": {"svg": _PLAN_SVG, "x": 0.0, "y": 0.0, "w": 60.0, "h": 30.0, "opacity": 1.0}}
+needs_browser = pytest.mark.skipif(not (_node22() and BROWSERS), reason="node 22 and Chrome or Edge are needed")
+
+
+def _recorded_player(pictures):
+    from nagasim import player
+    from nagasim.api import run_model
+    from nagasim.core.trace import TraceRecorder
+
+    layout = model()
+    layout["simulation"] = {**layout["simulation"], "time_limit": 30, "warmup": 0}
+    trace = TraceRecorder()
+    run_model(layout, replications=1, seed=0, trace=trace)
+    return player.build_player(layout, {experiments.BASELINE: trace}, pictures=pictures, title="Clinic")
+
+
+@pytest.mark.slow
+@needs_browser
+def test_1461_1463_a_player_on_a_floor_plan_is_clean_and_named_by_place(tmp_path):
+    """#1461 (D967), #1463 (D969), in a real browser: with a floor plan the player draws no network,
+    links or block tags until "Show model blocks" is ticked, and its panel is "Layout"; without
+    one it is "The line", has no such switch and draws as before."""
+    (tmp_path / "plan.html").write_text(_recorded_player(_PLAN), encoding="ascii")
+    (tmp_path / "plain.html").write_text(_recorded_player(None), encoding="ascii")
+    look = {"eval": 'new Promise(function (done) { setTimeout(function () { done('
+                    'document.getElementById("line-h").textContent + "|" + document.getElementById("overlay-box").hidden'
+                    ' + "|" + document.getElementById("view").toDataURL().length); }, 600); })'}
+    tick = {"eval": 'document.getElementById("overlay").click(); new Promise(function (done) {'
+                    ' setTimeout(function () { done(document.getElementById("view").toDataURL().length); }, 600); })'}
+    on_plan = _drive(BROWSERS[0], tmp_path / "plan.html", tmp_path / "a", [look, tick])["answers"]
+    heading, hidden, clean = on_plan[0].split("|")
+    assert (heading, hidden) == ("Layout", "false") and int(on_plan[1]) != int(clean)   # the overlay changes the drawing
+    heading, hidden, _ = _drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "b", [look])["answers"][0].split("|")
+    assert (heading, hidden) == ("The line", "true")
+
+
+@pytest.mark.slow
+@needs_browser
+def test_1462_the_viewer_makes_room_for_a_plan_and_a_scenario_that_is_the_baseline_takes_its_name(
+        tmp_path, monkeypatch):
+    """#1462 (D968), #1463 (D969): the page puts a plan under the levers at the page's width, and an
+    author's scenario that changes nothing is the baseline, named so (no tab, no "Baseline beside
+    Baseline")."""
+    layout = _lever_model()
+    layout["scenarios"] = [{"name": "Standard", "overrides": [{"path": "resources.Server.capacity", "value": 1}]},
+                           layout["scenarios"][0]]
+    folder = _fake_folder(tmp_path, monkeypatch)
+    viewer.build_viewer(layout, tmp_path / "v.html", runtime=folder, title="Clinic", pictures=_PLAN)
+    viewer.build_viewer(layout, tmp_path / "n.html", runtime=folder, title="Clinic")
+    steps = [_TABS, {"eval": 'document.querySelector("main.console").classList.contains("plan")'}]
+    with_plan = _drive(BROWSERS[0], tmp_path / "v.html", tmp_path / "a", steps)["answers"]
+    without = _drive(BROWSERS[0], tmp_path / "n.html", tmp_path / "b", steps)["answers"]
+    assert with_plan == ["Standard*,Two servers,Yours", True] and without[1] is False
+
+
+@pytest.mark.slow
+@needs_browser
+def test_1466_fleets_keep_their_size_on_a_page_without_a_floor_plan(tmp_path):
+    """#1466 (F9): the 0.75x fleet scale belongs to the floor-plan look only. A plain page scales a
+    fleet picture by nothing, as before D967 (a pixel comparison is not repeatable: the page animates)."""
+    from nagasim import player
+    from nagasim.api import run_model
+    from nagasim.core.trace import TraceRecorder
+
+    layout = model("automation_floor.json")
+    layout["simulation"] = {**layout["simulation"], "time_limit": 120, "warmup": 0}
+    trace = TraceRecorder()
+    run_model(layout, replications=1, seed=0, trace=trace)
+    (tmp_path / "plain.html").write_text(
+        player.build_player(layout, {experiments.BASELINE: trace}, title="Floor"), encoding="utf-8")
+    shot = {"eval": 'var seen = {scales: [], pictures: 0}, c = CanvasRenderingContext2D.prototype,'
+                    ' scale = c.scale, draw = c.drawImage;'
+                    ' c.scale = function (x, y) { seen.scales.push([x, y]); return scale.apply(this, arguments); };'
+                    ' c.drawImage = function () { seen.pictures += 1; return draw.apply(this, arguments); };'
+                    ' var s = document.getElementById("seek"); s.value = 600; s.dispatchEvent(new Event("input"));'
+                    ' new Promise(function (done) { setTimeout(function () { done(JSON.stringify(seen)); }, 600); })'}
+    seen = json.loads(_drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "a", [shot])["answers"][0])
+    assert [0.75, 0.75] not in seen["scales"], seen          # on the broken page this is the vehicle scale

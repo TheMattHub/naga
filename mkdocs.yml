@@ -8,6 +8,9 @@ site_dir: site
 # Links name the .html file itself, so the built site also opens from disk (a CI
 # artifact). Search needs a server either way: `mkdocs serve`, or the hosted site.
 use_directory_urls: false
+# Hand-written fragments that the generated reference pages inline; they are not pages.
+exclude_docs: |
+  elements/
 
 theme:
   name: material
@@ -34,6 +37,9 @@ plugins:
         reference/api.md: reference/api/index.md
         reference-models.md: validation/reference-models.md
         reference/cli.md: reference/cli/index.md
+        reference/blocks.md: reference/blocks/index.md
+        reference/distributions.md: reference/distributions/index.md
+        reference/expressions.md: reference/functions/index.md
   # The API reference is the docstrings, read statically (no import of nagasim at build time).
   - mkdocstrings:
       handlers:
@@ -76,6 +82,24 @@ nav:
       - "4. Agents": learn/4-agents.md
       - "5. Replications and scenarios": learn/5-replications-and-scenarios.md
       - "6. Reading the results": learn/6-results.md
+      - By goal:
+          - "How many replications, and what warm-up?": goals/replications-and-warm-up.md
+          - "Which decision is best? Optimise it": goals/optimise-a-decision.md
+          - "Which inputs matter? Sensitivity and DOE": goals/sensitivity-and-doe.md
+          - "How do I fit input distributions from data?": goals/fit-input-distributions.md
+          - "How sure am I, given my input data?": goals/input-uncertainty.md
+          - "How do I calibrate a model to data?": goals/calibrate-to-data.md
+          - "How do I connect live data end to end?": goals/connect-live-data.md
+          - "How do I plan or schedule jobs?": goals/plan-or-schedule-jobs.md
+          - "How do I import a Vensim or XMILE model?": goals/import-vensim-xmile.md
+          - "How do I combine events, system dynamics and agents?": goals/hybrid-model.md
+          - "How do I check a model in CI?": goals/check-in-ci.md
+          - "How do I cost a model and find the cost drivers?": goals/cost-drivers.md
+          - "How do I drive a study from an AI agent?": goals/drive-a-study-from-an-ai-agent.md
+          - "How do I share a viewer or a player?": goals/share-a-viewer-or-player.md
+          - "How do I write a plugin block?": goals/write-a-plugin-block.md
+          - "How do I train a policy with reinforcement learning?": goals/train-a-policy-with-rl.md
+      - Glossary: glossary.md
       - Quick start from a model file: quickstart.md
       - "Tutorial: a log to a model in five minutes": event-log-tutorial.md
       - Worked examples:
@@ -92,6 +116,50 @@ nav:
       - Use with an agent: mcp.md
       - Run a study with an assistant: ai-study.md
       - Pick tools with a small model: tool-picker.md
+      - Recipes (How do I...?):
+          - how-to/recipes/index.md
+          - Service and repair times:
+              - "How do I model handling times with an occasional very long one?": how-to/recipes/lognormal-tail.md
+              - "How do I model a job made of several short steps?": how-to/recipes/erlang-steps.md
+              - "How do I model repair times with a long tail?": how-to/recipes/repair-tail.md
+              - "How do I model an approval or reaction time that is never negative?": how-to/recipes/decision-delay.md
+              - "How do I keep a skewed time between a minimum and a maximum?": how-to/recipes/bounded-yield.md
+              - "How do I use a histogram from a time study as a service time?": how-to/recipes/histogram-times.md
+              - "How do I model a time that is a fixed part plus a random part?": how-to/recipes/formula-time.md
+              - "How do I stop a cycle time from going negative?": how-to/recipes/bounded-cycle.md
+              - "How do I model a correction time that grows with a positioning error?": how-to/recipes/positioning-error.md
+              - "What happens to a queue when service times have wild outliers?": how-to/recipes/wild-outliers.md
+          - Failures and arrivals:
+              - "How do I model a machine that wears out?": how-to/recipes/weibull-wear-out.md
+              - "How do I run arrivals from a fixed timetable?": how-to/recipes/timetable-arrivals.md
+          - Counts and chance:
+              - "How do I model the number of lines on an order?": how-to/recipes/poisson-lines.md
+              - "How do I count the defects in a batch?": how-to/recipes/binomial-defects.md
+              - "How do I model retesting until a part passes?": how-to/recipes/retest-attempts.md
+              - "How do I model inspecting a sample from a finite lot?": how-to/recipes/lot-sample.md
+              - "How do I draw order sizes from my own data?": how-to/recipes/order-sizes.md
+          - Delays, smoothing and forecasts:
+              - "How do I add a first-order information delay to a forecast?": how-to/recipes/forecast-lag.md
+              - "How do I delay goods in transit by a fixed time or a spread of times?": how-to/recipes/transit-delay.md
+              - "How do I smooth a noisy signal?": how-to/recipes/smooth-noise.md
+              - "How do I extrapolate a growing trend?": how-to/recipes/trend-forecast.md
+          - Rates, tests and money:
+              - "How do I add a daily or weekly cycle to a rate?": how-to/recipes/daily-cycle.md
+              - "How do I test a model with a step, a ramp and a pulse?": how-to/recipes/test-inputs.md
+              - "How do I discount a stream of cash?": how-to/recipes/discounted-cash.md
+              - "How do I stop a ratio dividing by zero?": how-to/recipes/safe-ratio.md
+              - "How do I turn a heading and a distance into x and y?": how-to/recipes/bearing.md
+          - Agents:
+              - "How do I let an agent react to the agents near it?": how-to/recipes/near-agents.md
+              - "How do I let an agent read the agents in the cells around it?": how-to/recipes/neighbour-grid.md
+          - Flow blocks:
+              - "How do I limit the work waiting between two machines?": how-to/recipes/buffer-wip.md
+              - "How do I move parts along a belt?": how-to/recipes/belt-transit.md
+              - "How do I turn one order into several jobs?": how-to/recipes/order-copies.md
+              - "How do I make two kinds of entity wait for each other?": how-to/recipes/pair-flows.md
+              - "How do I pack parts on a pallet and unpack them later?": how-to/recipes/unpack-pallet.md
+              - "How do I route entities by a rule I write in Python?": how-to/recipes/custom-routing.md
+              - "How do I share a site's power limit between chargers?": how-to/recipes/site-power.md
       - Digital twin:
           - Digital twin: digital-twin.md
           - A plant as a timeline: plant-timeline.md
@@ -113,11 +181,138 @@ nav:
           - Digital twin: reference/cli/twin.md
           - Plan, inspect and share: reference/cli/plan-and-share.md
           - Agents: reference/cli/agents.md
-      - Blocks: reference/blocks.md
-      - Distributions: reference/distributions.md
-      - Expressions: reference/expressions.md
+      - Blocks:
+          - reference/blocks/index.md
+          - ASSIGN: reference/blocks/assign.md
+          - BATCH: reference/blocks/batch.md
+          - BUFFER: reference/blocks/buffer.md
+          - CHARGE: reference/blocks/charge.md
+          - CONVEYOR: reference/blocks/conveyor.md
+          - CREATE: reference/blocks/create.md
+          - DECIDE: reference/blocks/decide.md
+          - DELAY: reference/blocks/delay.md
+          - DISPOSE: reference/blocks/dispose.md
+          - DUPLICATE: reference/blocks/duplicate.md
+          - HOLD: reference/blocks/hold.md
+          - LOGIC: reference/blocks/logic.md
+          - MATCH: reference/blocks/match.md
+          - MOTION: reference/blocks/motion.md
+          - PROCESS: reference/blocks/process.md
+          - RECORD: reference/blocks/record.md
+          - RELEASE: reference/blocks/release.md
+          - ROUTE: reference/blocks/route.md
+          - SEIZE: reference/blocks/seize.md
+          - SEND: reference/blocks/send.md
+          - SEPARATE: reference/blocks/separate.md
+          - SIGNAL: reference/blocks/signal.md
+          - STATION: reference/blocks/station.md
+          - SUBMODEL: reference/blocks/submodel.md
+          - SUB_ENTRY: reference/blocks/sub-entry.md
+          - SUB_EXIT: reference/blocks/sub-exit.md
+          - TRANSFER: reference/blocks/transfer.md
+          - TRANSPORT: reference/blocks/transport.md
+      - Distributions:
+          - reference/distributions/index.md
+          - Bernoulli: reference/distributions/bernoulli.md
+          - Beta: reference/distributions/beta.md
+          - Binomial: reference/distributions/binomial.md
+          - BoundedNormal: reference/distributions/bounded-normal.md
+          - Cauchy: reference/distributions/cauchy.md
+          - ChiSquare: reference/distributions/chi-square.md
+          - Constant: reference/distributions/constant.md
+          - CustomExpression: reference/distributions/custom-expression.md
+          - DiscreteUniform: reference/distributions/discrete-uniform.md
+          - EmpiricalContinuous: reference/distributions/empirical-continuous.md
+          - EmpiricalDiscrete: reference/distributions/empirical-discrete.md
+          - Erlang: reference/distributions/erlang.md
+          - Exponential: reference/distributions/exponential.md
+          - FixedSchedule: reference/distributions/fixed-schedule.md
+          - Gamma: reference/distributions/gamma.md
+          - Geometric: reference/distributions/geometric.md
+          - Hypergeometric: reference/distributions/hypergeometric.md
+          - InverseGaussian: reference/distributions/inverse-gaussian.md
+          - JohnsonSB: reference/distributions/johnson-sb.md
+          - JohnsonSU: reference/distributions/johnson-su.md
+          - LogLogistic: reference/distributions/log-logistic.md
+          - Lognormal: reference/distributions/lognormal.md
+          - NegativeBinomial: reference/distributions/negative-binomial.md
+          - Normal: reference/distributions/normal.md
+          - PearsonTypeV: reference/distributions/pearson-type-v.md
+          - PearsonTypeVI: reference/distributions/pearson-type-vi.md
+          - Poisson: reference/distributions/poisson.md
+          - Rayleigh: reference/distributions/rayleigh.md
+          - Triangular: reference/distributions/triangular.md
+          - Uniform: reference/distributions/uniform.md
+          - Weibull: reference/distributions/weibull.md
+      - Expression functions:
+          - reference/functions/index.md
+          - Math: reference/functions/math.md
+          - Trigonometry: reference/functions/trigonometry.md
+          - Random draws: reference/functions/random.md
+          - System dynamics: reference/functions/system-dynamics.md
+          - Model state and lookups: reference/functions/model-state.md
+          - Resources and stores: reference/functions/resources.md
+          - Arrays: reference/functions/arrays.md
+          - Agents and links: reference/functions/agents.md
+          - Agents in space: reference/functions/agent-space.md
       - KPIs: reference/kpis.md
       - Model file keys: reference/schema.md
+      - Model file sections:
+          - reference/model-file/index.md
+          - blocks: reference/model-file/blocks.md
+          - links: reference/model-file/links.md
+          - scenarios: reference/model-file/scenarios.md
+          - orders: reference/model-file/orders.md
+          - resources: reference/model-file/resources.md
+          - resource_sets: reference/model-file/resource_sets.md
+          - schedules: reference/model-file/schedules.md
+          - failures: reference/model-file/failures.md
+          - tables: reference/model-file/tables.md
+          - sequences: reference/model-file/sequences.md
+          - variables: reference/model-file/variables.md
+          - entities: reference/model-file/entities.md
+          - timeseries_inputs: reference/model-file/timeseries_inputs.md
+          - levels: reference/model-file/levels.md
+          - flows: reference/model-file/flows.md
+          - conversions: reference/model-file/conversions.md
+          - fixed_costs: reference/model-file/fixed_costs.md
+          - fleets: reference/model-file/fleets.md
+          - motion_profiles: reference/model-file/motion_profiles.md
+          - zones: reference/model-file/zones.md
+          - chargers: reference/model-file/chargers.md
+          - auxiliaries: reference/model-file/auxiliaries.md
+          - delays: reference/model-file/delays.md
+          - subscripts: reference/model-file/subscripts.md
+          - agent_types: reference/model-file/agent_types.md
+          - populations: reference/model-file/populations.md
+          - reality_checks: reference/model-file/reality_checks.md
+          - network: reference/model-file/network.md
+          - annotations: reference/model-file/annotations.md
+          - submodels: reference/model-file/submodels.md
+          - background: reference/model-file/background.md
+          - building: reference/model-file/building.md
+          - info: reference/model-file/info.md
+          - data_sources: reference/model-file/data_sources.md
+          - data_bindings: reference/model-file/data_bindings.md
+          - initial_state: reference/model-file/initial_state.md
+          - simulation: reference/model-file/simulation.md
+          - investment: reference/model-file/investment.md
+          - dispatch: reference/model-file/dispatch.md
+          - outputs: reference/model-file/outputs.md
+          - assertions: reference/model-file/assertions.md
+          - path_checks: reference/model-file/path_checks.md
+          - dashboard: reference/model-file/dashboard.md
+          - view: reference/model-file/view.md
+      - Problem codes:
+          - reference/problems/index.md
+          - Agents: reference/problems/agents.md
+          - Submodels and libraries: reference/problems/submodels-and-libraries.md
+          - Data, live feeds and the twin: reference/problems/data-and-twin.md
+          - Networks, fleets and automation: reference/problems/network-and-automation.md
+          - Expressions, stocks and flows: reference/problems/expressions-and-dynamics.md
+          - Resources and time: reference/problems/resources-and-time.md
+          - Scenarios, checks and the editor: reference/problems/scenarios-and-checks.md
+          - Blocks, links and routing: reference/problems/blocks-and-flow.md
       - Model file format: model-file-format.md
       - Agent tools: reference/tools.md
       - Python API:
@@ -138,6 +333,15 @@ nav:
           - export_python: reference/api/export_python.md
           - minimal: reference/api/minimal.md
           - ModelDocument: reference/api/ModelDocument.md
+          - SimSession: reference/api/SimSession.md
+          - SimEnv: reference/api/SimEnv.md
+          - laws.checks: reference/api/checks.md
+          - state.take: reference/api/take.md
+          - state.start: reference/api/start.md
+          - input_uncertainty: reference/api/input_uncertainty.md
+          - forecast_from_state: reference/api/forecast_from_state.md
+          - read_result: reference/api/read_result.md
+          - investment_case: reference/api/investment_case.md
       - Gallery:
           - gallery/index.md
           - Teaching: gallery/teaching.md

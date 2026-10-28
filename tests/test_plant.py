@@ -368,7 +368,8 @@ def _moves(timeline, t0, t1, names=None):
 
 LOST_KINDS = ("movers", "handling", "soc", "chargers", "charging", "phases", "phases_all",
               "placed", "tending", "agents", "agent_links", "entity_agents",
-              "belts")      # D734: a plant reports no position along a belt
+              "belts",      # D734: a plant reports no position along a belt
+              "carriers")   # #1470: a plant log does not say which unit holds which part
 
 
 def _compare(model, simulated, events, *, lost=(), instants=None, approximate=()):
@@ -437,7 +438,7 @@ def test_an_entity_on_a_timed_link_stays_in_the_block_it_left(name, tmp_path):
 @pytest.mark.parametrize("name, lost, approximate", [
     ("automation_cell", ("phases", "phases_all", "placed"), ()),
     ("ed_patient_agents", ("entity_agents",), ()),
-    ("warehouse_forklifts", ("handling", "belts"), ("movers",)),    # D457: the node last reported
+    ("warehouse_forklifts", ("handling", "belts", "carriers"), ("movers",)),    # D457: the node last reported
     ("abm_wolf_sheep", ("agents",), ())])
 def test_what_is_not_mappable_is_lost_and_the_rest_is_the_run(name, lost, approximate, tmp_path):
     model = api.load_layout(MODELS / f"{name}.json")

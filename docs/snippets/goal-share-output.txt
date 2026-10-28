@@ -1,0 +1,6 @@
+$ naga run model.json --player queue.html
+player written to queue.html
+exit code 0; queue.html is 324 KB
+loads a script from elsewhere: False
+has a content-security-policy: True
+shows the resource name: True

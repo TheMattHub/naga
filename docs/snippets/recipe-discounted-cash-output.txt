@@ -1,0 +1,6 @@
+      Cash banked  Present value
+Year                            
+5             500            447
+10           1000            791
+20           2000           1268
+exact continuous discounting over 20 years: 1264

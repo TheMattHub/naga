@@ -1,0 +1,2 @@
+DiscreteUniform(1, 6):           87% busy
+EmpiricalDiscrete 1/2/5:         52% busy

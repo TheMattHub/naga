@@ -407,7 +407,7 @@
             "default": 0.5,
             "unit": "seconds",
             "label": "Pick time",
-            "help": "",
+            "help": "Time to pick a part up, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -420,7 +420,7 @@
             "default": 0.5,
             "unit": "seconds",
             "label": "Place time",
-            "help": "",
+            "help": "Time to put a part down, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -472,7 +472,7 @@
             "default": 1,
             "unit": "",
             "label": "Robots",
-            "help": "",
+            "help": "How many robots work in parallel.",
             "group": "Robot",
             "min": 1,
             "max": 50,
@@ -485,7 +485,7 @@
             "default": 2.0,
             "unit": "m/s",
             "label": "Arm speed",
-            "help": "",
+            "help": "Top speed of the arm, in m/s.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -498,7 +498,7 @@
             "default": 6.0,
             "unit": "m/s^2",
             "label": "Arm acceleration",
-            "help": "",
+            "help": "Acceleration of the arm, in m/s^2.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -511,7 +511,7 @@
             "default": 20.0,
             "unit": "kg",
             "label": "Rated payload",
-            "help": "",
+            "help": "Heaviest load the arm is rated for, in kg.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -524,7 +524,7 @@
             "default": 0.7,
             "unit": "",
             "label": "Speed fraction at rated payload",
-            "help": "",
+            "help": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load.",
             "group": "Robot",
             "min": 1e-09,
             "max": 1.0,
@@ -537,7 +537,7 @@
             "default": 1.5,
             "unit": "kW",
             "label": "Power drawn while working",
-            "help": "",
+            "help": "Electric power drawn while the robot works, in kW.",
             "group": "Cost",
             "min": 0.0,
             "max": null,
@@ -735,8 +735,18 @@
           "type": "number",
           "description": "Carried on the way back; slows the arm towards its rated payload."
         },
-        {"name": "pick_time", "default": 0.5, "type": "number"},
-        {"name": "place_time", "default": 0.5, "type": "number"},
+        {
+          "name": "pick_time",
+          "default": 0.5,
+          "type": "number",
+          "description": "Time to pick a part up, in seconds."
+        },
+        {
+          "name": "place_time",
+          "default": 0.5,
+          "type": "number",
+          "description": "Time to put a part down, in seconds."
+        },
         {
           "name": "process_time",
           "default": 5.0,
@@ -755,12 +765,42 @@
           "type": "number",
           "description": "0: no tool change."
         },
-        {"name": "robots", "default": 1, "type": "int"},
-        {"name": "speed", "default": 2.0, "type": "number"},
-        {"name": "accel", "default": 6.0, "type": "number"},
-        {"name": "payload_max", "default": 20.0, "type": "number"},
-        {"name": "payload_derate", "default": 0.7, "type": "number"},
-        {"name": "power_kw", "default": 1.5, "type": "number"},
+        {
+          "name": "robots",
+          "default": 1,
+          "type": "int",
+          "description": "How many robots work in parallel."
+        },
+        {
+          "name": "speed",
+          "default": 2.0,
+          "type": "number",
+          "description": "Top speed of the arm, in m/s."
+        },
+        {
+          "name": "accel",
+          "default": 6.0,
+          "type": "number",
+          "description": "Acceleration of the arm, in m/s^2."
+        },
+        {
+          "name": "payload_max",
+          "default": 20.0,
+          "type": "number",
+          "description": "Heaviest load the arm is rated for, in kg."
+        },
+        {
+          "name": "payload_derate",
+          "default": 0.7,
+          "type": "number",
+          "description": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load."
+        },
+        {
+          "name": "power_kw",
+          "default": 1.5,
+          "type": "number",
+          "description": "Electric power drawn while the robot works, in kW."
+        },
         {
           "name": "price",
           "default": 40000.0,
@@ -939,7 +979,7 @@
             "default": 0.5,
             "unit": "seconds",
             "label": "Pick time",
-            "help": "",
+            "help": "Time to pick a part up, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -952,7 +992,7 @@
             "default": 0.5,
             "unit": "seconds",
             "label": "Place time",
-            "help": "",
+            "help": "Time to put a part down, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -1004,7 +1044,7 @@
             "default": 1,
             "unit": "",
             "label": "Robots",
-            "help": "",
+            "help": "How many robots work in parallel.",
             "group": "Robot",
             "min": 1,
             "max": 50,
@@ -1017,7 +1057,7 @@
             "default": 1.0,
             "unit": "m/s",
             "label": "Arm speed",
-            "help": "",
+            "help": "Top speed of the cobot, in m/s.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -1030,7 +1070,7 @@
             "default": 2.0,
             "unit": "m/s^2",
             "label": "Arm acceleration",
-            "help": "",
+            "help": "Acceleration of the cobot, in m/s^2.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -1043,7 +1083,7 @@
             "default": 10.0,
             "unit": "kg",
             "label": "Rated payload",
-            "help": "",
+            "help": "Heaviest load the arm is rated for, in kg.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -1056,7 +1096,7 @@
             "default": 0.8,
             "unit": "",
             "label": "Speed fraction at rated payload",
-            "help": "",
+            "help": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load.",
             "group": "Robot",
             "min": 1e-09,
             "max": 1.0,
@@ -1121,7 +1161,7 @@
             "default": 0.35,
             "unit": "kW",
             "label": "Power drawn while working",
-            "help": "",
+            "help": "Electric power drawn while the robot works, in kW.",
             "group": "Cost",
             "min": 0.0,
             "max": null,
@@ -1331,8 +1371,18 @@
           "type": "number",
           "description": "Carried on the way back; slows the arm towards its rated payload."
         },
-        {"name": "pick_time", "default": 0.5, "type": "number"},
-        {"name": "place_time", "default": 0.5, "type": "number"},
+        {
+          "name": "pick_time",
+          "default": 0.5,
+          "type": "number",
+          "description": "Time to pick a part up, in seconds."
+        },
+        {
+          "name": "place_time",
+          "default": 0.5,
+          "type": "number",
+          "description": "Time to put a part down, in seconds."
+        },
         {
           "name": "process_time",
           "default": 5.0,
@@ -1351,11 +1401,36 @@
           "type": "number",
           "description": "0: no tool change."
         },
-        {"name": "robots", "default": 1, "type": "int"},
-        {"name": "speed", "default": 1.0, "type": "number"},
-        {"name": "accel", "default": 2.0, "type": "number"},
-        {"name": "payload_max", "default": 10.0, "type": "number"},
-        {"name": "payload_derate", "default": 0.8, "type": "number"},
+        {
+          "name": "robots",
+          "default": 1,
+          "type": "int",
+          "description": "How many robots work in parallel."
+        },
+        {
+          "name": "speed",
+          "default": 1.0,
+          "type": "number",
+          "description": "Top speed of the cobot, in m/s."
+        },
+        {
+          "name": "accel",
+          "default": 2.0,
+          "type": "number",
+          "description": "Acceleration of the cobot, in m/s^2."
+        },
+        {
+          "name": "payload_max",
+          "default": 10.0,
+          "type": "number",
+          "description": "Heaviest load the arm is rated for, in kg."
+        },
+        {
+          "name": "payload_derate",
+          "default": 0.8,
+          "type": "number",
+          "description": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load."
+        },
         {
           "name": "collaborative_speed",
           "default": 0.25,
@@ -1381,7 +1456,12 @@
           "type": "number",
           "description": "With \"separation\" and no Safety zone named: a worker within this path distance of the cell slows the cobot."
         },
-        {"name": "power_kw", "default": 0.35, "type": "number"},
+        {
+          "name": "power_kw",
+          "default": 0.35,
+          "type": "number",
+          "description": "Electric power drawn while the robot works, in kW."
+        },
         {
           "name": "price",
           "default": 38000.0,
@@ -1472,7 +1552,7 @@
             "default": 40,
             "unit": "",
             "label": "Cases per pallet",
-            "help": "",
+            "help": "How many cases make a full pallet.",
             "group": "Cycle",
             "min": 1,
             "max": 10000,
@@ -1498,7 +1578,7 @@
             "default": 10.0,
             "unit": "kg",
             "label": "Case weight",
-            "help": "",
+            "help": "Mass of one case, in kg; the arm carries one case per pick.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -1511,7 +1591,7 @@
             "default": 1.0,
             "unit": "seconds",
             "label": "Pick time",
-            "help": "",
+            "help": "Time to pick a part up, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -1524,7 +1604,7 @@
             "default": 1.0,
             "unit": "seconds",
             "label": "Place time",
-            "help": "",
+            "help": "Time to put a part down, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -1550,7 +1630,7 @@
             "default": 1,
             "unit": "",
             "label": "Robots",
-            "help": "",
+            "help": "How many robots work in parallel.",
             "group": "Robot",
             "min": 1,
             "max": 50,
@@ -1563,7 +1643,7 @@
             "default": 2.0,
             "unit": "m/s",
             "label": "Arm speed",
-            "help": "",
+            "help": "Top speed of the arm, in m/s.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -1576,7 +1656,7 @@
             "default": 4.0,
             "unit": "m/s^2",
             "label": "Arm acceleration",
-            "help": "",
+            "help": "Acceleration of the arm, in m/s^2.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -1589,7 +1669,7 @@
             "default": 180.0,
             "unit": "kg",
             "label": "Rated payload",
-            "help": "",
+            "help": "Heaviest load the arm is rated for, in kg.",
             "group": "Robot",
             "min": 1e-09,
             "max": null,
@@ -1602,7 +1682,7 @@
             "default": 0.6,
             "unit": "",
             "label": "Speed fraction at rated payload",
-            "help": "",
+            "help": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load.",
             "group": "Robot",
             "min": 1e-09,
             "max": 1.0,
@@ -1615,7 +1695,7 @@
             "default": 6.0,
             "unit": "kW",
             "label": "Power drawn while working",
-            "help": "",
+            "help": "Electric power drawn while the robot works, in kW.",
             "group": "Cost",
             "min": 0.0,
             "max": null,
@@ -1795,28 +1875,78 @@
         }
       },
       "parameters": [
-        {"name": "cases_per_pallet", "default": 40, "type": "int"},
+        {
+          "name": "cases_per_pallet",
+          "default": 40,
+          "type": "int",
+          "description": "How many cases make a full pallet."
+        },
         {
           "name": "reach_m",
           "default": 1.5,
           "type": "number",
           "description": "One way, from the infeed to the pallet."
         },
-        {"name": "case_kg", "default": 10.0, "type": "number"},
-        {"name": "pick_time", "default": 1.0, "type": "number"},
-        {"name": "place_time", "default": 1.0, "type": "number"},
+        {
+          "name": "case_kg",
+          "default": 10.0,
+          "type": "number",
+          "description": "Mass of one case, in kg; the arm carries one case per pick."
+        },
+        {
+          "name": "pick_time",
+          "default": 1.0,
+          "type": "number",
+          "description": "Time to pick a part up, in seconds."
+        },
+        {
+          "name": "place_time",
+          "default": 1.0,
+          "type": "number",
+          "description": "Time to put a part down, in seconds."
+        },
         {
           "name": "pallet_change_time",
           "default": 30.0,
           "type": "number",
           "description": "The robot waits this long while the full pallet is replaced."
         },
-        {"name": "robots", "default": 1, "type": "int"},
-        {"name": "speed", "default": 2.0, "type": "number"},
-        {"name": "accel", "default": 4.0, "type": "number"},
-        {"name": "payload_max", "default": 180.0, "type": "number"},
-        {"name": "payload_derate", "default": 0.6, "type": "number"},
-        {"name": "power_kw", "default": 6.0, "type": "number"},
+        {
+          "name": "robots",
+          "default": 1,
+          "type": "int",
+          "description": "How many robots work in parallel."
+        },
+        {
+          "name": "speed",
+          "default": 2.0,
+          "type": "number",
+          "description": "Top speed of the arm, in m/s."
+        },
+        {
+          "name": "accel",
+          "default": 4.0,
+          "type": "number",
+          "description": "Acceleration of the arm, in m/s^2."
+        },
+        {
+          "name": "payload_max",
+          "default": 180.0,
+          "type": "number",
+          "description": "Heaviest load the arm is rated for, in kg."
+        },
+        {
+          "name": "payload_derate",
+          "default": 0.6,
+          "type": "number",
+          "description": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load."
+        },
+        {
+          "name": "power_kw",
+          "default": 6.0,
+          "type": "number",
+          "description": "Electric power drawn while the robot works, in kW."
+        },
         {
           "name": "price",
           "default": 80000.0,
@@ -1914,7 +2044,7 @@
             "default": 2,
             "unit": "",
             "label": "Robots",
-            "help": "",
+            "help": "How many vehicles are in the fleet.",
             "group": "Vehicles",
             "min": 1,
             "max": 200,
@@ -1927,7 +2057,7 @@
             "default": 80.0,
             "unit": "metres per minute",
             "label": "Speed carrying a load",
-            "help": "",
+            "help": "Driving speed while carrying a load.",
             "group": "Vehicles",
             "min": 1e-09,
             "max": null,
@@ -1940,7 +2070,7 @@
             "default": 90.0,
             "unit": "metres per minute",
             "label": "Speed running empty",
-            "help": "",
+            "help": "Driving speed with no load.",
             "group": "Vehicles",
             "min": 1e-09,
             "max": null,
@@ -1953,7 +2083,7 @@
             "default": 0.3,
             "unit": "minutes",
             "label": "Time to take a load",
-            "help": "",
+            "help": "Time to take a load on.",
             "group": "Vehicles",
             "min": 0.0,
             "max": null,
@@ -1966,7 +2096,7 @@
             "default": 0.3,
             "unit": "minutes",
             "label": "Time to set a load down",
-            "help": "",
+            "help": "Time to put a load down.",
             "group": "Vehicles",
             "min": 0.0,
             "max": null,
@@ -1992,7 +2122,7 @@
             "default": "stay",
             "unit": "",
             "label": "When a job ends",
-            "help": "",
+            "help": "stay: the vehicle waits where it dropped off. home: it drives back, and is busy on the way.",
             "group": "Dispatching",
             "min": null,
             "max": null,
@@ -2005,7 +2135,7 @@
             "default": "nearest",
             "unit": "",
             "label": "Which request is served first",
-            "help": "",
+            "help": "Whose request a freed vehicle serves: fifo is the longest waiting, nearest is the one whose pick-up is closest. Priority comes first under both.",
             "group": "Dispatching",
             "min": null,
             "max": null,
@@ -2018,7 +2148,7 @@
             "default": "nearest",
             "unit": "",
             "label": "Which vehicle takes it",
-            "help": "",
+            "help": "Which idle vehicle serves a request: nearest to the pick-up, the one idle longest, or in turn.",
             "group": "Dispatching",
             "min": null,
             "max": null,
@@ -2044,7 +2174,7 @@
             "default": 0,
             "unit": "",
             "label": "Request priority",
-            "help": "",
+            "help": "Lower is served first, under either dispatching rule.",
             "group": "Dispatching",
             "min": -100,
             "max": 100,
@@ -2057,7 +2187,7 @@
             "default": 2.0,
             "unit": "kWh",
             "label": "Battery capacity",
-            "help": "",
+            "help": "Battery size of each vehicle, in kWh.",
             "group": "Battery",
             "min": 1e-09,
             "max": null,
@@ -2070,7 +2200,7 @@
             "default": 0.4,
             "unit": "kW",
             "label": "Power drawn while working",
-            "help": "",
+            "help": "Power a vehicle draws while driving, in kW.",
             "group": "Battery",
             "min": 0.0,
             "max": null,
@@ -2083,7 +2213,7 @@
             "default": 1,
             "unit": "",
             "label": "Charging points at the base",
-            "help": "",
+            "help": "How many vehicles can charge at the same time.",
             "group": "Battery",
             "min": 1,
             "max": 200,
@@ -2096,7 +2226,7 @@
             "default": 1.0,
             "unit": "kW",
             "label": "Charger power",
-            "help": "",
+            "help": "Charging power of each point, in kW.",
             "group": "Battery",
             "min": 1e-09,
             "max": null,
@@ -2191,31 +2321,96 @@
         }
       },
       "parameters": [
-        {"name": "vehicles", "default": 2, "type": "int"},
-        {"name": "speed_loaded", "default": 80.0, "type": "number"},
-        {"name": "speed_empty", "default": 90.0, "type": "number"},
-        {"name": "load_time", "default": 0.3, "type": "time"},
-        {"name": "unload_time", "default": 0.3, "type": "time"},
+        {
+          "name": "vehicles",
+          "default": 2,
+          "type": "int",
+          "description": "How many vehicles are in the fleet."
+        },
+        {
+          "name": "speed_loaded",
+          "default": 80.0,
+          "type": "number",
+          "description": "Driving speed while carrying a load."
+        },
+        {
+          "name": "speed_empty",
+          "default": 90.0,
+          "type": "number",
+          "description": "Driving speed with no load."
+        },
+        {
+          "name": "load_time",
+          "default": 0.3,
+          "type": "time",
+          "description": "Time to take a load on."
+        },
+        {
+          "name": "unload_time",
+          "default": 0.3,
+          "type": "time",
+          "description": "Time to put a load down."
+        },
         {
           "name": "home_node",
           "default": "",
           "type": "name",
           "description": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model."
         },
-        {"name": "park", "default": "stay", "type": "choice"},
-        {"name": "dispatch", "default": "nearest", "type": "choice"},
-        {"name": "select", "default": "nearest", "type": "choice"},
+        {
+          "name": "park",
+          "default": "stay",
+          "type": "choice",
+          "description": "stay: the vehicle waits where it dropped off. home: it drives back, and is busy on the way."
+        },
+        {
+          "name": "dispatch",
+          "default": "nearest",
+          "type": "choice",
+          "description": "Whose request a freed vehicle serves: fifo is the longest waiting, nearest is the one whose pick-up is closest. Priority comes first under both."
+        },
+        {
+          "name": "select",
+          "default": "nearest",
+          "type": "choice",
+          "description": "Which idle vehicle serves a request: nearest to the pick-up, the one idle longest, or in turn."
+        },
         {
           "name": "destination",
           "default": "",
           "type": "name",
           "description": "Leave empty to follow the part's routing. Name a STATION for a point-to-point shuttle."
         },
-        {"name": "priority", "default": 0, "type": "int"},
-        {"name": "battery_kwh", "default": 2.0, "type": "number"},
-        {"name": "drive_kw", "default": 0.4, "type": "number"},
-        {"name": "charge_points", "default": 1, "type": "int"},
-        {"name": "charger_kw", "default": 1.0, "type": "number"},
+        {
+          "name": "priority",
+          "default": 0,
+          "type": "int",
+          "description": "Lower is served first, under either dispatching rule."
+        },
+        {
+          "name": "battery_kwh",
+          "default": 2.0,
+          "type": "number",
+          "description": "Battery size of each vehicle, in kWh."
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.4,
+          "type": "number",
+          "description": "Power a vehicle draws while driving, in kW."
+        },
+        {
+          "name": "charge_points",
+          "default": 1,
+          "type": "int",
+          "description": "How many vehicles can charge at the same time."
+        },
+        {
+          "name": "charger_kw",
+          "default": 1.0,
+          "type": "number",
+          "description": "Charging power of each point, in kW."
+        },
         {
           "name": "price",
           "default": 35000.0,
@@ -2287,7 +2482,7 @@
             "default": 2,
             "unit": "",
             "label": "Charging points",
-            "help": "",
+            "help": "How many vehicles can charge at the same time.",
             "group": "Charger",
             "min": 1,
             "max": 200,
@@ -2300,7 +2495,7 @@
             "default": 1.0,
             "unit": "kW",
             "label": "Power per point",
-            "help": "",
+            "help": "Charging power of each point, in kW.",
             "group": "Charger",
             "min": 1e-09,
             "max": null,
@@ -2350,8 +2545,18 @@
         "owns": {"chargers": ["Auto Charger"], "fixed_costs": ["Auto Charger capex"]}
       },
       "parameters": [
-        {"name": "points", "default": 2, "type": "int"},
-        {"name": "power_kw", "default": 1.0, "type": "number"},
+        {
+          "name": "points",
+          "default": 2,
+          "type": "int",
+          "description": "How many vehicles can charge at the same time."
+        },
+        {
+          "name": "power_kw",
+          "default": 1.0,
+          "type": "number",
+          "description": "Charging power of each point, in kW."
+        },
         {
           "name": "price",
           "default": 3000.0,
@@ -2378,7 +2583,7 @@
             "default": 2,
             "unit": "",
             "label": "Mobile cobots",
-            "help": "",
+            "help": "How many vehicles are in the fleet.",
             "group": "Vehicles",
             "min": 1,
             "max": 200,
@@ -2391,7 +2596,7 @@
             "default": 80.0,
             "unit": "metres per minute",
             "label": "Speed carrying a load",
-            "help": "",
+            "help": "Driving speed while carrying a load.",
             "group": "Vehicles",
             "min": 1e-09,
             "max": null,
@@ -2404,7 +2609,7 @@
             "default": 90.0,
             "unit": "metres per minute",
             "label": "Speed running empty",
-            "help": "",
+            "help": "Driving speed with no load.",
             "group": "Vehicles",
             "min": 1e-09,
             "max": null,
@@ -2417,7 +2622,7 @@
             "default": 0.3,
             "unit": "minutes",
             "label": "Time to take a load",
-            "help": "",
+            "help": "Time to take a load on.",
             "group": "Vehicles",
             "min": 0.0,
             "max": null,
@@ -2430,7 +2635,7 @@
             "default": 0.3,
             "unit": "minutes",
             "label": "Time to set a load down",
-            "help": "",
+            "help": "Time to put a load down.",
             "group": "Vehicles",
             "min": 0.0,
             "max": null,
@@ -2456,7 +2661,7 @@
             "default": "stay",
             "unit": "",
             "label": "When a job ends",
-            "help": "",
+            "help": "stay: the vehicle waits where it dropped off. home: it drives back, and is busy on the way.",
             "group": "Dispatching",
             "min": null,
             "max": null,
@@ -2469,7 +2674,7 @@
             "default": "nearest",
             "unit": "",
             "label": "Which request is served first",
-            "help": "",
+            "help": "Whose request a freed vehicle serves: fifo is the longest waiting, nearest is the one whose pick-up is closest. Priority comes first under both.",
             "group": "Dispatching",
             "min": null,
             "max": null,
@@ -2482,7 +2687,7 @@
             "default": "nearest",
             "unit": "",
             "label": "Which vehicle takes it",
-            "help": "",
+            "help": "Which idle vehicle serves a request: nearest to the pick-up, the one idle longest, or in turn.",
             "group": "Dispatching",
             "min": null,
             "max": null,
@@ -2508,7 +2713,7 @@
             "default": 0,
             "unit": "",
             "label": "Request priority",
-            "help": "",
+            "help": "Lower is served first, under either dispatching rule.",
             "group": "Dispatching",
             "min": -100,
             "max": 100,
@@ -2521,7 +2726,7 @@
             "default": 2.0,
             "unit": "kWh",
             "label": "Battery capacity",
-            "help": "",
+            "help": "Battery size of each vehicle, in kWh.",
             "group": "Battery",
             "min": 1e-09,
             "max": null,
@@ -2534,7 +2739,7 @@
             "default": 0.4,
             "unit": "kW",
             "label": "Power drawn while working",
-            "help": "",
+            "help": "Power a vehicle draws while driving, in kW.",
             "group": "Battery",
             "min": 0.0,
             "max": null,
@@ -2547,7 +2752,7 @@
             "default": 1,
             "unit": "",
             "label": "Charging points at the base",
-            "help": "",
+            "help": "How many vehicles can charge at the same time.",
             "group": "Battery",
             "min": 1,
             "max": 200,
@@ -2560,7 +2765,7 @@
             "default": 1.0,
             "unit": "kW",
             "label": "Charger power",
-            "help": "",
+            "help": "Charging power of each point, in kW.",
             "group": "Battery",
             "min": 1e-09,
             "max": null,
@@ -2586,7 +2791,7 @@
             "default": 1.0,
             "unit": "m/s",
             "label": "Arm speed",
-            "help": "",
+            "help": "Top speed of the arm on the vehicle, in m/s.",
             "group": "Arm",
             "min": 1e-09,
             "max": null,
@@ -2599,7 +2804,7 @@
             "default": 2.0,
             "unit": "m/s^2",
             "label": "Arm acceleration",
-            "help": "",
+            "help": "Acceleration of the arm on the vehicle, in m/s^2.",
             "group": "Arm",
             "min": 1e-09,
             "max": null,
@@ -2612,7 +2817,7 @@
             "default": 10.0,
             "unit": "kg",
             "label": "Rated payload",
-            "help": "",
+            "help": "Heaviest load the arm is rated for, in kg.",
             "group": "Arm",
             "min": 1e-09,
             "max": null,
@@ -2625,7 +2830,7 @@
             "default": 0.8,
             "unit": "",
             "label": "Speed fraction at rated payload",
-            "help": "",
+            "help": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load.",
             "group": "Arm",
             "min": 1e-09,
             "max": 1.0,
@@ -2832,41 +3037,126 @@
         }
       },
       "parameters": [
-        {"name": "vehicles", "default": 2, "type": "int"},
-        {"name": "speed_loaded", "default": 80.0, "type": "number"},
-        {"name": "speed_empty", "default": 90.0, "type": "number"},
-        {"name": "load_time", "default": 0.3, "type": "time"},
-        {"name": "unload_time", "default": 0.3, "type": "time"},
+        {
+          "name": "vehicles",
+          "default": 2,
+          "type": "int",
+          "description": "How many vehicles are in the fleet."
+        },
+        {
+          "name": "speed_loaded",
+          "default": 80.0,
+          "type": "number",
+          "description": "Driving speed while carrying a load."
+        },
+        {
+          "name": "speed_empty",
+          "default": 90.0,
+          "type": "number",
+          "description": "Driving speed with no load."
+        },
+        {
+          "name": "load_time",
+          "default": 0.3,
+          "type": "time",
+          "description": "Time to take a load on."
+        },
+        {
+          "name": "unload_time",
+          "default": 0.3,
+          "type": "time",
+          "description": "Time to put a load down."
+        },
         {
           "name": "home_node",
           "default": "",
           "type": "name",
           "description": "The network node the vehicles start at. An asset's own node is written <instance>/<node>; empty takes the first node in the model."
         },
-        {"name": "park", "default": "stay", "type": "choice"},
-        {"name": "dispatch", "default": "nearest", "type": "choice"},
-        {"name": "select", "default": "nearest", "type": "choice"},
+        {
+          "name": "park",
+          "default": "stay",
+          "type": "choice",
+          "description": "stay: the vehicle waits where it dropped off. home: it drives back, and is busy on the way."
+        },
+        {
+          "name": "dispatch",
+          "default": "nearest",
+          "type": "choice",
+          "description": "Whose request a freed vehicle serves: fifo is the longest waiting, nearest is the one whose pick-up is closest. Priority comes first under both."
+        },
+        {
+          "name": "select",
+          "default": "nearest",
+          "type": "choice",
+          "description": "Which idle vehicle serves a request: nearest to the pick-up, the one idle longest, or in turn."
+        },
         {
           "name": "destination",
           "default": "",
           "type": "name",
           "description": "Leave empty to follow the part's routing. Name a STATION for a point-to-point shuttle."
         },
-        {"name": "priority", "default": 0, "type": "int"},
-        {"name": "battery_kwh", "default": 2.0, "type": "number"},
-        {"name": "drive_kw", "default": 0.4, "type": "number"},
-        {"name": "charge_points", "default": 1, "type": "int"},
-        {"name": "charger_kw", "default": 1.0, "type": "number"},
+        {
+          "name": "priority",
+          "default": 0,
+          "type": "int",
+          "description": "Lower is served first, under either dispatching rule."
+        },
+        {
+          "name": "battery_kwh",
+          "default": 2.0,
+          "type": "number",
+          "description": "Battery size of each vehicle, in kWh."
+        },
+        {
+          "name": "drive_kw",
+          "default": 0.4,
+          "type": "number",
+          "description": "Power a vehicle draws while driving, in kW."
+        },
+        {
+          "name": "charge_points",
+          "default": 1,
+          "type": "int",
+          "description": "How many vehicles can charge at the same time."
+        },
+        {
+          "name": "charger_kw",
+          "default": 1.0,
+          "type": "number",
+          "description": "Charging power of each point, in kW."
+        },
         {
           "name": "exchange",
           "default": false,
           "type": "bool",
           "description": "A double gripper or a tray: pick the finished part and place the new one in one visit."
         },
-        {"name": "arm_speed", "default": 1.0, "type": "number"},
-        {"name": "arm_accel", "default": 2.0, "type": "number"},
-        {"name": "arm_payload_max", "default": 10.0, "type": "number"},
-        {"name": "arm_payload_derate", "default": 0.8, "type": "number"},
+        {
+          "name": "arm_speed",
+          "default": 1.0,
+          "type": "number",
+          "description": "Top speed of the arm on the vehicle, in m/s."
+        },
+        {
+          "name": "arm_accel",
+          "default": 2.0,
+          "type": "number",
+          "description": "Acceleration of the arm on the vehicle, in m/s^2."
+        },
+        {
+          "name": "arm_payload_max",
+          "default": 10.0,
+          "type": "number",
+          "description": "Heaviest load the arm is rated for, in kg."
+        },
+        {
+          "name": "arm_payload_derate",
+          "default": 0.8,
+          "type": "number",
+          "description": "Share of full speed the arm keeps at its rated payload; speed falls linearly from 1 at no load."
+        },
         {
           "name": "arm_collaborative_speed",
           "default": 0.25,
@@ -2976,7 +3266,7 @@
             "default": 60.0,
             "unit": "seconds",
             "label": "Process time",
-            "help": "",
+            "help": "Machining time of one part, in seconds.",
             "group": "Cycle",
             "min": 0.0,
             "max": null,
@@ -3002,7 +3292,7 @@
             "default": 2.0,
             "unit": "kg",
             "label": "Part weight",
-            "help": "",
+            "help": "Mass of one part, in kg; it slows the arm that carries it.",
             "group": "Tending",
             "min": 0.0,
             "max": null,
@@ -3015,7 +3305,7 @@
             "default": 2.0,
             "unit": "seconds",
             "label": "Place time",
-            "help": "",
+            "help": "Time for the arm to load a part into the machine, in seconds.",
             "group": "Tending",
             "min": 0.0,
             "max": null,
@@ -3028,7 +3318,7 @@
             "default": 2.0,
             "unit": "seconds",
             "label": "Pick time",
-            "help": "",
+            "help": "Time for the arm to take a finished part out, in seconds.",
             "group": "Tending",
             "min": 0.0,
             "max": null,
@@ -3054,7 +3344,7 @@
             "default": 1,
             "unit": "",
             "label": "Machines",
-            "help": "",
+            "help": "How many machines the cell has.",
             "group": "Machine",
             "min": 1,
             "max": 50,
@@ -3067,7 +3357,7 @@
             "default": 5.0,
             "unit": "kW",
             "label": "Power drawn while working",
-            "help": "",
+            "help": "Electric power each machine draws while it works, in kW.",
             "group": "Cost",
             "min": 0.0,
             "max": null,
@@ -3111,24 +3401,54 @@
           "type": "name",
           "description": "The name a sequence step or a fleet's destination uses for this machine. Empty: the instance's own station block."
         },
-        {"name": "process_time", "default": 60.0, "type": "number"},
+        {
+          "name": "process_time",
+          "default": 60.0,
+          "type": "number",
+          "description": "Machining time of one part, in seconds."
+        },
         {
           "name": "reach_m",
           "default": 0.8,
           "type": "number",
           "description": "The arm's move into and out of the machine."
         },
-        {"name": "part_kg", "default": 2.0, "type": "number"},
-        {"name": "place_time", "default": 2.0, "type": "number"},
-        {"name": "pick_time", "default": 2.0, "type": "number"},
+        {
+          "name": "part_kg",
+          "default": 2.0,
+          "type": "number",
+          "description": "Mass of one part, in kg; it slows the arm that carries it."
+        },
+        {
+          "name": "place_time",
+          "default": 2.0,
+          "type": "number",
+          "description": "Time for the arm to load a part into the machine, in seconds."
+        },
+        {
+          "name": "pick_time",
+          "default": 2.0,
+          "type": "number",
+          "description": "Time for the arm to take a finished part out, in seconds."
+        },
         {
           "name": "cobot",
           "default": "leave",
           "type": "choice",
           "description": "leave: it is free for other jobs and any cobot comes back for the pick. stay: it waits and picks the part itself."
         },
-        {"name": "machines", "default": 1, "type": "int"},
-        {"name": "power_kw", "default": 5.0, "type": "number"},
+        {
+          "name": "machines",
+          "default": 1,
+          "type": "int",
+          "description": "How many machines the cell has."
+        },
+        {
+          "name": "power_kw",
+          "default": 5.0,
+          "type": "number",
+          "description": "Electric power each machine draws while it works, in kW."
+        },
         {
           "name": "price",
           "default": 0.0,

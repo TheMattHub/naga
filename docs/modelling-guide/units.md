@@ -24,7 +24,7 @@ where minutes to seconds is bit-identical.
 ## Field units
 
 In the model file a unit is a sibling key, `<field>_unit` (`time_unit` for a
-distribution; see the "Unit key" column of the [block reference](../reference/blocks.md)).
+distribution; see the "Unit key" column of the [block reference](../reference/blocks/index.md)).
 A file written before units existed opens with every missing or `"base"` unit
 filled in with the unit it already meant, so it keeps its meaning.
 

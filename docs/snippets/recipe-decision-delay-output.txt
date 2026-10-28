@@ -1,0 +1,2 @@
+mean approval time: 3.0 minutes
+approver busy 60% (3 minutes in 5 is 60%)

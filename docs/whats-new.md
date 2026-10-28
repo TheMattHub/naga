@@ -4,9 +4,26 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.18: logistics and energy sites as they run
+## 0.19: the building around the model
 
 <!-- --8<-- [start:latest] -->
+- **A building.** An optional `building` section holds rooms, walls with a height, thickness and
+  finish, doors that stay on their wall, floor markings, labels and fixtures, in metres. A run
+  never reads it, so it cannot change a result; drawing programs make the floor plan and 3D walls
+  from it.
+- **Wall checks.** `W_WALL_CROSSING` flags a path that walks through a wall where it has no
+  opening, and `W_OPENING_OFF_WALL` a door that cuts no wall.
+- **Plainer command line.** `naga run` prints a summary with intervals and law-check warnings
+  (`--raw` keeps the old table, `--json` gives data); `naga check --json` gives data too.
+- **Your own LOGIC classes.** `naga run --logic MODULE` and `run_model(logic=...)` take LOGIC block
+  classes from your module, also with several workers.
+- **Before you upgrade.** `InverseGaussian(mu, lambda)` now has mean `mu`, a FixedSchedule CREATE
+  no longer adds an entity at its start, and a DECIDE in Condition mode with no true condition and
+  no ELSE link stops the run. Bundled models give the same results.
+<!-- --8<-- [end:latest] -->
+
+## 0.18: logistics and energy sites as they run
+
 - **Trucks, AGVs and belts.** Trucks unload and load pallet by pallet as carriers, an AGV can stay
   with a part across legs (`keep_vehicle`), and conveyors divert and merge at points along the belt.
 - **Bigger sorters.** Sortation takes 1 to 200 lanes and a reject chute, built from a block group that
@@ -19,7 +36,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
   column, and a model that seizes several units at once may give different (now exact) results.
   Logistics 3.x and Automation 2.x change assets you place from now on; a saved model keeps its own
   copy. A plain http data source behind a proxy is now refused: use its https address.
-<!-- --8<-- [end:latest] -->
 
 ## 0.17: models that stay readable
 

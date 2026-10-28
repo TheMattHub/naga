@@ -33,7 +33,7 @@ this as `mm1.json`:
 ```
 
 Three blocks, two links, one resource. Times are in minutes unless the file says otherwise.
-Every parameter of every block type is in the [block reference](reference/blocks.md).
+Every parameter of every block type is in the [block reference](reference/blocks/index.md).
 The `"$schema"` line is optional: it points your editor at the file format, so it completes
 keys and parameters and flags a wrong one as you type (the engine ignores it).
 
@@ -44,13 +44,17 @@ naga validate mm1.json
 naga run mm1.json
 ```
 
-`validate` prints `mm1.json: OK`, or each problem with a stable code. `run` prints the system
-table of each replication: entities created and completed, average time in the system,
-throughput, queue lengths, utilisation.
+`validate` prints `mm1.json: OK`, or each problem with a stable code. `run` prints one row per
+system KPI (entities created and completed, average time in the system, throughput, queue
+lengths, utilisation) with its mean over the replications, the 95% half-width and the number of
+replications behind it. Below the table come a `WARN` line for each law check the run did not
+pass, such as an offered load of 1 or more, and the replications a half-width of 5% of the
+mean would need. `--raw` prints the per-replication table instead, `--json` prints the same
+summary as JSON, and `--no-checks` leaves the `WARN` lines out.
 
 Queueing theory gives this queue a mean time in the system of 1 / (1.25 - 1) = 4 minutes and a
-utilisation of 80%. Your numbers should be close to both; how close is what the confidence
-interval says, which the Python call below returns.
+utilisation of 80%. Your numbers should be close to both; the half-width in the table says how
+close.
 
 A report with charts, or the frames as a workbook:
 
@@ -99,3 +103,5 @@ m.save("mm1.json")
   runs one, and the [gallery](gallery/index.md) shows each with its numbers.
 - The whole file format: [Model file format](model-file-format.md).
 - The same model in raw SimPy, side by side: [Coming from SimPy](coming-from/simpy.md).
+- Prefer a canvas to a JSON file? Naga Studio, a desktop editor built on Naga, opens and saves
+  these model files.

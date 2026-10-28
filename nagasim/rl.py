@@ -140,6 +140,40 @@ class SimEnv:
     Policy DECIDE's block name, the controller anything `evaluate_policy`
     accepts. A Policy DECIDE not named runs the shortest queue (reading its
     own `observation`), not its fallback.
+
+    Parameters
+    ----------
+    layout : dict or str
+        The model, or the path of its file.
+    policy : str
+        The policy of the Policy-mode DECIDE this environment decides for.
+    reward : str, default "neg_wip"
+        A name from `BUILTIN_REWARDS` or an expression.
+    horizon : float
+        The end of an episode, in model time units.
+    observation_extra : list of str, optional
+        Expressions appended to the DECIDE's observation.
+    others : dict, optional
+        Controllers for the model's other Policy DECIDEs.
+
+    See Also
+    --------
+    nagasim.rl.evaluate_policy : Scores a controller over several episodes.
+    nagasim.core.session.SimSession : The same stepping for a person instead of a policy.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim.rl import SimEnv
+    >>> path = Path(nagasim.__file__).parent / "models" / "parallel_routing_policy.json"
+    >>> env = SimEnv(str(path), policy="routing", reward="throughput", horizon=50.0)
+    >>> env.action_space
+    Discrete(2)
+    >>> obs, info = env.reset(seed=0)
+    >>> obs, reward, terminated, truncated, info = env.step(0)
+    >>> reward, terminated, truncated
+    (1.0, False, False)
     """
 
     def __init__(self, layout, *, policy: str, reward: str = "neg_wip", horizon: float,
@@ -151,7 +185,7 @@ class SimEnv:
         self.layout, problems = prepare(layout)
         fatal = fatal_problems(problems)   # by severity, not the message text (#247)
         if fatal:
-            raise ModelValidationError(format_problems(fatal))
+            raise ModelValidationError(format_problems(fatal), structured=fatal)
         # Policies are discovered on the FLATTENED model (PHASE4 T7): a
         # Policy-mode DECIDE inside a submodel definition -- which is what every
         # library asset is -- is a real decision of the run, and its block name
@@ -248,8 +282,38 @@ class SimEnv:
 
     # -- gymnasium-shaped API -------------------------------------------------
     def reset(self, seed: int | None = None, options=None):
-        """Start a fresh episode; returns (observation, info). No reward yet --
-        this is the FIRST decision, nothing happened before it."""
+        """Start a fresh episode at its first decision.
+
+        There is no reward yet: nothing happened before the first decision.
+
+        Parameters
+        ----------
+        seed : int, optional
+            The episode's seed; without one the previous seed is kept.
+        options : dict, optional
+            Unused, for the gymnasium signature.
+
+        Returns
+        -------
+        tuple
+            ``(observation, info)``, the observation as a float array and the info as
+            ``{"t", "completions"}``.
+
+        See Also
+        --------
+        nagasim.rl.SimEnv.step : Answers the decision and runs to the next.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim.rl import SimEnv
+        >>> path = Path(nagasim.__file__).parent / "models" / "parallel_routing_policy.json"
+        >>> env = SimEnv(str(path), policy="routing", horizon=50.0)
+        >>> obs, info = env.reset(seed=0)
+        >>> obs.shape, info
+        ((4,), {'t': 0, 'completions': 0})
+        """
         if seed is not None:
             self.seed = int(seed)
         self.ctx = build_context(self.seed)
@@ -278,8 +342,35 @@ class SimEnv:
         return obs, self._info(terminal=self._done)
 
     def step(self, action):
-        """Resolve the pending decision with *action*, run until the next one
-        (or the episode ends), and return (obs, reward, terminated, truncated, info)."""
+        """Resolve the pending decision with an action and run until the next one.
+
+        Parameters
+        ----------
+        action : int
+            The index of the outgoing link the DECIDE takes.
+
+        Returns
+        -------
+        tuple
+            ``(observation, reward, terminated, truncated, info)``. ``terminated`` is
+            true when the model drained, ``truncated`` when the horizon came first.
+
+        See Also
+        --------
+        nagasim.rl.SimEnv.reset : Starts an episode.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim.rl import SimEnv
+        >>> path = Path(nagasim.__file__).parent / "models" / "parallel_routing_policy.json"
+        >>> env = SimEnv(str(path), policy="routing", reward="throughput", horizon=50.0)
+        >>> _ = env.reset(seed=0)
+        >>> obs, reward, terminated, truncated, info = env.step(0)
+        >>> reward, terminated, truncated
+        (1.0, False, False)
+        """
         if self._done:
             raise RuntimeError("step() called after the episode ended; call reset() first")
         if self._controller.pending is None:
@@ -312,7 +403,27 @@ class SimEnv:
 
     def as_gymnasium_env(self):
         """This environment as a real `gymnasium.Env` (passes gymnasium's `check_env`).
-        Needs gymnasium (`pip install "nagasim[ml]"`); it is imported here only."""
+
+        Needs gymnasium (`pip install "nagasim[ml]"`); it is imported here only.
+
+        Returns
+        -------
+        gymnasium.Env
+            An environment over this one, to hand to a trainer.
+
+        See Also
+        --------
+        nagasim.rl.SimEnv.reset : The step-wise calls it wraps.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim.rl import SimEnv
+        >>> path = Path(nagasim.__file__).parent / "models" / "parallel_routing_policy.json"
+        >>> env = SimEnv(str(path), policy="routing", horizon=50.0).as_gymnasium_env()  # doctest: +SKIP
+        >>> obs, info = env.reset(seed=0)  # doctest: +SKIP
+        """
         gymnasium = _import_gymnasium()
         sim = self
 

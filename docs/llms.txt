@@ -19,6 +19,29 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [4. Agents](https://thematthub.github.io/naga/learn/4-agents.html): An agent is a small statechart that lives in the model beside the blocks.
 - [5. Replications and scenarios](https://thematthub.github.io/naga/learn/5-replications-and-scenarios.html): One run is one sample, so a claim about the model needs many runs and a comparison needs the same random numbers on both sides.
 - [6. Reading the results](https://thematthub.github.io/naga/learn/6-results.html): Every run returns more than the headline number: summaries for each kind of component, and a log of what happened.
+
+## By goal
+
+- [How many replications, and what warm-up?](https://thematthub.github.io/naga/goals/replications-and-warm-up.html): > In short > > - You build: a script that finds how many replications a target precision needs, and how long a warm-up to set.
+- [Which decision is best? Optimise it](https://thematthub.github.io/naga/goals/optimise-a-decision.html): > In short > > - You build: a script that searches for the number of call-centre agents with the lowest daily cost.
+- [Which inputs matter? Sensitivity and DOE](https://thematthub.github.io/naga/goals/sensitivity-and-doe.html): > In short > > - You build: a script that ranks three inputs of a call centre by how far they move the mean wait.
+- [How do I fit input distributions from data?](https://thematthub.github.io/naga/goals/fit-input-distributions.html): > In short > > - You build: a script that fits candidate distributions to 200 handling times, picks the winner, and shows what the fit changes in a queue.
+- [How sure am I, given my input data?](https://thematthub.github.io/naga/goals/input-uncertainty.html): > In short > > - You build: a script that reports a mean wait with two intervals, one from run-to-run noise and one that adds the input uncertainty of a distribution fitted to 30 observations.
+- [How do I calibrate a model to data?](https://thematthub.github.io/naga/goals/calibrate-to-data.html): > In short > > - You build: a script that tunes the service rate of a one-server queue until the model's mean wait matches a measured 3.2 minutes.
+- [How do I connect live data end to end?](https://thematthub.github.io/naga/goals/connect-live-data.html): > In short > > - You build: a script that reads a line's current rates from a web service on your own machine and writes them into a model.
+- [How do I plan or schedule jobs?](https://thematthub.github.io/naga/goals/plan-or-schedule-jobs.html): > In short > > - You build: a script that sequences five jobs through a cutter and a packer with a solver, checks the plan by running it, and exports it for a planning system.
+- [How do I import a Vensim or XMILE model?](https://thematthub.github.io/naga/goals/import-vensim-xmile.html): > In short > > - You build: a script that reads a small Vensim file into a model, lists what the reader could not translate, and checks the run against the closed-form answer.
+- [How do I combine events, system dynamics and agents?](https://thematthub.github.io/naga/goals/hybrid-model.html): > In short > > - You build: a script that builds a help desk with tickets, a frustration stock and a staff team that takes breaks, then compares four and five staff.
+- [How do I check a model in CI?](https://thematthub.github.io/naga/goals/check-in-ci.html): > In short > > - You build: a model file with three assertions, a naga check run that fails the build when one is false, and the workflow file that runs it on every push.
+- [How do I cost a model and find the cost drivers?](https://thematthub.github.io/naga/goals/cost-drivers.html): > In short > > - You build: a script that prices a call centre's day and splits the total into agents busy, agents idle and callers waiting.
+- [How do I drive a study from an AI agent?](https://thematthub.github.io/naga/goals/drive-a-study-from-an-ai-agent.html): > In short > > - You build: a short script that makes the tool calls an AI assistant makes: build a queue, run it, and ask what happens with a second server.
+- [How do I share a viewer or a player?](https://thematthub.github.io/naga/goals/share-a-viewer-or-player.html): > In short > > - You build: a player file, one HTML page that replays a recorded run in a browser.
+- [How do I write a plugin block?](https://thematthub.github.io/naga/goals/write-a-plugin-block.html): > In short > > - You build: a plugin file with one new block, INSPECT, and a model that uses it like a built-in block.
+- [How do I train a policy with reinforcement learning?](https://thematthub.github.io/naga/goals/train-a-policy-with-rl.html): > In short > > - You build: a policy for a routing decision, learned by reinforcement learning over many episodes, and judged against two simple rules.
+
+## Learn
+
+- [Glossary](https://thematthub.github.io/naga/glossary.html): This page defines the terms the learning path and the goal tutorials use, one line each.
 - [Quick start from a model file](https://thematthub.github.io/naga/quickstart.html): A single-server queue, from nothing to numbers.
 - [Tutorial: a log to a model in five minutes](https://thematthub.github.io/naga/event-log-tutorial.html): This page takes a real-looking event log from a job shop to a running model, and shows what to check before trusting it.
 
@@ -39,6 +62,66 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [Use with an agent](https://thematthub.github.io/naga/mcp.html): The engine has a set of tools an LLM agent calls to build, validate, run, debug and analyse a model: Agent tools lists every one.
 - [Run a study with an assistant](https://thematthub.github.io/naga/ai-study.html): The engine can keep a whole simulation study in a folder and test every model step, so any assistant that speaks to it (see Use with an agent) can run a study without remembering anything between calls.
 - [Pick tools with a small model](https://thematthub.github.io/naga/tool-picker.html): find_tool ranks the agent tools by plain word overlap, and a small re-ranking model can put the right tool first more often.
+
+## Recipes (How do I...?)
+
+- [Recipes: How do I...?](https://thematthub.github.io/naga/how-to/recipes/index.html): Each recipe answers one modelling question with a tiny model, the output it prints and a short explanation.
+
+## Service and repair times
+
+- [How do I model handling times with an occasional very long one?](https://thematthub.github.io/naga/how-to/recipes/lognormal-tail.html): Manual work is usually quick, with now and then a job that takes far longer.
+- [How do I model a job made of several short steps?](https://thematthub.github.io/naga/how-to/recipes/erlang-steps.html): A bake, a wash or an inspection often runs through a fixed number of steps in a row.
+- [How do I model repair times with a long tail?](https://thematthub.github.io/naga/how-to/recipes/repair-tail.html): Repair and lifetime data often have a heavier tail than a lognormal.
+- [How do I model an approval or reaction time that is never negative?](https://thematthub.github.io/naga/how-to/recipes/decision-delay.html): A person's reaction or an approval step takes time that is positive and skewed to the right.
+- [How do I keep a skewed time between a minimum and a maximum?](https://thematthub.github.io/naga/how-to/recipes/bounded-yield.html): A filling step can take at most 10 minutes and never less than 2, and it is usually closer to the top.
+- [How do I use a histogram from a time study as a service time?](https://thematthub.github.io/naga/how-to/recipes/histogram-times.html): A time study gives bins and the share of jobs in each, not a formula.
+- [How do I model a time that is a fixed part plus a random part?](https://thematthub.github.io/naga/how-to/recipes/formula-time.html): A repair is a fixed diagnosis followed by a random fix, and no single distribution says that.
+- [How do I stop a cycle time from going negative?](https://thematthub.github.io/naga/how-to/recipes/bounded-cycle.html): A normal cycle time has no floor, so a draw can fall below zero when the spread is large.
+- [How do I model a correction time that grows with a positioning error?](https://thematthub.github.io/naga/how-to/recipes/positioning-error.html): A robot that misses its target by some distance spends time putting it right.
+- [What happens to a queue when service times have wild outliers?](https://thematthub.github.io/naga/how-to/recipes/wild-outliers.html): Some data have extreme values on both sides, and the Cauchy distribution is the standard model of that.
+
+## Failures and arrivals
+
+- [How do I model a machine that wears out?](https://thematthub.github.io/naga/how-to/recipes/weibull-wear-out.html): A machine that wears out fails at about the same age, while a memoryless machine fails at any age.
+- [How do I run arrivals from a fixed timetable?](https://thematthub.github.io/naga/how-to/recipes/timetable-arrivals.html): A delivery plan or a roster lists the exact times things arrive.
+
+## Counts and chance
+
+- [How do I model the number of lines on an order?](https://thematthub.github.io/naga/how-to/recipes/poisson-lines.html): An order has a random number of lines, with a known average.
+- [How do I count the defects in a batch?](https://thematthub.github.io/naga/how-to/recipes/binomial-defects.html): A batch of parts holds a number of defective ones, each defective with the same chance.
+- [How do I model retesting until a part passes?](https://thematthub.github.io/naga/how-to/recipes/retest-attempts.html): A part is tested again until it passes, and each try costs the same time.
+- [How do I model inspecting a sample from a finite lot?](https://thematthub.github.io/naga/how-to/recipes/lot-sample.html): An inspector draws a small sample from a lot with a known number of defectives and does not put the parts back.
+- [How do I draw order sizes from my own data?](https://thematthub.github.io/naga/how-to/recipes/order-sizes.html): Order sizes are whole numbers, and you may know either their range or their measured shares.
+
+## Delays, smoothing and forecasts
+
+- [How do I add a first-order information delay to a forecast?](https://thematthub.github.io/naga/how-to/recipes/forecast-lag.html): A planner's forecast follows demand but with a lag, because it averages what has been seen.
+- [How do I delay goods in transit by a fixed time or a spread of times?](https://thematthub.github.io/naga/how-to/recipes/transit-delay.html): Goods that leave on day 5 either all arrive exactly 4 days later, or arrive over a spread of days around the mean.
+- [How do I smooth a noisy signal?](https://thematthub.github.io/naga/how-to/recipes/smooth-noise.html): A daily reading jumps around, and a decision that follows it jumps too.
+- [How do I extrapolate a growing trend?](https://thematthub.github.io/naga/how-to/recipes/trend-forecast.html): Sales that grow steadily can be projected a few weeks ahead from their recent growth rate.
+
+## Rates, tests and money
+
+- [How do I add a daily or weekly cycle to a rate?](https://thematthub.github.io/naga/how-to/recipes/daily-cycle.html): Demand, solar output and many flows swing over a day and drop at weekends.
+- [How do I test a model with a step, a ramp and a pulse?](https://thematthub.github.io/naga/how-to/recipes/test-inputs.html): Before you trust a model, push a known input through it and see how it answers.
+- [How do I discount a stream of cash?](https://thematthub.github.io/naga/how-to/recipes/discounted-cash.html): A plant that earns every year is worth less in today's money the later the cash arrives.
+- [How do I stop a ratio dividing by zero?](https://thematthub.github.io/naga/how-to/recipes/safe-ratio.html): A yield is good parts over parts made, and it is 0 over 0 until the line starts.
+- [How do I turn a heading and a distance into x and y?](https://thematthub.github.io/naga/how-to/recipes/bearing.html): A vehicle that flies a leg at a known heading ends up at an x and y offset, and you may need the heading back.
+
+## Agents
+
+- [How do I let an agent react to the agents near it?](https://thematthub.github.io/naga/how-to/recipes/near-agents.html): A vehicle slows down when others are close, or a sensor reads the load of its neighbours.
+- [How do I let an agent read the agents in the cells around it?](https://thematthub.github.io/naga/how-to/recipes/neighbour-grid.html): On a grid, neighbours are the cells around you and not the agents within a distance.
+
+## Flow blocks
+
+- [How do I limit the work waiting between two machines?](https://thematthub.github.io/naga/how-to/recipes/buffer-wip.html): A buffer between two machines holds a few parts.
+- [How do I move parts along a belt?](https://thematthub.github.io/naga/how-to/recipes/belt-transit.html): A belt delays each part by its length over its speed and holds only so many parts.
+- [How do I turn one order into several jobs?](https://thematthub.github.io/naga/how-to/recipes/order-copies.html): One customer order is often several tasks, such as three dishes.
+- [How do I make two kinds of entity wait for each other?](https://thematthub.github.io/naga/how-to/recipes/pair-flows.html): A ride needs a rider and a driver, and each waits until the other is there.
+- [How do I pack parts on a pallet and unpack them later?](https://thematthub.github.io/naga/how-to/recipes/unpack-pallet.html): Parts travel together on a pallet and are handled one by one at the end.
+- [How do I route entities by a rule I write in Python?](https://thematthub.github.io/naga/how-to/recipes/custom-routing.html): Chance and conditions cover most routing, but sometimes the rule is code.
+- [How do I share a site's power limit between chargers?](https://thematthub.github.io/naga/how-to/recipes/site-power.html): A depot with a grid limit cannot give every car its full power at once.
 
 ## Digital twin
 
@@ -66,13 +149,153 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [Plan, inspect and share](https://thematthub.github.io/naga/reference/cli/plan-and-share.html): Plan with a solver, find the loops that drive a system dynamics model, and share a model in a browser.
 - [Agents](https://thematthub.github.io/naga/reference/cli/agents.html): Serve the model operations to an assistant.
 
+## Blocks
+
+- [Block reference](https://thematthub.github.io/naga/reference/blocks/index.html): One page per block type, from nagasim/core/block_registry.py: what it does, its ports and parameters, the result frames it fills, the checks that name it, and an example that runs when the page is generated.
+- [ASSIGN](https://thematthub.github.io/naga/reference/blocks/assign.html): Sets attributes on a part, order or customer, or a model variable, from expressions as it passes, for example a due date, a type or a counter.
+- [BATCH](https://thematthub.github.io/naga/reference/blocks/batch.html): Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity.
+- [BUFFER](https://thematthub.github.io/naga/reference/blocks/buffer.html): Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part.
+- [CHARGE](https://thematthub.github.io/naga/reference/blocks/charge.html): Charges an entity (an electric vehicle, a battery pack) with the energy it needs at up to its own power, sharing a site power cap with every other entity at this block; it leaves when full or when its time is up.
+- [CONVEYOR](https://thematthub.github.io/naga/reference/blocks/conveyor.html): Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
+- [CREATE](https://thematthub.github.io/naga/reference/blocks/create.html): Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule.
+- [DECIDE](https://thematthub.github.io/naga/reference/blocks/decide.html): Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy.
+- [DELAY](https://thematthub.github.io/naga/reference/blocks/delay.html): Pure waiting time (transit, curing, travel, a pause) that holds the entity for a sampled duration without using any machine, operator or other resource.
+- [DISPOSE](https://thematthub.github.io/naga/reference/blocks/dispose.html): End of the flow: parts, orders or customers leave the system here, and their throughput time and holding cost are recorded.
+- [DUPLICATE](https://thematthub.github.io/naga/reference/blocks/duplicate.html): Makes copies of an entity, for example to model one job spawning several; the original goes on unchanged.
+- [HOLD](https://thematthub.github.io/naga/reference/blocks/hold.html): Holds entities waiting in a queue until a named signal fires, a condition becomes true (a buffer has room, a machine is idle), or for good.
+- [LOGIC](https://thematthub.github.io/naga/reference/blocks/logic.html): Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough.
+- [MATCH](https://thematthub.github.io/naga/reference/blocks/match.html): Waits until one entity of each of several kinds is present (a part and its kit, an order and its customer), then releases them together.
+- [MOTION](https://thematthub.github.io/naga/reference/blocks/motion.html): Robot or cobot station whose service is a cycle of timed moves, picks, places and tool changes, so cycle time comes from motion data, not a distribution.
+- [PROCESS](https://thematthub.github.io/naga/reference/blocks/process.html): Machine, workstation or service step: a part, order or customer waits for a resource (machine, operator, server), is processed for a time, then frees it.
+- [RECORD](https://thematthub.github.io/naga/reference/blocks/record.html): Counts or measures something as entities pass (a count, a time between arrivals, a defect, a cost) in a user-named statistic, without delaying them.
+- [RELEASE](https://thematthub.github.io/naga/reference/blocks/release.html): Frees a machine, operator or other resource that an earlier SEIZE gave the entity, after an optional delay.
+- [ROUTE](https://thematthub.github.io/naga/reference/blocks/route.html): Sends a part or job to the next station on its own routing sequence (a job-shop or multi-step route) instead of along a fixed link.
+- [SEIZE](https://thematthub.github.io/naga/reference/blocks/seize.html): Waits in a queue for a machine, operator, vehicle or other resource, takes it and keeps it until a later RELEASE, so one resource can span several steps.
+- [SEND](https://thematthub.github.io/naga/reference/blocks/send.html): Sends a message, with an optional payload, to agents of an agent-based model so they can react, for example a customer calling a driver.
+- [SEPARATE](https://thematthub.github.io/naga/reference/blocks/separate.html): Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each.
+- [SIGNAL](https://thematthub.github.io/naga/reference/blocks/signal.html): Broadcasts a named signal that releases every entity waiting at a HOLD block for it, for example a shift start, a gate opening or a green light.
+- [STATION](https://thematthub.github.io/naga/reference/blocks/station.html): Named stop on a job-shop or multi-step routing where a ROUTE block delivers parts, orders or jobs and sets their current location.
+- [SUBMODEL](https://thematthub.github.io/naga/reference/blocks/submodel.html): Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run.
+- [SUB_ENTRY](https://thematthub.github.io/naga/reference/blocks/sub-entry.html): Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run.
+- [SUB_EXIT](https://thematthub.github.io/naga/reference/blocks/sub-exit.html): Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run.
+- [TRANSFER](https://thematthub.github.io/naga/reference/blocks/transfer.html): Adds to or takes from a continuous tank, stock or inventory level (fuel, material, a pool) as the entity passes, optionally waiting until it is available.
+- [TRANSPORT](https://thematthub.github.io/naga/reference/blocks/transport.html): Moves a part, order or load between locations with a vehicle (truck, AGV, forklift, robot) from a fleet: fetch, carry, unload, free the vehicle.
+
+## Distributions
+
+- [Distribution reference](https://thematthub.github.io/naga/reference/distributions/index.html): One page per distribution, from nagasim/core/distributions.py's DISTRIBUTION_REGISTRY: its parameters, the mean and variance of seeded draws, a chart of the draws and an example.
+- [Bernoulli](https://thematthub.github.io/naga/reference/distributions/bernoulli.html): A single yes/no outcome with a given probability, such as accept or reject, pass or fail, or rework or not.
+- [Beta](https://thematthub.github.io/naga/reference/distributions/beta.html): A value between a minimum and a maximum with a flexible shape, such as a fraction, a proportion or a bounded time.
+- [Binomial](https://thematthub.github.io/naga/reference/distributions/binomial.html): Count of successes (for example defective parts) in a fixed number of independent trials.
+- [BoundedNormal](https://thematthub.github.io/naga/reference/distributions/bounded-normal.html): Bell-shaped variation around an average, cut off at a minimum and a maximum so a time cannot go negative or beyond a physical limit.
+- [Cauchy](https://thematthub.github.io/naga/reference/distributions/cauchy.html): Very heavy-tailed values with frequent extreme outliers in both directions; rarely right for times, and it often returns negative values.
+- [ChiSquare](https://thematthub.github.io/naga/reference/distributions/chi-square.html): Statistical diagnostics and sums of squared normal variations; rarely used for simulation times.
+- [Constant](https://thematthub.github.io/naga/reference/distributions/constant.html): A fixed duration that never varies, for a deterministic service time, transit time or interval.
+- [CustomExpression](https://thematthub.github.io/naga/reference/distributions/custom-expression.html): Any model expression, for example '2 + EXPO(3)', when no single distribution fits.
+- [DiscreteUniform](https://thematthub.github.io/naga/reference/distributions/discrete-uniform.html): A whole number between a minimum and a maximum, each equally likely, such as a random lot size from 1 to 6.
+- [EmpiricalContinuous](https://thematthub.github.io/naga/reference/distributions/empirical-continuous.html): Measured data as a histogram: a bin is picked by its weight, then a value is drawn evenly within it (a continuous draw, not a resample of points).
+- [EmpiricalDiscrete](https://thematthub.github.io/naga/reference/distributions/empirical-discrete.html): Whole-number values with their own measured probabilities, such as order sizes or the number of items per job.
+- [Erlang](https://thematthub.github.io/naga/reference/distributions/erlang.html): Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random.
+- [Exponential](https://thematthub.github.io/naga/reference/distributions/exponential.html): Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one.
+- [FixedSchedule](https://thematthub.github.io/naga/reference/distributions/fixed-schedule.html): Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.
+- [Gamma](https://thematthub.github.io/naga/reference/distributions/gamma.html): Right-skewed service or processing times that cannot go below zero, from very regular to very variable.
+- [Geometric](https://thematthub.github.io/naga/reference/distributions/geometric.html): Number of attempts until the first success, such as tries before a part passes inspection.
+- [Hypergeometric](https://thematthub.github.io/naga/reference/distributions/hypergeometric.html): Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample.
+- [InverseGaussian](https://thematthub.github.io/naga/reference/distributions/inverse-gaussian.html): Right-skewed positive times such as a reaction or decision delay, or the time for a drifting quantity to reach a level.
+- [JohnsonSB](https://thematthub.github.io/naga/reference/distributions/johnson-sb.html): A skewed value that stays between a minimum and a maximum, such as a yield or fill percentage.
+- [JohnsonSU](https://thematthub.github.io/naga/reference/distributions/johnson-su.html): A flexible fit for skewed, heavy-tailed data when no simple distribution matches; it can return negative values.
+- [LogLogistic](https://thematthub.github.io/naga/reference/distributions/log-logistic.html): Right-skewed durations with a heavier tail than lognormal, such as repair or lifetime data that cannot go below zero.
+- [Lognormal](https://thematthub.github.io/naga/reference/distributions/lognormal.html): Right-skewed times that cannot go below zero, such as manual handling, picking or repair durations with an occasional long one.
+- [NegativeBinomial](https://thematthub.github.io/naga/reference/distributions/negative-binomial.html): Number of failures before a set number of successes, each try with the same chance of success, such as rejected parts before r good ones.
+- [Normal](https://thematthub.github.io/naga/reference/distributions/normal.html): Symmetric variation around an average, such as a cycle time that is rarely far from the mean; it can go negative unless the mean is much larger than the spread.
+- [PearsonTypeV](https://thematthub.github.io/naga/reference/distributions/pearson-type-v.html): Right-skewed positive delays or times to failure with a long tail, an alternative to lognormal.
+- [PearsonTypeVI](https://thematthub.github.io/naga/reference/distributions/pearson-type-vi.html): A ratio of two gamma variables, such as cost per service, that is always positive; it can model times when the parameters suit.
+- [Poisson](https://thematthub.github.io/naga/reference/distributions/poisson.html): Counts per period, such as the number of arrivals or events in a fixed time window.
+- [Rayleigh](https://thematthub.github.io/naga/reference/distributions/rayleigh.html): A positive magnitude such as movement noise or a positioning error, with a single scale parameter.
+- [Triangular](https://thematthub.github.io/naga/reference/distributions/triangular.html): Min, most likely and max are known, usually from expert estimates when there is no data.
+- [Uniform](https://thematthub.github.io/naga/reference/distributions/uniform.html): Any value between a minimum and a maximum is equally likely; use it when only the min and max are known.
+- [Weibull](https://thematthub.github.io/naga/reference/distributions/weibull.html): Equipment lifetimes and time to failure, where the breakdown rate can rise with age (wear-out) or fall (early failures).
+
+## Expression functions
+
+- [Expression reference](https://thematthub.github.io/naga/reference/functions/index.html): core/expressions.py's grammar: a restricted-Python AST allow-list, never eval/exec.
+- [Math](https://thematthub.github.io/naga/reference/functions/math.html): Plain arithmetic helpers, rounding and logic.
+- [Trigonometry](https://thematthub.github.io/naga/reference/functions/trigonometry.html): Angles are in radians; DEG and RAD convert.
+- [Random draws](https://thematthub.github.io/naga/reference/functions/random.html): Each call draws from the stream of the block (or agent) that evaluates it.
+- [System dynamics](https://thematthub.github.io/naga/reference/functions/system-dynamics.html): Delays, smoothing, test inputs and finance for stock-and-flow models; most need simulation.sd.
+- [Model state and lookups](https://thematthub.github.io/naga/reference/functions/model-state.html): Read an auxiliary, delay, level, flow, series, table, variable, conversion or the path network.
+- [Resources and stores](https://thematthub.github.io/naga/reference/functions/resources.html): Queue, service and capacity of a resource, and a store's contents.
+- [Arrays](https://thematthub.github.io/naga/reference/functions/arrays.html): Reduce a quantity over the elements of a subscript.
+- [Agents and links](https://thematthub.github.io/naga/reference/functions/agents.html): Count and reference agents, and read an agent's links.
+- [Agents in space](https://thematthub.github.io/naga/reference/functions/agent-space.html): Neighbours, distances and patches of an agent on a grid or in a plane.
+
 ## Reference
 
-- [Blocks](https://thematthub.github.io/naga/reference/blocks.html): One section per block type, from nagasim/core/block_registry.py.
-- [Distributions](https://thematthub.github.io/naga/reference/distributions.html): One section per distribution, from nagasim/core/distributions.py's DISTRIBUTION_REGISTRY.
-- [Expressions](https://thematthub.github.io/naga/reference/expressions.html): core/expressions.py's grammar: a restricted-Python AST allow-list, never eval/exec.
 - [KPIs](https://thematthub.github.io/naga/reference/kpis.html): Every result frame nagasim.api.run_model / nagasim.experiments.run_scenarios return, and every column each one carries -- probed against nagasim/models/job_shop_jackson.json so a new KPI column fails this generation until it has a definition here.
 - [Model file keys](https://thematthub.github.io/naga/reference/schema.html): Current schema version: 29 (nagasim/core/schema/migrate.py).
+
+## Model file sections
+
+- [Model file sections](https://thematthub.github.io/naga/reference/model-file/index.html): One page per top-level key of the model file, from the published JSON Schema (naga schema): what the key holds, each field with its type, default and unit, and an example fragment that the schema and the checks accept.
+- [blocks](https://thematthub.github.io/naga/reference/model-file/blocks.html): Every block in the model: name, type, position (centre, scene units), params.
+- [links](https://thematthub.github.io/naga/reference/model-file/links.html): Ordered list of {source, target, delay?, source_port?, target_port?}; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is).
+- [scenarios](https://thematthub.github.io/naga/reference/model-file/scenarios.html): Named parameter-override sets, run and compared by nagasim.experiments.
+- [orders](https://thematthub.github.io/naga/reference/model-file/orders.html): Released jobs with a due date, emitted by a CREATE block in "Orders" arrival mode.
+- [resources](https://thematthub.github.io/naga/reference/model-file/resources.html): Named resources: capacity, queue discipline, optional ranking expression, capacity schedule, cost fields.
+- [resource_sets](https://thematthub.github.io/naga/reference/model-file/resource_sets.html): Named groups of resources with a selection rule, seized as one pseudo-resource.
+- [schedules](https://thematthub.github.io/naga/reference/model-file/schedules.html): Piecewise-constant arrival-rate or capacity schedules, optionally repeating.
+- [failures](https://thematthub.github.io/naga/reference/model-file/failures.html): Resource failures: uptime/downtime distribution pairs per named resource group.
+- [tables](https://thematthub.github.io/naga/reference/model-file/tables.html): Named 1-D/2-D lookup tables read by TABLE("name", k1[, k2]) in any expression.
+- [sequences](https://thematthub.github.io/naga/reference/model-file/sequences.html): Named routings: ordered steps through STATION blocks, walked by a ROUTE block.
+- [variables](https://thematthub.github.io/naga/reference/model-file/variables.html): Model-level variables, read and written by expressions; reset to initial each replication.
+- [entities](https://thematthub.github.io/naga/reference/model-file/entities.html): Entity types: shape, colour, optional WIP holding cost.
+- [timeseries_inputs](https://thematthub.github.io/naga/reference/model-file/timeseries_inputs.html): Named time-series profiles read by TS("name") in any expression.
+- [levels](https://thematthub.github.io/naga/reference/model-file/levels.html): Continuous quantities with bounds (battery energy, tank volume, an inventory position), read by LEVEL("name").
+- [flows](https://thematthub.github.io/naga/reference/model-file/flows.html): Rate-based transfers between levels, re-evaluated at events.
+- [conversions](https://thematthub.github.io/naga/reference/model-file/conversions.html): Delayed conversions with a yield curve: feed in, product released over the following hours or days.
+- [fixed_costs](https://thematthub.github.io/naga/reference/model-file/fixed_costs.html): Costs of the scenario rather than of the run: capex (flagged capex: true for the investment case), or an annuity over a sized parameter.
+- [fleets](https://thematthub.github.io/naga/reference/model-file/fleets.html): Pools of vehicles that carry entities on the network; a fleet is a resource under its own name.
+- [motion_profiles](https://thematthub.github.io/naga/reference/model-file/motion_profiles.html): How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's profile.
+- [zones](https://thematthub.github.io/naga/reference/model-file/zones.html): Safety zones: a network node and a radius that a MOTION block's or a tending group's zone.name binds to; a worker inside slows the robot to its collaborative speed.
+- [chargers](https://thematthub.github.io/naga/reference/model-file/chargers.html): Chargers and battery-swap stations at network nodes, used by fleets that declare a battery.
+- [auxiliaries](https://thematthub.github.io/naga/reference/model-file/auxiliaries.html): Named expressions read by AUX("name"), evaluated on read.
+- [delays](https://thematthub.github.io/naga/reference/model-file/delays.html): Delays read by DELAY("name"): input, delay time, kind and order.
+- [subscripts](https://thematthub.github.io/naga/reference/model-file/subscripts.html): Dimensions: a record with "dims" is flattened into one record per element.
+- [agent_types](https://thematthub.github.io/naga/reference/model-file/agent_types.html): Statecharts run for every agent of a population: parameters, states, transitions.
+- [populations](https://thematthub.github.io/naga/reference/model-file/populations.html): Agent populations: a type, a count and an initial placement.
+- [reality_checks](https://thematthub.github.io/naga/reference/model-file/reality_checks.html): Vensim-style reality checks: a test input and a constraint the model must then satisfy.
+- [network](https://thematthub.github.io/naga/reference/model-file/network.html): Optional path network: nodes at layout coordinates and the segments joining them.
+- [annotations](https://thematthub.github.io/naga/reference/model-file/annotations.html): Text notes and frames drawn behind blocks on the canvas; ignored by the engine.
+- [submodels](https://thematthub.github.io/naga/reference/model-file/submodels.html): Reusable definitions (parameters, inner blocks/links/ports), flattened before a run.
+- [background](https://thematthub.github.io/naga/reference/model-file/background.html): Optional floor-plan image: path, position, scale, opacity, lock, real-world scale.
+- [building](https://thematthub.github.io/naga/reference/model-file/building.html): Optional building: rooms, walls, wall openings, floor markings, labels and plan fixtures in metres; the walls are the walled rooms' outlines and the free-standing wall lines, each with a height, thickness and finish.
+- [info](https://thematthub.github.io/naga/reference/model-file/info.html): Optional model metadata: description, author, notes; shown in the report header.
+- [data_sources](https://thematthub.github.io/naga/reference/model-file/data_sources.html): Declared CSV/Excel/SQLite/SQL/JSON sources model parameters can be read from.
+- [data_bindings](https://thematthub.github.io/naga/reference/model-file/data_bindings.html): Which column, filtered and transformed how, feeds which override path.
+- [initial_state](https://thematthub.github.io/naga/reference/model-file/initial_state.html): Warm start: entities already in blocks, variable values and resource states the run begins with.
+- [simulation](https://thematthub.github.io/naga/reference/model-file/simulation.html): Run settings: time_limit, warmup, replications, time_unit, currency, entity_log_limit, and the optional real-date calendar.
+- [investment](https://thematthub.github.io/naga/reference/model-file/investment.html): Optional investment case: the baseline scenario, horizon, discount rate, operating hours per year, margin per part and throughput KPI that naga invest compares every scenario with.
+- [dispatch](https://thematthub.github.io/naga/reference/model-file/dispatch.html): Optional storage dispatch plan: a rolling-horizon LP over the bus tags that drives every storage level marked optimal at the cheapest grid cost.
+- [outputs](https://thematthub.github.io/naga/reference/model-file/outputs.html): Optional extra output collection whose cost is opt-in, e.g.
+- [assertions](https://thematthub.github.io/naga/reference/model-file/assertions.html): Model assertions: a KPI, a comparison operator/value and a replication/confidence budget, checked by naga check.
+- [path_checks](https://thematthub.github.io/naga/reference/model-file/path_checks.html): Entity-path checks: rules on the blocks each entity visits (order, never, at most N times, always), checked by naga check on one traced replication.
+- [dashboard](https://thematthub.github.io/naga/reference/model-file/dashboard.html): Dashboard widgets: kpi/gauge/line/bar over the model's own expressions, sampled at the same instants as the timeseries sampler.
+- [view](https://thematthub.github.io/naga/reference/model-file/view.html): Editor view state: the canvas tab in front, layout/3D, zoom and centre per tab; written on save, ignored by the engine.
+
+## Problem codes
+
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 464 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
+- [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
+- [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.
+- [Networks, fleets and automation](https://thematthub.github.io/naga/reference/problems/network-and-automation.html): Path networks, fleets, workers, motion, batteries and chargers, the investment case and the dispatch plan.
+- [Expressions, stocks and flows](https://thematthub.github.io/naga/reference/problems/expressions-and-dynamics.html): Expressions and variables, tables and time series, levels, flows, conversions, conveyors, delays, subscripts and units.
+- [Resources and time](https://thematthub.github.io/naga/reference/problems/resources-and-time.html): Resources and sets, schedules, failures, calendars and arrivals.
+- [Scenarios, checks and the editor](https://thematthub.github.io/naga/reference/problems/scenarios-and-checks.html): Scenarios, assertions, path checks, dashboards, annotations and the file version.
+- [Blocks, links and routing](https://thematthub.github.io/naga/reference/problems/blocks-and-flow.html): Blocks and their parameters, distributions, links, decisions, queues, routings and orders.
+
+## Reference
+
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
 - [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 96 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
@@ -95,14 +318,23 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [export_python](https://thematthub.github.io/naga/reference/api/export_python.html): Python reference for nagasim.build.export_python.
 - [minimal](https://thematthub.github.io/naga/reference/api/minimal.html): Python reference for nagasim.modelfmt.minimal.
 - [ModelDocument](https://thematthub.github.io/naga/reference/api/ModelDocument.html): Python reference for nagasim.core.document.ModelDocument.
+- [SimSession](https://thematthub.github.io/naga/reference/api/SimSession.html): Python reference for nagasim.core.session.SimSession.
+- [SimEnv](https://thematthub.github.io/naga/reference/api/SimEnv.html): Python reference for nagasim.rl.SimEnv.
+- [laws.checks](https://thematthub.github.io/naga/reference/api/checks.html): Python reference for nagasim.laws.checks.
+- [state.take](https://thematthub.github.io/naga/reference/api/take.html): Python reference for nagasim.state.take.
+- [state.start](https://thematthub.github.io/naga/reference/api/start.html): Python reference for nagasim.state.start.
+- [input_uncertainty](https://thematthub.github.io/naga/reference/api/input_uncertainty.html): Python reference for nagasim.uncertainty.input_uncertainty.
+- [forecast_from_state](https://thematthub.github.io/naga/reference/api/forecast_from_state.html): Python reference for nagasim.twin.forecast_from_state.
+- [read_result](https://thematthub.github.io/naga/reference/api/read_result.html): Python reference for nagasim.twin.read_result.
+- [investment_case](https://thematthub.github.io/naga/reference/api/investment_case.html): Python reference for nagasim.investment.investment_case.
 
 ## Gallery
 
-- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 60 models that ship in the package, by kind.
+- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 61 models that ship in the package, by kind.
 - [Teaching](https://thematthub.github.io/naga/gallery/teaching.html): 9 of the bundled models.
 - [Manufacturing](https://thematthub.github.io/naga/gallery/manufacturing.html): 12 of the bundled models.
 - [Logistics](https://thematthub.github.io/naga/gallery/logistics.html): 6 of the bundled models.
-- [Services](https://thematthub.github.io/naga/gallery/services.html): 5 of the bundled models.
+- [Services](https://thematthub.github.io/naga/gallery/services.html): 6 of the bundled models.
 - [Supply chain](https://thematthub.github.io/naga/gallery/supply-chain.html): 2 of the bundled models.
 - [Energy](https://thematthub.github.io/naga/gallery/energy.html): 6 of the bundled models.
 - [System dynamics](https://thematthub.github.io/naga/gallery/system-dynamics.html): 6 of the bundled models.

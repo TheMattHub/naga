@@ -22,4 +22,4 @@ How a model behaves, topic by topic: what each part of the model file means when
 - [Investment case](investment.md)
 
 For what each block type does and its exact parameters, see the generated
-[block reference](../reference/blocks.md).
+[block reference](../reference/blocks/index.md).

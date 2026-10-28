@@ -1,0 +1,4 @@
+actions: 2  observation values: 4
+random             -5370  95% interval -6366 to -4373
+shortest queue      -465  95% interval -528 to -402
+learned             -468  95% interval -543 to -393

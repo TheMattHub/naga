@@ -23,3 +23,12 @@ The functions and classes a script calls most. Each page is its docstring: param
 | [`nagasim.build.export_python`](export_python.md) | Return builder code for a model. |
 | [`nagasim.modelfmt.minimal`](minimal.md) | Return the shortest form of a model that migrates to the same model. |
 | [`nagasim.core.document.ModelDocument`](ModelDocument.md) | An in-memory model, edited only through this API. |
+| [`nagasim.core.session.SimSession`](SimSession.md) | One replication of a model, driven from outside in chunks. |
+| [`nagasim.rl.SimEnv`](SimEnv.md) | One RL episode = one replication of *layout*, paused at every decision of *policy*. Gymnasium-shaped but does not require gymnasium installed. |
+| [`nagasim.laws.checks`](checks.md) | Every computable law and guardrail for one run (see the module docstring). |
+| [`nagasim.state.take`](take.md) | The state document of *layout* at model time *at* of the run with *seed*. |
+| [`nagasim.state.start`](start.md) | The model with a state document's state as its `initial_state`. |
+| [`nagasim.uncertainty.input_uncertainty`](input_uncertainty.md) | Each KPI's run-to-run interval, its interval with the inputs' uncertainty, and the inputs' share of the spread. |
+| [`nagasim.twin.forecast_from_state`](forecast_from_state.md) | The default runner: *horizon* from the clock the model's state starts at. |
+| [`nagasim.twin.read_result`](read_result.md) | The latest result a twin wrote into *directory*. |
+| [`nagasim.investment.investment_case`](investment_case.md) | One row per scenario of *result*, the baseline first (COLUMNS). |

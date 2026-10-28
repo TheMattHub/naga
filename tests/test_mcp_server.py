@@ -430,3 +430,26 @@ def test_a_tool_the_server_hides_cannot_be_called_by_name(tmp_path):
     error = json.loads(_text(asyncio.run(server.call_tool(hidden, {}))))["error"]
     assert error["code"] == "E_UNKNOWN_TOOL"
     assert set(error.get("did_you_mean") or []) <= mcp_server.COMPACT_TOOLS
+
+
+def test_1334_a_long_tool_sends_progress_notifications(tmp_path):
+    """#1334 / D917: a client that asks for progress hears from run_scenarios before its answer."""
+    from mcp import Client
+
+    shutil.copy(EXAMPLES / "single_server.json", tmp_path / "single_server.json")
+    server = mcp_server.build_server(tmp_path)
+    seen = []
+
+    async def progress(done, total, message):
+        seen.append((done, total))
+
+    async def go():
+        async with Client(server) as client:
+            opened = await client.call_tool("open_model", {"path": "single_server.json"})
+            model = json.loads(_text(opened))["model"]
+            return await client.call_tool(
+                "run_scenarios", {"model": model, "replications": 3}, progress_callback=progress)
+
+    result = asyncio.run(go())
+    assert "error" not in json.loads(_text(result))
+    assert seen and seen[-1][0] == seen[-1][1]

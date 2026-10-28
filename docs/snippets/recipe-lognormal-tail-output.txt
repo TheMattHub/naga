@@ -1,0 +1,3 @@
+lognormal(mu=0.1, sigma=0.8) has mean 1.52 minutes
+lognormal service: mean wait 3.72 minutes
+constant service:  mean wait 2.23 minutes

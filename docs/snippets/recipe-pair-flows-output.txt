@@ -1,0 +1,3 @@
+Entity Type  Total Created  Total Completed  Avg Time
+     DRIVER             76               76       1.0
+      RIDER             99               76      28.0

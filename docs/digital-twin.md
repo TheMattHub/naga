@@ -83,6 +83,60 @@ The eight rules, exactly as implemented:
    history the initial state supplies -- so `api.run_model` defaults the warm-up to 0 when an
    initial state is present.
 
+## Limits
+
+<!-- state-limits:begin -->
+A twin cannot yet start from a state that carries any of the following. Such a model is still
+monitored, and the state or forecast that needs it is refused by name, never started partly.
+
+- a pending decision
+- the end of the run
+- a swap station
+- blocking before service
+- a polled condition
+- a deterministic split's counts
+- agent populations
+- a dispatch plan
+- a worker fleet
+- a gantry
+- segment capacities
+- a cobot fleet that exchanges parts
+- scheduled charging
+- a conveyor with stops
+- a conveyor with diverts or merges
+- a pipeline, sample or noise delay
+- a fixed-step model between two steps
+- a conveyor or a blended level
+- an attribute that is not plain data
+- an instant with an event due
+- a cobot that stays with its part
+- a vehicle out of service
+- a request for a vehicle that is no load
+- a vehicle held across legs
+- a vehicle on a tour or between two tasks
+- a vehicle between two tasks
+- a part held by its last block
+- a non-accumulating belt with parts on it
+- a worker fleet in use
+- a batch inside a batch
+- a part between two stages of a belt
+- an end stop other jobs queue for, or that had a unit free
+- a stop on a belt that other jobs queue for, or that had a unit free
+- a store's content
+- an entity with no known place
+- an entity where it is
+- a carrier loading or unloading
+- a cobot placing a part where no machine seizes it
+- a job preempted or changing over
+- a finite queue that balks or reneges, with an entity waiting for a place
+- a ranked queue whose ranks were fixed when each entity joined
+- a MATCH with no type_store_map
+- a value that is not plain data
+- a resource taken down by an earlier state
+
+The list is the one the engine's own refusals use, so it is as long as the engine's limits.
+<!-- state-limits:end -->
+
 ## A state as a file
 
 A state can also live outside the model, as a document with a content hash:

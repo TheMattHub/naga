@@ -1,0 +1,5 @@
+lateness today: WO-1 -7 WO-2 -15 WO-3 +1 WO-4 -20 WO-5 -18
+solver: OPTIMAL, tardiness 0, makespan 12, 0 refused
+lateness planned: WO-1 -2 WO-2 -14 WO-3 -3 WO-4 -20 WO-5 -18
+Order,Operation,Resource,Planned Start,Planned End
+10 operations written

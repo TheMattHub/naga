@@ -13,6 +13,7 @@ Python reference for `nagasim.results.Results`.
       members:
         - kpi
         - kpis
+        - checks
         - frame
         - plot
         - to_excel

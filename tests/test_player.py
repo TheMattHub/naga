@@ -171,7 +171,10 @@ def test_text_from_a_model_reaches_the_page_as_data_and_only_as_data():
 def test_the_script_puts_text_on_the_page_only_as_text():
     """The other half of the proof: no name can become an element, an attribute or
     code, because the script has no way to make one from a string."""
-    script = player.SCRIPT
+    # The one message out (D968): a plan's frame tells the viewer its height, a number and nothing else.
+    one = 'window.parent.postMessage(["height", height], "*");'
+    assert player.SCRIPT.count(one) == 1
+    script = player.SCRIPT.replace(one, "")
     banned = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval",
               "Function", "fetch", "XMLHttpRequest", "WebSocket", "EventSource", "import",
               "setAttribute", "srcdoc", "location", "cookie", "sessionStorage",

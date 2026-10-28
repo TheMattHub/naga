@@ -1,0 +1,4 @@
+imported 1 stock, 1 flow, 2 auxiliaries
+error E_SDIMPORT_UNSUPPORTED: Survey_Result: references external data (GET XLS/DIRECT ...); refused -- this reader never opens another file
+population after 30 years: 999.5
+closed form for logistic growth: 999.4

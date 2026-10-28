@@ -1,0 +1,6 @@
+InverseGaussian AIC   53.1  KS p-value 0.77  {'mu': 0.69, 'lambda': 3.302}
+Lognormal       AIC   53.3  KS p-value 0.76  {'mu': -0.466, 'sigma': 0.436}
+Erlang          AIC   56.7  KS p-value 0.23  {'k': 5.0, 'rate': 7.25}
+winner: InverseGaussian
+fitted InverseGaussian: mean wait 0.89 minutes
+exponential, same mean: mean wait 1.43 minutes

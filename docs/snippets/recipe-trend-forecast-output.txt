@@ -1,0 +1,7 @@
+       Sales  Trend per week  Forecast +5
+Week                                     
+4     120.25           0.030      138.419
+10    150.25           0.035      176.632
+20    199.75           0.028      227.353
+30    250.00           0.022      277.161
+actual sales 5 weeks after week 20: 225

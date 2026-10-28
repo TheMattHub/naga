@@ -17,6 +17,7 @@ from typing import Callable
 
 import numpy as np
 
+from nagasim.core.base_process import deterministic_hash
 from nagasim.core.sim_runner import run_single_simulation
 from nagasim.core.stats import ci95
 
@@ -235,34 +236,56 @@ def _read(kpi: dict, spec: str) -> float:
     return value / 100.0 if "%" in column else value
 
 
-def _row(case, label, theory, samples) -> dict:
+def _interval(samples) -> tuple[float, float]:
+    """(mean, 95% half-width) of the samples; the half-width is 0 for one sample."""
     stats = ci95(samples)
-    half = 0.0 if math.isnan(stats["ub"]) else stats["ub"] - stats["mean"]
+    return stats["mean"], 0.0 if math.isnan(stats["ub"]) else stats["ub"] - stats["mean"]
+
+
+def _row(case, label, theory, blocks) -> dict:
+    """One report row from per-block samples. `passed` is the pass rule on block 0;
+    `covered` counts the blocks whose 95% interval holds the theory."""
+    mean, half = _interval(blocks[0])
     tolerance = max(3 * half, 0.02 * abs(theory), 1e-6)
-    return {"case": case.name, "kpi": label, "theory": theory, "mean": stats["mean"],
-            "half_width": half, "passed": bool(abs(stats["mean"] - theory) <= tolerance)}
+    covered = 0
+    for samples in blocks:
+        m, h = _interval(samples)
+        covered += abs(m - theory) <= h + 1e-9  # exact cases have h = 0
+    return {"case": case.name, "kpi": label, "theory": theory, "mean": mean,
+            "half_width": half, "passed": bool(abs(mean - theory) <= tolerance),
+            "covered": int(covered), "blocks": len(blocks)}
 
 
-def run(cases=None, replications: int = 20, seed: int = 0) -> list[dict]:
-    """Rows `{case, kpi, theory, mean, half_width, passed}`."""
+def run(cases=None, replications: int = 20, seed: int = 0, blocks: int = 1) -> list[dict]:
+    """Rows `{case, kpi, theory, mean, half_width, passed, covered, blocks}`.
+
+    Each case has its own stream base `seed + deterministic_hash(name) % 10**6`, so
+    cases do not share random numbers. Block b, replication r uses seed
+    `base + b * replications + r`: blocks are disjoint seed ranges. `mean`,
+    `half_width` and `passed` come from block 0, as before; `covered` counts the
+    blocks whose 95% interval holds the theory (a correct engine covers ~95%).
+    """
     rows = []
     for case in CASES if cases is None else cases:
         layout = case.layout_fn()
         reps = 1 if case.deterministic else replications
-        runs = [run_single_simulation(layout, seed=seed + r, run_len=case.run_len, warmup=case.warmup)
-                for r in range(reps)]
+        base = seed + deterministic_hash(case.name) % 10 ** 6
+        runs = [[run_single_simulation(layout, seed=base + b * reps + r, run_len=case.run_len,
+                                       warmup=case.warmup) for r in range(reps)]
+                for b in range(blocks)]
         for label, theory in case.theory.items():
-            samples = [_read(k, case.kpis[label]) for k in runs]
-            rows.append(_row(case, label, theory, samples))
+            rows.append(_row(case, label, theory,
+                             [[_read(k, case.kpis[label]) for k in block] for block in runs]))
     return rows
 
 
 # ---------------------------------------------------------------- output
 def _html(rows) -> str:
     from nagasim.report import _CSS, esc, fmt, table
-    body = table(["Case", "KPI", "Theory", "Mean", "95% half-width", "Result"],
+    body = table(["Case", "KPI", "Theory", "Mean", "95% half-width", "Result", "Inside"],
                  [[esc(r["case"]), esc(r["kpi"]), fmt(r["theory"]), fmt(r["mean"]),
-                   fmt(r["half_width"]), _RESULT[r["passed"]]] for r in rows])
+                   fmt(r["half_width"]), _RESULT[r["passed"]],
+                   f"{r['covered']}/{r['blocks']}"] for r in rows])
     return ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>naga verify</title>"
             f"<style>{_CSS}</style></head><body><h1>naga verify</h1>"
             "<p>The engine against textbook queueing theory. A KPI passes when the replication mean is "
@@ -271,14 +294,17 @@ def _html(rows) -> str:
 
 
 def main(argv=None) -> int:
-    """`naga verify [--quick] [--json] [--html PATH]`; exit 1 when any KPI fails."""
+    """`naga verify [--quick] [--blocks K] [--json] [--html PATH]`; exit 1 when any KPI fails."""
     parser = argparse.ArgumentParser(prog="naga verify", description="Check the engine against textbook queueing theory.")
     parser.add_argument("--quick", action="store_true",
                         help=f"{_QUICK_REPLICATIONS} replications instead of 20")
+    parser.add_argument("--blocks", type=int, default=1, metavar="K",
+                        help="K independent seed blocks; reports how many intervals hold the theory")
     parser.add_argument("--json", action="store_true", help="print the rows as JSON")
     parser.add_argument("--html", metavar="PATH", help="also write an HTML report here")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    rows = run(replications=_QUICK_REPLICATIONS if args.quick else 20)
+    rows = run(replications=_QUICK_REPLICATIONS if args.quick else 20,
+               blocks=max(1, args.blocks))
     if args.html:
         with open(args.html, "w", encoding="utf-8") as fh:
             fh.write(_html(rows))
@@ -287,5 +313,6 @@ def main(argv=None) -> int:
     else:
         for r in rows:
             print(f"{_RESULT[r['passed']]:7} {r['case']:28} {r['kpi']:22} theory {r['theory']:.4f}  "
-                  f"mean {r['mean']:.4f} +/- {r['half_width']:.4f}")
+                  f"mean {r['mean']:.4f} +/- {r['half_width']:.4f}  "
+                  f"inside {r['covered']}/{r['blocks']}")
     return 0 if all(r["passed"] for r in rows) else 1

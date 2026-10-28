@@ -8,17 +8,22 @@ Also a CLI:  PY -m nagasim.api model.json --replications 5 --run-length 1000 --o
 from __future__ import annotations
 
 import argparse
+import importlib
+import json
 import logging
+import math
 import multiprocessing
 import os
+import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, redirect_stdout
 from pathlib import Path
+from types import ModuleType
 
 from nagasim import __version__
 from nagasim._cli import add_model_argument, setup_cli
-from nagasim.core import initial_state, schema
+from nagasim.core import initial_state, logic_authoring, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
 from nagasim.core.export import concat_runs
 from nagasim.core.schema import ModelValidationError
@@ -53,18 +58,19 @@ class _Collect(logging.Handler):
 def _pool_replication(task):
     """One replication in a worker process: `(KPIs, what it logged)`.
 
-    `task` is (layout, seed, run_len, warmup, controllers). Module level and
+    `task` is (layout, seed, run_len, warmup, controllers, logic). Module level and
     picklable on purpose (ROADMAP 1.6): a ProcessPoolExecutor pickles its
     callable by qualified name, so a closure or a bound method cannot be the
     pool task. `layout` may equally be a path -- both are what
     `run_single_simulation` accepts, and both pickle. *controllers*
     (ROADMAP 3.7 A) must pickle too -- `run_model` checks that before ever
-    reaching a pool.
+    reaching a pool. *logic* is the caller's LOGIC module by NAME (D914): a
+    module object does not pickle, so each worker imports it again.
 
     A worker process has no console of its own once the editor is started from
     an icon, and no handler of the parent's either, so its warnings travel back
     with the result and `run_jobs` logs them again in the parent."""
-    layout, seed, run_len, warmup, controllers = task
+    layout, seed, run_len, warmup, controllers, logic = task
     handler = _Collect()
     root = logging.getLogger()
     root.addHandler(handler)
@@ -73,8 +79,9 @@ def _pool_replication(task):
         # interpreter -- plugin blocks/distributions registered in the parent
         # process are not there until this runs again here.
         load_plugins()
+        logic_module = None if logic is None else logic_authoring.resolve_logic(logic)
         kpis = run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warmup,
-                                     controllers=controllers)
+                                     controllers=controllers, logic_module=logic_module)
         return kpis, handler.records
     finally:
         root.removeHandler(handler)
@@ -209,7 +216,8 @@ def scenario_pool(workers: int | str):
 
 
 def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop=None,
-             done: int = 0, total: int | None = None, controllers=None) -> dict[object, list]:
+             done: int = 0, total: int | None = None, controllers=None,
+             logic: str | None = None) -> dict[object, list]:
     """Run many `(tag, layout, seed, run_length, warmup)` TASKS on one pool.
 
     The seam the whole studies layer parallelises through (PHASE4 T3). A task
@@ -230,18 +238,22 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
     between waves and cancels what has not started; a task already running in a
     child process is left to finish, since nothing can hear the flag there.
     Serial (`pool is None`) it is also polled inside a run, as before.
+
+    *logic*: the dotted name of the caller's LOGIC module (see `run_model`).
     """
     jobs = iter(jobs)
     collected: dict[object, list] = {}
     count = done
 
     if pool is None:
+        logic_module = None if logic is None else logic_authoring.resolve_logic(logic)
         for tag, layout, seed, run_len, warm in jobs:
             if should_stop is not None and should_stop():
                 break
             collected.setdefault(tag, [])
             kpi = run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warm,
-                                        should_stop=should_stop, controllers=controllers)
+                                        should_stop=should_stop, controllers=controllers,
+                                        logic_module=logic_module)
             if kpi is None:                    # cut short mid-replication
                 break
             collected[tag].append((seed, kpi))
@@ -263,7 +275,7 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
                 tag, layout, seed, run_len, warm = task
                 collected.setdefault(tag, [])
                 future = pool.submit(_pool_replication,
-                                     (layout, seed, run_len, warm, controllers))
+                                     (layout, seed, run_len, warm, controllers, logic))
                 futures[future] = (tag, seed)
                 pending.add(future)
             if not pending:
@@ -290,7 +302,7 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
 
 
 def _run_pool(path, seeds, run_length, warmup, workers, on_progress, should_stop, total, done,
-             controllers=None, pool=None):
+             controllers=None, pool=None, logic=None):
     """Run *seeds* across a process pool; returns (seed, kpis) pairs.
 
     *pool*, when given, is a caller-owned `ProcessPoolExecutor` (see
@@ -303,8 +315,32 @@ def _run_pool(path, seeds, run_length, warmup, workers, on_progress, should_stop
             pool = stack.enter_context(ProcessPoolExecutor(max_workers=workers))
         out = run_jobs(((None, path, s, run_length, warmup) for s in seeds), pool=pool,
                        workers=workers, on_progress=on_progress, should_stop=should_stop,
-                       done=done, total=total, controllers=controllers)
+                       done=done, total=total, controllers=controllers, logic=logic)
     return out.get(None, [])
+
+
+def _logic_module(logic, workers):
+    """(module, name) for `run_model(logic=...)`, imported before the first run so a
+    bad name fails at once. Pool workers re-import by name, so a module object
+    must be importable under its `__name__` when *workers* is not 1."""
+    if logic is None:
+        return None, None
+    if isinstance(logic, str):
+        return logic_authoring.resolve_logic(logic), logic
+    if not isinstance(logic, ModuleType):
+        raise TypeError(f"logic must be a module name or a module, not {type(logic).__name__}")
+    name = getattr(logic, "__name__", None)
+    if workers != 1:
+        try:
+            importable = name not in (None, "__main__") and importlib.import_module(name) is logic
+        except ImportError:
+            importable = False
+        if not importable:
+            raise ValueError(
+                f"logic module {name!r} cannot be imported again by name, but workers={workers!r} "
+                f"may spread replications across processes (each imports it by name): pass "
+                f"its dotted name from an importable file, or run with workers=1")
+    return logic, name
 
 
 def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: float | None = None,
@@ -312,7 +348,7 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
               should_stop=None, trace=None, bind_data: bool = False, base_dir=None,
               network=None, confine_to=None, feed=None,
               controllers: dict | None = None, pool=None,
-              record_logs: bool | None = None, deterministic: bool | None = None,
+              logic: str | ModuleType | None = None, record_logs: bool | None = None, deterministic: bool | None = None,
               pace: float | None = None) -> Results | None:
     """Run replications of a model and return its KPI frames.
 
@@ -363,6 +399,11 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     controllers : dict, optional
         ``{policy name: Controller}`` for every policy-mode DECIDE block. With
         ``workers != 1`` they must be picklable.
+    logic : str or module, optional
+        The module LOGIC blocks take their classes from first, by dotted name (on
+        ``sys.path``) or as an imported module; a class it lacks still comes from
+        ``nagasim.core.custom_logic``. Only the caller names it, never the model
+        file. With ``workers != 1`` each worker imports it again by name.
     pool : ProcessPoolExecutor, optional
         A pool the caller owns and reuses across calls (see `scenario_pool`), so
         a study pays the process start-up once. Results are identical.
@@ -434,6 +475,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
                     f"replications across processes (each needs its own copy): run with "
                     f"workers=1, or make the controller picklable ({exc})") from exc
 
+    logic_module, logic_name = _logic_module(logic, workers)
+
     if record_logs is not None:
         # PHASE4 T7. A run setting, so it travels to a worker with the layout
         # and no task shape changes: `simulation.record_logs` is read once per
@@ -468,7 +511,7 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         t0 = time.perf_counter()
         kpi0 = run_single_simulation(path, seed=seeds[0], run_len=run_length, warmup=warmup,
                                      should_stop=should_stop, subscribers=subscribers,
-                                     controllers=controllers)
+                                     controllers=controllers, logic_module=logic_module)
         elapsed = time.perf_counter() - t0
         if kpi0 is None:
             return None
@@ -492,7 +535,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         subscribers = (trace,) if trace is not None and s == seed else ()
         kpi = run_single_simulation(path, seed=s, run_len=run_length,
                                      warmup=warmup, should_stop=should_stop, subscribers=subscribers,
-                                     controllers=controllers, pacer=pacer)
+                                     controllers=controllers, pacer=pacer,
+                                     logic_module=logic_module)
         if kpi is None:  # cut short mid-replication
             stopped = True
             break
@@ -503,12 +547,16 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     if pooled and not stopped:
         collected.extend(_run_pool(path, pooled, run_length, warmup, workers,
                                    on_progress, should_stop, replications, len(collected),
-                                   controllers=controllers, pool=pool))
+                                   controllers=controllers, pool=pool, logic=logic_name))
 
     collected.sort(key=lambda pair: pair[0])   # pool order is arrival order, not seed order
     if not collected:
         return None
     results = Results(concat_runs([kpi for _, kpi in collected]))
+    # D906: what `Results.checks()` judges the run by; read_layout returns a
+    # dict as given and re-reads a file path (already read once above).
+    results._layout = schema.read_layout(path)
+    results._warmup = warmup
     if pacer is not None:
         results.pace = pacer.summary()
         log.info("Paced at %gx: %d late events, max lag %.3f s", pacer.pace,
@@ -516,6 +564,74 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     if bindings is not None:
         results["data_inputs"] = bindings.frame()
     return results
+
+
+def summary_rows(results, *, hide_zero: bool = False) -> list[dict]:
+    """One row per system KPI: ``metric``, ``mean``, ``half_width`` (95%) and ``n``.
+
+    *hide_zero* skips the rows `outputs.hidden_when_zero` names when every value is 0
+    (the printed summary; ``--json`` keeps them all).
+
+    ``n`` is the number of finite replication values behind the mean;
+    ``half_width`` is NaN when that is below 2.
+    """
+    from nagasim.core.outputs import hidden_when_zero
+    from nagasim.core.stats import ci95
+    from nagasim.experiments import flatten_kpis     # late: experiments imports this module
+
+    flat = flatten_kpis(results)
+    flat = flat[flat["KPI"].str.startswith("system/")]
+    rows = []
+    for kpi, grp in flat.groupby("KPI", sort=False):
+        metric = kpi[len("system/"):]
+        if hide_zero and hidden_when_zero(metric) and not (grp["Value"].fillna(0) != 0).any():
+            continue
+        st = ci95(grp["Value"])
+        rows.append({"metric": metric, "mean": st["mean"],
+                     "half_width": st["ub"] - st["mean"],
+                     "n": int(grp["Value"].map(math.isfinite).sum())})
+    return rows
+
+
+def replications_needed(mean: float, half_width: float, n: int, rel: float = 0.05):
+    """Replications for a 95% half-width of *rel* x |mean|, scaling this run's
+    half-width by 1/sqrt(n); None when the half-width is NaN or the mean is 0.
+    (A first-order estimate: the t quantile also shrinks as n grows.)"""
+    if math.isnan(half_width) or math.isnan(mean) or mean == 0:
+        return None
+    return math.ceil(n * (half_width / (rel * abs(mean))) ** 2)
+
+
+def _precision_target(rows: list[dict]):
+    """The row the 'replications for +/-5%' line is about: Avg Throughput Time,
+    else the first row with a usable half-width. None when there is none."""
+    usable = [r for r in rows
+              if replications_needed(r["mean"], r["half_width"], r["n"]) is not None]
+    return next((r for r in usable if r["metric"] == "Avg Throughput Time"),
+                usable[0] if usable else None)
+
+
+def _num(x: float) -> str:
+    return "n/a" if math.isnan(x) else f"{x:.4g}"
+
+
+def _summary_text(rows: list[dict]) -> list[str]:
+    width = max([len("Metric"), *(len(r["metric"]) for r in rows)])
+    lines = [f"{'Metric':<{width}}  {'Mean':>12}  {'+/-95%':>12}  {'n':>4}"]
+    lines += [f"{r['metric']:<{width}}  {_num(r['mean']):>12}  {_num(r['half_width']):>12}  "
+              f"{r['n']:>4}" for r in rows]
+    return lines
+
+
+def _json_safe(value):
+    """NaN has no JSON spelling: null, which a strict reader accepts."""
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def main(argv=None) -> int:
@@ -549,6 +665,9 @@ def main(argv=None) -> int:
                              "(default: the model's own, else UTC)")
     parser.add_argument("--workers", type=_workers_type, default=1,
                         help="replications to run in parallel processes, or 'auto' (default: 1)")
+    parser.add_argument("--logic", default=None, metavar="MODULE",
+                        help="take LOGIC block classes from this importable module first "
+                             "(a dotted name on PYTHONPATH), then from nagasim.core.custom_logic")
     parser.add_argument("--pace", type=_pace_type, default=None, metavar="FACTOR",
                         help="keep pace with the wall clock: FACTOR model seconds per wall "
                              "second, converted from the model's time unit (1 = real time, "
@@ -575,6 +694,12 @@ def main(argv=None) -> int:
                         help="do not record the per-event entity/resource/store logs: "
                              "faster and much smaller on a long run, and every summary statistic "
                              "is unchanged -- only the three flat log sheets come back empty")
+    parser.add_argument("--raw", action="store_true",
+                        help="print the per-replication system frame instead of the summary")
+    parser.add_argument("--json", action="store_true", dest="as_json",
+                        help="print {kpis, checks, replications} as JSON instead of the summary")
+    parser.add_argument("--no-checks", action="store_true",
+                        help="skip the law checks (the WARN lines)")
     args = parser.parse_args(argv)
 
     try:
@@ -608,18 +733,50 @@ def main(argv=None) -> int:
     # D201: an exporter drawn from the run's trace needs the first replication recorded.
     # (`python -m nagasim.api` loads no plugins before this: a plugin's needs_trace is not seen)
     recorder = TraceRecorder() if _needs_trace(exports) else None
-    results = run_model(model, replications=args.replications, seed=args.seed,
-                        warmup=args.warmup, run_length=args.run_length, workers=args.workers,
-                        record_logs=False if args.no_logs else None, trace=recorder,
-                        pace=args.pace)
-    print(results["system"].to_string(index=False))
+    try:
+        results = run_model(model, replications=args.replications, seed=args.seed,
+                            warmup=args.warmup, run_length=args.run_length, workers=args.workers,
+                            record_logs=False if args.no_logs else None, trace=recorder,
+                            pace=args.pace, logic=args.logic)
+    except (logic_authoring.LogicClassNotFound, ImportError) as exc:
+        if isinstance(exc, ImportError) and not args.logic:
+            raise       # only the --logic module's import is this command's to explain
+        print(f"--logic: {exc}" if args.logic else str(exc))
+        return 2
+    if results is None:         # cut short by should_stop: nothing to show
+        print("naga run: stopped, no results", file=sys.stderr)
+        return 1
+    if args.raw and not args.as_json:
+        print(results["system"].to_string(index=False))
+    else:
+        from nagasim.runchecks import RunChecks
+        rows = summary_rows(results, hide_zero=not args.as_json)
+        target = _precision_target(rows)
+        needed = None if target is None else replications_needed(
+            target["mean"], target["half_width"], target["n"])
+        found = RunChecks((), note="skipped") if args.no_checks else results.checks()
+        if args.as_json:
+            print(json.dumps(_json_safe({
+                "kpis": rows, "checks": found.as_dict(),
+                "replications": None if target is None else {
+                    "metric": target["metric"], "n": target["n"], "needed": needed}}),
+                indent=2, default=str))
+        else:
+            print("\n".join(_summary_text(rows)))
+            for line in found.lines():
+                print(f"WARN {line}")
+            if target is not None:
+                print(f"replications for +/-5% on {target['metric']}: {needed}")
     if results.pace is not None:
         print(f"paced at {results.pace['paced']:g}x: {results.pace['late_events']} late events, "
-              f"max lag {results.pace['max_lag_s']:.3f} s")
+              f"max lag {results.pace['max_lag_s']:.3f} s",
+              file=sys.stderr if args.as_json else sys.stdout)
     layout = model if isinstance(model, dict) else None
     for spec in exports:
         try:
-            _run_export(spec, results, args.model, layout, recorder, asked)
+            # "<fmt> written to" must not land inside the --json document
+            with redirect_stdout(sys.stderr) if args.as_json else ExitStack():
+                _run_export(spec, results, args.model, layout, recorder, asked)
         except ValueError as exc:       # e.g. a player over its size limit
             print(f"--export: {exc}")
             return 1

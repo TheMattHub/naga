@@ -33,6 +33,7 @@ from nagasim.core.schema.sections_validation import (_validate_assertions, _vali
                                                      _validate_reality_checks,
                                                      _validate_scenarios, _validate_travel)
 from nagasim.core.sections import SECTIONS
+from nagasim.core.suggest import did_you_mean
 from nagasim.core.seizing import ON_PREEMPT_MODES, QUEUEING_BLOCK_TYPES
 from nagasim.core.sequences import validate_sequences_structured
 from nagasim.core.stats import RECORD_KINDS
@@ -385,6 +386,10 @@ def _check_sequence_names(problems: list, name: str, btype: str, params: dict,
                 check(text[1:-1], f"{at}/assignments/{index}/expr")
 
 
+# The keys of an ASSIGN entry: exactly what `Assign._rows` (core/blocks/assign.py)
+# reads. Any other key would be dropped silently, so validation names it (D911).
+ASSIGN_ENTRY_KEYS = ("target", "expr")
+
 # Names a block makes visible to ONE of its own expressions and nothing else
 # (PHASE4 A2): ROUTE's transfer time sees where the entity is coming from and
 # going to, a PROCESS setup sees the two keys it is changing over between.
@@ -464,6 +469,21 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
     if btype == "ASSIGN":
         for index, assignment in enumerate(params.get("assignments", [])):
             where = f"{at}/assignments/{index}"
+            unknown = [key for key in assignment if key not in ASSIGN_ENTRY_KEYS]
+            if unknown:     # D911: the block reads target and expr only; the rest is lost
+                said = did_you_mean(unknown[0], ASSIGN_ENTRY_KEYS)
+                problems.append(problem(
+                    "E_ASSIGN_KEY", f"{name}: assignment {index}: unknown key(s) "
+                    f"{', '.join(repr(key) for key in unknown)}", f"{where}/{unknown[0]}",
+                    block=name, hint=(f"{said} " if said else "") + "an ASSIGN entry takes: "
+                    + ", ".join(ASSIGN_ENTRY_KEYS)))
+            # Only what the entry does carry is checked once a key is misspelt: a missing
+            # target or expr then is that misspelt key, not a second problem.
+            if "expr" in assignment or not unknown:
+                check(problems, name, assignment.get("expr", ""), variables,
+                      f"{where}/expr", tables=tables, refs=refs)
+            if unknown and "target" not in assignment:
+                continue
             target = assignment.get("target", "")
             try:
                 kind, target_name = parse_target(target)
@@ -479,8 +499,6 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
                 problems.append(problem("E_ASSIGN_TARGET", f"{name}: {target}: {exc}",
                                         f"{where}/target", block=name,
                                         hint="a target is `entity.<attr>` or a declared variable name"))
-            check(problems, name, assignment.get("expr", ""), variables,
-                              f"{where}/expr", tables=tables, refs=refs)
     elif btype in ("DECIDE", "HOLD") and params.get("mode") == "Condition":
         for index, condition in enumerate(params.get("conditions", [])):
             check(problems, name, condition, variables, f"{at}/conditions/{index}", tables=tables, refs=refs)
@@ -512,8 +530,10 @@ def _param_problem(text: str, name: str, btype: str, at: str) -> Problem:
     declared = ", ".join(p.name for p in spec.params) if spec else ""
     if text.startswith("unknown key: "):
         key = text.split(": ", 1)[1]
+        said = did_you_mean(key, (p.name for p in spec.params) if spec else ())
         return problem("E_PARAM_UNKNOWN", f"{name}: {text}", f"/blocks/{at}/params/{key}",
-                       block=name, hint=f"{btype} takes: {declared or '(no parameters)'}")
+                       block=name, hint=(f"{said} " if said else "")
+                       + f"{btype} takes: {declared or '(no parameters)'}")
     if text.startswith("missing required key: "):
         key = text.split(": ", 1)[1]
         return problem("E_PARAM_MISSING", f"{name}: {text}", f"/blocks/{at}/params/{key}",

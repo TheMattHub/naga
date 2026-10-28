@@ -1,0 +1,3 @@
+84 replications: mean wait 3.17 minutes, half-width 0.32, target met: True
+suggested warm-up 84 minutes, reliable: True
+with the warm-up: 106 replications: mean wait 3.37, half-width 0.34

@@ -437,6 +437,8 @@ def apply(env, model, state: dict) -> int:
             block.resume_timer(float(spec["due"]))  # before its parts arrive again (D433)
         if spec.get("next_entry") is not None:
             block._next_entry = float(spec["next_entry"])   # the belt's next slot (D430)
+        if spec.get("left") or spec.get("sections"):
+            block.restore_history(spec)     # what the parts ahead left behind (D922, #1336)
 
     fleets = state.get("fleets") or {}
     for name, spec in fleets.items():           # before any load: where each vehicle is
@@ -497,7 +499,7 @@ def apply(env, model, state: dict) -> int:
                 continue
             waits = (index >= in_service and entry.get("since") is not None
                      and (block.block.block_type in _QUEUEING     # or at a belt's end stop
-                          or (entry.get("belt") or {}).get("stage") == "stop"
+                          or (entry.get("belt") or {}).get("stage") in ("stop", "wait")
                           or entry.get("transfer")))              # or for its level (D439)
             if waits:       # before the listeners hear of it: a state reads it back (#348)
                 entity._since = float(entry["since"])
@@ -526,14 +528,22 @@ def apply(env, model, state: dict) -> int:
                     holder.hold(entity)             # it has a place there (D381)
                 elif holder is not None and holder.block.block_type == "CONVEYOR":
                     belts.setdefault(holder, []).append(        # its end hands it over (D430)
-                        (entity, {"stage": "handover", "entered": entry.get("held_since")}))
+                        (entity, {"stage": "handover", "entered": entry.get("held_since"),
+                                  **({"point": entry["held_at"]["point"],     # at a divert
+                                      "since": entry["held_at"]["since"]}
+                                     if entry.get("held_at") else {})}))
                 elif holder is not None:
                     ctx.settling += 1
                     blocked = True
                     env.process(_blocked_process(holder, entity, entry.get("held_since"),
                                                  entry.get("member")))
                 if belt.get("stage", "cell") != "cell":     # on the belt, past its cell (D429)
-                    belts.setdefault(block, []).append((entity, belt))
+                    belts.setdefault(block, []).append(
+                        (entity, {**belt, "since": entry.get("since")}))
+                    continue
+                if belt.get("point") is not None:   # asks for a cell at its merge (D918)
+                    waiting.append(block.merge_resume(entity, {**belt,
+                                                               "since": entry.get("since")}))
                     continue
                 if entry.get("transfer"):       # joins its level's queue as it was (D439)
                     waiting.append(block.resume(entity, float(entry["transfer"]["amount"])))

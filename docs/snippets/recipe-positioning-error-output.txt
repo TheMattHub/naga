@@ -1,0 +1,2 @@
+cost grows with the error:          41% busy
+cost grows with the squared error:  66% busy

@@ -55,6 +55,19 @@ _BOX = {"schematic": (120.0, 60.0), "layout": (6.0, 3.0)}
 _AUTO_NAME = re.compile(r"submodel_\d+")
 
 
+def block_label(name: str, description: str = "") -> str:
+    """What a block is called on the page (a name tag, a bottleneck callout): the description
+    of an auto-named submodel; a snake_case id ("get_bay") as words ("Get bay"), since a
+    viewer's reader is not the modeller; any other name as written. Blocks have no label
+    field of their own, and a description is a sentence, not a label."""
+    if description and _AUTO_NAME.fullmatch(name):
+        return description
+    if "_" in name:
+        words = name.replace("_", " ").strip()
+        return words[:1].upper() + words[1:] if words else name
+    return name
+
+
 _STORING = ("BUFFER", "STORE")
 
 
@@ -141,7 +154,7 @@ class TapeWriter:
             if place is None:
                 continue        # no place on the floor plan: not drawn
             description = str(block.get("description") or "")
-            label = description if description and _AUTO_NAME.fullmatch(name) else name
+            label = block_label(name, description)
             self._blocks[name] = len(blocks)
             self._centres.append((float(place[0]), float(place[1])))
             entry = {"name": name, "label": label, "x": _r(place[0]), "y": _r(place[1]),

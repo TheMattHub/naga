@@ -28,13 +28,13 @@ command line or from Python. This repository has no editor and no animation.
 | Process Analyzer | `naga scenarios` (common random numbers, paired comparison) |
 | OptQuest | `naga optimize` (a pattern search, or Optuna when installed), `naga doe` |
 
-All block parameters are in the [block reference](../reference/blocks.md).
+All block parameters are in the [block reference](../reference/blocks/index.md).
 
 ## Expressions
 
 `TNOW`, `NQ(name)`, `NR(name)`, `MR(name)`, `EXPO(mean)`, `UNIF(low, high)`,
 `NORM(mean, sd)`, `TRIA(low, mode, high)` and `DISC(...)` exist under those names
-([expression reference](../reference/expressions.md)). Two things differ:
+([expression reference](../reference/functions/index.md)). Two things differ:
 
 - `DISC` takes value and probability pairs whose probabilities sum to 1, not cumulative
   probabilities.

@@ -243,17 +243,21 @@ def test_a_stop_off_a_network_length_belt_is_refused_when_the_belt_is_built():
 
 
 def test_a_belt_with_stops_is_refused_in_a_state_by_name():
+    """D918: a plant still cannot start one (`refused_kind`), a run's state carries it."""
     model = _packed_model()
     model["simulation"]["time_limit"] = 30
     assert state.refused_kind(model) == "a conveyor with stops"
-    with pytest.raises(state.StateError, match="a conveyor with stops"):
-        state.take(model, 3.0)
+    assert state.take(model, 3.0)["state"]["entities"]
 
 
 def test_a_part_on_a_belt_with_stops_in_an_initial_state_is_refused():
+    """D918: a part waiting for a cell is accepted; a stage of another point kind is not."""
     model = _packed_model()
     model["initial_state"] = {"entities": [{"block": "belt", "count": 1,
                                             "belt": {"stage": "cell"}}]}
+    assert "E_INITIAL_BELT" not in problem_codes(model)
+    model["initial_state"] = {"clock": 5.0, "entities": [{"block": "belt", "count": 1, "belt": {
+        "stage": "push", "until": 6.0, "entered": 0.0, "point": 0}}]}
     assert "E_INITIAL_BELT" in problem_codes(model)
 
 

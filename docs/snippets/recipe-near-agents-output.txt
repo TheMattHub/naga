@@ -1,0 +1,6 @@
+Attribute  End Min  End Max
+     load     10.0     14.0
+    crowd     22.0     26.0
+ lightest     10.0     12.0
+ heaviest     12.0     14.0
+  average     11.0     13.0

@@ -1,0 +1,2 @@
+kitchen busy 76%
+jobs per order: 3.0

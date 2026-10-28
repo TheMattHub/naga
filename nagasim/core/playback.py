@@ -313,7 +313,10 @@ class Timeline:
         cycle segment a MOTION block is in, and `tending` `{(fleet, unit):
         (station, "pick" | "place", progress)}`; both only while their time runs.
         `handling` is `{(fleet, unit): (unloading, progress)}` for a vehicle
-        standing still to load or unload; `placed` counts the `place` segments
+        standing still to load or unload; `carriers` (#1470) is `{(fleet, unit):
+        entity id}` for each fleet unit seized and not yet released, a worker or a
+        vehicle alike (the mover's state says whether it carries the entity or
+        walks to it); `placed` counts the `place` segments
         a block has begun (a palletiser's stack). `phases_all` is `phases` for
         every unit at work in a block: `{block: {slot: (kind, index, progress)}}`,
         a part keeping its slot for its whole cycle.
@@ -389,6 +392,7 @@ class Timeline:
                 "handling": {unit: (unloading, _progress(t, t0, span))
                              for unit, (t0, span, unloading) in self._handling.items()
                              if t < t0 + span},
+                "carriers": dict(self._carriers),
                 "placed": dict(self._placed),
                 "departures": dict(self._departures), "departed": dict(self._departed),
                 "disposed": dict(self._disposed),
@@ -490,6 +494,7 @@ class Timeline:
         self._departed: dict[str, int] = {}         # block -> moves out of it, all branches
         self._disposed: dict[str, int] = {}         # block -> entities that ended in it (a sink's counter)
         self._handling: dict[tuple, tuple] = {}     # (fleet, unit) -> (started, duration, unloading)
+        self._carriers: dict[tuple, int] = {}       # #1470: (fleet, unit) -> the entity holding it
         # Per-block occupants in arrival order (dict: insertion-ordered, O(1)
         # removal) -- queues() filters out the in-service ones on read.
         self._block_order: dict[str, dict[int, None]] = {}
@@ -627,12 +632,16 @@ class Timeline:
                 self._mark_in_service(e.entity_id, e.block)
             # The units the seize holds (#748); an older trace carries none, so 1.
             self._resource_busy[e.target] = self._resource_busy.get(e.target, 0) + (int(e.value) or 1)
+            if getattr(e, "unit", -1) >= 0:       # a fleet unit (#1470); an older trace has none
+                self._carriers[(e.target, e.unit)] = e.entity_id
         elif e.kind == "entity_released":
             # entity_released changes no block occupancy: it fires on the
             # Release block, not the Seize block the entity is still counted
             # in. It DOES free the resource the busy count is keyed on.
             if e.target in self._resource_busy:
                 self._resource_busy[e.target] = max(self._resource_busy[e.target] - (int(e.value) or 1), 0)
+            if getattr(e, "unit", -1) >= 0 and self._carriers.get((e.target, e.unit)) == e.entity_id:
+                del self._carriers[(e.target, e.unit)]
         elif e.kind == "resource_state":
             if e.state == "capacity":
                 self._resource_capacity[e.resource] = e.value

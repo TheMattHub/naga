@@ -1,0 +1,2 @@
+rework bench busy 50% (2 defects in 4 minutes is 50%)
+single part, Bernoulli(0.5): busy 13% (0.5 minute in 4 is 12.5%)

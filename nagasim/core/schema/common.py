@@ -10,8 +10,9 @@ from nagasim.core.distributions import (DISTRIBUTION_REGISTRY, distribution_mean
                                         distribution_needs_finite_mean,
                                         get_available_distributions)
 from nagasim.core.expressions import (SD_MACROS, SD_VALUE_MACROS, ExpressionError,
-                                      compile_expression)
+                                      compile_expression, literal_problems)
 from nagasim.core.problems import problem
+from nagasim.core.suggest import did_you_mean
 
 
 def _known_distributions() -> set[str]:
@@ -52,7 +53,8 @@ def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: 
     declared = [p.name for p in spec.params]
     for key in dist_params:
         if key not in declared:
-            hint = f"{dist} takes: {', '.join(declared) or '(no parameters)'}"
+            said = did_you_mean(key, declared)
+            hint = (f"{said} " if said else "") + f"{dist} takes: {', '.join(declared) or '(no parameters)'}"
             if key == "mean" and "rate" in declared:
                 hint += "; a rate is 1 / the mean"
             problems.append(problem("E_DIST_PARAM_UNKNOWN",
@@ -101,6 +103,11 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
                                 hint="see the expression reference; names allowed are entity.<attr>, "
                                      "now/TNOW, declared variables and the built-in functions"))
         return
+    for message in literal_problems(text):     # D912: a DISC/TRIA that fails on every draw
+        problems.append(problem("E_EXPRESSION", f"{block_name}: {text}: {message}", path,
+                                block=block_name,
+                                hint="DISC(v1, p1, v2, p2, ...) with probabilities that sum to 1; "
+                                     "TRIA(low, mode, high) with low <= mode <= high"))
     if not allow_self and "self" in expression.names:      # PHASE5 AB-1
         problems.append(problem("E_EXPRESSION", f"{block_name}: {text}: self.<attribute> is only "
                                 f"available in an agent type's expressions", path,

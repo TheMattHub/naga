@@ -454,10 +454,10 @@ class Level:
         fallback: str | dict[str, Any] = 'first',
         queue_exprs: list[Any] | dict[str, Any] = ...,
     ) -> Block:
-        """Add a DECIDE block. Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. "Chance" mode draws on the block's own RNG against cumulative `probs`; "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
+        """Add a DECIDE block. Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. "Chance" mode draws on the block's own RNG against `probs`, one probability per branch (not cumulative); "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
 
         mode='Chance': "Chance": branch by probability. "Condition": branch by expression. "Policy": branch by a controller attached to `policy`.
-        probs=[]: Cumulative branch probabilities, used when mode is "Chance".
+        probs=[]: One probability per branch, in link order (not cumulative), used when mode is "Chance".
         conditions=[]: Ordered list of boolean expressions, used when mode is "Condition".
         policy='': Decision-point name; used when mode is "Policy". Several DECIDE blocks may share one.
         observation=[]: Expressions (evaluated with the arriving entity) forming the observation handed to the controller, when mode is "Policy".
@@ -651,7 +651,7 @@ class Level:
         counter_offsets: dict[str, Any] | None = None,
         number_of_duplicates: int | dict[str, Any] = 2,
     ) -> Block:
-        """Add a DUPLICATE block. Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
+        """Add a DUPLICATE block. Makes copies of an entity, for example to model one job spawning several; the original goes on unchanged. All copies leave by the one output link: follow it with a DECIDE to send them down different branches. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
 
         number_of_duplicates=2: Total number of entities leaving this block, original included (>= 2).
         """
@@ -716,7 +716,7 @@ class Level:
         counter_offsets: dict[str, Any] | None = None,
         logic_class: str | dict[str, Any] = 'SampleLogic',
     ) -> Block:
-        """Add a LOGIC block. Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
+        """Add a LOGIC block. Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic, or first in the module the caller passes as `run_model(logic=...)`. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
 
         logic_class='SampleLogic': Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int.
         """
@@ -1205,6 +1205,7 @@ class Model(Level):
         network: None | dict[str, Any] = ...,
         annotations: list[Any] = ...,
         background: None | dict[str, Any] = ...,
+        building: None | dict[str, Any] = ...,
         info: dict[str, Any] = ...,
         initial_state: dict[str, Any] = ...,
         simulation: dict[str, Any] = ...,
@@ -1220,7 +1221,7 @@ class Model(Level):
 
         time_limit: Run length in base time units; null/0 means "run until the model drains", which only works for a model that can drain.
         warmup: Statistics are reset at this time.
-        replications
+        replications: How many independent runs to make, each with its own seed.
         deterministic: Deterministic run mode: every distribution samples its mean, DECIDE-by-chance uses largest-remainder allocation, a failure's TTF/TTR use their mean, and replications are forced to 1. A mean-value model, not a fluid limit; agent-based and system-dynamics parts are unaffected.
         time_unit: The model's BASE unit; every duration without its own unit is already in it.
         length_unit: The model's length unit: default unit of new length fields and of reported lengths.
@@ -1245,10 +1246,10 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `scenarios` and return its name. Named parameter-override sets, run and compared by `nagasim.experiments`.
 
-        name
-        description
+        name: The scenario's name, as the comparison table lists it.
+        description: What the scenario changes and why; shown beside it in the editor.
         goal: Optional: the question this scenario answers, in a sentence. Shown in Present mode and the editor.
-        overrides
+        overrides: The changes this scenario makes to the base model, applied in order.
         """
 
     def add_order(
@@ -1270,7 +1271,7 @@ class Model(Level):
         """Add one entry to `orders` and return its id. Released jobs with a due date, emitted by a CREATE block in "Orders" arrival mode.
 
         id: Unique; the KPI frames report the order under it.
-        description
+        description: A note on the job; the run does not read it.
         release: When the order is released into the model. An ISO timestamp instead of a number needs a calendar.
         due: Absolute due time, not a lead time; null = no due date. May be an ISO timestamp.
         time_unit: Unit `release` and `due` are in (a dated value ignores it).
@@ -1300,15 +1301,15 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `resources` and return its name. Named resources: capacity, queue discipline, optional ranking expression, capacity schedule, cost fields.
 
-        name
-        capacity
+        name: The resource's name; blocks seize it by this name.
+        capacity: How many units can be held at the same time.
         discipline: Queue order. LowestValueFirst/HighestValueFirst need a ranking_expr; Plan works each station's planned order (entity.plan, cpsat.propose).
         ranking_expr: Expression ranking the queue, for a ranked discipline.
         rerank: Re-evaluate ranking_expr for every waiting request just before each grant, instead of once when it joins the queue; only meaningful with LowestValueFirst/HighestValueFirst.
         capacity_schedule: Name of a "capacity" schedule staffing this resource.
-        cost_busy
-        cost_idle
-        cost_per_use
+        cost_busy: Cost per time unit (see `cost_time_unit`) while a unit is held.
+        cost_idle: Cost per time unit (see `cost_time_unit`) while a unit is free.
+        cost_per_use: Cost added each time a unit is seized.
         cost_time_unit: Unit cost_busy/cost_idle are quoted per.
         power: kW per unit while busy/idle/blocked/down/off_shift; absent keys are 0, "blocked" defaults to "busy" (a blocked unit is seized).
         """
@@ -1322,9 +1323,9 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `resource_sets` and return its name. Named groups of resources with a selection rule, seized as one pseudo-resource.
 
-        name
-        members
-        rule
+        name: The set's name; a block seizes the set by this name.
+        members: The resources in the set, in the order the rule "PreferredOrder" tries them.
+        rule: How the set picks a member when a request arrives.
         """
 
     def add_schedule(
@@ -1342,12 +1343,12 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `schedules` and return its name. Piecewise-constant arrival-rate or capacity schedules, optionally repeating.
 
-        name
-        description
-        kind
-        repeat
+        name: The schedule's name; a block or a resource names it to follow the calendar.
+        description: What the schedule stands for; the run does not read it.
+        kind: "arrival" for a rate of arrivals, "capacity" for a number of units available.
+        repeat: Start over after the last point; when false the last value holds for ever.
         time_unit: Unit the point durations are expressed in.
-        points
+        points: The calendar, one [duration, value] pair per period, in order.
         weekly: Weekday grid in LOCAL wall-clock time, instead of "points" . Needs "simulation.calendar". Keyed by weekday (mon..sun); each value is a list of ["06:00", "14:00", value] bands. A day with no bands is off.
         off_value: Value outside every band of a weekday schedule.
         exceptions: Dated overrides of a weekday grid -- holidays, shutdowns. Whole LOCAL days, "end" inclusive; last match wins.
@@ -1363,8 +1364,8 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `failures` and return its name. Resource failures: uptime/downtime distribution pairs per named resource group.
 
-        name
-        resources
+        name: The failure's name, shown in the resource log.
+        resources: The resources that fail; each one fails and recovers on its own, drawing its own times.
         uptime
         downtime
         """
@@ -1383,13 +1384,13 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `tables` and return its name. Named 1-D/2-D lookup tables read by TABLE("name", k1[, k2]) in any expression.
 
-        name
-        description
+        name: The table's name, the first argument of TABLE("name", key).
+        description: What the table holds; the run does not read it.
         keys: Row keys (dimension 1).
         columns: Column keys (dimension 2); omit for a 1-D table.
         values: One number per key (1-D), or one row of numbers per key (2-D).
         key_mode: exact (the key must be present), step (largest numeric key <= x) or linear (interpolate); step and linear clamp at both ends.
-        column_mode
+        column_mode: How a lookup treats a column key between the listed ones: exact match, the step below, or linear.
         default: Value for a missing exact key; without one a miss is a run-time model error.
         """
 
@@ -1402,9 +1403,9 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `sequences` and return its name. Named routings: ordered steps through STATION blocks, walked by a ROUTE block.
 
-        name
-        description
-        steps
+        name: The routing's name, the value of an entity's `sequence` attribute.
+        description: What the routing is for; the run does not read it.
+        steps: The operations in order: each names a station and the attributes to assign there.
         """
 
     def add_variable(
@@ -1416,8 +1417,8 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `variables` and return its name. Model-level variables, read and written by expressions; reset to `initial` each replication.
 
-        name
-        initial
+        name: The variable's name; expressions read it as a bare name.
+        initial: Its value at the start of each replication: a number, a boolean or an expression.
         trace: Written by flattening for a variable an asset's picture follows; not authored by hand.
         """
 
@@ -1434,9 +1435,9 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `entities` and return its name. Entity types: shape, colour, optional WIP holding cost.
 
-        name
-        shape
-        color
+        name: The entity type's name, the `e_type` a CREATE block gives its entities.
+        shape: The shape the editor draws for these entities, such as "circle".
+        color: The colour the editor draws these entities in, as a hex string such as "#1f77b4".
         icon: Path to an animation icon image.
         graphic: Inline SVG token (24 x 24 artboard), usually copied from a library's entity preset; checked by core/svgsafe before it is drawn.
         holding_cost: WIP cost per entity per base time unit.
@@ -1460,8 +1461,8 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `timeseries_inputs` and return its name. Named time-series profiles read by TS("name") in any expression.
 
-        name
-        description
+        name: The profile's name, the first argument of TS("name").
+        description: What the profile holds; the run does not read it.
         values: One number per sample.
         times: Sample times, strictly increasing; exclusive with "step".
         start: Time of the first sample of a regular series. An ISO timestamp instead of a number dates the series against "simulation.calendar".
@@ -1498,10 +1499,10 @@ class Model(Level):
         """Add one entry to `levels` and return its name. Continuous quantities with bounds (battery energy, tank volume, an inventory position), read by LEVEL("name").
 
         diagram: Position in the stock-and-flow view; ignored by the engine.
-        name
+        name: The level's name, the argument of LEVEL("name").
         dims: Subscripts this record runs over: it is flattened into one record per element, named "Name[north]" ("Name[north,young]" for two). Inside, "x[dim]" in a LEVEL/FLOW/AUX/DELAY name reads the same element, and SUM(x)/MEAN(x) aggregate over "x[*]".
         elements: Per-element equations: {"north": "2", "a,x": "3"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma.
-        description
+        description: What the level stands for; the run does not read it.
         unit: Label only, e.g. kWh or tonnes.
         capacity: Upper bound; omit for an unbounded accumulator.
         min: Lower bound; null for a stock unbounded below .
@@ -1546,10 +1547,10 @@ class Model(Level):
         """Add one entry to `flows` and return its name. Rate-based transfers between levels, re-evaluated at events.
 
         diagram: Position in the stock-and-flow view; ignored by the engine.
-        name
+        name: The flow's name.
         dims: Subscripts this record runs over: it is flattened into one record per element, named "Name[north]" ("Name[north,young]" for two). Inside, "x[dim]" in a LEVEL/FLOW/AUX/DELAY name reads the same element, and SUM(x)/MEAN(x) aggregate over "x[*]".
         elements: Per-element equations: {"north": "2", "a,x": "3"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma.
-        description
+        description: What the flow stands for; the run does not read it.
         from: Level drawn from; omit for a source outside the model. A level at its min passes on no more than flows into it, so a rate needs no guard such as IF(LEVEL("x") > 0, r, 0); on a step grid that guard reads the level a step late.
         to: Level fed; omit for a sink outside the model.
         rate: Quantity per time unit: an expression over variables, TS(), TABLE(), LEVEL() and FLOW(). A negative value is clamped to 0 -- declare the reverse flow instead, or set "biflow".
@@ -1582,12 +1583,12 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `conversions` and return its name. Delayed conversions with a yield curve: feed in, product released over the following hours or days.
 
-        name
-        description
+        name: The conversion's name.
+        description: What the conversion stands for; the run does not read it.
         unit: Label for the product, e.g. Nm3.
         cohort_interval: Feed accumulated over this interval closes into one cohort and releases from its CLOSE, so the mean delay is longer by up to half an interval. Curve knots round onto the same grid.
         time_unit: Unit the cohort interval and the curve ages are in.
-        substrates
+        substrates: The feeds that go in, each with its own rate and yield curve.
         locals: Submodel parameter bindings, written by flattening; not authored by hand.
         """
 
@@ -1603,8 +1604,8 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `fixed_costs` and return its name. Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter.
 
-        name
-        description
+        name: The cost's name, as the cost summary lists it.
+        description: What the cost pays for; the run does not read it.
         amount: A number, or an expression over the model's variables and data evaluated once at run start.
         category: Grouping shown in the cost_summary frame.
         capex: An upfront investment: the investment case keeps it out of operating cost. Read by `nagasim.investment` only; Total Cost and every frame of a run are unchanged.
@@ -1648,9 +1649,9 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `fleets` and return its name. Pools of vehicles that carry entities on the network; a fleet is a resource under its own name.
 
-        name
-        description
-        count
+        name: The fleet's name; it is also the name of the resource its vehicles form.
+        description: What the fleet carries; the run does not read it.
+        count: How many vehicles the fleet has.
         kind: "worker" lets a SEIZE/PROCESS summon a unit with `worker_fleet`; the pool is unchanged.
         motion: "gantry" travels directly between two nodes' coordinates (`speed_x`/`speed_y`/`hoist_time`), ignoring the path network and segment capacity; cannot be kind "worker".
         speed_x: Gantry only: speed along x, distance per model time unit.
@@ -1667,14 +1668,14 @@ class Model(Level):
         unload_time: Number or expression, in `time_unit`.
         time_unit: Unit the load and unload times are in.
         home: Node the vehicles start at, and return to under `park: "home"`.
-        park
+        park: Where an idle vehicle waits: "stay" where it is, "home" back at its home node.
         capacity_schedule: A "capacity"-kind schedule: how many vehicles are on shift.
         dispatch: Whose request is served when a vehicle frees. Priority is the primary key under both.
         select: Which idle vehicle serves a granted request.
-        cost_busy
-        cost_idle
-        cost_per_use
-        cost_time_unit
+        cost_busy: Cost per time unit (see `cost_time_unit`) for a vehicle that is carrying.
+        cost_idle: Cost per time unit (see `cost_time_unit`) for a vehicle that is waiting.
+        cost_per_use: Cost added each time a vehicle is seized for a trip.
+        cost_time_unit: The time unit `cost_busy` and `cost_idle` are per.
         power: kW per vehicle while busy/idle/blocked/down/off_shift; absent keys are 0, "blocked" defaults to "busy" (a blocked vehicle is seized).
         graphic: Inline SVG vehicle picture (24 x 24 artboard, facing east) drawn for each unit on the floor plan; the editor's generic vehicle when absent.
         length_m: Vehicle length in metres for the floor-plan marker (default 2.4).
@@ -1697,9 +1698,9 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `motion_profiles` and return its name. How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's `profile`.
 
-        name
-        description
-        kind
+        name: The profile's name, the `profile` of a MOTION block.
+        description: What the profile stands for; the run does not read it.
+        kind: What moves: a "robot", a "human" or a "mechanism".
         speed: m/s.
         speed_unit: Unit `speed` and `collaborative_speed` are in.
         accel: m/s^2.
@@ -1720,8 +1721,8 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `zones` and return its name. Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed.
 
-        name
-        description
+        name: The zone's name, the `zone.name` of a MOTION block.
+        description: What the zone protects; the run does not read it.
         node: The network node the zone is around.
         radius_m: Metres, > 0; a worker this close or closer is inside.
         measure: "path": the walk along the network; "straight": the straight line between the worker's floor point and the node, as a safety laser scanner measures it.
@@ -1745,10 +1746,10 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `chargers` and return its name. Chargers and battery-swap stations at network nodes, used by fleets that declare a `battery`.
 
-        name
-        description
+        name: The charger's name.
+        description: What the charger stands for; the run does not read it.
         node: The network node it stands at.
-        kind
+        kind: "charge" refills the battery in place, "swap" exchanges it for a full one.
         points: Vehicles served at once.
         power_kw: kW per point; for "swap", the rate a removed pack recharges at.
         knee: Above this SoC the power falls linearly.
@@ -1773,10 +1774,10 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `auxiliaries` and return its name. Named expressions read by AUX("name"), evaluated on read.
 
-        name
+        name: The auxiliary's name, the argument of AUX("name").
         dims: Subscripts this record runs over: it is flattened into one record per element, named "Name[north]" ("Name[north,young]" for two). Inside, "x[dim]" in a LEVEL/FLOW/AUX/DELAY name reads the same element, and SUM(x)/MEAN(x) aggregate over "x[*]".
         elements: Per-element equations: {"north": "2", "a,x": "3"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma.
-        description
+        description: What the auxiliary computes; the run does not read it.
         expr: A number, or any flow-rate expression; may call AUX() of another auxiliary (no cycles) and the inline delays.
         unit: Label only.
         diagram: Position in the stock-and-flow view; ignored by the engine.
@@ -1807,14 +1808,14 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `delays` and return its name. Delays read by DELAY("name"): input, delay time, kind and order.
 
-        name
+        name: The delay's name, the argument of DELAY("name").
         dims: Subscripts this record runs over: it is flattened into one record per element, named "Name[north]" ("Name[north,young]" for two). Inside, "x[dim]" in a LEVEL/FLOW/AUX/DELAY name reads the same element, and SUM(x)/MEAN(x) aggregate over "x[*]".
         elements: Per-element equations: {"north": "2", "a,x": "3"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma.
-        description
+        description: What the delay stands for; the run does not read it.
         input: What is delayed: a rate for a material delay, a value otherwise; the sampled value for "sample" (required for every kind but "noise").
         delay_time: tau, in the model's base time unit (> 0); a pipeline reads it once at run start. Required for material/information/pipeline only.
         delay_time_unit: Unit `delay_time` is in.
-        kind
+        kind: The kind of delay; the section's description says what each one does.
         order: Number of stages (material/information).
         initial: The output at t=0 (not "noise", which has none).
         condition: "sample" only: sampled again whenever true.
@@ -1839,7 +1840,7 @@ class Model(Level):
         """Add one entry to `subscripts` and return its name. Dimensions: a record with "dims" is flattened into one record per element.
 
         name: An identifier, written as "[name]" in a lookup.
-        description
+        description: What the dimension stands for; the run does not read it.
         elements: Element names, in output order.
         parent: Makes this a subrange of that dimension: its elements are a subset of the parent's. "x[North]" reads the owner's element inside an owner over North or its parent; SUM(x[North*]) sums the subset.
         map_to: Maps this dimension element-wise onto another : inside an owner over this one, "x[dim]" reads the corresponding element (and the reverse when it is one-to-one).
@@ -1865,14 +1866,14 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `agent_types` and return its name. Statecharts run for every agent of a population: parameters, states, transitions.
 
-        name
-        description
-        parameters
-        attributes
-        states
-        transitions
-        initial_state
-        space
+        name: The agent type's name, the `type` of a population.
+        description: What the agents of this type are; the run does not read it.
+        parameters: Named numbers every agent of the type reads in its expressions.
+        attributes: The columns each agent carries, with their starting values.
+        states: The statechart's states, with the actions they run on entry and exit.
+        transitions: The moves between states and what triggers each.
+        initial_state: The state every agent starts in.
+        space: Where the agents live: nowhere, a continuous plane, a grid or the model's network.
         speed: An expression (self, parameters, constants) a move_to evaluates once, in the space's own units per time unit.
         speed_unit: Unit `speed` is in.
         tick
@@ -1898,10 +1899,10 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `populations` and return its name. Agent populations: a type, a count and an initial placement.
 
-        name
-        description
-        type
-        count
+        name: The population's name.
+        description: What the population stands for; the run does not read it.
+        type: The agent type its agents follow.
+        count: How many agents start: a number, or the rows of a table.
         max_count: The most agents alive at once when spawn actions add some (>= count); default count.
         tick
         network: The initial links between this population's agents, drawn at run start from its own network stream. random: G(n, p) (p, or mean_degree = p (n - 1)); small_world: Watts-Strogatz ring of k neighbours, each link rewired with probability beta; scale_free: Barabasi-Albert, m links per new agent; table: a model table's "from"/"to" columns (agent indices); none: no initial links.
@@ -1922,8 +1923,8 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `reality_checks` and return its name. Vensim-style reality checks: a test input and a constraint the model must then satisfy.
 
-        name
-        description
+        name: The check's name, as its result lists it.
+        description: What the check tests; the run does not read it.
         inputs: Override path -> value, the same grammar a scenario override's "path" uses (e.g. "auxiliaries.Workforce.expr": "0").
         constraint: A boolean expression over LEVEL()/AUX()/FLOW() and TNOW, checked at every sampled instant the "when" below selects.
         when: "always" (every sample), "final" (the last sample only), or a window of sampled times, ends included: "after <t>", "before <t>" or "between <t1> and <t2>" (the constraint holds at every sample in it). "eventually", alone or followed by a window, asks that it hold at least once in it.
@@ -1943,14 +1944,14 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `data_sources` and return its name. Declared CSV/Excel/SQLite/SQL/JSON sources model parameters can be read from.
 
-        name
-        kind
+        name: The source's name, the `source` of a binding.
+        kind: The kind of source, which decides how its `location` is read.
         location: Path relative to the model file, or a URL. For a live kind: what to read over the connection (a path), never a host.
         connection: Live kinds only: the NAME of a connection the person running the model defined in their own connections file. A model never holds an address or a credential.
         query: SELECT, for the sqlite/sql kinds.
         sheet: Worksheet name, for the xlsx kind.
         options: Extra keyword arguments for the pandas reader; for a live kind, that reader's own options.
-        description
+        description: What the source holds; the run does not read it.
         """
 
     def add_data_binding(
@@ -1968,15 +1969,15 @@ class Model(Level):
     ) -> Any:
         """Add one entry to `data_bindings` and return its name. Which column, filtered and transformed how, feeds which override path.
 
-        name
-        source
-        column
+        name: The binding's name.
+        source: The name of the data source to read.
+        column: The column (or field) to read from the source.
         filter: {"column": value} or {"column >=": value}; comparisons only, never code.
         transform: One of mean, median, last, sum, count, value, fit, empirical, orders, or quantile:<argument>, rate_per:<argument>, arrival_schedule:<argument>, table:<argument>, series:<argument>.
         target: An override path, e.g. "resources.Nurse.capacity".
         map: "orders" transform only: {order field: source column} for any field whose column is not already named after it.
-        enabled
-        description
+        enabled: When false the binding is skipped and the parameter keeps its file value.
+        description: What the binding sets; the run does not read it.
         """
 
     def definition(self, name: str, **fields: Any) -> Level: ...

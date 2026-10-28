@@ -252,7 +252,9 @@ def test_tool_names_are_snake_case_verbs():
              "check",           # check_draft
              "explain",         # explain_kpi
              "input",           # input_uncertainty: the name the spec uses
-             "view")            # view_model, view_3d: a picture of the model
+             "view",            # view_model, view_3d: a picture of the model
+             "render", "build",   # render_video, build_film: the product's film tools
+             "search", "show", "fetch")   # search_/show_/fetch_simready: the product's asset-source tools
     for name in T.TOOLS:
         assert name == name.lower() and " " not in name
         assert name.split("_")[0] in verbs, name
@@ -1368,3 +1370,17 @@ def test_unknown_argument_suggests():
     err = T.call("new_model", **{wrong: "x"})["error"]
     assert err["code"] == "E_BAD_ARGUMENT" and wrong in err["message"]
     assert next(iter(props)) in err["did_you_mean"]
+
+
+def test_report_is_a_noop_by_default():
+    from nagasim.agent_tools.core import report
+    assert report(1, 2) is None
+
+
+def test_tools_report_replications(ws):
+    from nagasim.agent_tools.core import reporting
+    rec = []
+    model = ok(T.call("open_model", path="single_server.json"))["model"]
+    with reporting(lambda done, total, message: rec.append((done, total))):
+        ok(T.call("run_model", model=model, replications=4))
+    assert [d for d, _ in rec] == sorted(d for d, _ in rec) and rec[-1] == (4, 4)

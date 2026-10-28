@@ -928,6 +928,186 @@ def _defs() -> dict:
             "required": ["supply_tags", "demand_tags"],
             "additionalProperties": False,
         },
+        # Phase 20 P3 (D1005-D1006); nagasim/core/building.py checks the rest (unique names,
+        # palette names, ordered rects).
+        "building": {
+            "type": "object",
+            "description": "OPTIONAL building in metres (the network's frame, y down): rooms "
+                           "filled in order, walls derived from the outlines of rooms with "
+                           "walls true plus the free-standing wall_lines, openings cut into "
+                           "them, labels and plan-only fixtures. A path segment through a wall "
+                           "with no opening is a W_WALL_CROSSING warning. "
+                           "Ignored by the engine; the editor draws it and `product building` "
+                           "writes the floor plan, the 3D walls and the floor texture from it.",
+            "properties": {
+                "extent": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                           "maxItems": 4,
+                           "description": "The plan's canvas [x0, y0, x1, y1], metres."},
+                "ground": {"type": "string", "default": "#DCDCD6",
+                           "description": "The plan outside the rooms: a colour or palette name."},
+                "palette": {"type": "object", "additionalProperties": {"type": "string"},
+                            "description": "Fill names -> \"#RRGGBB\", used by rooms' fill."},
+                "walls": {
+                    "type": "object",
+                    "properties": {
+                        "thickness": {"type": "number", "exclusiveMinimum": 0, "default": 0.2},
+                        "height": {"type": "number", "exclusiveMinimum": 0, "default": 2.7,
+                                   "description": "Full height of the 3D walls, metres."},
+                        "color": {"type": "string", "default": "#4A4F57",
+                                  "description": "The plan's wall line and the 3D wall tops."},
+                        "face_color": {"type": "string", "default": "#E9E7E2",
+                                       "description": "The 3D wall sides."},
+                        "opening_fill": {"type": "string", "default": "#ECE9E3",
+                                         "description": "A door's threshold on plan and "
+                                                        "texture."},
+                        "ground_3d": {"type": "string", "default": "#B9BDB6",
+                                      "description": "The 3D ground around the floor."},
+                        "finish": {"$ref": "#/$defs/wall_finish"},
+                    },
+                    "additionalProperties": False,
+                },
+                "floor_tile": {"type": ["number", "null"], "exclusiveMinimum": 0, "default": 0.6,
+                               "description": "Tile joints on the floor texture, metres; "
+                                              "null for none."},
+                "rooms": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "minLength": 1},
+                        "rect": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                                 "maxItems": 4},
+                        "polygon": {"type": "array", "items": {"$ref": "#/$defs/point"},
+                                    "minItems": 3},
+                        "fill": {"type": "string",
+                                 "description": "A colour or palette name; absent = no fill."},
+                        "walls": {"type": "boolean", "default": True},
+                        "label": {"anyOf": [{"const": False},
+                                            {"$ref": "#/$defs/building_label"}],
+                                  "description": "false hides it; the text defaults to the "
+                                                 "name, the place to the centroid."},
+                        "height": {"type": "number", "exclusiveMinimum": 0,
+                                   "description": "This room's wall height, metres; absent = "
+                                                  "walls.height."},
+                        "thickness": {"type": "number", "exclusiveMinimum": 0,
+                                      "description": "This room's wall thickness, metres; "
+                                                     "absent = walls.thickness."},
+                        "finish": {"$ref": "#/$defs/wall_finish"},
+                    },
+                    "required": ["name"],
+                    "additionalProperties": False}},
+                "wall_lines": {"type": "array", "items": {
+                    "type": "object",
+                    "description": "A free-standing wall: a polyline through its points, cut by "
+                                   "the openings on it like a room's walls.",
+                    "properties": {
+                        "name": {"type": "string", "minLength": 1},
+                        "points": {"type": "array", "items": {"$ref": "#/$defs/point"},
+                                   "minItems": 2,
+                                   "description": "[[x, y], ...] metres, at least two."},
+                        "height": {"type": "number", "exclusiveMinimum": 0,
+                                   "description": "Wall height, metres; absent = walls.height."},
+                        "thickness": {"type": "number", "exclusiveMinimum": 0,
+                                      "description": "Wall thickness, metres; absent = "
+                                                     "walls.thickness."},
+                        "finish": {"$ref": "#/$defs/wall_finish"},
+                    },
+                    "required": ["points"],
+                    "additionalProperties": False}},
+                "openings": {"type": "array", "items": {
+                    "type": "object",
+                    "description": "A door or curtain cut into a wall: attached (wall, at, "
+                                   "width; it follows the wall when the wall moves) or free (a "
+                                   "and b, two points on a wall line). One that cuts no wall is "
+                                   "a W_OPENING_OFF_WALL warning.",
+                    "properties": {
+                        "wall": {"type": "object",
+                                 "description": "{\"room\": name, \"edge\": k} or {\"line\": "
+                                                "index, \"edge\": k}: edge k runs from point k "
+                                                "to k + 1 (a rect's from its top-left, "
+                                                "clockwise; a room's last edge closes it).",
+                                 "properties": {"room": {"type": "string", "minLength": 1},
+                                                "line": {"type": "integer", "minimum": 0},
+                                                "edge": {"type": "integer", "minimum": 0}},
+                                 "required": ["edge"],
+                                 "additionalProperties": False},
+                        "at": {"type": "number", "minimum": 0, "maximum": 1,
+                               "description": "The centre's place along the edge, 0..1."},
+                        "width": {"type": "number", "exclusiveMinimum": 0,
+                                  "description": "Metres."},
+                        "a": {"$ref": "#/$defs/point"}, "b": {"$ref": "#/$defs/point"},
+                        "kind": {"enum": ["door", "curtain"], "default": "door"},
+                        "plan": {"type": "boolean", "default": True,
+                                 "description": "false cuts the 3D walls only; the plan keeps "
+                                                "the wall."},
+                    },
+                    "anyOf": [{"required": ["wall", "at", "width"]}, {"required": ["a", "b"]}],
+                    "additionalProperties": False}},
+                "markings": {"type": "array", "items": {
+                    "type": "object",
+                    "description": "A floor marking (an aisle line, a parking box, a hatched "
+                                   "no-go area): painted on the floor of the plan, the floor "
+                                   "texture and the 3D view, with no height.",
+                    "properties": {
+                        "points": {"type": "array", "items": {"$ref": "#/$defs/point"},
+                                   "minItems": 2,
+                                   "description": "[[x, y], ...] metres; three or more when "
+                                                  "closed."},
+                        "closed": {"type": "boolean", "default": False,
+                                   "description": "true joins the last point to the first: an "
+                                                  "area."},
+                        "color": {"type": "string", "default": "yellow",
+                                  "description": "yellow, white, red, orange, green, blue, "
+                                                 "black (the RAL signal colours) or "
+                                                 "\"#RRGGBB\"."},
+                        "style": {"enum": ["solid", "dashed", "hatch"], "default": "solid",
+                                  "description": "hatch fills a closed marking with stripes "
+                                                 "(a no-go area)."},
+                        "width": {"type": "number", "exclusiveMinimum": 0, "default": 0.1,
+                                  "description": "The line's width, metres."},
+                        "label": {"type": "string", "minLength": 1,
+                                  "description": "Text painted at its middle."},
+                    },
+                    "required": ["points"],
+                    "additionalProperties": False}},
+                "labels": {"type": "array", "items": {"$ref": "#/$defs/building_label"}},
+                "fixtures": {"type": "array", "items": {
+                    "type": "object",
+                    "description": "Plan-only furniture: a rect or a line.",
+                    "properties": {
+                        "rect": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                                 "maxItems": 4},
+                        "line": {"type": "array", "items": {"$ref": "#/$defs/point"},
+                                 "minItems": 2, "maxItems": 2},
+                        "fill": {"type": "string"}, "stroke": {"type": "string"},
+                        "stroke_width": {"type": "number", "minimum": 0},
+                        "radius": {"type": "number", "minimum": 0},
+                        "dash": {"$ref": "#/$defs/point"},
+                    },
+                    "additionalProperties": False}},
+            },
+            "required": ["extent"],
+            "additionalProperties": False,
+        },
+        "wall_finish": {
+            "type": "string",
+            "description": "A wall's surface: a texture (plaster, brick, concrete, tile, wood) "
+                           "or a \"#RRGGBB\" flat colour; absent = walls.face_color.",
+            "anyOf": [{"enum": ["plaster", "brick", "concrete", "tile", "wood"]},
+                      {"pattern": "^#[0-9A-Fa-f]{6}$"}],
+        },
+        "building_label": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "minLength": 1,
+                         "description": "\\n starts a second line."},
+                "at": {"$ref": "#/$defs/point"},
+                "size": {"type": "number", "exclusiveMinimum": 0, "default": 0.55,
+                         "description": "Font size, metres."},
+                "weight": {"type": "integer", "minimum": 100, "maximum": 900, "default": 600},
+                "color": {"type": "string"},
+                "anchor": {"enum": ["start", "middle", "end"], "default": "middle"},
+            },
+            "additionalProperties": False,
+        },
         "subscript": {
             "type": "object",
             "description": "A dimension: a record with \"dims\": [name] is "
@@ -2322,12 +2502,18 @@ def _defs() -> dict:
                     "type": "object",
                     "description": "Per block, what it carries: a changeover's setup key its "
                                    "last job left; a BATCH's running maximum wait, the time it "
-                                   "falls due; a CONVEYOR's next free entry slot.",
+                                   "falls due; a CONVEYOR's next free entry slot and when "
+                                   "the last part left each of its points and its end.",
                     "additionalProperties": {
                         "type": "object",
                         "properties": {"setup": {"type": ["string", "number"]},
                                        "due": {"type": "number"},
-                                       "next_entry": {"type": "number"}},
+                                       "next_entry": {"type": "number"},
+                                       "left": {"type": "array",
+                                                "items": {"type": ["number", "null"]}},
+                                       "sections": {"type": "array",
+                                                    "items": {"type": "array",
+                                                              "items": {"type": "number"}}}},
                         "additionalProperties": False}},
                 "variables": {"type": "object",
                               "description": "Model variable values to start from."},
@@ -2421,6 +2607,15 @@ def _defs() -> dict:
                                                        "accepted, or the CONVEYOR whose end "
                                                        "keeps it until the next belt takes it "
                                                        "(count 1)."},
+                            "held_at": {"type": "object",
+                                        "description": "Of a part a CONVEYOR's divert hands "
+                                                       "over (held_by that belt): the divert's "
+                                                       "point and since when the part waits.",
+                                        "properties": {"point": {"type": "integer",
+                                                                 "minimum": 0},
+                                                       "since": {"type": "number"}},
+                                        "required": ["point", "since"],
+                                        "additionalProperties": False},
                             "held_since": {"type": "number",
                                            "description": "The absolute time the station in "
                                                           "held_by seized its unit, or the "
@@ -2444,12 +2639,19 @@ def _defs() -> dict:
                                                     "at until; ride: at the end at until; packed: "
                                                     "behind the part ahead; move: moving up, "
                                                     "there at until; stop: waits for the end "
-                                                    "stop), until, and when it entered the belt.",
+                                                    "stop), until, and when it entered the belt. "
+                                                    "On a belt with stops, diverts or merges, "
+                                                    "point is the one it rides to or stands at "
+                                                    "(entry to end), with the stages of that "
+                                                    "point's kind.",
                                      "properties": {
-                                         "stage": {"enum": ["cell", "slot", "ride", "packed",
-                                                            "move", "stop"]},
+                                         "stage": {"enum": ["cell", "entry", "slot", "ride",
+                                                            "packed", "move", "stop", "due",
+                                                            "gap", "claim", "wait", "dwell",
+                                                            "push", "blocked", "door", "join"]},
                                          "until": {"type": "number"},
-                                         "entered": {"type": "number"}},
+                                         "entered": {"type": "number"},
+                                         "point": {"type": "integer", "minimum": 0}},
                                      "required": ["stage"],
                                      "additionalProperties": False},
                             "place": {"type": "boolean",
@@ -2595,6 +2797,177 @@ def _defs() -> dict:
             "additionalProperties": False,
         },
     }
+
+
+# One plain sentence for the section fields whose definition above has none. `_describe` adds
+# a sentence only where the definition has no description of its own; the reader of each
+# field (the engine module or the editor code that reads it) is the place to check one.
+_FILLED_DESCRIPTIONS = {
+    "scenario": {
+        "name": "The scenario's name, as the comparison table lists it.",
+        "description": "What the scenario changes and why; shown beside it in the editor.",
+        "overrides": "The changes this scenario makes to the base model, applied in order."},
+    "order": {"description": "A note on the job; the run does not read it."},
+    "resource": {
+        "name": "The resource's name; blocks seize it by this name.",
+        "capacity": "How many units can be held at the same time.",
+        "cost_busy": "Cost per time unit (see `cost_time_unit`) while a unit is held.",
+        "cost_idle": "Cost per time unit (see `cost_time_unit`) while a unit is free.",
+        "cost_per_use": "Cost added each time a unit is seized."},
+    "resource_set": {
+        "name": "The set's name; a block seizes the set by this name.",
+        "members": "The resources in the set, in the order the rule \"PreferredOrder\" tries them.",
+        "rule": "How the set picks a member when a request arrives."},
+    "schedule": {
+        "name": "The schedule's name; a block or a resource names it to follow the calendar.",
+        "description": "What the schedule stands for; the run does not read it.",
+        "kind": "\"arrival\" for a rate of arrivals, \"capacity\" for a number of units available.",
+        "repeat": "Start over after the last point; when false the last value holds for ever.",
+        "points": "The calendar, one [duration, value] pair per period, in order."},
+    "failure": {
+        "name": "The failure's name, shown in the resource log.",
+        "resources": "The resources that fail; each one fails and recovers on its own, drawing its own times."},
+    "table": {
+        "name": "The table's name, the first argument of TABLE(\"name\", key).",
+        "description": "What the table holds; the run does not read it.",
+        "column_mode": "How a lookup treats a column key between the listed ones: exact match, the step below, or linear."},
+    "sequence": {
+        "name": "The routing's name, the value of an entity's `sequence` attribute.",
+        "description": "What the routing is for; the run does not read it.",
+        "steps": "The operations in order: each names a station and the attributes to assign there."},
+    "variable": {
+        "name": "The variable's name; expressions read it as a bare name.",
+        "initial": "Its value at the start of each replication: a number, a boolean or an expression."},
+    "entity_type": {
+        "name": "The entity type's name, the `e_type` a CREATE block gives its entities.",
+        "shape": "The shape the editor draws for these entities, such as \"circle\".",
+        "color": "The colour the editor draws these entities in, as a hex string such as \"#1f77b4\"."},
+    "timeseries_input": {
+        "name": "The profile's name, the first argument of TS(\"name\").",
+        "description": "What the profile holds; the run does not read it."},
+    "level": {
+        "name": "The level's name, the argument of LEVEL(\"name\").",
+        "description": "What the level stands for; the run does not read it."},
+    "flow": {
+        "name": "The flow's name.",
+        "description": "What the flow stands for; the run does not read it."},
+    "conversion": {
+        "name": "The conversion's name.",
+        "description": "What the conversion stands for; the run does not read it.",
+        "substrates": "The feeds that go in, each with its own rate and yield curve."},
+    "fixed_cost": {
+        "name": "The cost's name, as the cost summary lists it.",
+        "description": "What the cost pays for; the run does not read it."},
+    "fleet": {
+        "name": "The fleet's name; it is also the name of the resource its vehicles form.",
+        "description": "What the fleet carries; the run does not read it.",
+        "count": "How many vehicles the fleet has.",
+        "park": "Where an idle vehicle waits: \"stay\" where it is, \"home\" back at its home node.",
+        "cost_busy": "Cost per time unit (see `cost_time_unit`) for a vehicle that is carrying.",
+        "cost_idle": "Cost per time unit (see `cost_time_unit`) for a vehicle that is waiting.",
+        "cost_per_use": "Cost added each time a vehicle is seized for a trip.",
+        "cost_time_unit": "The time unit `cost_busy` and `cost_idle` are per."},
+    "motion_profile": {
+        "name": "The profile's name, the `profile` of a MOTION block.",
+        "description": "What the profile stands for; the run does not read it.",
+        "kind": "What moves: a \"robot\", a \"human\" or a \"mechanism\"."},
+    "zone": {
+        "name": "The zone's name, the `zone.name` of a MOTION block.",
+        "description": "What the zone protects; the run does not read it."},
+    "charger": {
+        "name": "The charger's name.",
+        "description": "What the charger stands for; the run does not read it.",
+        "kind": "\"charge\" refills the battery in place, \"swap\" exchanges it for a full one."},
+    "auxiliary": {
+        "name": "The auxiliary's name, the argument of AUX(\"name\").",
+        "description": "What the auxiliary computes; the run does not read it."},
+    "delay": {
+        "name": "The delay's name, the argument of DELAY(\"name\").",
+        "description": "What the delay stands for; the run does not read it.",
+        "kind": "The kind of delay; the section's description says what each one does."},
+    "subscript": {"description": "What the dimension stands for; the run does not read it."},
+    "agent_type": {
+        "name": "The agent type's name, the `type` of a population.",
+        "description": "What the agents of this type are; the run does not read it.",
+        "parameters": "Named numbers every agent of the type reads in its expressions.",
+        "attributes": "The columns each agent carries, with their starting values.",
+        "states": "The statechart's states, with the actions they run on entry and exit.",
+        "transitions": "The moves between states and what triggers each.",
+        "initial_state": "The state every agent starts in.",
+        "space": "Where the agents live: nowhere, a continuous plane, a grid or the model's network."},
+    "population": {
+        "name": "The population's name.",
+        "description": "What the population stands for; the run does not read it.",
+        "type": "The agent type its agents follow.",
+        "count": "How many agents start: a number, or the rows of a table."},
+    "reality_check": {
+        "name": "The check's name, as its result lists it.",
+        "description": "What the check tests; the run does not read it."},
+    "annotation": {
+        "id": "The note's identifier, unique among the annotations.",
+        "kind": "\"text\" is a note, \"frame\" a titled box around part of the canvas.",
+        "position": "The canvas point of a text note.",
+        "rect": "A frame's [x, y, width, height] on the canvas.",
+        "text": "The note's text.",
+        "title": "The frame's title.",
+        "color": "The note's or frame's colour, as a hex string.",
+        "font_size": "The text size, in canvas units.",
+        "opacity": "How opaque the note or frame is, from 0 (clear) to 1 (solid)."},
+    "submodel": {
+        "info": "The definition's own details, such as its title and description.",
+        "parameters": "The arguments an instance sets; blocks inside read them by name.",
+        "blocks": "The blocks of the definition.",
+        "links": "The links between the blocks of the definition.",
+        "annotations": "The canvas notes of the definition; the engine ignores them."},
+    "data_source": {
+        "name": "The source's name, the `source` of a binding.",
+        "kind": "The kind of source, which decides how its `location` is read.",
+        "description": "What the source holds; the run does not read it."},
+    "data_binding": {
+        "name": "The binding's name.",
+        "source": "The name of the data source to read.",
+        "column": "The column (or field) to read from the source.",
+        "enabled": "When false the binding is skipped and the parameter keeps its file value.",
+        "description": "What the binding sets; the run does not read it."},
+    "initial_state": {
+        "entities": "The entities already in the system at time 0, with the block each one starts in.",
+        "resources": "The state of resources at time 0, by resource name."},
+    "simulation": {"replications": "How many independent runs to make, each with its own seed."},
+    "assertion": {
+        "name": "The assertion's name, as the check lists it.",
+        "description": "What the assertion guards; the run does not read it.",
+        "value": "The number the KPI is compared with.",
+        "confidence": "The confidence level of the interval the comparison uses."},
+    "path_check": {
+        "name": "The rule's name, as the check lists it.",
+        "description": "What the rule guards; the run does not read it."},
+    "dashboard": {
+        "widgets": "The tiles, gauges and charts, each over an expression.",
+        "inputs": "The values a viewer may change in Present mode before a run.",
+        "results": "The KPIs Present mode reports first.",
+        "pages": "The pages of the Presenter, each with an activity and its items."},
+    "info": {
+        "description": "A short description of the model.",
+        "author": "Who made the model.",
+        "notes": "Free notes about the model.",
+        "labels": "Which blocks the editor labels: all, only assets, or none.",
+        "node_names": "Whether the editor shows network node names on hover or always."},
+    "view": {
+        "tab": "The editor tab in front when the file was saved.",
+        "layout": "Whether the editor was in layout mode.",
+        "view_3d": "Whether the 3D view was on.",
+        "canvases": "The zoom and centre of each canvas tab."},
+}
+
+
+def _describe(defs: dict, shaped: dict) -> None:
+    """Add `_FILLED_DESCRIPTIONS` where the definition has no description of its own."""
+    for name, fields in _FILLED_DESCRIPTIONS.items():
+        node = shaped[name] if name in ("info", "view") else defs[name]
+        for field, sentence in fields.items():
+            prop = node["properties"][field]
+            if not prop.get("description"):
+                prop["description"] = sentence
 
 
 def _list_of(definition: str) -> dict:
@@ -2779,6 +3152,7 @@ def build_json_schema() -> dict:
         "simulation": {"$ref": "#/$defs/simulation"},
         "investment": {"$ref": "#/$defs/investment"},
         "dispatch": {"$ref": "#/$defs/dispatch"},
+        "building": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/building"}]},
         "outputs": {
             "type": "object",
             "description": "OPTIONAL extra output collection whose cost is opt-in "
@@ -2802,6 +3176,7 @@ def build_json_schema() -> dict:
             "additionalProperties": False,
         },
     }
+    _describe(defs, shaped)
     return {
         "$schema": _DRAFT,
         "$id": SCHEMA_ID,

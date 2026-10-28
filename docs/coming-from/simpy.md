@@ -112,9 +112,15 @@ agent, because it is data.
 - **Free-form processes.** A block does what its type does. Logic that is not a block goes in an
   expression (a restricted grammar, never `eval`), or in a LOGIC block or a plugin block, which
   are Python you write and install yourself.
-- **`simpy.rt`.** There is no real-time environment.
+- **`simpy.rt`.** There is no real-time environment, but a run can keep pace with the wall
+  clock: `run_model(..., pace=60)` plays one model minute per second, counts the events that
+  ran late and returns the results of an unpaced run. Nothing is fed into the running model.
 - **Your own event loop.** You do not get the `Environment` to schedule events on; `run_model`
-  owns the run. The agent tools can step a run (`debug_run`), not drive it.
+  owns the run. What you can do from outside is step it: a `nagasim.core.session.SimSession`
+  advances one replication in chunks, reads a snapshot, changes a variable or a resource's
+  capacity and answers a Policy decision, and `nagasim.rl.SimEnv` wraps the same idea as a
+  reset-and-step environment for training a policy. The agent tools step a run too
+  (`debug_run`).
 
 ## When raw SimPy is the better choice
 

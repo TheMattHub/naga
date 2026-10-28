@@ -24,9 +24,9 @@ options:
 usage: naga run [-h] [--version] [--replications REPLICATIONS] [--seed SEED]
                 [--warmup WARMUP] [--run-length RUN_LENGTH] [--start ISO]
                 [--until ISO] [--timezone IANA] [--workers WORKERS]
-                [--pace FACTOR] [--out OUT] [--report REPORT]
+                [--logic MODULE] [--pace FACTOR] [--out OUT] [--report REPORT]
                 [--export FORMAT:PATH] [--player PATH] [--asked FILE]
-                [--state FILE] [--no-logs]
+                [--state FILE] [--no-logs] [--raw] [--json] [--no-checks]
                 model
 
 Run a Naga model headless.
@@ -54,6 +54,9 @@ options:
                         schedules (default: the model's own, else UTC)
   --workers WORKERS     replications to run in parallel processes, or 'auto'
                         (default: 1)
+  --logic MODULE        take LOGIC block classes from this importable module
+                        first (a dotted name on PYTHONPATH), then from
+                        nagasim.core.custom_logic
   --pace FACTOR         keep pace with the wall clock: FACTOR model seconds
                         per wall second, converted from the model's time unit
                         (1 = real time, 60 = one model minute per second);
@@ -81,6 +84,11 @@ options:
                         logs: faster and much smaller on a long run, and every
                         summary statistic is unchanged -- only the three flat
                         log sheets come back empty
+  --raw                 print the per-replication system frame instead of the
+                        summary
+  --json                print {kpis, checks, replications} as JSON instead of
+                        the summary
+  --no-checks           skip the law checks (the WARN lines)
 ```
 
 ## naga scenarios

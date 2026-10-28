@@ -49,7 +49,7 @@ def _candidate_layout(layout, overrides) -> dict:
     candidate = experiments.apply_overrides(layout, overrides)
     fatal = schema.fatal_problems(schema.validate_model_structured(candidate))  # by severity (#247)
     if fatal:
-        raise ModelValidationError(schema.format_problems(fatal))
+        raise ModelValidationError(schema.format_problems(fatal), structured=fatal)
     return candidate
 
 

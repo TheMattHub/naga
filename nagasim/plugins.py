@@ -20,8 +20,8 @@ both completely inert until `load_plugins()` runs (called once from
    (os.pathsep-separated directories). Every `*.py` file directly inside one
    is imported and may expose module-level `NAGASIM_BLOCKS` /
    `NAGASIM_DISTRIBUTIONS` / `NAGASIM_EXPORTERS` lists of the same three spec
-   types. `examples/plugins/inspection_plugin/` works both ways (see its
-   README).
+   types. `examples/plugins/inspection_plugin/` (in the repository, not in
+   the wheel) works both ways; see its README.
 
 In a frozen build (`sys.frozen`), `<user data dir>/plugins` is scanned the same
 way as a NAGASIM_PLUGIN_PATH directory, so a user can drop a plugin file in

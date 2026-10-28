@@ -20,7 +20,7 @@ Python reference for `nagasim.build.Model`.
 
 ## List builders
 
-Each `add_*` method appends one entry to a list of the model file and returns the entry's key (its name, or its id for an order). The keywords are the entry's keys ([Model file keys](../schema.md)); an unknown keyword raises `TypeError` naming the valid ones. Each block type is a method too, named after the type in lower case (`m.process(...)`), and returns a block that `>>` links; see [Blocks](../blocks.md).
+Each `add_*` method appends one entry to a list of the model file and returns the entry's key (its name, or its id for an order). The keywords are the entry's keys ([Model file keys](../schema.md)); an unknown keyword raises `TypeError` naming the valid ones. Each block type is a method too, named after the type in lower case (`m.process(...)`), and returns a block that `>>` links; see [Blocks](../blocks/index.md).
 
 ```python
 from nagasim import build as nb

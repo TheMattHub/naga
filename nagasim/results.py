@@ -20,11 +20,16 @@ imported lazily inside `.plot()`, never a hard dependency.
 """
 from __future__ import annotations
 
+import logging
+
 import pandas as pd
 
 from nagasim.core.stats import ci95
+from nagasim.runchecks import RunChecks
 
 __all__ = ["Results"]
+
+log = logging.getLogger(__name__)
 
 
 class Results(dict):
@@ -57,6 +62,60 @@ class Results(dict):
     # D726: a paced run's `{"paced", "late_events", "max_lag_s"}`; an attribute,
     # not a frame, so no frame or digest of a run depends on the pace.
     pace: dict | None = None
+
+    # D906: the layout `run_model` ran and the warm-up it used, so `checks()` can
+    # judge the run; attributes, not frames, for the same reason as `pace`. A
+    # hand-built or reloaded Results keeps the None and has no checks.
+    _layout: dict | None = None
+    _warmup: float = 0.0
+
+    def checks(self) -> RunChecks:
+        """Return the law checks of this run, computed once and kept.
+
+        The checks of `nagasim.laws.checks` (utilisation, offered load,
+        Little's law, flow conservation, censoring, initial bias), judged with
+        the warm-up the run used. They are shown, never enforced: a check that
+        cannot be computed gives an empty `RunChecks` with a ``note``, never an
+        exception.
+
+        Returns
+        -------
+        RunChecks
+            ``.partial`` holds the warnings, ``.passed`` counts the rest.
+            Results not made by `nagasim.api.run_model` (built by hand, loaded
+            back) have no layout: ``note == "no layout"`` and no checks.
+
+        See Also
+        --------
+        nagasim.laws.checks : The checks themselves, on any layout and results.
+        Results.kpis : The KPI table the checks qualify.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=2, run_length=200, seed=0)
+        >>> results.checks().passed > 0
+        True
+        """
+        cached = self.__dict__.get("_checks")
+        if cached is not None:
+            return cached
+        if self._layout is None:
+            found = RunChecks((), note="no layout")
+        else:
+            try:
+                # Local import: laws imports experiments, which imports api (the
+                # cycle noted in `kpis`).
+                from nagasim import laws
+                found = RunChecks(tuple(laws.checks(self._layout, self, warmup=self._warmup)))
+            except Exception as exc:     # D907: a check never raises into a run or a display
+                log.debug("law checks failed: %s", exc, exc_info=True)
+                found = RunChecks((), note=f"checks failed: {exc}")
+        self._checks = found
+        return found
 
     def frame(self, name: str) -> pd.DataFrame:
         """Return the KPI frame *name*; an alias for ``results[name]``.
@@ -169,12 +228,14 @@ class Results(dict):
         return float(hit.iloc[0])
 
     def _repr_html_(self) -> str:
-        """Jupyter notebook display: the KPI table, Run-averaged, with a
-        replications count."""
+        """Jupyter notebook display: the partial law checks (D907), then the
+        KPI table, Run-averaged, with a replications count."""
         sys_df = self.get("system")
         n = int(sys_df["Run"].nunique()) if sys_df is not None and not sys_df.empty else 0
         table = self.kpis().to_html(index=False, float_format=lambda v: f"{v:,.4g}", na_rep="-")
-        return f"<p>{n} replication{'s' if n != 1 else ''}</p>\n{table}"
+        found = self.checks()
+        warn = found._repr_html_() + "\n" if found.partial else ""
+        return f"{warn}<p>{n} replication{'s' if n != 1 else ''}</p>\n{table}"
 
     def plot(self, key: str, ax=None, **kw):
         """Plot one KPI or one time series.

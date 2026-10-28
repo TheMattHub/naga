@@ -25,7 +25,7 @@ from nagasim.studyformulas import queue_formula, wait_shares, why_not
 from nagasim.study import CHECKLIST, FIRST_PASS, LEVELS, MODES, PRECISION, SIZES, StudyError
 from nagasim.twin import write_json, write_text
 
-from .core import SLOTS, ToolError, _digest, _document_args, call, tool, workspace
+from .core import SLOTS, ToolError, _PROGRESS, _digest, _document_args, call, report, reporting, tool, workspace
 from .runs import _run_laws
 
 _ID = "Study folder relative to the workspace root (the id study_start returned)."
@@ -100,6 +100,27 @@ def _open(study: str, write: bool = False) -> tuple[Path, dict]:
 
 def _sid(folder: Path) -> str:
     return folder.relative_to(workspace().root).as_posix()
+
+
+@contextmanager
+def _stage(index: int, count: int, message: str):
+    """Stage *index* of *count* of a multi-run tool: the runs inside report their own
+    done/total, which would restart from 0 at each stage; here they land in (index-1, index) so
+    the tool's progress only grows. Reads the sink itself, since `reporting` below replaces it."""
+    outer = _PROGRESS.get()
+    if outer is None:
+        yield
+        return
+
+    def send(*args):        # through `report`, so a failing sink never fails the step
+        with reporting(outer):
+            report(*args)
+
+    def inner(done, total=None, _message=""):
+        send(index - 1 + (min(done / total, 1.0) if total else 0.0), count, message)
+
+    with reporting(inner):
+        yield
 
 
 def _linked(fn):
@@ -193,7 +214,7 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | Non
     if not names:
         return None, extra
     try:
-        run = experiments.run_scenarios(layout, names, replications=n, seed=seed, baseline=False)
+        run = experiments.run_scenarios(layout, names, replications=n, seed=seed, baseline=False, on_progress=report)
     except Exception as exc:    # an override that does not apply, a run error: the base step stands
         logging.getLogger(__name__).warning("study scenarios failed", exc_info=True)
         extra["scenario_error"] = f"{type(exc).__name__}: {exc}"
@@ -700,11 +721,13 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
         elif not written["ok"]:
             problems = written["problems"]
         else:
-            digest = call("run_model", model=model, replications=n, seed=seed)
+            with _stage(1, 3, "first pass"):
+                digest = call("run_model", model=model, replications=n, seed=seed)
             # ponytail: same-seed rerun on the first version and every fifth halves the cost;
             # rerun every step if drift is ever seen.
             if "error" not in digest and len(s["versions"]) % 5 == 0:
-                rerun = call("run_model", model=model, replications=n, seed=seed)
+                with _stage(1, 3, "first pass"):
+                    rerun = call("run_model", model=model, replications=n, seed=seed)
             for r in (digest, rerun):
                 if r is not None and "error" in r:
                     problems, digest, rerun = [r["error"]], None, None
@@ -718,7 +741,8 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                 if n > FIRST_PASS:
                     # Replication i uses seed + i, so the extra n - FIRST_PASS replications continue the
                     # first pass and the merge equals one run of n.
-                    more = call("run_model", model=model, replications=n - FIRST_PASS, seed=seed + FIRST_PASS)
+                    with _stage(2, 3, "more replications"):
+                        more = call("run_model", model=model, replications=n - FIRST_PASS, seed=seed + FIRST_PASS)
                     if "error" in more:
                         problems, digest, rerun = [more["error"]], None, None
                     else:
@@ -729,7 +753,8 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                         _tails(s, digest, res[model], layout)
                         status = study_mod.precision_status(s, digest)
             if digest is not None:
-                scenarios, extra = _run_scenarios(layout, s, n, seed)
+                with _stage(3, 3, "scenarios"):
+                    scenarios, extra = _run_scenarios(layout, s, n, seed)
     checks = (step_checks(layout, digest, rerun, s, {"status": status, "n": n, "cap": cap}, first)
               if digest is not None else [])
     _log(s, "study_step", started, study_mod.error_code(problems) if problems else None)

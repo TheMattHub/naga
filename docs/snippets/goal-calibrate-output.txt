@@ -1,0 +1,4 @@
+service rate: 1.26 per minute, 80 replications used
+simulated wait 3.41 minutes against 3.2 observed, pass: True
+scenario: blocks.process_1.params.dist_params.rate = 1.26
+90% interval for the service rate: 1.19 to 1.36

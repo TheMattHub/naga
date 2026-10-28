@@ -20,7 +20,7 @@ import os
 import sys
 from pathlib import Path
 
-__all__ = ["ENV_VAR", "user_data_dir"]
+__all__ = ["ENV_VAR", "bundled_dir", "user_data_dir"]
 
 #: Overrides the directory on every OS. `tests/conftest.py` sets it for the
 #: whole session (DEVLOG #273), inherited by any subprocess a test starts, so
@@ -41,7 +41,7 @@ def _base_dir(name: str) -> Path:
 
 
 def user_data_dir() -> Path:
-    """The per-user directory for the product/Naga's own files. Not created
+    """The per-user directory for the product's and Naga's own files. Not created
     here -- a caller that writes makes it, a caller that reads tolerates its
     absence.
 
@@ -54,3 +54,12 @@ def user_data_dir() -> Path:
     if override:
         return Path(override)
     return _base_dir(_NEW_NAME)
+
+
+def bundled_dir() -> Path | None:
+    """The folder a frozen (PyInstaller) build unpacks its data to, else None.
+    The one test for "is this a frozen build" (viewer zip, docs, features)."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and meipass:
+        return Path(meipass)
+    return None

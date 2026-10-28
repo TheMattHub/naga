@@ -91,7 +91,7 @@ class GraphModel:
             for message in format_problems(structured):
                 log.warning(message)
             if fatal:
-                raise ModelValidationError(format_problems(fatal))
+                raise ModelValidationError(format_problems(fatal), structured=fatal)
 
         self._raw_layout = layout #copy for batch runs
 

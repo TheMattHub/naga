@@ -38,7 +38,7 @@ import operator
 from dataclasses import dataclass
 
 __all__ = ["Expression", "ExpressionError", "ExpressionScope", "compile_expression",
-           "bind_constants",
+           "bind_constants", "literal_problems",
            "parse_target", "is_variable_name", "FUNCTIONS", "FUNCTION_NAMES", "RESERVED_NAMES",
            "SD_MACROS", "SD_VALUE_MACROS", "TRAITS", "functions_with", "LOOKUP_SECTION",
            "lookup_sections"]
@@ -1031,6 +1031,46 @@ def compile_expression(text, variables=None) -> Expression:
     Pass *variables* (the model's variable names) to make an unknown name a
     compile-time error. Results are cached, so re-compiling is free."""
     return _compile(str(text), frozenset(variables) if variables is not None else None)
+
+
+def _literal_number(node):
+    """The value of a numeric literal, a unary minus or plus allowed; None otherwise.
+    A bool is not a number here (`True` is an int to Python)."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        value = _literal_number(node.operand)
+        return None if value is None else (-value if isinstance(node.op, ast.USub) else value)
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+        return node.value
+    return None
+
+
+def literal_problems(text) -> list[str]:
+    """What a DISC or TRIA call with only literal arguments would raise or get wrong
+    on every draw (D912), found before the run: DISC's pairs and probabilities as
+    `_disc` checks them, TRIA's low <= mode <= high. A call with any computed
+    argument is left to run time; text that does not parse is reported elsewhere."""
+    try:
+        tree = ast.parse(str(text), mode="eval")
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return []
+    found = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in ("DISC", "TRIA") and node.args and not node.keywords):
+            continue
+        args = [_literal_number(arg) for arg in node.args]
+        if any(arg is None for arg in args):
+            continue
+        if node.func.id == "TRIA":
+            if len(args) == 3 and not args[0] <= args[1] <= args[2]:
+                found.append(f"TRIA({args[0]}, {args[1]}, {args[2]}) needs low <= mode <= high")
+        elif len(args) % 2:
+            found.append("DISC takes value/probability pairs: DISC(v1, p1, v2, p2, ...)")
+        elif any(p < 0 for p in args[1::2]):
+            found.append("DISC probabilities must be >= 0")
+        elif abs(float(sum(args[1::2])) - 1.0) > 1e-9:      # the tolerance of `_disc`
+            found.append(f"DISC probabilities sum to {float(sum(args[1::2])):.6g}, must be 1")
+    return found
 
 
 # What `bind_constants` folds: plain values only, by exact type, so nothing a

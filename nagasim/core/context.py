@@ -195,6 +195,8 @@ class SimulationContext:
     # Policy-mode DECIDE controllers (ROADMAP 3.7 A), keyed by policy name;
     # empty means every Policy-mode DECIDE falls back to its own `fallback`.
     controllers: dict = field(default_factory=dict)
+    # D914: the caller's module LOGIC classes come from first (`run_model(logic=...)`).
+    logic_module: object = None
     warmup: float = 0.0
     # Where the run's clock started (D232, `initial_state.clock`); 0 for every other run.
     clock: float = 0.0

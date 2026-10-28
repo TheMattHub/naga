@@ -77,11 +77,11 @@ prediction bands. Each has a command of the same name.
 ## Build a model in Python
 
 `nagasim.build` writes the model file from Python. Every block type is a method named after
-it, taking the block's parameters by name (the [block reference](reference/blocks.md));
+it, taking the block's parameters by name (the [block reference](reference/blocks/index.md));
 `a >> b` links two blocks; `add_resource`, `add_schedule`, `add_level` and the like add an
 entry to a list of the file; `Model(...)` takes the run settings (`time_limit`, `warmup`,
 `replications`, every key of `simulation`) and the other sections. Every distribution of the
-[distribution reference](reference/distributions.md) is a constructor taking its parameters
+[distribution reference](reference/distributions/index.md) is a constructor taking its parameters
 by name, `nb.Exponential(rate=1.25)`; given as `distribution=` it writes the file's
 `"distribution"` and `"dist_params"`, and a parameter named like a Python keyword takes a
 trailing underscore (`nb.Poisson(lambda_=2)`). A block without a name gets one
@@ -144,6 +144,36 @@ naga export --python single_server -o mm1.py
 `ModelDocument` (`nagasim.core.document`) is the editor's document of the same file: undo,
 positions, renames that follow every reference.
 
+## Your own logic
+
+A LOGIC block routes each entity by a Python class of your own, kept in a module you
+write. The class needs one method, `execute(self, entity, ctx)`, that returns the index of
+the outgoing link to take; the block's `logic_class` names it. Pass the module to the run
+by its dotted name, or as an imported module when the run stays in one process:
+
+```python
+# my_logic.py, in a folder on PYTHONPATH
+class RouteBig:
+    def execute(self, entity, ctx):
+        return 1 if getattr(entity, "size", 0) > 10 else 0   # an ASSIGNed attribute
+```
+
+<!-- no-run: needs my_logic.py on PYTHONPATH -->
+```python
+results = run_model("model.json", logic="my_logic", workers=4)
+```
+
+<!-- no-run: needs my_logic.py on PYTHONPATH -->
+```console
+naga run model.json --logic my_logic
+```
+
+A class your module lacks still comes from `nagasim.core.custom_logic`, and a name that
+does not import, or a class found in neither, is an error that names both. With more than
+one worker, each process imports the module again by name, so it must live in a file on
+the path. Only the caller chooses the module: a model file has no key for it, so opening a
+model never runs code it names.
+
 ## What else is importable
 
 - `nagasim.modelschema.build_json_schema()`: the JSON Schema of a model file (`naga schema`).
@@ -151,6 +181,11 @@ positions, renames that follow every reference.
 - `nagasim.agent_tools`: the [agent tools](reference/tools.md) as plain functions, with no MCP.
 - `nagasim.core.trace.TraceRecorder` and `nagasim.core.playback.Timeline`: every event of a
   run, and the state at any instant.
-- `nagasim.plugins`: entry points for your own blocks, distributions and exporters.
+- `nagasim.core.session.SimSession`: one replication driven from outside, in chunks, with a
+  snapshot, safe edits (a variable, a resource's capacity) and answers to Policy decisions.
+  `nagasim.rl.SimEnv` is the reset-and-step environment of a policy under training.
+- `nagasim.plugins`: entry points for your own blocks, distributions and exporters. A worked
+  example (one block, one distribution, one exporter) is in the repository under
+  [examples/plugins/inspection_plugin](https://github.com/TheMattHub/naga/tree/main/examples/plugins/inspection_plugin).
 - `nagasim.core.sd` and `nagasim.core.agents`: authoring helpers for
   [system dynamics](system-dynamics.md) and [agent-based](agent-based-modelling.md) models.

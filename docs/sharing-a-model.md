@@ -103,6 +103,10 @@ are written into the copy as plain model data.
 `naga viewer model.json -o model.html --freeze`, with `--allow-network` and
 the other flags of [`naga bind`](digital-twin.md) when a source is not a file.
 
+From Python, `nagasim.viewer.freeze_data(layout, base_dir, confine_to=ROOT)` does the same for a
+caller acting on someone else's behalf: with `confine_to`, every file a source reads must be
+under `ROOT`, so a model cannot make the export read elsewhere.
+
 The copy names no source, path, address, credential or connection, and the page says "Data as
 read on" the date. The export is refused, naming the reason, when a source cannot be read, when
 a source is a live one (REST, MQTT, OPC UA: a plant's feed has no meaning in a copy), when the

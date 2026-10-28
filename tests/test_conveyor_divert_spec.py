@@ -493,6 +493,5 @@ def test_a_belt_with_a_divert_is_refused_in_a_state_by_name():
     blocks, links = side_line(belt(diverts=[divert_at(4)]), arrivals=3)
     doc = model(blocks, links)
     doc["simulation"]["time_limit"] = 30
-    assert "divert" in (state.refused_kind(doc) or "")
-    with pytest.raises(state.StateError, match="divert"):
-        state.take(doc, 3.0)
+    assert "divert" in (state.refused_kind(doc) or "")      # a plant only (D918)
+    assert state.take(doc, 3.0)["state"]["entities"]

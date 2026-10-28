@@ -1,0 +1,4 @@
+standard deviation after day 20:
+  Reading   20.3
+  Smooth     4.6
+  Smooth3    5.2

@@ -715,7 +715,7 @@ class MoverFleet:
         if mover.homing is not None:
             yield from self._divert(mover, origin, block)
         mover.trips += 1
-        block.emit("entity_seized", entity=entity, resource=self.name)
+        block.emit("entity_seized", entity=entity, resource=self.name, unit=mover.unit)
         return request, mover
 
     def drive(self, mover: Mover, to_node: str, *, loaded: bool, block=None,
@@ -1033,7 +1033,7 @@ class MoverFleet:
             self.resource.release(request)
             self._retry_wanted()
         if block is not None:
-            block.emit("entity_released", entity=entity, resource=self.name)
+            block.emit("entity_released", entity=entity, resource=self.name, unit=mover.unit)
         self._moved(block, mover, (mover.node,), 0.0, "idle")
         if self.capacity_kwh:
             self._emit("battery", mover, self.name)

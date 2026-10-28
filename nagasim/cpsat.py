@@ -22,7 +22,9 @@ Machines are resources: capacity c is a cumulative constraint, a resource set
 is one optional interval per member (exactly one present). A PROCESS setup
 (D52) is modelled exactly on a single-unit resource only that block uses: a
 circuit over its jobs, the changeover evaluated by the block's own
-expressions; elsewhere it is refused. Weights (weighted tardiness) are order
+expressions; elsewhere it is refused. An order of several entities runs
+back to back at each single-unit station, as its one planned start there
+makes the replay do (#1393). Weights (weighted tardiness) are order
 `priority`, higher = more important: absent means 1, negative counts as 0.
 
 Stdlib only here; `ortools` is an optional dependency imported inside
@@ -136,9 +138,6 @@ def _jobs(ctx, model, refused) -> list[_Job]:
                 more, lag, route = _path(ctx, ctx.stations[step["station"]], probe, lag, refused)
                 ops += more
             jobs.append(_Job(order, max(order.release, float(create.start_time)), ops, lag))
-        if order.quantity > 1:
-            refused.add(f"order '{order.id}': its {order.quantity} entities share one planned "
-                        f"start per station (the replay ranks them FIFO)")
     return jobs
 
 
@@ -257,6 +256,40 @@ def _grid(values, refused) -> int:
     return 1000
 
 
+def _keep_orders_together(m, jobs, start, end, horizon, refused) -> None:
+    """The plan gives an order ONE start per station, so the replay works an
+    order's entities there back to back (#1393). On a single-unit resource
+    that is exact: each order's span at the station (first start to last end)
+    joins a no-overlap with the other orders' spans, so no other order runs in
+    between. On a multi-unit resource or a set the replay's packing is not
+    modelled, and the proposal says so."""
+    groups: dict = {}
+    for job in jobs:
+        for op in job.ops:
+            if op.station is not None:
+                groups.setdefault((job.order.id, op.station), []).append(op)
+    spans: dict = {}
+    for (oid, station), ops in groups.items():
+        member = ops[0].members[0]
+        if len(ops[0].members) > 1 or member.capacity != 1:
+            if len(ops) > 1:
+                refused.add(f"order '{oid}': its {len(ops)} entities share one planned start at "
+                            f"'{station}', a multi-unit resource or set (the replay may pack "
+                            f"them differently)")
+            continue
+        if len(ops) == 1:
+            first, last = start[ops[0]], end[ops[0]]
+        else:
+            first, last = m.NewIntVar(0, horizon, ""), m.NewIntVar(0, horizon, "")
+            m.AddMinEquality(first, [start[op] for op in ops])
+            m.AddMaxEquality(last, [end[op] for op in ops])
+        spans.setdefault(member, []).append(
+            m.NewIntervalVar(first, m.NewIntVar(0, horizon, ""), last, ""))
+    for resource, intervals in spans.items():
+        if len(intervals) > 1:
+            m.AddNoOverlap(intervals)
+
+
 def _solve(cp_model, jobs, objective, time_limit_s, seed, refused) -> dict:
     setups = _setups(jobs, refused)
     ops = [op for job in jobs for op in job.ops]
@@ -309,6 +342,7 @@ def _solve(cp_model, jobs, objective, time_limit_s, seed, refused) -> dict:
             m.AddNoOverlap([interval for interval, _ in items])
         else:
             m.AddCumulative([i for i, _ in items], [q for _, q in items], resource.capacity)
+    _keep_orders_together(m, jobs, start, end, horizon, refused)
     for ops_r, table in setups.values():
         arcs = []
         for j, op in enumerate(ops_r):

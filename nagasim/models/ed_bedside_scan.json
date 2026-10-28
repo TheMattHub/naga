@@ -1,0 +1,1061 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "Arrivals",
+      "type": "CREATE",
+      "description": "Walk-in patients, one every 18 minutes on average (invented)",
+      "position": [0.0, 0.0],
+      "params": {
+        "e_type": "PATIENT",
+        "distribution": "Exponential",
+        "dist_params": {"rate": 0.05555555555555555}
+      }
+    },
+    {
+      "name": "Patient details",
+      "type": "ASSIGN",
+      "description": "Each patient's own times and risk, drawn once at arrival so both pathways treat the same patient the same way (common random numbers)",
+      "position": [200.0, 0.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.walk", "expr": "55"},
+          {"target": "entity.visit_min", "expr": "TRIA(8, 12, 20)"},
+          {"target": "entity.scan_min", "expr": "TRIA(6, 9, 14)"},
+          {"target": "entity.lab_min", "expr": "TRIA(45, 60, 95)"},
+          {"target": "entity.risk", "expr": "RAND()"},
+          {"target": "entity.ct", "expr": "0"},
+          {"target": "entity.sequence", "expr": "\"arrive\""},
+          {"target": "entity.step", "expr": "0"},
+          {"target": "in_ed", "expr": "in_ed + 1"}
+        ]
+      }
+    },
+    {
+      "name": "Walk in",
+      "type": "ROUTE",
+      "description": "Appears at the entrance",
+      "position": [400.0, 0.0],
+      "params": {"dist_params": {"value": 0}, "travel": "network", "speed": "entity.walk"}
+    },
+    {
+      "name": "Entrance",
+      "type": "STATION",
+      "description": "Walk-in entrance",
+      "position": [600.0, 0.0],
+      "params": {"node": "entrance"}
+    },
+    {
+      "name": "To triage",
+      "type": "ROUTE",
+      "description": "Walks to the triage desk",
+      "position": [800.0, 0.0],
+      "params": {"dist_params": {"value": 0}, "travel": "network", "speed": "entity.walk"}
+    },
+    {
+      "name": "Triage desk",
+      "type": "STATION",
+      "position": [1000.0, 0.0],
+      "params": {"node": "triage"}
+    },
+    {
+      "name": "Triage",
+      "type": "PROCESS",
+      "description": "The triage nurse assesses the patient",
+      "position": [1200.0, 0.0],
+      "layout_position": [8.5, 4.0],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {"low": 3, "mode": 5, "high": 8},
+        "worker_fleet": "Triage nurse",
+        "node": "triage"
+      }
+    },
+    {
+      "name": "To waiting room",
+      "type": "ROUTE",
+      "description": "Walks to the waiting room",
+      "position": [1400.0, 0.0],
+      "params": {"dist_params": {"value": 0}, "travel": "network", "speed": "entity.walk"}
+    },
+    {
+      "name": "Waiting room",
+      "type": "STATION",
+      "position": [1600.0, 0.0],
+      "params": {"node": "waiting"}
+    },
+    {
+      "name": "Wait for a bay",
+      "type": "SEIZE",
+      "description": "Waits in the waiting room for any free exam bay; held until the patient leaves the bay",
+      "position": [1800.0, 0.0],
+      "layout_position": [15.0, 4.5],
+      "params": {"resource_name": "Exam bay"}
+    },
+    {
+      "name": "Pick a bay",
+      "type": "DECIDE",
+      "description": "First free bay (link k-1 = Bay k; ELSE the last bay)",
+      "position": [2000.0, 0.0],
+      "params": {
+        "mode": "Condition",
+        "conditions": [
+          "IDLE(\"Bay 1\") > 0",
+          "IDLE(\"Bay 2\") > 0",
+          "IDLE(\"Bay 3\") > 0",
+          "IDLE(\"Bay 4\") > 0"
+        ]
+      }
+    },
+    {
+      "name": "To the bay",
+      "type": "ROUTE",
+      "description": "Walks to the bay it was given",
+      "position": [0.0, 420.0],
+      "params": {"dist_params": {"value": 0}, "travel": "network", "speed": "entity.walk"}
+    },
+    {
+      "name": "Pathway",
+      "type": "DECIDE",
+      "description": "Usual pathway (link 0: wait for blood tests) or bedside scan first (ELSE)",
+      "position": [0.0, 560.0],
+      "params": {"mode": "Condition", "conditions": ["scan_first == 0"]}
+    },
+    {
+      "name": "Take bay 1",
+      "type": "SEIZE",
+      "description": "Bay 1 is taken",
+      "position": [2200.0, 140.0],
+      "params": {"resource_name": "Bay 1"}
+    },
+    {
+      "name": "Go to bay 1",
+      "type": "ASSIGN",
+      "description": "Route to bay 1",
+      "position": [2400.0, 140.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.bay", "expr": "1"},
+          {"target": "entity.sequence", "expr": "\"bay_1\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "Bay 1",
+      "type": "STATION",
+      "description": "Exam bay 1",
+      "position": [2600.0, 140.0],
+      "params": {"node": "bay_1"}
+    },
+    {
+      "name": "Visit 1",
+      "type": "PROCESS",
+      "description": "A doctor walks to bay 1 and sees the patient; with the bedside scan on, the doctor also scans at the bed",
+      "position": [2800.0, 140.0],
+      "layout_position": [11.0, 14.0],
+      "params": {
+        "dist_params": {"value": "entity.visit_min + scan_first * entity.scan_min"},
+        "worker_fleet": "Doctors",
+        "node": "bay_1"
+      }
+    },
+    {
+      "name": "Take bay 2",
+      "type": "SEIZE",
+      "description": "Bay 2 is taken",
+      "position": [2200.0, 210.0],
+      "params": {"resource_name": "Bay 2"}
+    },
+    {
+      "name": "Go to bay 2",
+      "type": "ASSIGN",
+      "description": "Route to bay 2",
+      "position": [2400.0, 210.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.bay", "expr": "2"},
+          {"target": "entity.sequence", "expr": "\"bay_2\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "Bay 2",
+      "type": "STATION",
+      "description": "Exam bay 2",
+      "position": [2600.0, 210.0],
+      "params": {"node": "bay_2"}
+    },
+    {
+      "name": "Visit 2",
+      "type": "PROCESS",
+      "description": "A doctor walks to bay 2 and sees the patient; with the bedside scan on, the doctor also scans at the bed",
+      "position": [2800.0, 210.0],
+      "layout_position": [15.0, 14.0],
+      "params": {
+        "dist_params": {"value": "entity.visit_min + scan_first * entity.scan_min"},
+        "worker_fleet": "Doctors",
+        "node": "bay_2"
+      }
+    },
+    {
+      "name": "Take bay 3",
+      "type": "SEIZE",
+      "description": "Bay 3 is taken",
+      "position": [2200.0, 280.0],
+      "params": {"resource_name": "Bay 3"}
+    },
+    {
+      "name": "Go to bay 3",
+      "type": "ASSIGN",
+      "description": "Route to bay 3",
+      "position": [2400.0, 280.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.bay", "expr": "3"},
+          {"target": "entity.sequence", "expr": "\"bay_3\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "Bay 3",
+      "type": "STATION",
+      "description": "Exam bay 3",
+      "position": [2600.0, 280.0],
+      "params": {"node": "bay_3"}
+    },
+    {
+      "name": "Visit 3",
+      "type": "PROCESS",
+      "description": "A doctor walks to bay 3 and sees the patient; with the bedside scan on, the doctor also scans at the bed",
+      "position": [2800.0, 280.0],
+      "layout_position": [19.0, 14.0],
+      "params": {
+        "dist_params": {"value": "entity.visit_min + scan_first * entity.scan_min"},
+        "worker_fleet": "Doctors",
+        "node": "bay_3"
+      }
+    },
+    {
+      "name": "Take bay 4",
+      "type": "SEIZE",
+      "description": "Bay 4 is taken",
+      "position": [2200.0, 350.0],
+      "params": {"resource_name": "Bay 4"}
+    },
+    {
+      "name": "Go to bay 4",
+      "type": "ASSIGN",
+      "description": "Route to bay 4",
+      "position": [2400.0, 350.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.bay", "expr": "4"},
+          {"target": "entity.sequence", "expr": "\"bay_4\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "Bay 4",
+      "type": "STATION",
+      "description": "Exam bay 4",
+      "position": [2600.0, 350.0],
+      "params": {"node": "bay_4"}
+    },
+    {
+      "name": "Visit 4",
+      "type": "PROCESS",
+      "description": "A doctor walks to bay 4 and sees the patient; with the bedside scan on, the doctor also scans at the bed",
+      "position": [2800.0, 350.0],
+      "layout_position": [23.0, 14.0],
+      "params": {
+        "dist_params": {"value": "entity.visit_min + scan_first * entity.scan_min"},
+        "worker_fleet": "Doctors",
+        "node": "bay_4"
+      }
+    },
+    {
+      "name": "Take bay 5",
+      "type": "SEIZE",
+      "description": "Bay 5 is taken",
+      "position": [2200.0, 420.0],
+      "params": {"resource_name": "Bay 5"}
+    },
+    {
+      "name": "Go to bay 5",
+      "type": "ASSIGN",
+      "description": "Route to bay 5",
+      "position": [2400.0, 420.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.bay", "expr": "5"},
+          {"target": "entity.sequence", "expr": "\"bay_5\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "Bay 5",
+      "type": "STATION",
+      "description": "Exam bay 5",
+      "position": [2600.0, 420.0],
+      "params": {"node": "bay_5"}
+    },
+    {
+      "name": "Visit 5",
+      "type": "PROCESS",
+      "description": "A doctor walks to bay 5 and sees the patient; with the bedside scan on, the doctor also scans at the bed",
+      "position": [2800.0, 420.0],
+      "layout_position": [27.0, 14.0],
+      "params": {
+        "dist_params": {"value": "entity.visit_min + scan_first * entity.scan_min"},
+        "worker_fleet": "Doctors",
+        "node": "bay_5"
+      }
+    },
+    {
+      "name": "Blood tests",
+      "type": "DELAY",
+      "description": "Usual pathway: the patient waits in the bay for the blood results",
+      "position": [200.0, 560.0],
+      "params": {"dist_params": {"value": "entity.lab_min"}}
+    },
+    {
+      "name": "CT after bloods?",
+      "type": "DECIDE",
+      "description": "Usual pathway: four patients in ten go on to a CT scan (link 0)",
+      "position": [400.0, 560.0],
+      "params": {"mode": "Condition", "conditions": ["entity.risk > 0.6"]}
+    },
+    {
+      "name": "Scan positive?",
+      "type": "DECIDE",
+      "description": "Bedside scan: three patients in twenty look suspicious and go straight to CT (link 0); the scan rules the rest out",
+      "position": [200.0, 700.0],
+      "params": {"mode": "Condition", "conditions": ["entity.risk > 0.85"]}
+    },
+    {
+      "name": "Needs CT",
+      "type": "ASSIGN",
+      "description": "Marks the patient for a CT scan",
+      "position": [600.0, 630.0],
+      "params": {"assignments": [{"target": "entity.ct", "expr": "1"}]}
+    },
+    {
+      "name": "Leave the bay",
+      "type": "DECIDE",
+      "description": "Frees the bay the patient holds (link k-1 = Bay k; ELSE the last bay)",
+      "position": [800.0, 630.0],
+      "params": {
+        "mode": "Condition",
+        "conditions": ["entity.bay == 1", "entity.bay == 2", "entity.bay == 3", "entity.bay == 4"]
+      }
+    },
+    {
+      "name": "Free a bay",
+      "type": "RELEASE",
+      "description": "One bay fewer in use",
+      "position": [1200.0, 630.0],
+      "params": {"resource_name": "Exam bay"}
+    },
+    {
+      "name": "Free bay 1",
+      "type": "RELEASE",
+      "description": "Bay 1 is free",
+      "position": [1000.0, 546.0],
+      "params": {"resource_name": "Bay 1"}
+    },
+    {
+      "name": "Free bay 2",
+      "type": "RELEASE",
+      "description": "Bay 2 is free",
+      "position": [1000.0, 602.0],
+      "params": {"resource_name": "Bay 2"}
+    },
+    {
+      "name": "Free bay 3",
+      "type": "RELEASE",
+      "description": "Bay 3 is free",
+      "position": [1000.0, 658.0],
+      "params": {"resource_name": "Bay 3"}
+    },
+    {
+      "name": "Free bay 4",
+      "type": "RELEASE",
+      "description": "Bay 4 is free",
+      "position": [1000.0, 714.0],
+      "params": {"resource_name": "Bay 4"}
+    },
+    {
+      "name": "Free bay 5",
+      "type": "RELEASE",
+      "description": "Bay 5 is free",
+      "position": [1000.0, 770.0],
+      "params": {"resource_name": "Bay 5"}
+    },
+    {
+      "name": "CT?",
+      "type": "DECIDE",
+      "description": "Patients marked for CT walk to the CT room (link 0); the rest have their decision",
+      "position": [1400.0, 630.0],
+      "params": {"mode": "Condition", "conditions": ["entity.ct == 1"]}
+    },
+    {
+      "name": "Go to CT",
+      "type": "ASSIGN",
+      "description": "Route to the CT room",
+      "position": [1600.0, 560.0],
+      "params": {
+        "assignments": [
+          {"target": "entity.sequence", "expr": "\"ct\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "To CT",
+      "type": "ROUTE",
+      "description": "Walks (or is wheeled) to the CT room",
+      "position": [1800.0, 560.0],
+      "params": {"dist_params": {"value": 0}, "travel": "network", "speed": "entity.walk"}
+    },
+    {"name": "CT room", "type": "STATION", "position": [2000.0, 560.0], "params": {"node": "ct"}},
+    {
+      "name": "CT scan",
+      "type": "PROCESS",
+      "description": "The CT scan itself",
+      "position": [2200.0, 560.0],
+      "layout_position": [29.0, 4.0],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {"low": 10, "mode": 15, "high": 25},
+        "resource_name": "CT scanner"
+      }
+    },
+    {
+      "name": "CT report",
+      "type": "DELAY",
+      "description": "The radiologist reports the scan",
+      "position": [2400.0, 560.0],
+      "params": {"distribution": "Triangular", "dist_params": {"low": 20, "mode": 30, "high": 45}}
+    },
+    {
+      "name": "Decision",
+      "type": "RECORD",
+      "description": "The doctor decides: home or admitted. Records the time from arrival",
+      "position": [2600.0, 700.0],
+      "params": {
+        "stat_name": "arrival_to_decision",
+        "kind": "tally",
+        "expr": "TNOW - entity.creation_time"
+      }
+    },
+    {
+      "name": "Count decisions",
+      "type": "ASSIGN",
+      "description": "Updates the dashboard's counters",
+      "position": [2800.0, 700.0],
+      "params": {
+        "assignments": [
+          {"target": "decisions", "expr": "decisions + 1"},
+          {"target": "decision_sum", "expr": "decision_sum + TNOW - entity.creation_time"},
+          {"target": "ct_scans", "expr": "ct_scans + entity.ct"},
+          {"target": "entity.sequence", "expr": "\"leave\""},
+          {"target": "entity.step", "expr": "0"}
+        ]
+      }
+    },
+    {
+      "name": "Walk out",
+      "type": "ROUTE",
+      "description": "Walks to the exit",
+      "position": [3000.0, 700.0],
+      "params": {"dist_params": {"value": 0}, "travel": "network", "speed": "entity.walk"}
+    },
+    {
+      "name": "Exit",
+      "type": "STATION",
+      "description": "Discharge exit",
+      "position": [3200.0, 700.0],
+      "params": {"node": "exit"}
+    },
+    {
+      "name": "Leaves the ED",
+      "type": "ASSIGN",
+      "description": "One patient fewer in the department",
+      "position": [3400.0, 700.0],
+      "params": {"assignments": [{"target": "in_ed", "expr": "in_ed - 1"}]}
+    },
+    {
+      "name": "Leaves",
+      "type": "DISPOSE",
+      "description": "The patient leaves the department",
+      "position": [3600.0, 700.0]
+    }
+  ],
+  "links": [
+    {"source": "Arrivals", "target": "Patient details"},
+    {"source": "Patient details", "target": "Walk in"},
+    {"source": "Walk in", "target": "Entrance"},
+    {"source": "Entrance", "target": "To triage"},
+    {"source": "To triage", "target": "Triage desk"},
+    {"source": "Triage desk", "target": "Triage"},
+    {"source": "Triage", "target": "To waiting room"},
+    {"source": "To waiting room", "target": "Waiting room"},
+    {"source": "Waiting room", "target": "Wait for a bay"},
+    {"source": "Wait for a bay", "target": "Pick a bay"},
+    {"source": "Pick a bay", "target": "Take bay 1"},
+    {"source": "Take bay 1", "target": "Go to bay 1"},
+    {"source": "Go to bay 1", "target": "To the bay"},
+    {"source": "Bay 1", "target": "Visit 1"},
+    {"source": "Visit 1", "target": "Pathway"},
+    {"source": "Pick a bay", "target": "Take bay 2"},
+    {"source": "Take bay 2", "target": "Go to bay 2"},
+    {"source": "Go to bay 2", "target": "To the bay"},
+    {"source": "Bay 2", "target": "Visit 2"},
+    {"source": "Visit 2", "target": "Pathway"},
+    {"source": "Pick a bay", "target": "Take bay 3"},
+    {"source": "Take bay 3", "target": "Go to bay 3"},
+    {"source": "Go to bay 3", "target": "To the bay"},
+    {"source": "Bay 3", "target": "Visit 3"},
+    {"source": "Visit 3", "target": "Pathway"},
+    {"source": "Pick a bay", "target": "Take bay 4"},
+    {"source": "Take bay 4", "target": "Go to bay 4"},
+    {"source": "Go to bay 4", "target": "To the bay"},
+    {"source": "Bay 4", "target": "Visit 4"},
+    {"source": "Visit 4", "target": "Pathway"},
+    {"source": "Pick a bay", "target": "Take bay 5"},
+    {"source": "Take bay 5", "target": "Go to bay 5"},
+    {"source": "Go to bay 5", "target": "To the bay"},
+    {"source": "Bay 5", "target": "Visit 5"},
+    {"source": "Visit 5", "target": "Pathway"},
+    {"source": "To the bay", "target": "Leaves"},
+    {"source": "Pathway", "target": "Blood tests"},
+    {"source": "Pathway", "target": "Scan positive?"},
+    {"source": "Blood tests", "target": "CT after bloods?"},
+    {"source": "CT after bloods?", "target": "Needs CT"},
+    {"source": "CT after bloods?", "target": "Leave the bay"},
+    {"source": "Scan positive?", "target": "Needs CT"},
+    {"source": "Scan positive?", "target": "Leave the bay"},
+    {"source": "Needs CT", "target": "Leave the bay"},
+    {"source": "Leave the bay", "target": "Free bay 1"},
+    {"source": "Free bay 1", "target": "Free a bay"},
+    {"source": "Leave the bay", "target": "Free bay 2"},
+    {"source": "Free bay 2", "target": "Free a bay"},
+    {"source": "Leave the bay", "target": "Free bay 3"},
+    {"source": "Free bay 3", "target": "Free a bay"},
+    {"source": "Leave the bay", "target": "Free bay 4"},
+    {"source": "Free bay 4", "target": "Free a bay"},
+    {"source": "Leave the bay", "target": "Free bay 5"},
+    {"source": "Free bay 5", "target": "Free a bay"},
+    {"source": "Free a bay", "target": "CT?"},
+    {"source": "CT?", "target": "Go to CT"},
+    {"source": "CT?", "target": "Decision"},
+    {"source": "Go to CT", "target": "To CT"},
+    {"source": "To CT", "target": "CT room"},
+    {"source": "CT room", "target": "CT scan"},
+    {"source": "CT scan", "target": "CT report"},
+    {"source": "CT report", "target": "Decision"},
+    {"source": "Decision", "target": "Count decisions"},
+    {"source": "Count decisions", "target": "Walk out"},
+    {"source": "Walk out", "target": "Exit"},
+    {"source": "Exit", "target": "Leaves the ED"},
+    {"source": "Leaves the ED", "target": "Leaves"}
+  ],
+  "scenarios": [
+    {
+      "name": "Usual pathway",
+      "goal": "The doctor decides after the blood results; four patients in ten then have a CT scan.",
+      "overrides": [{"path": "variables.scan_first.initial", "value": 0}]
+    },
+    {
+      "name": "Bedside scan first",
+      "goal": "The doctor scans at the bed during the visit and decides at once; only a suspicious scan goes to CT.",
+      "overrides": [{"path": "variables.scan_first.initial", "value": 1}]
+    }
+  ],
+  "resources": [
+    {"name": "Exam bay", "capacity": 5},
+    {"name": "Bay 1", "capacity": 1},
+    {"name": "Bay 2", "capacity": 1},
+    {"name": "Bay 3", "capacity": 1},
+    {"name": "Bay 4", "capacity": 1},
+    {"name": "Bay 5", "capacity": 1},
+    {"name": "CT scanner", "capacity": 1}
+  ],
+  "sequences": [
+    {
+      "name": "arrive",
+      "steps": [{"station": "Entrance"}, {"station": "Triage desk"}, {"station": "Waiting room"}]
+    },
+    {"name": "ct", "steps": [{"station": "CT room"}]},
+    {"name": "leave", "steps": [{"station": "Exit"}]},
+    {"name": "bay_1", "steps": [{"station": "Bay 1"}]},
+    {"name": "bay_2", "steps": [{"station": "Bay 2"}]},
+    {"name": "bay_3", "steps": [{"station": "Bay 3"}]},
+    {"name": "bay_4", "steps": [{"station": "Bay 4"}]},
+    {"name": "bay_5", "steps": [{"station": "Bay 5"}]}
+  ],
+  "variables": [
+    {"name": "scan_first", "initial": 0},
+    {"name": "in_ed", "initial": 0},
+    {"name": "decisions", "initial": 0},
+    {"name": "decision_sum", "initial": 0},
+    {"name": "ct_scans", "initial": 0}
+  ],
+  "entities": [{"name": "PATIENT", "shape": "circle", "color": "orange"}],
+  "fleets": [
+    {
+      "name": "Doctors",
+      "kind": "worker",
+      "count": 2,
+      "speed": 70.0,
+      "home": "staff",
+      "park": "home",
+      "length_m": 0.7
+    },
+    {
+      "name": "Triage nurse",
+      "kind": "worker",
+      "count": 1,
+      "speed": 60.0,
+      "home": "triage",
+      "park": "home",
+      "length_m": 0.7
+    }
+  ],
+  "network": {
+    "nodes": [
+      {"name": "entrance", "x": 3.5, "y": 4.5},
+      {"name": "triage", "x": 8.5, "y": 4.0},
+      {"name": "waiting", "x": 15.0, "y": 4.5},
+      {"name": "staff", "x": 23.0, "y": 4.5},
+      {"name": "ct", "x": 29.0, "y": 4.0},
+      {"name": "discharge", "x": 31.0, "y": 14.5},
+      {"name": "exit", "x": 33.6, "y": 16.0},
+      {"name": "c_ent", "x": 3.5, "y": 9.5},
+      {"name": "c_tri", "x": 8.5, "y": 9.5},
+      {"name": "c_ct", "x": 29.0, "y": 9.5},
+      {"name": "c_dis", "x": 31.0, "y": 9.5},
+      {"name": "c_bay1", "x": 11, "y": 9.5},
+      {"name": "bay_1", "x": 11, "y": 14.0},
+      {"name": "c_bay2", "x": 15, "y": 9.5},
+      {"name": "bay_2", "x": 15, "y": 14.0},
+      {"name": "c_bay3", "x": 19, "y": 9.5},
+      {"name": "bay_3", "x": 19, "y": 14.0},
+      {"name": "c_bay4", "x": 23, "y": 9.5},
+      {"name": "bay_4", "x": 23, "y": 14.0},
+      {"name": "c_bay5", "x": 27, "y": 9.5},
+      {"name": "bay_5", "x": 27, "y": 14.0}
+    ],
+    "segments": [
+      {
+        "from": "c_ent",
+        "to": "c_tri",
+        "length": 5.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_tri",
+        "to": "c_bay1",
+        "length": 2.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_bay1",
+        "to": "c_bay2",
+        "length": 4.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_bay2",
+        "to": "c_bay3",
+        "length": 4.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_bay3",
+        "to": "c_bay4",
+        "length": 4.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_bay4",
+        "to": "c_bay5",
+        "length": 4.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_bay5",
+        "to": "c_ct",
+        "length": 2.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "c_ct",
+        "to": "c_dis",
+        "length": 2.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "entrance",
+        "to": "c_ent",
+        "length": 5.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "triage",
+        "to": "c_tri",
+        "length": 5.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "waiting",
+        "to": "c_bay2",
+        "length": 5.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "staff",
+        "to": "c_bay4",
+        "length": 5.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "ct",
+        "to": "c_ct",
+        "length": 5.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "discharge",
+        "to": "c_dis",
+        "length": 5.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "discharge",
+        "to": "exit",
+        "length": 3.0,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "bay_1",
+        "to": "c_bay1",
+        "length": 4.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "bay_2",
+        "to": "c_bay2",
+        "length": 4.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "bay_3",
+        "to": "c_bay3",
+        "length": 4.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "bay_4",
+        "to": "c_bay4",
+        "length": 4.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      },
+      {
+        "from": "bay_5",
+        "to": "c_bay5",
+        "length": 4.5,
+        "two_way": true,
+        "length_unit": "meters",
+        "speed_unit": "m/min"
+      }
+    ]
+  },
+  "building": {
+    "extent": [0, 0, 34, 19],
+    "ground": "#DCDCD6",
+    "palette": {
+      "floor": "#F6F4F0",
+      "corridor": "#ECE9E3",
+      "public": "#E8EDF2",
+      "box": "#EEF1EA",
+      "shock": "#F4E7E5",
+      "rad": "#ECEAF3",
+      "staff": "#F3EEE2"
+    },
+    "walls": {
+      "thickness": 0.2,
+      "height": 2.7,
+      "color": "#4A4F57",
+      "face_color": "#E9E7E2",
+      "opening_fill": "corridor",
+      "ground_3d": "#B9BDB6"
+    },
+    "floor_tile": 0.6,
+    "rooms": [
+      {"name": "Emergency department", "rect": [1, 1, 33, 18], "fill": "floor", "label": false},
+      {
+        "name": "Corridor",
+        "rect": [1, 8, 33, 11],
+        "fill": "corridor",
+        "walls": false,
+        "label": false
+      },
+      {
+        "name": "Entrance",
+        "rect": [1, 1, 6, 8],
+        "fill": "public",
+        "label": {"at": [3.5, 7.3], "size": 0.6}
+      },
+      {
+        "name": "Triage",
+        "rect": [6, 1, 11, 8],
+        "fill": "public",
+        "label": {"at": [8.5, 7.3], "size": 0.6}
+      },
+      {
+        "name": "Waiting room",
+        "rect": [11, 1, 20, 8],
+        "fill": "public",
+        "label": {"at": [15.5, 7.3], "size": 0.6}
+      },
+      {
+        "name": "Staff room",
+        "rect": [20, 1, 26, 8],
+        "fill": "staff",
+        "label": {"at": [23, 7.3], "size": 0.6}
+      },
+      {
+        "name": "CT",
+        "rect": [26, 1, 33, 8],
+        "fill": "rad",
+        "label": {"at": [29.5, 7.3], "size": 0.6}
+      },
+      {
+        "name": "Resuscitation",
+        "rect": [1, 11, 9, 18],
+        "fill": "shock",
+        "label": {"at": [5, 17.3], "size": 0.6}
+      },
+      {
+        "name": "Discharge",
+        "rect": [29, 11, 33, 18],
+        "fill": "public",
+        "label": {"at": [31, 17.3], "size": 0.5}
+      },
+      {
+        "name": "Bay 1",
+        "rect": [9, 11, 13, 18],
+        "fill": "box",
+        "label": {"at": [11, 17.3], "size": 0.5}
+      },
+      {
+        "name": "Bay 2",
+        "rect": [13, 11, 17, 18],
+        "fill": "box",
+        "label": {"at": [15, 17.3], "size": 0.5}
+      },
+      {
+        "name": "Bay 3",
+        "rect": [17, 11, 21, 18],
+        "fill": "box",
+        "label": {"at": [19, 17.3], "size": 0.5}
+      },
+      {
+        "name": "Bay 4",
+        "rect": [21, 11, 25, 18],
+        "fill": "box",
+        "label": {"at": [23, 17.3], "size": 0.5}
+      },
+      {
+        "name": "Bay 5",
+        "rect": [25, 11, 29, 18],
+        "fill": "box",
+        "label": {"at": [27, 17.3], "size": 0.5}
+      }
+    ],
+    "openings": [
+      {"a": [1, 3], "b": [1, 6]},
+      {"a": [2, 8], "b": [5, 8]},
+      {"a": [7.5, 8], "b": [9.5, 8]},
+      {"a": [13.5, 8], "b": [16.5, 8]},
+      {"a": [22, 8], "b": [24, 8]},
+      {"a": [27.5, 8], "b": [30.5, 8]},
+      {"a": [3.5, 11], "b": [6.5, 11]},
+      {"a": [30, 11], "b": [32, 11]},
+      {"a": [33, 14.5], "b": [33, 17.5]},
+      {"a": [10, 11], "b": [12, 11], "kind": "curtain"},
+      {"a": [14, 11], "b": [16, 11], "kind": "curtain"},
+      {"a": [18, 11], "b": [20, 11], "kind": "curtain"},
+      {"a": [22, 11], "b": [24, 11], "kind": "curtain"},
+      {"a": [26, 11], "b": [28, 11], "kind": "curtain"}
+    ],
+    "labels": [
+      {"text": "Corridor", "at": [20, 9.85], "size": 0.45, "weight": 500, "color": "#8A8F96"}
+    ],
+    "fixtures": [
+      {
+        "rect": [11.5, 15.2, 12.45, 17.3],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [11.62, 16.8, 12.33, 17.2], "fill": "#C9C5BD", "radius": 0.08},
+      {
+        "rect": [15.5, 15.2, 16.45, 17.3],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [15.62, 16.8, 16.33, 17.2], "fill": "#C9C5BD", "radius": 0.08},
+      {
+        "rect": [19.5, 15.2, 20.45, 17.3],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [19.62, 16.8, 20.33, 17.2], "fill": "#C9C5BD", "radius": 0.08},
+      {
+        "rect": [23.5, 15.2, 24.45, 17.3],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [23.62, 16.8, 24.33, 17.2], "fill": "#C9C5BD", "radius": 0.08},
+      {
+        "rect": [27.5, 15.2, 28.45, 17.3],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [27.62, 16.8, 28.33, 17.2], "fill": "#C9C5BD", "radius": 0.08},
+      {
+        "rect": [3.0, 13.5, 3.95, 15.6],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [3.12, 15.1, 3.83, 15.5], "fill": "#C9C5BD", "radius": 0.08},
+      {
+        "rect": [5.5, 13.5, 6.45, 15.6],
+        "fill": "#FFFFFF",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.12
+      },
+      {"rect": [5.62, 15.1, 6.33, 15.5], "fill": "#C9C5BD", "radius": 0.08},
+      {"rect": [12.2, 2.0, 12.9, 2.6], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [12.2, 3.2, 12.9, 3.8000000000000003], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [13.399999999999999, 2.0, 14.1, 2.6], "fill": "#B7C4D3", "radius": 0.1},
+      {
+        "rect": [13.399999999999999, 3.2, 14.1, 3.8000000000000003],
+        "fill": "#B7C4D3",
+        "radius": 0.1
+      },
+      {"rect": [14.6, 2.0, 15.3, 2.6], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [14.6, 3.2, 15.3, 3.8000000000000003], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [15.799999999999999, 2.0, 16.5, 2.6], "fill": "#B7C4D3", "radius": 0.1},
+      {
+        "rect": [15.799999999999999, 3.2, 16.5, 3.8000000000000003],
+        "fill": "#B7C4D3",
+        "radius": 0.1
+      },
+      {"rect": [17.0, 2.0, 17.7, 2.6], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [17.0, 3.2, 17.7, 3.8000000000000003], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [18.2, 2.0, 18.9, 2.6], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [18.2, 3.2, 18.9, 3.8000000000000003], "fill": "#B7C4D3", "radius": 0.1},
+      {"rect": [7.0, 2.0, 10.0, 2.8], "fill": "#D9D2C3", "stroke": "#9C978E", "stroke_width": 0.04},
+      {
+        "rect": [21.0, 2.0, 25.0, 3.2],
+        "fill": "#D9D2C3",
+        "stroke": "#9C978E",
+        "stroke_width": 0.04,
+        "radius": 0.3
+      },
+      {
+        "rect": [27.5, 2.2, 31.5, 4.8],
+        "fill": "#E3E0EC",
+        "stroke": "#8C86A3",
+        "stroke_width": 0.06,
+        "radius": 1.2
+      },
+      {"rect": [28.9, 2.6, 30.1, 4.4], "fill": "#FFFFFF", "stroke": "#8C86A3", "stroke_width": 0.04}
+    ]
+  },
+  "info": {
+    "title": "Emergency department: bedside scan (film template)",
+    "category": "Services",
+    "description": "A teaching model for the Film dock: walk-in patients in a small emergency department on a 32 x 17 m floor plan go through triage, wait for one of five exam bays, see a doctor and leave with a decision. Two scenarios run with common random numbers: the usual pathway waits for blood tests before deciding, the other scans at the bed first. Every number is invented for teaching; none comes from a real hospital.",
+    "author": "Naga",
+    "notes": "Times in minutes, distances in metres, walking 55 m/min. Each patient's visit, scan and blood-test times and risk are drawn once at arrival, so the same patient meets both pathways (see the Film a run tutorial)."
+  },
+  "simulation": {
+    "time_limit": 720,
+    "warmup": 0,
+    "replications": 5,
+    "calendar": {"start": "2026-01-05T08:00:00"}
+  },
+  "outputs": {},
+  "dashboard": {
+    "widgets": [
+      {"name": "Patients in the ED", "kind": "kpi", "title": "Patients in the ED", "expr": "in_ed"},
+      {
+        "name": "Mean time to decision",
+        "kind": "kpi",
+        "title": "Arrival to decision, mean (min)",
+        "expr": "round(ZIDZ(decision_sum, decisions))"
+      },
+      {"name": "CT scans", "kind": "kpi", "title": "CT scans", "expr": "ct_scans"}
+    ]
+  }
+}

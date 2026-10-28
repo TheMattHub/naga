@@ -379,14 +379,28 @@ def _check_blocks(c) -> None:
             fits["due"] = lambda v: is_finite_number(v) and v >= start
         if kind == "CONVEYOR":                                      # D430
             fits["next_entry"] = is_finite_number
+            # #1336: one leave time per point, then the end's, each null or at or before
+            # the clock; the points come with their stages (D922)
+            points = sum(len(params[f]) for f in ("stops", "diverts", "merges")
+                         if isinstance(params.get(f), list))
+            fits["left"] = lambda v, n=points + 1: isinstance(v, list) and len(v) == n \
+                and all(t is None or (is_finite_number(t) and t <= start) for t in v)
+            # D922: per section, the leave times of its recent parts, oldest first
+            fits["sections"] = lambda v, n=points + 1: bool(points) and isinstance(v, list) \
+                and len(v) == n and all(isinstance(times, list) and all(
+                    is_finite_number(t) and t <= start for t in times)
+                    and times == sorted(times) for times in v)
         if not (isinstance(spec, dict) and spec and set(spec) <= set(fits)
                 and all(fits[key](value) for key, value in spec.items())):
             problems.append(problem(
                 "E_INITIAL_BLOCK", f"initial_state: blocks.{name} must be a block of this model "
                 f"with what it carries: setup (a changeover), due (a BATCH's maximum wait, with "
-                f"parts waiting there) or next_entry (a CONVEYOR)", f"/{SECTION}/blocks/{name}",
+                f"parts waiting there), next_entry or left (a CONVEYOR)",
+                f"/{SECTION}/blocks/{name}",
                 hint="setup is the key the station's last job left; due and next_entry are "
-                     "absolute times, due at or after the clock"))
+                     "absolute times, due at or after the clock; left is a list, one time or "
+                     "null per stop, divert and merge and one for the end, each at or before "
+                     "the clock"))
 
 def _check_entry(c, index, entry) -> None:
     """One entry of `entities`."""
@@ -716,8 +730,13 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
 
     # #449: each hold is given back further on, by its own block or one the entity reaches
     after = _successors(layout, blocks)
+    # D918: a part dwelling at a belt's stop holds the stop's resource; the belt releases it
+    dwelling = _kind(block) == "CONVEYOR" and (entry.get("belt") or {}).get("stage") == "dwell"
+    released_here = {str((s or {}).get("resource") or "").strip()
+                     for s in (block.get("params") or {}).get("stops") or []
+                     if isinstance(s, dict)} if dwelling else set()
     for name in holds:
-        if _released(block) != name and not blocking.stops(
+        if _released(block) != name and name not in released_here and not blocking.stops(
                 entry["block"], after, lambda n: _released(blocks.get(n) or {}) == name,
                 lambda n: True):
             problems.append(problem(
@@ -1115,8 +1134,10 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                    and bool(params.get("resource_name"))
                    and (holder in blockers or (reaches(holder, name) and name in picked)))
         # a belt whose end hands its parts to another belt (D430)
+        # or one of its diverts, which hands it over to any finite space (D852, D918)
         belt = known and kind[holder] == "CONVEYOR" and params.get("accumulating", True) \
-            is not False and any(kind.get(t) == "CONVEYOR" for t in blockers.get(holder, ()))
+            is not False and (any(kind.get(t) == "CONVEYOR" for t in blockers.get(holder, ()))
+                              or (entry.get("held_at") is not None and params.get("diverts")))
         # A part that has a place of the block it waits at was accepted there: nothing
         # holds it any more.
         if not (buffer or station or belt) or entry.get("count") != 1 or entry.get("in_service") \
@@ -1467,19 +1488,10 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
     on = {}                 # belt -> [(entered, stage, until)] of the parts with a cell
     queued: dict = {}       # end stop -> parts at it, and jobs waiting to seize it (D431)
     stops = []              # (belt, end stop) of each part at one
-    # D855: a belt with diverts or merges is refused the same way.
-    stopped = {name for name, block in blocks.items() if kind(name) == "CONVEYOR"
+    # D918: a belt with stops, diverts or merges has a vocabulary of its own (`_validate_points`)
+    pointed = {name for name, block in blocks.items() if kind(name) == "CONVEYOR"
                and any((block.get("params") or {}).get(field)
                        for field in ("stops", "diverts", "merges"))}
-    for index, entry in enumerate(state.get("entities") or []):
-        # D733: a part between two stops has no vocabulary yet, so a belt with stops
-        # starts empty or not at all.
-        names = (entry.get("block"), entry.get("held_by")) if isinstance(entry, dict) else ()
-        for name in (n for n in names if isinstance(n, str) and n in stopped):
-            problems.append(problem(
-                "E_INITIAL_BELT", f"initial_state: belt '{name}' has stops, diverts or merges: a part "
-                f"on it is not carried", f"/{SECTION}/entities/{index}", block=name,
-                hint="start the belt empty, or take the state of a model without stops"))
     for entry in state.get("entities") or []:
         block = blocks.get(entry.get("block")) if isinstance(entry, dict) \
             and isinstance(entry.get("block"), str) else None
@@ -1492,9 +1504,10 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
         if not isinstance(entry, dict):
             continue
         name, belt, holder = entry.get("block"), entry.get("belt"), entry.get("held_by")
-        if kind(holder) == "CONVEYOR":      # handed over by its end (`_validate_places`)
+        if kind(holder) == "CONVEYOR" and holder not in pointed:    # handed over by its end
             on.setdefault(holder, []).append((entry.get("held_since"), "handover", None))
-        if belt is None and kind(name) != "CONVEYOR":
+        if (isinstance(name, str) and name in pointed) or (belt is None
+                                                            and kind(name) != "CONVEYOR"):
             continue
         params = (blocks.get(name) or {}).get("params") or {}
         stage = belt.get("stage") if isinstance(belt, dict) else None
@@ -1523,6 +1536,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
                 stop = str(params["exit_resource"]).strip()
                 queued[stop] = queued.get(stop, 0) + 1
                 stops.append((name, stop))
+    if pointed:
+        _validate_points(layout, state, blocks, start, problems, pointed, queued, stops)
     for name, stop in stops:
         if queued[stop] > 1:
             problems.append(problem(
@@ -1585,6 +1600,183 @@ def geometry_of(params: dict, units, network) -> tuple | None:
         return max(int(length // spacing), 1), spacing / speed, length / speed
     except Exception:       # no network, no path, a unit it does not know
         return None
+
+
+# D918: the stages a part may be at, by the kind of the point it rides to or stands at (None:
+# at the entry, or past the last point); those timed by `until`; those with no `entered`.
+_POINT_STAGES = {
+    None: {"entry", "slot", "ride", "packed", "move", "stop"},
+    "stop": {"ride", "packed", "move", "due", "wait", "dwell", "blocked"},
+    "divert": {"ride", "packed", "move", "due", "push", "blocked"},
+    "merge": {"ride", "packed", "gap", "claim", "due", "move", "blocked", "cell", "door", "join"},
+}
+_TIMED = frozenset({"slot", "ride", "move", "gap", "claim", "dwell", "push"})
+_ACTIONS = frozenset({"wait", "dwell", "push", "blocked"})     # one at a time at a stop or divert
+
+
+def _points_of(params: dict, units, network):
+    """([(kind, at, resource)] of a belt's points in place order, as `Conveyor._build_stops`
+    sorts them, [places of each section]), or None when its geometry cannot be known here."""
+    from nagasim.core.blocks.conveyor import SPEC
+
+    def value(key, default):
+        return scaled(float(params.get(key, default) or default),
+                      field_factor(param(SPEC, key), params, units, SPEC.params))
+
+    try:
+        factor = field_factor(param(SPEC, "length"), params, units, SPEC.params)
+        length, spacing = value("length", 0.0), value("spacing", 1.0)
+        if not length > 0:
+            length = network.distance(params["from_node"], params["to_node"])
+        stops = sorted((("stop", scaled(float(s["at"]), factor),
+                         str(s.get("resource") or "").strip())
+                        for s in params.get("stops") or []), key=lambda p: p[1])
+        points = sorted(stops + [("divert", scaled(float(d["at"]), factor), "")
+                                 for d in params.get("diverts") or []]
+                        + [("merge", scaled(float(m["at"]), factor), "")
+                           for m in params.get("merges") or []], key=lambda p: p[1])
+        ends = [0.0, *(p[1] for p in points), length]
+        return points, [max(math.ceil((b - a) / spacing - 1e-9), 1) for a, b in zip(ends, ends[1:])]
+    except Exception:       # a bad point or length is the block's own problem
+        return None
+
+
+def _validate_points(layout, state, blocks, start, problems, pointed, queued, stops) -> None:
+    """D918: the parts on a belt with stops, diverts or merges. Each stage is one of its
+    point's kind, timed and entered as the stage says; one part at a time at a stop's or a
+    divert's action, one merging part at a merge's door; a `wait` only where no other job
+    queues for the stop's resource (D431); a `dwell` at a stop with a resource holds it; the
+    places held in each section fit it. The time chain along the belt is not cross-checked."""
+    units = units_of(layout.get("simulation"))
+    try:
+        network = build_network(layout.get("network"), units)
+    except Exception:
+        network = None
+    geometry = {name: _points_of((blocks[name].get("params") or {}), units, network)
+                for name in pointed}
+    cells: dict = {}            # belt -> parts with a cell
+    holding: dict = {}          # (belt, section) -> parts with a place there
+    counts: dict = {}           # (belt, point, what) -> parts
+    waits = []                  # (belt, the stop's resource)
+
+    def refuse(index, name, why):
+        problems.append(problem(
+            "E_INITIAL_BELT", f"initial_state: belt '{str(name)[:80]}': {why}",
+            f"/{SECTION}/entities/{index}", block=name,
+            hint="a part on a belt with points: its stage is one of its point's kind, until "
+                 "for a timed stage, entered once it is on the belt (see the state "
+                 "documentation)"))
+
+    def count(key):
+        counts[key] = counts.get(key, 0) + 1
+
+    for index, entry in enumerate(state.get("entities") or []):
+        if not isinstance(entry, dict):
+            continue
+        name, holder, held_at = entry.get("block"), entry.get("held_by"), entry.get("held_at")
+        if isinstance(holder, str) and holder in pointed and geometry[holder] is not None:
+            points, _places = geometry[holder]
+            if held_at is None:             # its end hands it over
+                cells[holder] = cells.get(holder, 0) + 1
+                count((holder, len(points), "action"))
+                holding[(holder, len(points))] = holding.get((holder, len(points)), 0) + 1
+            elif not (isinstance(held_at, dict) and set(held_at) == {"point", "since"}
+                      and isinstance(held_at["point"], int)
+                      and not isinstance(held_at["point"], bool)
+                      and 0 <= held_at["point"] < len(points)
+                      and points[held_at["point"]][0] == "divert"
+                      and is_finite_number(held_at["since"]) and held_at["since"] <= start):
+                refuse(index, holder, "held_at names a divert of the belt in held_by and since "
+                                      "when the part waits there, at or before the clock")
+            else:
+                cells[holder] = cells.get(holder, 0) + 1
+                count((holder, held_at["point"], "action"))
+                holding[(holder, held_at["point"])] = holding.get((holder, held_at["point"]), 0) + 1
+        elif held_at is not None:
+            refuse(index, holder, "held_at goes with held_by a CONVEYOR with diverts")
+        if not (isinstance(name, str) and name in pointed):
+            continue
+        params = (blocks.get(name) or {}).get("params") or {}
+        belt = entry.get("belt")
+        if params.get("accumulating", True) is False:
+            refuse(index, name, "a part on a non-accumulating belt is not carried")
+            continue
+        if geometry[name] is None:
+            continue
+        points, _places = geometry[name]
+        point = belt.get("point") if isinstance(belt, dict) else None
+        if not (isinstance(belt, dict) and set(belt) <= {"stage", "until", "entered", "point"}
+                and (point is None or (isinstance(point, int) and not isinstance(point, bool)
+                                       and 0 <= point < len(points)))):
+            refuse(index, name, "belt has a stage, and point is the index of one of its points")
+            continue
+        kind_of = points[point][0] if point is not None else None
+        stage, until, entered = belt.get("stage", "cell"), belt.get("until"), belt.get("entered")
+        merging = kind_of == "merge" and stage in ("cell", "door", "join")
+        on_belt = stage not in ("cell", "entry", "slot") and not merging
+        ok = ((stage in _POINT_STAGES[kind_of] or (stage == "cell" and point is None))
+              and entry.get("count") == 1 and not entry.get("in_service")
+              and entry.get("arrives") is None and entry.get("trip") is None
+              and entry.get("place") is None
+              and ((is_finite_number(until) and until >= start) if stage in _TIMED
+                   else (until is None or (stage == "join" and is_finite_number(until)
+                                           and until >= start)))
+              and ((is_finite_number(entered) and 0 <= entered <= start) if on_belt
+                   else entered is None)
+              and (stage != "stop" or bool(str(params.get("exit_resource") or "").strip()))
+              and (holder is None or stage in ("cell", "entry", "slot") or merging)
+              and (stage != "wait" or bool(points[point][2])))
+        if ok and stage == "dwell" and points[point][2]:
+            ok = points[point][2] in (entry.get("holds") or {})
+        if not ok:
+            refuse(index, name, f"a part at stage '{str(stage)[:20]}' does not fit "
+                                f"{'its end' if point is None else f'point {point}'}")
+            continue
+        if stage != "cell":
+            cells[name] = cells.get(name, 0) + 1
+        section = None if stage in ("cell", "entry") or merging else \
+            (0 if stage == "slot" else len(points)) if point is None else point
+        if section is not None:
+            holding[(name, section)] = holding.get((name, section), 0) + 1
+        if kind_of in ("stop", "divert") and stage in _ACTIONS:
+            count((name, point, "action"))
+        if merging and stage in ("join", "door"):
+            count((name, point, stage))
+        if stage == "wait":
+            queued[points[point][2]] = queued.get(points[point][2], 0) + 1
+            waits.append((name, points[point][2]))
+        elif stage == "stop":
+            exit_stop = str(params["exit_resource"]).strip()
+            queued[exit_stop] = queued.get(exit_stop, 0) + 1
+            stops.append((name, exit_stop))
+    at = f"/{SECTION}/entities"
+    for (name, point, what), n in counts.items():
+        if n > 1 and what in ("action", "join") or what == "door" and not counts.get(
+                (name, point, "join")):
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}': {n} parts at point {point}'s "
+                f"{what}, where one part is at a time (a door part waits behind a join)", at,
+                block=name, hint="one part acts at a stop or a divert, and one waits to merge"))
+    for name, resource in waits:
+        if queued[resource] > 1:
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}': a part waiting at a stop for "
+                f"'{resource}', which other jobs queue for, is not carried (D431)", at,
+                block=name, hint="take the state at another time"))
+    for (name, section), n in holding.items():
+        places = geometry[name][1]
+        if n > places[section]:
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{name}': {n} parts hold a place in "
+                f"section {section}, which has {places[section]}", at, block=name,
+                hint="a section holds ceil(its length / spacing) parts"))
+    for name, n in cells.items():
+        geometry_cells = geometry_of((blocks[name].get("params") or {}), units, network)
+        if geometry_cells is not None and n > geometry_cells[0]:
+            problems.append(problem(
+                "E_INITIAL_QUEUE_CAPACITY", f"initial_state: {n} parts have a cell of belt "
+                f"'{name}', which has {geometry_cells[0]}", at, block=name,
+                hint="every part from entry on, and a part it hands over, has a cell"))
 
 
 def _times_fit(parts, next_entry, start, cells, gap, travel) -> bool:

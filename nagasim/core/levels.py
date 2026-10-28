@@ -1651,7 +1651,10 @@ def build_level_system(env, layout: dict, series: dict) -> LevelSystem | None:
     flow_section = layout.get("flows") or []
     conversion_section = layout.get("conversions") or []
     delay_section = layout.get("delays") or []      # expanded by `sd.expand` (SD-2)
-    if not level_section and not flow_section and not conversion_section and not delay_section:
+    # Auxiliaries alone are an SD model too: without this system nothing kept the
+    # run alive to its horizon, so the sampler read them once at 0 (#1397).
+    if not (level_section or flow_section or conversion_section or delay_section
+            or layout.get("auxiliaries")):
         return None
 
     base_unit = getattr(env.ctx, "time_unit", "minutes")

@@ -110,7 +110,7 @@ options:
 ## naga check
 
 ```text
-usage: naga check [-h] [--junit JUNIT] [--workers WORKERS] [--strict]
+usage: naga check [-h] [--junit JUNIT] [--workers WORKERS] [--strict] [--json]
                   models [models ...]
 
 positional arguments:
@@ -122,18 +122,21 @@ options:
   --workers WORKERS
   --strict           treat an inconclusive assertion (its CI straddles the
                      bound) as a failure too (exit 1)
+  --json             print {problems, laws, results} as JSON (one model)
 ```
 
 ## naga verify
 
 ```text
-usage: naga verify [-h] [--quick] [--json] [--html PATH]
+usage: naga verify [-h] [--quick] [--blocks K] [--json] [--html PATH]
 
 Check the engine against textbook queueing theory.
 
 options:
   -h, --help   show this help message and exit
   --quick      8 replications instead of 20
+  --blocks K   K independent seed blocks; reports how many intervals hold the
+               theory
   --json       print the rows as JSON
   --html PATH  also write an HTML report here
 ```

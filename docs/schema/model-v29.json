@@ -243,30 +243,45 @@
       ],
       "description": "Optional floor-plan image behind the canvas; ignored by the engine."
     },
+    "building": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/building"
+        }
+      ]
+    },
     "info": {
       "type": "object",
       "properties": {
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "A short description of the model."
         },
         "author": {
-          "type": "string"
+          "type": "string",
+          "description": "Who made the model."
         },
         "notes": {
-          "type": "string"
+          "type": "string",
+          "description": "Free notes about the model."
         },
         "labels": {
           "enum": [
             "all",
             "assets",
             "none"
-          ]
+          ],
+          "description": "Which blocks the editor labels: all, only assets, or none."
         },
         "node_names": {
           "enum": [
             "hover",
             "always"
-          ]
+          ],
+          "description": "Whether the editor shows network node names on hover or always."
         }
       },
       "additionalProperties": true
@@ -336,13 +351,16 @@
             "process",
             "stock_and_flow",
             "statechart"
-          ]
+          ],
+          "description": "The editor tab in front when the file was saved."
         },
         "layout": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Whether the editor was in layout mode."
         },
         "view_3d": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Whether the 3D view was on."
         },
         "canvases": {
           "type": "object",
@@ -365,7 +383,8 @@
               }
             },
             "additionalProperties": false
-          }
+          },
+          "description": "The zoom and centre of each canvas tab."
         }
       },
       "additionalProperties": false
@@ -3518,7 +3537,7 @@
         },
         {
           "title": "DECIDE",
-          "description": "Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. \"Chance\" mode draws on the block's own RNG against cumulative `probs`; \"Condition\" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. \"Policy\" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` (\"first\" / \"random\" / \"shortest\") so a Policy-mode model still runs and validates headless.",
+          "description": "Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. \"Chance\" mode draws on the block's own RNG against `probs`, one probability per branch (not cumulative); \"Condition\" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. \"Policy\" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` (\"first\" / \"random\" / \"shortest\") so a Policy-mode model still runs and validates headless.",
           "type": "object",
           "properties": {
             "name": {
@@ -3585,14 +3604,14 @@
                       "type": "array",
                       "x-quantity": "ratio",
                       "default": [],
-                      "description": "Cumulative branch probabilities, used when mode is \"Chance\"."
+                      "description": "One probability per branch, in link order (not cumulative), used when mode is \"Chance\"."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
                   "default": [],
-                  "description": "Cumulative branch probabilities, used when mode is \"Chance\".",
+                  "description": "One probability per branch, in link order (not cumulative), used when mode is \"Chance\".",
                   "x-quantity": "ratio"
                 },
                 "conditions": {
@@ -4000,7 +4019,7 @@
         },
         {
           "title": "DUPLICATE",
-          "description": "Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).",
+          "description": "Makes copies of an entity, for example to model one job spawning several; the original goes on unchanged. All copies leave by the one output link: follow it with a DECIDE to send them down different branches. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).",
           "type": "object",
           "properties": {
             "name": {
@@ -4223,7 +4242,7 @@
         },
         {
           "title": "LOGIC",
-          "description": "Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.",
+          "description": "Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic, or first in the module the caller passes as `run_model(logic=...)`. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.",
           "type": "object",
           "properties": {
             "name": {
@@ -7442,13 +7461,15 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The resource's name; blocks seize it by this name."
         },
         "capacity": {
           "x-quantity": "count",
           "type": "integer",
           "minimum": 0,
-          "default": 1
+          "default": 1,
+          "description": "How many units can be held at the same time."
         },
         "discipline": {
           "type": "string",
@@ -7480,20 +7501,23 @@
           "x-unit-key": "cost_time_unit",
           "type": "number",
           "minimum": 0,
-          "default": 0.0
+          "default": 0.0,
+          "description": "Cost per time unit (see `cost_time_unit`) while a unit is held."
         },
         "cost_idle": {
           "x-quantity": "rate",
           "x-unit-key": "cost_time_unit",
           "type": "number",
           "minimum": 0,
-          "default": 0.0
+          "default": 0.0,
+          "description": "Cost per time unit (see `cost_time_unit`) while a unit is free."
         },
         "cost_per_use": {
           "x-quantity": "money",
           "type": "number",
           "minimum": 0,
-          "default": 0.0
+          "default": 0.0,
+          "description": "Cost added each time a unit is seized."
         },
         "cost_time_unit": {
           "type": "string",
@@ -7550,14 +7574,16 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The set's name; a block seizes the set by this name."
         },
         "members": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 1
+          "minItems": 1,
+          "description": "The resources in the set, in the order the rule \"PreferredOrder\" tries them."
         },
         "rule": {
           "type": "string",
@@ -7568,7 +7594,8 @@
             "SmallestNumberBusy",
             "LargestRemainingCapacity"
           ],
-          "default": "PreferredOrder"
+          "default": "PreferredOrder",
+          "description": "How the set picks a member when a request arrives."
         }
       },
       "required": [
@@ -7582,13 +7609,16 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The entity type's name, the `e_type` a CREATE block gives its entities."
         },
         "shape": {
-          "type": "string"
+          "type": "string",
+          "description": "The shape the editor draws for these entities, such as \"circle\"."
         },
         "color": {
-          "type": "string"
+          "type": "string",
+          "description": "The colour the editor draws these entities in, as a hex string such as \"#1f77b4\"."
         },
         "icon": {
           "type": "string",
@@ -7633,7 +7663,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The variable's name; expressions read it as a bare name."
         },
         "initial": {
           "anyOf": [
@@ -7647,7 +7678,8 @@
               "type": "boolean"
             }
           ],
-          "default": 0
+          "default": 0,
+          "description": "Its value at the start of each replication: a number, a boolean or an expression."
         },
         "trace": {
           "type": "boolean",
@@ -7665,10 +7697,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The schedule's name; a block or a resource names it to follow the calendar."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the schedule stands for; the run does not read it."
         },
         "kind": {
           "type": "string",
@@ -7676,11 +7710,13 @@
             "arrival",
             "capacity"
           ],
-          "default": "arrival"
+          "default": "arrival",
+          "description": "\"arrival\" for a rate of arrivals, \"capacity\" for a number of units available."
         },
         "repeat": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "Start over after the last point; when false the last value holds for ever."
         },
         "time_unit": {
           "type": "string",
@@ -7711,7 +7747,8 @@
             "description": "[duration, value]; value is a rate (arrival) or a whole number of units (capacity)."
           },
           "x-quantity": "time",
-          "x-unit-key": "time_unit"
+          "x-unit-key": "time_unit",
+          "description": "The calendar, one [duration, value] pair per period, in order."
         },
         "weekly": {
           "type": "object",
@@ -7782,10 +7819,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The table's name, the first argument of TABLE(\"name\", key)."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the table holds; the run does not read it."
         },
         "keys": {
           "type": "array",
@@ -7851,7 +7890,8 @@
             "step",
             "linear"
           ],
-          "default": "exact"
+          "default": "exact",
+          "description": "How a lookup treats a column key between the listed ones: exact match, the step below, or linear."
         },
         "default": {
           "type": [
@@ -7874,10 +7914,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The profile's name, the first argument of TS(\"name\")."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the profile holds; the run does not read it."
         },
         "values": {
           "type": "array",
@@ -7993,7 +8035,8 @@
         },
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The level's name, the argument of LEVEL(\"name\")."
         },
         "dims": {
           "type": "array",
@@ -8014,7 +8057,8 @@
           "description": "Per-element equations: {\"north\": \"2\", \"a,x\": \"3\"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the level stands for; the run does not read it."
         },
         "unit": {
           "type": "string",
@@ -8290,7 +8334,8 @@
         },
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The flow's name."
         },
         "dims": {
           "type": "array",
@@ -8311,7 +8356,8 @@
           "description": "Per-element equations: {\"north\": \"2\", \"a,x\": \"3\"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the flow stands for; the run does not read it."
         },
         "from": {
           "type": [
@@ -8530,10 +8576,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The conversion's name."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the conversion stands for; the run does not read it."
         },
         "unit": {
           "type": "string",
@@ -8658,7 +8706,8 @@
               "name"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "The feeds that go in, each with its own rate and yield curve."
         },
         "locals": {
           "type": "object",
@@ -8677,10 +8726,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The cost's name, as the cost summary lists it."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the cost pays for; the run does not read it."
         },
         "amount": {
           "type": [
@@ -8852,6 +8903,418 @@
       ],
       "additionalProperties": false
     },
+    "building": {
+      "type": "object",
+      "description": "OPTIONAL building in metres (the network's frame, y down): rooms filled in order, walls derived from the outlines of rooms with walls true plus the free-standing wall_lines, openings cut into them, labels and plan-only fixtures. A path segment through a wall with no opening is a W_WALL_CROSSING warning. Ignored by the engine; the editor draws it and `product building` writes the floor plan, the 3D walls and the floor texture from it.",
+      "properties": {
+        "extent": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "The plan's canvas [x0, y0, x1, y1], metres."
+        },
+        "ground": {
+          "type": "string",
+          "default": "#DCDCD6",
+          "description": "The plan outside the rooms: a colour or palette name."
+        },
+        "palette": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Fill names -> \"#RRGGBB\", used by rooms' fill."
+        },
+        "walls": {
+          "type": "object",
+          "properties": {
+            "thickness": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 0.2
+            },
+            "height": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 2.7,
+              "description": "Full height of the 3D walls, metres."
+            },
+            "color": {
+              "type": "string",
+              "default": "#4A4F57",
+              "description": "The plan's wall line and the 3D wall tops."
+            },
+            "face_color": {
+              "type": "string",
+              "default": "#E9E7E2",
+              "description": "The 3D wall sides."
+            },
+            "opening_fill": {
+              "type": "string",
+              "default": "#ECE9E3",
+              "description": "A door's threshold on plan and texture."
+            },
+            "ground_3d": {
+              "type": "string",
+              "default": "#B9BDB6",
+              "description": "The 3D ground around the floor."
+            },
+            "finish": {
+              "$ref": "#/$defs/wall_finish"
+            }
+          },
+          "additionalProperties": false
+        },
+        "floor_tile": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "default": 0.6,
+          "description": "Tile joints on the floor texture, metres; null for none."
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rect": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "polygon": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/point"
+                },
+                "minItems": 3
+              },
+              "fill": {
+                "type": "string",
+                "description": "A colour or palette name; absent = no fill."
+              },
+              "walls": {
+                "type": "boolean",
+                "default": true
+              },
+              "label": {
+                "anyOf": [
+                  {
+                    "const": false
+                  },
+                  {
+                    "$ref": "#/$defs/building_label"
+                  }
+                ],
+                "description": "false hides it; the text defaults to the name, the place to the centroid."
+              },
+              "height": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "This room's wall height, metres; absent = walls.height."
+              },
+              "thickness": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "This room's wall thickness, metres; absent = walls.thickness."
+              },
+              "finish": {
+                "$ref": "#/$defs/wall_finish"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "wall_lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A free-standing wall: a polyline through its points, cut by the openings on it like a room's walls.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/point"
+                },
+                "minItems": 2,
+                "description": "[[x, y], ...] metres, at least two."
+              },
+              "height": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Wall height, metres; absent = walls.height."
+              },
+              "thickness": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Wall thickness, metres; absent = walls.thickness."
+              },
+              "finish": {
+                "$ref": "#/$defs/wall_finish"
+              }
+            },
+            "required": [
+              "points"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "openings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A door or curtain cut into a wall: attached (wall, at, width; it follows the wall when the wall moves) or free (a and b, two points on a wall line). One that cuts no wall is a W_OPENING_OFF_WALL warning.",
+            "properties": {
+              "wall": {
+                "type": "object",
+                "description": "{\"room\": name, \"edge\": k} or {\"line\": index, \"edge\": k}: edge k runs from point k to k + 1 (a rect's from its top-left, clockwise; a room's last edge closes it).",
+                "properties": {
+                  "room": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "edge": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "edge"
+                ],
+                "additionalProperties": false
+              },
+              "at": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "The centre's place along the edge, 0..1."
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Metres."
+              },
+              "a": {
+                "$ref": "#/$defs/point"
+              },
+              "b": {
+                "$ref": "#/$defs/point"
+              },
+              "kind": {
+                "enum": [
+                  "door",
+                  "curtain"
+                ],
+                "default": "door"
+              },
+              "plan": {
+                "type": "boolean",
+                "default": true,
+                "description": "false cuts the 3D walls only; the plan keeps the wall."
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "wall",
+                  "at",
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "a",
+                  "b"
+                ]
+              }
+            ],
+            "additionalProperties": false
+          }
+        },
+        "markings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A floor marking (an aisle line, a parking box, a hatched no-go area): painted on the floor of the plan, the floor texture and the 3D view, with no height.",
+            "properties": {
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/point"
+                },
+                "minItems": 2,
+                "description": "[[x, y], ...] metres; three or more when closed."
+              },
+              "closed": {
+                "type": "boolean",
+                "default": false,
+                "description": "true joins the last point to the first: an area."
+              },
+              "color": {
+                "type": "string",
+                "default": "yellow",
+                "description": "yellow, white, red, orange, green, blue, black (the RAL signal colours) or \"#RRGGBB\"."
+              },
+              "style": {
+                "enum": [
+                  "solid",
+                  "dashed",
+                  "hatch"
+                ],
+                "default": "solid",
+                "description": "hatch fills a closed marking with stripes (a no-go area)."
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "default": 0.1,
+                "description": "The line's width, metres."
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Text painted at its middle."
+              }
+            },
+            "required": [
+              "points"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/building_label"
+          }
+        },
+        "fixtures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Plan-only furniture: a rect or a line.",
+            "properties": {
+              "rect": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "line": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/point"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "fill": {
+                "type": "string"
+              },
+              "stroke": {
+                "type": "string"
+              },
+              "stroke_width": {
+                "type": "number",
+                "minimum": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              },
+              "dash": {
+                "$ref": "#/$defs/point"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "extent"
+      ],
+      "additionalProperties": false
+    },
+    "wall_finish": {
+      "type": "string",
+      "description": "A wall's surface: a texture (plaster, brick, concrete, tile, wood) or a \"#RRGGBB\" flat colour; absent = walls.face_color.",
+      "anyOf": [
+        {
+          "enum": [
+            "plaster",
+            "brick",
+            "concrete",
+            "tile",
+            "wood"
+          ]
+        },
+        {
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        }
+      ]
+    },
+    "building_label": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "\\n starts a second line."
+        },
+        "at": {
+          "$ref": "#/$defs/point"
+        },
+        "size": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 0.55,
+          "description": "Font size, metres."
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900,
+          "default": 600
+        },
+        "color": {
+          "type": "string"
+        },
+        "anchor": {
+          "enum": [
+            "start",
+            "middle",
+            "end"
+          ],
+          "default": "middle"
+        }
+      },
+      "additionalProperties": false
+    },
     "subscript": {
       "type": "object",
       "description": "A dimension: a record with \"dims\": [name] is flattened into one record per element when the model is built.",
@@ -8862,7 +9325,8 @@
           "description": "An identifier, written as \"[name]\" in a lookup."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the dimension stands for; the run does not read it."
         },
         "elements": {
           "type": "array",
@@ -8917,7 +9381,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The auxiliary's name, the argument of AUX(\"name\")."
         },
         "dims": {
           "type": "array",
@@ -8938,7 +9403,8 @@
           "description": "Per-element equations: {\"north\": \"2\", \"a,x\": \"3\"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the auxiliary computes; the run does not read it."
         },
         "expr": {
           "anyOf": [
@@ -8978,7 +9444,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The delay's name, the argument of DELAY(\"name\")."
         },
         "dims": {
           "type": "array",
@@ -8999,7 +9466,8 @@
           "description": "Per-element equations: {\"north\": \"2\", \"a,x\": \"3\"} replaces the record's first expression (a level's initial, a flow's rate, an auxiliary's expr, a delay's input) for those elements; the shared one covers the rest. Keys join one element per dim with a comma."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the delay stands for; the run does not read it."
         },
         "input": {
           "type": [
@@ -9044,7 +9512,8 @@
             "sample",
             "noise"
           ],
-          "default": "material"
+          "default": "material",
+          "description": "The kind of delay; the section's description says what each one does."
         },
         "order": {
           "description": "Number of stages (material/information).",
@@ -9737,16 +10206,19 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The agent type's name, the `type` of a population."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the agents of this type are; the run does not read it."
         },
         "parameters": {
           "type": "object",
           "additionalProperties": {
             "type": "number"
-          }
+          },
+          "description": "Named numbers every agent of the type reads in its expressions."
         },
         "attributes": {
           "type": "array",
@@ -9806,22 +10278,26 @@
               "name"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "The columns each agent carries, with their starting values."
         },
         "states": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/agent_state"
-          }
+          },
+          "description": "The statechart's states, with the actions they run on entry and exit."
         },
         "transitions": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/agent_transition"
-          }
+          },
+          "description": "The moves between states and what triggers each."
         },
         "initial_state": {
-          "type": "string"
+          "type": "string",
+          "description": "The state every agent starts in."
         },
         "space": {
           "anyOf": [
@@ -9973,7 +10449,8 @@
               ],
               "additionalProperties": false
             }
-          ]
+          ],
+          "description": "Where the agents live: nowhere, a continuous plane, a grid or the model's network."
         },
         "speed": {
           "type": [
@@ -10027,14 +10504,17 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The population's name."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the population stands for; the run does not read it."
         },
         "type": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The agent type its agents follow."
         },
         "count": {
           "anyOf": [
@@ -10062,7 +10542,8 @@
             }
           ],
           "x-quantity": "count",
-          "default": 0
+          "default": 0,
+          "description": "How many agents start: a number, or the rows of a table."
         },
         "max_count": {
           "description": "The most agents alive at once when spawn actions add some (>= count); default count.",
@@ -10219,10 +10700,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The routing's name, the value of an entity's `sequence` attribute."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the routing is for; the run does not read it."
         },
         "steps": {
           "type": "array",
@@ -10251,7 +10734,8 @@
               "station"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "The operations in order: each names a station and the attributes to assign there."
         }
       },
       "required": [
@@ -10382,10 +10866,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The profile's name, the `profile` of a MOTION block."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the profile stands for; the run does not read it."
         },
         "kind": {
           "type": "string",
@@ -10394,7 +10880,8 @@
             "human",
             "mechanism"
           ],
-          "default": "robot"
+          "default": "robot",
+          "description": "What moves: a \"robot\", a \"human\" or a \"mechanism\"."
         },
         "speed": {
           "description": "m/s.",
@@ -10472,10 +10959,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The zone's name, the `zone.name` of a MOTION block."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the zone protects; the run does not read it."
         },
         "node": {
           "type": "string",
@@ -10510,16 +10999,19 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The fleet's name; it is also the name of the resource its vehicles form."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the fleet carries; the run does not read it."
         },
         "count": {
           "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1
+          "default": 1,
+          "description": "How many vehicles the fleet has."
         },
         "kind": {
           "type": "string",
@@ -10672,7 +11164,8 @@
             "stay",
             "home"
           ],
-          "default": "stay"
+          "default": "stay",
+          "description": "Where an idle vehicle waits: \"stay\" where it is, \"home\" back at its home node."
         },
         "capacity_schedule": {
           "type": "string",
@@ -10702,20 +11195,23 @@
           "x-unit-key": "cost_time_unit",
           "type": "number",
           "minimum": 0,
-          "default": 0.0
+          "default": 0.0,
+          "description": "Cost per time unit (see `cost_time_unit`) for a vehicle that is carrying."
         },
         "cost_idle": {
           "x-quantity": "rate",
           "x-unit-key": "cost_time_unit",
           "type": "number",
           "minimum": 0,
-          "default": 0.0
+          "default": 0.0,
+          "description": "Cost per time unit (see `cost_time_unit`) for a vehicle that is waiting."
         },
         "cost_per_use": {
           "x-quantity": "money",
           "type": "number",
           "minimum": 0,
-          "default": 0.0
+          "default": 0.0,
+          "description": "Cost added each time a vehicle is seized for a trip."
         },
         "cost_time_unit": {
           "type": "string",
@@ -10731,7 +11227,7 @@
             "years"
           ],
           "default": "hours",
-          "description": ""
+          "description": "The time unit `cost_busy` and `cost_idle` are per."
         },
         "power": {
           "type": "object",
@@ -10852,10 +11348,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The charger's name."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the charger stands for; the run does not read it."
         },
         "node": {
           "type": "string",
@@ -10867,7 +11365,8 @@
             "charge",
             "swap"
           ],
-          "default": "charge"
+          "default": "charge",
+          "description": "\"charge\" refills the battery in place, \"swap\" exchanges it for a full one."
         },
         "points": {
           "description": "Vehicles served at once.",
@@ -10954,14 +11453,16 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The failure's name, shown in the resource log."
         },
         "resources": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "minItems": 1
+          "minItems": 1,
+          "description": "The resources that fail; each one fails and recovers on its own, drawing its own times."
         },
         "uptime": {
           "$ref": "#/$defs/duration",
@@ -10988,10 +11489,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The scenario's name, as the comparison table lists it."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the scenario changes and why; shown beside it in the editor."
         },
         "goal": {
           "type": "string",
@@ -11014,7 +11517,8 @@
               "value"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "The changes this scenario makes to the base model, applied in order."
         }
       },
       "required": [
@@ -11028,10 +11532,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The check's name, as its result lists it."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the check tests; the run does not read it."
         },
         "inputs": {
           "type": "object",
@@ -11062,10 +11568,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The assertion's name, as the check lists it."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the assertion guards; the run does not read it."
         },
         "kpi": {
           "type": "string",
@@ -11084,7 +11592,8 @@
           "description": "Passes when the WHOLE confidence interval clears the bound (\"==\" means inside value +/- tolerance)."
         },
         "value": {
-          "type": "number"
+          "type": "number",
+          "description": "The number the KPI is compared with."
         },
         "replications": {
           "type": "integer",
@@ -11096,7 +11605,8 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "exclusiveMaximum": 1,
-          "default": 0.95
+          "default": 0.95,
+          "description": "The confidence level of the interval the comparison uses."
         },
         "tolerance": {
           "type": "number",
@@ -11118,10 +11628,12 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The rule's name, as the check lists it."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the rule guards; the run does not read it."
         },
         "rule": {
           "type": "string",
@@ -11581,7 +12093,8 @@
           "maxItems": 64,
           "items": {
             "$ref": "#/$defs/dashboard_widget"
-          }
+          },
+          "description": "The tiles, gauges and charts, each over an expression."
         },
         "controls": {
           "type": "array",
@@ -11596,14 +12109,16 @@
           "maxItems": 32,
           "items": {
             "$ref": "#/$defs/dashboard_input"
-          }
+          },
+          "description": "The values a viewer may change in Present mode before a run."
         },
         "results": {
           "type": "array",
           "maxItems": 32,
           "items": {
             "$ref": "#/$defs/dashboard_result"
-          }
+          },
+          "description": "The KPIs Present mode reports first."
         },
         "limits": {
           "type": "object",
@@ -11627,7 +12142,8 @@
           "maxItems": 8,
           "items": {
             "$ref": "#/$defs/dashboard_page"
-          }
+          },
+          "description": "The pages of the Presenter, each with an activity and its items."
         },
         "hidden": {
           "type": "array",
@@ -11650,17 +12166,20 @@
       "properties": {
         "id": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The note's identifier, unique among the annotations."
         },
         "kind": {
           "type": "string",
           "enum": [
             "text",
             "frame"
-          ]
+          ],
+          "description": "\"text\" is a note, \"frame\" a titled box around part of the canvas."
         },
         "position": {
-          "$ref": "#/$defs/point"
+          "$ref": "#/$defs/point",
+          "description": "The canvas point of a text note."
         },
         "rect": {
           "type": "array",
@@ -11668,24 +12187,30 @@
             "type": "number"
           },
           "minItems": 4,
-          "maxItems": 4
+          "maxItems": 4,
+          "description": "A frame's [x, y, width, height] on the canvas."
         },
         "text": {
-          "type": "string"
+          "type": "string",
+          "description": "The note's text."
         },
         "title": {
-          "type": "string"
+          "type": "string",
+          "description": "The frame's title."
         },
         "color": {
-          "type": "string"
+          "type": "string",
+          "description": "The note's or frame's colour, as a hex string."
         },
         "font_size": {
-          "type": "number"
+          "type": "number",
+          "description": "The text size, in canvas units."
         },
         "opacity": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1
+          "maximum": 1,
+          "description": "How opaque the note or frame is, from 0 (clear) to 1 (solid)."
         }
       },
       "required": [
@@ -11699,7 +12224,8 @@
       "description": "A reusable definition, instantiated by a SUBMODEL block and flattened away before the engine sees the model.",
       "properties": {
         "info": {
-          "type": "object"
+          "type": "object",
+          "description": "The definition's own details, such as its title and description."
         },
         "parameters": {
           "type": "array",
@@ -11727,7 +12253,8 @@
               "name"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "The arguments an instance sets; blocks inside read them by name."
         },
         "scoped": {
           "type": "object",
@@ -11788,19 +12315,22 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/block"
-          }
+          },
+          "description": "The blocks of the definition."
         },
         "links": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/link"
-          }
+          },
+          "description": "The links between the blocks of the definition."
         },
         "annotations": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/annotation"
-          }
+          },
+          "description": "The canvas notes of the definition; the engine ignores them."
         }
       },
       "additionalProperties": false
@@ -11811,7 +12341,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The source's name, the `source` of a binding."
         },
         "kind": {
           "type": "string",
@@ -11825,7 +12356,8 @@
             "mqtt",
             "opcua",
             "modbus"
-          ]
+          ],
+          "description": "The kind of source, which decides how its `location` is read."
         },
         "location": {
           "type": "string",
@@ -11849,7 +12381,8 @@
           "description": "Extra keyword arguments for the pandas reader; for a live kind, that reader's own options."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the source holds; the run does not read it."
         }
       },
       "required": [
@@ -11865,14 +12398,17 @@
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The binding's name."
         },
         "source": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "The name of the data source to read."
         },
         "column": {
-          "type": "string"
+          "type": "string",
+          "description": "The column (or field) to read from the source."
         },
         "filter": {
           "type": "object",
@@ -11896,10 +12432,12 @@
         },
         "enabled": {
           "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "When false the binding is skipped and the parameter keeps its file value."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "What the binding sets; the run does not read it."
         }
       },
       "required": [
@@ -11920,7 +12458,8 @@
           "description": "Unique; the KPI frames report the order under it."
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "description": "A note on the job; the run does not read it."
         },
         "release": {
           "type": [
@@ -12106,7 +12645,7 @@
         },
         "blocks": {
           "type": "object",
-          "description": "Per block, what it carries: a changeover's setup key its last job left; a BATCH's running maximum wait, the time it falls due; a CONVEYOR's next free entry slot.",
+          "description": "Per block, what it carries: a changeover's setup key its last job left; a BATCH's running maximum wait, the time it falls due; a CONVEYOR's next free entry slot and when the last part left each of its points and its end.",
           "additionalProperties": {
             "type": "object",
             "properties": {
@@ -12121,6 +12660,24 @@
               },
               "next_entry": {
                 "type": "number"
+              },
+              "left": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "sections": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
               }
             },
             "additionalProperties": false
@@ -12328,6 +12885,24 @@
                 "type": "string",
                 "description": "The block that still holds a waiting entity: the BUFFER whose place it has, or the station blocked after service that keeps its unit until the entity is accepted, or the CONVEYOR whose end keeps it until the next belt takes it (count 1)."
               },
+              "held_at": {
+                "type": "object",
+                "description": "Of a part a CONVEYOR's divert hands over (held_by that belt): the divert's point and since when the part waits.",
+                "properties": {
+                  "point": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "since": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "point",
+                  "since"
+                ],
+                "additionalProperties": false
+              },
               "held_since": {
                 "type": "number",
                 "description": "The absolute time the station in held_by seized its unit, or the entity entered the belt in held_by."
@@ -12354,16 +12929,26 @@
               },
               "belt": {
                 "type": "object",
-                "description": "An entity on an accumulating CONVEYOR: its stage (cell: waits for a cell; slot: boards at until; ride: at the end at until; packed: behind the part ahead; move: moving up, there at until; stop: waits for the end stop), until, and when it entered the belt.",
+                "description": "An entity on an accumulating CONVEYOR: its stage (cell: waits for a cell; slot: boards at until; ride: at the end at until; packed: behind the part ahead; move: moving up, there at until; stop: waits for the end stop), until, and when it entered the belt. On a belt with stops, diverts or merges, point is the one it rides to or stands at (entry to end), with the stages of that point's kind.",
                 "properties": {
                   "stage": {
                     "enum": [
                       "cell",
+                      "entry",
                       "slot",
                       "ride",
                       "packed",
                       "move",
-                      "stop"
+                      "stop",
+                      "due",
+                      "gap",
+                      "claim",
+                      "wait",
+                      "dwell",
+                      "push",
+                      "blocked",
+                      "door",
+                      "join"
                     ]
                   },
                   "until": {
@@ -12371,6 +12956,10 @@
                   },
                   "entered": {
                     "type": "number"
+                  },
+                  "point": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 },
                 "required": [
@@ -12425,7 +13014,8 @@
               "count"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "The entities already in the system at time 0, with the block each one starts in."
         },
         "resources": {
           "type": "object",
@@ -12453,7 +13043,8 @@
               }
             },
             "additionalProperties": false
-          }
+          },
+          "description": "The state of resources at time 0, by resource name."
         },
         "order_book": {
           "type": "array",
@@ -12468,7 +13059,8 @@
                 "description": "Unique; the KPI frames report the order under it."
               },
               "description": {
-                "type": "string"
+                "type": "string",
+                "description": "A note on the job; the run does not read it."
               },
               "release": {
                 "type": [
@@ -12600,7 +13192,8 @@
           "x-quantity": "count",
           "type": "integer",
           "minimum": 1,
-          "default": 1
+          "default": 1,
+          "description": "How many independent runs to make, each with its own seed."
         },
         "deterministic": {
           "type": "boolean",

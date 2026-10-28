@@ -62,6 +62,7 @@ PROBLEM_CODES: dict[str, str] = {
     # -- expressions and variables -----------------------------------------
     "E_EXPRESSION": "An expression does not compile against the safe grammar.",
     "E_ASSIGN_TARGET": "An ASSIGN target is not a writable `entity.<attr>` or variable name.",
+    "E_ASSIGN_KEY": "An ASSIGN entry has a key other than `target` and `expr` (it would be ignored).",
     "E_UNDECLARED_VARIABLE": "An expression or ASSIGN target names a variable the model does not declare.",
     "E_VARIABLE_NAME": "A variable name is not a Python identifier.",
     "E_VARIABLE_RESERVED": "A variable name shadows a reserved name or a built-in function.",
@@ -493,6 +494,13 @@ PROBLEM_CODES: dict[str, str] = {
     "E_ANNOTATION_KIND": "An annotation's kind is neither text nor frame.",
     "E_ANNOTATION_SHAPE": "An annotation lacks the geometry its kind needs.",
     "E_BACKGROUND": "The background image section is malformed.",
+    "E_BUILDING": "The building section is malformed (an extent, room, opening, label or "
+                  "fixture of the wrong shape, an unknown colour or field, a room named twice).",
+    "W_WALL_CROSSING": "A path-network segment crosses a building wall where it has no opening "
+                       "(D1034); walls never change routing, so movers would walk through it.",
+    "W_OPENING_OFF_WALL": "A building opening cuts no wall: it names a room, wall line or edge "
+                          "that does not exist, is wider than its wall edge, or its two points "
+                          "lie on no wall line (D1041).",
     "W_BACKGROUND_MISSING": "The background image's path does not exist on disk (F3: this used "
                             "to be a plain string ModelDocument.problems() appended itself, not "
                             "a schema check; same text, now a coded Problem).",
@@ -809,6 +817,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_LIBRARY_VERSION": "A library needs a newer schema version than this build supports.",
     "E_ASSET_ID": "An asset has an empty or duplicate id.",
     "E_ASSET_DEFINITION": "An asset's definition is invalid by the ordinary model validator.",
+    "E_ASSET_UNKNOWN_NAME": "A definition expression names something that is no parameter, "
+                            "variable or built-in (often a misspelt parameter).",
     "E_ASSET_PARAMETER": "A parameter's type, default, range or choices are inconsistent.",
     "E_ASSET_BLOCK_TYPE": "An asset uses a block type this build does not register (needs a plugin).",
     "E_ASSET_REQUIRES": "An asset's required model-level records name an unknown section, or are "

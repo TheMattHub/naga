@@ -3,7 +3,7 @@ name, description, input schema, read_only -- must not drift when the tool
 bodies are refactored (`edit_tool`/`_records`) or drift silently by accident.
 Guards against both: a missing tool and a schema whose properties changed
 because a signature moved. This file pins the engine's 96 tools; the product's
-ten are in `test_agent_tool_catalogue_product.py`."""
+eighteen are in `test_agent_tool_catalogue_product.py`."""
 import json
 from pathlib import Path
 

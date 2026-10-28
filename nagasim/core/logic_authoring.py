@@ -10,6 +10,11 @@ bundle's package directory is read-only. `resolve_default_path()` and
 `load_custom_logic_module()` redirect it to a user-writable copy when
 `sys.frozen` is set; unfrozen (normal install/checkout) behaviour is
 unchanged.
+
+D914: a caller may name a module of its own (`run_model(logic=...)`, `naga run
+--logic MODULE`); `resolve_logic` imports it. Only the caller names it -- no model
+key, file path or agent-tool argument does -- so it is the caller's own import, the
+same trust as `run_model(controllers=...)`.
 """
 from __future__ import annotations
 
@@ -18,11 +23,18 @@ import inspect
 import shutil
 import sys
 from pathlib import Path
+from types import ModuleType
 
 from nagasim.settings.userpaths import user_data_dir
 
 __all__ = ["DEFAULT_PATH", "resolve_default_path", "load_custom_logic_module",
-           "list_logic_classes"]
+           "list_logic_classes", "resolve_logic", "logic_class", "LogicClassNotFound"]
+
+DEFAULT_MODULE = "nagasim.core.custom_logic"
+
+
+class LogicClassNotFound(RuntimeError):
+    """A LOGIC block names a class neither the caller's module nor the default one has."""
 
 
 def _bundled_path() -> Path:
@@ -63,7 +75,7 @@ def load_custom_logic_module():
     Frozen: loaded by file path from DEFAULT_PATH (the user-writable copy)
     and registered under the same module name, so callers do not need to
     know which path it came from."""
-    module_name = "nagasim.core.custom_logic"
+    module_name = DEFAULT_MODULE
     if not getattr(sys, "frozen", False):
         return importlib.import_module(module_name)
     if module_name in sys.modules:
@@ -73,6 +85,32 @@ def load_custom_logic_module():
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+def resolve_logic(name: str | None) -> ModuleType:
+    """The module a run's LOGIC classes come from first: *name* imported as a dotted
+    module name, or the default module when *name* is None. A name that does not
+    import raises ImportError naming it."""
+    if name is None:
+        return load_custom_logic_module()
+    try:
+        return importlib.import_module(name)
+    except ImportError as exc:
+        raise ImportError(f"logic module '{name}' does not import: {exc}", name=name) from exc
+
+
+def logic_class(class_name: str, module: ModuleType | None = None) -> type:
+    """*class_name* from the caller's *module* first, else from the default module.
+    Neither has it: LogicClassNotFound naming both the class and where it looked."""
+    if module is not None:
+        found = getattr(module, class_name, None)
+        if found is not None:
+            return found
+    found = getattr(load_custom_logic_module(), class_name, None)
+    if found is None:
+        where = DEFAULT_MODULE if module is None else f"{module.__name__} or {DEFAULT_MODULE}"
+        raise LogicClassNotFound(f"Logic class '{class_name}' not found in {where}")
+    return found
+
 
 def _load_module(path: Path):
     """Load *path* as an isolated module (never sys.modules): callers that need

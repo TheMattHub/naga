@@ -1,0 +1,5 @@
+x km                  3.00
+y km                  4.00
+Outbound heading     53.13
+Heading home       -126.87
+Check by ACOS        53.13

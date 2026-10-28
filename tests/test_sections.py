@@ -114,6 +114,7 @@ def test_capabilities_of_every_bundled_model():
     known = {s.name for s in sections.SECTIONS}
     assert all(set(secs) <= known for _doc, secs in sections.CAPABILITIES.values())
     assert sections.capabilities({}) == set()
+    assert sections.capabilities({"building": {"rooms": []}}) == {"presentation"}      # D1028
 
 
 # What the editor's hand lists said before the table carried it (D185): the
@@ -157,4 +158,5 @@ def test_what_a_client_derives_from_the_headings_is_well_defined():
     assert {name: next((_OLD_TABS[s] for s in owned if s in _OLD_TABS), None)
             for name, (_doc, owned) in sections.CAPABILITIES.items()} == {
         "process": None, "system_dynamics": "Stocks", "agents": "Agents",
-        "data": "Data sources", "logistics": "Fleets", "planning": "Orders"}
+        "data": "Data sources", "logistics": "Fleets", "planning": "Orders",
+        "presentation": None}

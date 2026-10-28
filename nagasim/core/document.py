@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
@@ -64,6 +65,7 @@ class _Part(NamedTuple):
 # Read by `to_layout` (via `_tail_layout`) and `_reset_from_layout`, so a new
 # plain section is added here once.
 _PARTS = (
+    _Part("building", lambda: None, omit=lambda value: value is None),     # D1005
     _Part("info", dict),
     _Part("data_sources", None),                  # ROADMAP 3.4: the twin sections, ui/twin.py
     _Part("data_bindings", None),
@@ -232,7 +234,21 @@ class ModelDocument:
             raise ValueError("ModelDocument.save: no path given and the document has no path")
         # D159: a saved file names every unit; what a session left "base" is
         # written as the model unit it means now (load fills the same way).
-        target.write_text(json.dumps(fill_units(self.to_layout()), indent=2), encoding="utf-8")
+        text = json.dumps(fill_units(self.to_layout()), indent=2)
+        # D920: written next to the target, then swapped in by one os.replace, so a
+        # crash or a full disk mid-write leaves the old file whole, never half of each.
+        temp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+        try:
+            with open(temp, "w", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if target.exists():     # the swap must not reset the file's mode (#1388)
+                shutil.copymode(target, temp)
+            os.replace(temp, target)
+        except BaseException:
+            temp.unlink(missing_ok=True)
+            raise
         self.path = target
         self.dirty = False
 
@@ -1768,6 +1784,17 @@ class ModelDocument:
         self.background = normalized
         self.dirty = True
         self._notify("background")
+
+    def set_building(self, building: dict | None) -> None:
+        """Set (dict) or clear (None) the `building` section (D1005): one undo step,
+        notification kind "building". Layout only: no run reads it."""
+        building = None if building is None else copy.deepcopy(building)
+        if building == self.building:
+            return
+        self._push_undo("Edit building" if building is not None else "Remove building")
+        self.building = building
+        self.dirty = True
+        self._notify("building")
 
     # -- dashboard (PHASE6 G1, D132) -----------------------------------------
     # {"widgets": [{"name", "kind", "expr"|"series", ...}]}; `core/timeseries.py`

@@ -32,11 +32,11 @@ Documentation: <https://thematthub.github.io/naga/>
 
 <p align="center"><img src="https://raw.githubusercontent.com/TheMattHub/naga/main/docs/img/overview.svg" alt="What goes into the engine, what it does, and what comes out" width="900"></p>
 
-The picture reads from left to right. On the left is what you bring: a model file, the data
-it draws on and, if you have one, a plant to follow. In the middle the engine runs the model on
+The picture reads from left to right. On the left is what you bring: a model file, with the
+building around it if you like, the data it draws on and, if you have one, a plant to follow. In the middle the engine runs the model on
 a single clock, whichever of the three ways of modelling it uses, and wraps the run in
 statistics, experiments or a twin. On the right is what comes back: results and a report,
-pages you can send to someone else, and a twin's forecasts and proposals. Along the top are the
+pages and 3D scenes you can send to someone else, and a twin's forecasts and proposals. Along the top are the
 three ways in, the command line, Python and an agent, and because a model is a data file and
 not a program, the same file gives the same answer through each of them.
 
@@ -54,9 +54,11 @@ not a program, the same file gives the same answer through each of them.
   reproducible random streams, validated against queueing theory.
 - **Experiments**: named scenarios with paired comparisons, design of experiments,
   ranking-and-selection, optimisation, calibration, forecasting, an investment case.
-- **A twin of a plant** (`naga twin`): live readers for files, SQL, REST, MQTT and OPC UA, a run
-  that starts from the observed state, forecasts scored against what happened, and candidate
-  actions compared on the forecast. It reads a plant and never writes to one.
+- **A twin of a plant** (`naga twin`): live readers for files, SQL, REST, MQTT, OPC UA and
+  Modbus TCP, a run that starts from the observed state, forecasts scored against what
+  happened, and candidate actions compared on the forecast. The twin reads and proposes; the
+  one writer is `naga plc-write`, which runs only on a person's command and writes to a soft
+  PLC on the same machine (loopback only).
 - **Model files as data**: a versioned JSON schema published for editor completion, a short
   canonical form (`naga fmt`), validation with stable problem codes, semantic diff and
   three-way merge, assertions (`naga check`) with a CI template.
@@ -210,7 +212,7 @@ downloads the weights from Hugging Face. `--tool-picker haiku` uses hosted Claud
 and sends each query and the tool catalogue to Anthropic. Both pickers are optional suggestions, off by
 default. To use another model, see the
 [System-1 AI Gateway](https://github.com/TheMattHub/Sys1-AI-Gateway) and its study of the options;
-the [tool picker page](https://thematthub.github.io/naga/tool-picker/) has the comparison.
+the [tool picker page](https://thematthub.github.io/naga/tool-picker.html) has the comparison.
 
 ## Limits to know
 
@@ -220,15 +222,20 @@ the [tool picker page](https://thematthub.github.io/naga/tool-picker/) has the c
   counter, another broker or OPC UA server, or a commercial edge node.
 - A twin starts from the plant's state for lines with finite buffers, accumulating conveyors,
   batches whose members the plant names, transfers, robot and cobot cycles, the plant's orders,
-  and fleets whose vehicles each report where they are and what they carry. It cannot yet start
-  from agent populations, a non-accumulating conveyor with parts on it, tours, gantries, segment
-  capacities or worker fleets: such a model is monitored and its forecast is refused by name.
+  and fleets whose vehicles each report where they are and what they carry. Anything else a state
+  could carry is refused by name, never started partly, and the model is still monitored. The
+  full list is generated from the engine: [Limits](https://thematthub.github.io/naga/digital-twin.html#limits).
+
 - Recommendations compare a resource's capacity, a DECIDE's route and, with an order signal,
   the order actions (hold, release, expedite, resequence), refused by name where the model
   cannot answer them. They are written to a file or an MQTT topic of yours. Nothing acts on a
-  plant.
+  plant by itself: a person approves a setpoint, and `naga plc-write` (a dry run unless
+  `--write`) then writes it to a soft PLC on the same machine, with an audit line before and
+  after.
 - The viewer needs Chrome, Edge or Firefox on a desktop.
 - There is no editor and no animation here beyond the recorded player: Naga is an engine.
+  Naga Studio, a desktop editor built on Naga, adds a canvas, 2D and 3D views, videos of a run
+  and a client package, and works on the same model files.
 
 ## Building a product on top
 

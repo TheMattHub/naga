@@ -1,0 +1,2 @@
+Normal(2, 1)                 mean wait 4.70 minutes
+BoundedNormal(2, 1, 0.5..4)  mean wait 5.78 minutes, mean time 2.08 minutes

@@ -9,9 +9,9 @@ Stdlib only; the tool layer (not this module) decides what to do with the notes.
 from __future__ import annotations
 
 import copy
-import difflib
 import json
 
+from .core.suggest import close as _close
 from .study import StudyError
 
 # Canonical fields per record list. Unknown fields without a close match pass through untouched.
@@ -36,10 +36,6 @@ _TOP_KEYS = ("question", "decision", "mode", "size", "plan_approved", "goals", "
 
 def _bad(message: str, hint: str = "") -> StudyError:
     return StudyError("E_STUDY_BAD_VALUE", message, hint)
-
-
-def _close(word: str, options) -> list[str]:
-    return difflib.get_close_matches(str(word), list(options), n=3, cutoff=0.6)
 
 
 def _label(key: str, i: int, rec: dict) -> str:

@@ -1,0 +1,4 @@
+  Attribute  End Min  End Max
+       heat      1.5      3.5
+     around      2.5      5.0
+mean_around      2.5      2.5

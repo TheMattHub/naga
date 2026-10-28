@@ -32,6 +32,7 @@ import functools
 import json
 import re
 import threading
+import time
 from pathlib import Path
 
 from nagasim import __version__, agent_tools, examples, netguard, study, studyapp
@@ -89,6 +90,39 @@ def _server_class():
         return FastMCP
     except ImportError as exc:      # no mcp at all, or a version with neither name
         raise MCPUnavailable(INSTALL_HINT) from exc
+
+
+def _context_class():
+    """The SDK's request `Context` class, which the SDK injects into a tool that asks for one."""
+    try:
+        from mcp.server.mcpserver import Context
+    except ImportError:
+        from mcp.server.fastmcp import Context
+    return Context
+
+
+_PROGRESS_EVERY = 0.2       # seconds between notifications: a 1000-replication run is not 1000 messages
+
+
+def _progress_sink(ctx):
+    """A `reporting` sink that sends MCP progress notifications for one call (D917).
+
+    Runs on the SDK's worker thread (it runs a sync tool there), so the notification, an
+    async call on the server loop, is handed over with `anyio.from_thread.run`. The protocol
+    wants progress to grow, so a smaller value (a tool's second phase restarting its count) is
+    dropped, and sends are spaced by `_PROGRESS_EVERY` except the final one. A failure is
+    swallowed by `agent_tools.core.report`; progress never fails a call."""
+    import anyio.from_thread
+    state = {"done": -1.0, "at": 0.0}
+
+    def send(done, total=None, message=""):
+        now = time.monotonic()
+        finished = total is not None and done >= total
+        if done <= state["done"] or (not finished and now - state["at"] < _PROGRESS_EVERY):
+            return
+        state["done"], state["at"] = done, now
+        anyio.from_thread.run(ctx.report_progress, done, total, message or None)
+    return send
 
 
 def _suggesting(server_class):
@@ -314,6 +348,7 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     Raises MCPUnavailable when the SDK is not installed.
     """
     server_class = _server_class()
+    Context = _context_class()
     agent_tools.use_workspace(agent_tools.Workspace(root, network=network, twin=twin,
                                                     twin_dir=twin_dir))
     if room:
@@ -331,9 +366,12 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     # serialised here, at the one place every MCP call passes.
     def serialised(fn):
         @functools.wraps(fn)        # the SDK reads the signature, hints and docstring off it
-        def locked(*args, **kwargs):
-            with _TOOL_LOCK:
+        def locked(*args, ctx=None, **kwargs):
+            # `ctx` is the SDK's request context, injected by annotation (below); it is not a tool argument.
+            with _TOOL_LOCK, agent_tools.core.reporting(_progress_sink(ctx) if ctx else None):
                 return _with_image(fn(*args, **kwargs))
+        # The SDK finds the context parameter by its annotation; a new dict, so fn's own are untouched.
+        locked.__annotations__ = {**fn.__annotations__, "ctx": Context}
         return locked
 
     for spec in agent_tools.TOOLS.values():

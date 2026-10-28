@@ -88,8 +88,11 @@ class Create(BaseProcess):
             if self.arrival_mode == "Schedule":
                 if not (yield from self._wait_for_thinned_arrival()):
                     break
-            # Wait before each batch, but skip if it's the first round and we're at start_time
-            elif self.created_entities > 0 or self.env.now > self.start_time:
+            # Wait before each batch, but skip if it's the first round and we're at start_time.
+            # A FixedSchedule never skips: it arrives at its listed times only, and those
+            # before start_time are dropped (#1396).
+            elif (self.created_entities > 0 or self.env.now > self.start_time
+                  or self.time_between_arrivals.dist_type == "FixedSchedule"):
                 if self.time_between_arrivals.dist_type == "FixedSchedule":
                     next_time = self.time_between_arrivals.sample(self.rng, current=self.env.now,
                                                                      scope=self.expression_scope())

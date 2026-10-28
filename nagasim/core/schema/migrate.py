@@ -24,9 +24,11 @@ CONSENT_KEYS = ("allow_network",)
 
 
 class ModelValidationError(ValueError):
-    """Raised when a layout fails validation; carries every problem found."""
+    """Raised when a layout fails validation; carries every problem found, as
+    strings (`problems`) and, where the raiser had them, as `Problem`s
+    (`structured`, D913) for a caller that prints codes, paths and hints."""
 
-    def __init__(self, problems):
+    def __init__(self, problems, structured=()):
         # A bare string is accepted so the exception survives a pickle round
         # trip: pickle rebuilds it from args == (joined message,), and treating
         # that string as an iterable of problems would explode it per character
@@ -34,6 +36,9 @@ class ModelValidationError(ValueError):
         if isinstance(problems, str):
             problems = [problems]
         self.problems = list(problems)
+        self.structured = list(structured)
+        # Both lists ride through pickle in the instance __dict__, which
+        # BaseException.__reduce__ carries alongside args.
         super().__init__("; ".join(self.problems) or "invalid model")
 
 

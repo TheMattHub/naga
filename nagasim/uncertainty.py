@@ -174,6 +174,31 @@ def input_uncertainty(layout, inputs: list[dict], *, kpis: list[str] | None = No
         ValueError for a request it cannot answer (ModelValidationError for a path the
         model does not have), before any run; and when fewer than half the resamples
         (at least 2) could be refitted.
+
+    See Also
+    --------
+    nagasim.inputfit.best_fit : Fits the distribution a sample comes from.
+    nagasim.experiments.run_scenarios : Compares scenarios without input uncertainty.
+
+    Examples
+    --------
+    >>> import random
+    >>> from nagasim import build as nb, uncertainty
+    >>> m = nb.Model(time_limit=300, warmup=30)
+    >>> m.add_resource(name="Server", capacity=1)
+    'Server'
+    >>> arrive = m.create("arrive", distribution=nb.Exponential(rate=0.9))
+    >>> _ = arrive >> m.process("serve", resource_name="Server",
+    ...                         distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+    >>> rng = random.Random(0)
+    >>> gaps = [round(rng.expovariate(0.9), 3) for _ in range(30)]
+    >>> out = uncertainty.input_uncertainty(
+    ...     m.to_dict(), [{"path": "blocks.arrive.params.distribution", "values": gaps}],
+    ...     kpis=["system/Total Entities Completed"], resamples=2, replications=2)
+    >>> out["runs"], out["completed"]
+    (6, True)
+    >>> sorted(out["kpis"][0])
+    ['input_interval', 'input_share', 'kpi', 'mean', 'resamples_used', 'run_ci']
     """
     from nagasim.core.schema import load_layout
 

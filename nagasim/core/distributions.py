@@ -174,15 +174,17 @@ def _mean_cauchy(p):
 
 
 def _sample_inverse_gaussian(rng, p, **_):
-    return float(stats.invgauss.rvs(mu=p.get("mu", 1), scale=p.get("lambda", 1), random_state=rng))
+    # Standard IG(mu, lambda): mean mu, shape lambda. SciPy's invgauss(m, scale=s)
+    # has mean m*s and shape s, so IG(mu, lambda) is invgauss(mu/lambda, scale=lambda) (#1395).
+    lam = p.get("lambda", 1)
+    return float(stats.invgauss.rvs(mu=p.get("mu", 1) / lam, scale=lam, random_state=rng))
 
 
 def _mean_inverse_gaussian(p):
     mu, lam = p.get("mu", 1), p.get("lambda", 1)
     if mu <= 0 or lam <= 0:
         return None
-    m = stats.invgauss.mean(mu, scale=lam)
-    return float(m) if np.isfinite(m) else None
+    return float(mu)
 
 
 def _sample_rayleigh(rng, p, **_):
@@ -507,10 +509,8 @@ _add("Erlang", [_p("k", 1.0, hint="number of exponential stages, >= 1"), _p("rat
 # its shape (X -> cX leaves the chi-square family entirely -- it becomes a
 # scaled-chi-square/Gamma, not a chi-square of any df); InverseGaussian's
 # "lambda" is documented to the user as a SHAPE (`hint="shape"` above, the
-# classical Wald parameterisation), even though the sampler happens to pass it
-# to scipy as a scale -- treating it as a ScaleParam here would rescale a
-# parameter this codebase's own UI calls "shape", a maintenance trap not worth
-# the one extra family; BoundedNormal/Beta/JohnsonSB tie their mean to a fixed
+# classical Wald parameterisation), and scaling an IG by c scales both mu and
+# lambda, which a one-parameter ScaleParam cannot express;BoundedNormal/Beta/JohnsonSB tie their mean to a fixed
 # BOUND (min/max), so scaling only the shape/location params without also
 # moving the bounds does not scale the resulting bounded mean linearly, and
 # moving bounds is outside what this table contract asks for. `tablegen.py`

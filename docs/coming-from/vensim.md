@@ -40,7 +40,7 @@ Read the report before you trust the result.
 | Loops tool | `naga loops`: which feedback loop dominates, and when |
 
 The function names and arities are in the
-[expression reference](../reference/expressions.md).
+[expression reference](../reference/functions/index.md).
 
 ## What is different or missing
 

@@ -120,8 +120,51 @@ def investment_case(result: ExperimentResult, layout) -> pd.DataFrame:
     and are NaN where they do not apply; `Pays Back` is False for "never".
     The baseline's own row compares it with itself: zeros.
 
-    Raises ValueError when the model has no `investment` section, the baseline
-    was not run, or no scenario reports the throughput KPI.
+    Parameters
+    ----------
+    result : ExperimentResult
+        The scenarios and their replications, from `nagasim.experiments.run_scenarios`.
+    layout : dict or str
+        The model, with its ``investment`` section.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per scenario with the columns of ``COLUMNS``.
+
+    Raises
+    ------
+    ValueError
+        When the model has no `investment` section, the baseline was not run, or no
+        scenario reports the throughput KPI.
+
+    See Also
+    --------
+    nagasim.investment.npv : The net present value of one saving.
+    nagasim.experiments.run_scenarios : Runs the scenarios compared here.
+
+    Examples
+    --------
+    >>> from nagasim import build as nb, experiments, investment
+    >>> m = nb.Model(time_limit=300, warmup=30, replications=2)
+    >>> m.add_resource(name="Server", capacity=1)
+    'Server'
+    >>> m.add_fixed_cost(name="Upgrade", amount=0, capex=True)
+    'Upgrade'
+    >>> arrive = m.create(distribution=nb.Exponential(rate=0.9))
+    >>> _ = arrive >> m.process("serve", resource_name="Server",
+    ...                         distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+    >>> layout = m.to_dict()
+    >>> layout["investment"] = {"horizon_years": 5, "margin_per_part": 1.0}
+    >>> layout["scenarios"] = [{"name": "Faster", "overrides": [
+    ...     {"path": "blocks.serve.params.dist_params.rate", "value": 1.5},
+    ...     {"path": "fixed_costs.Upgrade.amount", "value": 2000}]}]
+    >>> result = experiments.run_scenarios(layout, replications=2, seed=0)
+    >>> table = investment.investment_case(result, layout)
+    >>> list(table["Scenario"])
+    ['Baseline', 'Faster']
+    >>> float(table["Extra Capex"].iloc[1])
+    2000.0
     """
     base = api.load_layout(layout)
     if base.get("investment") is None:

@@ -34,7 +34,7 @@ def run(model, *, seed: int = 0, run_length: float | None = None, should_stop=No
     layout, problems = prepare(model)
     fatal = fatal_problems(problems)
     if fatal:
-        raise ModelValidationError(format_problems(fatal))
+        raise ModelValidationError(format_problems(fatal), structured=fatal)
     # The window `naga run` would use for one replication, so the facts are its run's. These
     # lines repeat SimSession.__init__'s preamble, which takes no run_length: keep them in step.
     _replications, warmup, length = run_settings(layout, 1, None, run_length)

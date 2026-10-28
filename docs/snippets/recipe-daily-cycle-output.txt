@@ -1,0 +1,5 @@
+peak rate 15.0 at hour 6, lowest 1.0 at hour 162
+day 0: tank gains  235.5 m3
+day 4: tank gains  227.3 m3
+day 5: tank gains   47.1 m3
+day 6: tank gains   45.5 m3

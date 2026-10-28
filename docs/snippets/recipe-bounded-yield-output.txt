@@ -1,0 +1,2 @@
+JohnsonSB: mean 7.57 minutes, filler busy 64%
+JohnsonSU: mean 7.00 minutes, filler busy 59%

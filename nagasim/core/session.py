@@ -54,7 +54,46 @@ __all__ = ["SimSession"]
 
 
 class SimSession:
-    """See the module docstring. Illegal calls raise ValueError."""
+    """One replication of a model, driven from outside in chunks.
+
+    The session builds replication 0 as a normal run does, then lets the caller advance
+    it, read the dashboard, make the edits that are safe mid-run and answer Policy-mode
+    decisions. One thread drives a session. An illegal call raises ``ValueError``. The
+    module docstring has the rules of pausing, logging and replay.
+
+    Parameters
+    ----------
+    layout : dict or str
+        The model, or the path of its file.
+    seed : int, default 0
+        The seed of the replication.
+    trace : callable, optional
+        A recorder subscribed from the first event on (the editor animates with it).
+    subscribers : iterable of callable, optional
+        Further listeners from the first event on.
+
+    See Also
+    --------
+    nagasim.api.run_model : A whole run in one call.
+    nagasim.rl.SimEnv : The same stepping as a reinforcement-learning environment.
+
+    Examples
+    --------
+    >>> from nagasim import build as nb
+    >>> from nagasim.core.session import SimSession
+    >>> m = nb.Model(time_limit=100)
+    >>> m.add_resource(name="Server", capacity=2)
+    'Server'
+    >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+    >>> _ = arrive >> m.process(resource_name="Server", distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+    >>> session = SimSession(m.to_dict(), seed=0)
+    >>> session.advance(to=10)
+    'time'
+    >>> session.now
+    10.0
+    >>> session.finish()["system"].shape[0] > 0
+    True
+    """
 
     def __init__(self, layout, seed: int = 0, trace=None, subscribers=()):
         # One prepare pass (read/migrate/validate/flatten/expand, Wave A2) shared
@@ -63,7 +102,7 @@ class SimSession:
         flat, problems = prepare(layout)
         fatal = fatal_problems(problems)   # by severity, not the message text (#247)
         if fatal:
-            raise ModelValidationError(format_problems(fatal))
+            raise ModelValidationError(format_problems(fatal), structured=fatal)
         # The same settings `api.run_settings` resolves for a normal run.
         self.horizon = float(run_horizon(flat) or 0.0)
         if self.horizon <= 0 and requires_run_length(flat):
@@ -134,22 +173,55 @@ class SimSession:
         return "drained" if self.env.peek() == math.inf else "horizon"
 
     def advance(self, to: float | None = None, until=None) -> str:
-        """Without *to*: run until a decision is pending, the horizon or the
-        model drains; returns "decision" | "horizon" | "drained".
+        """Run the replication forward.
+
+        Without *to*: run until a decision is pending, the horizon or the
+        model drains.
 
         With *to* (capped at the horizon): process every event strictly before
-        it and move the clock there (simpy's `run(until=...)`), returning
-        "time", or "horizon" once the clock is at the horizon. A pending
-        decision stops it early ("decision"); a drain leaves the clock at the
-        drain time, as a normal run's KPIs do ("drained").
+        it and move the clock there (simpy's `run(until=...)`). A pending
+        decision stops it early; a drain leaves the clock at the drain time,
+        as a normal run's KPIs do.
 
-        *until* (D184) is a callable with no arguments, asked before each
-        event while no decision is pending. True stops the run there and
-        returns "until": that event is not processed and the clock stays where
-        the last one left it. With *to* as well the first to hold wins, and
-        "until" when both hold before the same event. It only decides where
-        this call returns: the events, their order and `_steps` are a plain
-        run's."""
+        Parameters
+        ----------
+        to : float, optional
+            The model time to move the clock to.
+        until : callable, optional
+            Called with no arguments before each event while no decision is
+            pending. True stops the run there: that event is not processed and the
+            clock stays where the last one left it. With *to* as well the first to
+            hold wins, and "until" when both hold before the same event. It only
+            decides where this call returns: the events and their order are a plain
+            run's.
+
+        Returns
+        -------
+        str
+            ``"time"`` (reached *to*), ``"decision"``, ``"horizon"``, ``"drained"``
+            or ``"until"``.
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.finish : Runs to the end.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=100)
+        >>> m.add_resource(name="Server", capacity=2)
+        'Server'
+        >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+        >>> _ = arrive >> m.process(resource_name="Server", distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> session.advance(to=40)
+        'time'
+        >>> session.advance(to=500)
+        'horizon'
+        >>> session.now
+        100.0
+        """
         t = None
         if to is not None:
             t = float(to)
@@ -206,17 +278,64 @@ class SimSession:
                        for rid, req, _event in c.requests), key=lambda entry: entry[0])
 
     def pending(self) -> list[dict]:
-        """The decisions waiting for `decide()`, oldest first; "options" are the
-        target block names of the DECIDE's outgoing links, in option order."""
+        """The decisions waiting for `decide()`, oldest first.
+
+        Returns
+        -------
+        list of dict
+            One ``{"id", "policy", "block", "t", "entity_id", "options"}`` per request;
+            ``options`` are the target block names of the DECIDE's outgoing links, in
+            option order.
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.decide : Answers a request.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim.core.session import SimSession
+        >>> path = Path(nagasim.__file__).parent / "models" / "parallel_routing_policy.json"
+        >>> session = SimSession(str(path), seed=0)
+        >>> session.advance()
+        'decision'
+        >>> request = session.pending()[0]
+        >>> request["policy"], request["options"]
+        ('routing', ['process_a', 'process_b'])
+        """
         return [{"id": rid, "policy": req.policy, "block": req.block, "t": req.t,
                  "entity_id": req.entity_id,
                  "options": [p.name for p in self.model.blocks[req.block].next_process]}
                 for rid, req, _controller in self._requests()]
 
     def snapshot(self) -> dict:
-        """{"t", "widgets": {name: value | {label: value}}}: the dashboard now,
-        with the sampler's own evaluation (no rng, a failed read is NaN).
-        Read-only: the levels are peeked, never integrated (DEVLOG #229)."""
+        """The dashboard now, with the sampler's own evaluation (no rng, a failed read is NaN).
+
+        Read-only: the levels are peeked, never integrated, so any number of
+        snapshots leaves the run bit-identical to a plain one.
+
+        Returns
+        -------
+        dict
+            ``{"t", "widgets": {name: value | {label: value}}}``.
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.advance : Moves the clock.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=100, dashboard={"widgets": [
+        ...     {"name": "clock", "kind": "kpi", "expr": "TNOW"}]})
+        >>> _ = m.create(distribution=nb.Constant(value=1.0)) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> _ = session.advance(to=10)
+        >>> session.snapshot()
+        {'t': 10.0, 'widgets': {'clock': 10.0}}
+        """
         with peeking(self.ctx):
             rows = _take_dashboard_sample(self.ctx, self.now, self.warmup)
         widgets = {}
@@ -241,6 +360,37 @@ class SimSession:
             self.ctx.agent_system.trigger()
 
     def set_variable(self, name: str, value) -> None:
+        """Set a model variable now, as an ASSIGN block would.
+
+        Parameters
+        ----------
+        name : str
+            A variable the model declares.
+        value : float or str or bool
+            The new value.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.set_constant : Replaces a system dynamics auxiliary.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=100)
+        >>> m.add_variable(name="boost", initial=1)
+        'boost'
+        >>> _ = m.create(max_arrivals=1) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> _ = session.advance(to=10)
+        >>> session.set_variable("boost", 3)
+        >>> session.game_log[-1]["action"], session.game_log[-1]["value"]
+        ('set_variable', 3)
+        """
         if name not in self.ctx.variables:
             raise ValueError(f"unknown variable '{name}'")
         self._log("set_variable", name, value)
@@ -249,7 +399,45 @@ class SimSession:
         self._rates_changed()
 
     def set_constant(self, name: str, value) -> None:
-        """Replace an SD auxiliary with a constant; AUX() reads it on every read."""
+        """Replace a system dynamics auxiliary with a constant; AUX() reads it on every read.
+
+        Parameters
+        ----------
+        name : str
+            An auxiliary the model declares.
+        value : float
+            The constant; it must be finite.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.set_variable : Sets a model variable.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=10, dashboard={"widgets": [
+        ...     {"name": "stock", "kind": "kpi", "expr": 'LEVEL("Stock")'}]})
+        >>> m.add_level(name="Stock", initial=0)
+        'Stock'
+        >>> m.add_flow(name="in", to="Stock", rate='AUX("r")')
+        'in'
+        >>> m.add_auxiliary(name="r", expr="1")
+        'r'
+        >>> _ = m.create(max_arrivals=1) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> _ = session.advance(to=4)
+        >>> session.snapshot()["widgets"]["stock"]
+        4.0
+        >>> session.set_constant("r", 3)
+        >>> _ = session.advance(to=6)
+        >>> round(session.snapshot()["widgets"]["stock"], 6)
+        10.0
+        """
         entry = self.ctx.auxiliaries.get(name)
         if entry is None:
             raise ValueError(f"unknown auxiliary '{name}'")
@@ -261,10 +449,45 @@ class SimSession:
         self._rates_changed()
 
     def set_capacity(self, resource: str, units) -> None:
-        """The player's cap, 0..declared capacity (L3): in force is
-        min(schedule, cap) less what failures hold, the resource's
-        `CapacityArbiter` deciding (lowering waits for a unit to free, the
-        WAIT rule; a raise during a failure waits for the repair)."""
+        """Cap a resource's capacity, from 0 to the capacity it declares.
+
+        The capacity in force is the least of the schedule and the cap, less what
+        failures hold, which the resource's `CapacityArbiter` decides: lowering waits
+        for a unit to free, and a raise during a failure waits for the repair.
+
+        Parameters
+        ----------
+        resource : str
+            A resource the model declares.
+        units : int
+            The cap, a whole number from 0 to the declared capacity.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.apply_control : Sets a cap through a dashboard control.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=100)
+        >>> m.add_resource(name="Server", capacity=2)
+        'Server'
+        >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+        >>> _ = arrive >> m.process(resource_name="Server", distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> _ = session.advance(to=10)
+        >>> session.set_capacity("Server", 1)
+        >>> try:
+        ...     session.set_capacity("Server", 5)
+        ... except ValueError as error:
+        ...     print(error)
+        resource 'Server': capacity 5 outside 0..2
+        """
         res = self.ctx.resource_manager.resources.get(resource)
         if res is None:
             raise ValueError(f"unknown resource '{resource}'")
@@ -275,7 +498,40 @@ class SimSession:
         res.arbiter.set_cap(int(units))
 
     def set_probs(self, block: str, probs) -> None:
-        """A Chance-mode DECIDE's branch probabilities, checked like the block's own."""
+        """Set a Chance-mode DECIDE's branch probabilities, checked like the block's own.
+
+        Parameters
+        ----------
+        block : str
+            The name of a DECIDE block in Chance mode.
+        probs : sequence of float
+            One probability per branch, or one fewer than the links when the last link
+            is the ELSE branch; they must be finite, not negative and sum to at most 1.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.decide : Answers a Policy-mode DECIDE instead.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=8)
+        >>> gate = m.decide("gate", mode="Chance", probs=[1.0])
+        >>> arrive = m.create(max_arrivals=6, distribution=nb.Constant(value=1.0))
+        >>> _ = arrive >> gate
+        >>> _ = gate >> m.dispose("kept")
+        >>> _ = gate >> m.dispose("rest")
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> _ = session.advance(to=2.5)
+        >>> session.set_probs("gate", [0.0])
+        >>> session.game_log[-1]["action"], session.game_log[-1]["value"]
+        ('set_probs', [0.0])
+        """
         proc = self.model.blocks.get(block)
         if not isinstance(proc, Decide) or proc.mode != "Chance":
             raise ValueError(f"'{block}' is not a Chance-mode DECIDE block")
@@ -293,7 +549,38 @@ class SimSession:
         proc._chance_seen = 0
 
     def decide(self, policy: str, option: int, request_id: int | None = None) -> None:
-        """Answer *policy*'s request *request_id* (None: its oldest pending)."""
+        """Answer a pending Policy-mode decision.
+
+        Parameters
+        ----------
+        policy : str
+            The policy the DECIDE block names.
+        option : int
+            The index of the outgoing link to take.
+        request_id : int, optional
+            The request to answer; by default the policy's oldest pending one.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.pending : Lists the requests and their options.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim.core.session import SimSession
+        >>> path = Path(nagasim.__file__).parent / "models" / "parallel_routing_policy.json"
+        >>> session = SimSession(str(path), seed=0)
+        >>> session.advance()
+        'decision'
+        >>> session.decide("routing", 0)
+        >>> [entry["action"] for entry in session.game_log]
+        ['decide']
+        """
         controller = self._controllers.get(policy)
         if controller is None:
             raise ValueError(f"unknown policy '{policy}'")
@@ -311,9 +598,43 @@ class SimSession:
         controller.resolve(int(option), rid)
 
     def apply_control(self, name: str, value) -> None:
-        """A dashboard control (G4): a slider sets its target, a value outside
-        [min, max] raising; a decision control answers its policy with option
-        *value*. Logged as the underlying call, so replay needs nothing new."""
+        """Use a dashboard control: a slider sets its target, a decision control answers its policy.
+
+        A value outside the slider's ``[min, max]`` raises. The call is logged as the
+        underlying call, so replay needs nothing new.
+
+        Parameters
+        ----------
+        name : str
+            A control of the model's ``dashboard``.
+        value : float
+            The slider's new value, or the option a decision control answers with.
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.set_variable : What a variable slider calls.
+        nagasim.core.session.SimSession.set_capacity : What a capacity slider calls.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=100, dashboard={
+        ...     "widgets": [{"name": "clock", "kind": "kpi", "expr": "TNOW"}],
+        ...     "controls": [{"name": "boost", "kind": "slider", "target": {"variable": "boost"},
+        ...                   "min": 0, "max": 10, "step": 1}]})
+        >>> m.add_variable(name="boost", initial=1)
+        'boost'
+        >>> _ = m.create(max_arrivals=1) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> session.apply_control("boost", 4)
+        >>> session.game_log[-1]["action"], session.game_log[-1]["value"]
+        ('set_variable', 4)
+        """
         control = self.controls.get(name)
         if control is None:
             raise ValueError(f"unknown control '{name}'")
@@ -329,11 +650,39 @@ class SimSession:
 
     # -- results ----------------------------------------------------------------
     def finish(self) -> dict:
-        """Run to the horizon (or drain) and return the normal run's frames
-        plus "game_log". Finishing ends the player's part: every decision
-        still pending or met on the way takes the DECIDE's own `fallback`, as
-        with no controller attached. Those are not logged -- a replay's
-        `finish()` makes the same ones from the same state."""
+        """Run to the horizon (or drain) and return the run's frames.
+
+        Finishing ends the player's part: every decision still pending or met on the
+        way takes the DECIDE's own `fallback`, as with no controller attached. Those
+        are not logged, because a replay's ``finish()`` makes the same ones from the
+        same state.
+
+        Returns
+        -------
+        dict
+            The frames of a normal run, plus ``"game_log"``, a frame of the edits and
+            decisions made.
+
+        See Also
+        --------
+        nagasim.core.session.SimSession.advance : Moves the clock part of the way.
+
+        Examples
+        --------
+        >>> from nagasim import build as nb
+        >>> from nagasim.core.session import SimSession
+        >>> m = nb.Model(time_limit=100)
+        >>> m.add_resource(name="Server", capacity=2)
+        'Server'
+        >>> arrive = m.create(distribution=nb.Exponential(rate=1.0))
+        >>> _ = arrive >> m.process(resource_name="Server", distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+        >>> session = SimSession(m.to_dict(), seed=0)
+        >>> _ = session.advance(to=10)
+        >>> session.set_capacity("Server", 1)
+        >>> results = session.finish()
+        >>> list(results["game_log"]["Action"])
+        ['set_capacity']
+        """
         while self._run(lambda: False) == "decision":
             for rid, req, controller in self._requests():
                 entity = self.ctx.live_entities._items.get(req.entity_id)

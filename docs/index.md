@@ -81,9 +81,11 @@ continuous levels with exact crossing times, so one model can hold all four.
   handling, reproducible random streams, checked against models with a known answer.
 - **Experiments**: named scenarios with paired comparisons, design of experiments,
   ranking-and-selection, optimisation, calibration and an investment case.
-- **A twin of a plant**: readers for files, SQL, REST, MQTT and OPC UA, a run that starts from
-  the plant's state, forecasts scored against what then happened, and actions compared on the
-  forecast. It reads a plant and never writes to one.
+- **A twin of a plant**: readers for files, SQL, REST, MQTT, OPC UA and Modbus TCP, a run that
+  starts from the plant's state, forecasts scored against what then happened, and actions
+  compared on the forecast. The twin reads and proposes; the one writer is `naga plc-write`,
+  which runs only on a person's command and writes to a soft PLC on the same machine
+  (loopback only).
 - **Outputs**: pandas frames, Excel, CSV, JSON, a self-contained HTML report, a recorded run to
   replay, and a viewer in which the engine runs in a reader's browser.
 
@@ -100,7 +102,7 @@ continuous levels with exact crossing times, so one model can hold all four.
 Whichever way you use, the model is the same JSON file, so what one person builds in Python an
 agent can check and a colleague can open.
 
-## What's new in 0.18
+## What's new in 0.19
 
 --8<-- "docs/whats-new.md:latest"
 
@@ -111,7 +113,9 @@ every change.
 
 - **Not an editor.** There is no window, no canvas and no animation here. `naga run --player`
   writes one HTML file that replays a run in a browser, and `naga viewer` one in which a reader
-  re-runs the model; those are the only pictures.
+  re-runs the model; those are the only pictures. Naga Studio, a desktop editor built on Naga,
+  adds the canvas, 2D and 3D views, videos of a run and a package for a client, and opens and
+  saves the same model files.
 - **Not SimPy with helpers.** You do not write generator functions. A model is data, even when
   Python code builds it, and what a block can do is fixed by its type and its expressions. When the logic you need is not a block,
   raw SimPy is the better tool: see [Coming from SimPy](coming-from/simpy.md).
@@ -126,7 +130,7 @@ every change.
 | see what a model looks like and what it gives | [Gallery](gallery/index.md) |
 | check the engine against models with a known answer | [Reference models](validation/reference-models.md) |
 | map what you know onto this | Coming from [SimPy](coming-from/simpy.md), [Arena](coming-from/arena.md), [AnyLogic](coming-from/anylogic.md), [Vensim](coming-from/vensim.md), [NetLogo](coming-from/netlogo.md) |
-| write a model file | [Model file format](model-file-format.md), [Blocks](reference/blocks.md) |
+| write a model file | [Model file format](model-file-format.md), [Blocks](reference/blocks/index.md) |
 | know what a part of a model does when it runs | [Modelling guide](modelling-guide/index.md) |
 | compare, search and check models | [Experiments](experiments.md), [Model assertions](model-assertions.md), [Semantic diff](semantic-diff.md) |
 | call it from a script or a notebook | [Python API](python-api.md) |

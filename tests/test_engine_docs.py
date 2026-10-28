@@ -31,7 +31,8 @@ def _files(folder: Path) -> list[str]:
     return sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file())
 
 
-@pytest.mark.parametrize("generate", gen.REFERENCE, ids=lambda g: g.__name__)
+@pytest.mark.parametrize("generate", [pytest.param(g, marks=pytest.mark.slow) if g is gen.gen_expressions else g
+                                      for g in gen.REFERENCE], ids=lambda g: g.__name__)
 def test_a_reference_page_is_the_generators(generate, tmp_path):
     generate(tmp_path)
     if generate is gen.gen_cli and sys.version_info[:2] != DOCS_PYTHON:
@@ -51,8 +52,8 @@ def test_the_reference_folder_holds_only_generated_pages(tmp_path):
     for generate in gen.REFERENCE:
         if generate is not gen.gen_kpis:        # the one that runs a model; its name is known
             generate(tmp_path)
-    assert ([name for name in _files(DOCS / "reference") if name.endswith(".md")]
-            == sorted([*_files(tmp_path), "kpis.md"]))
+    pages = lambda names: [name for name in names if name.endswith(".md")]     # a chart is a file beside its page
+    assert pages(_files(DOCS / "reference")) == sorted([*pages(_files(tmp_path)), "kpis.md"])
 
 
 def test_cli_reference_is_split_by_group():
@@ -83,8 +84,19 @@ def test_cli_reference_is_split_by_group():
 
 MODELS = ROOT / "nagasim" / "models"
 STAND_INS = {"model.json": "single_server.json", "line.json": "single_server.json"}
-PAGES = sorted(DOCS.rglob("*.md"))
+# `elements/` holds the fragments that generated pages inline, not pages: their links read from the page.
+PAGES = sorted(p for p in DOCS.rglob("*.md") if p.relative_to(DOCS).parts[0] != "elements")
 RUN = [*PAGES, gen.SITE / "README.md"]
+ELEMENT_FOLDERS = ("blocks", "distributions", "functions")
+
+
+def _element_page(page: Path) -> bool:
+    """A block, distribution or function page: its examples ran when the page was generated,
+    and the generated-pages test fails if one does not, so the fence runner leaves them out."""
+    return page.parent.parent == DOCS / "reference" and page.parent.name in ELEMENT_FOLDERS
+
+
+FENCED = [p for p in RUN if not _element_page(p)]
 COMMAND = re.compile(r"^\s*(?:\$ )?(naga|python|pip) ")
 EXCUSE = re.compile(r"^<!-- no-run: \S.* -->$")
 
@@ -124,7 +136,7 @@ def _runnable(page: Path) -> bool:
                for language, _t, _b, excused, _n in fences(page.read_text(encoding="utf-8")))
 
 
-@pytest.mark.parametrize("page", [p for p in RUN if _runnable(p)],
+@pytest.mark.parametrize("page", [p for p in FENCED if _runnable(p)],
                          ids=lambda p: p.relative_to(gen.SITE).as_posix())
 @pytest.mark.docs
 @pytest.mark.slow
@@ -143,7 +155,7 @@ def test_the_commands_and_snippets_of_a_page_run(page, tmp_path, monkeypatch, ca
             continue
         elif language == "python":
             code = _expanded(body)
-            for library in ("salabim", "mesa"):         # docs-only pins; the page runs where they are installed
+            for library in ("salabim", "mesa", "ortools"):         # docs-only pins; the page runs where they are installed
                 if f"import {library}" in code:
                     pytest.importorskip(library)
             exec(compile(code, where, "exec"), namespace)
@@ -168,7 +180,7 @@ def test_the_commands_and_snippets_of_a_page_run(page, tmp_path, monkeypatch, ca
 def test_no_command_hides_outside_a_console_fence():
     """A command in an indented block or in another kind of fence would never be run."""
     hidden = []
-    for page in RUN:
+    for page in FENCED:
         if page.parent.name == "reference":
             continue                                    # generated: --help text, usage lines
         text = page.read_text(encoding="utf-8")
@@ -260,7 +272,7 @@ def test_the_snippet_outputs_are_the_generators(source, tmp_path):
     """One test a snippet, so the long ones run side by side under xdist. Only a snippet that
     imports salabim or mesa is skipped where that library is absent (both are pinned in
     requirements-docs.txt, not in requirements-dev.txt)."""
-    for library in ("salabim", "mesa"):
+    for library in ("salabim", "mesa", "ortools"):
         if f"import {library}" in source.read_text(encoding="utf-8"):
             pytest.importorskip(library)
     gen.gen_snippets_one(source, tmp_path)
@@ -422,20 +434,70 @@ def test_coming_from_pages_run_both_sides():
         assert not [n for language, _t, _b, excused, n in fences(text) if excused and language == "python"], name
 
 
+# -- hand-written guidance fragments (docs/elements/, site_docs/elements/) ----
+
+ELEMENTS = DOCS / "elements"
+SD_AND_AGENT_GROUPS = ("system-dynamics", "agents", "agent-space")
+
+
+def test_every_block_has_a_guidance_fragment():
+    """Typical uses and behaviour for each of the registry's block types, read from the code."""
+    for block_type in gen.BLOCK_REGISTRY:
+        text = (ELEMENTS / "blocks" / f"{block_type}.md").read_text(encoding="utf-8")
+        assert len(text) > 400 and "## Behaviour and rules" in text, block_type
+    assert {p.stem for p in (ELEMENTS / "blocks").glob("*.md")} == set(gen.BLOCK_REGISTRY), "a fragment for no block"
+
+
+def test_every_section_belongs_to_a_family_with_a_fragment():
+    from nagasim.core import sections
+
+    grouped = [name for names in gen.SECTION_FAMILIES.values() for name in names]
+    assert sorted(grouped) == sorted(s.name for s in sections.SECTIONS), "each section is in exactly one family"
+    assert {p.stem for p in (ELEMENTS / "sections").glob("*.md")} == set(gen.SECTION_FAMILIES)
+    for family in gen.SECTION_FAMILIES:
+        text = (ELEMENTS / "sections" / f"{family}.md").read_text(encoding="utf-8")
+        assert len(text) > 400 and "## Behaviour and rules" in text, family
+
+
+def test_function_groups_and_the_index_have_guidance():
+    for page in (*SD_AND_AGENT_GROUPS, "index"):
+        assert len((ELEMENTS / "functions" / f"{page}.md").read_text(encoding="utf-8")) > 300, page
+    assert "case sensitive" in (ELEMENTS / "functions" / "index.md").read_text(encoding="utf-8")
+    assert {g[0] for g in gen.FUNCTION_GROUPS} >= set(SD_AND_AGENT_GROUPS)
+
+
+def test_forty_problem_codes_say_how_to_fix_them():
+    from nagasim.core.problems import PROBLEM_CODES
+
+    fixes = gen.problem_fixes()
+    assert len(fixes) >= 40, len(fixes)
+    assert set(fixes) <= set(PROBLEM_CODES), sorted(set(fixes) - set(PROBLEM_CODES))
+    assert all(len(text) > 30 for text in fixes.values())
+    page = (DOCS / "reference" / "problems" / "blocks-and-flow.md").read_text(encoding="utf-8")
+    assert "## How to fix" in page and "`E_NO_CREATE`:" in page
+
+
 # -- housekeeping: no plan codes, no hand-written count that can drift --------
 
-PLAN_CODE = re.compile(r"PHASE ?\d|ARCH-REVIEW|DEVLOG|ROADMAP|\b\d[A-Z]\d? [A-Z]\d\b|\bD\d{2,4}\b"
-                       r"|(?<![\w&/])#\d{3,4}\b(?![\w-])")
+PLAN_CODE = gen.PLAN_CODE
 TENS = {"ten": 10, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
         "eighty": 80, "ninety": 90, "hundred": 100}
 
 
+def _without_comments(text: str) -> str:
+    """*text* with HTML comments blanked, keeping the line count: an ID kept for the
+    maintainers lives in a comment (`<!-- D123 -->`), which a reader never sees."""
+    return re.sub(r"<!--.*?-->", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
+
+
 def test_no_internal_plan_codes_in_pages():
-    """The pages are for readers of the engine: a code from the project's own plans ("6D1 U3",
-    "D345", a DEVLOG number) means nothing to them."""
-    found = [f"{page.relative_to(gen.SITE)}:{number}: {line.strip()[:70]}"
-             for page in RUN
-             for number, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1)
+    """The pages are for readers of the engine and of the product: a code from the project's
+    own plans ("6D1 U3", "D345", a DEVLOG number) means nothing to them. Both sites are scanned."""
+    product = sorted((ROOT / "site_docs").rglob("*.md"))
+    found = [f"{page.relative_to(ROOT)}:{number}: {line.strip()[:70]}"
+             for page in [*RUN, *product]
+             for number, line in enumerate(
+                 _without_comments(page.read_text(encoding="utf-8")).splitlines(), 1)
              if PLAN_CODE.search(line)]
     assert not found, chr(10).join(found)
 
@@ -454,6 +516,66 @@ def test_hand_written_counts_match():
                   for m in re.finditer(r"\babout (\w+) (?:bundled )?models\b", text)
                   if m.group(1) in TENS and abs(TENS[m.group(1)] - models) >= 5]
     assert not wrong, chr(10).join(wrong)
+
+
+# -- the README and pages say what the code does ------------------------------
+
+README = gen.SITE / "README.md"
+
+
+def test_readme_says_what_writes():
+    """The twin reads and proposes; `naga plc-write` is the one writer. While that command exists,
+    no page says the engine never writes, and the README names the command and the Modbus reader."""
+    from nagasim.cli import COMMANDS
+
+    assert "plc-write" in COMMANDS
+    for page in (README, DOCS / "index.md"):
+        text = page.read_text(encoding="utf-8")
+        assert "never writes to one" not in text, page.name
+    text = README.read_text(encoding="utf-8")
+    assert "naga plc-write" in text and "Modbus" in text
+
+
+def test_site_links_match_the_url_style():
+    """mkdocs builds with `use_directory_urls: false`: a page is `name.html`, the index is `/`."""
+    assert "use_directory_urls: false" in (gen.SITE / "mkdocs.yml").read_text(encoding="utf-8")
+    bad = [link for link in re.findall(r"thematthub\.github\.io/naga/([^\s)>\"]*)",
+                                       README.read_text(encoding="utf-8"))
+           if link and not link.split("#")[0].endswith((".html", ".json", ".txt"))]
+    assert not bad, bad
+
+
+def test_simpy_page_knows_pace_and_sessions():
+    import inspect
+
+    from nagasim import api
+
+    simpy_page = (DOCS / "coming-from" / "simpy.md").read_text(encoding="utf-8")
+    if "pace" in inspect.signature(api.run_model).parameters:
+        assert "pace=" in simpy_page
+    assert "SimSession" in simpy_page
+    python_api = (DOCS / "python-api.md").read_text(encoding="utf-8")
+    assert "SimSession" in python_api and "SimEnv" in python_api
+
+
+def test_state_limits_are_generated():
+    """The digital-twin page's list of what a twin cannot start from is rendered from state.py's
+    `_unsupported(...)` kinds, so it cannot drift from what the code refuses."""
+    kinds = gen.state_limit_kinds()
+    assert "a worker fleet" in kinds and "a swap station" in kinds and len(kinds) >= 10
+    text = gen.LIMITS_PAGE.read_text(encoding="utf-8")
+    start, end = gen.STATE_LIMITS_BEGIN, gen.STATE_LIMITS_END
+    assert start in text and end in text
+    assert text.split(start)[1].split(end)[0].strip() == gen.state_limits_text().strip(), (
+        f"digital-twin limits {REGENERATE}")
+
+
+def test_plugin_example_is_exported():
+    # The exporter exists only in the repository the engine is developed in; the exported tests skip.
+    export_engine = pytest.importorskip("tools.export_engine")
+
+    assert "examples/plugins/inspection_plugin/README.md" in export_engine.EXTRA_FILES
+    assert (ROOT / "examples" / "plugins" / "inspection_plugin" / "README.md").is_file()
 
 
 # -- llms.txt (D346): a truthful map of the site ------------------------------
@@ -574,3 +696,115 @@ def test_old_api_url_redirects():
     redirects = next(p["redirects"] for p in config["plugins"] if isinstance(p, dict) and "redirects" in p)
     assert redirects["redirect_maps"]["reference/api.md"] == "reference/api/index.md"
     assert not (DOCS / "reference" / "api.md").exists()
+
+
+# -- one page for each block, distribution and group of functions --------------
+
+def test_every_block_distribution_and_function_has_its_page():
+    reference = DOCS / "reference"
+    for folder, names in (("blocks", gen.BLOCK_REGISTRY), ("distributions", gen.DISTRIBUTION_REGISTRY)):
+        pages = {p.stem for p in (reference / folder).glob("*.md")} - {"index"}
+        assert pages == {gen._page_name(n) for n in names}, f"{folder}: a page for each entry and no other"
+        index = (reference / folder / "index.md").read_text(encoding="utf-8")
+        assert all(f"]({gen._page_name(n)}.md)" in index for n in names), f"{folder}/index.md lists every entry"
+    charts = {p.stem for p in (reference / "distributions").glob("*.svg")}
+    assert charts == {gen._page_name(n) for n in gen.DISTRIBUTION_REGISTRY if n != "FixedSchedule"}
+    groups = [p for p in (reference / "functions").glob("*.md") if p.stem != "index"]
+    assert {p.stem for p in groups} == {page for page, *_rest in gen.FUNCTION_GROUPS}
+    text = "\n".join(p.read_text(encoding="utf-8") for p in groups)
+    assert set(re.findall(r"^## (\w+)$", text, re.M)) == set(gen.FUNCTIONS), "a section for each function"
+
+
+def test_a_block_page_shows_its_example_and_the_output_it_gave():
+    for page in (DOCS / "reference" / "blocks").glob("*.md"):
+        if page.stem == "index":
+            continue
+        found = {language: body for language, _title, body, _excused, _n
+                 in fences(page.read_text(encoding="utf-8"))}
+        assert "from nagasim import build" in found["python"], page.name
+        assert found["text"].strip(), f"{page.name}: the example printed nothing"
+
+
+def test_old_element_urls_redirect():
+    config, _nav = gen.site_nav()
+    redirects = next(p["redirects"] for p in config["plugins"] if isinstance(p, dict) and "redirects" in p)
+    for old, new in (("blocks", "blocks"), ("distributions", "distributions"), ("expressions", "functions")):
+        assert redirects["redirect_maps"][f"reference/{old}.md"] == f"reference/{new}/index.md"
+        assert (DOCS / "reference" / new / "index.md").is_file()
+        assert not (DOCS / "reference" / f"{old}.md").exists()
+
+
+# -- one page for each section of the model file, and the problem codes ------------
+
+def test_every_section_has_its_page_and_its_example():
+    from nagasim.core import sections
+
+    reference = DOCS / "reference" / "model-file"
+    pages = {p.stem for p in reference.glob("*.md")} - {"index"}
+    assert pages == {s.name for s in sections.SECTIONS}, "a page for each section and no other"
+    index = (reference / "index.md").read_text(encoding="utf-8")
+    assert all(f"]({s.name}.md)" in index for s in sections.SECTIONS), "index.md lists every section"
+    assert set(gen.SECTION_EXAMPLES) == {s.name for s in sections.SECTIONS}, "an example for each section"
+
+
+@pytest.mark.parametrize("name", [s.name for s in gen.sections.SECTIONS])
+def test_a_section_example_validates_and_its_builder_call_runs(name):
+    """The fragment, with the sections it names, passes the JSON Schema and the model checks;
+    the builder line on the page runs."""
+    import copy
+
+    jsonschema = pytest.importorskip("jsonschema")
+    from nagasim import build as nb
+    from nagasim.core import schema as schema_mod
+    from nagasim.modelschema import build_json_schema
+
+    fragment, needs = gen.section_example(name)
+    layout = schema_mod.migrate(copy.deepcopy({**gen.SECTION_BASE, **needs, name: fragment}))
+    errors = [e.message for e in jsonschema.Draft202012Validator(build_json_schema()).iter_errors(layout)]
+    assert not errors, errors[:3]
+    fatal = [(p.code, p.message) for p in schema_mod.validate_model_structured(layout) if p.severity == "error"]
+    assert not fatal, fatal[:3]
+    code = gen.builder_code(next(s for s in gen.sections.SECTIONS if s.name == name), fragment)
+    if code is None:
+        return      # a sentence names the call: `a >> b`, `m.definition(name)`
+    namespace = {}
+    exec(code, namespace)    # noqa: S102 - the page's own snippet, made by the generator
+    assert namespace["m"].to_dict().get(name), f"{name}: the builder call wrote nothing"
+
+
+def test_a_section_page_lists_the_schemas_fields():
+    from nagasim.modelschema import build_json_schema
+
+    schema = build_json_schema()
+    text = (DOCS / "reference" / "model-file" / "resources.md").read_text(encoding="utf-8")
+    fields = schema["$defs"]["resource"]["properties"]
+    assert all(f"| `{field}` |" in text for field in fields)
+    assert not [f for f, spec in fields.items() if not spec.get("description")], "every field is described"
+
+
+def test_every_problem_code_is_listed_once_in_an_area_page():
+    from nagasim.core.problems import PROBLEM_CODES
+
+    folder = DOCS / "reference" / "problems"
+    listed = []
+    for stem, *_rest in gen.PROBLEM_AREAS:
+        # The table rows only: the "How to fix" list names a code again.
+        listed += re.findall(r"^\| <span id=\"\w+\"></span>`([EW]_[A-Z0-9_]+)`", (folder / f"{stem}.md").read_text(encoding="utf-8"), re.M)
+    assert sorted(listed) == sorted(PROBLEM_CODES), "every code on exactly one page"
+    assert {p.stem for p in folder.glob("*.md")} == {"index", *(stem for stem, *_rest in gen.PROBLEM_AREAS)}
+    for code in PROBLEM_CODES:
+        assert gen.problem_area(code) in {stem for stem, *_rest in gen.PROBLEM_AREAS}
+
+
+def test_generated_tables_write_no_html_tags():
+    """A `<name>` in a table cell would read as a tag and vanish from the page."""
+    tag = re.compile(r"<(?!/?span\b|!--)[A-Za-z]")
+    for folder in ("problems", "model-file"):
+        for page in (DOCS / "reference" / folder).glob("*.md"):
+            outside = "".join(part for i, part in enumerate(page.read_text(encoding="utf-8").split("`")) if i % 2 == 0)
+            assert not tag.search(outside), f"{page.name}: an unescaped <tag> outside code"
+
+
+def test_stability_says_the_problem_list_may_change_before_one_point_zero():
+    text = (DOCS / "stability.md").read_text(encoding="utf-8")
+    assert "problem codes and their wording may change before 1.0" in text

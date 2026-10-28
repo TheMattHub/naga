@@ -12,7 +12,7 @@ from nagasim.core.schema import ModelValidationError
 from nagasim.exporters import EXPORTER_REGISTRY
 
 from .core import (
-    MAX_ROWS, ToolError, _budget, _document_args, _edit_result, _finite, _digest, _open,
+    MAX_ROWS, ToolError, _budget, _document_args, report as _progress, _edit_result, _finite, _digest, _open,
     _records, _results_of, _rows, _runnable_layout, _upsert, note_asked, recorded, tool, workspace,
 )
 
@@ -65,7 +65,7 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
         results = api.run_model(layout, replications=replications, seed=seed, warmup=warmup,
                                 run_length=run_length, bind_data=bind_data, base_dir=base_dir,
                                 network=ws.network, confine_to=ws.root,
-                                should_stop=_budget(max_seconds))
+                                should_stop=_budget(max_seconds), on_progress=_progress)
     except RuntimeError as exc:
         # DEVLOG #411: a model error found only while running (the blocks raise
         # RuntimeError) must reach the agent as an answer, not undo its turn.
@@ -83,9 +83,16 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
 
 def _run_laws(layout: dict, results, warmup: float | None = None) -> dict:
     """`laws.summary` of a run, judged with the warm-up the run used (D684)."""
-    if warmup is not None:
-        layout = {**layout, "simulation": {**(layout.get("simulation") or {}), "warmup": warmup}}
-    return laws.summary(laws.checks(layout, results))
+    ran = getattr(results, "_layout", None)
+    if ran is not None:
+        # D906: the run's own checks when they judge the same thing; otherwise
+        # (results from another layout, another warm-up) the direct path below.
+        asked = warmup if warmup is not None else (layout.get("simulation") or {}).get("warmup") or 0.0
+        if asked == results._warmup and ran == layout:
+            found = results.checks()
+            if not found.note:
+                return {k: v for k, v in found.as_dict().items() if k != "note"}
+    return laws.summary(laws.checks(layout, results, warmup=warmup))
 
 
 _document_args("get_kpi_table", model="Workspace name of a model that has been run.",
@@ -151,7 +158,7 @@ def run_scenarios(model: str, scenarios: list | None = None, kpis: list | None =
     doc = workspace().document(model)
     result = experiments.run_scenarios(doc.to_layout(), scenarios, replications=replications,
                                        seed=seed, run_length=run_length, warmup=warmup, crn=crn,
-                                       should_stop=_budget(max_seconds))
+                                       should_stop=_budget(max_seconds), on_progress=_progress)
     table = result.comparison(kpis=kpis)
     if kpis is None:
         table = table[table["KPI"].str.startswith("system/")]
@@ -350,7 +357,7 @@ def run_to_precision(model: str, kpi: str, relative: float = 0.05,
     results, report = experiments.run_until_precision(
         doc.to_layout(), kpi, relative=relative, absolute=absolute,
         max_replications=max_replications, run_length=run_length, warmup=warmup, seed=seed,
-        should_stop=_budget(max_seconds))
+        should_stop=_budget(max_seconds), on_progress=_progress)
     if results is not None:
         ws.results[model] = results
     return {"model": model, **{k: (_finite(v) if isinstance(v, float) else v)
@@ -531,7 +538,7 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
                                    replications_per_point=int(replications_per_point),
                                    run_length=run_length, seed=seed, method=method,
                                    objectives=[tuple(o) for o in (objectives or ())],
-                                   select_top=int(confirm_top), should_stop=stop)
+                                   select_top=int(confirm_top), should_stop=stop, on_progress=_progress)
     history = _records(result.history.tail(20),
                        {"point": "Point", "mean": ("Mean", _finite), "feasibility": "Feasibility"})
     out = {"model": model, "best": result.best, "best_mean": _finite(result.best_mean),
@@ -601,7 +608,7 @@ def calibrate(model: str, targets: list, factors: list, budget: int = 120,
     result = calibrate_mod.calibrate(doc.to_layout(), targets, specs, budget=int(budget),
                                      replications_per_point=int(replications_per_point),
                                      seed=seed, method=method, accept=float(accept),
-                                     should_stop=stop)
+                                     should_stop=stop, on_progress=_progress)
     rows = _records(result.table, {
         "kpi": "KPI", "observed": ("Observed", _finite), "simulated": ("Simulated", _finite),
         "lb": ("LB", _finite), "ub": ("UB", _finite), "error": ("Error", _finite),
@@ -675,7 +682,7 @@ def forecast(model: str, horizon: float, replications: int = 100, events: list |
                                    replications=int(replications), kpis=kpis,
                                    events=events or (), bind_data=bind_data, base_dir=base_dir,
                                    network=ws.network, confine_to=ws.root,
-                                   seed=seed, should_stop=_budget(max_seconds))
+                                   seed=seed, should_stop=_budget(max_seconds), on_progress=_progress)
     ws.results[model] = result.results
     table = result.kpis
     if kpis is None:
@@ -827,7 +834,7 @@ def fit_surrogate(model: str, factors: list, response: str, design: str = "full:
     design_result = optimize_mod.run_design(layout, specs, design_frame,
                                             responses=[response], replications=int(replications),
                                             seed=int(seed), run_length=run_length,
-                                            should_stop=stop)
+                                            should_stop=stop, on_progress=_progress)
     model_fit = surrogate_mod.fit_surrogate(design_result, response, kind=kind)
     coefficients = [{"term": t, "coefficient": _finite(c), "std_error": _finite(s)}
                     for t, c, s in zip(model_fit.terms, model_fit.coef, model_fit.se)]

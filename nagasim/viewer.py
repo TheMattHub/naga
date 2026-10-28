@@ -35,7 +35,8 @@ from nagasim.core.utils import is_finite_number
 from nagasim import player
 from nagasim.viewer_runtime import Cancelled
 
-__all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_on_disk", "viewer_problems", "freeze_data",
+__all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_available", "engine_on_disk", "write_engine_zip",
+           "viewer_problems", "freeze_data",
            "what_if", "answer", "page_run", "compare", "build_viewer", "read_asked"]
 
 # The model text a page may carry. The largest bundled model is 0.25 MB.
@@ -110,7 +111,7 @@ def viewer_problems(layout: dict) -> list[Problem]:
     return found
 
 
-def freeze_data(layout, base_dir=None, *, network=None) -> tuple[dict, list[str]]:
+def freeze_data(layout, base_dir=None, *, network=None, confine_to=None) -> tuple[dict, list[str]]:
     """(the copy of *layout* with its data frozen in, the names of the sources read).
 
     A client's model is fed from files and databases, and a viewer reads none (D333).
@@ -124,6 +125,8 @@ def freeze_data(layout, base_dir=None, *, network=None) -> tuple[dict, list[str]
     Refused by name (ValueError): a live source (rest, mqtt, opcua), which is a plant's
     feed and means nothing in a copy; a binding that could not be read; a copy over
     `MAX_MODEL_BYTES`; a source's location still written somewhere in the copy.
+    *confine_to*, when given, is the one folder a file source may be read from
+    (`databind.resolve_bindings`), for an export of a model someone else wrote.
     """
     from nagasim import databind
     from nagasim.api import load_layout
@@ -136,7 +139,7 @@ def freeze_data(layout, base_dir=None, *, network=None) -> tuple[dict, list[str]
     if live:
         raise ValueError(f"data source {', '.join(live)}: a live source is a plant's feed and "
                          "is not frozen into a viewer; a twin is shown by the monitor")
-    resolved, report = databind.resolve_bindings(layout, base_dir, network=network)
+    resolved, report = databind.resolve_bindings(layout, base_dir, network=network, confine_to=confine_to)
     if report.problems:
         raise ValueError("the data could not be read, so nothing was frozen: "
                          + "; ".join(p.message for p in report.problems[:5]))
@@ -366,7 +369,8 @@ def _until_clear(layout: dict, values: dict, count, on_progress, say, asked=None
 
 
 def page_run(layout: dict, baseline: dict, args: dict, *, title: str = "Model",
-             tokens: dict | None = None, on_progress=None, say=None, asked=None) -> dict:
+             tokens: dict | None = None, on_progress=None, say=None, asked=None,
+             pictures: dict | None = None) -> dict:
     """What a Run in the page answers (the worker's `_BOOT`): {"record", "same",
     "player"}, or {"error"} for a value the engine refuses. *asked*: the recorded answers
     the page carries (`build_viewer`); no input note against another scenario, since a
@@ -391,19 +395,21 @@ def page_run(layout: dict, baseline: dict, args: dict, *, title: str = "Model",
         return {"error": str(exc)[:500]}
     say("Recording your run")
     try:
-        watch = watch_page(base, values, title=title, tokens=tokens, names=names)
+        watch = watch_page(base, values, title=title, tokens=tokens, names=names, pictures=pictures)
     except Exception:                               # noqa: BLE001 (#833: any engine error)
         watch = ""
     return {"record": record, "same": None if against else compare(record, baseline), "player": watch}
 
 
 def watch_page(layout: dict, values: dict | None = None, *, title: str = "Model",
-               tokens: dict | None = None, names=None) -> str:
+               tokens: dict | None = None, names=None, pictures: dict | None = None) -> str:
     """The player page (`player.build_player`) of the viewer's what-if beside the author's
     baseline: one replication of each with the model's own seed, recorded where this runs
     (in a page: the browser) and drawn as two scenarios, *names* (default "Yours" and
     "Baseline"): the other first, as the one compared with, and yours shown first. ""
-    when the recording is over the player's size limit.
+    when the recording is over the player's size limit. *pictures* are the author's
+    (`player.build_player`), carried by the page, so a run made there draws what the
+    recorded one does.
     Raises ValueError as `what_if` does."""
     from nagasim.api import run_model
     from nagasim.core.trace import TraceRecorder
@@ -418,7 +424,8 @@ def watch_page(layout: dict, values: dict | None = None, *, title: str = "Model"
         recordings[scenario] = TraceRecorder()
         run_model(model, replications=1, seed=seed, trace=recordings[scenario])
     try:
-        return player.build_player(drawn, recordings, title=title, tokens=tokens, start=yours)
+        return player.build_player(drawn, recordings, title=title, tokens=tokens, start=yours,
+                                  pictures=pictures)
     except ValueError:
         return ""
 
@@ -514,6 +521,13 @@ _CSS = """#status { margin: 8px 0; padding: 6px 10px; background: var(--panel); 
 #player { display: block; width: 100%; height: 62vh; min-height: 420px; border: 0; }
 /* One column: the frame's own panels stack too, so it needs the height of all of them. */
 @media (max-width: 900px) { #player { height: 820px; } }
+/* A model with a floor plan (D968): the plan takes the page's width under the levers and the
+   results, and its frame is as tall as the plan wants (the player says, `heights`). */
+@media (min-width: 901px) {
+  .console.plan { grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); }
+  .console.plan .centre { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 900px) { .console.plan .centre { order: 3; } }
 .footbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 12px;
            background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .footbar .note { flex: 1 1 240px; text-align: right; font-size: 12px; }
@@ -541,7 +555,7 @@ _PAGE = json.loads(PAGE)
 def _run(args):
     return json.dumps(viewer.page_run(_LAYOUT, _BASE, json.loads(args), title=_PAGE["title"],
                                       tokens=_PAGE["tokens"], on_progress=PROGRESS, say=STATUS,
-                                      asked=_PAGE.get("asked")),
+                                      asked=_PAGE.get("asked"), pictures=_PAGE.get("pictures")),
                       allow_nan=False)
 """
 
@@ -703,7 +717,7 @@ function boot() {
   var KEY = "naga-viewer:" + D.title + ":" + paths.join("|");
   var state = {worker: null, ready: false, starting: false, stopped: false, pending: null,
                running: false, shown: null, since: 0, clock: null, said: "Running", target: null,
-               initial: {}, read: {}, write: {}, marks: {}, tabs: [], tab: 0, saved: [], player: ""};
+               base: "Baseline", initial: {}, read: {}, write: {}, marks: {}, tabs: [], tab: 0, saved: [], player: ""};
 
   function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
   function add(tag, parent, text, name) {
@@ -866,7 +880,7 @@ function boot() {
   }
   function show(answer) {
     var record = answer.record, mine = Object.keys(record.inputs).length > 0, key = mine ? "Yours" : "Baseline";
-    var names = answer.names || ["Yours", "Baseline"], found = record.answer, trust = (record.trust || {})[key];
+    var names = answer.names || ["Yours", state.base], found = record.answer, trust = (record.trust || {})[key];
     state.shown = answer;
     el("results-title").textContent = answer.names ? "Results: " + names[0] + (mine ? " against " + names[1] : "")
       : "Results of the author's run";
@@ -893,11 +907,11 @@ function boot() {
     }
     table(record, mine); made(record, mine, names);
     el("same").textContent = answer.same ? sameText(answer.same, record.versions, author.versions) :
-      answer.names && names[1] !== "Baseline" ? "Run against " + names[1] + " in place of the author's baseline." : "";
+      answer.names && names[1] !== state.base ? "Run against " + names[1] + " in place of the author's baseline." : "";
     el("same").className = answer.same && (answer.same.different || answer.same.bounds_different) ? "note warn" : "note";
     if (answer.player) {
       frame(answer.player);
-      el("watch-title").textContent = names[0] + " beside " + names[1];
+      el("watch-title").textContent = names[0] === names[1] ? names[0] : names[0] + " beside " + names[1];
       el("watch-note").textContent = "One replication of each, seed " + author.seed + ", recorded in this " +
         "browser.";
     } else if (answer.names) {
@@ -972,7 +986,7 @@ function boot() {
     state.worker.onerror = function (event) { failed(event.message || "the worker did not start"); };
     state.worker.postMessage(["boot", {files: files(), model: modelText, baseline: baselineText,
                                        packages: D.packages,
-                                       page: JSON.stringify({title: D.title, tokens: D.tokens, asked: D.asked || null})}]);
+                                       page: JSON.stringify({title: D.title, tokens: D.tokens, asked: D.asked || null, pictures: D.pictures || null})}]);
   }
   /* Run *args* in the engine; the answer goes to *target* ({names, values, tab}). */
   function send(args, target) {
@@ -990,7 +1004,7 @@ function boot() {
   function run() {
     var tab = state.tabs[state.tab], values = now();
     send({values: moved(state.initial, values)},
-         {names: [tab.name, "Baseline"], values: values, tab: tab.kind === "base" ? null : tab});
+         {names: [tab.name, state.base], values: values, tab: tab.kind === "base" ? null : tab});
   }
   /* Two of the tabs, one against the other: the second runs in place of the baseline. */
   function compare() {
@@ -1105,6 +1119,15 @@ function boot() {
   });
 
   document.title = D.title;
+  if (D.pictures && D.pictures.background) { document.querySelector("main.console").classList.add("plan"); }
+  /* A plan's frame is as tall as the plan wants: the player says so, in a message of a height
+     only, taken from that frame alone and within sense. */
+  window.addEventListener("message", function (event) {
+    var data = event && event.data, height = Array.isArray(data) ? Number(data[1]) : NaN;
+    if (!event || event.source !== el("player").contentWindow || !Array.isArray(data) || data[0] !== "height" ||
+        !(height >= 200 && height <= 5000)) { return; }
+    el("player").style.height = Math.round(height) + "px";
+  });
   el("title").textContent = D.question || D.title;
   el("subtitle").textContent = D.question ? D.title : "The model as its author left it: move the levers and run your version.";
   el("versions").textContent = "Naga " + author.versions.nagasim + ", Python " + D.python + " (Pyodide " +
@@ -1112,8 +1135,12 @@ function boot() {
   inputs();
   try { state.saved = savedFrom(window.localStorage.getItem(KEY) || "[]", paths); } catch (e) { state.saved = []; }
   state.made = state.saved.length;
-  state.tabs = [{name: "Baseline", kind: "base", values: state.initial, answer: {record: author, values: state.initial}}]
-    .concat(D.scenarios.map(function (scenario) {
+  /* An author's scenario that sets nothing the baseline does not already has is the baseline:
+     its name is the baseline's (D969), and it is no tab of its own. */
+  var named = D.scenarios.filter(function (scenario) { return equal(merged(state.initial, scenario.values), state.initial); })[0];
+  state.base = named ? named.name : "Baseline";
+  state.tabs = [{name: state.base, kind: "base", values: state.initial, answer: {record: author, values: state.initial}}]
+    .concat(D.scenarios.filter(function (scenario) { return scenario !== named; }).map(function (scenario) {
       return {name: scenario.name, kind: "author", values: merged(state.initial, scenario.values)};
     }));
   state.yours = state.tabs.length;
@@ -1254,20 +1281,54 @@ _NOT_ON_DISK = ("the engine's files are not on disk here (a frozen build), so a 
                 "(`pip install nagasim`)")
 
 
-def engine_on_disk() -> bool:
-    """Can a viewer be made here? It embeds this package's own files, which a frozen
-    build keeps inside its executable."""
-    import sys
+def _bundled_zip():
+    """Where a frozen build keeps the engine's zip (`packaging/build.ps1` writes it from
+    the source tree before PyInstaller), or None when this is not a frozen build."""
+    from nagasim.settings.userpaths import bundled_dir
+
+    base = bundled_dir()
+    return None if base is None else base / "nagasim" / "viewer_engine.zip"
+
+
+def engine_available() -> bool:
+    """Can a viewer be made here? It embeds this package's own files: on disk in a
+    source tree or an installed engine, as a prebuilt zip in a frozen build."""
     from pathlib import Path
 
     import nagasim
-    return not getattr(sys, "frozen", False) and (Path(nagasim.__file__).parent / "viewer.py").is_file()
+    bundled = _bundled_zip()
+    if bundled is not None:
+        return bundled.is_file()
+    return (Path(nagasim.__file__).parent / "viewer.py").is_file()
+
+
+# The old name, kept for one release (D919).
+engine_on_disk = engine_available
+
+
+def write_engine_zip(path) -> int:
+    """Write the zip a viewer carries to *path*; the bytes written. The build runs it
+    from the source tree so a frozen build can ship it."""
+    from pathlib import Path
+
+    data = _build_engine_zip()
+    Path(path).write_bytes(data)
+    return len(data)
 
 
 def _engine_zip() -> tuple[bytes, list[tuple[str, str]]]:
-    """(one zip in site-packages layout, [(name, licence text)]): this package as
-    installed, without `models/` and `core/custom_logic.py`, and `_PURE` as installed.
-    Entries are sorted and carry one fixed date, so two builds give the same archive."""
+    """(one zip in site-packages layout, [(name, licence text)]): built from the files on
+    disk, or the prebuilt one a frozen build ships. The licences are read from the zip
+    itself, so both give the same notices."""
+    bundled = _bundled_zip()
+    data = bundled.read_bytes() if bundled is not None else _build_engine_zip()
+    return data, _zip_licences(data)
+
+
+def _build_engine_zip() -> bytes:
+    """This package as installed, without `models/` and `core/custom_logic.py`, and
+    `_PURE` as installed, in site-packages layout. Entries are sorted and carry one fixed
+    date, so two builds give the same archive."""
     import importlib.metadata
     import io
     import zipfile
@@ -1276,12 +1337,11 @@ def _engine_zip() -> tuple[bytes, list[tuple[str, str]]]:
     import nagasim
 
     entries: dict[str, bytes] = {}
-    licences: list[tuple[str, str]] = []
     root = Path(nagasim.__file__).parent
     for path in sorted(root.rglob("*")):
         inside = path.relative_to(root).as_posix()
-        if not path.is_file() or "__pycache__" in path.parts or inside.startswith("models/") \
-                or inside == "core/custom_logic.py":
+        if (not path.is_file() or "__pycache__" in path.parts
+                or inside.startswith("models/") or inside == "core/custom_logic.py"):
             continue
         entries["nagasim/" + inside] = path.read_bytes()
     for name in _PURE:
@@ -1292,21 +1352,40 @@ def _engine_zip() -> tuple[bytes, list[tuple[str, str]]]:
                 continue
             # Of its dist-info only what a licence asks for: RECORD, INSTALLER, REQUESTED
             # and direct_url.json say how and from where the AUTHOR installed it.
-            if ".dist-info/" in inside and not inside.endswith(".dist-info/METADATA") \
-                    and not any(word in inside.lower() for word in _LICENCE_NAME):
+            if (".dist-info/" in inside and not inside.endswith(".dist-info/METADATA")
+                    and not any(word in inside.lower() for word in _LICENCE_NAME)):
                 continue
-            data = Path(distribution.locate_file(item)).read_bytes()
-            entries[inside] = data
-            if ".dist-info/" in inside and any(w in inside.lower() for w in _LICENCE_NAME):
-                licences.append((f"{name} {distribution.version}: {inside}",
-                                 data.decode("utf-8", "replace")))
+            entries[inside] = Path(distribution.locate_file(item)).read_bytes()
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for inside in sorted(entries):
             info = zipfile.ZipInfo(inside, (1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, entries[inside], compresslevel=9)
-    return buffer.getvalue(), licences
+    return buffer.getvalue()
+
+
+def _zip_licences(data: bytes) -> list[tuple[str, str]]:
+    """[("<name> <version>: <file>", text)] for each licence file of a `_PURE`
+    dist-info in the engine zip, in `_PURE` order."""
+    import io
+    import zipfile
+
+    def key(name: str) -> str:
+        return re.sub(r"[-_.]+", "_", name).lower()
+
+    order = {key(name): (index, name) for index, name in enumerate(_PURE)}
+    found = []
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        for inside in archive.namelist():
+            folder, dist_info, rest = inside.partition(".dist-info/")
+            if not dist_info or not any(word in rest.lower() for word in _LICENCE_NAME):
+                continue
+            project, _, version = folder.rpartition("-")
+            index, name = order.get(key(project), (len(_PURE), project))
+            found.append(((index, inside), f"{name} {version}: {inside}",
+                          archive.read(inside).decode("utf-8", "replace")))
+    return [(title, text) for _key, title, text in sorted(found)]
 
 
 def _wheel_licences(name: str, data: bytes) -> list[tuple[str, str]]:
@@ -1421,8 +1500,13 @@ def read_asked(path) -> list:
     return kept[-_QUOTED:]
 
 
+def _kept_pictures(pictures: dict | None) -> dict | None:
+    """*pictures* as the page carries them: JSON data only (a tuple is a list), None for none."""
+    return json.loads(json.dumps(pictures)) if pictures else None
+
+
 def _recording(model: dict, baseline: dict, title: str, should_stop=None, tokens=None,
-               asked=None) -> str:
+               asked=None, pictures=None) -> str:
     """The player page (`player.build_player`) of the author's baseline: its first
     replication run again with its seed and a recorder. "" when it cannot be made (a
     tape over the player's size limit): the viewer is then written without it."""
@@ -1434,7 +1518,7 @@ def _recording(model: dict, baseline: dict, title: str, should_stop=None, tokens
         results = run_model(model, replications=baseline["replications"],
                             seed=baseline["seed"], trace=recorder, should_stop=should_stop)
         return player.build_player(model, {experiments.BASELINE: recorder}, results=results, title=title,
-                                   tokens=tokens, asked=asked)
+                                   tokens=tokens, asked=asked, pictures=pictures)
     except ValueError:
         return ""
 
@@ -1469,7 +1553,7 @@ def _block(name: str, data: bytes) -> str:
 def build_viewer(layout, path, *, runtime=None, title: str | None = None,
                  baseline: dict | None = None, frozen: str | None = None,
                  recording: str | None = None, tokens: dict | None = None,
-                 on_progress=None, should_stop=None, asked=None) -> dict:
+                 on_progress=None, should_stop=None, asked=None, pictures: dict | None = None) -> dict:
     """Write the viewer page of *layout* (a model dict or file) to *path* and return
     {"bytes", "estimate", "warnings", "baseline"}.
 
@@ -1486,6 +1570,9 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     makes it; "" for none): the page shows it in a frame, as the author's run, until a
     run in the page replaces it with the viewer's run beside the baseline (`watch_page`).
     *tokens* is the look of the page and of both players (`player.DEFAULT_TOKENS`).
+    *pictures* is what `player.build_player` takes (the product's, `product.ui.playerpics`):
+    the page carries it, so a run made in the browser is drawn with the same pictures and
+    floor plan as the recorded one. It is optional, and the engine reads no file for it.
     "estimate" is the seconds one replication takes in a browser; a warning says when
     the longest run a viewer may ask for passes five minutes, and when the definition
     lists no input or no result.
@@ -1505,7 +1592,7 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     from nagasim import viewer_runtime
     from nagasim.api import load_layout
 
-    if not engine_on_disk():
+    if not engine_available():
         raise ValueError(_NOT_ON_DISK)
     tokens = player.check_tokens(tokens)                            # a bad token: refused first
 
@@ -1558,13 +1645,14 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
         "question": (model.get("dashboard") or {}).get("question"),
         "scenarios": _lever_scenarios(model, definition), "unit": units_of(model.get("simulation")).time,
         "asked": _quoted(asked),
+        "pictures": _kept_pictures(pictures),
     }
     worker = _WORKER.replace("__BOOT__", json.dumps(_BOOT))
     if not (worker.isascii() and _MAIN.isascii()) or "</script" in worker + _MAIN:
         raise AssertionError("the viewer's scripts must be ASCII and hold no closing tag")
     notices = base64.b64encode(gzip.compress(_notices(licences).encode("utf-8"), 9, mtime=0))
     if recording is None:
-        recording = _recording(model, baseline, data["title"], should_stop, tokens, data["asked"])
+        recording = _recording(model, baseline, data["title"], should_stop, tokens, data["asked"], pictures)
     step(4)
     packed = b""
     if recording:

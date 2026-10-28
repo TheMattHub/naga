@@ -35,6 +35,7 @@
     "clinic_library.json": "d48738b4d40d238216faa64dcbaf408112718926011ef3590c79bcefc7f0f9a0",
     "clinic_twin.json": "ec0b917b6ae0bef45d2eb3d4fee7de42253e1294e82b7dd6d9ef9b6ccb3e6c10",
     "decide_routing.json": "944c5fa6b43304462b0daf49d0cd38ec982387655d728ff2dcc2c3297798be69",
+    "ed_bedside_scan.json": "4ffdff3fbf7c94fbaf201e12ecf76c2a7ab75e95539a88193c91e5a5cc32bde6",
     "ed_game.json": "101395c4905ed945982341aebb47f1106a975ff33494defa255033e3ea3f3846",
     "ed_patient_agents.json": "efc1cad39f945318eda6cd4a42d9d9f559000e60c57118fdb999e70967f26d69",
     "energy_heat_and_ev.json": "57f071177a16d687dcacb50293e36b3d9994da58dc80da389bcd43a74e6b05e5",

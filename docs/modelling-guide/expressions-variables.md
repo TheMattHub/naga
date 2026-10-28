@@ -10,7 +10,7 @@ walking the tree. Nothing reaches Python's `eval`/`exec`, so a model file cannot
 call an arbitrary builtin, or touch any attribute other than `entity.<name>`. A bad expression is
 a load-time problem with a code (`naga validate`), not a run-time crash.
 
-See the generated [expression reference](../reference/expressions.md) for the full grammar table
+See the generated [expression reference](../reference/functions/index.md) for the full grammar table
 and function catalogue (`RAND`, `EXPO`, `UNIF`, `NORM`, `TRIA`, `DISC`, `NQ`, `NR`, `MR`, `NS`,
 `TABLE`, and the usual math functions).
 

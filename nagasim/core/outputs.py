@@ -26,6 +26,16 @@ import logging
 log = logging.getLogger(__name__)
 
 
+_ZERO_HIDDEN_COSTS = frozenset({"Total Resource Cost", "Total Entity Holding Cost", "Total Cost",
+                                "Cost per Completed Entity"})
+
+
+def hidden_when_zero(metric: str) -> bool:
+    """A summary row that is news only when some replication is non-zero: a truncation
+    flag, or a cost of a model that declares none. The one rule the CLI and the editor share."""
+    return metric.endswith("Log Truncated") or metric in _ZERO_HIDDEN_COSTS
+
+
 @lru_cache(maxsize=None)
 def _empty_frame(columns: tuple) -> pd.DataFrame:
     return pd.DataFrame([], columns=list(columns))

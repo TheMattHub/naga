@@ -1,0 +1,20 @@
+      Factor  KPI at low  KPI at high  Swing
+      agents        0.68         0.05   0.63
+service rate        0.37         0.09   0.28
+arrival rate        0.10         0.33   0.23
+ Point  agents  arrival rate  service rate  Mean
+     0       5           1.6          0.45  0.71
+     1       5           1.6          0.55  0.21
+     2       5           2.0          0.45  3.23
+     3       5           2.0          0.55  0.66
+     4       7           1.6          0.45  0.05
+     5       7           1.6          0.55  0.01
+     6       7           2.0          0.45  0.20
+     7       7           2.0          0.55  0.04
+      Factor  Level  Mean  Effect  Effect LB  Effect UB
+      agents   5.00  1.20   -1.12      -2.43       0.19
+      agents   7.00  0.08   -1.12      -2.43       0.19
+arrival rate   1.60  0.25    0.79      -0.14       1.72
+arrival rate   2.00  1.03    0.79      -0.14       1.72
+service rate   0.45  1.05   -0.82      -1.82       0.19
+service rate   0.55  0.23   -0.82      -1.82       0.19

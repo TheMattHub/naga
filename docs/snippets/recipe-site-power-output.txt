@@ -1,0 +1,2 @@
+100 kW site limit: 29.1 minutes a charge
+ 60 kW site limit: 70.8 minutes a charge

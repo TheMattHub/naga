@@ -9,10 +9,6 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from openpyxl import Workbook
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
 from nagasim import study as study_mod, studypage
 from nagasim.studychecks import goal_kpi
 from nagasim.twin import write_json, write_text
@@ -22,7 +18,10 @@ _FORMATS = {".html": "text/html", ".xlsx": "application/vnd.openxmlformats-offic
             ".md": "text/markdown"}
 
 
-def _sheet(wb: Workbook, title: str, head: list[str], rows: list[list]) -> None:
+def _sheet(wb, title: str, head: list[str], rows: list[list]) -> None:
+    from openpyxl.styles import Font    # on demand: only the Excel write needs openpyxl (D915)
+    from openpyxl.utils import get_column_letter
+
     ws = wb.create_sheet(title)
     ws.append(head)
     for r in rows:
@@ -53,6 +52,8 @@ def workbook(folder: Path, study: dict, path: Path) -> None:
     checks = [[c["title"], c["verdict"], c["why"]] for c in study_mod.checklist(study, folder)]
     assumptions = [[a.get("text") or a.get("statement") or "", a.get("value"), a.get("source") or ""]
                    for a in study["assumptions"]]
+    from openpyxl import Workbook
+
     wb = Workbook()
     wb.remove(wb.active)
     _sheet(wb, "Goals", ["Name", "KPI", "Low", "High", "Last value", "Status"], goals)

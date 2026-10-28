@@ -62,7 +62,7 @@ def test_fmt_rewrites_only_the_files_named_and_check_reports_them(tmp_path, caps
 
 
 def test_fmt_refuses_a_file_that_is_not_a_model(tmp_path):
-    path = tmp_path / "lib.stratlib.json"
+    path = tmp_path / "lib.nagalib.json"
     text = json.dumps({"format_version": 1, "library": {"name": "x"}, "assets": []})
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match="not a model file"):

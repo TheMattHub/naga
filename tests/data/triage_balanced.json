@@ -1,0 +1,50 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "create_1",
+      "type": "CREATE",
+      "params": {"distribution": "Exponential", "dist_params": {"rate": 0.5}}
+    },
+    {
+      "name": "assign_1",
+      "type": "ASSIGN",
+      "params": {"assignments": [{"target": "entity.acuity", "expr": "DISC(1, 0.2, 2, 0.8)"}]}
+    },
+    {
+      "name": "decide_1",
+      "type": "DECIDE",
+      "params": {"mode": "Condition", "conditions": ["entity.acuity == 1"]}
+    },
+    {
+      "name": "process_1",
+      "type": "PROCESS",
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {"low": 5, "mode": 10, "high": 20},
+        "resource_name": "Doctor"
+      }
+    },
+    {
+      "name": "process_2",
+      "type": "PROCESS",
+      "params": {
+        "distribution": "Exponential",
+        "dist_params": {"rate": 0.25},
+        "resource_name": "Nurse"
+      }
+    },
+    {"name": "dispose_1", "type": "DISPOSE"}
+  ],
+  "links": [
+    {"source": "create_1", "target": "assign_1"},
+    {"source": "assign_1", "target": "decide_1"},
+    {"source": "decide_1", "target": "process_1"},
+    {"source": "process_1", "target": "dispose_1"},
+    {"source": "decide_1", "target": "process_2"},
+    {"source": "process_2", "target": "dispose_1"}
+  ],
+  "resources": [{"name": "Nurse", "capacity": 2}, {"name": "Doctor", "capacity": 2}],
+  "simulation": {"time_limit": 480, "replications": 10}
+}

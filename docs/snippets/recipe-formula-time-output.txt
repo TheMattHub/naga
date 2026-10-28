@@ -1,0 +1,1 @@
+bay busy 63% (mean repair 5 minutes in 8 is 62%)

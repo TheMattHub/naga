@@ -259,7 +259,7 @@ def step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None = 
     return interrupted
 
 def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
-              subscribers=(), controllers=None, prepared: bool = False):
+              subscribers=(), controllers=None, prepared: bool = False, logic_module=None):
     """Build one replication ready to step: context, model, warm-up reset,
     warm start, level/agent start, CREATE starts and the sampler. Returns
     (env, model). Shared by `run_single_simulation` and `core.session.SimSession`
@@ -267,7 +267,8 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
 
     *controllers* (ROADMAP 3.7 A) attaches `{policy name: Controller}` to
     `ctx.controllers` before any block runs, so a Policy-mode DECIDE's first
-    decision already sees it. *prepared*: see `prepare_model`."""
+    decision already sees it. *prepared*: see `prepare_model`. *logic_module*
+    (D914): the caller's module LOGIC classes are looked up in first."""
     # D232: the clock is where the state says, before anything is built, so every
     # controller and schedule is born at that time.
     if not prepared:
@@ -276,6 +277,7 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
     env = initialize_sim_env(seed=seed, clock=clock)
     if controllers:
         env.ctx.controllers = dict(controllers)
+    env.ctx.logic_module = logic_module
     # Subscribed before prepare_model (ROADMAP 2.3 part C): resource
     # registration emits each resource's initial "capacity" resource_state
     # event right there, so a trace recorder must already be listening to
@@ -342,12 +344,13 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
 
 def run_single_simulation(layout_path, *, seed: int, run_len: float, warmup: float,
                            should_stop=None, subscribers=(), controllers=None,
-                           pacer: Pacer | None = None) -> dict | None:
+                           pacer: Pacer | None = None, logic_module=None) -> dict | None:
     """Run one replication. Returns None instead of KPIs if `should_stop` cut it
     short (M4a): a partial run has no meaningful statistics to report.
-    *controllers*: see `setup_run`. *pacer*: see `step_until`."""
+    *controllers*, *logic_module*: see `setup_run`. *pacer*: see `step_until`."""
     env, _model = setup_run(layout_path, seed=seed, run_len=run_len, warmup=warmup,
-                            subscribers=subscribers, controllers=controllers)
+                            subscribers=subscribers, controllers=controllers,
+                            logic_module=logic_module)
     if step_until(env, run_len, should_stop, pacer):
         return None
     # PHASE6 W4 P1, D119: a deterministic run's outcome does not depend on the

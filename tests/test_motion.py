@@ -297,7 +297,7 @@ def test_a_motion_asset_binds_its_distances_and_validates_them_after_flattening(
     """Review focus 5: `{"$arg": "walk_m"}` inside `segments` flattens into a
     number, and a negative argument is caught after flattening."""
     libs = pytest.importorskip("product.libraries")
-    raw = libs.load_library(libs.builtin_dir() / "manufacturing.stratlib.json")
+    raw = libs.load_library(libs.builtin_dir() / "manufacturing.nagalib.json")
     asset = next(a for a in raw["assets"] if a["id"] == "manual_assembly_motion")
     test = dict(asset["tests"][0])
     assert problem_codes(libs.harness_layout(asset, test)) == set()

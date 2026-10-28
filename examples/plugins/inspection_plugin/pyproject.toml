@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nagasim-inspection-plugin"
+version = "0.1.0"
+description = "Example Naga plugin: INSPECT block, ShiftedExponential distribution, markdown exporter"
+requires-python = ">=3.11"
+
+[project.entry-points."nagasim.blocks"]
+INSPECT = "inspection_plugin:SPEC_INSPECT"
+
+[project.entry-points."nagasim.distributions"]
+ShiftedExponential = "inspection_plugin:DIST_SHIFTED_EXPONENTIAL"
+
+[project.entry-points."nagasim.exporters"]
+markdown = "inspection_plugin:EXPORTER_MARKDOWN"
+
+[tool.setuptools]
+py-modules = ["inspection_plugin"]

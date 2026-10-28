@@ -1,0 +1,2 @@
+picker busy 76% of the time (6 of every 8 minutes is 75%)
+mean wait for the picker 10.2 minutes

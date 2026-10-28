@@ -12,10 +12,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.worksheet import Worksheet
-
 from nagasim.core.calendar import CalendarError, model_calendar
 from nagasim.core.outputs import ci95_by_object_long, timeseries_mean
 from nagasim.core.stats import ci95
@@ -101,9 +97,13 @@ def write_sheet(writer, df: pd.DataFrame, sheet_name: str, format_percent: bool 
     float_cols = df.select_dtypes(include=['float', 'float64']).columns
     df[float_cols] = df[float_cols].round(2)
 
+    # openpyxl loads here, not at import: only an Excel write needs it (D915)
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
     # Write to and access the actual worksheet
     df.to_excel(writer, sheet_name=sheet_name, index=index)
-    ws: Worksheet = writer.sheets[sheet_name]
+    ws = writer.sheets[sheet_name]
 
     #Freeze top row
     ws.freeze_panes = "A2"

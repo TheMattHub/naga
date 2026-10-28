@@ -1,0 +1,2 @@
+mean service by the bin midpoints: 3.05 minutes, so 51% busy
+bench busy in the run:             51%

@@ -3,7 +3,7 @@
 
 # Gallery
 
-The 60 models that ship in the package, by kind. Each runs as it is.
+The 61 models that ship in the package, by kind. Each runs as it is.
 
 | Page | Models |
 |---|---|
@@ -12,7 +12,7 @@ The 60 models that ship in the package, by kind. Each runs as it is.
 | [Games](games.md) | Emergency department: staffing game, Supply line: order-rate management game |
 | [Logistics](logistics.md) | Hub day: electrifying the ground support equipment, Container terminal: electrification, Container terminal: quay to yard, Hub day: turnaround workload (crews, ground equipment, on-time departures), Warehouse with forklifts (floor plan), Order-driven warehouse (library assets) |
 | [Manufacturing](manufacturing.md) | Robot cell against manual assembly, Automation floor (robot cells, AMR, palletiser), Job shop (Jackson network), Job shop (routed, per-product sequences), Line with finite buffers, Machine with breakdowns, Job shop with MES digital twin, Make-to-order line (library assets), Orders, due dates and tardiness, Order shop ranked by priority, Priority jobs with rework, Two-cell line (reusable submodel) |
-| [Services](services.md) | Call centre on real dates, Walk-in clinic (library assets), Walk-in clinic digital twin, Emergency department with patient agents, Impatient customers (balking and reneging) |
+| [Services](services.md) | Call centre on real dates, Walk-in clinic (library assets), Walk-in clinic digital twin, Emergency department: bedside scan (film template), Emergency department with patient agents, Impatient customers (balking and reneging) |
 | [Supply chain](supply-chain.md) | (s, S) inventory with backorders, Two-echelon supply chain (library assets) |
 | [System dynamics](system-dynamics.md) | Bass diffusion, Inventory with lead time, Population (logistic), SIR epidemic, Training pipeline with attrition, Workforce (goal-seeking) |
 | [Teaching](teaching.md) | Chance-based branching (DECIDE), HOLD on a store's contents, Delay, seize/release and signal HOLD, Policy-routed parallel servers, Single server (M/M/1), Single server, general service times (M/G/1), Process time lookup table, Tank: fill, overflow and run dry, Two tellers (resource set) |

@@ -124,8 +124,44 @@ class Tap:
 def take(layout, at: float, seed: int = 0, *, name: str | None = None) -> dict:
     """The state document of *layout* at model time *at* of the run with *seed*.
 
-    Raises `StateError` (`E_STATE_UNSUPPORTED`) for what a state cannot carry, an
-    instant with an event due and a time at or after the end of the run."""
+    Parameters
+    ----------
+    layout : dict or str
+        The model, or the path of its file.
+    at : float
+        The model time to stop at; it must be before the end of the run.
+    seed : int, default 0
+        The seed of the run that is stopped.
+    name : str, optional
+        A label stored in the document.
+
+    Returns
+    -------
+    dict
+        The state document: ``format``, ``hash`` of the model, ``model``, ``state`` and ``taken``.
+
+    Raises
+    ------
+    StateError
+        (`E_STATE_UNSUPPORTED`) for what a state cannot carry, an instant with an
+        event due and a time at or after the end of the run.
+
+    See Also
+    --------
+    nagasim.state.start : Builds a model that begins from a state document.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import state
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> doc = state.take(str(path), at=50.0, seed=0)
+    >>> doc["format"] == state.FORMAT
+    True
+    >>> sorted(doc)
+    ['format', 'hash', 'model', 'state', 'taken']
+    """
     tap = Tap()
     session = SimSession(layout, seed, subscribers=(tap,))
     reached = session.advance(to=float(at))
@@ -169,11 +205,6 @@ def _refuse_kinds(session) -> None:
             raise _unsupported("a swap station", f"'{name}'")
     for block in session.model.blocks.values():
         kind = block.block.block_type
-        if kind == "CONVEYOR" and block.stops:      # D733: a part between two stops
-            raise _unsupported("a conveyor with stops", f"'{block.name}' has stops")
-        if kind == "CONVEYOR" and (block.diverts or block.merges):   # D855: as stops (D733)
-            raise _unsupported("a conveyor with diverts or merges",
-                               f"'{block.name}' has diverts or merges")
         if block.hold_until_space:      # a place reserved before the job starts (D386)
             raise _unsupported("blocking before service", f"'{block.name}' holds until space")
         # A store's entities are carried by arriving again (D260); what runs beside them
@@ -203,6 +234,13 @@ def refused_kind(layout) -> str | None:
         _refuse_kinds(session)
     except StateError as exc:
         return exc.kind
+    # D918: a run's state carries a belt's points; a plant observes no part's stage there
+    for belt in ctx.conveyors.values():
+        if belt.stops:
+            return _unsupported("a conveyor with stops", f"'{belt.name}' has stops").kind
+        if belt.diverts or belt.merges:
+            return _unsupported("a conveyor with diverts or merges",
+                                f"'{belt.name}' has diverts or merges").kind
     return None
 
 
@@ -376,8 +414,11 @@ def _holder(entity, held: set) -> dict:
     if kind == "CONVEYOR":          # its end hands the part over (D430)
         if not holder.accumulating:
             raise _unsupported("a non-accumulating belt with parts on it", f"'{holder.name}'")
-        return {"held_by": holder.name,
-                "held_since": float(getattr(entity, blocking._TOKEN).entered)}
+        token = getattr(entity, blocking._TOKEN)
+        out = {"held_by": holder.name, "held_since": float(token.entered)}
+        if getattr(token, "point", None) is not None:       # at a divert (D918)
+            out["held_at"] = {"point": token.point, "since": float(token.asked)}
+        return out
     target = initial_state._target_name(holder)
     if kind not in blocking.PROCESS_TYPES or not (holder.seizes and holder.releases) \
             or target not in held:
@@ -434,27 +475,74 @@ def _cycle(cycle) -> dict:
 
 
 def _on_belt(belt, entity, entry: dict, asking: dict) -> tuple:
-    """(its place in the list, the entry) of a part on an accumulating *belt* (D429): a part
-    waiting for a cell in the order of the belt's queue, any other by when it entered."""
+    """(its place in the list, the entry) of a part on an accumulating *belt* (D429, D918): a
+    part waiting for a cell in the order of the belt's queue, any other by when it entered,
+    or on a belt with points in belt order (D923): by section from the end back, front
+    first, then the parts queued for the first section or a merge's door."""
     if not belt.accumulating:
         raise _unsupported("a non-accumulating belt with parts on it", f"'{belt.name}'")
-    stage, until, entered = getattr(entity, "_belt", None) or ("cell", None, None)
+    stage, until, entered, point = getattr(entity, "_belt", None) or ("cell", None, None, None)
     if stage == "cell":
         if id(entity) not in asking:
             raise _unsupported("a part between two stages of a belt", f"entity {entity.id}")
-        return (1, asking[id(entity)]), {**entry, "belt": {"stage": "cell"}}
+        record = {"stage": "cell"} if point is None else {"stage": "cell", "point": point}
+        if point is not None:       # a merging part: its wait counts from when it came
+            entry = {**entry, "since": float(entity._ready)}
+        return (2, asking[id(entity)]), {**entry, "belt": record}
     if stage == "stop":
         target = belt.ctx.resource_manager.resolve(belt.exit_resource)
         if belt.blocked.level != 1.0 or target.queue_len.level > 1:
             raise _unsupported("an end stop other jobs queue for, or that had a unit free",
                                f"'{belt.name}'")
         entry = {**entry, "since": float(entity._asked)}       # when it asked (D383)
+    elif stage == "wait":
+        stop = belt._points[point]
+        target = belt.ctx.resource_manager.resolve(stop.resource)
+        if stop.blocked.level != 1.0 or target.queue_len.level > 1:
+            raise _unsupported("a stop on a belt that other jobs queue for, or that had a "
+                               "unit free", f"'{belt.name}' at {stop.at:g}")
+        entry = {**entry, "since": float(entity._asked)}
+    elif stage in ("door", "join"):
+        entry = {**entry, "since": float(entity._ready)}
     record = {"stage": stage}
     if until is not None:
         record["until"] = float(until)
     if entered is not None:
         record["entered"] = float(entered)
-    return (0, (entered if entered is not None else until, 0)), {**entry, "belt": record}
+    if point is not None:
+        record["point"] = point
+    if not belt._points:
+        return (0, (entered if entered is not None else until, 0)), {**entry, "belt": record}
+    if stage == "entry":
+        pool = belt._sections[0].pool
+        place = pool.users.index(entity._ask) if entity._ask in pool.users \
+            else len(pool.users) + pool.queue.index(entity._ask)
+        return (1, (0, place)), {**entry, "belt": record}
+    if stage in ("door", "join"):
+        door = belt._points[point].door
+        place = 0 if stage == "join" else 1 + door.queue.index(entity._ask)
+        return (1, (1 + point, place)), {**entry, "belt": record}
+    index, out = entity._section
+    return (0, (-index, list(belt._sections[index].entrants).index(out))), \
+        {**entry, "belt": record}
+
+
+def _belt_history(belt, now) -> dict:
+    """What the parts ahead left behind on an accumulating *belt* (D922, #1336): `left`, when
+    the last part left each point and the end, and `sections`, the recent leave times of each
+    section with a lag. A time that can no longer act is dropped: every reader compares
+    `left + spacing / speed` or `leave + lag` with a time at or after the clock."""
+    gap, out = belt.spacing / belt.speed, {}
+    left = [float(t) if t + gap > now else None
+            for t in [point.left for point in belt._points] + [belt._end_left]]
+    if any(t is not None for t in left):
+        out["left"] = left
+    sections = [[float(e.value) for e in section.entrants
+                 if e.triggered and e.value + section.lag > now] if section.lag else []
+                for section in belt._sections]
+    if any(sections):
+        out["sections"] = sections
+    return out
 
 
 def _entities(session, tap: Tap, trips: dict | None = None) -> list:
@@ -736,6 +824,10 @@ def _read(session, tap: Tap) -> dict:
             setups.setdefault(name, {})["due"] = float(block._due)     # D433
         if block.block.block_type == "CONVEYOR" and block._next_entry > now:
             setups.setdefault(name, {})["next_entry"] = float(block._next_entry)   # D430
+        history = _belt_history(block, now) \
+            if block.block.block_type == "CONVEYOR" and block.accumulating else {}
+        if history:
+            setups.setdefault(name, {}).update(history)
     if setups:              # D263: what each station is set up for; a changeover under
         state["blocks"] = setups        # way is refused with the job that is in it
     fleets, trips = _fleets(session)
@@ -981,7 +1073,7 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                 hint="the level a BUFFER mirrors is its parts; map one of the two"))
         reported[level] = held
     if entries:
-        state["blocks"] = {belt: {"next_entry": at} for belt, at in entries.items()}
+        state["blocks"] = entries
     for key, value in (("entities", listed), ("resources", resources), ("fleets", fleets),
                        ("levels", reported), ("orders", counters)):
         if value:
@@ -1238,7 +1330,8 @@ def _amount(text, attributes) -> float | None:
 
 
 def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
-    """D460: ({id(entity dict): its `belt` and `since`}, {belt: next_entry}) of the parts a
+    """D460: ({id(entity dict): its `belt` and `since`}, {belt: its `blocks` entry: next_entry,
+    and `left` when the last part out left within a spacing of the clock, #1336}) of the parts a
     plant shows at an accumulating CONVEYOR. A part entered when first reported there, at
     the latest a spacing after the part before it; it rides while its ride lasts; past it,
     in entry order, the first is at the end (moving up a spacing after the part ahead left
@@ -1253,16 +1346,19 @@ def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
     out, entries = {}, {}
     for name, block in blocks.items():
         on = [e for e in entities if e["block"] == name]
-        if _kind(block) != "CONVEYOR" or not on:
+        if _kind(block) != "CONVEYOR":
             continue
         params = block.get("params") or {}
         geometry = initial_state_validation.geometry_of(params, units, network)
-        if params.get("accumulating", True) is False or geometry is None \
-                or any(e["since"] is None for e in on):
-            continue        # `start` refuses them with the section's own code
+        if params.get("accumulating", True) is False or geometry is None:
+            continue
         _cells, gap, travel = geometry
-        stop = str(params.get("exit_resource") or "").strip()
         left = (seen.get("exits") or {}).get(name)
+        if left is not None and left + gap > clock:     # #1336: as a run's state says it
+            entries.setdefault(name, {})["left"] = [float(left)]
+        if not on or any(e["since"] is None for e in on):
+            continue        # `start` refuses them with the section's own code
+        stop = str(params.get("exit_resource") or "").strip()
         # The mapper's entry (`entered`) carries the cells and the infeed rhythm of the parts
         # already gone; a part it gives none waits for a cell. The mapper always has the
         # layout when it gets here, so no rhythm is made up from `since` (M7).
@@ -1298,7 +1394,7 @@ def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
                 ahead = True
             out[id(entity)] = {"belt": belt}
         if entered is not None and entered + gap > clock:
-            entries[name] = entered + gap
+            entries.setdefault(name, {})["next_entry"] = entered + gap
     return out, entries
 
 
@@ -1514,11 +1610,47 @@ def coverage(layout, doc) -> list:
 
 def start(layout, doc, *, max_age: float | None = None, now: float | None = None,
           until: float | None = None):
-    """(the model with *doc*'s state as its `initial_state`, []) or (None, the problems).
+    """The model with a state document's state as its `initial_state`.
+
     The section's own validation then runs with the model's, as for any model.
 
-    *until* is the end of the run the caller is about to make, as its run length: a twin's
-    clock is the plant's and is soon past the length the model file was studied over."""
+    Parameters
+    ----------
+    layout : dict or str
+        The model the state was taken from, or the path of its file.
+    doc : dict
+        A state document, from `take`, `from_plant` or `read`.
+    max_age : float, optional
+        The oldest state accepted, in model time units.
+    now : float, optional
+        The clock that ``max_age`` is counted from.
+    until : float, optional
+        The end of the run the caller is about to make, as its run length: a twin's
+        clock is the plant's and is soon past the length the model file was studied over.
+
+    Returns
+    -------
+    tuple
+        ``(model, [])`` with the state as the model's ``initial_state``, or
+        ``(None, problems)`` when the state does not fit the model.
+
+    See Also
+    --------
+    nagasim.state.take : Makes the document.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import state
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> doc = state.take(str(path), at=50.0, seed=0)
+    >>> model, problems = state.start(str(path), doc)
+    >>> problems
+    []
+    >>> "initial_state" in model
+    True
+    """
     problems = check(layout, doc, max_age=max_age, now=now)
     if problems:
         return None, problems

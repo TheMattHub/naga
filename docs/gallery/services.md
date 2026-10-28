@@ -3,7 +3,7 @@
 
 # Services
 
-5 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+6 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
 
 ## Call centre on real dates
 
@@ -98,6 +98,24 @@ flowchart LR
 | `system/Avg Queue Length` | 1.3 | 0.85 |
 | `system/Avg Resource Usage %` | 47.2 | 6.1 |
 | `user/time_in_system` | 20.9 | 11 |
+
+## Emergency department: bedside scan (film template)
+
+A teaching model for the Film dock: walk-in patients in a small emergency department on a 32 x 17 m floor plan go through triage, wait for one of five exam bays, see a doctor and leave with a decision. Two scenarios run with common random numbers: the usual pathway waits for blood tests before deciding, the other scans at the bed first. Every number is invented for teaching; none comes from a real hospital.
+
+```console
+naga run ed_bedside_scan --replications 3
+```
+
+3 replications, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 29.3 | 23 |
+| `system/Avg Throughput Time` | 127 | 43 |
+| `system/Avg Queue Length` | 1.09 | 2.2 |
+| `system/Avg Resource Usage %` | 59.8 | 39 |
+| `user/arrival_to_decision` | 126 | 43 |
 
 ## Emergency department with patient agents
 

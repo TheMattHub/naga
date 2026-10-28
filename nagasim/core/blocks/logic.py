@@ -14,7 +14,8 @@ class Logic(BaseProcess):
     """Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough.
 
     Routes an entity through a user-supplied, plain (non-BaseProcess) class
-    defined in nagasim.core.custom_logic. The class only needs an
+    defined in nagasim.core.custom_logic, or first in the module the caller
+    passes as `run_model(logic=...)`. The class only needs an
     `execute(self, entity, ctx) -> int` method returning the outgoing link index;
     `execute(self, entity)` (no ctx) is also accepted."""
 
@@ -25,13 +26,8 @@ class Logic(BaseProcess):
         self.logic_class = params.get("logic_class", "SampleLogic")
 
     def self_process(self, entity):
-        module = logic_authoring.load_custom_logic_module()
-        logic_cls = getattr(module, self.logic_class, None)
-        if logic_cls is None:
-            raise RuntimeError(
-                f"Logic class '{self.logic_class}' not found in nagasim.core.custom_logic"
-            )
-
+        # D914: the caller's module (run_model(logic=...)) first, then custom_logic.
+        logic_cls = logic_authoring.logic_class(self.logic_class, self.ctx.logic_module)
         logic_instance = logic_cls()
         if len(inspect.signature(logic_instance.execute).parameters) >= 2:
             next_idx = logic_instance.execute(entity, self.ctx)

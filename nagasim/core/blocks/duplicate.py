@@ -11,7 +11,7 @@ __all__ = ["Duplicate", "SPEC"]
 
 
 class Duplicate(BaseProcess):
-    """Makes copies of an entity, for example to send the same order to several branches or to model one job spawning several; the original goes on unchanged.
+    """Makes copies of an entity, for example to model one job spawning several; the original goes on unchanged. All copies leave by the one output link: follow it with a DECIDE to send them down different branches.
 
     Forwards the original entity unchanged, then forwards
     `number_of_duplicates - 1` shallow copies, each a fresh Entity with its

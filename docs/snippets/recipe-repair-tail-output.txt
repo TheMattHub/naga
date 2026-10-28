@@ -1,0 +1,3 @@
+LogLogistic    mean 3.00  mean wait 2.72 minutes
+PearsonTypeV   mean 3.00  mean wait 2.81 minutes
+PearsonTypeVI  mean 3.00  mean wait 3.54 minutes

@@ -12,6 +12,7 @@ public surface.
 """
 from __future__ import annotations
 
+import contextvars
 import difflib
 import inspect
 import json
@@ -464,6 +465,37 @@ def _budget(max_seconds: float | None):
         return None
     deadline = time.monotonic() + float(max_seconds)
     return lambda: time.monotonic() > deadline
+
+
+# Progress for a long tool (D917). The server sets a sink for the thread that runs one call; the
+# tools hand their engine's `on_progress(done, total)` to `report`, which does nothing when no
+# sink is set (a Python caller, the CLI, the tests). A ContextVar, not a global: the sink belongs
+# to one call, and calls run on worker threads.
+_PROGRESS = contextvars.ContextVar("nagasim_agent_progress", default=None)
+
+
+@contextmanager
+def reporting(fn):
+    """Send `report(done, total, message)` to *fn* inside the block; None switches it off.
+    The var must be set in the thread that runs the tool: a worker thread does not inherit it."""
+    token = _PROGRESS.set(fn)
+    try:
+        yield
+    finally:
+        _PROGRESS.reset(token)
+
+
+def report(done: float, total: float | None = None, message: str = "") -> None:
+    """Tell the caller how far a long tool is. A no-op without a sink, and a failing sink
+    (a client that went away) is logged, never raised: progress must not fail the tool."""
+    fn = _PROGRESS.get()
+    if fn is None:
+        return
+    try:
+        fn(done, total, message)
+    except Exception:       # noqa: BLE001 - any sink failure; the run goes on
+        import logging
+        logging.getLogger(__name__).debug("progress sink failed", exc_info=True)
 
 
 from nagasim.digest import digest as _digest, finite as _finite  # noqa: E402  (moved to the engine)

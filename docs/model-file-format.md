@@ -35,7 +35,7 @@ hash for a saved state. Layout (positions, annotations) stays. `--check` changes
 exits 1 when a file is not in that form, for CI. The desktop editor saves the long
 form, so `--check` flags a file saved from it until you run `naga fmt` on it. A parameter
 you leave out of a file you write by hand means its default in the
-[block reference](reference/blocks.md).
+[block reference](reference/blocks/index.md).
 
 ## Top-level shape
 
@@ -66,7 +66,7 @@ you leave out of a file you write by hand means its default in the
 ```
 
 `params` is validated against that block type's registered schema -- see the generated
-[block reference](reference/blocks.md) for every type's exact parameters, defaults and
+[block reference](reference/blocks/index.md) for every type's exact parameters, defaults and
 descriptions.
 
 ## links
@@ -213,6 +213,22 @@ curve. The [schema reference](reference/schema.md) has the field list.
 plan image (path, position, scale, opacity, lock, real-world scale from two points); `info` is
 free-text model metadata shown in the report header. None of the
 three are read by the engine.
+
+`building` (schema 29) is the same kind of section: rooms, free-standing wall lines, doors and
+curtains, floor markings, labels and plan fixtures in metres, validated and kept in the file but
+never read by a run. Room walls are not stored; they are the outlines of the rooms that have
+walls, so a wall cannot disagree with its room, and each wall has a height, thickness and
+finish. An opening names its wall (`{"wall": {"room": "Office", "edge": 1}, "at": 0.4,
+"width": 1.5}`) and follows it when the wall moves. Validation warns of an opening that cuts no
+wall (`W_OPENING_OFF_WALL`) and of a path segment that crosses a wall where it has no opening
+(`W_WALL_CROSSING`), since walls never change routing. A drawing program draws the floor plan,
+the 3D walls and the floor texture from it; the fields are on the
+[`building` page](reference/model-file/building.md).
+
+A state graphic may colour itself with `currentColor` and three placeholders that end in `-fill`,
+`-accent` and `-muted` and start with the name of the product package, which a drawing program
+replaces with its theme's colours; the engine's SVG check accepts them and still refuses scripts,
+external references and animation.
 
 ## data_sources / data_bindings
 

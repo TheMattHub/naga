@@ -17,7 +17,7 @@ class Decide(BaseProcess):
     """Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy.
 
     "Chance" mode draws on the block's own RNG against
-    cumulative `probs`; "Condition" mode evaluates each of `conditions` in
+    `probs`, one probability per branch (not cumulative); "Condition" mode evaluates each of `conditions` in
     order and takes the first true one. Both modes take the last outgoing
     link as an ELSE branch when there is one more link than probs/conditions;
     otherwise an uncovered draw or condition fails loud rather than silently
@@ -80,7 +80,11 @@ class Decide(BaseProcess):
             if self.next_process and len(self.next_process) > len(self.conditions): #We should never get here when using probs, so no need to check
                 self.forward(entity, len(self.next_process) - 1)
             else:
-                log.warning("No fallback defined.")
+                # Same rule as Chance mode: never strand an entity silently (#1392).
+                raise RuntimeError(
+                    f"Decide block '{self.name}': no condition was true for this entity "
+                    f"and it has no ELSE link. Add an ELSE link or a condition that covers it."
+                )
 
         elif self.mode == "Chance":
             if self.ctx.deterministic:
@@ -231,7 +235,7 @@ SPEC = BlockSpec(
         ParamSpec("mode", str, "Chance",
                   description="\"Chance\": branch by probability. \"Condition\": branch by "
                               "expression. \"Policy\": branch by a controller attached to `policy`.", quantity="none"),
-        ParamSpec("probs", list, [], description="Cumulative branch probabilities, used when mode is \"Chance\".", quantity="ratio", kinds=("table",)),
+        ParamSpec("probs", list, [], description="One probability per branch, in link order (not cumulative), used when mode is \"Chance\".", quantity="ratio", kinds=("table",)),
         ParamSpec("conditions", list, [], description="Ordered list of boolean expressions, used when mode is \"Condition\".", quantity="none"),
         ParamSpec("policy", str, "", description="Decision-point name; used when mode is \"Policy\". Several DECIDE blocks may share one.", quantity="none"),
         ParamSpec("observation", list, [], description="Expressions (evaluated with the arriving entity) forming the observation handed to the controller, when mode is \"Policy\".", quantity="none"),

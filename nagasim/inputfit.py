@@ -253,11 +253,10 @@ def _fit_rayleigh(values, shift):
 
 
 def _fit_invgauss(values, shift):
-    # Naga's InverseGaussian plugs its own mu/lambda straight into scipy's
-    # invgauss(mu=..., scale=...) (see core/distributions.py) -- same names,
-    # so the fitted shape/scale carry over unchanged.
-    mu, loc, scale = _scipy_fit(sstats.invgauss, values, shift)
-    return ({"mu": mu, "lambda": scale}, sstats.invgauss(mu, loc=loc, scale=scale), 2,
+    # scipy's invgauss(m, scale=s) is the standard IG with mean m*s and shape s,
+    # which is how Naga's InverseGaussian(mu, lambda) samples (#1395).
+    m, loc, scale = _scipy_fit(sstats.invgauss, values, shift)
+    return ({"mu": m * scale, "lambda": scale}, sstats.invgauss(m, loc=loc, scale=scale), 2,
            _shift_warning("InverseGaussian", shift, loc))
 
 

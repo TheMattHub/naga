@@ -1,0 +1,2 @@
+4 staff: 3.17 working, mean wait 14.9 minutes, frustration 35.05
+5 staff: 3.98 working, mean wait 0.9 minutes, frustration 1.91

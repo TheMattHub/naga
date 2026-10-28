@@ -268,7 +268,7 @@ class AgentStream:
 # population update is heavier per tick than a queueing model's event list.
 # Excluded from the session-wide curated run to keep its cost down; each one
 # is still checked on its own by its library's asset test (the oracle run
-# `PY -m product library test <id>` uses, see `product/assetlibs/*.stratlib.json`).
+# `PY -m product library test <id>` uses, see `product/assetlibs/*.nagalib.json`).
 CURATED_RESULTS_EXCLUDED = {
     "abm_boids_flock.json", "abm_schelling_segregation.json",
     "abm_sugarscape_lite.json", "abm_wolf_sheep.json",

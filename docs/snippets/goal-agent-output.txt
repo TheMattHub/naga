@@ -1,0 +1,4 @@
+errors after the last link: 0  valid: True
+refused: E_PATH_OUTSIDE_ROOT
+mean wait: 3.04 +/- 0.34 minutes
+two servers: wait changes by -3.01 (95% interval -3.78 to -2.24): lower, after 5 replications

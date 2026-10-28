@@ -321,8 +321,8 @@ Recorded so a model written today keeps meaning the same thing later:
   more loads; a kept vehicle has the limits listed under "Keeping the vehicle across legs";
 * a divert decides once, as the part reaches it, and seizes no resource (put a stop before it
   for a pusher crew); its side move is drawn from the block, not from the divert point; a
-  merge needs an accumulating belt and names a block, not a submodel port; a state cannot
-  carry a belt with stops, diverts or merges;
+  merge needs an accumulating belt and names a block, not a submodel port; a warm-start state
+  carries a belt with stops, diverts or merges, but a state built from plant data cannot start one;
 * gantry cranes sharing a runway do not collide with each other -- there is no ordering
   constraint on the shared axis, only each crane's own two-axis geometry.
 

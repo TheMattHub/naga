@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.19.0 (2026-10-28)
+
+0.19.0 adds the building around a model. An optional `building` section holds rooms, walls with a height, thickness and finish, doors that stay on their wall, floor markings, labels and fixtures; a run never reads it, and two new checks flag a path through a wall and a door on no wall. `naga run` now prints a summary with intervals and law-check warnings. Bundled models give the same results as 0.18.0.
+
+Changed:
+
+- `naga run` prints a summary (mean, 95% half-width and n per system KPI), a `WARN` line for each law check the run did not pass and the replications a +/-5% half-width needs; `--raw` keeps the old per-replication frame dump, `--json` prints `{kpis, checks, replications}` and `--no-checks` skips the checks. A run cut short exits 1 with "stopped" on stderr.
+- `naga check --json` prints `{problems, laws, results}` for one model.
+- `naga run` hides the all-zero cost and log-truncation rows of its summary; `--raw` and `--json` keep every row.
+- `naga verify` gives each case its own random numbers; `--blocks K` reports how many independent runs' 95% intervals hold the theory.
+- `naga` commands print a model's validation problems with code, path and hint, as `naga validate` does.
+- A DECIDE in Condition mode with no true condition and no ELSE link stops the run with the block named, as Chance mode does, instead of stranding the entity with a log warning.
+- The player calls a snake_case block id by its words ("get_bay" reads "Get bay") in labels and the bottleneck callout.
+- The viewer names its first tab after an author's scenario that changes nothing, and lists that scenario once.
+- `ModelDocument.save` writes a temporary file and swaps it in, so a crash mid-write leaves the old file whole.
+- `nagasim.viewer.engine_available()` replaces `engine_on_disk`, kept as an alias for one release; `write_engine_zip` writes the engine payload a viewer carries.
+- `freeze_data(..., confine_to=FOLDER)` reads file data sources from that folder only, for a viewer of a model someone else wrote.
+
+Added:
+
+- `Results.checks()` runs the law checks (utilisation, offered load, Little's law, flow conservation, censoring, initial bias) once on demand; in a notebook a result shows its warnings above the KPI table. Results themselves are unchanged.
+- "Did you mean" suggestions for misspelt block and distribution parameters; `E_ASSIGN_KEY` for an ASSIGN entry key other than `target` and `expr`; literal DISC probabilities and TRIA(low, mode, high) ordering are checked at validation. `ModelValidationError.structured` carries the problems.
+- `run_model(logic=...)` and `naga run --logic MODULE` take LOGIC block classes from your own module, with `nagasim.core.custom_logic` as the fallback; this works with `workers > 1`.
+- A warm-start state carries belts with stops, diverts and merges at any instant without an event due.
+- MCP: a client that sends a progress token receives progress notifications from run_model, run_scenarios, run_to_precision, forecast, optimize, calibrate, fit_surrogate and study_step.
+- `nagasim.run_model`, `nagasim.Model` and `nagasim.Results` are importable from the package.
+- An optional `building` section, in metres: rooms (rectangle or polygon, walled or not), free-standing `wall_lines`, a wall height, thickness and finish, doors and curtains, floor `markings`, labels and fixtures. It is validated and kept in the file, and a run never reads it, so it cannot change a result. The schema version stays 29.
+- A building opening is attached to its wall, `{"wall": {"room": NAME} or {"line": INDEX}, "edge": K, "at": 0..1, "width": M}`, so it follows the wall when the wall moves; the older two-point form (`a`, `b`) is still read.
+- Floor markings: a line or closed area in a RAL signal colour (by name) or `#RRGGBB`, solid, dashed or hatched, with a width and an optional label.
+- `nagasim.core.building` derives the walls once for every drawing program: `wall_runs`, `wall_pieces`, `wall_crossings`, `opening_ends` and `attach_opening`.
+- Problem codes `E_BUILDING` (a malformed building section), `W_WALL_CROSSING` (a path segment crosses a wall where it has no opening) and `W_OPENING_OFF_WALL` (an opening that cuts no wall).
+- A `presentation` capability (`nagasim.core.sections.CAPABILITIES`) owns the `building` section.
+- `E_ASSET_UNKNOWN_NAME`: a library check places one instance of each asset and names an unknown name in a definition's expression, with the closest parameter.
+- Player: `pictures={"background": {...}}` draws a floor plan (SVG or PNG, JPEG, WebP data URI) under the layout view. On a plan the view shows the plan, people and fleets at twice their size, and "Show model blocks" brings back the wiring; the viewer gives a plan the page's width and carries the author's pictures, so a run made in the browser draws them too.
+- Playback: fleet seize and release events carry the unit, and `Timeline.state_at` gains `carriers`, which entity holds each fleet unit.
+- `nagasim.experiments.headline_keys(means)` picks the few KPIs that say what a run gave.
+- A bundled model, `ed_bedside_scan`: a small emergency department with two pathways, two scenarios and a building.
+
+Fixed:
+
+- A state now carries when the last part left a belt's end, so a warm start after a recent exit matches the uninterrupted run.
+- A LOGIC class that does not exist makes `naga run` exit 2 with the class named, instead of a traceback.
+- `naga --help` answers in well under 0.1 s, and `import nagasim.api` no longer loads openpyxl.
+- `InverseGaussian(mu, lambda)` has mean `mu`; it had mean `mu * lambda`. Input fitting writes `mu` to match, so a fit still reproduces its data. A model that uses it draws new values; the bundled models do not.
+- A CREATE with a FixedSchedule arrives at its listed times only; it no longer makes an extra entity at 0 or at `start_time`.
+- Auxiliaries in a model with no level, flow, conversion or delay advance with the clock, so `TNOW` and `RAMP` are no longer read once at 0.
+- The cpsat planner keeps a multi-entity order's entities back to back at a single-unit station, as the replay of its one planned start does.
+
 ## 0.18.0 (2026-10-26)
 
 0.18.0 widens what a model can say about real logistics and energy sites. Trucks unload and load as carriers, AGVs can be kept across legs, belts divert and merge, sorters take up to 200 lanes, EVs charge per vehicle under a site cap, storage can be dispatched by an optimiser, and robots share named safety zones. Bundled models give the same results as 0.17.0.

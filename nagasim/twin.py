@@ -154,9 +154,37 @@ def _read(path, kind: str, ceiling: int):
 
 
 def read_result(directory) -> tuple:
-    """(the latest result a twin wrote into *directory*, []) or (None, the problem). The
-    one reader, for a second process: bounded before it is parsed, whole because the writer
-    replaces the file, and trusted for nothing beyond its `format`."""
+    """The latest result a twin wrote into *directory*.
+
+    The one reader, for a second process: bounded before it is parsed, whole because the
+    writer replaces the file, and trusted for nothing beyond its `format`.
+
+    Parameters
+    ----------
+    directory : str or Path
+        The folder a twin writes into (``naga twin run ... --out DIR``).
+
+    Returns
+    -------
+    tuple
+        ``(result, [])`` with the result document, or ``(None, problems)`` when the folder
+        holds no result of format 1 (none yet, over the size bound, or another file).
+
+    See Also
+    --------
+    nagasim.twin.forecast_from_state : The runner that makes the forecast in a result.
+
+    Examples
+    --------
+    >>> import tempfile
+    >>> from nagasim import twin
+    >>> with tempfile.TemporaryDirectory() as folder:
+    ...     doc, problems = twin.read_result(folder)
+    >>> doc is None
+    True
+    >>> problems[0].code
+    'E_TWIN_RESULT'
+    """
     # A network path is a connection (`FileSink` refuses it the same way, #523).
     doc = None if netguard.is_unc_path(str(directory)) else         _read(Path(directory) / RESULT_FILE, KIND, LIMITS["result_bytes"])
     if doc is None:
@@ -169,8 +197,49 @@ def read_result(directory) -> tuple:
 # ---------------------------------------------------------------- the forecast
 def forecast_from_state(model, *, horizon, replications, seed, workers, should_stop,
                         base_dir=None):
-    """The default runner: *horizon* from the clock the model's state starts at (D232). The
-    parameters are the model's own: nothing is bound from live data inside a forecast."""
+    """The default runner: *horizon* from the clock the model's state starts at.
+
+    The parameters are the model's own: nothing is bound from live data inside a forecast.
+
+    Parameters
+    ----------
+    model : dict
+        The model with a state as its ``initial_state`` (see `nagasim.state.start`).
+    horizon : float
+        How far to look ahead of the state's clock, in model time units.
+    replications : int
+        Replications of the forecast.
+    seed : int
+        The seed of the first replication.
+    workers : int or str
+        Worker processes, as `nagasim.forecast.forecast` takes them.
+    should_stop : callable or None
+        Asked between replications; true ends the forecast early.
+    base_dir : str or Path, optional
+        The folder relative paths in the model resolve against.
+
+    Returns
+    -------
+    ForecastResult
+        The forecast, as `nagasim.forecast.forecast` returns it.
+
+    See Also
+    --------
+    nagasim.forecast.forecast : What it calls.
+    nagasim.twin.read_result : Reads the result a twin writes.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import state, twin
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> model, _ = state.start(str(path), state.take(str(path), at=50.0))
+    >>> fc = twin.forecast_from_state(model, horizon=100, replications=2, seed=0,
+    ...                               workers=1, should_stop=None)
+    >>> type(fc).__name__
+    'ForecastResult'
+    """
     from nagasim import forecast        # pandas: loaded only when a forecast runs
 
     return forecast.forecast(model, horizon=initial_state.clock_of(model) + float(horizon),

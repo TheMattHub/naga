@@ -104,7 +104,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from nagasim import api, experiments, laws, pathcheck
+from nagasim import api, experiments, pathcheck
 from nagasim.core import submodels
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from nagasim.core.levels import LevelSystem
@@ -554,23 +554,40 @@ def _print_table(model_path: str, results: list[Result]) -> None:
         print(f"  [{status}] {r.kind:13s} {r.name}: {detail}")
 
 
-def _print_laws(model_path: str, workers: int, runs: dict | None = None) -> None:
-    """The operational-law checks of one run with the model's own settings (D684). Warnings
-    only: they never change the exit status, saturation can be the point of a model. An
-    assertion batch run at the model's own replication count (in *runs*) is that same run,
-    so it is reused rather than run again."""
+def _law_checks(model_path: str, workers: int, runs: dict | None = None):
+    """The operational-law checks (`RunChecks`) of one run with the model's own settings
+    (D684), or None when the run was cut short. Warnings only: they never change the exit
+    status, saturation can be the point of a model. An assertion batch run at the model's
+    own replication count (in *runs*) is that same run, so it is reused rather than run
+    again."""
     base = api.load_layout(model_path)
     own = api.run_settings(base, None, None, None)[0]
     run = (runs or {}).get(own)
     if run is None:
         run = api.run_model(base, seed=0, workers=workers)
-    found = laws.checks(base, run) if run is not None else []
-    if not found:
+    return run.checks() if run is not None else None
+
+
+def _print_laws(model_path: str, workers: int, runs: dict | None = None) -> None:
+    checks = _law_checks(model_path, workers, runs)
+    if checks is None or not checks.found:
         return
-    partial = [c for c in found if c["verdict"] != "passed"]
-    for c in partial:
-        print(f"  [WARN] {'law':13s} {c['name']}: {c['why']}")
-    print(f"  laws: {len(found) - len(partial)} passed, {len(partial)} warning(s)")
+    for line in checks.lines():
+        print(f"  [WARN] {'law':13s} {line}")
+    print(f"  laws: {checks.passed} passed, {len(checks.partial)} warning(s)")
+
+
+def _validation_problems(model_path: str) -> list:
+    """The structured problems `naga validate` reports for the file."""
+    from nagasim.core import schema
+    raw = json.loads(Path(model_path).read_text(encoding="utf-8"))
+    try:
+        layout = schema.migrate(raw)
+    except schema.ModelValidationError as exc:
+        return [schema.problem("E_SCHEMA_VERSION", message, "/schema_version",
+                               hint="save the file from this build, or upgrade Naga")
+                for message in exc.problems]
+    return schema.consent_problems(raw) + schema.validate_model_structured(layout)
 
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -585,7 +602,11 @@ def _ci_template(path: str, install: str = "pip install .") -> str:
     return text.replace("{{MODELS_PATH}}", path).replace("{{INSTALL}}", install)
 
 
-def _run_check(model_paths: list[str], *, junit: str | None, workers: int, strict: bool) -> int:
+def _run_check(model_paths: list[str], *, junit: str | None, workers: int, strict: bool,
+               as_json: bool = False) -> int:
+    if as_json and len(model_paths) != 1:
+        print("naga check: --json takes exactly one model", file=sys.stderr)
+        return 2
     all_results: list[tuple[str, list[Result]]] = []
     for path in model_paths:
         try:
@@ -594,8 +615,15 @@ def _run_check(model_paths: list[str], *, junit: str | None, workers: int, stric
         except (OSError, ValueError) as exc:
             print(f"naga check: {path}: {exc}", file=sys.stderr)
             return 2
-        _print_table(path, results)
-        _print_laws(path, workers, runs)
+        if as_json:     # D909: the `naga validate --json` problems, plus the laws summary
+            checks = _law_checks(path, workers, runs)
+            print(json.dumps(api._json_safe({
+                "problems": [p.as_dict() for p in _validation_problems(path)],
+                "laws": checks.as_dict() if checks is not None else None,
+                "results": [dataclasses.asdict(r) for r in results]}), indent=2, default=str))
+        else:
+            _print_table(path, results)
+            _print_laws(path, workers, runs)
         all_results.append((path, results))
 
     if junit:
@@ -623,6 +651,8 @@ def main(argv=None) -> int:
     check_p.add_argument("--strict", action="store_true",
                          help="treat an inconclusive assertion (its CI straddles the bound) "
                               "as a failure too (exit 1)")
+    check_p.add_argument("--json", action="store_true", dest="as_json",
+                         help="print {problems, laws, results} as JSON (one model)")
 
     tmpl_p = subs.add_parser("ci-template",
                              help="print a GitHub Actions workflow running naga check")
@@ -636,7 +666,8 @@ def main(argv=None) -> int:
     if args.command == "ci-template":
         print(_ci_template(args.path, args.install))
         return 0
-    return _run_check(args.models, junit=args.junit, workers=args.workers, strict=args.strict)
+    return _run_check(args.models, junit=args.junit, workers=args.workers, strict=args.strict,
+                      as_json=args.as_json)
 
 
 if __name__ == "__main__":

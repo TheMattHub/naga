@@ -621,7 +621,7 @@
             "default": 4,
             "unit": "",
             "label": "Gate lanes",
-            "help": "",
+            "help": "How many lanes process trucks at the same time.",
             "group": "Gate",
             "min": 1,
             "max": 100,
@@ -686,7 +686,7 @@
             "default": 30,
             "unit": "",
             "label": "Bays used",
-            "help": "",
+            "help": "How many yard bays the trucks' containers are drawn from.",
             "group": "Yard",
             "min": 1,
             "max": 30,
@@ -709,7 +709,12 @@
           "refers_to": "timeseries_input",
           "description": "Trucks per hour, read hour by hour."
         },
-        {"name": "lanes", "default": 4, "type": "int"},
+        {
+          "name": "lanes",
+          "default": 4,
+          "type": "int",
+          "description": "How many lanes process trucks at the same time."
+        },
         {
           "name": "gate_time",
           "default": "TRIA(1, 2, 4)",
@@ -735,7 +740,12 @@
           "type": "name",
           "description": "Where the trucks are served: that block's <name>/transfer node."
         },
-        {"name": "yard_bays", "default": 30, "type": "int"}
+        {
+          "name": "yard_bays",
+          "default": 30,
+          "type": "int",
+          "description": "How many yard bays the trucks' containers are drawn from."
+        }
       ],
       "scoped": {"resources": {"CT Gate lanes": {"capacity": "lanes"}}},
       "blocks": [
@@ -944,7 +954,7 @@
             "default": 70.0,
             "unit": "currency per hour",
             "label": "Cost per crane hour",
-            "help": "",
+            "help": "Cost of the block's crane for each hour.",
             "group": "Cost",
             "min": 0.0,
             "max": null,
@@ -1174,7 +1184,12 @@
           "type": "number",
           "description": "Power while waiting, as a share of the working power."
         },
-        {"name": "cost_per_hour", "default": 70.0, "type": "number"}
+        {
+          "name": "cost_per_hour",
+          "default": 70.0,
+          "type": "number",
+          "description": "Cost of the block's crane for each hour."
+        }
       ],
       "scoped": {
         "fleets": {
@@ -1259,7 +1274,7 @@
             "default": 6,
             "unit": "",
             "label": "Vehicles",
-            "help": "",
+            "help": "How many vehicles carry containers between quay and yard.",
             "group": "Vehicles",
             "min": 1,
             "max": 500,
@@ -1543,7 +1558,12 @@
         "owns": {"fleets": ["CT Vehicles"], "entities": ["container_40"]}
       },
       "parameters": [
-        {"name": "vehicles", "default": 6, "type": "int"},
+        {
+          "name": "vehicles",
+          "default": 6,
+          "type": "int",
+          "description": "How many vehicles carry containers between quay and yard."
+        },
         {
           "name": "speed_kmh",
           "default": 30.0,

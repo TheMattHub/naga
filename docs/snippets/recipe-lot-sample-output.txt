@@ -1,0 +1,1 @@
+inspector busy 25% (1 minute in 4 is 25%)

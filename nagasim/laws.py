@@ -190,12 +190,49 @@ def _initial_bias(results) -> dict | None:
                   "initial bias")
 
 
-def checks(layout: dict, results: dict) -> list[dict]:
-    """Every computable law and guardrail for one run (see the module docstring). *layout* is the
-    model as run (its `simulation.warmup` is the one the run used); [] when there is nothing to
-    check (no entities, no resources)."""
+def checks(layout: dict, results: dict, *, warmup: float | None = None) -> list[dict]:
+    """Every computable law and guardrail for one run (see the module docstring).
+
+    Parameters
+    ----------
+    layout : dict
+        The model as run; its ``simulation.warmup`` is the one the run used, unless
+        *warmup* says which the batch used.
+    results : dict
+        The frames of the run, from `nagasim.api.run_model`.
+    warmup : float, optional
+        The warm-up the run really used, when it is not the model's.
+
+    Returns
+    -------
+    list of dict
+        One ``{"name", "verdict", "why", "law"}`` per check; the verdict is ``"passed"``,
+        ``"partial"`` or ``"failed"``. Empty when there is nothing to check (no
+        entities, no resources).
+
+    See Also
+    --------
+    nagasim.laws.of_run : The same checks summarised for runs already made.
+
+    Examples
+    --------
+    >>> import json
+    >>> from pathlib import Path
+    >>> import nagasim
+    >>> from nagasim import api, laws
+    >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+    >>> layout = json.loads(path.read_text(encoding="utf-8"))
+    >>> results = api.run_model(layout, replications=1, run_length=200, warmup=20, seed=0)
+    >>> checks = laws.checks(layout, results)
+    >>> [c["law"] for c in checks]
+    ['utilisation', 'little (resource)', 'censoring']
+    >>> sorted(checks[0])
+    ['law', 'name', 'verdict', 'why']
+    """
     if not results:
         return []
+    if warmup is not None:
+        layout = {**layout, "simulation": {**(layout.get("simulation") or {}), "warmup": warmup}}
     layout = prepare(layout)[0]         # as run: migrated, submodels flattened (#762); on a fatal
                                         # error only migrated, so its resources find no service
     system = _system(results)
@@ -272,17 +309,14 @@ def at_point(layout, overrides=(), *, replications: int, seed: int = 0, run_leng
     if results is None:
         return {"passed": 0, "partial": [], "replications": 0, "seed": seed,
                 "note": "not checked: the budget ran out before the best point's batch"}
-    if warmup is not None:              # judged with the warm-up the batch used (D684)
-        model = {**model, "simulation": {**(model.get("simulation") or {}), "warmup": warmup}}
     done = int(results["system"]["Run"].nunique()) if "system" in results else n
-    return {**summary(checks(model, results)), "replications": done, "seed": seed,
+    return {**summary(checks(model, results, warmup=warmup)), "replications": done, "seed": seed,
             "note": f"an extra batch of {done} replication(s) at the best point (seeds "
                     f"{seed}..{seed + done - 1}), not counted in the search's budget; " + _POINT_NOTE}
 
 
 def of_run(layout, results, *, warmup: float = 0.0, what: str = "run") -> dict:
     """`summary` of the laws on runs already made (a forecast's): no extra replication."""
-    model = {**layout, "simulation": {**(layout.get("simulation") or {}), "warmup": warmup}}
     done = int(results["system"]["Run"].nunique()) if results and "system" in results else 0
-    return {**summary(checks(model, results)), "replications": 0, "seed": None,
+    return {**summary(checks(layout, results, warmup=warmup)), "replications": 0, "seed": None,
             "note": f"from the {what}'s own {done} replication(s), no extra run"}
