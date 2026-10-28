@@ -33,12 +33,14 @@ Documentation: <https://thematthub.github.io/naga/>
 <p align="center"><img src="https://raw.githubusercontent.com/TheMattHub/naga/main/docs/img/overview.svg" alt="What goes into the engine, what it does, and what comes out" width="900"></p>
 
 The picture reads from left to right. On the left is what you bring: a model file, with the
-building around it if you like, the data it draws on and, if you have one, a plant to follow. In the middle the engine runs the model on
-a single clock, whichever of the three ways of modelling it uses, and wraps the run in
-statistics, experiments or a twin. On the right is what comes back: results and a report,
-pages and 3D scenes you can send to someone else, and a twin's forecasts and proposals. Along the top are the
-three ways in, the command line, Python and an agent, and because a model is a data file and
-not a program, the same file gives the same answer through each of them.
+building around it if you like, the data it draws on and, if you have one, a plant to follow.
+In the middle the engine works in four layers: it checks the file, runs it on one clock
+(discrete-event, system dynamics and agents together), turns runs into evidence with
+replications, scenarios and experiments, and follows a plant from its state now. On the right
+is what comes back: pages to share (a replay and a viewer that runs in a browser), results with
+their law-check warnings, and a twin's forecasts and proposals. Along the top are the three ways
+in, the command line, Python and an agent, and because a model is a data file and not a
+program, the same file gives the same answer through each of them.
 
 ## What it does
 

@@ -9,7 +9,15 @@ The learning path builds one model in six steps, and each page adds a few lines 
 5. [Replications and scenarios](5-replications-and-scenarios.md)
 6. [Reading the results and the event log](6-results.md)
 
-You need Python 3.11 or later and `pip install nagasim`. The path starts from a queue and ends with replications, scenarios and the event log, so the same model meets discrete-event processes, a schedule, a continuous level and agents on the way. When you have finished it, the [modelling guide](../modelling-guide/index.md) explains each part in depth and the [gallery](../gallery/index.md) shows the bundled models. If you would rather start from a model file than from Python, use the [Quick start](../quickstart.md).
+You need Python 3.11 or later and `pip install nagasim`. To run a step, copy its script into a file such as `step1.py` and run `python step1.py`: it prints what the page shows under the script. The path starts from a queue and ends with replications, scenarios and the event log. On the way, the same model meets discrete-event processes, a schedule, a continuous level and agents. When you have finished it, the [modelling guide](../modelling-guide/index.md) explains each part in depth and the [gallery](../gallery/index.md) shows the bundled models. If you would rather start from a model file than from Python, use the [Quick start](../quickstart.md).
+
+## If something goes wrong
+
+| What happens | Likely cause | Fix |
+|---|---|---|
+| `ModuleNotFoundError: No module named 'nagasim'` | The engine is installed in another Python. | Run `python -m pip install nagasim` with the same `python` that runs the script. |
+| The numbers differ from the page. | A changed seed, or an older engine. | Keep `seed=1`. If they still differ, update with `python -m pip install -U nagasim`. |
+| A step fails on a name the step does not define. | Each script is the whole model so far, not only the new lines. | Copy the whole script of the page, not the changed lines. |
 
 <!-- goals:begin -->
 ## By goal

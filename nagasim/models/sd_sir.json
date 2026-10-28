@@ -42,7 +42,7 @@
   "submodels": {
     "SIR epidemic": {
       "info": {
-        "description": "The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run experiment (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid.",
+        "description": "The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run... (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid.",
         "library": {"library": "sd", "asset": "sir", "version": "1.1.0"},
         "parameters": [
           {
@@ -147,7 +147,7 @@
   "info": {
     "title": "SIR epidemic",
     "category": "System dynamics",
-    "description": "The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run experiment (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid."
+    "description": "The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run... (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid."
   },
   "simulation": {
     "time_limit": 80.0,

@@ -14,6 +14,6 @@ It prints:
 --8<-- "docs/snippets/learn-2-output.txt"
 ```
 
-The table shows the effect: the first desk serves most customers, the second desk is busy a third of the half day it is open, and the set's row weighs each desk by the hours it was open. The wait drops because capacity arrives when the queue is longest.
+The table shows the effect. The first desk serves most customers, and the second desk is busy a third of the half day it is open. The set's row weighs each desk by the hours it was open. The wait drops because capacity arrives when the queue is longest.
 
 Next: [A tank level](3-a-tank-level.md).

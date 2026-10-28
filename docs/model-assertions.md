@@ -57,7 +57,8 @@ that every run's will.
 naga check model.json --junit out.xml
 ```
 
-It takes several model files, `--workers N` and `--strict`.
+It takes several model files, `--workers N` and `--strict`. With `--json` and one model it
+prints `{problems, laws, results}` instead of the table, for a script to read.
 
 Prints a pass/fail/inconclusive table per model. Exit code 0 when nothing failed, 1 when any
 assertion, reality check or path check failed (or, with `--strict`, was inconclusive too), 2 on error (a

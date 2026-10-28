@@ -47,6 +47,9 @@ Besides the tools the server publishes:
 - **An error is a value**, `{"error": {"code", "message", "hint"}}`, never a traceback.
 - **A result is a digest.** `run_model` returns the system KPIs with their confidence-interval
   half-widths and a summary per resource; `get_kpi_table` pages a whole frame on request.
+- **A long call reports its progress.** A client that sends a progress token gets progress
+  notifications from `run_model`, `run_scenarios`, `run_to_precision`, `forecast`, `optimize`,
+  `calibrate`, `fit_surrogate` and `study_step`.
 - **Every edit can be undone** (`undo`, `redo`).
 - **Tool names are permanent.** So are problem codes.
 

@@ -6,7 +6,7 @@ One run is one sample, so a claim about the model needs many runs and a comparis
 --8<-- "docs/snippets/learn-5.py"
 ```
 
-A scenario is a name and a list of overrides, each a path into the model and a new value. `run_scenarios` runs the baseline and every scenario on common random numbers, so a difference is the effect of the change and not of luck, and it compares each scenario with the baseline by a paired test. The `comparison` table has the mean of each, the difference, and whether that difference is significant at the 95% level.
+A scenario is a name and a list of overrides, each a path into the model and a new value. `run_scenarios` runs the baseline and every scenario on common random numbers: the same random draws on each side. A difference is then the effect of the change and not of luck. It then compares each scenario with the baseline by a paired test. The `comparison` table has the mean of each, the difference, and whether that difference is significant at the 95% level.
 
 It prints:
 

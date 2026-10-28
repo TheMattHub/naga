@@ -1,10 +1,10 @@
 # Model file format
 
-A model is one JSON file with a `schema_version`. `ModelDocument.to_layout()` writes it, `GraphModel.
-load_from_json` reads it for the engine after migrating (older files) and validating. Block
-`position` is always the block **centre**, in scene units. See the generated
-[schema reference](reference/schema.md) for the top-level key list, derived
-live from `core/schema/`; this page is the field-by-field guide.
+A model is one JSON file with a `schema_version`. The engine migrates an older file forward and
+validates it before a run, and `ModelDocument.to_layout()` writes it back. Block `position` is
+always the block **centre**, in scene units. This page is the field-by-field guide; the generated
+[schema reference](reference/schema.md) lists the top-level keys and the version history, and the
+[model file sections](reference/model-file/index.md) give every field of each section.
 
 ## Completion in your editor
 
@@ -219,8 +219,9 @@ curtains, floor markings, labels and plan fixtures in metres, validated and kept
 never read by a run. Room walls are not stored; they are the outlines of the rooms that have
 walls, so a wall cannot disagree with its room, and each wall has a height, thickness and
 finish. An opening names its wall (`{"wall": {"room": "Office", "edge": 1}, "at": 0.4,
-"width": 1.5}`) and follows it when the wall moves. Validation warns of an opening that cuts no
-wall (`W_OPENING_OFF_WALL`) and of a path segment that crosses a wall where it has no opening
+"width": 1.5}`) and follows it when the wall moves. A malformed section is `E_BUILDING`;
+validation also warns of an opening that cuts no wall
+(`W_OPENING_OFF_WALL`) and of a path segment that crosses a wall where it has no opening
 (`W_WALL_CROSSING`), since walls never change routing. A drawing program draws the floor plan,
 the 3D walls and the floor texture from it; the fields are on the
 [`building` page](reference/model-file/building.md).

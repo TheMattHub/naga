@@ -78,6 +78,7 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 
 The codes seen most often, each with the usual remedy:
 
+- `E_BUILDING`: Correct the part of the `building` section the path names. The `building` section page gives the shape of each room, wall line, opening, marking, label and fixture, and the hint names the field or colour that is wrong.
 - `E_CREATE_NO_OUTPUT`: Link the CREATE block to the first block of the flow. Entities need an outgoing link to go anywhere.
 - `E_DECIDE_BRANCHES`: Give the DECIDE one outgoing link for every probability or condition, in the same order, or remove the extra entries. One more link than entries serves as the ELSE branch.
 - `E_DECIDE_PROBS`: Make the probabilities sum to at most 1. If they sum to less than 1, add one more outgoing link as the ELSE branch for the remainder, or raise the probabilities to sum to 1.
@@ -96,8 +97,10 @@ The codes seen most often, each with the usual remedy:
 - `E_TOO_MANY_OUTPUTS`: Remove the extra links, or insert a DECIDE to branch. Only DECIDE and LOGIC may branch. A block that can balk, renege or keep a carrier is allowed a second link.
 - `E_UNKNOWN_BLOCK_TYPE`: Correct the block's `type` to one of the block types in the block reference. Types are upper case, such as `PROCESS`; a misspelling or a type from another tool is the usual cause.
 - `E_UNKNOWN_DISTRIBUTION`: Use a distribution from the distribution reference, spelled as it is there (for example `Exponential`). The hint lists the valid names.
+- `W_OPENING_OFF_WALL`: Point the opening at a wall that exists: `{"room": NAME, "edge": K}` or `{"line": INDEX, "edge": K}`, where edge K runs from point K to K + 1. An opening wider than its wall edge needs a narrower `width` or a longer wall.
 - `W_UNBOUNDED_DURATION`: Use a distribution that cannot go below 0, such as `Lognormal`, `Gamma` or `BoundedNormal` in place of `Normal`. Negative samples are cut to 0, which raises the mean.
 - `W_UNKNOWN_KEY`: Remove the key, or correct its spelling. The model file format drops keys it does not have, so the setting would be lost when the file is saved.
 - `W_UNREACHABLE`: Link the block into the flow from a CREATE, or delete it. A block that no entity can reach never runs and adds nothing to the results.
+- `W_WALL_CROSSING`: Add an opening where the path goes through the wall, or move the path segment. Walls never change routing, so without an opening the movers in a run walk through the wall.
 
 [All problem codes](index.md)

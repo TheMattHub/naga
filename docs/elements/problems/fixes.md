@@ -38,3 +38,6 @@ E_SCENARIO_OVERRIDE: Give every override a `path` and a `value`. A path has the 
 W_UNKNOWN_KEY: Remove the key, or correct its spelling. The model file format drops keys it does not have, so the setting would be lost when the file is saved.
 E_SCHEMA_VERSION: Open the file with a newer version of the tool. It was written by a version that is newer than this one, so this build cannot be sure to read it right.
 W_UNBOUNDED_DURATION: Use a distribution that cannot go below 0, such as `Lognormal`, `Gamma` or `BoundedNormal` in place of `Normal`. Negative samples are cut to 0, which raises the mean.
+E_BUILDING: Correct the part of the `building` section the path names. The `building` section page gives the shape of each room, wall line, opening, marking, label and fixture, and the hint names the field or colour that is wrong.
+W_OPENING_OFF_WALL: Point the opening at a wall that exists: `{"room": NAME, "edge": K}` or `{"line": INDEX, "edge": K}`, where edge K runs from point K to K + 1. An opening wider than its wall edge needs a narrower `width` or a longer wall.
+W_WALL_CROSSING: Add an opening where the path goes through the wall, or move the path segment. Walls never change routing, so without an opening the movers in a run walk through the wall.

@@ -25,7 +25,14 @@ system = results["system"]          # one frame per kind of result, one row per 
 kpis = results.kpis()               # metric, mean, std, ci95 over the replications
 print(kpis.head())
 print(results.kpi("system/Avg Queue Length"))   # one KPI's mean; KeyError if the key is absent
+print(results.checks().lines())     # the law checks this run did not pass; [] when all passed
 ```
+
+`results.checks()` holds the run against the laws of queues (utilisation, offered load,
+Little's law, flow conservation, censoring, initial bias), the same checks as the `WARN` lines
+of `naga run`. They qualify the KPIs and never change them: `.partial` lists the warnings and
+`.passed` counts the rest. `run_model`, `Model` and `Results` are also importable from
+`nagasim` itself.
 
 A KPI has a stable key, `family/name` or `family/object/column`
 (`system/Avg Queue Length`, `resource/Server/Usage % (snapshot)`). Scenarios, optimisation,

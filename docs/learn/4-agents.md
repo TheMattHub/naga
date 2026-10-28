@@ -6,7 +6,7 @@ An agent is a small statechart that lives in the model beside the blocks. This s
 --8<-- "docs/snippets/learn-4.py"
 ```
 
-An agent type lists its states and the transitions between them; a transition fires after a delay drawn from an expression, here `EXPO(120)` minutes of work and `EXPO(15)` minutes of break. A population makes four agents of the type, all starting in `Working`. Nothing in the model reads the staff yet, but they run on the same clock as the queue and the tank.
+An agent type lists its states and the transitions between them. A transition fires after a delay drawn from an expression, here `EXPO(120)` minutes of work and `EXPO(15)` minutes of break. A population makes four agents of the type, all starting in `Working`. Nothing in the model reads the staff yet, but they run on the same clock as the queue and the tank.
 
 It prints:
 

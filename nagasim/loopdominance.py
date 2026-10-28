@@ -266,7 +266,7 @@ def analyse(layout, *, seed: int = 0, run_length=None, limit: int = 1000) -> dic
     if not ((base.get("simulation") or {}).get("sd") or {}).get("dt"):
         raise LoopDominanceError(problem(
             "E_LOOP_GRID", "loop dominance needs the SD step grid (simulation.sd)",
-            "/simulation/sd", hint="set simulation.sd = {dt, method} (Run > Run experiment)"))
+            "/simulation/sd", hint="set simulation.sd = {dt, method} (Run > Run...)"))
     flat = sd.expand(submodels.flatten(base))
     problems = []
     if flat.get("blocks") or flat.get("populations"):

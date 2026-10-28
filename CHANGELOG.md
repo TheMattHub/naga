@@ -27,7 +27,7 @@ Added:
 - MCP: a client that sends a progress token receives progress notifications from run_model, run_scenarios, run_to_precision, forecast, optimize, calibrate, fit_surrogate and study_step.
 - `nagasim.run_model`, `nagasim.Model` and `nagasim.Results` are importable from the package.
 - An optional `building` section, in metres: rooms (rectangle or polygon, walled or not), free-standing `wall_lines`, a wall height, thickness and finish, doors and curtains, floor `markings`, labels and fixtures. It is validated and kept in the file, and a run never reads it, so it cannot change a result. The schema version stays 29.
-- A building opening is attached to its wall, `{"wall": {"room": NAME} or {"line": INDEX}, "edge": K, "at": 0..1, "width": M}`, so it follows the wall when the wall moves; the older two-point form (`a`, `b`) is still read.
+- A building opening is attached to its wall, `{"wall": {"room": NAME, "edge": K} or {"line": INDEX, "edge": K}, "at": 0..1, "width": M}`, so it follows the wall when the wall moves; the older two-point form (`a`, `b`) is still read.
 - Floor markings: a line or closed area in a RAL signal colour (by name) or `#RRGGBB`, solid, dashed or hatched, with a width and an optional label.
 - `nagasim.core.building` derives the walls once for every drawing program: `wall_runs`, `wall_pieces`, `wall_crossings`, `opening_ends` and `attach_opening`.
 - Problem codes `E_BUILDING` (a malformed building section), `W_WALL_CROSSING` (a path segment crosses a wall where it has no opening) and `W_OPENING_OFF_WALL` (an opening that cuts no wall).

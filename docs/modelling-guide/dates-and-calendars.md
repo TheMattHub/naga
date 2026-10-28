@@ -13,7 +13,7 @@ dates -- and everything that *shows* a time shows a real instant.
 
 ## Setting one
 
-**Run > Run experiment...**, tick **Model runs on real dates**, and pick a start instant and a
+**Run > Run......**, tick **Model runs on real dates**, and pick a start instant and a
 timezone. In the model file:
 
 ```jsonc

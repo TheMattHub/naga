@@ -7,7 +7,7 @@
 
 ## Bass diffusion
 
-Frank Bass's new-product adoption model: one stock (cumulative Adopters) and one flow, (p + q*Adopters/m) * (m - Adopters) -- innovators (rate p) plus imitators (rate q, proportional to the fraction already adopted). Needs simulation.sd (Run > Run experiment (SD step and method)).
+Frank Bass's new-product adoption model: one stock (cumulative Adopters) and one flow, (p + q*Adopters/m) * (m - Adopters) -- innovators (rate p) plus imitators (rate q, proportional to the fraction already adopted). Needs simulation.sd (Run > Run... (SD step and method)).
 
 ```console
 naga run sd_bass_diffusion
@@ -36,7 +36,7 @@ naga run sd_inventory_delay3
 
 ## Population (logistic)
 
-The textbook logistic-growth stock and flow: one level (Population) fed by one flow whose rate reads the level itself, r * P * (1 - P/K), so growth slows as the population nears its carrying capacity. Needs the system-dynamics grid (simulation.sd) to integrate -- placing this asset does not set it for you (Run > Run experiment (SD step and method)), because a model may mix this with entities that need no grid at all.
+The textbook logistic-growth stock and flow: one level (Population) fed by one flow whose rate reads the level itself, r * P * (1 - P/K), so growth slows as the population nears its carrying capacity. Needs the system-dynamics grid (simulation.sd) to integrate -- placing this asset does not set it for you (Run > Run... (SD step and method)), because a model may mix this with entities that need no grid at all.
 
 ```console
 naga run sd_population
@@ -50,7 +50,7 @@ naga run sd_population
 
 ## SIR epidemic
 
-The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run experiment (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid.
+The classic Susceptible-Infected-Recovered compartmental model as three stocks and two flows: infection moves people from Susceptible to Infected at beta*S*I/population, recovery moves them from Infected to Recovered at gamma*I. Needs simulation.sd (Run > Run... (SD step and method)): the infection rate reads both stocks it moves between, so it must be re-integrated on the grid.
 
 ```console
 naga run sd_sir
