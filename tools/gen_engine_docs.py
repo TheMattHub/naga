@@ -1678,7 +1678,7 @@ def gen_problems(out: Path, product: bool = False) -> None:
                          f"| {message} | {about_cell} |")
         written = [code for code in codes if code in fixes]
         if written:
-            lines += ["", "## How to fix", "", "The codes seen most often, each with the usual remedy:", ""]
+            lines += ["", "## How to fix", "", "Each code with the usual remedy:", ""]
             lines += [f"- `{code}`: {_text(fixes[code], product)}" for code in written]
         lines += ["", "[All problem codes](index.md)"]
         _write(out / "problems", f"{stem}.md", lines, product)

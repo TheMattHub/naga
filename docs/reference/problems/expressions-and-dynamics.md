@@ -112,14 +112,109 @@ Expressions and variables, tables and time series, levels, flows, conversions, c
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_ASSIGN_KEY`: Give each entry in the ASSIGN block's `assignments` only the keys `target` and `expr`. A misspelt key, such as `value` for `expr`, is otherwise dropped; rename or remove it.
 - `E_ASSIGN_TARGET`: Set the ASSIGN target to `entity.<attribute>`, `entity.agent.<attribute>` or the name of a declared variable. Other forms, such as a function call, cannot be written to.
+- `E_AUX_CYCLE`: Break the loop the message lists in `auxiliaries`: make one of those auxiliaries read a level (a stock) or a delay instead of another auxiliary in the cycle.
+- `E_AUX_NAME`: Give every entry in `auxiliaries` a non-empty `name`, and rename one of any two auxiliaries that share a name.
+- `E_AUX_UNKNOWN`: Declare the auxiliary in the `auxiliaries` section, or correct the name in the `AUX("...")` call. Names are case sensitive.
+- `E_BUFFER_LEVEL`: Declare the level named in the BUFFER's `level` parameter in the `levels` section, correct the name, or clear the `level` field.
+- `E_CHARGE`: On the CHARGE block, set `sharing` to `equal` or `first_come` and `efficiency` to a number above 0 and at most 1. If `leave_when_full` is false, also set a `time_limit`.
+- `E_CONVERSION_CURVE`: Fix the substrate in `conversions.<name>.substrates`: set `yield` to a number of 0 or more. Give either a positive `half_life` or a `curve` of `[age, cumulative fraction]` knots with increasing ages that ends at `1.0`.
+- `E_CONVERSION_INTERVAL`: Set the conversion's `cohort_interval` to a positive number, or leave it out for the default of 1.
+- `E_CONVERSION_NAME`: Make every entry in `conversions` an object with a non-empty `name`, and rename one of any two conversions that share a name.
+- `E_CONVERSION_SUBSTRATE`: Give the conversion at least one entry in `substrates`, each with a non-empty `name`, and rename one of any two substrates that share a name.
+- `E_CONVERSION_UNKNOWN`: Declare the conversion in the `conversions` section, or correct the name in the `CONV("...")` call. Names are case sensitive.
 - `E_CONVEYOR_DIVERT`: Write each divert as `at`, `condition` and optionally `time` and `when_full`, with `at` on the belt. Give the belt one more link than it has diverts.
+- `E_CONVEYOR_GRID`: Add the system-dynamics grid to the model, for example `"simulation": {"sd": {"dt": 0.25}}`, or remove `conveyor` from the level.
+- `E_CONVEYOR_LEAK`: Set the leak flow's `from` to a conveyor level, give its `leak` a `fraction`, and keep `zone` as `[start, end]` with `0 <= start < end <= 1`. Otherwise drop `leak` from the flow.
 - `E_CONVEYOR_MERGE`: Write each merge as `at`, `from` and optionally `priority`, with `at` on the belt and `from` naming a block that links to the belt. Merges need an accumulating belt.
+- `E_CONVEYOR_METHOD`: Set `simulation.sd.method` to `euler`, or remove the conveyor. A conveyor moves one slat per DT, which `rk4` cannot do.
+- `E_CONVEYOR_OUTFLOW`: Give the conveyor exactly one outflow without `leak` and mark the other outflows with `leak`. Set that primary outflow's `rate` to empty, since it takes what leaves the belt.
+- `E_CONVEYOR_PARAM`: On the CONVEYOR block, set `speed` and `spacing` to positive numbers and `length` to a number of 0 or more. With no `length`, set both `from_node` and `to_node` to declared `network` nodes; declare any `exit_resource` under `resources`.
+- `E_CONVEYOR_SPEC`: Give the conveyor level a `conveyor.transit_time` (a number or an expression), and set `leak_kind` to one of the kinds the hint lists, or leave it out.
+- `E_CONVEYOR_STOP`: Write each entry of the CONVEYOR's `stops` as `{at, time, resource}` only, with `at` between 0 and `length` (both excluded). Make `time` a number of 0 or more or an expression, and declare any `resource` under `resources`.
+- `E_CONVEYOR_WRITE`: Do not write a conveyor level directly. Point the TRANSFER, agent transfer action or BUFFER `level` at an ordinary level, drop it from `initial_state.levels`, and give each element its own conveyor instead of `dims`.
+- `E_DASHBOARD_SERIES`: Give a `kpi` or `gauge` widget an `expr` and no `series`. Give a `line` widget 1-4 and a `bar` widget 1-8 `series` entries, each with a unique non-empty `label`, and no `expr`.
+- `E_DELAY_NAME`: Give every entry in `delays` a non-empty `name`. Rename one of any two delays that share a name, or whose hidden stage names clash, such as `f` and the inline `f#1`.
+- `E_DELAY_SPEC`: Set the delay's `kind` to a known kind and fill in its required fields (`input` and `delay_time` for most kinds). A numeric `delay_time` must be greater than 0.
+- `E_DELAY_UNKNOWN`: Declare the delay in the `delays` section, or correct the name in the `DELAY("...")` call. Names are case sensitive.
+- `E_DUPLICATE_REALITY_CHECK`: Rename one of the two entries in `reality_checks` that share a name. Each reality check needs a unique `name`.
+- `E_DUPLICATE_VARIABLE`: Rename one of the two entries in `variables` that share a name, or delete the duplicate. Expressions and overrides refer to a variable by its name.
+- `E_ENERGY_PRICE`: Set `simulation.energy_price` to a number, such as `0.18` money per kWh, or to an expression over declared variables that compiles.
 - `E_EXPRESSION`: Rewrite the expression within the allowed grammar. Check the function names for case (`max`, not `MAX`), use positional arguments only, and quote string arguments such as table names.
+- `E_FIXED_COST_AMOUNT`: Set the fixed cost's `amount` to a number, or to an expression over variables and model data that compiles, such as `capacity_kwh * 600`.
+- `E_FIXED_COST_NAME`: Make every entry in `fixed_costs` an object with a non-empty `name`, and rename one of any two fixed costs that share a name.
+- `E_FLOW_BIFLOW`: Set the flow's `biflow` to `true` or `false`. For a bi-directional flow, give the levels it joins `"min": null` and no capacity or power limit, or split it into two one-way flows.
+- `E_FLOW_COMPONENT`: Set the flow's `components` to an object of component name to share, such as `{"ch4": 0.52}`, or leave it out to carry the source level's own blend.
+- `E_FLOW_EFFICIENCY`: Set the flow's `efficiency` to a number above 0 and at most 1, or leave it out for a lossless flow.
+- `E_FLOW_LEVEL`: Set the flow's `from` and `to` to levels declared in `levels`, or leave the field out for a source or sink outside the model.
+- `E_FLOW_MIN_RATE`: Set the flow's `min_rate` to a number of 0 or more, or leave it out.
+- `E_FLOW_NAME`: Give every entry in `flows` a non-empty `name`, and rename one of any two flows that share a name.
+- `E_FLOW_PEAK_PRICE`: Set the flow's `peak_price` to a number (money per unit of peak rate), or leave it out. A time-varying tariff goes in `price`.
+- `E_FLOW_TAG`: Set the flow's `tag` to a string and its `priority` to a number. Give every flow that shares a tag the same `rate_time_unit`.
+- `E_FLOW_THRESHOLD`: Give each entry in the flow's `thresholds` a numeric `value`, a `direction` of `falling`, `rising` or `both`, and a numeric `cost` if any.
+- `E_FLOW_UNKNOWN`: Declare the flow in the `flows` section, or correct the name in the `FLOW("...")` call. Names are case sensitive.
+- `E_LEVEL_BOUNDS`: Give the level's `capacity`, `min`, `initial`, `max_inflow` and `max_outflow` numeric values, keep `capacity` at or above `min`, and start `initial` inside them. A value in `initial_state.levels` must be a number.
+- `E_LEVEL_COMPONENT`: Give each of the level's `components` a unique non-empty `name` and an `initial_fraction` between 0 and 1, and set `blend_tolerance` to a positive number.
+- `E_LEVEL_NAME`: Give every entry in `levels` a non-empty `name`, and rename one of any two levels that share a name.
+- `E_LEVEL_THRESHOLD`: Give each entry in the level's `thresholds` a numeric `value`, a `direction` of `falling`, `rising` or `both`, and a numeric `cost` if any.
+- `E_LEVEL_UNKNOWN`: Declare the level in the `levels` section, or correct the name in the `LEVEL("...")` call, the TRANSFER's `level`, the agent's transfer action or `initial_state.levels`.
+- `E_LOOP_GRID`: Add the system-dynamics grid before asking for loop dominance, for example `"simulation": {"sd": {"dt": 0.25, "method": "euler"}}`.
+- `E_POWER_UNKNOWN`: Declare the name in `resources`, `fleets` or `chargers`, or correct the name in the `POWER("...")` call. Names are case sensitive.
+- `E_REALITY_CHECK_INPUT`: Set the reality check's `inputs` to an object of override path to value, such as `{"auxiliaries.Workforce.expr": "0"}`, with no empty path.
+- `E_REALITY_CHECK_NAME`: Give every entry in `reality_checks` a non-empty `name`.
+- `E_REALITY_CHECK_WHEN`: Set the reality check's `when` to `always`, `final`, `after <t>`, `before <t>`, `between <t1> and <t2>` (t1 not after t2), or `eventually`, alone or before one of those windows.
+- `E_SD_DELAY_ORDER`: Give the delay's `order` as a literal integer of 1 or more, such as `DELAYN(x, tau, 3)`. The number of stages is fixed when the model is built, so an expression or a fraction cannot set it.
+- `E_SD_FUNCTION_CONTEXT`: Move the SMOOTH or DELAY call into a level's initial value, a flow rate, an auxiliary or a delay field. Read its result in the block or price with `AUX()`, `LEVEL()` or `DELAY()`.
+- `E_SD_REQUIRES_DT`: Add a step grid, such as `"simulation": {"sd": {"dt": 0.25}}`, since material and information delays integrate hidden stocks. Or use a pipeline delay (`DELAYP`), which is exact without one.
+- `E_SD_RK4_RANDOM`: Set `simulation.sd.method` to `euler`, or move the random draw out of the flow rate into a variable an ASSIGN sets. RK4 evaluates a dynamic rate four times per step.
+- `E_SD_SETTINGS`: Make `simulation.sd` an object with a numeric `dt` above 0, a `method` from the listed ones and a `time_unit` of `base` or a known unit. Remove any other key, such as a misspelt one.
+- `E_SERIES_MODE`: Set the series' `interpolation` and `beyond` to one of the values the hint lists. A text `period` must be `daily`, `weekly` or `yearly`; otherwise give a number.
+- `E_SERIES_NAME`: Give every entry in `timeseries_inputs` a non-empty `name`, and rename one of two series that share a name. `TS()` calls find a series by its name.
+- `E_SERIES_NO_CALENDAR`: Add `simulation.calendar` with a `start` (and a `timezone`) so real timestamps can be placed on the model clock. Or give the series plain numeric `times` instead.
 - `E_SERIES_SHAPE`: Give the series one value per sample and either `times` or a `step`, not both. The sample count must match, and the times must increase.
+- `E_SERIES_UNKNOWN`: Declare the series under `timeseries_inputs`, or correct the name in the `TS("name")` call. Names are case sensitive.
+- `E_SUBSCRIPT_AGGREGATE`: Write a one-argument `SUM(x)` or `MEAN(x)` over a `[*]` index, such as `SUM(LEVEL("Pop[*]"))`, in a level, flow, auxiliary or delay. Read the result elsewhere with `AUX()`.
+- `E_SUBSCRIPT_DIM`: Give the record the `dims` its `[dim]` indexes name, list each dimension once, and keep `[*]` inside SUM or MEAN. A flow joining a subscripted level needs that level's `dims`.
+- `E_SUBSCRIPT_ELEMENT`: Make the record's `elements` an object keyed by element combinations of its own `dims`. Remove or rename overrides whose key matches no element.
+- `E_SUBSCRIPT_MAP`: Point the subscript's `map_to` at another declared subscript. Give `elements` one target element per element, or make both subscripts the same size so they map by position.
+- `E_SUBSCRIPT_NAME`: Give each entry in `subscripts` a unique identifier as `name` and a non-empty list of unique `elements`. Elements may not hold `[`, `]`, `,` or `*`, nor share a subscript's name.
+- `E_SUBSCRIPT_RANGE`: Set the subscript's `parent` to another declared subscript that holds every one of its elements, or remove `parent`. Add any missing elements to the parent first.
+- `E_SUBSCRIPT_SIZE`: Use fewer or smaller dimensions in the record's `dims`. The product of their element counts must stay within the 200,000 cap.
+- `E_SUBSCRIPT_UNKNOWN`: Make the record's `dims` a list of names declared under `subscripts`, or declare the missing subscript there. The hint lists the declared ones.
+- `E_TABLE_KEYS`: Pass as many keys as the table has axes: one for a 1-D table, two for a table with `columns`, such as `TABLE("name", k1, k2)`.
+- `E_TABLE_MODE`: Set the table's `key_mode` or `column_mode` to one of the listed lookup modes. Use `exact` for text keys, since `step` and `linear` interpolate only numeric keys.
+- `E_TABLE_NAME`: Give every entry in `tables` a non-empty `name`, and rename one of two tables that share a name. `TABLE()` calls find a table by its name.
 - `E_TABLE_SHAPE`: Make the table a rectangle. A 1-D table needs one value per key. A 2-D table needs one row of values per key, each as long as `columns`, and no key may repeat.
+- `E_TABLE_UNKNOWN`: Declare the table under `tables`, or correct the name in the `TABLE("name", ...)` call. The hint lists the declared tables.
+- `E_TABLE_VALUE`: Make every cell in the table's `values` a number, and make `default` a number or drop it. Text such as `"5"` is not accepted.
+- `E_TIME_UNIT`: Set the named `time_unit` (or rate unit key) to one of the known time units, such as `minutes` or `hours`. A block or record field may also take `base`, the model's own unit.
+- `E_TRANSFER_MODE`: Set the TRANSFER block's or the agent transfer action's `mode` to `remove` or `add`.
 - `E_UNDECLARED_VARIABLE`: Declare the variable in the `variables` section, or correct the name in the expression or ASSIGN target. Names are case sensitive.
+- `E_UNIT`: Set the unit key, such as `simulation.length_unit` or a field's unit, to one of its quantity's units. A record field may also take `base`; the hint names the quantity.
+- `E_UNIT_MISMATCH`: Correct the `unit` of the level, flow or auxiliary, or the expression, so expected and found units agree. Or set `simulation.sd.units` to `warn` to report it as a warning only.
+- `E_UNIT_TIME`: Write the rate in the model's base time unit, or correct the record's `unit` so the time scales match. Or set `simulation.sd.units` to `warn` to report it as a warning only.
+- `E_VARIABLE_NAME`: Rename the variable to a Python identifier: letters, digits and `_`, not starting with a digit. Update every expression and ASSIGN that uses it.
+- `E_VARIABLE_RESERVED`: Rename the variable so it does not shadow a reserved name or built-in function, such as `min` or `TNOW`. The hint lists the reserved names.
+- `E_VARIABLE_UNKNOWN`: Declare the variable under `variables`, or correct the name in the `VAR("name")` call. Names are case sensitive.
+- `W_BLOCKING_LOOP`: Give one buffer in the loop enough places that it never fills, or route one station's output to a block with an unlimited queue. If the loop can never fill, the warning can stay.
+- `W_CONVEYOR_LEVEL_KEY`: Remove `capacity`, `min`, `max_inflow` and `max_outflow` from the conveyor level. Set its content limit with `conveyor.capacity` and its inflow per time unit with `conveyor.in_limit`.
+- `W_CONVEYOR_STOP_HELD`: Release the resource before the part enters the belt, or remove the stop's `resource`, since the part already holds it. Otherwise the run stops with an error at that stop.
+- `W_CONVEYOR_TRANSIT`: Pick a `simulation.sd.dt` that divides the conveyor's `transit_time`, or change the transit time to a multiple of `dt`. Otherwise the belt runs with round(T/dt) slats.
+- `W_FLOW_CLOCK_NO_GRID`: Read a timetable from a `timeseries_inputs` entry with `TS("name")`, `interpolation` `step` and `beyond` `repeat`. Or add a step grid with `simulation.sd.dt`; each switch is then late by up to `dt`.
+- `W_LOOP_HYBRID`: Treat the scores as covering the SD layer only, since DES blocks and agents are read at initial values. Run `naga loops` on an SD-only model to score every loop; otherwise the warning can stay.
+- `W_RATE_UNIT_CHANGED`: Check that the flow's `peak_price` and `thresholds` are per its `rate_time_unit`, and a conversion's numbers per its `time_unit`. Rescale values written per the base unit; if already right, the warning can stay.
+- `W_RATE_UNIT_READ`: Give the reading rate and the record it reads with `FLOW()`, `FLOWSUM()` or `CONV()` the same time unit. Or convert the value in the expression.
+- `W_RATE_UNIT_UNCHECKED`: Write the name in the `FLOW()`, `FLOWSUM()` or `CONV()` call as a literal, or give every record it may read the same time unit. Then the read can be unit-checked.
+- `W_REF_UNSET`: Set the asset parameter that the `POWER()` or `TS()` call takes its name from to the source or series it should read. Or guard the read with a condition on that parameter.
+- `W_SD_RK4_BUS`: Set `simulation.sd.method` to `euler` for exact `FLOW()` and `FLOWSUM()` reads. Under RK4 the read lags by one stage; if that is acceptable, the warning can stay.
+- `W_SERIES_BEFORE_START`: Check the series' dates against `simulation.calendar.start` and the run length. Trim or shift samples before the start, or a series whose samples all fall after the run ends.
+- `W_SERIES_PERIOD_UNUSED`: Add `"beyond": "repeat"` to the series so it cycles every `period`, or drop `period`. Without repeat the series holds its last value.
+- `W_UNIT_MISMATCH`: Correct the `unit` of the level, flow or auxiliary, or its expression, so the expected and found units agree. If the mismatch is intended, set `simulation.sd.units` to `off`.
+- `W_UNIT_MISSING`: Add a `unit` to the level or flow, such as `people` or `people/day`, so mismatches can be checked. Or set `simulation.sd.units` to `warn`.
+- `W_UNIT_TIME`: Write the rate's `unit` in the model's base time unit, such as `people/day` for levels counted per day. If the scaling is intended, the warning can stay.
+- `W_UNIT_UNPARSED`: Rewrite the `unit` string in a form the unit parser reads, such as `kg`, `people/day` or `m/s`. Until then the record is not unit-checked.
 
 [All problem codes](index.md)

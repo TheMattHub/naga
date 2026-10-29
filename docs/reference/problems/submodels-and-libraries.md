@@ -50,8 +50,46 @@ Submodel definitions and instances, asset libraries and catalogues. The list is 
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_ASSET_BLOCK_TYPE`: Replace the block's `type` in the asset's `definition.blocks` with a built-in block type, or install the plugin that registers it. Until then the asset stays unavailable.
+- `E_ASSET_CODE`: Remove every `custom_logic`, `python`, `plugin`, `entry_point` or `code` key from the file, and replace any LOGIC block in a `definition` with DECIDE and ASSIGN blocks. A library is data only.
+- `E_ASSET_DEFINITION`: Give the asset a `definition` object with a `blocks` list of block objects, then fix what the message names. The definition is checked like any submodel, so a bad link or parameter fails here.
+- `E_ASSET_GEOMETRY`: Give each entry in `geometry.nodes` a unique `name` and numeric `dx` and `dy`, with `attach` true or false. Each segment's `from` and `to`, and every `$node` a block binds, must name a declared node.
+- `E_ASSET_GRAPHIC`: Fix the graphic the path names. Use only the states `idle`, `busy`, `down`, `off` and `blocked`, include `idle`, keep each SVG safe and small, write colours as `#RRGGBB`, and draw `icon` on `viewBox="0 0 24 24"`.
+- `E_ASSET_ID`: Give every asset an object with a unique `id` made of letters, digits, `_`, `-` or `.`, starting with a letter or digit.
+- `E_ASSET_MIGRATION`: Give each `migrations` entry a semver range in `from`, such as `^1.2.0`, and a non-empty `steps` list. Each step is one `rename_parameter`, `set_default` or `rename_record` naming a parameter or record kind this version declares.
+- `E_ASSET_PARAMETER`: Give each entry in `parameters` a unique identifier `name` and a known `type`, with a `default` that fits it. A `choice` needs `choices` holding the default, and a number must lie within numeric `min` and `max`.
+- `E_ASSET_REQUIRES`: Make `requires` an object whose keys are model sections, such as `resources` or `variables`, each a list of records with a `name`. Move any `$arg` value into the definition's `scoped` overrides, because required records are copied as written.
+- `E_ASSET_TEST`: Make `tests` a list of objects, each with a non-empty `expect` list. Every expectation needs a numeric `value` and one of `key`, `kpi`, `exit` or `resource`, and every `records` probe needs a `name` and an `expression`.
+- `E_ASSET_UNKNOWN_NAME`: Correct the name in the definition expression, or declare it in the asset's `parameters`. A variable the surrounding model supplies goes in `requires.variables`, or in a test's `model.variables`.
+- `E_CATALOGUE_COLUMN`: Give every row in the catalogue's `rows` a value for each name in its `columns`. In the asset's `preset.map`, map only declared columns to parameters the asset declares in `parameters`.
+- `E_CATALOGUE_VALUE`: Correct the catalogue cell so it fits the parameter the `preset.map` fills with it, for example a number within the parameter's `min` and `max`, or one of its `choices`.
+- `E_DUPLICATE_SUBMODEL_PORT`: Rename one of the two `SUB_ENTRY` or `SUB_EXIT` blocks' `port` values in the definition. Port names must be unique per side, so links can say which port they mean.
+- `E_EXTENDS_CYCLE`: Change one `extends` in the loop the message shows so it names a definition outside the chain, or remove it. A definition cannot extend itself, directly or through another definition.
+- `E_EXTENDS_UNKNOWN`: Set the definition's `extends` to the name of an existing definition under `submodels`, or remove `extends`. The hint lists the definitions you can extend.
+- `E_LIBRARY_CATALOGUE`: Give each entry in `catalogues` a unique `name`, a non-empty list of string `columns` that includes its `key`, and at least one row. A `preset` must name a declared catalogue and give a non-empty `map`.
+- `E_LIBRARY_FORMAT`: Make the file a JSON object with `format_version` 1 and at least one entry in `assets`. If present, `entities` must be a list of objects with unique names.
+- `E_LIBRARY_HEADER`: Give the file a `library` object with an identifier `id`, a non-empty `name` and a semver `version` such as `1.0.0`. An optional `color` must be `#RRGGBB`, and `min_schema_version` a whole number.
+- `E_LIBRARY_VERSION`: Lower `library.min_schema_version` to a model schema version this build writes, if the library does not use the newer schema. Otherwise use a newer engine, or an older release of the library.
 - `E_SUBMODEL`: Read the message for the definition that failed to flatten. The usual causes are a missing definition, an argument the definition does not declare, or a link to a port that does not exist.
+- `E_SUBMODEL_ARGUMENTS`: Make the instance's `arguments` an object that maps each declared parameter name to its value, for example `{"capacity": 2}`, or remove it to use the defaults.
+- `E_SUBMODEL_ARGUMENT_MISSING`: Add the parameter to the SUBMODEL instance's `arguments`, or give it a `default` in the definition's `parameters`. The message names the missing parameter.
+- `E_SUBMODEL_ARGUMENT_UNKNOWN`: Remove the argument from the instance's `arguments`, or rename it to a parameter the definition declares. The hint lists the definition's `parameters`; a typo is the usual cause.
+- `E_SUBMODEL_ARG_REFERENCE`: Declare the named record in the model's matching section, or pass the name of one that exists. The hint lists the records the argument may refer to.
+- `E_SUBMODEL_ARG_TYPE`: Pass an argument of the type the target parameter or repeat count declares, for example an int rather than `2.5` or text. The message names the `$arg` and the value it received.
+- `E_SUBMODEL_ARG_UNKNOWN`: Declare the parameter in the definition's `parameters`, or correct the `{"$arg": ...}` name to one it declares. A `$arg` outside any submodel definition must become a plain value.
+- `E_SUBMODEL_CYCLE`: Break the loop the message shows by removing or replacing a SUBMODEL block that instantiates a definition earlier in the chain. A definition cannot contain itself, directly or through another.
+- `E_SUBMODEL_DEAD_END`: Add a `SUB_EXIT` block to the definition and link the named block to it, or end that flow in a `DISPOSE`. Without an exit every flow must end in a DISPOSE.
+- `E_SUBMODEL_PORT_NAME`: Give every `SUB_ENTRY` and `SUB_EXIT` block in the definition a non-empty `port` parameter, such as `in` or `out`. Links to the instance pick a port by this name.
+- `E_SUBMODEL_PORT_REQUIRED`: Set the link's `source_port` or `target_port` to one of the instance's ports. A port may be left out only when the definition has exactly one port on that side.
+- `E_SUBMODEL_PORT_UNKNOWN`: Set the link's `source_port` or `target_port` to a port the instance has, as listed in the hint. With repeat groups, lowering a count removes ports: delete the link or change the arguments.
+- `E_SUBMODEL_REPEAT`: Fix the definition's `repeat` groups as the message says. Each needs `count` and a non-empty `blocks` list of its own blocks, and `{i}` goes in every repeated name or in none.
+- `E_SUBMODEL_REPEAT_COUNT`: Make the group's `count` an int from 0 to 500, a `{"$arg": ...}` or an expression of the definition's parameters. A group whose names lack `{i}` takes only 0 or 1.
+- `E_SUBMODEL_SCOPE`: Move the `SUB_ENTRY` or `SUB_EXIT` block into a definition under `submodels`, or delete it. Port blocks mean something only inside a submodel definition.
+- `E_SUBMODEL_SCOPED_NAME`: Declare a top-level record named as the `$name` without its `$`, in the section the message names. Flattening clones that template for each instance.
+- `E_UNKNOWN_SUBMODEL`: Set the instance's `definition` to the name of a definition under `submodels`, as listed in the hint, or add the missing definition. A typo is the usual cause.
+- `W_LIBRARY_ITEM_CLASH`: Check the model's own record against the one the asset ships. If they are different things, rename one; if the model's copy is intended, the warning can stay.
+- `W_LIBRARY_UPGRADE`: Add a `migrations` entry to the new asset version with a `rename_parameter` step from the old parameter name to the new one, so instances keep the argument's value. Or keep the old parameter in `parameters`.
 
 [All problem codes](index.md)

@@ -42,10 +42,39 @@ Resources and sets, schedules, failures, calendars and arrivals. The list is gen
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_ARRIVAL_MODE`: Set the CREATE block's `arrival_mode` to `Interarrival`, `Schedule` or the orders mode, spelled as the hint lists them. Leave it out to keep the default `Interarrival`.
+- `E_ARRIVAL_SCHEDULE`: Give the CREATE block a `schedule_name` that names a schedule declared under `schedules` with `"kind": "arrival"`, or switch `arrival_mode` back to `Interarrival`.
+- `E_CALENDAR_DATE`: Write the date as an ISO 8601 timestamp such as `2026-01-05T06:00:00`, or use a number in the base time unit. A dated field needs `simulation.calendar`, and its `end` must come after `start`.
+- `E_CALENDAR_START`: Make `simulation.calendar` an object with a `start` written as an ISO 8601 instant, for example `"start": "2026-01-05T06:00:00"`. That instant is what model time 0 stands for.
 - `E_CREATE_ZERO_INTERARRIVAL`: Give the CREATE block a positive interarrival time, or set `max_arrivals` to a positive number. A constant gap of 0 with unlimited arrivals would never let time advance.
+- `E_DUPLICATE_FAILURE`: Rename one of the two entries in `failures`. Every failure needs a unique `name`.
 - `E_DUPLICATE_RESOURCE`: Rename one of the two. A resource and a resource set share one namespace because blocks seize either by name.
+- `E_DUPLICATE_SCHEDULE`: Rename one of the two entries in `schedules`. Schedule names must be unique, because CREATE blocks and resources refer to a schedule by its name.
+- `E_ENTITY_COST`: Set the entity type's `holding_cost` in `entities` to a number of 0 or more, or remove it. Use 0 when work in progress costs nothing to hold.
+- `E_FAILURE_NAME`: Give the failure a non-empty `name` in the `failures` section. Each failure needs a unique name.
+- `E_FAILURE_RESOURCES`: List at least one resource in the failure's `resources`, naming the resources or fleets it takes down, or remove the failure.
+- `E_FAILURE_RESOURCE_UNKNOWN`: Correct the name in the failure's `resources` list, or declare that resource under `resources` (or a fleet under `fleets`) first. The hint lists the declared names.
+- `E_PREEMPT_RESOURCE_SET`: Set the preempting PROCESS block's `resource_name` to one member resource instead of the resource set, or drop `preempt`. Preemption interrupts a job on a single resource.
+- `E_RANKING_REQUIRED`: Add a `ranking_expr` to the resource, such as `entity.priority`, or change its `discipline` to one that needs no ranking, such as `FIFO`.
+- `E_RESOURCE_CAPACITY`: Raise the resource's `capacity` to at least the largest value its `capacity_schedule` asks for, or lower the schedule's values. The hint gives the minimum.
+- `E_RESOURCE_COST`: Set the resource's `cost_busy`, `cost_idle` and `cost_per_use` to numbers of 0 or more. Use 0 for no cost.
+- `E_RESOURCE_DISCIPLINE`: Set the resource's `discipline` to one of `FIFO`, `LIFO`, `LowestValueFirst`, `HighestValueFirst` or `Plan`, spelled with that case.
+- `E_RESOURCE_POWER`: Make the resource's `power` an object of kW per unit, such as `{"busy": 5.0, "idle": 1.0}`, with every value a number of 0 or more.
+- `E_RESOURCE_SCHEDULE`: Correct the resource's `capacity_schedule` to the name of a schedule declared under `schedules` with `"kind": "capacity"`, or declare that schedule. An arrival schedule cannot set capacity.
 - `E_RESOURCE_UNKNOWN`: Declare the resource in `resources` or `resource_sets`, or correct the name in the block's `resource_name`. Names are case sensitive.
+- `E_SCHEDULE_EXCEPTION`: Give each entry in the schedule's `exceptions` a `start` written as an ISO date such as `2026-12-25`, and an `end`, if any, on or after `start`.
+- `E_SCHEDULE_KIND`: Set the schedule's `kind` to `arrival` or `capacity`. Leave it out for the default, `arrival`.
+- `E_SCHEDULE_NAME`: Give the schedule a non-empty, unique `name` in the `schedules` section.
+- `E_SCHEDULE_NO_CALENDAR`: Declare `simulation.calendar` with a `start` (and a `timezone` if needed), or write the schedule as `points` instead of a `weekly` grid. A weekday grid needs real dates.
+- `E_SCHEDULE_POINT`: Write each entry in the schedule's `points` as a two-element `[duration, value]` array, with duration above 0 and value 0 or more. A capacity schedule's values must be whole numbers.
+- `E_SCHEDULE_POINTS`: Add at least one `[duration, value]` pair to the schedule's `points`, or write it as a `weekly` grid.
+- `E_SCHEDULE_WEEKLY`: Fix the schedule's `weekly` grid: use day keys such as `mon` and `sat`, write each band as `["06:00", "14:00", 3]`, and keep the bands of one day from overlapping.
+- `E_SET_EMPTY`: List at least one declared resource in the resource set's `members`, or remove the set.
+- `E_SET_MEMBER`: Correct the member's name in the resource set's `members`, or declare that resource under `resources` first. The hint lists the declared resources.
+- `E_SET_RULE`: Set the resource set's `rule` to one of `PreferredOrder`, `Cyclical`, `Random`, `SmallestNumberBusy` or `LargestRemainingCapacity`.
+- `W_RERANK_UNRANKED`: Remove `rerank` from the resource, or change its `discipline` to `LowestValueFirst` or `HighestValueFirst` with a `ranking_expr`. Only a ranked queue can be re-ranked.
+- `W_SCHEDULE_EXCEPTION_UNUSED`: Check the exception's dates against the run window that the hint gives. Move the dates, lengthen the run, or remove the exception if it is no longer needed.
 
 [All problem codes](index.md)

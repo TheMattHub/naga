@@ -76,28 +76,70 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_BATCH_CARRIER_CAPACITY`: Make the BATCH's `carrier_capacity` expression return 0 or more for every carrier. Check the carrier attributes it reads, or wrap it in `max(0, ...)`.
+- `E_BATCH_MEMBER_TIME`: Set the BATCH's `carrier_type` to the carrier's entity type, or clear `member_time` and `carrier_capacity`. Both apply only to a carrier BATCH.
+- `E_BUFFER_CAPACITY`: Set the BUFFER's `capacity`, or the SEIZE/PROCESS `queue_capacity`, to a count of 0 or more. For an unlimited queue, leave `queue_capacity` at 0 and draw no BUFFER.
 - `E_BUILDING`: Correct the part of the `building` section the path names. The `building` section page gives the shape of each room, wall line, opening, marking, label and fixture, and the hint names the field or colour that is wrong.
 - `E_CREATE_NO_OUTPUT`: Link the CREATE block to the first block of the flow. Entities need an outgoing link to go anywhere.
 - `E_DECIDE_BRANCHES`: Give the DECIDE one outgoing link for every probability or condition, in the same order, or remove the extra entries. One more link than entries serves as the ELSE branch.
+- `E_DECIDE_FALLBACK`: Set the DECIDE's `fallback` to `first`, `random` or `shortest`. The fallback picks the branch when no policy answers.
+- `E_DECIDE_POLICY_NAME`: Give the Policy-mode DECIDE a non-empty `policy`, the name of its decision point, for example `routing`. Several DECIDE blocks may share one name.
 - `E_DECIDE_PROBS`: Make the probabilities sum to at most 1. If they sum to less than 1, add one more outgoing link as the ELSE branch for the remainder, or raise the probabilities to sum to 1.
+- `E_DECIDE_QUEUE_EXPRS`: Give `queue_exprs` exactly one expression per outgoing link, in branch order, or choose a `fallback` other than `shortest`.
+- `E_DETERMINISTIC_NO_MEAN`: Use a distribution and `dist_params` with a finite mean (for example an `Exponential` with a positive rate), or turn off `simulation.deterministic`. Deterministic mode replaces each draw by its mean.
+- `E_DISPOSE_HAS_OUTPUT`: Remove the DISPOSE block's outgoing link. A DISPOSE ends the flow; to continue after it, link from the block before it instead.
+- `E_DISTRIBUTION_MISSING`: Add a `distribution` to the duration spec the message names: the link's `delay`, or a failure's `uptime` or `downtime`. For a link, you can drop the `delay` instead.
 - `E_DIST_PARAM_UNKNOWN`: Rename or remove the distribution parameter. Each distribution takes only the parameters on its reference page, and any other key would be ignored.
 - `E_DUPLICATE_BLOCK`: Rename one of the two blocks. Block names are the model's identifiers, and links, results and overrides refer to a block by its name.
+- `E_DUPLICATE_STATION`: Rename one of the two STATION blocks or change its `station` value. A station name identifies exactly one block.
 - `E_FIELD_RANGE`: Bring the value inside the bounds that the section's field table states. The message names the field, and the table gives its minimum and maximum.
+- `E_HOLD_SPACE_TARGET`: Point `hold_until_space` at a real space: link the block, or name in `space_of`, a BUFFER with `capacity` above 0 or a SEIZE/PROCESS with `queue_capacity` above 0. Otherwise clear `hold_until_space`.
 - `E_LINK_UNKNOWN_BLOCK`: Add the block that the link names, or point the link at an existing block. A renamed or deleted block is the usual cause.
+- `E_MATCH_ATTRIBUTE`: Set the MATCH's `match_on` to an attribute name, such as `order` or `entity.order`, not starting with `_`. Leave it empty to match by entity type alone.
 - `E_NO_CREATE`: Add a CREATE block and link it into the flow. Without a source, nothing ever arrives in the model.
 - `E_NO_DISPOSE`: Add a DISPOSE block at the end of the flow. Entities that never leave stay in the work in progress, and the throughput results stay empty.
+- `E_ON_PREEMPT`: Set `on_preempt` to `resume` (the interrupted job keeps its remaining service) or `restart` (it starts over).
+- `E_ORDER_ENTITY_TYPE`: Declare the entity type under `entities`, or correct the order's `entity_type` to a declared one. The hint lists the declared types.
 - `E_ORDER_FIELD`: Correct the order's field. Quantities are whole numbers of 0 or more, release and due are numbers or ISO timestamps, and extra attributes must be single values.
+- `E_ORDER_ID`: Give every order a unique, non-empty `id`, such as `WO-1001`. Rename one of two orders that share an id.
+- `E_ORDER_SOURCE`: Set the order's `source` to a CREATE block whose `arrival_mode` is `Orders`, or drop `source` to use the first such block.
 - `E_PARAM_MISSING`: Add the required parameter to the block. The block's reference page marks the required ones, for example `resource_name` on a RELEASE.
 - `E_PARAM_TYPE`: Give the parameter a value of the declared type, for example a number rather than the text "5", or a list rather than a single value. The hint names the types the block takes.
 - `E_PARAM_UNKNOWN`: Remove the parameter, or rename it to one the block type declares. The block's reference page lists every parameter; a typo or a parameter of a neighbouring block is the usual cause.
+- `E_PREEMPT_BLOCKING`: Drop `preempt` on this block, or give the downstream BUFFER enough `capacity` that the station holding the resource never blocks after service.
+- `E_PREEMPT_SCOPE`: Use `preempt` only on a PROCESS with action `Seize Delay Release`, and make every other block seizing that resource one too. Otherwise drop `preempt`.
 - `E_QUEUE_NO_LEAVE_LINK`: Add a second outgoing link, from the block that balks or reneges to where entities that leave without service go, often a DISPOSE. Or clear `balk_if` and `renege_after`.
+- `E_RECORD_KIND`: Set the RECORD's `kind` to one of the kinds the hint lists, such as `count`. Check the spelling and case.
+- `E_RECORD_KIND_CONFLICT`: Give every RECORD writing the same `stat_name` the same `kind`, or record the second kind into a different `stat_name`.
+- `E_RECORD_STAT_NAME`: Set the RECORD's `stat_name` to the name of the statistic it collects. The name keys the results.
+- `E_ROUTE_NO_SEQUENCES`: Declare at least one sequence under `sequences` and a STATION block for each step, or remove the ROUTE block.
+- `E_SEPARATE_CARRIER`: Set the SEPARATE's `carrier` to `dispose` (the batch ends here) or `keep` (the carrier leaves by a second link).
+- `E_SEPARATE_CARRIER_LINK`: Give the SEPARATE exactly two outgoing links: link 0 for the members, link 1 for the empty carrier. Or set `carrier` to `dispose`.
+- `E_SEPARATE_MEMBER_TIME`: Set the SEPARATE's `carrier` to `keep`, or clear `member_time`. The per-member time applies only when the carrier lives on.
+- `E_SEPARATE_RELEASE_ORDER`: Set the SEPARATE's `release_order` to `fifo` (load order) or `lifo` (last loaded first out).
+- `E_SEQUENCE_EMPTY`: List at least one step in the sequence's `steps`, such as `{"station": "Mill"}` naming a STATION block, or delete the sequence.
+- `E_SEQUENCE_NAME`: Give every entry under `sequences` a unique, non-empty `name`. Rename one of two sequences that share a name.
+- `E_SEQUENCE_STATION_UNKNOWN`: Add a STATION block for the named station, or correct the step's `station` (or the block's `destination`) to a declared one. The hint lists the declared stations.
+- `E_SEQUENCE_STEP`: Write each step as an object with a non-empty `station`. Its optional `values` must be an object of attribute names mapping to a number, string or boolean.
+- `E_SEQUENCE_UNKNOWN`: Declare the sequence under `sequences`, or correct the `sequence` on the CREATE, ASSIGN or order to a declared name.
 - `E_TERMINAL_NOT_DISPOSE`: End the flow in a DISPOSE: link this block to one, or add one after it. A block with no outgoing link would strand its entities.
 - `E_TOO_MANY_OUTPUTS`: Remove the extra links, or insert a DECIDE to branch. Only DECIDE and LOGIC may branch. A block that can balk, renege or keep a carrier is allowed a second link.
 - `E_UNKNOWN_BLOCK_TYPE`: Correct the block's `type` to one of the block types in the block reference. Types are upper case, such as `PROCESS`; a misspelling or a type from another tool is the usual cause.
 - `E_UNKNOWN_DISTRIBUTION`: Use a distribution from the distribution reference, spelled as it is there (for example `Exponential`). The hint lists the valid names.
+- `W_AVAILABLE_IS_CAPACITY`: Use `IDLE("name")` for the free units, or `NR("name")` for the busy ones, in the `balk_if` or DECIDE condition. Keep `AVAILABLE()` only if you mean the capacity in force.
+- `W_CREATE_NO_ORDERS`: Add orders under `orders` whose `source` names this CREATE, or switch its `arrival_mode` back to `Interarrival`.
+- `W_EMPIRICAL_CONTINUOUS`: Switch to `EmpiricalDiscrete`, or give `values` one more entry than `probs` so they act as bin edges for true continuous sampling.
+- `W_LONG_NAME`: Shorten the block or SUBMODEL instance name to 20 characters or fewer, and move the detail to its description. If the wrapped name is fine, the warning can stay.
 - `W_OPENING_OFF_WALL`: Point the opening at a wall that exists: `{"room": NAME, "edge": K}` or `{"line": INDEX, "edge": K}`, where edge K runs from point K to K + 1. An opening wider than its wall edge needs a narrower `width` or a longer wall.
+- `W_ORDERS_NOT_CONSUMED`: Set a CREATE block's `arrival_mode` to `Orders` so it releases the orders, or remove the `orders` section.
+- `W_ORDER_DUE_BEFORE_RELEASE`: Set the order's `due` to an absolute time after its `release`, in the model's base unit. A due date is not a lead time.
+- `W_ORDER_FIELD`: Rename the order attribute, or map the bound column to another name with the binding's `map`, so it is a valid identifier and not a field of the entity itself.
+- `W_PLAN_STATION_UNKNOWN`: Correct the station name in the order's `plan`, or add a STATION block with that name. The hint lists the declared stations.
+- `W_PREEMPT_NO_PRIORITY`: Give the preempting block a lower `priority` number than the blocks whose jobs it should interrupt, or drop `preempt`.
+- `W_QUEUE_LEAVE_LINK_UNUSED`: Set `balk_if` or `renege_after` on the block, or remove its second outgoing link.
+- `W_STATION_UNUSED`: Add the station to a sequence's `steps`, or delete the STATION block if no route visits it.
 - `W_UNBOUNDED_DURATION`: Use a distribution that cannot go below 0, such as `Lognormal`, `Gamma` or `BoundedNormal` in place of `Normal`. Negative samples are cut to 0, which raises the mean.
 - `W_UNKNOWN_KEY`: Remove the key, or correct its spelling. The model file format drops keys it does not have, so the setting would be lost when the file is saved.
 - `W_UNREACHABLE`: Link the block into the flow from a CREATE, or delete it. A block that no entity can reach never runs and adds nothing to the results.

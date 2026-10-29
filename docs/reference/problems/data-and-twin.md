@@ -8,7 +8,7 @@ Data sources and bindings, network access limits, live feeds, warm starts, saved
 | Code | Severity | Meaning | About |
 |---|---|---|---|
 | <span id="e_candidates"></span>`E_CANDIDATES` | error | A candidates file is not one of format 1, is over its bound, holds a key or an action it may not, or names what the model does not declare. | -- |
-| <span id="e_candidate_verb"></span>`E_CANDIDATE_VERB` | error | A candidate's verb is listed in the vocabulary and not built in this version (the message says why), or is no verb at all. | -- |
+| <span id="e_candidate_verb"></span>`E_CANDIDATE_VERB` | error | A candidate's verb is not one of the vocabulary's verbs. | -- |
 | <span id="e_conn_format"></span>`E_CONN_FORMAT` | error | The caller's connections file is malformed, or asks for something refused. | -- |
 | <span id="e_data_binding_name"></span>`E_DATA_BINDING_NAME` | error | A binding has an empty or duplicate name. | [`data_bindings`](../model-file/data_bindings.md) |
 | <span id="e_data_binding_source"></span>`E_DATA_BINDING_SOURCE` | error | A binding names a data source the model does not declare. | [`data_bindings`](../model-file/data_bindings.md) |
@@ -133,10 +133,130 @@ Data sources and bindings, network access limits, live feeds, warm starts, saved
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_CANDIDATES`: Write the candidates file as `{"format": 1, "kind": ...}` with only `kpi`, `better`, `expires` and `candidates`, each action exactly `verb`, `target` and `value`. Point every target at a block, resource or order the model declares; the message names the action refused.
+- `E_CANDIDATE_VERB`: Set the action's `verb` to a built verb: `set_capacity`, `resequence`, `expedite`, `hold`, `release`, `reroute` or `setpoint`. The hint lists the verbs this version builds.
+- `E_CONN_FORMAT`: Fix the connections file passed as `--connections`: write it as `{"format": 1, "connections": {...}}`, and correct the entry the message names. Paths in it resolve beside the file and must exist.
+- `E_DATA_BINDING_NAME`: Give every entry in `data_bindings` a non-empty `name`, and rename one of two bindings that share a name.
+- `E_DATA_BINDING_SOURCE`: Set the binding's `source` to the `name` of a data source declared under `data_sources`, or declare that source. The hint lists the declared ones.
 - `E_DATA_BINDING_TARGET`: Point the binding's `target` at a path the model has, for example `resources.Nurse.capacity`. Declare the resource first if it does not exist.
+- `E_DATA_BINDING_TRANSFORM`: Use a transform from the hint in the binding's `transform`, with the argument its form needs, such as `quantile:0.9`, `table:KEY` or `series:TIME`. For `orders`, write `map` as an object of column names.
+- `E_DATA_CONNECTION`: Set the live source's `connection` to the name of a connection of its kind in the caller's connections file (`--connections`). The person who runs the model defines it there, never in the model.
+- `E_DATA_CREDENTIALS`: Remove the password from the source's `location`. Write the whole URL as `${NAGASIM_DATA_DB_URL}` and set that environment variable before the run.
+- `E_DATA_EMPTY`: Check the binding's `filter` and `column`: after filtering, the column must hold usable values (numbers, two distinct timestamps for a rate, an id column and a row per table key).
+- `E_DATA_ENV`: Set the environment variable the message names before the run, or edit the source's `location` so it no longer refers to it.
+- `E_DATA_ENV_NAME`: Rename the `${...}` reference in the source to a variable whose name starts with `NAGASIM_DATA_`, such as `${NAGASIM_DATA_DB_URL}`, and set that variable before the run.
+- `E_DATA_FILTER`: Write the binding's `filter` as an object of `"column": value` or `"column op": value` entries, with an operator from the hint and a column the source has.
+- `E_DATA_NETWORK_REFUSED`: Pass `--allow-network` to the `naga` command that runs the model if a network source is intended. Otherwise point the source at a local path or a mapped drive.
+- `E_DATA_PATH_OUTSIDE_ROOT`: Move the data file under the root the run is confined to, and set the source's `location` to a plain path under it; UNC, device and alternate-stream paths are refused.
+- `E_DATA_PLAINTEXT_CREDENTIAL`: Use the encrypted scheme for the connection in the connections file (https, mqtts, an OPC UA security policy), or drop its credential and read anonymously.
+- `E_DATA_PROXY`: Use the `https` URL for the source, or list the host in `NO_PROXY` if it is reachable directly. If the tunnel failed, check `HTTPS_PROXY`.
+- `E_DATA_QUERY`: Write the source's `query` as one `SELECT` (or `WITH`) statement, with no comment before it and no second statement after a semicolon.
 - `E_DATA_READ`: Check that the file exists at the path relative to the model file, and that the sheet, column or query is right. A network source must be reachable and permitted by the caller.
+- `E_DATA_SOURCE_KIND`: Set the data source's `kind` to one the hint lists. For a live reading, name a source of a live kind declared in the model's `data_sources`.
+- `E_DATA_SOURCE_LOCATION`: Give the data source a `location` its kind can use: a path or URL for a file source, a `query` for `sqlite` and `sql`. For a live kind, give only the path, topic, node ids or registers inside its connection.
+- `E_DATA_SOURCE_NAME`: Give every entry in `data_sources` a non-empty `name`, and rename one of two sources that share a name.
+- `E_DATA_SOURCE_OPTION`: Remove the unknown key from the source's `options`, or give the option a value it can take. The hint lists the options of that kind and the values allowed.
+- `E_DATA_TLS`: Give the server a certificate valid for its host name and dates, or name the private CA as `ca_file` in the connections file. A certificate file it names must be a PEM or DER certificate.
+- `E_DATA_TOO_LARGE`: Point the source at a smaller extract, so the response stays under the byte and row caps, with flatter rows for a `rest` source.
+- `E_DATA_TYPE`: Pick a `transform` whose result matches the type the target field holds, or point the binding's `target` elsewhere. Text from a live source is never written into the model; bind a number or a boolean.
+- `E_DATA_URL_HOST`: Write the source's `location` as `http(s)://host/path` with a hostname that resolves. If `--allow-host` restricts the run, add the host to it.
+- `E_DATA_URL_PARAMETER`: Remove the query parameters the hint does not allow from the database URL. Settings outside that list belong to the database account or a service file, not to the model.
+- `E_DATA_URL_PRIVATE`: Point the source at a public host. For an intranet host, pass `--allow-private-network`, or add `"private": true` to the connection in the connections file; loopback-only or metadata addresses stay refused for URLs.
+- `E_DATA_URL_REDIRECT`: Point the source's `location`, or the connection's address, at the final URL, so the fetch is not redirected, and keep it on `https`.
+- `E_DATA_URL_SCHEME`: Use an `http` or `https` URL in the source's `location`. A local file belongs in a `csv`, `xlsx` or `sqlite` source, never in a database URL.
+- `E_FLEET_POWER_STATE`: Key the fleet's `power` only by `busy`, `idle`, `blocked`, `down` or `off_shift`, and remove or rename any other state.
+- `E_INITIAL_AGE`: Set the entry's `age` in `initial_state.entities` to a number of at least 0, in base time units.
+- `E_INITIAL_ARRIVALS`: Give each CREATE in `initial_state.arrivals` a `count` of at least 0 and, for an Interarrival CREATE, a `next` at or after the clock; tied arrivals need different `rank` values.
+- `E_INITIAL_BATCH`: Give an entry that meets a `SEPARATE` its `members`, from 1 to the group size of the BATCH or MATCH that forms it. Each member has its own `e_type`, `age`, `attributes` and `holds`.
+- `E_INITIAL_BELT`: Correct the belt part in `initial_state.entities`: one entity at an accumulating CONVEYOR, with a `stage` it has and `until` or `entered` on the right side of the clock. Take the state at another time if a part blocks an end stop.
+- `E_INITIAL_BLOCK`: Make each `initial_state.entities` entry an object whose `block` names a block of the model, with valid `attributes`, `place`, `held_by` and `transfer`. Inside a submodel, name the block `instance/inner`.
+- `E_INITIAL_BLOCK_TYPE`: Move the entry in `initial_state.entities` to a block that can hold entities, such as a PROCESS or BUFFER, instead of the block type the message names.
+- `E_INITIAL_BUSY`: Make `initial_state.resources` `busy` equal to the units the in-service entities hold on that resource, or correct `in_service` in the entities.
+- `E_INITIAL_CARRIER`: Take the state with the carrier before the carrier BATCH (at its door SEIZE), not while it waits at the BATCH.
+- `E_INITIAL_CLOCK`: Set `initial_state.clock` to a number of at least 0 that lies before the end of the run, in the model's base time unit.
+- `E_INITIAL_COUNT`: Set the entry's `count` in `initial_state.entities` to a whole number of at least 0.
+- `E_INITIAL_CYCLE`: Give a `cycle` only to one in-service entity at a MOTION block, with a `stage` it has. Set `until` at or after the clock and within that segment, and give the time of each segment.
+- `E_INITIAL_FAILURE`: Name only failures the resource declares in `initial_state.resources.NAME.failures`, and give each a `next` or a `down_until` time.
+- `E_INITIAL_FLEET`: Correct `initial_state.fleets` or the entity's trip so each fleet, vehicle, node, charger and stage it names exists in the model. The message names the one missing.
+- `E_INITIAL_IN_SERVICE`: Lower `in_service` to at most the entry's `count` and the resource's capacity, or raise the capacity. Only service blocks take `in_service`.
+- `E_INITIAL_KEY`: Remove the unknown key from `initial_state`, or run the state with the engine version that wrote it. The hint lists the keys this engine knows.
+- `E_INITIAL_ORDERS`: Name only orders declared in `orders` in `initial_state.orders`, with `created` and `completed` of at least 0 and `completed_at` before the clock. Each `order_book` entry needs `held` true or false.
+- `E_INITIAL_QUEUE_CAPACITY`: Lower the number of entities waiting at the block, or parts on the belt, to what its queue, BUFFER or belt holds, or raise its capacity.
+- `E_INITIAL_REMAINING`: Give `remaining` one number of at least 0 per in-service entity. Set `ends`, `deadline` and `arrives` at or after the clock, and `since` and `held_since` at or before it.
+- `E_INITIAL_RESOURCE`: Name only resources declared in `resources` in `initial_state.resources`, `used` and an entity's `holds`. A hold must be released by a later block, and a released resource must be held.
+- `E_INITIAL_SCHEDULE_OFFSET`: Set `initial_state.schedule_offset` to a number of at least 0, how far into its cycle the calendar is at time 0.
+- `E_INITIAL_SET`: Name only declared resource sets in `initial_state.resource_sets`, with a `cursor` from -1 to the last member's index, and give `member` a resource of the set the block seizes.
+- `E_INITIAL_VARIABLE`: Declare the variable in `variables`, or remove it from `initial_state.variables`. The hint lists the declared variables.
+- `E_LEVEL_INITIAL_CYCLE`: Give one of the levels in the cycle a number as its `initial`, so the initial expressions no longer read each other in a loop.
+- `E_MESMAP_FEED`: Use only known keys under `feeds`, and give the model what each enabled feed writes: a CREATE with `arrival_mode` `Orders` for `plan`, a declared `parameters.process_time_table`. Check the mapped table, failure and `scrap_target` names exist in the model.
+- `E_MESMAP_FORMAT`: Make the mapping file a valid JSON object. Set `format_version` to a version this reader supports, or write the mapping in the older format.
+- `E_MESMAP_PRODUCT`: Give each `products` entry a unique `mes` id, as the MES reports it. Point `entity_type` and `sequence` at names the model declares, or set `feeds.sequences` to `true` to build routings from the MES.
+- `E_MESMAP_TIME`: Set `time.epoch` to an ISO 8601 instant for model time 0, such as `2026-09-21T06:00:00Z`. Set `time.unit` to `seconds`, `minutes`, `hours` or `days`.
+- `E_MESMAP_UNMAPPED`: Add a `work_centres` or `products` entry for each MES id named, and map each work centre holding WIP to a STATION block that leads to a PROCESS. Fix a routing step with no work centre in the MES extract.
+- `E_MESMAP_WORK_CENTRE`: Give each `work_centres` entry a unique `mes` id. Point `station`, `resource` and `failure` at a STATION block, resource and failure the model declares, and make `process_time_target` a model path ending in `.distribution`.
+- `E_MES_ADAPTER`: Write the adapter spec as `sqlite:<path>`, `csv:<folder>` or `rest:<connection>`, with a location after the colon.
+- `E_MES_READ`: Make the source readable: the database file or CSV folder must exist and follow the MES table schema, with a one-row `snapshot` table holding `taken_at`. For a `rest:` source, check the connection's address and credential.
+- `E_MES_TIME`: Write the MES timestamp in ISO 8601 with a UTC offset, such as `2026-09-21T06:00:00Z`.
+- `E_OUTBOX_SINK`: Give `--outbox` as `file:<path>` in an existing local folder (not a UNC or device path, a link or a hard-linked file), or as `mqtt:<connection>` naming an mqtt connection with `"use": "outbox"` in the connections file.
+- `E_PLANTMAP_DOUBLE`: Keep one signal for each count, state, level or resource's units in the plant mapping's `signals`. Tell a block's content either by a `queue` signal or by identities, not both. The engine does not choose between two reports.
+- `E_PLANTMAP_FORMAT`: Fix the `*.plantmap.json` at the path given: it needs `"format": 1`, a `time.epoch` ISO 8601 instant, only known keys, and signals whose `as`, `key` and tables match their kind. `naga plant init` writes a valid scaffold.
+- `E_PLANTMAP_NAME`: Correct the name in the signal (`block`, `blocks`, `resource`, `level`, `nodes`, `sequences` or `unit`) to one the model has; the hint lists the model's names. Check that the mapping is used with the model it was written for.
+- `E_PLANTMAP_SIZE`: Shrink the plant mapping under its bounds. The file stays under 1 MiB, with at most 2000 `signals`, at most 10 000 entries in each table, and each `key` at most 1024 bytes.
+- `E_PLANT_LOG`: Pass a readable log under 256 MiB and 1 000 000 lines, one JSON object a line, as `naga watch --record` writes it. Cut a longer log or record a shorter period.
+- `E_RECOMMEND_KPI`: Set `kpi` in the candidates file to a KPI of the forecast's table. Counted throughput is `timeseries/block/<name>/out/max` of a block the plant mapping counts.
+- `E_REFIT`: Fix the `--refit` file: `"format": 1`, `"kind": "naga-refit"`, only its own keys, and a non-empty `factors` list, each `{"path", "low", "high"}` with `low` under `high` and a `path` that addresses a number of the model.
+- `E_RESOURCE_POWER_STATE`: Use only `busy`, `idle`, `blocked`, `down` and `off_shift` as keys of the resource's `power` object, each with a number of kW per unit; rename or remove any other key.
+- `E_SDIMPORT_MDL`: Re-save the Vensim `.mdl` file as plain text (UTF-8 or cp1252) under the 20 MB cap, and check that the path given to `naga sdimport` exists and is readable.
 - `E_SDIMPORT_UNSUPPORTED`: Rebuild the variable that the import left out, using the model file's own sections. The message names the unsupported construct, such as a module, a macro or an external data reference.
+- `E_SDIMPORT_XML`: Re-save the XMILE file as UTF-8, well-formed XML under the 20 MB cap, with no DOCTYPE or ENTITY declaration. Check that the path given to `naga sdimport` exists and is readable.
+- `E_SERIES_TIMES`: Sort the samples of the time series so `times` or `timestamps` strictly increase with no duplicates, and give `step` a positive value.
+- `E_STATE_FORMAT`: Pass a state document of format 1 as `naga state take` writes it, with finite numbers and plain JSON values only. Take the state again rather than writing one by hand.
+- `E_STATE_HASH`: Take the state again with `naga state take` instead of editing the file; a state document is checked against its own hash, so any hand edit refuses it.
+- `E_STATE_MODEL`: Take the state again with `naga state take` on the exact model file you run. A change to the model, or an engine upgrade that moves its hash, refuses an older state.
+- `E_STATE_SIZE`: Take the state at a time with fewer entities in the system, or reduce the model's work in progress; a state holds at most 16 MiB and 100 000 entities.
+- `E_STATE_STALE`: Write the observed state again so it carries a current time stamp, or allow an older state with a larger `--max-age`.
+- `E_STATE_UNSUPPORTED`: Take the state at another time, when the kind the message names is not in progress, or remove that element from the model. The coverage table of the state documentation lists what a state carries.
+- `E_TIMESERIES_COUNTS`: Set `simulation.timeseries_counts` to a list of at most 1000 different block names that exist in the model, for example `["Drill", "Pack"]`.
+- `E_TWIN_FORECAST`: Run the model from the same state with `naga run --state` to see why it fails, then fix the model; the twin keeps the last good forecast meanwhile.
+- `E_TWIN_OUTPUT`: Check the twin's `--out` directory: its write rights, its free space, and that no reader keeps `twin.json` or the ledger open. The next cycle writes again.
+- `E_TWIN_REFIT`: End the adopted refit with an `ended` reply in the outbox replies, or start the twin with the model the refit was adopted for.
+- `E_TWIN_RESULT`: Pass the `--out` directory of a twin that has written at least one cycle, a local folder holding its `twin.json`; start one with `naga twin run ... --out DIR`.
+- `E_TWIN_STATE`: Remove or replace the element kind the message names, or map a `vehicle` signal for every vehicle of each fleet. `naga state check` and the state coverage table show what can start from the plant.
+- `E_VARIABLE_INITIAL`: Give the variable's `initial` a scalar value: a number, a string or `true`/`false`, not a list or an object.
+- `E_VIEWER_MODEL`: Remove what the message names: freeze `data_sources` and `data_bindings` with `naga viewer --freeze`, drop agent `python`, LOGIC blocks and plugin types, or keep the model under 5 MB. Otherwise share a `naga run --player` recording.
+- `W_DATA_ALLOW_NETWORK_IGNORED`: Remove `allow_network` from the data source in the model file. Network access is granted by whoever runs the model (`--allow-network`), never by the file.
+- `W_INITIAL_STATE_WARMUP`: Set `simulation.warmup` to 0 for a model that starts from an `initial_state`, or remove the initial state if a warm-up from empty is what you want.
+- `W_LAW`: Compare the result the law names with the model's arrival rates, service times and capacities, and correct the input that disagrees. Saturation can be intended; with no warm-up or many entities left inside, add a warm-up or lengthen the run.
+- `W_LIVE_DROPPED`: Check what the source sends: keys and values must be plain data under the size bound. Its distinct keys must stay under the connection's `keys` limit, which `limits` in the connections file can raise.
+- `W_LIVE_GAP`: Check the connection to the source and the network or server behind it; the latest values are right again, but the history has a hole of unknown size.
+- `W_LIVE_LIMIT`: Use an encrypted OPC UA connection to a server you trust, lower the server's own message limits, or install an asyncua version the reader supports.
+- `W_LIVE_LOST`: Read the source more often, or raise the connection's `events` limit under `limits` in the connections file (ceiling 100 000).
+- `W_LIVE_SKEW`: Synchronise the clocks of the source and this machine, for example with NTP; both stamps travel with every event.
+- `W_MESMAP_UNUSED`: Correct the entry's `mes` id to the one the MES reports for that equipment, or remove the `work_centres` entry.
+- `W_MES_NAIVE_TIME`: Export the MES timestamps, in the `events` table and the `snapshot` table's `taken_at`, with a UTC offset such as `Z`. A source that writes local time otherwise shifts the history window by its offset.
+- `W_MES_TABLE_MISSING`: If the plant has the table, give the REST connection's credential access to it, or serve it at the connection's address. Otherwise no change is needed: the table reads as empty.
+- `W_MES_THIN_DATA`: Widen `parameters.window_days` or lower `parameters.min_samples` in the mapping. If no distribution could be fit, check the units and signs of the durations in the MES extract.
+- `W_OUTBOX`: Make the outbox reader open, read and close its file and the replies file, and move or empty a file at its ceiling. Failed records are retried until they expire; past the daily ceiling the rest is dropped until the next UTC day.
+- `W_PLANT_CONTRADICTION`: Check the plant signals the message counts by reason: a job for an unseen entity, a retyped entity, a level out of bounds, a counter going back. Fix the mapping, or set `rollover` on a counter that wraps.
+- `W_PLANT_DROPPED`: Check the mapping's tables (`states`, `blocks`, `types`) and fields against what the plant sends; the message counts each reason. A recorded log needs one JSON object a line, as `naga watch --record` writes.
+- `W_PLANT_GAP`: Check the plant connection and raise the source's `events` limit in the connections file if events were lost. What was missed is not shown; the next values put the timeline right.
+- `W_PLANT_SERVICE_INFERRED`: Map the station's `job` signal in the plant mapping, so the plant names which entities are in service instead of the longest-waiting ones being assumed.
+- `W_PLANT_SYNTHETIC`: Map identities with `at`, `seen` or `job` signals where the plant has them, so the timeline follows named items and units instead of counts alone.
+- `W_PLANT_TIME`: Synchronise the plant's clocks with this machine and have each signal carry a source stamp; the message counts stamps that were missing, ahead of their receipt or late.
+- `W_SDIMPORT_APPROX`: Check the translated element at the path given. To avoid it, set the source model's method to euler or rk4 and its time unit to day, hour, minute or second. Set its start time to 0, and give each graphical function an input.
+- `W_STATE_NOT_COVERED`: Map a plant signal for the element kind the message names, or take the state again with this version. If the model's declared start is acceptable for it, the warning can stay.
+- `W_TWIN_ALERT`: Use one `--out` directory per model and keep the same `--alert-k` and `--alert-h` when the twin is started again. If the change was intended, the sums restart and the warning can stay.
+- `W_TWIN_CLOCK`: Check this machine's time synchronisation. A single jump, such as a manual clock change, needs no action: cadences are not moved and later stamps use the new time.
+- `W_TWIN_CUT`: Reduce what one result holds: fewer KPIs or compared series in the forecast, or a smaller view. For a busy source, shorten `--every` so each cycle has fewer events to read.
+- `W_TWIN_FORECAST_BUSY`: Lengthen `--forecast-every`, or shorten `--horizon` or lower `--replications`, so each forecast ends before the next is due.
+- `W_TWIN_MODEL_CHANGED`: Stop the twin and start it again to use the changed model file; until then it keeps the model it loaded.
+- `W_TWIN_RECOMMEND`: Act on what the message names. Use one `--out` directory per model so its ledger matches, keep the start state under its size bound, and check that a taken action's target still exists in the model.
+- `W_TWIN_REFIT`: Give the twin the same `--refit` file it ran with, and adopt only refits whose factors that file allows; reply `ended` to a refit that should not apply.
+- `W_TWIN_SCORE`: Use one `--out` directory per model and `--horizon`. A twin started with another model or horizon restarts its score, and the warning can then stay.
+- `W_TWIN_SOURCE`: Check that each live source is up and connected, that `--max-age` is longer than its silent spells, and that the mapping's signal keys match what the plant sends (`naga watch`).
+- `W_VIEWER_EMPTY`: List at least one entry under `dashboard.inputs` and one under `dashboard.results`. If the author's run could not be recorded, run the model with `naga run` to see why.
+- `W_VIEWER_LONG_RUN`: Lower `dashboard.limits.max_replications` so a run at the most replications a viewer allows takes under five minutes in a browser.
 
 [All problem codes](index.md)

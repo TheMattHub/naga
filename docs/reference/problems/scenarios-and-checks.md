@@ -39,9 +39,36 @@ Scenarios, assertions, path checks, dashboards, annotations and the file version
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_ANNOTATION_ID`: Give the annotation a non-empty `id` in the `annotations` section. Every annotation needs its own unique id.
+- `E_ANNOTATION_KIND`: Set the annotation's `kind` to `text` or `frame`. No other kind exists, and an annotation without a `kind` gets this error too.
+- `E_ANNOTATION_SHAPE`: Give a `text` annotation a `position` of `[x, y]`, and a `frame` annotation a `rect` of `[x, y, width, height]`.
+- `E_ASSERTION_CONFIDENCE`: Set the assertion's `confidence` to a number strictly between 0 and 1, such as `0.95`, or remove it to use that default.
+- `E_ASSERTION_KPI`: Fill in the assertion's `kpi` with a KPI key the run produces, such as `system/Throughput (per time unit)`.
+- `E_ASSERTION_NAME`: Give the assertion a non-empty `name` in the `assertions` section. Names must be unique within the section.
+- `E_ASSERTION_OP`: Set the assertion's `op` to one of `<`, `<=`, `>`, `>=` or `==`. The field is required and takes no other operator.
+- `E_ASSERTION_REPLICATIONS`: Set the assertion's `replications` to a whole number of at least 1, or remove it to use the default of 5.
+- `E_BACKGROUND`: Fix the `background` section: an object with a non-empty `path`, `position` as `[x, y]`, `scale` above 0, `opacity` from 0 to 1 and `locked` true or false. Use `null` for no background.
+- `E_DASHBOARD_CONTROL`: Give the control in `dashboard.controls` a unique `name`, a `kind` of `slider` or `decision`, a known target and `min` below `max`. A decision's `policy` needs a Policy-mode DECIDE with one option per outgoing link.
+- `E_DASHBOARD_DEFINITION`: Fix the `dashboard` section at the path the message names. Drop unknown keys, keep lists and text within their ceilings, and make every page item's `ref` name an existing input, result, widget or control.
+- `E_DASHBOARD_EXPR`: Rewrite the widget's `expr` so it compiles and names only declared variables and resources. It may not draw a random number, and a constant must be a number.
+- `E_DASHBOARD_GAUGE`: Give the gauge widget a numeric `max` greater than `min`, and list its `thresholds` as ascending numbers within `min` and `max`.
+- `E_DASHBOARD_INPUT`: Point the input's `path` at a value an override can change in this model, and set its `kind` to match that value: `number`, `switch` for true/false, or `choice`.
+- `E_DASHBOARD_KIND`: Set the widget's `kind` to one of `kpi`, `gauge`, `line` or `bar` in `dashboard.widgets`.
+- `E_DASHBOARD_NAME`: Give the dashboard widget a non-empty `name` that no other widget in `dashboard.widgets` uses.
+- `E_DUPLICATE_ANNOTATION`: Rename one of the two annotations in the `annotations` section so every `id` is unique.
+- `E_DUPLICATE_ASSERTION`: Rename one of the two assertions in the `assertions` section so every `name` is unique.
+- `E_DUPLICATE_PATH_CHECK`: Rename one of the two path checks in the `path_checks` section so every `name` is unique.
+- `E_DUPLICATE_SCENARIO`: Rename one of the two scenarios in the `scenarios` section so every `name` is unique.
+- `E_PATH_CHECK_BLOCK`: Set the path check's `block`, or an `order` rule's `first` and `then`, to names of blocks in the model. `first` and `then` must name different blocks.
+- `E_PATH_CHECK_COUNT`: Set the `at_most` path check's `count` to a whole number of 0 or more: the most visits an entity may make to the block.
+- `E_PATH_CHECK_NAME`: Give the path check a non-empty `name` in the `path_checks` section. Names must be unique within the section.
+- `E_PATH_CHECK_RULE`: Make `path_checks` a list of objects whose `rule` is `order`, `never`, `at_most` or `always`. Keep only the keys that rule takes, and give `e_type` as an entity type name.
+- `E_SCENARIO_GOAL`: Write the scenario's `goal` as text of at most 500 characters, such as one sentence naming the question it answers.
+- `E_SCENARIO_NAME`: Give the scenario a non-empty `name` in the `scenarios` section. Names must be unique within the section.
 - `E_SCENARIO_OVERRIDE`: Give every override a `path` and a `value`. A path has the form `resources.<name>.capacity`, as listed on the section's page.
 - `E_SCHEMA_VERSION`: Open the file with a newer version of the tool. It was written by a version that is newer than this one, so this build cannot be sure to read it right.
+- `W_BACKGROUND_MISSING`: Put the image at the `background.path` the model names, or correct the path. A relative path is read from the model file's folder.
 
 [All problem codes](index.md)

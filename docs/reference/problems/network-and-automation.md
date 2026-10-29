@@ -56,4 +56,57 @@ Path networks, fleets, workers, motion, batteries and chargers, the investment c
 | <span id="w_tending_unused"></span>`W_TENDING_UNUSED` | warning | A station declares tending but no fleet has an arm. | -- |
 | <span id="w_transport_keep_unfreed"></span>`W_TRANSPORT_KEEP_UNFREED` | warning | Nothing downstream of a TRANSPORT with keep_vehicle frees the vehicle (no RELEASE naming the fleet, no TRANSPORT on it without keep_vehicle): it waits with the part until the part leaves. | [RELEASE](../blocks/release.md), [TRANSPORT](../blocks/transport.md) |
 
+## How to fix
+
+Each code with the usual remedy:
+
+- `E_BATTERY`: Correct the fleet's `battery` field the message names: `capacity_kwh` above 0, `initial`, `low`, `target` and `opportunity_below` between 0 and 1 with `low` below `target`, and a known `strategy` with the field it needs (`opportunity_below` or `schedule`).
+- `E_BATTERY_SCHEDULE`: Declare the schedule under `schedules`, or correct the name in the fleet's `battery.schedule`. A scheduled battery charges while that schedule's value is above 0.
+- `E_CALENDAR_TIMEZONE`: Set `simulation.calendar.timezone` to an IANA time zone name such as `UTC`, `Europe/Rome` or `America/New_York`, or remove it to use UTC.
+- `E_CHARGER`: Correct the entry under `chargers` the message names. It needs a unique `name` no resource or fleet uses, a declared network `node`, `kind` `charge` or `swap`, and integer `points` of 1 or more. Set `power_kw` above 0, fractions within 0-1, and `swap_time` on a swap station.
+- `E_CHARGER_UNKNOWN`: Declare the charger under `chargers`, or correct the name in the fleet's `battery.chargers` list. Drop the list to allow every charger of the matching kind.
+- `E_DISPATCH`: Fix what the message names under `dispatch`: non-empty `supply_tags` and `demand_tags`, a `replan_every` that is a multiple of `step` within `horizon`, known `terminal` and `forecast`. Keep one flow per grid role, and give every `optimal` storage a declared `setpoint` variable.
+- `E_DISTANCE_UNKNOWN`: Correct the place in the `DISTANCE` call to a node under `network.nodes`, or to a STATION block (or its `station` alias) whose `node` is set. Place names are case sensitive.
+- `E_FLEET_ARM`: Set the fleet's `arm` to a profile declared under `motion_profiles`, or remove `arm` from a worker fleet, a gantry fleet or one with `loads` above 1. Drop `exchange` on a fleet without an `arm`.
+- `E_FLEET_FIELD`: Correct the fleet field the message names: an integer `count` of 1 or more, `kind` `vehicle` or `worker`, and a `speed` above 0. Use known `dispatch`, `select` and `park` rules, and a `capacity_schedule` naming a schedule of kind `capacity`.
+- `E_FLEET_LOADS`: Set the fleet's `loads` to an integer of 1 or more, or drop it for 1. A fleet of kind `worker` carries one load at a time: drop `loads` there, or make the fleet kind `vehicle`.
+- `E_FLEET_MOTION`: Set the fleet's `motion` to `network` or `gantry`. A gantry fleet needs `speed_x` and `speed_y` above 0 and a `hoist_time` of 0 or more, and cannot be of kind `worker`.
+- `E_FLEET_NAME`: Give every entry under `fleets` a unique, non-empty `name` that no resource or resource set uses. A fleet is itself a resource, so do not also declare it under `resources`.
+- `E_FLEET_NODE`: Set the fleet's `home`, and each unit's `home`, to a node declared under `network.nodes`, or add that node. A fleet also needs a `network` section with nodes and segments to drive on.
+- `E_FLEET_POWER`: Write the fleet's `power` as an object of kW per vehicle for each state, such as `{"busy": 5.0, "idle": 1.0}`, with every value a number of 0 or more.
+- `E_FLEET_UNITS`: Make the fleet's `units` a non-empty list of objects, each with a unique `name` and a `skills` list of names. Drop `count`, or make it equal the number of units.
+- `E_FLEET_UNKNOWN`: Declare the fleet under `fleets`, or correct the TRANSPORT block's `fleet` parameter to a declared fleet name. Names are case sensitive.
+- `E_INVESTMENT`: Make `investment` an object whose `baseline` names a scenario (or is `""`), with `horizon_years` and `operating_hours_per_year` above 0. Set `discount_rate` to 0 or more, a numeric `margin_per_part`, and a `throughput` KPI key such as `user/Good parts`.
+- `E_MOTION_PAYLOAD`: Lower the move segment's `payload_kg` to at most the profile's `payload_max`, raise `payload_max` on the motion profile, or point the MOTION block's `profile` at one rated for the load.
+- `E_MOTION_PROFILE`: Correct the entry under `motion_profiles` the message names: a unique `name`, `kind` `robot`, `human` or `mechanism`, `speed` and `accel` above 0, `payload_derate` in (0, 1]. Set `collaborative_speed` when a MOTION block uses an `hrc` mode.
+- `E_MOTION_PROFILE_UNKNOWN`: Declare the profile under `motion_profiles`, or correct the MOTION block's `profile` to a declared profile name. Names are case sensitive.
+- `E_MOTION_SEGMENT`: Give the MOTION block's `segments` at least one entry with a known `kind`. A `move` takes only `distance_m` (0 or more) and `payload_kg`; any other kind takes only a `time`, a non-negative number or an expression.
+- `E_MOTION_ZONE`: Set the MOTION block's `hrc` to `none`, `collaborative` or `separation`. For `separation`, name a zone from `zones`, or give the inline `zone` a network `node`, a `radius_m` above 0 and a `measure` of `path` or `straight`.
+- `E_MOTION_ZONE_UNKNOWN`: Declare the zone under `zones`, or correct the MOTION block's `zone.name` to a declared zone name.
+- `E_NETWORK_NODE`: Give every entry under `network.nodes` a unique, non-empty `name`, numeric `x` and `y`, and a `capacity` that is an integer of 1 or more or null.
+- `E_NETWORK_NODE_UNKNOWN`: Add the node under `network.nodes`, or correct the block's `node` parameter to a declared node. For a TRANSPORT `destination`, set the `node` of that STATION.
+- `E_NETWORK_SEGMENT`: Give each entry under `network.segments` a `from` and `to` naming two different declared nodes, and a `length` and `speed` above 0 or null. Its `capacity` is an integer of 1 or more or null, and `two_way` is a boolean.
+- `E_NETWORK_SHAPE`: Write `network` as an object with `nodes` and `segments` lists, and set `length_factor` to a number above 0 (1.0 is the straight-line distance) or remove it.
+- `E_NETWORK_UNREACHABLE`: Add segments under `network.segments` so a path joins the two places the message names, or make a one-way segment on the way two-way (`two_way` true).
+- `E_TENDING`: Correct the STATION's `tending` field the message names: only `place`, `pick`, `time_unit`, `hrc`, `zone` and `cobot`, with segments as in a MOTION block. Set `cobot` to `leave` or `stay`, `collaborative_speed` on the arm's profile for an `hrc` mode, and the STATION's `node`.
+- `E_TRANSPORT_KEEP_ARM`: Remove `keep_vehicle` from the TRANSPORT on the arm fleet. To keep a cobot with its part, set the station's `tending` `cobot` to `stay` instead.
+- `E_TRAVEL_MODE`: Set the ROUTE block's `travel` to `time` or `network`. For `network`, add a `network` section and give every STATION involved a `node`.
+- `E_WORKER_FLEET`: Point the block's `worker_fleet` at a fleet declared under `fleets` with `kind` `worker`, or set that fleet's `kind` to `worker`.
+- `E_WORKER_NO_NODE`: Set the block's `node` parameter to the network node the worker walks to, or clear `worker_fleet` on the block.
+- `E_WORKER_PREEMPT`: Clear `preempt` on the block. A block with `worker_fleet` cannot preempt, and no preempting block may seize a resource (or resource-set member) that a worker block also seizes.
+- `E_WORKER_SKILL_UNKNOWN`: Add the skill to the `skills` of a unit in the worker fleet's `units`, or correct the block's `worker_skill`. Skill names are case sensitive.
+- `E_WORKER_WHEN_BLOCKED`: Set the block's `worker_when_blocked` to `leaves` or `stays`, or remove it to use the default `leaves`.
+- `E_ZONE`: Give every entry under `zones` a unique `name`, a `node` declared under `network.nodes`, a `radius_m` above 0 and a `measure` of `path` or `straight`. Remove any other field except `description`.
+- `W_CONVEYOR_ZONE`: Widen the flow's `leak.zone` so it covers at least one slat of the belt, or use a smaller `dt` for more slats. As it is, the leak never takes anything.
+- `W_DISPATCH_FORECAST`: Write the flow's `rate` from time and time series only, without reading levels, flows, resources or the bus, so the plan can forecast it. If holding the current rate over the horizon is intended, the warning can stay.
+- `W_DISPATCH_MIXED`: Mark the level's `storage` as `optimal`, with a declared `setpoint` variable, so the plan drives it. If the storage should keep its own rule, the warning can stay.
+- `W_INVESTMENT_NO_CAPEX`: Set `"capex": true` on the entries under `fixed_costs` that are the investment, in the model or through a scenario override of `fixed_costs.<name>.capex`.
+- `W_INVESTMENT_ONE_SCENARIO`: Add a scenario under `scenarios` to compare with the `investment.baseline`. With only the baseline, the investment case has nothing to compare.
+- `W_NO_CHARGER`: Add a charger under `chargers` of the kind the strategy needs (`swap` for `swap`, else `charge`) on a node the fleet can reach from its `home`. Or join the charger's node to the network, and check the battery's `chargers` list allows it.
+- `W_SEGMENT_DEADLOCK_RISK`: Make the segment one-way (`two_way` false), give it a `capacity` of 2 or more, or add a passing place. If vehicles never meet head-on there, the warning can stay.
+- `W_TENDING_DEADLOCK`: Raise the arm fleet's `count` above 1, set `exchange` on the fleet, put a BUFFER before the machine, or set the station's `tending` `cobot` to `stay`.
+- `W_TENDING_STAY`: Set the station's `tending` `cobot` to `leave`, or carry the part on from the station with a TRANSPORT on the same arm fleet.
+- `W_TENDING_UNUSED`: Set `arm` to a motion profile on the fleet that tends the station, or remove `tending` from the STATION. Without an arm fleet it is served as a plain station.
+- `W_TRANSPORT_KEEP_UNFREED`: Add a RELEASE naming the fleet where the vehicle should go free, or a later TRANSPORT on that fleet without `keep_vehicle`. Otherwise drop `keep_vehicle` from the block.
+
 [All problem codes](index.md)

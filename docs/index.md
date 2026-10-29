@@ -26,9 +26,9 @@ continuous levels with exact crossing times, so one model can hold all four.
 
 ![What goes into the engine, what it does, and what comes out](img/overview.svg)
 
-The engine works in four layers: it checks the model file, runs it on one clock, turns runs
-into evidence, and follows a plant. What comes back is pages to share (a replay and a viewer),
-results with their law-check warnings, and a twin's forecasts and proposals.
+The engine works in four stages: it checks the model file, runs it on one clock, proves results
+with replications and scenarios, and follows a live plant. What comes back is results with their
+law-check warnings, web pages to share (a replay and a viewer) and forecasts.
 
 <div class="grid cards" markdown>
 

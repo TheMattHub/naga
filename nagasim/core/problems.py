@@ -671,8 +671,7 @@ PROBLEM_CODES: dict[str, str] = {
                             "the model it loaded until it is started again.",
     "E_CANDIDATES": "A candidates file is not one of format 1, is over its bound, holds a key or "
                     "an action it may not, or names what the model does not declare.",
-    "E_CANDIDATE_VERB": "A candidate's verb is listed in the vocabulary and not built in this "
-                        "version (the message says why), or is no verb at all.",
+    "E_CANDIDATE_VERB": "A candidate's verb is not one of the vocabulary's verbs.",
     "E_RECOMMEND_KPI": "The KPI the candidates are compared on is not in the forecast's table.",
     "W_TWIN_RECOMMEND": "A twin's recommendations could not be kept or continued as asked: the "
                         "message says what (a ledger of another model, a state too large to "

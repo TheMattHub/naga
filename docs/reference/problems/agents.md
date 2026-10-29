@@ -34,10 +34,31 @@ Agent types, populations and their messages. The list is generated from the code
 
 ## How to fix
 
-The codes seen most often, each with the usual remedy:
+Each code with the usual remedy:
 
+- `E_AGENT_ACTION`: Rewrite the action in the agent type with exactly one action key and its own fields, as the message names. A `set` target must be `self.` plus a declared attribute or a declared variable, and movement actions need the matching `space`.
 - `E_AGENT_ATTRIBUTE`: Give each agent attribute and parameter a unique valid name, make every parameter a number, and declare any `self.<name>` an expression reads. Do not name an attribute `heading`.
+- `E_AGENT_EXPRESSION`: Rewrite the agent type's expression so it compiles, reading only `self.` attributes, the type's parameters, model variables, `TNOW` and built-in functions. Read `payload` only in a message transition, never `entity`, and draw no random numbers in a `condition`.
+- `E_AGENT_GRID`: Give the agent type a grid space, such as `"space": {"kind": "grid", "size": [50, 50]}`, or remove the grid functions, `step` or `move_random` actions and `patch.` writes.
+- `E_AGENT_NETWORK`: Fix the population's `network` to the keys its `kind` takes: `p` or `mean_degree` for `random`, an even `k` and `beta` for `small_world`, `m` for `scale_free`, a table with numeric `from` and `to` columns for `table`.
+- `E_AGENT_PATCH`: Fix the patch under the grid space: a unique identifier `name`, `diffuse` and `evaporate` in [0, 1], `grow` as `{rate, max}`, and `patch_tick` above 0 when it changes. Read only declared patches with `PATCH`.
+- `E_AGENT_PLACEMENT`: Set the population's `placement.kind` to `random` or `table`. A table placement needs a non-empty list of points or nodes; on a grid, cells `[cx, cy]` inside it and no `bounds`.
+- `E_AGENT_PYTHON`: Make the agent type's `python` top-level `def` statements without imports, globals, classes, `yield`, `with` or underscore names. Each `{python: ...}` action must name a defined function taking `(agent, api)`.
+- `E_AGENT_RATE_FORM`: Write the rate as an own part (`self`, parameters, constants) times a shared part, with no factor mixing both. Express time dependence with `STEP`, `PULSE` or a step time series, not a bare `TNOW`.
+- `E_AGENT_SPACE`: Fix the agent type's `space`: `kind` is `continuous`, `network` or `grid`. A continuous space needs `bounds` `[x0, y0, x1, y1]`; a grid needs a valid `size`; a network space needs nodes in the model's `network` section.
 - `E_AGENT_STATE`: Declare the agent type's states, and make the initial state and every transition end one of them. A population's initial states must also be declared.
+- `E_AGENT_TICK`: Write `tick` as `{"dt": 1, "activation": "synchronous"}` with `dt` above 0 and `phase` below `dt`. Give a tick to any population whose type has `on_tick` actions or `tick` transitions, and give `let` new identifier names.
+- `E_AGENT_TRANSITION`: Give the transition exactly one trigger among `timeout`, `rate`, `condition`, `message` and `tick`. A `message` must be a name, a `tick` a condition string, and `scan` a number above 0.
+- `E_AGENT_TYPE_NAME`: Give every entry in `agent_types` a non-empty `name` that no other agent type uses.
+- `E_AGGREGATE_AGENTS`: Write the agent aggregate with quoted literal names, for example `SUM("People", "age")` or `MEAN("People", "age", "Sick")`. For the system-dynamics form use `SUM(LEVEL("x[*]"))`.
+- `E_POPULATION_COUNT`: Set the population's `count` to an integer of 0 or more (or a table count), keep the `initial` state counts within it, and make `max_count` an integer at least `count`.
+- `E_POPULATION_FULL`: Raise the population's `max_count`, or make the agent type's `spawn` actions create fewer agents. The run stops when a spawn finds the population already at `max_count`.
+- `E_POPULATION_NAME`: Give every entry in `populations` a non-empty `name` that no other population uses.
+- `E_POPULATION_TYPE`: Set the population's `type` to the name of an agent type declared under `agent_types`, or declare that type. The hint lists the declared types.
+- `E_POPULATION_UNKNOWN`: Correct the population name in the `COUNT`, `SUM`, `MEAN` or `AGENT` call, or in the send, spawn or remove action, or declare that population under `populations`.
 - `E_SEND_TARGET`: Write `to` as `entity.agent`, an `AGENT("Pop", i)` expression, or an object with a `population`. A SEND block needs a model that declares at least one population.
+- `W_AGENT_MESSAGE_UNUSED`: Add a `send` action or a SEND block that sends this message, or remove the transition that waits for it. Check the spelling: message names must match exactly.
+- `W_AGENT_SCAN`: Add `"scan": 0.5` (any interval above 0) to the transition so it is re-checked on that grid. If re-evaluating only at agent events is intended, the warning can stay.
+- `W_AGENT_STATE_COMPOSITE`: Compare `self.state` with one of the composite state's leaf states, or count the group with `COUNT("Population", "Composite")`. `self.state` always holds the leaf.
 
 [All problem codes](index.md)
