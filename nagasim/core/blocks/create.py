@@ -94,8 +94,9 @@ class Create(BaseProcess):
             elif (self.created_entities > 0 or self.env.now > self.start_time
                   or self.time_between_arrivals.dist_type == "FixedSchedule"):
                 if self.time_between_arrivals.dist_type == "FixedSchedule":
-                    next_time = self.time_between_arrivals.sample(self.rng, current=self.env.now,
-                                                                     scope=self.expression_scope())
+                    next_time = self.time_between_arrivals.sample(
+                        self.rng, current=self.env.now, scope=self.expression_scope(),
+                        deterministic=self.ctx.deterministic)     # drops a jitter (D1125)
                     if next_time is None:
                         break  # no more arrivals
                     self.next_at, self.scheduled_at = next_time, self.env.now

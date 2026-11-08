@@ -1,0 +1,11 @@
+shop            0     1     2     3
+stock           1     2     3     4
+links           2     2     2     2
+link_sum        6     4     6     4
+link_mean       3     2     3     2
+next_linked     1     1     1     1
+knn_sum         5     4     3     5
+knn_mean      2.5     2   1.5   2.5
+nearest        10    10    10    20
+first_alive     1     1     1     1
+road           50    50    50    50

@@ -192,6 +192,38 @@ def _block_variant(type_name: str, spec) -> dict:
                                                "`out`, `exit:<branch>` or `entry:<port>`, in scene "
                                                "units from each counter's default place. Absent "
                                                "means every counter is home. Editor-only."},
+            # D1089: one override every view reads (`core/queuerow.py`).
+            "queue_row": {"type": "object", "minProperties": 1, "additionalProperties": False,
+                          "properties": {
+                              "anchor": {"$ref": "#/$defs/point",
+                                         "description": "Where the row starts, [x, y] "
+                                                        "normalised over the asset's picture "
+                                                        "(-1..2)."},
+                              "direction": {"type": "number", "minimum": 0,
+                                            "exclusiveMaximum": 360,
+                                            "description": "Which way the row runs, in degrees "
+                                                           "clockwise from +x in the asset's own "
+                                                           "unturned frame (0 right, 90 down, "
+                                                           "180 left, 270 up)."},
+                              # D1113: a fixed number of slots, drawn in 2D playback only.
+                              "slots": {"type": "integer", "minimum": 1,
+                                        "description": "How many places the row has, e.g. a "
+                                                       "roller table's; the 2D player draws them "
+                                                       "numbered with a 'label n/N' counter and an "
+                                                       "entity past the last one as an overflow."},
+                              "frees": {"enum": ["leave", "move_end"],
+                                        "description": "When a slot frees: when its entity leaves "
+                                                       "(default) or when its timed move out ends "
+                                                       "(a lift that holds its spot)."},
+                              "label": {"type": "string",
+                                        "description": "The counter's name, e.g. 'Exit'."}},
+                          "description": "A placed asset's own queue row: where its waiting "
+                                         "entities line up past its seats, over the picture's "
+                                         "queue_anchor and queue_direction, so a row can be "
+                                         "turned away from a neighbour. Absent means the "
+                                         "asset's own row. It never changes a run; with "
+                                         "slots the run counts the arrivals that find them "
+                                         "full (the slot_summary frame)."},
             "locals": _LOCALS,
             "params": {"type": "object", "properties": properties, "required": required,
                        "additionalProperties": False},
@@ -210,6 +242,9 @@ def _distribution_variant(name: str, spec) -> dict:
                                       "default": param.default}
         elif param.kind == "expression":
             properties[param.name] = {"type": "string", "default": param.default}
+        elif param.kind == "choice":
+            properties[param.name] = {"type": "string", "enum": list(param.choices),
+                                      "default": param.default}
         else:
             properties[param.name] = dict(_NUMBER_OR_EXPRESSION, default=param.default)
         if param.hint:
@@ -926,6 +961,89 @@ def _defs() -> dict:
                                                    "fails."},
             },
             "required": ["supply_tags", "demand_tags"],
+            "additionalProperties": False,
+        },
+        # D1111; nagasim/core/stockpiles.py checks the rest (ordered rects, unique blocks).
+        "stockpiles": {
+            "type": "object",
+            "description": "OPTIONAL piles for store blocks, drawn in playback only: each area's "
+                           "block shows its entities as slabs on a few piles instead of a queue "
+                           "row. Ignored by the engine.",
+            "properties": {
+                "source": {"type": "string",
+                           "description": "The block whose created entities `keys` lists, in "
+                                          "creation order."},
+                "keys": {"type": "array", "items": {"type": "string"},
+                         "description": "Each entity's pile key, by creation order at source."},
+                "max_layers": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8,
+                               "description": "Slabs drawn per pile; past it only the label counts."},
+                "areas": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "block": {"type": "string", "minLength": 1},
+                        "label": {"type": "string",
+                                  "description": "Drawn with the area's total, e.g. 'Area A' -> "
+                                                 "'Area A . 47'."},
+                        "label_at": {"type": "array", "items": {"type": "number"}, "minItems": 2,
+                                     "maxItems": 2},
+                        "colour": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                        "keys": {"type": "array", "items": {"type": "string"},
+                                 "description": "This area's own pile keys, by creation order at "
+                                                "its source (D1146); without them the section's "
+                                                "keys apply."},
+                        "source": {"type": "string",
+                                   "description": "The block whose created entities this area's "
+                                                  "keys list; default the section's source."},
+                        "piles": {"type": "array", "minItems": 1, "items": {
+                            "type": "object",
+                            "properties": {"key": {"type": "string"}, "label": {"type": "string"},
+                                           "rect": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}},
+                            "required": ["rect"], "additionalProperties": False}},
+                    },
+                    "required": ["block", "piles"], "additionalProperties": False}},
+            },
+            "required": ["areas"],
+            "additionalProperties": False,
+        },
+        # D1110; nagasim/core/cranes.py checks the rest (unique names, ordered runway).
+        "crane": {
+            "type": "object",
+            "description": "An overhead or gantry crane, drawn in playback only: a traced move "
+                           "with a duration between two blocks it serves is a lift (the hook "
+                           "travels empty, lowers, carries the load and sets it down, inside "
+                           "the move's own time). Ignored by the engine.",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "runway": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                           "maxItems": 4,
+                           "description": "[x0, y0, x1, y1] in metres: the area the bridge "
+                                          "travels over."},
+                "serves": {"type": "array", "items": {"type": "string"}, "minItems": 2,
+                           "description": "The blocks whose moves between each other this "
+                                          "crane makes."},
+                "axis": {"enum": ["x", "y"],
+                         "description": "The plan axis the bridge travels along; default the "
+                                        "runway's long side."},
+                "home": {"type": "array", "items": {"type": "number"}, "minItems": 2,
+                         "maxItems": 2,
+                         "description": "Where the hook waits before the first lift and "
+                                        "between lifts far apart; default the runway's "
+                                        "centre."},
+                "colour": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$",
+                           "description": "Bridge and hook colour; default safety yellow."},
+                # D1112
+                "trail": {"type": "boolean",
+                          "description": "Draw a faint dashed line from the last lift's pick to "
+                                         "its drop; default off."},
+                "park_after": {"anyOf": [{"type": "number", "minimum": 0}, {"const": False}],
+                               "description": "An idle gap of at least this many minutes sends "
+                                              "the hook home until its next lift; default 1, "
+                                              "false never."},
+                "speed": {"type": "number", "exclusiveMinimum": 0,
+                          "description": "How fast the idle hook goes home, plan metres a "
+                                         "minute; default 30."},
+            },
+            "required": ["name", "runway", "serves"],
             "additionalProperties": False,
         },
         # Phase 20 P3 (D1005-D1006); nagasim/core/building.py checks the rest (unique names,
@@ -3153,6 +3271,8 @@ def build_json_schema() -> dict:
         "investment": {"$ref": "#/$defs/investment"},
         "dispatch": {"$ref": "#/$defs/dispatch"},
         "building": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/building"}]},
+        "cranes": {"anyOf": [{"type": "null"}, {"type": "array", "items": {"$ref": "#/$defs/crane"}}]},
+        "stockpiles": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/stockpiles"}]},
         "outputs": {
             "type": "object",
             "description": "OPTIONAL extra output collection whose cost is opt-in "

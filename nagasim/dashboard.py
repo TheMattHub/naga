@@ -20,6 +20,7 @@ import copy
 import math
 
 from nagasim import experiments
+from nagasim.pagetext import Refusal
 from nagasim.core import sections, submodels
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema import ModelValidationError
@@ -349,22 +350,24 @@ def _checked(entry: dict, leaf, value):
     never passed on as it came: a number is rebuilt in the leaf's own type."""
     shown = repr(value)[:40]
     kind = entry["kind"]
+    seen = {"path": entry["path"], "shown": shown}      # what a page words the refusal from
     if kind == "switch":
         if not isinstance(value, bool):
-            raise ValueError(f"input '{entry['path']}': {shown} is not true or false")
+            raise Refusal(f"input '{entry['path']}': {shown} is not true or false", "switch", seen)
         return value
     if kind == "choice":
         for choice in entry["choices"]:
             if type(choice["value"]) is type(value) and choice["value"] == value:
                 return copy.deepcopy(choice["value"])
-        raise ValueError(f"input '{entry['path']}': {shown} is not one of its choices")
+        raise Refusal(f"input '{entry['path']}': {shown} is not one of its choices", "choice", seen)
     if isinstance(value, bool) or not isinstance(value, (int, float)) \
             or not entry["min"] <= value <= entry["max"]:      # NaN fails the comparison
-        raise ValueError(f"input '{entry['path']}': {shown} is not a number within "
-                         f"[{entry['min']}, {entry['max']}]")
+        raise Refusal(f"input '{entry['path']}': {shown} is not a number within "
+                      f"[{entry['min']}, {entry['max']}]", "range",
+                      {**seen, "lo": entry["min"], "hi": entry["max"]})
     whole = float(value).is_integer()
     if isinstance(leaf, int) and not whole:
-        raise ValueError(f"input '{entry['path']}': {shown} is not a whole number")
+        raise Refusal(f"input '{entry['path']}': {shown} is not a whole number", "whole", seen)
     number = int(value) if whole and not isinstance(leaf, float) else float(value)
     return repr(number) if isinstance(leaf, str) else number
 
@@ -376,13 +379,14 @@ def input_overrides(layout: dict, values: dict) -> list[dict]:
     enforced here, not by the slider."""
     problems = check_inputs(layout)
     if problems:
-        raise ValueError("; ".join(p.message for p in problems[:5]))
+        raise Refusal("; ".join(p.message for p in problems[:5]), structured=problems)
     inputs = {entry["path"]: entry for entry in resolve_dashboard(layout)["inputs"]}
     overrides = []
     for path, value in values.items():
         entry = inputs.get(path)
         if entry is None:
-            raise ValueError(f"{str(path)[:80]!r} is not an input of this model")
+            raise Refusal(f"{str(path)[:80]!r} is not an input of this model", "unknown",
+                          {"path": str(path)[:80]})
         overrides.append({"path": path,
                           "value": _checked(entry, experiments.value_at(layout, path), value)})
     return overrides

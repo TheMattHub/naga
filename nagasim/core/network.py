@@ -119,6 +119,7 @@ class Network:
                 if seg.two_way:
                     self.adjacency[seg.b].append((seg.a, seg.length, seg))
         self._trees: dict[tuple, tuple[dict, dict]] = {}
+        self._pairs: dict[tuple[str, str], float] = {}      # distance(), memoised
         # Routing by TIME only exists once a segment caps a speed (PHASE4 T7,
         # ARCHITECTURE D80): with no limit anywhere every route is length / one
         # speed, so time and length order the routes identically and a model
@@ -181,11 +182,16 @@ class Network:
         An unknown node raises: a model naming a node it never declared is a
         modelling mistake, not a distance of infinity.
         """
+        # Memoised per pair (the graph is fixed for the run): a nearest-vehicle pick asks
+        # the same pairs millions of times at scale (BENCH-SCALE-2026-10-27). Same float.
+        found = self._pairs.get((a, b))
+        if found is not None:
+            return found
         self._require(a)
         self._require(b)
-        if a == b:
-            return 0.0
-        return self._tree(a)[0].get(b, math.inf)
+        found = 0.0 if a == b else self._tree(a)[0].get(b, math.inf)
+        self._pairs[(a, b)] = found
+        return found
 
     def path(self, a: str, b: str, speed=None) -> list[str]:
         """The node list of the shortest path, `[a, ..., b]`; empty when *b* is

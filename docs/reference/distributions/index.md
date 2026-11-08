@@ -20,7 +20,7 @@ One page per distribution, from `nagasim/core/distributions.py`'s `DISTRIBUTION_
 | [EmpiricalDiscrete](empirical-discrete.md) | discrete | yes | yes | Whole-number values with their own measured probabilities, such as order sizes or the number of items per job. |
 | [Erlang](erlang.md) | continuous | yes | yes | Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random. |
 | [Exponential](exponential.md) | continuous | yes | yes | Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one. |
-| [FixedSchedule](fixed-schedule.md) | continuous | yes |  | Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan. |
+| [FixedSchedule](fixed-schedule.md) | continuous | yes |  | Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan; an optional jitter shifts each arrival at random and keeps their order. |
 | [Gamma](gamma.md) | continuous | yes | yes | Right-skewed service or processing times that cannot go below zero, from very regular to very variable. |
 | [Geometric](geometric.md) | special |  |  | Number of attempts until the first success, such as tries before a part passes inspection. |
 | [Hypergeometric](hypergeometric.md) | special |  |  | Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample. |

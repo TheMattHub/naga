@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from nagasim import player
+from nagasim import pagetext, player
 from nagasim.core import tape
 from nagasim.experiments import BASELINE
 from nagasim.core.trace import TraceEvent
@@ -27,8 +27,8 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
 def run_script(calls: str, **data):
     """Evaluate *calls* (a JavaScript expression) after the player's script, with each
     of *data* as a variable; returns its value. There is no `document`, so the page
-    half does not start."""
-    program = (player.SCRIPT + "\n"
+    half does not start; the words are the English ones, as a page's boot would set them."""
+    program = (player.SCRIPT + f"\nT = {json.dumps(pagetext.table('en'))};\n"
                + "".join(f"var {name} = {json.dumps(value)};\n" for name, value in data.items())
                + f"console.log(JSON.stringify({calls}));\n")
     done = subprocess.run([NODE, "-"], input=program, capture_output=True, text=True,
@@ -187,7 +187,11 @@ function flush(rounds) {
 function fire(id, type, event) { listeners[id + ":" + type](event); }
 nodes.tape = new Node("script", "tape");
 nodes.tape._text = DATA_TEXT;
+nodes.words = new Node("script", "words");
+nodes.words._text = typeof WORDS_TEXT === "undefined" ? ENGLISH_WORDS : WORDS_TEXT;
 """
+# The page's words block (D1056): English unless a test sets WORDS_TEXT before the stub.
+STUB = f"var ENGLISH_WORDS = {json.dumps(json.dumps(pagetext.table('en')))};\n" + STUB
 
 DRIVER = """
 flush(3);
@@ -300,7 +304,7 @@ def test_states_are_quiet_when_normal_and_loud_with_a_word_when_not():
     kinds = run_script('["busy", "loaded", "handling", "idle", "off", "empty", "blocked", "down", "", "constructor"]'
                        ".map(kindOf)")
     assert kinds == ["run", "run", "run", "idle", "idle", "idle", "blocked", "down", "", "idle"]
-    assert run_script("WORD") == {"blocked": "BLOCKED", "down": "DOWN"}
+    assert run_script("WORD") == {"blocked": "player.pill_blocked", "down": "player.pill_down"}
 
 
 def test_the_lanes_are_each_resources_states_from_the_tape():

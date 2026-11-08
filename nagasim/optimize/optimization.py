@@ -4,6 +4,7 @@ from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95, paired_diff_ci
 from dataclasses import dataclass
 from nagasim.core.schema import load_layout
+from nagasim import experiments
 import logging
 import math
 import numpy as np
@@ -22,9 +23,16 @@ class _Record:
     point: dict
     objective: np.ndarray            # sign-adjusted: higher is always better
     feasibility: str = "feasible"
+    # E3 (D1135): a percentile objective keeps its raw (response, penalty) columns per
+    # replication and the function that scores them; None is the plain mean of `objective`.
+    samples: np.ndarray | None = None
+    score: object = None
 
     @property
     def mean(self) -> float:
+        """The sign-adjusted objective: the mean of `objective`, or `score(samples)`."""
+        if self.score is not None:
+            return float(self.score(self.samples)) if len(self.samples) else np.nan
         return float(np.nanmean(self.objective)) if self.objective.size else np.nan
 
 
@@ -45,6 +53,9 @@ class OptimizationResult:
     selection: SelectionResult | None = None
     sampler: str = ""                # the optuna sampler actually used, "" otherwise
     pareto: pd.DataFrame | None = None   # method="optuna-nsga2": the non-dominated set
+    statistic: str = "mean"          # E3: the objective's statistic over replications
+    holdout: pd.DataFrame | None = None  # E3: the final points on seeds the search never saw
+    baseline: dict | None = None     # E3: the model's own values, evaluated as trial 0
 
     @property
     def confirmed(self) -> dict | None:
@@ -126,6 +137,34 @@ def _better(a, b) -> bool:
             > (_FEASIBILITY_RANK[b.feasibility], b.mean))
 
 
+def current_point(layout, factors) -> dict:
+    """The model's own value of every factor (its first path), as a point: the baseline a
+    search starts from. A value outside the factor's range is an error naming it, because
+    clipping it would evaluate a different model than the one the person has."""
+    base = load_layout(layout)
+    point = {}
+    for factor in factors:
+        value = experiments.value_at(base, factor.paths[0])
+        if factor.kind == "categorical":
+            inside = value in factor.levels
+        else:
+            inside = isinstance(value, (int, float)) and factor.low <= float(value) <= factor.high
+        if not inside:
+            raise ValueError(f"baseline: the model's {factor.name} = {value!r} is outside the "
+                             "factor's range; widen the range to include it")
+        point[factor.name] = factor.coerce(value)
+    return point
+
+
+def _objective_parts(values: dict, response: str, penalties) -> np.ndarray:
+    """Raw per-replication columns: the response, and the sum of weight x penalty KPI."""
+    resp = np.asarray(_response(values, response), dtype=float)
+    extra = np.zeros_like(resp)
+    for kpi, weight in penalties:
+        extra = extra + float(weight) * np.asarray(_response(values, kpi), dtype=float)
+    return np.column_stack([resp, extra])
+
+
 def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(),
              budget: int = 300, replications_per_point: int = 5, method: str = "auto",
              seed: int = 0, confidence: float = 0.95, indifference: float | None = None,
@@ -133,7 +172,9 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
              select_top: int = 3, on_progress=None, should_stop=None,
              evaluator=None, warm_start_points: list[dict] | None = None,
              pool=None, min_improvement: float = _MIN_IMPROVEMENT,
-             record_logs=None, objectives=None) -> OptimizationResult:
+             record_logs=None, objectives=None, logic=None, controllers=None,
+             statistic: str = "mean", penalties=(), holdout: int = 0,
+             holdout_seed: int | None = None, baseline: bool = False) -> OptimizationResult:
     """Search the factor space for the best response within a replication budget.
 
     The winner is confirmed with ranking and selection (`select_best`).
@@ -227,12 +268,32 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         significant gain is a success".
     record_logs : bool, optional
         As in `nagasim.api.run_model`.
+    statistic : str, default "mean"
+        The objective's statistic over a point's replications: ``"mean"``, or a
+        percentile such as ``"p95"`` to optimise the tail (a makespan that must hold
+        on 19 days in 20). A percentile has no t interval, so a move is accepted on a
+        paired bootstrap interval of the difference (same seeds), and the final step
+        tops the best points up to equal replications instead of KN selection, whose
+        guarantee is about means (``selection.guaranteed`` is then False).
+    penalties : sequence of (kpi, weight), default ()
+        A composite objective: *response*'s statistic plus ``weight x mean(kpi)``
+        for each pair, in the response's units (``[("slot/Bay/Overflows", 30)]``
+        charges 30 time units per overflow). Constraints stay separate.
+    holdout : int, default 0
+        Replications on seeds the search never used (from *holdout_seed*, default
+        ``seed + 1000000``) for the final candidates and the baseline: the
+        ``holdout`` frame, with each one's paired difference from the baseline when
+        there is one. They are not counted in *budget* nor in ``budget_used``.
+    baseline : bool, default False
+        Evaluate the model's own factor values first (trial 0 of every method,
+        `current_point`), so the search knows where it starts and the holdout
+        compares against it.
 
     Returns
     -------
     OptimizationResult
         ``best`` (factor values), ``best_mean``, ``history`` and the selection
-        outcome.
+        outcome; ``holdout`` and ``baseline`` when asked for.
 
     See Also
     --------
@@ -258,14 +319,30 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         raise ValueError("optimize needs at least one factor")
     constraints = [tuple(c) for c in constraints]
     sign = -1.0 if goal == "min" else 1.0
+    stat_of = experiments.statistic(statistic)        # refuses an unknown name at once
+    quantile = str(statistic).strip().lower() != "mean"
+    penalties = [(str(kpi), float(weight)) for kpi, weight in penalties]
+    start = current_point(base, factors) if baseline else None
+    if start is not None:
+        warm_start_points = [start, *(warm_start_points or ())]
+
+    def score(samples) -> float:
+        """Sign-adjusted objective of raw (response, penalty) columns."""
+        return sign * (stat_of(samples[:, 0]) + float(np.nanmean(samples[:, 1])))
     floor_gain = max(float(min_improvement), 0.0)
     reps = max(int(replications_per_point), 2)
     cap = int(max_replications_per_point or 4 * reps)
+    if int(holdout) > 0 and holdout_seed is not None:
+        first = int(holdout_seed)
+        if first < seed + cap and first + int(holdout) > seed:      # the search uses seed..seed+cap-1 (#1705)
+            raise ValueError(f"holdout_seed {first}: the holdout seeds {first}..{first + int(holdout) - 1} "
+                             f"overlap the search's seeds {seed}..{seed + cap - 1}; a holdout must be unseen")
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
                                         workers=workers, budget=int(budget), pool=pool,
-                                        record_logs=record_logs,
+                                        record_logs=record_logs, logic=logic, controllers=controllers,
                                         kpis=[response, *(c[0] for c in constraints),
-                                              *(o[0] for o in (objectives or ()))])
+                                              *(o[0] for o in (objectives or ())),
+                                              *(k for k, _w in penalties)])
     history: list[dict] = []
     records: dict[tuple, _Record] = {}
     best_so_far = [-math.inf]
@@ -303,17 +380,24 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
             if values is None:
                 out.append(None)
                 continue
-            record = _Record(key=key, point=point, objective=sign * _response(values, response))
+            parts = _objective_parts(values, response, penalties)
+            record = _Record(key=key, point=point, objective=sign * parts.sum(axis=1))
+            if quantile:
+                record.samples, record.score = parts, score
             record.feasibility = _feasibility(constraints, values, confidence)
             records[key] = record
             if record.feasibility != "infeasible" and record.mean > best_so_far[0]:
                 best_so_far[0] = record.mean
             stat = ci95(sign * record.objective)
             reached = sign * best_so_far[0] if math.isfinite(best_so_far[0]) else stat["mean"]
-            history.append({"Point": _fmt_point(point), **point, "Mean": stat["mean"],
-                            "LB": stat["lb"], "UB": stat["ub"], "N": int(record.objective.size),
-                            "Feasibility": record.feasibility, "Budget used": evaluator.used,
-                            "Best so far": reached})
+            row = {"Point": _fmt_point(point), **point, "Mean": stat["mean"],
+                   "LB": stat["lb"], "UB": stat["ub"], "N": int(record.objective.size),
+                   "Feasibility": record.feasibility, "Budget used": evaluator.used,
+                   "Best so far": reached}
+            if quantile or penalties:
+                # "Mean" stays the per-replication composite's mean; this is what is ranked.
+                row["Objective"] = sign * record.mean
+            history.append(row)
             out.append(record)
         if on_progress is not None:
             on_progress(evaluator.used, int(budget))
@@ -331,14 +415,22 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         rank_a, rank_b = _FEASIBILITY_RANK[a.feasibility], _FEASIBILITY_RANK[b.feasibility]
         return (rank_a, a.mean) > (rank_b, b.mean)
 
+    def paired(challenger: _Record, incumbent: _Record) -> dict:
+        """The interval of challenger - incumbent (sign-adjusted) on their common seeds."""
+        n = min(challenger.objective.size, incumbent.objective.size)
+        if quantile:
+            return experiments.bootstrap_ci(lambda a, b: score(a) - score(b),
+                                            challenger.samples[:n], incumbent.samples[:n],
+                                            confidence=confidence, seed=seed)
+        return paired_diff_ci(challenger.objective[:n], incumbent.objective[:n], confidence)
+
     def wins(challenger: _Record, incumbent: _Record) -> bool:
         """A move needs evidence, not a better sample mean."""
         rank_a = _FEASIBILITY_RANK[challenger.feasibility]
         rank_b = _FEASIBILITY_RANK[incumbent.feasibility]
         if rank_a != rank_b:
             return rank_a > rank_b
-        n = min(challenger.objective.size, incumbent.objective.size)
-        diff = paired_diff_ci(challenger.objective[:n], incumbent.objective[:n], confidence)
+        diff = paired(challenger, incumbent)
         if diff["lb"] > 0:
             return True
         if not (diff["mean"] > 0) or challenger.objective.size >= cap:
@@ -353,22 +445,18 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         topped_up, refreshed = evaluate_all([challenger.point, incumbent.point], more)
         if topped_up is None or refreshed is None:
             return False
-        incumbent.objective = refreshed.objective
-        incumbent.feasibility = refreshed.feasibility
-        challenger.objective = topped_up.objective
-        challenger.feasibility = topped_up.feasibility
-        n = min(challenger.objective.size, incumbent.objective.size)
-        return paired_diff_ci(challenger.objective[:n], incumbent.objective[:n],
-                              confidence)["lb"] > 0
+        for old, new in ((incumbent, refreshed), (challenger, topped_up)):
+            old.objective, old.feasibility, old.samples = new.objective, new.feasibility, new.samples
+        return paired(challenger, incumbent)["lb"] > 0
 
     if method == "optuna-nsga2":
         return _pareto_search(evaluator, factors, objectives, constraints, confidence,
-                              int(budget), reps, seed, should_stop, on_progress)
+                              int(budget), reps, seed, should_stop, on_progress, start)
     sampler_used = [""]
     if method in ("optuna", "optuna-gp"):
         incumbent, converged = _optuna_search(evaluate, factors, budget, reps, seed, prefers,
                                               "gp" if method == "optuna-gp" else "tpe",
-                                              sampler_used)
+                                              sampler_used, start)
     else:
         incumbent, converged = _pattern_search(evaluate_all, factors, budget, reps, seed,
                                                prefers, wins, should_stop, warm_start_points,
@@ -381,27 +469,115 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
     ranked = sorted(records.values(), key=lambda r: (_FEASIBILITY_RANK[r.feasibility], r.mean),
                     reverse=True)[:max(int(select_top), 1)]
     if len(ranked) > 1 and evaluator.remaining > 0:
-        gap = indifference
-        if gap is None:
-            gap = max(abs(incumbent.mean) * 0.05, 1e-9)
-        selection = select_best(
-            None, [{"name": _fmt_point(r.point), "key": r.key,
-                    "overrides": overrides_for(factors, r.point)} for r in ranked],
-            response=response, goal=goal, confidence=confidence, indifference=gap,
-            n0=min(reps, min(r.objective.size for r in ranked)),
-            max_replications=int(min(cap, reps + evaluator.remaining // len(ranked))),
-            seed=seed, evaluator=evaluator, should_stop=should_stop)
+        top_n = int(min(cap, reps + evaluator.remaining // len(ranked)))
+        if quantile:
+            selection = _confirm_percentile(ranked, factors, evaluator, top_n, seed, response,
+                                            goal, penalties, sign, confidence, should_stop)
+        else:
+            gap = indifference
+            if gap is None:
+                gap = max(abs(incumbent.mean) * 0.05, 1e-9)
+            # A composite objective is a per-replication sum, so KN ranks it like any KPI.
+            target = response if not penalties else (
+                lambda values: _objective_parts(values, response, penalties).sum(axis=1))
+            selection = select_best(
+                None, [{"name": _fmt_point(r.point), "key": r.key,
+                        "overrides": overrides_for(factors, r.point)} for r in ranked],
+                response=target, goal=goal, confidence=confidence, indifference=gap,
+                n0=min(reps, min(r.objective.size for r in ranked)),
+                max_replications=top_n, seed=seed, evaluator=evaluator, should_stop=should_stop)
+            selection.response = response
         chosen = next((r for r in ranked if _fmt_point(r.point) == selection.best), None)
         if chosen is not None:
             incumbent = chosen
 
     frame = pd.DataFrame(history)
+    used = evaluator.used
+    table = None
+    if int(holdout) > 0:
+        first = seed + 1_000_000 if holdout_seed is None else int(holdout_seed)
+        named = [(start, "baseline")] if start is not None else []
+        named += [(r.point, "best" if r is incumbent else "candidate")
+                  for r in sorted(ranked, key=lambda r: r is not incumbent)]
+        table = _holdout(evaluator, factors, named, [first + r for r in range(int(holdout))],
+                         response, penalties, stat_of, quantile, confidence, seed, should_stop)
     return OptimizationResult(best=dict(incumbent.point),
                               best_overrides=overrides_for(factors, incumbent.point),
-                              history=frame, converged=converged, budget_used=evaluator.used,
+                              history=frame, converged=converged, budget_used=used,
                               response=response, goal=goal,
                               feasible=incumbent.feasibility != "infeasible",
-                              selection=selection, sampler=sampler_used[0])
+                              selection=selection, sampler=sampler_used[0],
+                              statistic=str(statistic), holdout=table, baseline=start)
+
+
+def _confirm_percentile(ranked, factors, evaluator, count, seed, response, goal, penalties,
+                        sign, confidence, should_stop) -> SelectionResult:
+    """The final step of a percentile objective: the best points topped up to *count*
+    replications on the same seeds (as far as the budget goes); the winner is the best
+    score, feasibility first. A table like `select_best`'s, its Mean the objective with a
+    bootstrap interval; `guaranteed` is False because KN's guarantee is about means."""
+    seeds = [seed + r for r in range(count)]
+    settled = evaluator.values_many([(r.key, overrides_for(factors, r.point), seeds)
+                                     for r in ranked], should_stop=should_stop)
+    for record in ranked:
+        values = settled.get(record.key)
+        if values is not None:
+            record.samples = _objective_parts(values, response, penalties)
+            record.objective = sign * record.samples.sum(axis=1)
+    best = max(ranked, key=lambda r: (_FEASIBILITY_RANK[r.feasibility], r.mean))
+    rows = []
+    for record in ranked:
+        stat = experiments.bootstrap_ci(lambda a: sign * record.score(a), record.samples,
+                                        confidence=confidence, seed=seed)
+        rows.append({"Candidate": _fmt_point(record.point), "Mean": stat["mean"],
+                     "LB": stat["lb"], "UB": stat["ub"], "N": len(record.samples),
+                     "Eliminated at": 0, "Selected": record is best})
+    table = pd.DataFrame(rows, columns=["Candidate", "Mean", "LB", "UB", "N", "Eliminated at",
+                                        "Selected"])
+    return SelectionResult(best=_fmt_point(best.point),
+                           best_overrides=overrides_for(factors, best.point), table=table,
+                           replications={row["Candidate"]: row["N"] for row in rows},
+                           survivors=[list(table["Candidate"])], confidence=confidence,
+                           indifference=0.0, goal=goal, response=response, guaranteed=False)
+
+
+def _holdout(evaluator, factors, named, seeds, response, penalties, stat_of, quantile,
+             confidence, seed, should_stop) -> pd.DataFrame:
+    """One row per (point, role) on the holdout *seeds*: the objective, the response's mean
+    with its CI and, when a baseline is first in *named*, the paired difference from it
+    (t interval for a mean objective, bootstrap for a percentile). The search's budget
+    does not pay for them: they answer "does the winner hold on new seeds", not the search."""
+    def raw(parts) -> float:
+        return stat_of(parts[:, 0]) + float(np.nanmean(parts[:, 1]))
+
+    saved = evaluator.budget
+    evaluator.budget = None
+    try:
+        settled = evaluator.values_many([(_point_key(factors, point), overrides_for(factors, point),
+                                          seeds) for point, _role in named],
+                                        should_stop=should_stop)
+    finally:
+        evaluator.budget = saved
+    rows, base = [], None
+    for point, role in named:
+        values = settled.get(_point_key(factors, point))
+        if values is None:
+            continue
+        parts = _objective_parts(values, response, penalties)
+        own = ci95(parts[:, 0])
+        row = {"Point": _fmt_point(point), "Role": role, "N": len(parts), "Objective": raw(parts),
+               "Mean": own["mean"], "LB": own["lb"], "UB": own["ub"]}
+        if role == "baseline":
+            base = parts
+        elif base is not None:
+            diff = (experiments.bootstrap_ci(lambda a, b: raw(a) - raw(b), parts, base,
+                                             confidence=confidence, seed=seed) if quantile
+                    else paired_diff_ci(parts.sum(axis=1), base.sum(axis=1), confidence))
+            row.update({"Diff vs baseline": diff["mean"], "Diff LB": diff["lb"],
+                        "Diff UB": diff["ub"]})
+        rows.append(row)
+    return pd.DataFrame(rows, columns=["Point", "Role", "N", "Objective", "Mean", "LB", "UB",
+                                       "Diff vs baseline", "Diff LB", "Diff UB"])
 
 
 # `_pattern_search`/`_optuna_search` moved here from the Sobol-indices section
@@ -535,8 +711,10 @@ def _optuna():
     return optuna
 
 
-def _optuna_search(evaluate, factors, budget, reps, seed, prefers, kind="tpe", used=None):
-    """`method="optuna"` (TPE) and `"optuna-gp"` over the same factor space."""
+def _optuna_search(evaluate, factors, budget, reps, seed, prefers, kind="tpe", used=None,
+                   start=None):
+    """`method="optuna"` (TPE) and `"optuna-gp"` over the same factor space; *start*, when
+    given, is enqueued as trial 0."""
     optuna = _optuna()
     best: list = [None]
 
@@ -563,12 +741,14 @@ def _optuna_search(evaluate, factors, budget, reps, seed, prefers, kind="tpe", u
     if used is not None:
         used[0] = type(sampler).__name__
     study = optuna.create_study(direction="maximize", sampler=sampler)
+    if start is not None:
+        study.enqueue_trial(dict(start))
     study.optimize(objective, n_trials=max(1, int(budget) // reps), catch=())
     return best[0], False       # stops on the trial budget, never on convergence
 
 
 def _pareto_search(evaluator, factors, objectives, constraints, confidence, budget, reps, seed,
-                   should_stop, on_progress):
+                   should_stop, on_progress, start=None):
     """`method="optuna-nsga2"`: NSGA-II over the objectives' means; the result is
     the non-dominated set of feasible points. No KN step: with several objectives
     there is no single winner to confirm.
@@ -606,6 +786,8 @@ def _pareto_search(evaluator, factors, objectives, constraints, confidence, budg
 
     study = optuna.create_study(directions=["maximize"] * len(objectives),
                                 sampler=optuna.samplers.NSGAIISampler(seed=seed))
+    if start is not None:
+        study.enqueue_trial(dict(start))
     study.optimize(objective, n_trials=max(1, budget // reps), catch=())
     if not rows:
         raise ModelValidationError(["the budget was too small to evaluate a single point"])

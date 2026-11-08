@@ -27,7 +27,7 @@ import os
 import re
 import time
 
-from nagasim import dashboard, experiments
+from nagasim import dashboard, experiments, pagetext
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.sections_validation import DASHBOARD_LIMITS
 from nagasim.core.timeunits import units_of
@@ -35,7 +35,7 @@ from nagasim.core.utils import is_finite_number
 from nagasim import player
 from nagasim.viewer_runtime import Cancelled
 
-__all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_available", "engine_on_disk", "write_engine_zip",
+__all__ = ["MAX_MODEL_BYTES", "Cancelled", "engine_available", "write_engine_zip",
            "viewer_problems", "freeze_data",
            "what_if", "answer", "page_run", "compare", "build_viewer", "read_asked"]
 
@@ -165,8 +165,8 @@ def freeze_data(layout, base_dir=None, *, network=None, confine_to=None) -> tupl
 
 
 def _refused(problems: list[Problem]) -> ValueError:
-    return ValueError("this model cannot be a viewer: "
-                      + "; ".join(p.message for p in problems[:5]))
+    return pagetext.Refusal("this model cannot be a viewer: "
+                            + "; ".join(p.message for p in problems[:5]), structured=problems)
 
 
 # -- the run both sides make (D326) -----------------------------------------------
@@ -194,10 +194,11 @@ def _versions() -> dict:
 
 
 def what_if(layout: dict, values: dict | None = None, *, replications: int | None = None,
-            on_progress=None, should_stop=None, asked=None) -> dict:
+            on_progress=None, should_stop=None, asked=None, language: str | None = None) -> dict:
     """Run *layout* with the viewer's *values* ({input path: value}) beside its baseline
     and return one frozen record (D248), JSON-safe. *asked*: the recorded tool answers of
-    the model (`agent_tools.core.recorded`), quoted by the trust card and the input note:
+    the model (`agent_tools.core.recorded`), quoted by the trust card and the input note;
+    *language* is the answer card's (`pagetext.LANGUAGES`, D1056):
 
         inputs, replications, seed, seeds   what made it
         rows      per result KPI and scenario: mean, 95% interval, difference to the
@@ -230,8 +231,9 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
     most = min(int(limits["max_replications"]), DASHBOARD_LIMITS["replications"])
     count = limits["replications"] if replications is None else replications
     if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= most:
-        raise ValueError(f"replications must be a whole number from 1 to "
-                         f"{most}, not {str(count)[:20]}")
+        raise pagetext.Refusal(f"replications must be a whole number from 1 to "
+                               f"{most}, not {str(count)[:20]}", "replications",
+                               {"most": most, "shown": str(count)[:20]})
     seed = int((layout.get("simulation") or {}).get("seed") or 0)
     started = time.perf_counter()
     result = experiments.run_scenarios(made, [name], replications=count, seed=seed,
@@ -268,11 +270,12 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
     names = [name, experiments.BASELINE]
     panel = player.result_rows(made, None, result, names) or {}
     trust = player.trust_card(made, None, result, names, {name: made["scenarios"][-1]["overrides"]},
-                              panel, {scenario: (seed, count) for scenario in names}, asked) or {}
+                              panel, {scenario: (seed, count) for scenario in names}, asked,
+                              language) or {}
     shown = panel.get(name if values else experiments.BASELINE) or [None]
     from nagasim import uncertainty
 
-    note = uncertainty.what_if_note(asked, made["scenarios"][-1]["overrides"], list(labels)) \
+    note = uncertainty.what_if_note(asked, made["scenarios"][-1]["overrides"], list(labels), language) \
         if values else None
     return {**({"input_note": player.plain(note)} if note else {}),
             "inputs": {path: item["value"] for path, item in
@@ -282,7 +285,7 @@ def what_if(layout: dict, values: dict | None = None, *, replications: int | Non
             "rows": rows, "cells": cells,
             "results": player.plain({_renamed(key, name): value for key, value in panel.items()}),
             "trust": player.plain({_renamed(key, name): value for key, value in trust.items()}),
-            "answer": answer(player.plain(shown[0]), count, needed, diff),
+            "answer": answer(player.plain(shown[0]), count, needed, diff, language=language),
             "versions": _versions(), "seconds": seconds}
 
 
@@ -290,8 +293,6 @@ def _renamed(scenario: str, name: str) -> str:
     return dashboard.YOURS if scenario == name else scenario
 
 
-_WORDS = {"yes": "Yes, very likely", "no": "No", "unclear": "Not clear yet",
-          "same": "No change you would notice"}
 _FROM_VERDICT = {"better": "yes", "worse": "no", "no clear change": "unclear"}
 # D710: a difference whose whole 95% interval is within this share of the baseline mean
 # is no change a client would notice, and running on would not change that.
@@ -299,7 +300,7 @@ _UNNOTICED = 0.01
 
 
 def answer(row: dict | None, replications: int, needed: float | None = None,
-           diff: tuple | None = None) -> dict | None:
+           diff: tuple | None = None, *, language: str | None = None) -> dict | None:
     """The answer card (D707) for *row*, a results panel row (`player.result_rows`), as
     {"word": "yes" | "no" | "unclear" | "same", "headline", "detail", "needed"}: computed
     from the numbers, never from a colour. With a target and a direction: "yes" when the
@@ -310,9 +311,15 @@ def answer(row: dict | None, replications: int, needed: float | None = None,
     baseline mean. None when neither says anything (no direction, or no target and no
     baseline). *needed* is the comparison's `Replications Needed`; for a target it is
     worked out the same way, n x (half-width / distance)^2, uncapped (the cap is
-    `_until_clear`'s, #849)."""
+    `_until_clear`'s, #849). The headline and the detail are in *language* (D1056); the
+    word is a key, the same in every language."""
     if not row or row["yours"]["mean"] is None:
         return None
+    words = pagetext.table(language)
+
+    def g(value) -> str:
+        return pagetext.number(f"{value:.4g}", words)
+
     mean, low, high = (row["yours"][key] for key in ("mean", "lo", "hi"))
     target, better, sure = row.get("target"), row.get("better"), low is not None and high is not None
     if target is not None and better in ("higher", "lower"):
@@ -327,50 +334,54 @@ def answer(row: dict | None, replications: int, needed: float | None = None,
         if word == "unclear" and sure and mean != target:
             needed = math.ceil(replications * ((high - low) / 2 / abs(mean - target)) ** 2)
         side = "above" if mean > target else "below" if mean < target else "at"
-        said = f"; {side} the {target:.4g} target"
+        said = pagetext.say(words, "answer." + side, target=g(target))
     elif row.get("base") is not None and row.get("verdict") in _FROM_VERDICT:
         word, said = _FROM_VERDICT[row["verdict"]], ""
         base = row["base"]["mean"]
         if (word == "unclear" and base and diff and None not in diff
                 and max(abs(diff[0]), abs(diff[1])) <= _UNNOTICED * abs(base)):
-            word, said = "same", f"; the difference is within {100 * _UNNOTICED:g}% of the baseline"
+            word, said = "same", pagetext.say(words, "answer.within",
+                                              pct=pagetext.number(f"{100 * _UNNOTICED:g}", words))
     else:
         return None
     unit = f" {row['unit']}" if row.get("unit") else ""
-    detail = f"{row['label']} {mean:.4g}{unit}"
+    detail = f"{row['label']} {g(mean)}{unit}"
     if sure:
-        detail += f" (95% interval {low:.4g} to {high:.4g})"
+        detail += pagetext.say(words, "answer.interval", lo=g(low), hi=g(high))
     if row.get("delta_pct") is not None:
-        detail += f", {row['delta_pct']:+.1f}% against the baseline ({row['verdict']})"
-    return {"word": word, "headline": f"{_WORDS[word]}: {mean:.4g}{unit}", "detail": detail + said + ".",
+        detail += pagetext.say(words, "answer.delta", pct=pagetext.number(f"{row['delta_pct']:+.1f}", words),
+                               verdict=words["verdict." + row["verdict"]])
+    return {"word": word, "headline": pagetext.say(words, "answer.headline", word=words["answer." + word],
+                                                   value=g(mean) + unit),
+            "detail": detail + said + ".",
             "needed": int(needed) if word == "unclear" and needed is not None else None}
 
 
-def _until_clear(layout: dict, values: dict, count, on_progress, say, asked=None) -> dict:
+def _until_clear(layout: dict, values: dict, count, on_progress, say, asked=None, language=None) -> dict:
     """`what_if`, run again with more replications while its answer is "not clear yet"
     (the comparison's `Replications Needed`, D685), up to the definition's most: the one
     cap on replications (#849). Each round re-runs all replications, not only the new
     ones: common random numbers make adding to a finished run awkward."""
     limits = dashboard.resolve_dashboard(layout)["limits"]
     most = min(int(limits["max_replications"]), DASHBOARD_LIMITS["replications"])
-    record = what_if(layout, values, replications=count, on_progress=on_progress, asked=asked)
+    words = pagetext.table(language)
+    record = what_if(layout, values, replications=count, on_progress=on_progress, asked=asked,
+                     language=language)
     while record["answer"] and record["answer"]["word"] == "unclear" and record["replications"] < most:
         done = record["replications"]
         needed = record["answer"]["needed"] or 2 * done
         count = min(most, max(done + 1, needed))
-        say(f"Not clear yet after {done} replications: running {count} for a clear answer" if needed <= most
-            else f"Not clear yet after {done} replications: running {count}, the most this page runs, "
-                 "to settle it")
-        record = what_if(layout, values, replications=count, on_progress=on_progress, asked=asked)
+        say(pagetext.say(words, "answer.more" if needed <= most else "answer.most", done=done, count=count))
+        record = what_if(layout, values, replications=count, on_progress=on_progress, asked=asked,
+                         language=language)
     if record["answer"] and record["answer"]["word"] == "unclear":
-        record["answer"]["detail"] += (f" Still not clear after {record['replications']} "
-                                       "replications, the most this page runs.")
+        record["answer"]["detail"] += pagetext.say(words, "answer.still", n=record["replications"])
     return record
 
 
 def page_run(layout: dict, baseline: dict, args: dict, *, title: str = "Model",
              tokens: dict | None = None, on_progress=None, say=None, asked=None,
-             pictures: dict | None = None) -> dict:
+             pictures: dict | None = None, language: str | None = None) -> dict:
     """What a Run in the page answers (the worker's `_BOOT`): {"record", "same",
     "player"}, or {"error"} for a value the engine refuses. *asked*: the recorded answers
     the page carries (`build_viewer`); no input note against another scenario, since a
@@ -381,28 +392,31 @@ def page_run(layout: dict, baseline: dict, args: dict, *, title: str = "Model",
     and "names" (the two scenarios' names for the drawing). The run goes on until its
     answer is clear (`_until_clear`); *say* is told what happens. Then yours and the
     other are recorded for the player (`watch_page`): that is an extra, and a failure
-    there (a browser tab out of memory, #833) keeps the finished result."""
+    there (a browser tab out of memory, #833) keeps the finished result. *language* is the
+    page's (D1056): the answer card, the statuses and the drawing speak it."""
     say = say or (lambda text: None)
     values, against = dict(args.get("values") or {}), dict(args.get("against") or {})
     names = [str(name)[:40] for name in args.get("names") or (dashboard.YOURS, experiments.BASELINE)][:2]
     try:
         base = (experiments.apply_overrides(layout, dashboard.input_overrides(layout, against))
                 if against else layout)
-        record = _until_clear(base, values, args.get("replications"), on_progress, say, asked)
+        record = _until_clear(base, values, args.get("replications"), on_progress, say, asked, language)
         if against:
             record.pop("input_note", None)
     except ValueError as exc:
-        return {"error": str(exc)[:500]}
-    say("Recording your run")
+        return {"error": pagetext.explain(exc, language)}      # D1088: the page's language
+    say(pagetext.table(language)["answer.recording"])
     try:
-        watch = watch_page(base, values, title=title, tokens=tokens, names=names, pictures=pictures)
+        watch = watch_page(base, values, title=title, tokens=tokens, names=names, pictures=pictures,
+                           language=language)
     except Exception:                               # noqa: BLE001 (#833: any engine error)
         watch = ""
     return {"record": record, "same": None if against else compare(record, baseline), "player": watch}
 
 
 def watch_page(layout: dict, values: dict | None = None, *, title: str = "Model",
-               tokens: dict | None = None, names=None, pictures: dict | None = None) -> str:
+               tokens: dict | None = None, names=None, pictures: dict | None = None,
+               language: str | None = None) -> str:
     """The player page (`player.build_player`) of the viewer's what-if beside the author's
     baseline: one replication of each with the model's own seed, recorded where this runs
     (in a page: the browser) and drawn as two scenarios, *names* (default "Yours" and
@@ -425,7 +439,7 @@ def watch_page(layout: dict, values: dict | None = None, *, title: str = "Model"
         run_model(model, replications=1, seed=seed, trace=recordings[scenario])
     try:
         return player.build_player(drawn, recordings, title=title, tokens=tokens, start=yours,
-                                  pictures=pictures)
+                                  pictures=pictures, language=language)
     except ValueError:
         return ""
 
@@ -555,7 +569,8 @@ _PAGE = json.loads(PAGE)
 def _run(args):
     return json.dumps(viewer.page_run(_LAYOUT, _BASE, json.loads(args), title=_PAGE["title"],
                                       tokens=_PAGE["tokens"], on_progress=PROGRESS, say=STATUS,
-                                      asked=_PAGE.get("asked"), pictures=_PAGE.get("pictures")),
+                                      asked=_PAGE.get("asked"), pictures=_PAGE.get("pictures"),
+                                      language=_PAGE.get("language")),
                       allow_nan=False)
 """
 
@@ -565,6 +580,36 @@ _WORKER = """"use strict";
 var py = null;
 var NOWHERE = "https:" + "/" + "/embedded.invalid/";
 var BOOT = __BOOT__;
+/* null in a page that carries Pyodide; in a small page (D1087), {base, files: [[name,
+   sha256, bytes]]}, written by the builder from viewer_runtime's pin and nothing else. */
+var REMOTE = __REMOTE__;
+var NET = self.fetch;
+
+function hex(buffer) {
+  return Array.prototype.map.call(new Uint8Array(buffer), function (b) { return (b < 16 ? "0" : "") + b.toString(16); }).join("");
+}
+
+/* Each pinned file from the one address, kept only when its SHA-256 is the pin's. A
+   network failure and a file that is not the pinned one each stop the start, by name. */
+async function remote(files) {
+  var i, entry, answer, data;
+  for (i = 0; i < REMOTE.files.length; i += 1) {
+    entry = REMOTE.files[i];
+    try {
+      answer = await NET.call(self, REMOTE.base + entry[0], {credentials: "omit", referrerPolicy: "no-referrer"});
+      if (!answer.ok) { throw new TypeError("status " + answer.status); }
+      data = await answer.arrayBuffer();
+    } catch (error) {
+      throw {refused: "offline", name: entry[0]};
+    }
+    if (!(self.crypto && crypto.subtle)) { throw {refused: "insecure", name: entry[0]}; }
+    if (data.byteLength !== entry[2] ||
+        hex(await crypto.subtle.digest("SHA-256", data)) !== entry[1]) {
+      throw {refused: "tampered", name: entry[0]};
+    }
+    files[entry[0]] = new Uint8Array(data);
+  }
+}
 
 async function bytes(file) {
   var raw = Uint8Array.fromBase64 ? Uint8Array.fromBase64(file.b64)
@@ -578,6 +623,7 @@ async function boot(cfg) {
   var files = {}, i;
   postMessage(["stage", 1]);
   for (i = 0; i < cfg.files.length; i += 1) { files[cfg.files[i].name] = await bytes(cfg.files[i]); }
+  if (REMOTE) { await remote(files); }
   self.fetch = async function (what) {
     var name = String(what && what.url || what).split("/").pop().split("?")[0];
     if (!Object.prototype.hasOwnProperty.call(files, name)) { throw new TypeError("this page holds no " + name); }
@@ -613,6 +659,7 @@ self.onmessage = async function (event) {
       postMessage(["done", py.runPython("_run(ARGS)")]);
     }
   } catch (error) {
+    if (error && error.refused) { postMessage(["refused", error.refused, error.name]); return; }
     postMessage(["failed", what, String(error && error.message || error).slice(-600)]);
   }
 };
@@ -622,19 +669,18 @@ _MAIN = """"use strict";
 /* The page of a viewer. Everything from the model is data: it reaches the page as
    textContent, and the tag of every element made here is written here. */
 
-var STAGES = ["", "reading the engine", "starting Python", "loading the libraries", "loading the model"];
 
 /* ---- the pure half ---- */
 
 function fmt(value) {
   if (value === null || value === undefined) { return "-"; }
   var size = Math.abs(value);
-  if (size !== 0 && (size >= 1e7 || size < 1e-3)) { return value.toExponential(3); }
-  return String(parseFloat(value.toPrecision(4)));
+  if (size !== 0 && (size >= 1e7 || size < 1e-3)) { return num(value.toExponential(3)); }
+  return num(parseFloat(value.toPrecision(4)));
 }
 
 function span(low, high) {
-  return (low === null || high === null || low === undefined) ? "-" : fmt(low) + " to " + fmt(high);
+  return (low === null || high === null || low === undefined) ? "-" : tr("range", {lo: fmt(low), hi: fmt(high)});
 }
 
 /* The values of *now* that differ from *initial*: what a run sets on top of initial. */
@@ -647,7 +693,7 @@ function moved(initial, now) {
 }
 
 function seconds(value) {
-  return value < 90 ? Math.max(1, Math.round(value)) + " s" : Math.round(value / 60) + " min";
+  return value < 90 ? tr("viewer.seconds", {n: Math.max(1, Math.round(value))}) : tr("viewer.minutes", {n: Math.round(value / 60)});
 }
 
 /* How long a run of *count* replications takes: those, and the two the page records
@@ -666,13 +712,11 @@ function grouped(rows) {
 
 function sameText(same, here, there) {
   if (same.different === 0 && same.bounds_different === 0) {
-    return "Same engine: this browser's baseline equals the author's run in all " + same.cells +
-      " values compared (" + same.replications + " replications).";
+    return tr("viewer.same", {cells: same.cells, n: same.replications});
   }
-  return "This browser computed " + same.different + " of " + same.cells + " baseline values and " +
-    same.bounds_different + " of " + same.bounds + " interval bounds differently from the author's run " +
-    "(here: Python " + here.python + ", numpy " + here.numpy + ", scipy " + here.scipy +
-    "; the author: Python " + there.python + ", numpy " + there.numpy + ", scipy " + there.scipy + ").";
+  return tr("viewer.differs", {different: same.different, cells: same.cells, bounds_different: same.bounds_different,
+    bounds: same.bounds, python: here.python, numpy: here.numpy, scipy: here.scipy,
+    their_python: there.python, their_numpy: there.numpy, their_scipy: there.scipy});
 }
 
 /* The saved scenarios read back from this browser (D709): the text is anyone's, so only
@@ -709,6 +753,7 @@ function wrap(pen, text, width) {
 
 function boot() {
   var el = function (id) { return document.getElementById(id); };
+  T = words(el("words"));
   var D = JSON.parse(el("data").textContent);
   var modelText = el("model").textContent, baselineText = el("baseline").textContent;
   var author = JSON.parse(baselineText);
@@ -716,7 +761,7 @@ function boot() {
   /* Saved scenarios are kept per model: its title and its inputs. */
   var KEY = "naga-viewer:" + D.title + ":" + paths.join("|");
   var state = {worker: null, ready: false, starting: false, stopped: false, pending: null,
-               running: false, shown: null, since: 0, clock: null, said: "Running", target: null,
+               running: false, shown: null, since: 0, clock: null, said: tr("viewer.running"), target: null,
                base: "Baseline", initial: {}, read: {}, write: {}, marks: {}, tabs: [], tab: 0, saved: [], player: ""};
 
   function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
@@ -749,7 +794,7 @@ function boot() {
     if (entry.kind === "switch") {
       control = add("input", head); control.type = "checkbox"; control.checked = start === true;
       control.addEventListener("change", changed);
-      start = control.checked; shown = start ? "on" : "off";
+      start = control.checked; shown = tr(start ? "viewer.switch_on" : "viewer.switch_off");
       state.read[path] = function () { return control.checked; };
       state.write[path] = function (value) { control.checked = value === true; };
     } else if (entry.kind === "choice") {
@@ -782,19 +827,19 @@ function boot() {
     /* One short item each side: the note (else the range) and whether it moved. The
        range is always on hover. */
     foot = add("div", row, null, "lever-foot");
-    if (slide) { control.title = slide.title = fmt(entry.min) + " to " + fmt(entry.max); }
+    if (slide) { control.title = slide.title = span(entry.min, entry.max); }
     add("span", foot, entry.note || (slide ? slide.title : ""), entry.note ? "lever-note" : "");
-    state.marks[path] = [add("span", foot, "unchanged", "lever-state"), shown];
+    state.marks[path] = [add("span", foot, tr("viewer.unchanged"), "lever-state"), shown];
     state.initial[path] = start;
   }
   function inputs() {
     D.inputs.forEach(lever);
-    if (!D.inputs.length) { add("p", el("inputs"), "This model exposes no inputs; you can run it as it is.", "note"); }
-    if (D.frozen) { add("p", el("inputs"), "Data as read on " + D.frozen + ".", "note"); }
+    if (!D.inputs.length) { add("p", el("inputs"), tr("viewer.no_inputs"), "note"); }
+    if (D.frozen) { add("p", el("inputs"), tr("viewer.frozen", {date: D.frozen}), "note"); }
     var reps = el("reps");
     reps.min = 1; reps.max = D.limits.max_replications; reps.value = D.limits.replications;
     reps.addEventListener("input", estimate);
-    el("reps-note").textContent = "1 to " + D.limits.max_replications + ", seed " + author.seed;
+    el("reps-note").textContent = tr("viewer.reps_note", {most: D.limits.max_replications, seed: author.seed});
   }
   function now() {
     var out = {}, path;
@@ -804,9 +849,9 @@ function boot() {
   function estimate() {
     var count = Number(el("reps").value) || 0, most = D.limits.max_replications;
     var wait = estimateSeconds(D.estimate, count), longest = estimateSeconds(D.estimate, most);
-    el("estimate").textContent = (wait >= 5 ? "About " + seconds(wait) : "A few seconds") +
-      "; more, up to " + most + " replications" + (longest >= 5 ? " (" + seconds(longest) + ")" : "") +
-      ", if the answer is not clear.";
+    el("estimate").textContent = tr("viewer.estimate", {
+      wait: wait >= 5 ? tr("viewer.about", {time: seconds(wait)}) : tr("viewer.few_seconds"), most: most,
+      longest: longest >= 5 ? tr("viewer.estimate_longest", {time: seconds(longest)}) : ""});
   }
   /* A lever moved: say what differs from the defaults; a tab other than Yours is left
      for Yours, which takes the levers; a result shown for other values goes grey. */
@@ -815,10 +860,10 @@ function boot() {
     for (path in state.marks) {
       differs = values[path] !== state.initial[path];
       count += differs ? 1 : 0;
-      state.marks[path][0].textContent = differs ? "default " + state.marks[path][1] : "unchanged";
+      state.marks[path][0].textContent = differs ? tr("viewer.default", {value: state.marks[path][1]}) : tr("viewer.unchanged");
       state.marks[path][0].className = "lever-state" + (differs ? " moved" : "");
     }
-    el("changed").textContent = count ? count + " changed" : "";
+    el("changed").textContent = count ? tr("viewer.changed", {n: count}) : "";
     estimate();
     if (tab !== yours && !equal(tab.values, values)) { state.tab = state.yours; tabs(); }
     if (state.tab === state.yours) { yours.values = values; }
@@ -831,7 +876,7 @@ function boot() {
   function tabs() {
     clear(el("tabs"));
     state.tabs.forEach(function (tab, i) {
-      var button = add("button", el("tabs"), tab.name, "tab" + (tab.kind === "base" ? " base" : "") + (i === state.tab ? " on" : ""));
+      var button = add("button", el("tabs"), scenarioName(tab.name), "tab" + (tab.kind === "base" ? " base" : "") + (i === state.tab ? " on" : ""));
       button.type = "button"; button.value = String(i);
       button.setAttribute("aria-pressed", String(i === state.tab));
     });
@@ -850,10 +895,10 @@ function boot() {
   function table(record, mine) {
     var head = el("results-head"), body = el("results-body");
     clear(head); clear(body);
-    var titles = ["Result", "Baseline", "95% interval"];
-    if (mine) { titles = titles.concat(["Yours", "95% interval", "Difference", "95% interval"]); }
+    var titles = ["viewer.col_result", "viewer.col_baseline", "viewer.col_interval"];
+    if (mine) { titles = titles.concat(["viewer.col_yours", "viewer.col_interval", "viewer.col_difference", "viewer.col_interval"]); }
     var top = add("tr", head);
-    titles.forEach(function (title) { add("th", top, title); });
+    titles.forEach(function (title) { add("th", top, tr(title)); });
     grouped(record.rows).forEach(function (line) {
       var row = add("tr", body), base = line[1] || {}, yours = line[2] || {};
       add("td", row, line[0]);
@@ -865,27 +910,30 @@ function boot() {
       }
     });
     if (!record.rows.length) {
-      add("td", add("tr", body), "The author listed no results for this model.").colSpan = titles.length;
+      add("td", add("tr", body), tr("viewer.no_results")).colSpan = titles.length;
     }
   }
   function made(record, mine, names) {
     var parts = [], path, label = {};
     D.inputs.forEach(function (entry) { label[entry.path] = entry.label || entry.path; });
-    for (path in record.inputs) { parts.push((label[path] || path) + " = " + record.inputs[path]); }
+    for (path in record.inputs) {
+      parts.push((label[path] || path) + " = " + (typeof record.inputs[path] === "number" ? num(record.inputs[path]) : record.inputs[path]));
+    }
     var seeds = record.seeds;
-    el("made").textContent = (mine ? names[0] + ": " + (parts.join(", ") || "the inputs as the model has them")
-      : "The author's run of the model as it is") + ". " + record.replications + " replications, seeds " +
-      seeds[0] + " to " + seeds[seeds.length - 1] + ", common random numbers; the model's own run length." +
-      (mine ? " * the 95% interval of the difference excludes 0." : "");
+    el("made").textContent = tr("viewer.made", {
+      who: mine ? tr("viewer.made_yours", {name: scenarioName(names[0]), inputs: parts.join(", ") || tr("viewer.as_it_is")})
+        : tr("viewer.made_author"),
+      n: record.replications, first: seeds[0], last: seeds[seeds.length - 1]}) + (mine ? tr("viewer.made_star") : "");
   }
   function show(answer) {
     var record = answer.record, mine = Object.keys(record.inputs).length > 0, key = mine ? "Yours" : "Baseline";
     var names = answer.names || ["Yours", state.base], found = record.answer, trust = (record.trust || {})[key];
     state.shown = answer;
-    el("results-title").textContent = answer.names ? "Results: " + names[0] + (mine ? " against " + names[1] : "")
-      : "Results of the author's run";
-    el("key-yours").textContent = mine ? names[0] : names[1];
-    el("key-base").textContent = names[1];
+    el("results-title").textContent = !answer.names ? tr("viewer.results_author") :
+      mine ? tr("viewer.results_against", {name: scenarioName(names[0]), other: scenarioName(names[1])})
+        : tr("viewer.results_of", {name: scenarioName(names[0])});
+    el("key-yours").textContent = scenarioName(mine ? names[0] : names[1]);
+    el("key-base").textContent = scenarioName(names[1]);
     clear(el("results"));
     var seen = resultsPanel((record.results || {})[key] || [], el("results"), add);
     el("key-base").hidden = !mine || !seen.base;
@@ -896,8 +944,8 @@ function boot() {
     el("answer-box").hidden = !found;
     if (found) {
       el("answer-box").className = "panel answer " + found.word;
-      el("answer-kicker").textContent = !answer.names ? "Answer for the author's run" :
-        "Answer for " + (names[0] === "Yours" ? "your version" : names[0]);
+      el("answer-kicker").textContent = !answer.names ? tr("viewer.kicker_author") :
+        tr("viewer.kicker", {name: names[0] === "Yours" ? tr("viewer.your_version") : names[0]});
       el("answer-head").textContent = found.headline;
       el("answer-detail").textContent = found.detail;
       /* The input data's spread, quoted beside the verdict and never merged with it (D737). */
@@ -907,15 +955,15 @@ function boot() {
     }
     table(record, mine); made(record, mine, names);
     el("same").textContent = answer.same ? sameText(answer.same, record.versions, author.versions) :
-      answer.names && names[1] !== state.base ? "Run against " + names[1] + " in place of the author's baseline." : "";
+      answer.names && names[1] !== state.base ? tr("viewer.run_against", {name: scenarioName(names[1])}) : "";
     el("same").className = answer.same && (answer.same.different || answer.same.bounds_different) ? "note warn" : "note";
     if (answer.player) {
       frame(answer.player);
-      el("watch-title").textContent = names[0] === names[1] ? names[0] : names[0] + " beside " + names[1];
-      el("watch-note").textContent = "One replication of each, seed " + author.seed + ", recorded in this " +
-        "browser.";
+      el("watch-title").textContent = names[0] === names[1] ? scenarioName(names[0]) :
+        tr("viewer.beside", {name: scenarioName(names[0]), other: scenarioName(names[1])});
+      el("watch-note").textContent = tr("viewer.watch_note", {seed: author.seed});
     } else if (answer.names) {
-      el("watch-note").textContent = "This run could not be recorded for the drawing in this browser; the results stand.";
+      el("watch-note").textContent = tr("viewer.not_recorded");
     }
     var kept = {};
     Object.keys(answer).forEach(function (name) { if (name !== "player") { kept[name] = answer[name]; } });
@@ -927,8 +975,9 @@ function boot() {
   function frame(text) {
     var theme = document.documentElement.dataset.theme;
     state.player = text;
-    el("player").srcdoc = text.replace('<html lang="en">', '<html lang="en" class="framed"' +
-      (theme === "light" || theme === "dark" ? ' data-theme="' + theme + '"' : "") + ">");
+    el("player").srcdoc = text.replace(/<html lang="([a-z]+)">/, function (all, lang) {
+      return '<html lang="' + lang + '" class="framed"' + (theme === "light" || theme === "dark" ? ' data-theme="' + theme + '"' : "") + ">";
+    });
   }
 
   /* -- the engine -- */
@@ -942,21 +991,18 @@ function boot() {
   function failed(text) {
     state.ready = false; state.starting = false; state.pending = null; state.running = false;
     clearInterval(state.clock); buttons();
-    status("The engine could not start in this browser (" + text + "). Open this file in Chrome, Edge " +
-      "or Firefox on a computer; Safari, phones and tablets are not supported.", true);
+    status(tr("viewer.cannot_start", {error: text}), true);
   }
   function heard(event) {
     var message = event.data, kind = message[0], go;
     if (kind === "stage") {
-      status("Starting the engine in this browser: step " + message[1] + " of 4, " + STAGES[message[1]] +
-        ". About 10 s in all.");
+      status(tr("viewer.starting", {step: message[1], stage: tr("viewer.stage_" + message[1])}));
     } else if (kind === "ready") {
       state.ready = true; state.starting = false; buttons();
-      status("Ready after " + seconds((performance.now() - state.since) / 1000) +
-        ". The engine runs in this browser; nothing is sent anywhere.");
+      status(tr("viewer.ready", {time: seconds((performance.now() - state.since) / 1000)}));
       if (state.pending) { go = state.pending; state.pending = null; go(); }
     } else if (kind === "progress") {
-      el("progress").textContent = "replication " + message[1] + " of " + message[2];
+      el("progress").textContent = tr("viewer.progress", {done: message[1], total: message[2]});
     } else if (kind === "status") {
       state.said = message[1];
       status(message[1] + "...");
@@ -964,40 +1010,46 @@ function boot() {
       state.running = false; clearInterval(state.clock); buttons();
       var answer = JSON.parse(message[1]);
       el("progress").textContent = "";
-      if (answer.error) { status("Not run: " + answer.error, true); return; }
-      status("Run finished in " + seconds((performance.now() - state.since) / 1000) + ".");
+      if (answer.error) { status(tr("viewer.not_run", {error: answer.error}), true); return; }
+      status(tr("viewer.finished", {time: seconds((performance.now() - state.since) / 1000)}));
       answer.names = state.target.names; answer.values = state.target.values;
       if (state.target.tab) { state.target.tab.answer = answer; }
       show(answer);
+    } else if (kind === "refused") {
+      /* A small page (D1087) whose runtime did not arrive, or arrived as another file. */
+      failed("");
+      status(tr({offline: "viewer.cdn_offline", insecure: "viewer.cdn_insecure"}[message[1]] || "viewer.cdn_tampered",
+                {name: message[2]}), true);
     } else if (kind === "failed") {
       if (message[1] === "boot") { failed(message[2]); return; }
       state.running = false; clearInterval(state.clock); buttons();
-      status("The run stopped with an error: " + message[2], true);
+      status(tr("viewer.error", {error: message[2]}), true);
     }
   }
   function start() {
     state.ready = false; state.starting = true; state.stopped = false;
     state.since = performance.now(); buttons();
-    status("Starting the engine in this browser: step 1 of 4, " + STAGES[1] + ". About 10 s in all.");
+    status(tr("viewer.starting", {step: 1, stage: tr("viewer.stage_1")}));
     try {
       state.worker = new Worker("data:text/javascript;base64," + btoa(el("worker").textContent), {type: "module"});
     } catch (error) { failed(String(error && error.message || error)); return; }
     state.worker.onmessage = heard;
-    state.worker.onerror = function (event) { failed(event.message || "the worker did not start"); };
+    state.worker.onerror = function (event) { failed(event.message || tr("viewer.worker_failed")); };
     state.worker.postMessage(["boot", {files: files(), model: modelText, baseline: baselineText,
                                        packages: D.packages,
-                                       page: JSON.stringify({title: D.title, tokens: D.tokens, asked: D.asked || null, pictures: D.pictures || null})}]);
+                                       page: JSON.stringify({title: D.title, tokens: D.tokens, asked: D.asked || null, pictures: D.pictures || null,
+                                                             language: D.language || null})}]);
   }
   /* Run *args* in the engine; the answer goes to *target* ({names, values, tab}). */
   function send(args, target) {
     if (!state.ready) { state.pending = function () { send(args, target); }; start(); return; }
     args.replications = Number(el("reps").value);
     args.names = target.names;
-    state.running = true; state.since = performance.now(); state.said = "Running"; state.target = target; buttons();
+    state.running = true; state.since = performance.now(); state.said = tr("viewer.running"); state.target = target; buttons();
     el("progress").textContent = "";
-    status("Running...");
+    status(tr("viewer.running_dots"));
     state.clock = setInterval(function () {
-      status(state.said + ": " + seconds((performance.now() - state.since) / 1000) + " so far.");
+      status(tr("viewer.so_far", {said: state.said, time: seconds((performance.now() - state.since) / 1000)}));
     }, 1000);
     state.worker.postMessage(["run", JSON.stringify(args)]);
   }
@@ -1009,7 +1061,7 @@ function boot() {
   /* Two of the tabs, one against the other: the second runs in place of the baseline. */
   function compare() {
     var a = state.tabs[Number(el("cmp-a").value)], b = state.tabs[Number(el("cmp-b").value)];
-    if (!a || !b || a === b) { status("Pick two different scenarios to compare.", true); return; }
+    if (!a || !b || a === b) { status(tr("viewer.pick_two"), true); return; }
     send({values: moved(b.values, a.values), against: moved(state.initial, b.values)},
          {names: [a.name, b.name], values: a.values, tab: null});
   }
@@ -1024,10 +1076,10 @@ function boot() {
     el("progress").textContent = "";
     if (ran) {
       start();
-      status("Cancelled. Starting the engine again: about 10 s.");
+      status(tr("viewer.cancelled"));
     } else {
       state.stopped = true; buttons();
-      status("The engine was stopped before it was ready. Press Run to start it and run.");
+      status(tr("viewer.stopped"));
     }
   }
   /* The text of a compressed block, read once. */
@@ -1044,13 +1096,13 @@ function boot() {
     state.saved.push(values);
     keep();
     state.made += 1;     /* never reused after a removal */
-    state.tabs.push({name: "Saved " + state.made, kind: "saved", values: values, answer: tab.answer});
+    state.tabs.push({name: tr("viewer.saved", {n: state.made}), kind: "saved", values: values, answer: tab.answer});
     state.tab = state.tabs.length - 1;
     tabs();
   }
   function keep() {
     try { window.localStorage.setItem(KEY, JSON.stringify(state.saved)); }
-    catch (e) { status("Saved for this visit only: this browser keeps nothing for this page."); }
+    catch (e) { status(tr("viewer.kept_nothing")); }
   }
   /* Removes the saved scenario shown; the others keep their names until the page opens
      again, then they are numbered afresh. */
@@ -1068,7 +1120,7 @@ function boot() {
     box.hidden = !box.hidden;
     ["cmp-a", "cmp-b"].forEach(function (id, side) {
       clear(el(id));
-      state.tabs.forEach(function (tab, i) { add("option", el(id), tab.name).value = String(i); });
+      state.tabs.forEach(function (tab, i) { add("option", el(id), scenarioName(tab.name)).value = String(i); });
       el(id).value = String(side ? (state.tab ? 0 : state.yours) : state.tab);
     });
   }
@@ -1091,11 +1143,12 @@ function boot() {
       if (record.answer) { put(record.answer.headline, 18, "ink", true); put(record.answer.detail, 14, "muted", false); }
       ((record.results || {})[key] || []).forEach(function (row) {
         put(row.label + ": " + fmt(row.yours.mean) + (row.unit ? " " + row.unit : "") +
-            (row.yours.lo !== null ? " (95% interval " + span(row.yours.lo, row.yours.hi) + ")" : "") +
-            (row.base ? ", baseline " + fmt(row.base.mean) : "") + (row.verdict ? ", " + row.verdict : ""), 14, "ink", false);
+            (row.yours.lo !== null ? tr("viewer.picture_row_interval", {range: span(row.yours.lo, row.yours.hi)}) : "") +
+            (row.base ? tr("viewer.picture_row_base", {value: fmt(row.base.mean)}) : "") +
+            (row.verdict ? ", " + tr("verdict." + row.verdict) : ""), 14, "ink", false);
       });
       put(el("made").textContent, 12, "muted", false);
-      put("Naga viewer, " + new Date().toISOString().slice(0, 10) + ".", 12, "muted", false);
+      put(tr("viewer.picture_foot", {date: new Date().toISOString().slice(0, 10)}), 12, "muted", false);
     }
     all();
     canvas.width = width;
@@ -1129,9 +1182,8 @@ function boot() {
     el("player").style.height = Math.round(height) + "px";
   });
   el("title").textContent = D.question || D.title;
-  el("subtitle").textContent = D.question ? D.title : "The model as its author left it: move the levers and run your version.";
-  el("versions").textContent = "Naga " + author.versions.nagasim + ", Python " + D.python + " (Pyodide " +
-    D.pyodide + "), all in this file. Anyone with the file can read the model.";
+  el("subtitle").textContent = D.question ? D.title : tr("viewer.subtitle");
+  el("versions").textContent = tr(D.cdn ? "viewer.versions_cdn" : "viewer.versions", {naga: author.versions.nagasim, python: D.python, pyodide: D.pyodide});
   inputs();
   try { state.saved = savedFrom(window.localStorage.getItem(KEY) || "[]", paths); } catch (e) { state.saved = []; }
   state.made = state.saved.length;
@@ -1146,7 +1198,7 @@ function boot() {
   state.yours = state.tabs.length;
   state.tabs.push({name: "Yours", kind: "yours", values: merged(state.initial, {})});
   state.saved.forEach(function (values, i) {
-    state.tabs.push({name: "Saved " + (i + 1), kind: "saved", values: merged(state.initial, values)});
+    state.tabs.push({name: tr("viewer.saved", {n: i + 1}), kind: "saved", values: merged(state.initial, values)});
   });
   tabs();
   show(state.tabs[0].answer);
@@ -1170,7 +1222,7 @@ function boot() {
     if (el("notices").open) { unpack("notices-data", function (text) { el("notices-text").textContent = text; }); }
   });
   if (el("player-data").textContent) {
-    el("watch-note").textContent = "One replication, seed " + author.seed + ", recorded when this file was made.";
+    el("watch-note").textContent = tr("viewer.recorded_note", {seed: author.seed});
     unpack("player-data", frame);
   } else {
     el("watch").hidden = true;
@@ -1185,39 +1237,39 @@ if (typeof document !== "undefined") { boot(); }
 """
 
 _PAGE = """<!doctype html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-__THEME_HASH__' 'sha256-__MAIN_HASH__' 'sha256-__PLAYER_HASH__' blob: 'wasm-unsafe-eval'; style-src 'sha256-__CSS_HASH__' 'sha256-__PLAYER_CSS_HASH__'; img-src data:; worker-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none';__CONNECT__ script-src 'sha256-__THEME_HASH__' 'sha256-__MAIN_HASH__' 'sha256-__PLAYER_HASH__' blob: 'wasm-unsafe-eval'; style-src 'sha256-__CSS_HASH__' 'sha256-__PLAYER_CSS_HASH__'; img-src data:; worker-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Naga viewer</title>
+<title>{{viewer.title}}</title>
 <style>__CSS__</style>
 <script id="theme-pick">__THEME__</script>
 </head>
 <body>
 <header class="topbar">
 <div class="ident"><h1 id="title"></h1><p class="note" id="subtitle"></p></div>
-<div id="tabs" class="tabs" aria-label="Scenario"></div>
-<button id="theme" type="button" aria-label="Light or dark">Theme: auto</button>
+<div id="tabs" class="tabs" aria-label="{{scenario.aria}}"></div>
+<button id="theme" type="button" aria-label="{{theme.aria}}">{{theme_auto}}</button>
 </header>
-<p id="status">This page needs JavaScript.</p>
+<p id="status">{{viewer.needs_js}}</p>
 <main class="console levers">
 <section class="panel" aria-labelledby="levers-h">
-<div class="panel-head"><h2 id="levers-h">Levers</h2><span id="changed"></span></div>
+<div class="panel-head"><h2 id="levers-h">{{viewer.levers}}</h2><span id="changed"></span></div>
 <div id="inputs"></div>
-<div class="reps"><label for="reps">Replications</label><input id="reps" type="number" step="1">
+<div class="reps"><label for="reps">{{viewer.replications}}</label><input id="reps" type="number" step="1">
 <span class="note" id="reps-note"></span></div>
 <div class="actions">
-<button id="run" type="button" class="primary" disabled>Run my version</button>
-<button id="reset" type="button">Reset to defaults</button>
-<button id="cancel" type="button" disabled>Cancel</button>
+<button id="run" type="button" class="primary" disabled>{{viewer.run}}</button>
+<button id="reset" type="button">{{viewer.reset}}</button>
+<button id="cancel" type="button" disabled>{{viewer.cancel}}</button>
 </div>
 <p class="note"><span id="progress"></span> <span id="estimate"></span></p>
 </section>
 <section class="centre">
 <div class="panel" id="watch">
-<div class="panel-head"><h2 id="watch-title">The author's recorded run</h2></div>
-<iframe id="player" sandbox="allow-scripts" title="The recorded run"></iframe>
+<div class="panel-head"><h2 id="watch-title">{{viewer.watch}}</h2></div>
+<iframe id="player" sandbox="allow-scripts" title="{{viewer.frame}}"></iframe>
 <p class="note" id="watch-note"></p>
 </div>
 </section>
@@ -1229,35 +1281,36 @@ _PAGE = """<!doctype html>
 <p class="note" id="answer-note" hidden></p>
 </div>
 <div class="panel" id="results-box">
-<div class="panel-head"><h2 id="results-title">Results of the author's run</h2><span class="legend"><span class="key yours" id="key-yours">yours</span><span class="key base" id="key-base">baseline</span><span class="key target" id="key-target">target</span></span></div>
-<p class="gone" id="stale">Levers changed: run again to update.</p>
+<div class="panel-head"><h2 id="results-title">{{viewer.results_author}}</h2><span class="legend"><span class="key yours" id="key-yours">{{viewer.key_yours}}</span><span class="key base" id="key-base">{{player.key_baseline}}</span><span class="key target" id="key-target">{{player.key_target}}</span></span></div>
+<p class="gone" id="stale">{{viewer.stale}}</p>
 <div id="results"></div>
-<details><summary class="note">All numbers</summary>
+<details><summary class="note">{{viewer.all_numbers}}</summary>
 <div class="scroll"><table id="results-table"><thead id="results-head"></thead><tbody id="results-body"></tbody></table></div>
 <p class="note" id="made"></p>
 <p class="note" id="same"></p>
 </details>
 </div>
-<div class="panel" id="trust-box"><div class="panel-head"><h2>Can I trust this?</h2></div><table id="trust" class="trust"></table></div>
+<div class="panel" id="trust-box"><div class="panel-head"><h2>{{player.trust}}</h2></div><table id="trust" class="trust"></table></div>
 </aside>
 </main>
 <footer class="footbar">
-<button id="save" type="button">Save as scenario</button>
-<button id="remove" type="button" hidden>Remove this saved scenario</button>
-<button id="picture" type="button">Picture for the report</button>
-<button id="compare" type="button">Compare two scenarios</button>
-<span id="compare-pick" hidden><select id="cmp-a" aria-label="Scenario"></select> against
-<select id="cmp-b" aria-label="Against"></select>
-<button id="cmp-run" type="button" class="primary" disabled>Run the comparison</button></span>
+<button id="save" type="button">{{viewer.save}}</button>
+<button id="remove" type="button" hidden>{{viewer.remove}}</button>
+<button id="picture" type="button">{{viewer.picture}}</button>
+<button id="compare" type="button">{{viewer.compare}}</button>
+<span id="compare-pick" hidden><select id="cmp-a" aria-label="{{scenario.aria}}"></select> {{viewer.against}}
+<select id="cmp-b" aria-label="{{viewer.against_aria}}"></select>
+<button id="cmp-run" type="button" class="primary" disabled>{{viewer.compare_run}}</button></span>
 <span class="note" id="versions"></span>
 </footer>
 <div class="panel" id="picture-box" hidden>
-<p class="note">Right-click the picture and choose "Save image as" to keep it as a PNG.</p>
+<p class="note">{{viewer.picture_note}}</p>
 <canvas id="picture-canvas" width="960" height="200"></canvas>
 </div>
-<details id="notices"><summary class="note">Licences of the software in this file</summary>
-<pre id="notices-text">Reading...</pre></details>
+<details id="notices"><summary class="note">{{viewer.licences}}</summary>
+<pre id="notices-text">{{viewer.reading}}</pre></details>
 <pre class="gone" id="record"></pre>
+<script type="application/json" id="words">__WORDS__</script>
 <script type="application/json" id="data">__DATA__</script>
 <script type="application/json" id="model">__MODEL__</script>
 <script type="application/json" id="baseline">__BASELINE__</script>
@@ -1302,8 +1355,6 @@ def engine_available() -> bool:
     return (Path(nagasim.__file__).parent / "viewer.py").is_file()
 
 
-# The old name, kept for one release (D919).
-engine_on_disk = engine_available
 
 
 def write_engine_zip(path) -> int:
@@ -1340,8 +1391,11 @@ def _build_engine_zip() -> bytes:
     root = Path(nagasim.__file__).parent
     for path in sorted(root.rglob("*")):
         inside = path.relative_to(root).as_posix()
+        # D1047: nor what a run never reads: typing stubs, the agents' skill texts and the
+        # notices, which the page carries once on their own.
         if (not path.is_file() or "__pycache__" in path.parts
-                or inside.startswith("models/") or inside == "core/custom_logic.py"):
+                or inside.startswith(("models/", "skills/")) or inside == "core/custom_logic.py"
+                or inside.endswith(".pyi") or inside == "templates/viewer_notices.txt"):
             continue
         entries["nagasim/" + inside] = path.read_bytes()
     for name in _PURE:
@@ -1506,7 +1560,7 @@ def _kept_pictures(pictures: dict | None) -> dict | None:
 
 
 def _recording(model: dict, baseline: dict, title: str, should_stop=None, tokens=None,
-               asked=None, pictures=None) -> str:
+               asked=None, pictures=None, language=None) -> str:
     """The player page (`player.build_player`) of the author's baseline: its first
     replication run again with its seed and a recorder. "" when it cannot be made (a
     tape over the player's size limit): the viewer is then written without it."""
@@ -1518,7 +1572,7 @@ def _recording(model: dict, baseline: dict, title: str, should_stop=None, tokens
         results = run_model(model, replications=baseline["replications"],
                             seed=baseline["seed"], trace=recorder, should_stop=should_stop)
         return player.build_player(model, {experiments.BASELINE: recorder}, results=results, title=title,
-                                   tokens=tokens, asked=asked, pictures=pictures)
+                                   tokens=tokens, asked=asked, pictures=pictures, language=language)
     except ValueError:
         return ""
 
@@ -1553,7 +1607,8 @@ def _block(name: str, data: bytes) -> str:
 def build_viewer(layout, path, *, runtime=None, title: str | None = None,
                  baseline: dict | None = None, frozen: str | None = None,
                  recording: str | None = None, tokens: dict | None = None,
-                 on_progress=None, should_stop=None, asked=None, pictures: dict | None = None) -> dict:
+                 on_progress=None, should_stop=None, asked=None, pictures: dict | None = None,
+                 language: str | None = None, pyodide: str = "embedded") -> dict:
     """Write the viewer page of *layout* (a model dict or file) to *path* and return
     {"bytes", "estimate", "warnings", "baseline"}.
 
@@ -1562,7 +1617,11 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     its answer card's input note; without them both say "not measured" / nothing.
 
     *runtime* is the folder of the browser runtime (`viewer_runtime.resolve_dir`); this
-    function never downloads. The author's baseline is run here, with the definition's
+    function never downloads. *pyodide* "embedded" (the default) puts the runtime in the
+    file, which then works offline; "cdn" makes a small page (D1087) that carries the
+    engine and fetches Pyodide's files from `viewer_runtime.WHEEL_URL`, each checked in
+    the browser against the SHA-256 read here from the pinned copy, refusing to start on
+    a mismatch or with no network. The copy is needed either way. The author's baseline is run here, with the definition's
     own replications, unless *baseline* (a `what_if` record of this model) is given.
     *frozen* is the date the model's data was read on, when it was frozen into the copy.
     *recording* is the player page of the author's run (default: the first baseline
@@ -1570,6 +1629,8 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     makes it; "" for none): the page shows it in a frame, as the author's run, until a
     run in the page replaces it with the viewer's run beside the baseline (`watch_page`).
     *tokens* is the look of the page and of both players (`player.DEFAULT_TOKENS`).
+    *language* is the page's and its players' (`pagetext.LANGUAGES`, default English,
+    D1056): one language per file; a *recording* given is the caller's to make in it.
     *pictures* is what `player.build_player` takes (the product's, `product.ui.playerpics`):
     the page carries it, so a run made in the browser is drawn with the same pictures and
     floor plan as the recorded one. It is optional, and the engine reads no file for it.
@@ -1592,9 +1653,13 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     from nagasim import viewer_runtime
     from nagasim.api import load_layout
 
+    if pyodide not in ("embedded", "cdn"):
+        raise ValueError(f"pyodide must be 'embedded' or 'cdn', not {pyodide!r}")
     if not engine_available():
         raise ValueError(_NOT_ON_DISK)
     tokens = player.check_tokens(tokens)                            # a bad token: refused first
+    language = language or pagetext.DEFAULT
+    words = pagetext.table(language)                                 # a bad language too
 
     def step(done: int) -> None:
         if should_stop is not None and should_stop():
@@ -1608,12 +1673,14 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
                                          if p.severity == "error"]
     if problems:
         raise _refused(problems)
+    pictures = player.with_building(model, pictures)        # D1051: the building is the plan
     step(1)
-    files = viewer_runtime.load(runtime)                       # before the run: fail early
+    cdn = pyodide == "cdn"
+    pinned = viewer_runtime.load(runtime) if cdn else viewer_runtime.page_files(runtime)  # fail early
     step(2)
     definition = dashboard.resolve_dashboard(model)
     if baseline is None:
-        baseline = what_if(model, should_stop=should_stop, asked=_quoted(asked))
+        baseline = what_if(model, should_stop=should_stop, asked=_quoted(asked), language=language)
     step(3)
     limits = definition["limits"]
     estimate = round(_BROWSER_FACTOR * baseline["seconds"] / baseline["replications"], 3)
@@ -1630,11 +1697,16 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
                                     f"{key}: the viewer has {what}", f"/dashboard/{key}"))
 
     engine, licences = _engine_zip()
-    files = {**files, "engine.zip": engine}
-    for name, data in files.items():
+    for name, data in pinned.items():
         if name.endswith(".whl"):
             licences.extend(_wheel_licences(name, data))
-    lock = json.loads(files["pyodide-lock.json"])
+    lock = json.loads(pinned["pyodide-lock.json"])
+    # The small page carries the engine alone; what it fetches, and from where, is the pin's.
+    files = {"engine.zip": engine} if cdn else {**pinned, "engine.zip": engine}
+    remote = {"base": viewer_runtime.WHEEL_URL, "files": viewer_runtime.cdn_files(pinned)} if cdn else None
+    # It goes into the policy and a script: a plain folder address, nothing that could end either.
+    if cdn and not re.fullmatch(r"https?://[A-Za-z0-9.:-]+/[A-Za-z0-9._/-]*/", viewer_runtime.WHEEL_URL):
+        raise AssertionError("the runtime's address must be a plain folder address")
     data = {
         "title": str(title or (model.get("info") or {}).get("name") or "Model")[:80],
         "inputs": definition["inputs"], "limits": limits, "estimate": estimate,
@@ -1645,14 +1717,15 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
         "question": (model.get("dashboard") or {}).get("question"),
         "scenarios": _lever_scenarios(model, definition), "unit": units_of(model.get("simulation")).time,
         "asked": _quoted(asked),
-        "pictures": _kept_pictures(pictures),
+        "pictures": _kept_pictures(pictures), "language": language, "cdn": cdn,
     }
-    worker = _WORKER.replace("__BOOT__", json.dumps(_BOOT))
+    worker = _WORKER.replace("__BOOT__", json.dumps(_BOOT)).replace("__REMOTE__", json.dumps(remote))
     if not (worker.isascii() and _MAIN.isascii()) or "</script" in worker + _MAIN:
         raise AssertionError("the viewer's scripts must be ASCII and hold no closing tag")
     notices = base64.b64encode(gzip.compress(_notices(licences).encode("utf-8"), 9, mtime=0))
     if recording is None:
-        recording = _recording(model, baseline, data["title"], should_stop, tokens, data["asked"], pictures)
+        recording = _recording(model, baseline, data["title"], should_stop, tokens, data["asked"], pictures,
+                               language)
     step(4)
     packed = b""
     if recording:
@@ -1667,13 +1740,17 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     css = player.style_sheet(tokens, _CSS)
     sha = player.csp_hash
     parts = {"THEME": player.THEME, "THEME_HASH": sha(player.THEME), "MAIN_HASH": sha(_MAIN),
-             "CSS_HASH": sha(css), "CSS": css, "DATA": player.embed(data),
+             "CSS_HASH": sha(css), "CSS": css, "DATA": player.embed(data), "WORDS": player.embed(pagetext.page_words(words)),
              "MODEL": player.embed(model), "BASELINE": player.embed(shipped), "WORKER": worker, "MAIN": _MAIN,
              "NOTICES": notices.decode("ascii"), "PLAYER": packed.decode("ascii"),
              "PLAYER_HASH": sha(player.SCRIPT), "PLAYER_CSS_HASH": sha(player.style_sheet(tokens)),
-             "FILES": "\n".join(_block(name, files[name]) for name in sorted(files))}
+             "FILES": "\n".join(_block(name, files[name]) for name in sorted(files)),
+             # Only a small page may connect, and only below the one pinned folder.
+             "CONNECT": f" connect-src {viewer_runtime.WHEEL_URL};" if cdn else ""}
     # One pass over the constant page: a part is never searched for another part's mark.
-    page = re.sub("__([A-Z_]+)__", lambda found: parts[found.group(1)], _PAGE)
+    shell = pagetext.markup(_PAGE, {**words, "lang": language,
+                                    "theme_auto": pagetext.say(words, "theme", theme=words["theme.auto"])})
+    page = re.sub("__([A-Z_]+)__", lambda found: parts[found.group(1)], shell)
     step(4)
     # Bytes, so the file is the same on every system; whole or not at all.
     temporary = Path(str(path) + ".part")
@@ -1709,6 +1786,12 @@ def main(argv=None) -> int:
     parser.add_argument("--runtime", metavar="DIR",
                         help="the folder of the browser runtime (default: "
                              f"${viewer_runtime.ENV_VAR}, else the user's own copy)")
+    parser.add_argument("--pyodide", choices=("embedded", "cdn"), default="embedded",
+                        help="embedded (default): the file carries the browser runtime and works "
+                             "offline (about 35 MB); cdn: a small file that carries the engine and "
+                             "fetches Pyodide's pinned files from cdn.jsdelivr.net when opened, each "
+                             "checked against its SHA-256, refusing to start on a mismatch or with "
+                             "no network")
     parser.add_argument("--fetch", action="store_true",
                         help=f"download the browser runtime (Pyodide {viewer_runtime.VERSION}, "
                              "29 MB, from github.com and cdn.jsdelivr.net) into that folder; "
@@ -1719,6 +1802,8 @@ def main(argv=None) -> int:
                              "source, path or address (without it a model with data sources "
                              "is refused)")
     parser.add_argument("--asked", metavar="FILE", help=ASKED_HELP)
+    parser.add_argument("--lang", choices=pagetext.LANGUAGES, default=pagetext.DEFAULT,
+                        help="the language of the page (default en)")
     netguard.add_arguments(parser)
     args = parser.parse_args(argv)
     out = sys.stdout.write
@@ -1742,8 +1827,11 @@ def main(argv=None) -> int:
         frozen = datetime.date.today().isoformat()
         out(f"data read once from {len(read)} source(s) ({', '.join(read) or 'none'}) and "
             "written into the copy, which names no source\n")
+    from nagasim.api import load_layout
     made = build_viewer(layout, args.output, runtime=args.runtime,
-                        title=args.title or Path(args.model).stem, frozen=frozen, asked=asked)
+                        title=args.title or Path(args.model).stem, frozen=frozen, asked=asked,
+                        language=args.lang, pyodide=args.pyodide,
+                        pictures=player.disk_pictures(load_layout(args.model), args.model))  # D1052
     for warning in made["warnings"]:
         sys.stderr.write(f"warning {warning.code}: {warning.message}\n")
     out(f"wrote {args.output}: {made['bytes'] / 1e6:.1f} MB; one replication takes about "

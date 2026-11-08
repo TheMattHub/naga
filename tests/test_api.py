@@ -36,7 +36,8 @@ def test_run_model_returns_all_frames_per_replication(curated_results):
     # session-wide `curated_results` runs (conftest) rather than its own: the
     # runs are what cost, and the loop reports the first example that breaks.
     for path, results in curated_results.items():
-        assert set(results) == KEYS, path.stem
+        # A belt with points adds its point frames (only then: belt_points.json).
+        assert set(results) - {"conveyor_stops", "conveyor_diverts", "conveyor_merges"} == KEYS, path.stem
         assert set(results["system"]["Run"]) == {0, 1}, path.stem
         # A purely continuous example has no entities at all (PHASE4 D1); its
         # own statistics are checked by the test below.
@@ -248,12 +249,13 @@ def test_cli_writes_a_report(simple_model_path, tmp_path):
 # handed back a single worker -- i.e. the test was measuring the runner, and the
 # product rule it was measuring was itself wrong on a small box.
 @pytest.mark.parametrize("elapsed,remaining,cpus,setup_cost,expected", [
-    (2.0, 4, 8, 3.0, 4),      # plenty of work, plenty of cores -> the cap
+    (2.0, 4, 8, 3.0, 4),      # plenty of work, plenty of cores -> one per task
+    (2.0, 20, 16, 3.0, 8),    # ... and never more than the cap
     (2.0, 4, 2, 3.0, 2),      # a 2-core CI runner still pools, on both cores
     (2.0, 4, 1, 3.0, 1),      # one core: a pool would only add overhead
     (0.01, 5, 8, 3.0, 1),     # 0.05 s of work left is not worth 3 s of pool
     (0.01, 5, 8, 0.3, 1),     # ... nor 0.3 s of a fork pool
-    (0.1, 50, 8, 3.0, 4),     # many quick design points DO add up (T3)
+    (0.1, 50, 8, 3.0, 8),     # many quick design points DO add up (T3), to the cap of 8
     (0.1, 4, 8, 0.3, 4),      # fork: 0.4 s of work clears the cheaper bar
     (0.1, 4, 8, 3.0, 1),      # spawn: the same work does not
     (2.0, 2, 8, 3.0, 1),      # fewer than 3 tasks left: never worth it

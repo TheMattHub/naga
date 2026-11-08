@@ -73,7 +73,11 @@ never builds a `LevelSystem` at all, so it pays nothing.
 from __future__ import annotations
 
 import math
+from array import array
 from bisect import bisect_right
+from itertools import compress
+from math import copysign
+from operator import attrgetter, ne
 from graphlib import TopologicalSorter
 
 import numpy as np
@@ -211,7 +215,7 @@ class Level:
                  "_start", "_last_t", "_area", "_min", "_max", "_empty_time", "_full_time",
                  "pending", "components", "tolerance", "content", "hold", "_content_level",
                  "comp_in_rate", "comp_out_rate", "_comp_area", "comp_in", "comp_out",
-                 "_frac_min", "_frac_max", "hidden", "conveyor")
+                 "_frac_min", "_frac_max", "hidden", "conveyor", "_held")
 
     def __init__(self, name, capacity=None, minimum=0.0, initial=0.0, unit="",
                  max_inflow=None, max_outflow=None, thresholds=(), components=(),
@@ -758,6 +762,52 @@ class _Conveyor:
             flow.desired = take / (flow.efficiency * dt)
 
 
+_DESIRED = attrgetter("desired")
+
+
+class _SolveGroup:
+    """Levels a chain of flows connects, with those flows (D1060).
+
+    Saturation never crosses a group: a cut at a level scales only the flows
+    touching it. `_saturate` is a pure function of the group's desired rates
+    and its levels' full/empty states (the bounds are constants), so a group
+    none of whose inputs moved since its last solve would give the same
+    realised rates again bit for bit, and is skipped (`LevelSystem._changed`)."""
+
+    __slots__ = ("levels", "flows")
+
+    def __init__(self, levels: tuple, flows: tuple):
+        self.levels = levels
+        self.flows = flows
+
+
+def _solve_groups(levels: dict, flows: list) -> tuple:
+    """The flow-connected groups (union-find over each flow's two ends),
+    levels in model order and flows in `flows` order, so a solve sums every
+    level's rates in exactly the order the all-levels solve did. A level no
+    flow touches is in no group: nothing can bind on it and its rates stay 0."""
+    parent: dict = {}
+
+    def root(x):
+        while parent[x] is not x:
+            parent[x] = x = parent[parent[x]]
+        return x
+
+    for flow in flows:
+        parent.setdefault(flow, flow)
+        for end in (flow.src, flow.dst):
+            if end is not None:
+                parent.setdefault(end, end)
+                parent[root(end)] = root(flow)
+    members: dict = {}
+    for level in levels.values():
+        if level in parent:
+            members.setdefault(root(level), ([], []))[0].append(level)
+    for flow in flows:
+        members.setdefault(root(flow), ([], []))[1].append(flow)
+    return tuple(_SolveGroup(tuple(ls), tuple(fs)) for ls, fs in members.values())
+
+
 class LevelSystem:
     """The one process that integrates every level and every flow.
 
@@ -802,6 +852,34 @@ class LevelSystem:
         # two lists per level per pass was O(levels x flows) on every pass.
         self._ins = {level: [f for f in flows if f.dst is level] for level in levels.values()}
         self._outs = {level: [f for f in flows if f.src is level] for level in levels.values()}
+        # D1060: re-solve per flow-connected group, and only a group whose
+        # inputs moved; a level no flow touches never has a rate to look at.
+        self._groups = _solve_groups(levels, flows)
+        self._flowed = tuple(l for l in levels.values() if self._ins[l] or self._outs[l])
+        # D1097: a level no flow touches has every rate 0 and only moves when a block
+        # writes it, so `sync` folds it into its statistics only when it was written
+        # (or when `settle` reads it), not on every call. `_held` is its value as of
+        # the last sync; NaN makes the first sync fold and snap it, as before.
+        flowed = set(self._flowed)
+        self._lazy = tuple(l for l in levels.values()
+                           if l not in flowed and not l.components and l.conveyor is None)
+        lazy = set(self._lazy)
+        self._eager = tuple(l for l in levels.values() if l not in lazy)
+        for level in self._lazy:
+            level._held = math.nan
+            # Its statistics start with the system (#1568): from 0, a system built at
+            # t > 0 folded the NaN seed over [0, start] at the first catch-up.
+            level._last_t = float(env.now)
+        # The inputs each group was last solved with, flat and per flow/level
+        # (D1086): one scan per pass finds the groups to solve. A key tuple per
+        # group per pass cost more than the solves it saved on a small model.
+        group_of = {member: g for g, group in enumerate(self._groups)
+                    for member in group.levels + group.flows}
+        self._flow_group = [group_of[f] for f in flows]
+        self._flowed_group = [group_of[l] for l in self._flowed]
+        self._last_desired = None                   # array('d') once solved
+        self._last_state = [-1] * len(self._flowed)
+        self._evaluated = None      # set by `_recompute` before each `_saturate`
         # FLOWSUM memo for one pass, keyed (tag, below). Only `_apply` moves a
         # realised rate, so that is the one place it has to be dropped -- which
         # is also where `_moved`, the bus keys that just changed, is filled.
@@ -1012,10 +1090,16 @@ class LevelSystem:
                 flow.peak = max(flow.peak, flow.actual)
             if flow.actual < flow.desired - EPS:
                 flow.limited_time += dt
-        for level in self.levels.values():
+        for level in self._eager:
             new = self._snap(level, level.level + (level.in_rate - level.out_rate) * dt)
             level._accrue(new, dt, t)
             level.level = new
+        for level in self._lazy:
+            if level.level != level._held:  # written since the last sync (D1097)
+                self._catch_up(level)
+                new = self._snap(level, level.level + 0.0)
+                level._accrue(new, dt, t)
+                level.level = level._held = new
         for conversion in self.conversions:
             conversion.accumulate(dt)
         for belt in self._conveyors:
@@ -1028,6 +1112,21 @@ class LevelSystem:
         self._last_t = t
         if self._belt_open:
             self._commit_conveyors(t)
+
+    def _catch_up(self, level: Level) -> None:
+        """Fold the stretch a lazy level held `_held` over, from its own last
+        fold to the last sync, in one interval (D1097)."""
+        span = self._last_t - level._last_t
+        if span > 0:
+            written, level.level = level.level, level._held
+            level._accrue(level._held, span, self._last_t)
+            level.level = written
+
+    def settle(self) -> None:
+        """Bring every lazy level's statistics up to the last sync: what a
+        reader of the accumulators calls after `sync` (D1097)."""
+        for level in self._lazy:
+            self._catch_up(level)
 
     def peek(self, level: Level) -> float:
         """The value `sync()` would give *level* now, without integrating
@@ -1135,7 +1234,7 @@ class LevelSystem:
             change = series.next_change(now)
             if change is not None:
                 best = min(best, change - now)
-        for level in self.levels.values():
+        for level in self._flowed:      # any other level's rate is 0 (D1060)
             rate = level.in_rate - level.out_rate
             if abs(rate) <= EPS:
                 continue
@@ -1420,6 +1519,9 @@ class LevelSystem:
             # loop: it is compared against the PREVIOUS event's rates -- unless
             # no rate can re-read anything, when a second pass would repeat the
             # first exactly (`_saturate` is a pure function of the desired rates).
+            # After the first pass only the rates just evaluated can have moved
+            # a group's inputs: the levels stand still within a re-evaluation.
+            self._evaluated = None if first else todo
             stable = self._saturate()
             if (stable and not first) or not later:
                 break
@@ -1544,12 +1646,71 @@ class LevelSystem:
 
         The scales are lists indexed by each flow's position, not dicts keyed
         by its name: this runs several times per pass per level, and a name
-        hash per flow per inner sum was showing up in the profile."""
+        hash per flow per inner sum was showing up in the profile.
+
+        Solved per group (D1060), and a group is solved only when its inputs
+        moved. Per group the passes are those of the all-levels loop: once a
+        group's pass changes nothing, every later pass would repeat it.
+        `_evaluated` (todo entries, or None for all) limits the change scan to
+        those flows: the caller's promise that nothing else moved since the
+        last call."""
+        solved = self._changed(self._evaluated)
+        if not solved:          # the common pass: nothing to solve, nothing to set up
+            return self._apply(None, None, solved)
         src = [1.0] * len(self.flows)
         dst = [1.0] * len(self.flows)
+        for group in solved:
+            self._saturate_group(group.levels, src, dst)
+        return self._apply(src, dst, solved)
+
+    def _changed(self, evaluated) -> list:
+        """The groups, in order, whose desired rates or levels' full/empty
+        states moved since their last solve; records the new values. With
+        *evaluated*, only those flows are looked at (#1561)."""
+        group = self._flow_group
+        last = self._last_desired
+        dirty = set()
+        if evaluated is not None:       # a few flows: compare them one by one
+            for entry in evaluated:
+                flow = entry[0]
+                i = flow.index
+                d = flow.desired
+                was = last[i]
+                # 0.0 == -0.0, yet the sign reaches `flow.actual`: a sign flip
+                # on a zero is a change too.
+                if d != was or (not d and copysign(1.0, d) != copysign(1.0, was)):
+                    last[i] = d
+                    dirty.add(group[i])
+        else:
+            # Every flow: compared bit for bit as 8-byte words, in C (a sign
+            # flip on a zero is a change). A NaN never equals itself, so with
+            # one present every group is solved, as an `==` test would have.
+            now = array("d", map(_DESIRED, self.flows))
+            total = sum(now)
+            if last is None or total != total:
+                dirty.update(range(len(self._groups)))
+            elif now.tobytes() != last.tobytes():
+                words = memoryview(now).cast("B").cast("Q")
+                dirty.update(group[i] for i in compress(
+                    range(len(now)), map(ne, words, memoryview(last).cast("B").cast("Q"))))
+            self._last_desired = now
+            states = self._last_state
+            for j, (level, g) in enumerate(zip(self._flowed, self._flowed_group)):
+                value, cap = level.level, level.capacity
+                state = ((2 if cap is not None and value >= cap - EPS else 0)
+                         + (value <= level.minimum + EPS))
+                if state != states[j]:
+                    states[j] = state
+                    dirty.add(g)
+        if not dirty:
+            return []
+        groups = self._groups
+        return [groups[g] for g in sorted(dirty)]
+
+    def _saturate_group(self, levels: tuple, src: list, dst: list) -> None:
         for _ in range(MAX_SATURATION_PASSES):
             changed = False
-            for level in self.levels.values():
+            for level in levels:
                 full = level.capacity is not None and level.level >= level.capacity - EPS
                 empty = level.level <= level.minimum + EPS
                 if not (full or empty) and level.max_inflow is None and level.max_outflow is None:
@@ -1578,9 +1739,8 @@ class LevelSystem:
                     changed = True
             if not changed:
                 break
-        return self._apply(src, dst)
 
-    def _apply(self, src_scale: list, dst_scale: list) -> bool:
+    def _apply(self, src_scale: list, dst_scale: list, solved) -> bool:
         """Write the saturated rates back, and attribute what was lost: a flow
         cut on its SOURCE side is unmet demand there, one cut on its
         DESTINATION side is spilled quantity there.
@@ -1588,33 +1748,37 @@ class LevelSystem:
         Returns True when no realised rate moved by more than EPS -- which is
         the evaluation fixed point's own stopping test, known here for free --
         and leaves the bus keys that DID move in `_moved`, which is what tells
-        the next pass which rates are worth re-evaluating."""
+        the next pass which rates are worth re-evaluating.
+
+        Only the *solved* groups are written (D1060): a skipped group's
+        rates are what this would compute again."""
         self._sums.clear()      # the realised rates move here, and only here
         moved = self._moved
         moved.clear()
-        for level in self.levels.values():
-            level.in_rate = level.out_rate = level.spill_rate = level.unmet_rate = 0.0
         stable = True
-        for flow in self.flows:
-            after_src = flow.desired * src_scale[flow.index]
-            actual = after_src * dst_scale[flow.index]
-            # `moved` is EXACT, not within EPS: a sub-EPS move still has to
-            # reach the rates that read it, exactly as it did when every rate
-            # was re-evaluated on every pass. `stable` keeps the EPS tolerance,
-            # because that is the fixed point's own stopping rule.
-            if actual != flow.actual:
-                moved.add(("flow", flow.name))
-                if flow.tag:
-                    moved.add(("tag", flow.tag))
-                if stable and abs(actual - flow.actual) > EPS:
-                    stable = False
-            flow.actual = actual
-            if flow.src is not None:
-                flow.src.out_rate += flow.actual
-                flow.src.unmet_rate += flow.desired - after_src
-            if flow.dst is not None:
-                flow.dst.in_rate += flow.actual * flow.efficiency
-                flow.dst.spill_rate += (after_src - flow.actual) * flow.efficiency
+        for group in solved:
+            for level in group.levels:
+                level.in_rate = level.out_rate = level.spill_rate = level.unmet_rate = 0.0
+            for flow in group.flows:
+                after_src = flow.desired * src_scale[flow.index]
+                actual = after_src * dst_scale[flow.index]
+                # `moved` is EXACT, not within EPS: a sub-EPS move still has to
+                # reach the rates that read it, exactly as it did when every rate
+                # was re-evaluated on every pass. `stable` keeps the EPS tolerance,
+                # because that is the fixed point's own stopping rule.
+                if actual != flow.actual:
+                    moved.add(("flow", flow.name))
+                    if flow.tag:
+                        moved.add(("tag", flow.tag))
+                    if stable and abs(actual - flow.actual) > EPS:
+                        stable = False
+                flow.actual = actual
+                if flow.src is not None:
+                    flow.src.out_rate += flow.actual
+                    flow.src.unmet_rate += flow.desired - after_src
+                if flow.dst is not None:
+                    flow.dst.in_rate += flow.actual * flow.efficiency
+                    flow.dst.spill_rate += (after_src - flow.actual) * flow.efficiency
         for belt in self._conveyors:    # a conveyor moves only at its grid step (C1)
             level = belt.level
             level.in_rate = level.out_rate = level.spill_rate = level.unmet_rate = 0.0

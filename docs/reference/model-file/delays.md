@@ -62,7 +62,7 @@ m.add_delay(name='Shipping', kind='pipeline', input='5', delay_time='3')
 
 ## Used in
 
-Guides: [Semantic diff](../../semantic-diff.md).
+Guides: [How do I total a subscripted value and remember a past one?](../../how-to/recipes/regions-memory.md), [Semantic diff](../../semantic-diff.md).
 
 ## See also
 

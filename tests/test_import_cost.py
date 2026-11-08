@@ -15,7 +15,7 @@ def _py(code: str) -> subprocess.CompletedProcess:
                           text=True, env=env, timeout=120)
 
 
-def test_help_skips_plugins():
+def test_1326_help_skips_plugins():
     r = _py("import sys, nagasim.cli as c\n"
             "rc = c.main(['--help'])\n"
             "print('PLUGINS', 'nagasim.plugins' in sys.modules, rc)")
@@ -30,12 +30,12 @@ def test_bare_naga_skips_plugins():
     assert "PLUGINS False 0" in r.stdout, r.stderr
 
 
-def test_api_import_skips_openpyxl():
+def test_1327_api_import_skips_openpyxl():
     r = _py("import sys, nagasim.api\nprint('OPENPYXL', 'openpyxl' in sys.modules)")
     assert "OPENPYXL False" in r.stdout, r.stderr
 
 
-def test_top_level_names():
+def test_1328_top_level_names():
     r = _py("import sys, nagasim\n"
             "assert 'nagasim.api' not in sys.modules\n"
             "import nagasim.api, nagasim.build, nagasim.results\n"

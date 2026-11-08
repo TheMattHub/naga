@@ -99,6 +99,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [How do I delay goods in transit by a fixed time or a spread of times?](https://thematthub.github.io/naga/how-to/recipes/transit-delay.html): Goods that leave on day 5 either all arrive exactly 4 days later, or arrive over a spread of days around the mean.
 - [How do I smooth a noisy signal?](https://thematthub.github.io/naga/how-to/recipes/smooth-noise.html): A daily reading jumps around, and a decision that follows it jumps too.
 - [How do I extrapolate a growing trend?](https://thematthub.github.io/naga/how-to/recipes/trend-forecast.html): Sales that grow steadily can be projected a few weeks ahead from their recent growth rate.
+- [How do I total a subscripted value and remember a past one?](https://thematthub.github.io/naga/how-to/recipes/regions-memory.html): A model with regions needs their total, their best and their worst, and a planner often needs a value from the past: the opening price, the stock at the last stock-take, or goods sent four days ago.
 
 ## Rates, tests and money
 
@@ -107,11 +108,13 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [How do I discount a stream of cash?](https://thematthub.github.io/naga/how-to/recipes/discounted-cash.html): A plant that earns every year is worth less in today's money the later the cash arrives.
 - [How do I stop a ratio dividing by zero?](https://thematthub.github.io/naga/how-to/recipes/safe-ratio.html): A yield is good parts over parts made, and it is 0 over 0 until the line starts.
 - [How do I turn a heading and a distance into x and y?](https://thematthub.github.io/naga/how-to/recipes/bearing.html): A vehicle that flies a leg at a known heading ends up at an x and y offset, and you may need the heading back.
+- [How do I work out an angle, a length or a count in an expression?](https://thematthub.github.io/naga/how-to/recipes/ramp-geometry.html): A layout figure often needs a little geometry: the angle of a ramp, its run on the floor, or how many pallets fit along it.
 
 ## Agents
 
 - [How do I let an agent react to the agents near it?](https://thematthub.github.io/naga/how-to/recipes/near-agents.html): A vehicle slows down when others are close, or a sensor reads the load of its neighbours.
 - [How do I let an agent read the agents in the cells around it?](https://thematthub.github.io/naga/how-to/recipes/neighbour-grid.html): On a grid, neighbours are the cells around you and not the agents within a distance.
+- [How do I let an agent read the agents it is linked to?](https://thematthub.github.io/naga/how-to/recipes/linked-agents.html): Shops in a chain trade with their partners and watch their nearest rivals, so each needs to read its links and its neighbours.
 
 ## Flow blocks
 
@@ -197,7 +200,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [EmpiricalDiscrete](https://thematthub.github.io/naga/reference/distributions/empirical-discrete.html): Whole-number values with their own measured probabilities, such as order sizes or the number of items per job.
 - [Erlang](https://thematthub.github.io/naga/reference/distributions/erlang.html): Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random.
 - [Exponential](https://thematthub.github.io/naga/reference/distributions/exponential.html): Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one.
-- [FixedSchedule](https://thematthub.github.io/naga/reference/distributions/fixed-schedule.html): Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.
+- [FixedSchedule](https://thematthub.github.io/naga/reference/distributions/fixed-schedule.html): Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan; an optional jitter shifts each arrival at random and keeps their order.
 - [Gamma](https://thematthub.github.io/naga/reference/distributions/gamma.html): Right-skewed service or processing times that cannot go below zero, from very regular to very variable.
 - [Geometric](https://thematthub.github.io/naga/reference/distributions/geometric.html): Number of attempts until the first success, such as tries before a part passes inspection.
 - [Hypergeometric](https://thematthub.github.io/naga/reference/distributions/hypergeometric.html): Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample.
@@ -269,6 +272,8 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [submodels](https://thematthub.github.io/naga/reference/model-file/submodels.html): Reusable definitions (parameters, inner blocks/links/ports), flattened before a run.
 - [background](https://thematthub.github.io/naga/reference/model-file/background.html): Optional floor-plan image: path, position, scale, opacity, lock, real-world scale.
 - [building](https://thematthub.github.io/naga/reference/model-file/building.html): Optional building: rooms, walls, wall openings, floor markings, labels and plan fixtures in metres; the walls are the walled rooms' outlines and the free-standing wall lines, each with a height, thickness and finish.
+- [cranes](https://thematthub.github.io/naga/reference/model-file/cranes.html): Optional overhead and gantry cranes in metres: a runway, the blocks each crane serves and the axis its bridge travels along.
+- [stockpiles](https://thematthub.github.io/naga/reference/model-file/stockpiles.html): Optional piles for store blocks: each listed block is drawn as a few piles of slabs (one per entity up to max_layers, then a count), an entity's pile chosen by a key per entity in creation order, with the area's total on its label; ignored by the engine.
 - [info](https://thematthub.github.io/naga/reference/model-file/info.html): Optional model metadata: description, author, notes; shown in the report header.
 - [data_sources](https://thematthub.github.io/naga/reference/model-file/data_sources.html): Declared CSV/Excel/SQLite/SQL/JSON sources model parameters can be read from.
 - [data_bindings](https://thematthub.github.io/naga/reference/model-file/data_bindings.html): Which column, filtered and transformed how, feeds which override path.
@@ -284,20 +289,20 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 ## Problem codes
 
-- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 464 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 469 codes that a check of a model can report, from nagasim/core/problems.py.
 - [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
 - [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
 - [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.
 - [Networks, fleets and automation](https://thematthub.github.io/naga/reference/problems/network-and-automation.html): Path networks, fleets, workers, motion, batteries and chargers, the investment case and the dispatch plan.
 - [Expressions, stocks and flows](https://thematthub.github.io/naga/reference/problems/expressions-and-dynamics.html): Expressions and variables, tables and time series, levels, flows, conversions, conveyors, delays, subscripts and units.
 - [Resources and time](https://thematthub.github.io/naga/reference/problems/resources-and-time.html): Resources and sets, schedules, failures, calendars and arrivals.
-- [Scenarios, checks and the editor](https://thematthub.github.io/naga/reference/problems/scenarios-and-checks.html): Scenarios, assertions, path checks, dashboards, annotations and the file version.
+- [Scenarios, checks and the editor](https://thematthub.github.io/naga/reference/problems/scenarios-and-checks.html): Scenarios, assertions, path checks, dashboards, annotations, cranes and piles drawn in playback, and the file version.
 - [Blocks, links and routing](https://thematthub.github.io/naga/reference/problems/blocks-and-flow.html): Blocks and their parameters, distributions, links, decisions, queues, routings and orders.
 
 ## Reference
 
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 96 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 98 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 
@@ -330,10 +335,10 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 ## Gallery
 
-- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 61 models that ship in the package, by kind.
+- [Gallery](https://thematthub.github.io/naga/gallery/index.html): The 62 models that ship in the package, by kind.
 - [Teaching](https://thematthub.github.io/naga/gallery/teaching.html): 9 of the bundled models.
 - [Manufacturing](https://thematthub.github.io/naga/gallery/manufacturing.html): 12 of the bundled models.
-- [Logistics](https://thematthub.github.io/naga/gallery/logistics.html): 6 of the bundled models.
+- [Logistics](https://thematthub.github.io/naga/gallery/logistics.html): 7 of the bundled models.
 - [Services](https://thematthub.github.io/naga/gallery/services.html): 6 of the bundled models.
 - [Supply chain](https://thematthub.github.io/naga/gallery/supply-chain.html): 2 of the bundled models.
 - [Energy](https://thematthub.github.io/naga/gallery/energy.html): 6 of the bundled models.

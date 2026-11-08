@@ -1,5 +1,6 @@
 $ naga check model.json --junit report.xml
 model.json:
+  [PASS] gate          opens with no errors and runs one replication
   [PASS] assertion     server_not_saturated: ok
   [PASS] assertion     wait_under_five_minutes: ok
   [FAIL] assertion     wait_under_two_minutes: assertion 'wait_under_two_minutes' failed: resource/Server/Time in Queue Avg = 2.86501 [2.30459, 3.42543] <= 2.0

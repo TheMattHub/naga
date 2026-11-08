@@ -244,7 +244,7 @@ _OLD_PARAMS = {
     "NegativeBinomial": ["r", "p"], "DiscreteUniform": ["low", "high"],
     "Hypergeometric": ["N", "K", "n"],
     "EmpiricalContinuous": ["values", "probs"], "EmpiricalDiscrete": ["values", "probs"],
-    "FixedSchedule": ["schedule"], "CustomExpression": ["expression"],
+    "FixedSchedule": ["schedule", "jitter", "jitter_law"], "CustomExpression": ["expression"],
 }
 
 # The old DISTRIBUTION_USE_CASES/DISTRIBUTION_PARAM_HINTS tables (31 entries

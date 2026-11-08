@@ -43,6 +43,7 @@ class Problem:
 PROBLEM_CODES: dict[str, str] = {
     # -- blocks and parameters ---------------------------------------------
     "E_UNKNOWN_BLOCK_TYPE": "The block's `type` is not in BLOCK_REGISTRY.",
+    "E_PLUGIN_NOT_LOADED": "The block's `type` is one the model lists in info.requires_plugins, and no loaded plugin provides it.",
     "E_PARAM_UNKNOWN": "A param key this block type does not declare.",
     "W_AVAILABLE_IS_CAPACITY": "A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE).",
     "W_UNKNOWN_KEY": "A key the model file format does not have (write_model): the document drops it.",
@@ -496,9 +497,19 @@ PROBLEM_CODES: dict[str, str] = {
     "E_BACKGROUND": "The background image section is malformed.",
     "E_BUILDING": "The building section is malformed (an extent, room, opening, label or "
                   "fixture of the wrong shape, an unknown colour or field, a room named twice).",
+    "E_CRANE": "The cranes section is malformed (a crane without a name or a valid runway, "
+               "fewer than two served blocks, an unknown field, axis or colour).",
+    "E_STOCKPILE": "The stockpiles section is malformed (an area without a block or piles, a "
+                   "pile rect out of order, keys without a source, an unknown field).",
     "W_WALL_CROSSING": "A path-network segment crosses a building wall where it has no opening "
                        "(D1034); walls never change routing, so movers would walk through it.",
-    "W_OPENING_OFF_WALL": "A building opening cuts no wall: it names a room, wall line or edge "
+    # D1089: drawing only; neither changes a run.
+    "E_QUEUE_ROW": "A block's queue_row is not {\"anchor\": [x, y], \"direction\": degrees}, "
+                   "with x and y in -1..2 over the picture and 0 <= direction < 360.",
+    "W_QUEUE_ROW_CROSSING": "A placed asset's drawn queue row (up to its queue capacity, at most "
+                            "ten places 0.8 m apart) runs through another placed asset on the "
+                            "floor plan; turn the row (queue_row) so the picture reads right.",
+    "W_OPENING_OFF_WALL":"A building opening cuts no wall: it names a room, wall line or edge "
                           "that does not exist, is wider than its wall edge, or its two points "
                           "lie on no wall line (D1041).",
     "W_BACKGROUND_MISSING": "The background image's path does not exist on disk (F3: this used "

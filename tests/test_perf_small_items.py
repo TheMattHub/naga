@@ -8,7 +8,7 @@ import pytest
 from nagasim.core.base_process import Block
 from nagasim.core.blocks import Delay, Seize
 from nagasim.core.sim_classes import Entity
-from nagasim.core.utils import ResourceSnapshot, StoreSnapshot
+from nagasim.core.utils import ResourceLog, ResourceSnapshot, StoreSnapshot
 
 
 def _team(env):
@@ -20,7 +20,7 @@ def _team(env):
 
 def test_set_log_record_cap_and_truncation_flag(env):
     team = _team(env)
-    team.log = deque(maxlen=3)
+    team.log = ResourceLog(maxlen=3)
     for _ in range(3):
         team.log_usage(env.now, event_type="release")
     assert len(team.log) == 3 and not team.log_truncated      # full, nothing dropped yet

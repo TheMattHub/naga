@@ -66,7 +66,7 @@ m.add_level(name='Tank', capacity=100, initial=40)
 
 Bundled models: [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Depot: PV, EV charging and heat pump](../../gallery/energy.md), [PV + battery sizing and dispatch](../../gallery/energy.md), [PV + battery site (library assets)](../../gallery/energy.md), [Supply line: order-rate management game](../../gallery/games.md) and 11 more.
 
-Guides: [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I turn a heading and a distance into x and y?](../../how-to/recipes/bearing.md), [How do I add a daily or weekly cycle to a rate?](../../how-to/recipes/daily-cycle.md), [How do I discount a stream of cash?](../../how-to/recipes/discounted-cash.md) and 8 more.
+Guides: [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I turn a heading and a distance into x and y?](../../how-to/recipes/bearing.md), [How do I add a daily or weekly cycle to a rate?](../../how-to/recipes/daily-cycle.md), [How do I discount a stream of cash?](../../how-to/recipes/discounted-cash.md) and 10 more.
 
 ## See also
 

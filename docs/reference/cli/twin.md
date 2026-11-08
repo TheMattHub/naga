@@ -171,9 +171,10 @@ options:
 ```text
 usage: naga calibrate [-h] --factor FACTORS --target TARGETS [--budget BUDGET]
                       [--replications REPLICATIONS] [--run-length RUN_LENGTH]
-                      [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
-                      [--method {optimize,abc}] [--accept ACCEPT] [--out OUT]
-                      [--report REPORT] [--write-scenario WRITE_SCENARIO]
+                      [--warmup WARMUP] [--seed SEED] [--logic MODULE]
+                      [--workers WORKERS] [--method {optimize,abc}]
+                      [--accept ACCEPT] [--out OUT] [--report REPORT]
+                      [--write-scenario WRITE_SCENARIO]
                       model
 
 Tune model parameters until the model reproduces observed KPIs.
@@ -199,6 +200,9 @@ options:
                         default: the model's own 'simulation.time_limit'
   --warmup WARMUP       default: the model's own 'simulation.warmup'
   --seed SEED
+  --logic MODULE        take LOGIC block classes from this importable module
+                        first (a dotted name on PYTHONPATH), then from
+                        nagasim.core.custom_logic
   --workers WORKERS     replications to run in parallel processes (default: 1)
   --method {optimize,abc}
                         optimize: search for the best point (default); abc:

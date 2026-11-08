@@ -254,7 +254,8 @@ def test_tool_names_are_snake_case_verbs():
              "input",           # input_uncertainty: the name the spec uses
              "view",            # view_model, view_3d: a picture of the model
              "render", "build",   # render_video, build_film: the product's film tools
-             "search", "show", "fetch")   # search_/show_/fetch_simready: the product's asset-source tools
+             "search", "show", "fetch",   # search_/show_/fetch_simready: the product's asset-source tools
+             "propose")         # propose_plugin_folder: the person enables it, never the tool
     for name in T.TOOLS:
         assert name == name.lower() and " " not in name
         assert name.split("_")[0] in verbs, name

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "schema_version": 29,
+  "blocks": [
+    {
+      "name": "cartons",
+      "type": "CREATE",
+      "description": "Cartons from picking, about four every three minutes",
+      "position": [0.0, 0.0],
+      "params": {
+        "e_type": "CARTON",
+        "distribution": "Exponential",
+        "dist_params": {"rate": 1.3333333333333333}
+      }
+    },
+    {
+      "name": "returns_in",
+      "type": "CREATE",
+      "description": "Returned cartons, about one every two minutes",
+      "position": [0.0, 120.0],
+      "params": {"e_type": "RETURN", "distribution": "Exponential", "dist_params": {"rate": 0.5}}
+    },
+    {
+      "name": "rush_in",
+      "type": "CREATE",
+      "description": "Rush cartons from the express cell",
+      "position": [0.0, 240.0],
+      "params": {
+        "e_type": "RUSH",
+        "distribution": "Exponential",
+        "dist_params": {"rate": 0.3333333333333333}
+      }
+    },
+    {
+      "name": "rush_belt",
+      "type": "CONVEYOR",
+      "description": "Side belt that merges rush cartons in at 20 m",
+      "position": [200.0, 240.0],
+      "params": {"length": 6.0, "speed": 30.0, "spacing": 0.8}
+    },
+    {
+      "name": "main_belt",
+      "type": "CONVEYOR",
+      "description": "Main belt: label stop, returns divert, rush merge, scale",
+      "position": [400.0, 0.0],
+      "params": {
+        "length": 30.0,
+        "speed": 30.0,
+        "spacing": 0.8,
+        "exit_resource": "Bench",
+        "stops": [{"at": 8.0, "time": 0.2}, {"at": 26.0, "time": 0.25, "resource": "Operator"}],
+        "diverts": [
+          {"at": 14.0, "condition": "entity.e_type == \"RETURN\"", "time": 0.1, "when_full": "wait"}
+        ],
+        "merges": [{"at": 20.0, "from": "rush_belt", "priority": "belt"}]
+      }
+    },
+    {
+      "name": "pack",
+      "type": "PROCESS",
+      "description": "Packing bench, one carton at a time",
+      "position": [600.0, 0.0],
+      "params": {
+        "action": "Delay Release",
+        "distribution": "Triangular",
+        "dist_params": {"low": 0.21, "mode": 0.3, "high": 0.44999999999999996},
+        "resource_name": "Bench"
+      }
+    },
+    {"name": "shipped", "type": "DISPOSE", "description": "Shipped", "position": [800.0, 0.0]},
+    {
+      "name": "returns_lane",
+      "type": "CONVEYOR",
+      "description": "Returns lane to the desk",
+      "position": [600.0, 120.0],
+      "params": {"length": 4.0, "speed": 30.0, "spacing": 0.8, "exit_resource": "Desk"}
+    },
+    {
+      "name": "returns_desk",
+      "type": "PROCESS",
+      "description": "Returns desk",
+      "position": [800.0, 120.0],
+      "params": {
+        "action": "Delay Release",
+        "distribution": "Triangular",
+        "dist_params": {"low": 1.0499999999999998, "mode": 1.5, "high": 2.25},
+        "resource_name": "Desk"
+      }
+    },
+    {
+      "name": "restocked",
+      "type": "DISPOSE",
+      "description": "Restocked",
+      "position": [1000.0, 120.0]
+    }
+  ],
+  "links": [
+    {"source": "cartons", "target": "main_belt"},
+    {"source": "returns_in", "target": "main_belt"},
+    {"source": "rush_in", "target": "rush_belt"},
+    {"source": "rush_belt", "target": "main_belt"},
+    {"source": "main_belt", "target": "pack"},
+    {"source": "main_belt", "target": "returns_lane"},
+    {"source": "pack", "target": "shipped"},
+    {"source": "returns_lane", "target": "returns_desk"},
+    {"source": "returns_desk", "target": "restocked"}
+  ],
+  "resources": [
+    {"name": "Bench", "capacity": 1},
+    {"name": "Desk", "capacity": 1},
+    {"name": "Operator", "capacity": 1}
+  ],
+  "info": {
+    "title": "Belt with stops, a divert and a merge",
+    "category": "Logistics",
+    "description": "One accumulating belt with every kind of point: a label stop, a scale stop that needs an operator, a divert that pushes returns onto a lane, and a merge that brings rush cartons in from a side belt. Every number is invented for teaching.",
+    "author": "Naga",
+    "notes": "Times in minutes, lengths in metres, belts at 30 m/min."
+  },
+  "simulation": {"time_limit": 480, "warmup": 30, "replications": 5},
+  "outputs": {}
+}

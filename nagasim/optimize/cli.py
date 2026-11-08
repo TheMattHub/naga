@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from nagasim import api, experiments
-from nagasim._cli import add_model_argument, setup_cli
+from nagasim._cli import (add_controllers_argument, add_logic_argument, add_model_argument, load_controllers,
+                          logic_import_error, setup_cli)
 import argparse
 import pandas as pd
 import sys
+from ._constants import METHODS
 from .designs import full_factorial, latin_hypercube, one_at_a_time
 from .doe import run_design
 from .factors import Factor
@@ -103,6 +105,8 @@ def _common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--warmup", type=float, default=None,
                         help="default: the model's own 'simulation.warmup'")
     parser.add_argument("--seed", type=int, default=0)
+    add_logic_argument(parser)
+    add_controllers_argument(parser)
     parser.add_argument("--workers", type=int, default=1,
                         help="replications to run in parallel processes (default: 1)")
     parser.add_argument("--out", help="write the result table here (.xlsx or .csv)")
@@ -138,7 +142,7 @@ def main(argv=None, command: str = "doe") -> int:
         parser.add_argument("--constraint", action="append", dest="constraints", default=None,
                             help=_CONSTRAINT_HELP)
         parser.add_argument("--method", default="auto",
-                            choices=("auto", "pattern", "optuna", "optuna-gp", "optuna-nsga2"))
+                            choices=tuple(key for key, _label, _needs in METHODS))
         parser.add_argument("--objective", action="append", dest="objectives", default=None,
                             metavar="KPI:min|max",
                             help="an objective of --method optuna-nsga2 (give at least two)")
@@ -149,8 +153,30 @@ def main(argv=None, command: str = "doe") -> int:
                             help="relative gain a move must reach before the search widens that "
                                  "factor's step (default: %(default)s = 1%% of the objective). "
                                  "0 widens on any significant gain")
+        parser.add_argument("--statistic", default="mean", metavar="mean|pNN",
+                            help="the objective over a point's replications: mean (default) or "
+                                 "a percentile such as p95")
+        parser.add_argument("--penalty", action="append", dest="penalties", default=None,
+                            metavar="KPI:WEIGHT",
+                            help="add WEIGHT x mean(KPI) to the objective; repeatable")
+        parser.add_argument("--holdout", type=int, default=0, metavar="N",
+                            help="evaluate the final points (and --baseline) on N seeds the "
+                                 "search never used, from --holdout-seed")
+        parser.add_argument("--holdout-seed", type=int, default=None,
+                            help="first holdout seed (default: --seed + 1000000)")
+        parser.add_argument("--baseline", action="store_true",
+                            help="evaluate the model's own factor values first (trial 0)")
     args = parser.parse_args(argv)
 
+    problem = logic_import_error(args.logic)
+    if problem:
+        print(problem)
+        return 2
+    try:
+        args.controllers = load_controllers(args.controllers)
+    except ValueError as exc:
+        print(f"--controllers: {exc}")
+        return 2
     factors = [parse_factor(spec) for spec in args.factors]
     layout = api.load_layout(args.model)
 
@@ -159,7 +185,8 @@ def main(argv=None, command: str = "doe") -> int:
         result = run_design(layout, factors, design, responses=[args.response],
                             replications=args.replications, seed=args.seed,
                             crn=not args.no_crn, workers=args.workers,
-                            run_length=args.run_length, warmup=args.warmup)
+                            run_length=args.run_length, warmup=args.warmup, logic=args.logic,
+                            controllers=args.controllers)
         table = result.table
         print(table.to_string(index=False))
         print()
@@ -189,19 +216,31 @@ def main(argv=None, command: str = "doe") -> int:
                       replications_per_point=args.replications, method=args.method,
                       seed=args.seed, indifference=args.indifference, workers=args.workers,
                       run_length=args.run_length, warmup=args.warmup,
-                      min_improvement=args.min_improvement,
-                      objectives=[tuple(o.rsplit(":", 1)) for o in (args.objectives or [])])
+                      min_improvement=args.min_improvement, logic=args.logic,
+                      controllers=args.controllers,
+                      objectives=[tuple(o.rsplit(":", 1)) for o in (args.objectives or [])],
+                      statistic=args.statistic,
+                      penalties=[(kpi, float(w)) for kpi, w in
+                                 (p.rsplit(":", 1) for p in (args.penalties or []))],
+                      holdout=args.holdout, holdout_seed=args.holdout_seed,
+                      baseline=args.baseline)
     if result.pareto is not None:
         print(f"Pareto set ({len(result.pareto)} points):")
         print(result.pareto.to_string(index=False))
         return 0
     print(f"Best point: {_fmt_point(result.best)}")
-    print(f"{args.response} = {result.best_mean:.6g} "
+    label = args.response if args.statistic == "mean" and not args.penalties else (
+        f"objective ({args.statistic} of {args.response}{' + penalties' if args.penalties else ''})")
+    print(f"{label} = {result.best_mean:.6g} "
           f"({'converged' if result.converged else 'budget or step limit reached'}; "
           f"{result.budget_used} replications)")
     if result.selection is not None:
         print()
         print(result.selection.table.to_string(index=False))
+    if result.holdout is not None:
+        print()
+        print("Holdout (seeds the search never used):")
+        print(result.holdout.to_string(index=False))
     if args.out:
         _write_table(result.history, args.out, "Search")
     if args.report:
@@ -216,7 +255,8 @@ def _write_report(layout, overrides, design, optimization, args, *, surrogate=No
 
     results = api.run_model(experiments.apply_overrides(layout, overrides),
                             replications=args.replications, seed=args.seed,
-                            run_length=args.run_length, warmup=args.warmup)
+                            run_length=args.run_length, warmup=args.warmup, logic=args.logic,
+                            controllers=args.controllers)
     build_report(layout, results, design=design, optimization=optimization, surrogate=surrogate,
                  title=Path(args.model).stem, path=args.report)
     print(f"Report written to {args.report}")

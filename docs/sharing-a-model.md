@@ -15,7 +15,7 @@ screen: for that there is the twin's monitor ([Digital twin](digital-twin.md)).
 |---|---|---|
 | What the reader can do | change inputs, run again, compare | watch one run |
 | What the reader can read | **the whole model** and the engine's source | names, layout and the sampled run; no parameter |
-| Size | about 40 MB (30 MB zipped) | under 10 MB, usually far less |
+| Size | about 35 MB (26 MB zipped) | under 10 MB, usually far less |
 | Send it by | a link or a shared drive | email |
 | Use it for | a model the client may see | a confidential model |
 
@@ -45,6 +45,17 @@ naga viewer single_server -o single_server.html
 The export runs your model once, with the replications of its dashboard definition: that run is
 the baseline the reader sees first. It also records the first replication, which the reader can
 watch.
+
+### A small file that loads the runtime from the internet
+
+A viewer can also be a file of about 3 MB that carries the model and the engine and downloads the
+browser runtime when it opens. Ask for it with `naga viewer model.json -o model.html --pyodide cdn`,
+`build_viewer(..., pyodide="cdn")`, a "small" file type in the editor's Export viewer, or Viewer
+runtime in Export client package. The page fetches the same pinned Pyodide files from
+cdn.jsdelivr.net (about 36 MB, kept by the browser after the first time), checks each against the
+hash written into the page, and runs only files that match. With no network, or a file that does
+not match, it says so and does not start. The 35 MB offline file stays the default, because it
+needs nothing from anyone once it is sent.
 
 ## What the reader sees
 
@@ -83,6 +94,15 @@ the panels stack in one column.
 
 Starting takes about 10 s (the page says which step it is at); your baseline is on screen at
 once, and the time a run takes is shown before it starts.
+
+## Language
+
+A page speaks one language, chosen when you make it: English (the default) or Italian. Pass
+`--lang it` to `naga viewer`, `naga run --player` or `naga scenarios --player`, or `language="it"`
+to `build_viewer` and `build_player`; the viewer's own recording and every run made in the page
+follow it. The page's words, the answer card and the numbers' decimal sign change, while the
+model's labels and scenario names stay as the author wrote them. There is no switch on the page,
+so a file sent to a client reads in the client's language from the first look.
 
 ## Measured rows on the trust card
 
@@ -133,12 +153,13 @@ differently between versions. Two desktops with different scipy versions differ 
 - Chrome, Edge and Firefox on a computer. Chrome and Edge are tested automatically on every
   change; Firefox is checked by hand. **Safari, phones and tablets are not supported**: the page
   says so in place of starting.
-- About 40 MB, whatever the model: almost all of it is Python and its numerical libraries.
+- About 35 MB, whatever the model: almost all of it is Python and the parts of its numerical libraries a run uses.
 - Saved scenarios stay in the reader's browser: another browser or a cleared one does not have them.
 - A run is 1.3 to 2.8 times slower than on the desktop.
 - The page keeps nothing and sends nothing: a Content-Security-Policy makes the browser refuse
   every request, and the engine runs in a worker that cannot read the recipient's files, in all
-  three browsers. Text from the model is shown as text. Open only viewer files from people you trust: a file someone edited
+  three browsers. The small file asks cdn.jsdelivr.net for the pinned runtime files and nothing
+  else. Text from the model is shown as text. Open only viewer files from people you trust: a file someone edited
   is no longer the file the export made.
 - The licences of the software inside the file are in the file, under "Licences of the software
   in this file".

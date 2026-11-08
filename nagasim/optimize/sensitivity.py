@@ -8,7 +8,8 @@ from .factors import overrides_for
 
 # ---------------------------------------------------------------- sensitivity
 def sensitivity(layout, factors, n: int, seed: int = 0, quantiles=(0.05, 0.5, 0.95), *,
-                run_length=None, warmup=None, on_progress=None, should_stop=None):
+                run_length=None, warmup=None, on_progress=None, should_stop=None, logic=None,
+                controllers=None):
     """How much the model's time series move over *factors*' ranges (PHASE5
     SD-4): a Latin hypercube of *n* points, ONE run per point on the SAME seed
     (CRN -- differences are the factors, not the random stream), and the
@@ -34,7 +35,7 @@ def sensitivity(layout, factors, n: int, seed: int = 0, quantiles=(0.05, 0.5, 0.
             break
         candidate = _candidate_layout(base, overrides_for(factors, row.to_dict()))
         results = api.run_model(candidate, replications=1, seed=seed, run_length=run_length,
-                                warmup=warmup, record_logs=False)
+                                warmup=warmup, record_logs=False, logic=logic, controllers=controllers)
         if results is not None and results.get("timeseries") is not None:
             frame = results["timeseries"].copy()
             frame["Run"] = i     # disambiguates points; bands() does not key on it

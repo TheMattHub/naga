@@ -365,6 +365,10 @@ _DYNAMIC_IMPORTS_REVIEWED = {
     ("product/cli.py", 'f"product.{module}"'): "the person's command line, product commands",
     ("product/cli.py", 'f"nagasim.{module}"'): "the person's command line: `product "
                                                  "plc-write` is a person's command, as naga's",
+    ("product/callerpolicy.py", "name"): "the stem of the .py file a person picked in a dialog "
+                                            "(D1123); never a model, storyboard or tool argument",
+    ("product/film.py", "logic"): "the caller's --logic / make(logic=) module, already imported "
+                                     "by run_model; hashed for the cache key (D1124)",
 }
 
 

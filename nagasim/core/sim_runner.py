@@ -1,5 +1,6 @@
 from nagasim.core.graph_model import GraphModel
 from nagasim.core.context import build_context
+from nagasim.core.export import plugin_outputs
 from nagasim.core.outputs import calc_kpis
 from nagasim.core import blocking, costs, initial_state, timeseries
 from nagasim.core.schema import read_layout
@@ -361,4 +362,6 @@ def run_single_simulation(layout_path, *, seed: int, run_len: float, warmup: flo
     # forces it), so this can never collide with another Run in the same
     # concatenated result.
     run_id = 0 if env.ctx.deterministic else seed
-    return calc_kpis(env, warmup=max(warmup, env.ctx.clock), run_id=run_id)
+    kpis = calc_kpis(env, warmup=max(warmup, env.ctx.clock), run_id=run_id)
+    kpis.update(plugin_outputs(env.ctx, run_id))      # E8: nothing for a model without plugins
+    return kpis

@@ -28,7 +28,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import player
+from nagasim import pagetext, player
 from nagasim.core import tape
 from nagasim.core.playback import Timeline
 from nagasim.core.timeunits import UNITS
@@ -105,10 +105,8 @@ _EFFECT = {"waiting": "being measured", "measured": "measured", "missed": "misse
            "twin was started again", "not_observable": "not observable: the plant counts no "
            "such figure"}
 _LIMIT = "Stated limit: this model is monitored, not forecast. "
-# The age of a result, by the clock of whoever looks: {age} is filled in when it is looked at.
-_FRESH = "Updated {age} s ago; "
-_STALE = ("STALE: no update for {age} s, though the twin looks at the plant every {every} s. "
-          "What is shown is old.")
+# The age of a result, by the clock of whoever looks: {age} is filled in when it is looked at
+# (the sentences are the page table's `monitor.updated`, `monitor.stale`, ...: D1088).
 # D576: whether a plant has dates is decided once per twin, from its mapping: an epoch of
 # 1970-01-01 with a plant clock that reads near it is a log written in model time
 # (`plant.log_of`, the starter mapping's epoch), and no date is shown however long it runs.
@@ -371,17 +369,20 @@ def state(shown: dict, now: float) -> tuple:
     return text.replace("{age}", "?" if age is None else f"{age:.0f}"), old
 
 
-def summary(doc, setpoints=None) -> dict:
+def summary(doc, setpoints=None, language: str | None = None) -> dict:
     """What a monitor shows of one result, as plain data. Read defensively: the document may
     come from a file, and is then only known to be format 1. *setpoints*: the caller's
-    setpoints file, loaded (`setpoints.load(...)["tags"]`), for what a setpoint would write."""
+    setpoints file, loaded (`setpoints.load(...)["tags"]`), for what a setpoint would write.
+    *language* (a page's, `pagetext.LANGUAGES`) words the headline and the age sentences;
+    the prose of the forecast, scores and advice stays English (D1088)."""
+    words = pagetext.table(language)
     doc = _table(doc)
     model, view, forecast = _table(doc.get("model")), _table(doc.get("view")), _table(doc.get("forecast"))
     unit = _text(model.get("time_unit"))
     problems = _rows(doc.get("problems"))
-    date = _text(doc.get("stamp")) if _dated(doc) else "no date"
-    head = (f"Plant time {_clock(doc.get('at'))} {unit}".rstrip()
-            + (f" ({date})" if date else "") + f"; cycle {_text(doc.get('cycle'))}")
+    date = _text(doc.get("stamp")) if _dated(doc) else words["monitor.no_date"]
+    head = (f"{words['monitor.plant_time']} {pagetext.number(_clock(doc.get('at')), words)} {unit}".rstrip()
+            + (f" ({date})" if date else "") + f"; {words['monitor.cycle']} {_text(doc.get('cycle'))}")
     status, reason = _text(forecast.get("status")) or "none", _text(forecast.get("reason"))
     record = isinstance(forecast.get("state"), str)
     lines = [f"Status: {status}"]
@@ -423,12 +424,14 @@ def summary(doc, setpoints=None) -> dict:
     written = _text(doc.get("written"))
     every = _number(_table(doc.get("cadence")).get("every"))
     every = every if every and every > 0 else None
-    fresh = _FRESH + ("stepped by a scheduler, so not watched for staleness." if every is None
-                      else f"the twin looks at the plant every {every:g} s.")
+    shown_every = pagetext.number(f"{every:g}", words) if every is not None else ""
+    fresh = words["monitor.updated"] + (
+        words["monitor.scheduled"] if every is None
+        else pagetext.say(words, "monitor.watches", every=shown_every))
     return {
         "head": head, "written": written, "started": _text(doc.get("started")), "every": every,
-        "state": {"fresh": fresh, "stale": None if every is None else _STALE.replace(
-            "{every}", f"{every:g}")},
+        "state": {"fresh": fresh, "stale": None if every is None
+                  else pagetext.say(words, "monitor.stale", every=shown_every)},
         "notes": [APPROXIMATE] if view.get("approximate") or forecast.get("approximate") else [],
         "sources": [[_text(row.get("name")), _text(row.get("state")), _number(row.get("age")),
                      _number(row.get("lost")), _number(row.get("gaps"))]
@@ -567,7 +570,7 @@ class Log:
 _STYLE = """
 .stale { color: var(--down); font-weight: bold; }
 .warn { color: var(--down); }
-table.text th, table.text td { text-align: left; }
+table.text th, table.text td { text-align: left; overflow-wrap: anywhere; }
 section { margin-top: 8px; font-size: 13px; }
 #view { height: 45vh; }
 """
@@ -575,19 +578,20 @@ _TOP = """<p id="m-head"></p>
 <p id="m-state" class="note"></p>
 <div id="m-notes"></div>
 """
-_BOTTOM = """<section><h2>Sources</h2><table id="m-sources" class="text"></table></section>
-<section><h2>Problems</h2><table id="m-problems" class="text"></table></section>
-<section><h2>Forecast</h2><div id="m-forecast"></div>
+# The headings are {{keys}} of the page table (`pagetext.markup`, D1088).
+_BOTTOM = """<section><h2>{{monitor.sources}}</h2><table id="m-sources" class="text"></table></section>
+<section><h2>{{monitor.problems}}</h2><table id="m-problems" class="text"></table></section>
+<section><h2>{{monitor.forecast}}</h2><div id="m-forecast"></div>
 <table id="m-kpis"></table><table id="m-points"></table></section>
-<section id="m-advice-box"><h2>Recommendations</h2><div id="m-advice"></div>
-<details><summary>Basis, explanation and the candidates compared</summary>
+<section id="m-advice-box"><h2>{{monitor.advice}}</h2><div id="m-advice"></div>
+<details><summary>{{monitor.advice_fold}}</summary>
 <div id="m-advice-fold"></div><table id="m-advice-rows" class="text"></table></details></section>
-<section id="m-alerts-box"><h2>Alerts</h2><div id="m-alerts"></div></section>
-<section id="m-refit-box"><h2>Refit</h2><div id="m-refit"></div></section>
-<section><h2>Scores</h2><div id="m-scores"></div><table id="m-score-rows"></table></section>
-<section id="m-counted-box"><h2>Counted by the plant</h2><p class="note" id="m-counted"></p>
+<section id="m-alerts-box"><h2>{{monitor.alerts}}</h2><div id="m-alerts"></div></section>
+<section id="m-refit-box"><h2>{{monitor.refit}}</h2><div id="m-refit"></div></section>
+<section><h2>{{monitor.scores}}</h2><div id="m-scores"></div><table id="m-score-rows"></table></section>
+<section id="m-counted-box"><h2>{{monitor.counted}}</h2><p class="note" id="m-counted"></p>
 <table id="m-counters"></table></section>
-<section><h2>Events</h2><p class="note" id="m-more"></p>
+<section><h2>{{monitor.events}}</h2><p class="note" id="m-more"></p>
 <table id="m-events" class="text"></table></section>
 """
 _SCRIPT = """/* The panel of a twin's monitor: it shows the summary and the event lines it is given
@@ -607,7 +611,7 @@ function monitor(m, el, add, clear) {
     });
   }
   ["bar", "seek", "all-box", "seed", "lanes-box"].forEach(function (id) { el(id).style.display = "none"; });
-  el("run-h").textContent = "The plant now";
+  el("run-h").textContent = tr("monitor.now");
   el("run-box").open = true;           /* the present is what this page is for */
   el("m-head").textContent = s.head;
   /* The sentence is the summary's; only the age is worked out here, by this clock. */
@@ -616,24 +620,27 @@ function monitor(m, el, add, clear) {
     "{age}", isFinite(age) ? String(Math.round(age)) : "?") + " " + m.tail;
   clear(el("m-notes"));
   s.notes.forEach(function (note) { add("p", el("m-notes"), note, "warn"); });
-  rows("m-sources", ["Source", "State", "Age (s)", "Lost", "Gaps"], s.sources,
-       "No source has been read.", function (r) {
+  rows("m-sources", [tr("monitor.col_source"), tr("monitor.col_state"), tr("monitor.col_age"),
+                      tr("monitor.col_lost"), tr("monitor.col_gaps")], s.sources,
+       tr("monitor.no_sources"), function (r) {
     return [r[0], r[1], fmt(r[2]), fmt(r[3]), fmt(r[4])];
   });
-  rows("m-problems", ["Severity", "Code", "Problem", "Hint"], s.problems, "No problems.",
+  rows("m-problems", [tr("monitor.col_severity"), tr("monitor.col_code"), tr("monitor.col_problem"),
+                      tr("monitor.col_hint")], s.problems, tr("monitor.no_problems"),
        function (r) { return r; });
   clear(el("m-forecast"));
   f.lines.forEach(function (line, index) { add("p", el("m-forecast"), line, index ? "note" : ""); });
-  if (f.more) { add("p", el("m-forecast"), "+" + f.more + " more points not listed", "note"); }
+  if (f.more) { add("p", el("m-forecast"), tr("monitor.more_points", {n: f.more}), "note"); }
   clear(el("m-kpis"));
   if (f.kpis.length) {
-    rows("m-kpis", ["KPI at the end of the horizon", "Mean", "5%", "95%"], f.kpis, "", function (r) {
+    rows("m-kpis", [tr("monitor.col_kpi_end"), tr("monitor.col_mean"), "5%", "95%"], f.kpis, "", function (r) {
       return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3])];
     });
   }
   clear(el("m-points"));
   if (f.points.length) {
-    rows("m-points", ["Series", "At", "Forecast mean", "5%", "95%", "Observed", "Inside the band"],
+    rows("m-points", [tr("monitor.col_series"), tr("monitor.col_at"), tr("monitor.col_forecast_mean"),
+                      "5%", "95%", tr("monitor.col_observed"), tr("monitor.col_inside")],
          f.points, "", function (r) {
       return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5] === null ? "" : fmt(r[5]), r[6]];
     });
@@ -646,10 +653,12 @@ function monitor(m, el, add, clear) {
   if (s.recommend) {
     s.recommend.lead.forEach(function (line) { add("p", el("m-advice"), line, ""); });
     s.recommend.fold.forEach(function (line) { add("p", el("m-advice-fold"), line, "note"); });
-    if (s.recommend.more) { add("p", el("m-advice-fold"), "+" + s.recommend.more + " more not listed", "note"); }
+    if (s.recommend.more) { add("p", el("m-advice-fold"), tr("monitor.more_listed", {n: s.recommend.more}), "note"); }
     if (s.recommend.rows.length) {
-      rows("m-advice-rows", ["Rank", "Action", "Effect", "Low", "High", "Confidence", "Verdict",
-                             "Status", "Id"], s.recommend.rows, "", function (r) {
+      rows("m-advice-rows", [tr("monitor.col_rank"), tr("monitor.col_action"), tr("monitor.col_effect"),
+                             tr("monitor.col_low"), tr("monitor.col_high"), tr("monitor.col_confidence"),
+                             tr("monitor.col_verdict"), tr("monitor.col_status"), "Id"],
+                             s.recommend.rows, "", function (r) {
         return [r[0] === null ? "" : fmt(r[0]), r[1], fmt(r[2]), fmt(r[3]), fmt(r[4]), fmt(r[5]),
                 r[6], r[7], r[8]];
       });
@@ -671,29 +680,31 @@ function monitor(m, el, add, clear) {
   }
   clear(el("m-scores"));
   s.scores.lines.forEach(function (line, index) { add("p", el("m-scores"), line, index ? "note" : ""); });
-  if (s.scores.more) { add("p", el("m-scores"), "+" + s.scores.more + " more rows not listed", "note"); }
+  if (s.scores.more) { add("p", el("m-scores"), tr("monitor.more_rows", {n: s.scores.more}), "note"); }
   clear(el("m-score-rows"));
   if (s.scores.rows.length) {
-    rows("m-score-rows", ["Series", "Lead", "Readings", "Missed", "Not compared", "Coverage", "Bias",
-                          "Abs. error", "Pinball loss"], s.scores.rows, "", function (r) {
+    rows("m-score-rows", [tr("monitor.col_series"), tr("monitor.col_lead"), tr("monitor.col_readings"),
+                          tr("monitor.col_missed"), tr("monitor.col_not_compared"), tr("monitor.col_coverage"),
+                          "Bias", tr("monitor.col_abs_error"), "Pinball loss"], s.scores.rows, "", function (r) {
       return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5], fmt(r[6]), fmt(r[7]), fmt(r[8])];
     });
   }
   el("m-counted-box").style.display = s.counters.length ? "" : "none";
   el("m-counted").textContent = s.counted;
-  rows("m-counters", ["Block", "Counted", "Since", "Resets"], s.counters, "", function (r) {
+  rows("m-counters", [tr("monitor.col_block"), tr("monitor.col_counted"), tr("monitor.col_since"),
+                       tr("monitor.col_resets")], s.counters, "", function (r) {
     return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3])];
   });
-  el("m-more").textContent = m.more ? "+" + m.more + " more not listed (newest first)" : "Newest first";
+  el("m-more").textContent = m.more ? tr("monitor.more_events", {n: m.more}) : tr("monitor.newest");
   /* A recorded log without dates has no Date column (D20 of the review). */
   var dated = m.events.some(function (r) { return r[1] !== null; });
-  rows("m-events", dated ? ["Plant time", "Date", "Event"] : ["Plant time", "Event"], m.events,
-       "No events yet.", function (r) {
+  rows("m-events", dated ? [tr("monitor.plant_time"), tr("monitor.col_date"), tr("monitor.col_event")]
+                         : [tr("monitor.plant_time"), tr("monitor.col_event")], m.events,
+       tr("monitor.no_events"), function (r) {
     var t = typeof r[0] === "number" ? String(Math.round(r[0] * 100) / 100) : "";
     return dated ? [t, r[1] === null ? "" : r[1], r[2]] : [t, r[2]];
   });
-  el("foot").textContent = "The drawing is the plant as the twin read it at its last step, in " +
-    "generic shapes. It does not move between two reloads.";
+  el("foot").textContent = tr("monitor.foot");
 }
 """
 
@@ -707,18 +718,21 @@ class Page:
     stepped by a scheduler); the page reloads at half of it (D284)."""
 
     def __init__(self, layout, path, *, every: float | None = None, title: str | None = None,
-                 setpoints=None):
+                 setpoints=None, language: str | None = None):
         self.path = Path(path)
         self.setpoints = setpoints              # the caller's, loaded: what a setpoint writes
+        self.language = language                # the page's (`pagetext.LANGUAGES`, D1088)
+        self._words = pagetext.table(language)  # a bad language is refused here
         self._refused: str | None = None        # what the last write was refused with
         self.refresh = 30 if not every else int(min(max(every / 2, 1), 30))
         self.shell = player.page_shell(
             _SCRIPT + player.SCRIPT,
             head=f'<meta http-equiv="refresh" content="{self.refresh}">\n',
-            top=_TOP, bottom=_BOTTOM, rules=player.CSS + _STYLE)
+            top=_TOP, bottom=_BOTTOM, rules=player.CSS + _STYLE, language=language,
+            areas=("monitor.",))
         # The model's own name, or a constant: never a result's (it may be a file's, D282).
         info = layout.get("info") if isinstance(layout, dict) else None
-        self._title = title or str((info or {}).get("name") or "") or "Plant monitor"
+        self._title = title or str((info or {}).get("name") or "") or self._words["monitor.title"]
         self._writer = tape.TapeWriter(layout, tape.default_view(layout))
         self._timeline = Timeline([], live=True)
         self._log = Log()
@@ -728,7 +742,7 @@ class Page:
         events = list(events)
         self._timeline.append(events)
         self._log.add(doc, events)
-        shown = summary(doc, self.setpoints)
+        shown = summary(doc, self.setpoints, self.language)
         name = self._title
         t = self._timeline.duration
         frame = self._writer.frame(self._timeline, t)
@@ -738,8 +752,8 @@ class Page:
                                 "truncated": False, "events": 0}},
                 "monitor": {"summary": shown, "events": [list(row) for row in reversed(self._log.rows)],
                             "more": self._log.more,
-                            "tail": f"Twin started {shown['started']}. This page reloads every "
-                                    f"{self.refresh} s."}}
+                            "tail": pagetext.say(self._words, "monitor.tail",
+                                                 started=shown["started"], n=self.refresh)}}
         return self.shell.replace("__TAPE__", player.embed(data))
 
     def write(self, doc, events) -> str | None:

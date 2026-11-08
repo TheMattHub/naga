@@ -1,4 +1,5 @@
 E_UNKNOWN_BLOCK_TYPE: Correct the block's `type` to one of the block types in the block reference. Types are upper case, such as `PROCESS`; a misspelling or a type from another tool is the usual cause.
+E_PLUGIN_NOT_LOADED: Load the plugin that provides the type, for example by adding its folder to NAGASIM_PLUGIN_PATH, or remove the type from info.requires_plugins if the model no longer uses it.
 E_PARAM_UNKNOWN: Remove the parameter, or rename it to one the block type declares. The block's reference page lists every parameter; a typo or a parameter of a neighbouring block is the usual cause.
 E_PARAM_TYPE: Give the parameter a value of the declared type, for example a number rather than the text "5", or a list rather than a single value. The hint names the types the block takes.
 E_PARAM_MISSING: Add the required parameter to the block. The block's reference page marks the required ones, for example `resource_name` on a RELEASE.

@@ -143,15 +143,18 @@ nav:
               - "How do I delay goods in transit by a fixed time or a spread of times?": how-to/recipes/transit-delay.md
               - "How do I smooth a noisy signal?": how-to/recipes/smooth-noise.md
               - "How do I extrapolate a growing trend?": how-to/recipes/trend-forecast.md
+              - "How do I total a subscripted value and remember a past one?": how-to/recipes/regions-memory.md
           - Rates, tests and money:
               - "How do I add a daily or weekly cycle to a rate?": how-to/recipes/daily-cycle.md
               - "How do I test a model with a step, a ramp and a pulse?": how-to/recipes/test-inputs.md
               - "How do I discount a stream of cash?": how-to/recipes/discounted-cash.md
               - "How do I stop a ratio dividing by zero?": how-to/recipes/safe-ratio.md
               - "How do I turn a heading and a distance into x and y?": how-to/recipes/bearing.md
+              - "How do I work out an angle, a length or a count in an expression?": how-to/recipes/ramp-geometry.md
           - Agents:
               - "How do I let an agent react to the agents near it?": how-to/recipes/near-agents.md
               - "How do I let an agent read the agents in the cells around it?": how-to/recipes/neighbour-grid.md
+              - "How do I let an agent read the agents it is linked to?": how-to/recipes/linked-agents.md
           - Flow blocks:
               - "How do I limit the work waiting between two machines?": how-to/recipes/buffer-wip.md
               - "How do I move parts along a belt?": how-to/recipes/belt-transit.md
@@ -291,6 +294,8 @@ nav:
           - submodels: reference/model-file/submodels.md
           - background: reference/model-file/background.md
           - building: reference/model-file/building.md
+          - cranes: reference/model-file/cranes.md
+          - stockpiles: reference/model-file/stockpiles.md
           - info: reference/model-file/info.md
           - data_sources: reference/model-file/data_sources.md
           - data_bindings: reference/model-file/data_bindings.md

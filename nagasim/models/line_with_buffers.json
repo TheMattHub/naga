@@ -33,6 +33,7 @@
       "description": "Station 2",
       "position": [540.0, 200.0],
       "layout_position": [20.0, 1.0],
+      "queue_row": {"direction": 90.0},
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -59,6 +60,7 @@
       "description": "Station 3 -- the unreliable one (MTBF 60 min, MTTR 12 min)",
       "position": [820.0, 200.0],
       "layout_position": [39.0, 1.0],
+      "queue_row": {"direction": 90.0},
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -85,6 +87,7 @@
       "description": "Station 4",
       "position": [1100.0, 200.0],
       "layout_position": [57.0, 1.0],
+      "queue_row": {"direction": 90.0},
       "params": {
         "definition": "Workstation",
         "arguments": {

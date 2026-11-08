@@ -1,4 +1,4 @@
-__version__ = "0.19.0"
+__version__ = "0.20.0"
 
 # The three names most scripts want, loaded on first use: a plain import of the
 # package (or `naga --help`) must not pull in the engine (D915).

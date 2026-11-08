@@ -28,6 +28,7 @@
     "agents_sir_agents.json": "7810111058512e46663b06e4911e39e65c4920cb52a6291b0c4cd85af332d2c8",
     "automation_cell.json": "298c22c5c90ff54d44578761a112eae706245d4e8ee8df9d027010a681ff2cef",
     "automation_floor.json": "f94aea7be06181fa7683ae09735d229edc0123fde1c54591ce83d9b914292e2f",
+    "belt_points.json": "934a6f91945ec016ed2ff3c452d2257c87642703c57348bd934cc179cc230ef3",
     "berth_shore_power.json": "c92487c6b63a6795008a8d342a3441098168ca7cf1192e2183dac715299f24b0",
     "biogas_digester_demo.json": "ce7af0213f177785ece48a4f5f0836fd996e537f92011190fa5ce245b62fe5fe",
     "biogas_plant_library.json": "af8ae4fa0651af3b5ad37ee73b11dde380fcefb77e0b08708c544c581ee0da20",

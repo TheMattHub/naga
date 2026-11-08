@@ -3,7 +3,47 @@
 
 # Logistics
 
-6 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+7 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+
+## Belt with stops, a divert and a merge
+
+One accumulating belt with every kind of point: a label stop, a scale stop that needs an operator, a divert that pushes returns onto a lane, and a merge that brings rush cartons in from a side belt. Every number is invented for teaching.
+
+```console
+naga run belt_points --replications 3
+```
+
+```mermaid
+flowchart LR
+    b0["cartons (CREATE)"]
+    b1["returns_in (CREATE)"]
+    b2["rush_in (CREATE)"]
+    b3["rush_belt (CONVEYOR)"]
+    b4["main_belt (CONVEYOR)"]
+    b5["pack (PROCESS)"]
+    b6["shipped (DISPOSE)"]
+    b7["returns_lane (CONVEYOR)"]
+    b8["returns_desk (PROCESS)"]
+    b9["restocked (DISPOSE)"]
+    b0 --> b4
+    b1 --> b4
+    b2 --> b3
+    b3 --> b4
+    b4 --> b5
+    b4 --> b7
+    b5 --> b6
+    b7 --> b8
+    b8 --> b9
+```
+
+3 replications, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 995 | 48 |
+| `system/Avg Throughput Time` | 3.12 | 1.6 |
+| `system/Avg Queue Length` | 0.72 | 0.12 |
+| `system/Avg Resource Usage %` | 60.1 | 2 |
 
 ## Hub day: electrifying the ground support equipment
 

@@ -9,12 +9,16 @@ import logging
 
 log = logging.getLogger(__name__)
 
-__all__ = ["ParamSpec", "BlockSpec", "DIST_PARAMS", "BLOCK_REGISTRY", "validate_params",
+__all__ = ["ParamSpec", "BlockSpec", "DIST_PARAMS", "BLOCK_REGISTRY", "PLUGIN_BLOCK_TYPES",
+           "validate_params",
            "duration_types", "holding_types", "service_types", "transparent_types",
            "queueing_types", "resource_block_types"]
 
 
 BLOCK_REGISTRY: dict[str, BlockSpec] = {spec.type_name: spec for spec in blocks.ALL_SPECS}
+# The types `nagasim.plugins` registered (D1117): a saved model lists the ones it uses in
+# `info.requires_plugins`, so a reader without the plugin can say where the type comes from.
+PLUGIN_BLOCK_TYPES: set[str] = set()
 
 
 def _types_where(flag: str) -> tuple[str, ...]:

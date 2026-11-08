@@ -54,7 +54,7 @@ m.add_table(name='Speed', keys=[1, 2, 3], values=[10, 8, 6])
 
 Bundled models: [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md), [Job shop (routed, per-product sequences)](../../gallery/manufacturing.md), [Job shop with MES digital twin](../../gallery/manufacturing.md), [Process time lookup table](../../gallery/teaching.md).
 
-Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Vensim](../../coming-from/vensim.md), [Model file format](../../model-file-format.md), [Expressions and variables](../../modelling-guide/expressions-variables.md), [Semantic diff](../../semantic-diff.md).
+Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I total a subscripted value and remember a past one?](../../how-to/recipes/regions-memory.md), [Model file format](../../model-file-format.md), [Expressions and variables](../../modelling-guide/expressions-variables.md) and 1 more.
 
 ## See also
 

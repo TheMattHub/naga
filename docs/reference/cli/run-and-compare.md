@@ -24,9 +24,10 @@ options:
 usage: naga run [-h] [--version] [--replications REPLICATIONS] [--seed SEED]
                 [--warmup WARMUP] [--run-length RUN_LENGTH] [--start ISO]
                 [--until ISO] [--timezone IANA] [--workers WORKERS]
-                [--logic MODULE] [--pace FACTOR] [--out OUT] [--report REPORT]
-                [--export FORMAT:PATH] [--player PATH] [--asked FILE]
-                [--state FILE] [--no-logs] [--raw] [--json] [--no-checks]
+                [--logic MODULE] [--controllers MODULE[:NAME]] [--pace FACTOR]
+                [--out OUT] [--report REPORT] [--export FORMAT:PATH]
+                [--player PATH] [--asked FILE] [--lang {en,it}] [--state FILE]
+                [--no-logs] [--raw] [--json] [--no-checks]
                 model
 
 Run a Naga model headless.
@@ -57,6 +58,11 @@ options:
   --logic MODULE        take LOGIC block classes from this importable module
                         first (a dotted name on PYTHONPATH), then from
                         nagasim.core.custom_logic
+  --controllers MODULE[:NAME]
+                        drive the Policy-mode DECIDE blocks with the dict
+                        {decision point: controller} NAME (default
+                        CONTROLLERS) of this importable module (a dotted name
+                        on PYTHONPATH)
   --pace FACTOR         keep pace with the wall clock: FACTOR model seconds
                         per wall second, converted from the model's time unit
                         (1 = real time, 60 = one model minute per second);
@@ -77,6 +83,8 @@ options:
                         asked.json, or a file of the editor's answers store;
                         its input-data and parameter rows quote them instead
                         of 'not measured'
+  --lang {en,it}        with --player or --export player:PATH: the language of
+                        the page (default en)
   --state FILE          start from this state document (`naga state take`):
                         the run's clock starts where the state was taken and
                         its statistics cover the run from there
@@ -98,7 +106,7 @@ usage: naga scenarios [-h] [--scenario SCENARIOS]
                       [--replications REPLICATIONS] [--run-length RUN_LENGTH]
                       [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
                       [--no-crn] [--out OUT] [--report REPORT] [--player PATH]
-                      [--asked FILE]
+                      [--asked FILE] [--lang {en,it}]
                       model
 
 Run named scenarios headless and compare them.
@@ -130,6 +138,7 @@ options:
                         study version's asked.json, or a file of the editor's
                         answers store; its input-data and parameter rows quote
                         them instead of 'not measured'
+  --lang {en,it}        with --player: the language of the page (default en)
 ```
 
 ## naga explain
@@ -247,8 +256,9 @@ options:
 ```text
 usage: naga doe [-h] --factor FACTORS --response RESPONSE
                 [--replications REPLICATIONS] [--run-length RUN_LENGTH]
-                [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
-                [--out OUT] [--report REPORT] [--design DESIGN] [--no-crn]
+                [--warmup WARMUP] [--seed SEED] [--logic MODULE]
+                [--controllers MODULE[:NAME]] [--workers WORKERS] [--out OUT]
+                [--report REPORT] [--design DESIGN] [--no-crn]
                 [--surrogate {linear,quadratic,auto}] [--dataset DATASET]
                 model
 
@@ -273,6 +283,14 @@ options:
                         default: the model's own 'simulation.time_limit'
   --warmup WARMUP       default: the model's own 'simulation.warmup'
   --seed SEED
+  --logic MODULE        take LOGIC block classes from this importable module
+                        first (a dotted name on PYTHONPATH), then from
+                        nagasim.core.custom_logic
+  --controllers MODULE[:NAME]
+                        drive the Policy-mode DECIDE blocks with the dict
+                        {decision point: controller} NAME (default
+                        CONTROLLERS) of this importable module (a dotted name
+                        on PYTHONPATH)
   --workers WORKERS     replications to run in parallel processes (default: 1)
   --out OUT             write the result table here (.xlsx or .csv)
   --report REPORT       write an HTML report here
@@ -292,12 +310,15 @@ options:
 ```text
 usage: naga optimize [-h] --factor FACTORS --response RESPONSE
                      [--replications REPLICATIONS] [--run-length RUN_LENGTH]
-                     [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
+                     [--warmup WARMUP] [--seed SEED] [--logic MODULE]
+                     [--controllers MODULE[:NAME]] [--workers WORKERS]
                      [--out OUT] [--report REPORT] [--goal {min,max}]
                      [--budget BUDGET] [--constraint CONSTRAINTS]
                      [--method {auto,pattern,optuna,optuna-gp,optuna-nsga2}]
                      [--objective KPI:min|max] [--indifference INDIFFERENCE]
                      [--min-improvement MIN_IMPROVEMENT]
+                     [--statistic mean|pNN] [--penalty KPI:WEIGHT]
+                     [--holdout N] [--holdout-seed HOLDOUT_SEED] [--baseline]
                      model
 
 Search model parameters for the best KPI within a replication budget.
@@ -321,6 +342,14 @@ options:
                         default: the model's own 'simulation.time_limit'
   --warmup WARMUP       default: the model's own 'simulation.warmup'
   --seed SEED
+  --logic MODULE        take LOGIC block classes from this importable module
+                        first (a dotted name on PYTHONPATH), then from
+                        nagasim.core.custom_logic
+  --controllers MODULE[:NAME]
+                        drive the Policy-mode DECIDE blocks with the dict
+                        {decision point: controller} NAME (default
+                        CONTROLLERS) of this importable module (a dotted name
+                        on PYTHONPATH)
   --workers WORKERS     replications to run in parallel processes (default: 1)
   --out OUT             write the result table here (.xlsx or .csv)
   --report REPORT       write an HTML report here
@@ -342,6 +371,14 @@ options:
                         relative gain a move must reach before the search
                         widens that factor's step (default: 0.01 = 1% of the
                         objective). 0 widens on any significant gain
+  --statistic mean|pNN  the objective over a point's replications: mean
+                        (default) or a percentile such as p95
+  --penalty KPI:WEIGHT  add WEIGHT x mean(KPI) to the objective; repeatable
+  --holdout N           evaluate the final points (and --baseline) on N seeds
+                        the search never used, from --holdout-seed
+  --holdout-seed HOLDOUT_SEED
+                        first holdout seed (default: --seed + 1000000)
+  --baseline            evaluate the model's own factor values first (trial 0)
 ```
 
 ## naga policy-eval

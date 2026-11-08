@@ -43,6 +43,7 @@ def copy_selection(doc: ModelDocument, block_names, annotation_ids=()) -> dict:
             **({"label_offset": list(b.label_offset)} if b.label_offset else {}),
             **({"counter_offsets": {k: list(v) for k, v in b.counter_offsets.items()}}
                if b.counter_offsets else {}),
+            **({"queue_row": copy.deepcopy(b.queue_row)} if b.queue_row else {}),     # D1089
         })
     links = []
     for link in doc.link_records():
@@ -122,6 +123,8 @@ def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40)) -> list[
                 doc.set_label_offsets({new_name: entry["label_offset"]})
             if entry.get("counter_offsets"):
                 doc.set_counter_offsets({new_name: entry["counter_offsets"]})
+            if entry.get("queue_row"):
+                doc.set_queue_rows({new_name: entry["queue_row"]})
             new_names.append(new_name)
 
         for entry in fragment.get("links", []):

@@ -188,6 +188,18 @@ SECTIONS: tuple[Section, ...] = (
                             "editor and written as the floor plan, 3D walls and floor texture; "
                             "ignored by the engine.",
             validate="nagasim.core.building:validate_building"),
+    # D1110: layout-only like building; a lift is a traced move between two served blocks.
+    Section("cranes", doc="Optional overhead and gantry cranes in metres: a runway, the blocks "
+                          "each crane serves and the axis its bridge travels along. Playback "
+                          "draws a traced move between two served blocks as a lift (bridge, "
+                          "trolley, hook, load); ignored by the engine.",
+            validate="nagasim.core.cranes:validate_cranes"),
+    # D1111: layout-only; store blocks drawn as piles of slabs instead of a queue row.
+    Section("stockpiles", doc="Optional piles for store blocks: each listed block is drawn as a "
+                              "few piles of slabs (one per entity up to max_layers, then a count), "
+                              "an entity's pile chosen by a key per entity in creation order, with "
+                              "the area's total on its label; ignored by the engine.",
+            validate="nagasim.core.stockpiles:validate_stockpiles"),
     Section("info", {}, doc="Optional model metadata: description, author, notes; shown in the "
                             "report header."),
     Section("data_sources", [], "name", "data_source", tab="Data sources",
@@ -284,7 +296,7 @@ CAPABILITIES: dict[str, tuple[str, tuple[str, ...]]] = {
     # D1028: showing the model to people. The building is model data the run ignores; the
     # editor adds what it presents with (films, renders), which never enters this list.
     "presentation": ("A building around the model (rooms, walls, labels) for the floor plan, "
-                     "renders and films.", ("building",)),
+                     "renders and films.", ("building", "cranes", "stockpiles")),
 }
 
 

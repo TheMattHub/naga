@@ -65,7 +65,7 @@ m.add_population(name='People', type='Person', count=100)
 
 Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 8 more.
 
-Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Mesa](../../coming-from/mesa.md), [Coming from NetLogo](../../coming-from/netlogo.md), [How do I let an agent react to the agents near it?](../../how-to/recipes/near-agents.md), [How do I let an agent read the agents in the cells around it?](../../how-to/recipes/neighbour-grid.md) and 1 more.
+Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Mesa](../../coming-from/mesa.md), [Coming from NetLogo](../../coming-from/netlogo.md), [How do I let an agent read the agents it is linked to?](../../how-to/recipes/linked-agents.md), [How do I let an agent react to the agents near it?](../../how-to/recipes/near-agents.md) and 2 more.
 
 ## See also
 

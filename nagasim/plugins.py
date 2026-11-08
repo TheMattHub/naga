@@ -23,6 +23,13 @@ both completely inert until `load_plugins()` runs (called once from
    types. `examples/plugins/inspection_plugin/` (in the repository, not in
    the wheel) works both ways; see its README.
 
+3. The plugin folders a person trusted in Settings > Plugins
+   (`settings/trusted.py`, kind "plugin_folder", enabled), scanned the same way
+   (D1115). `load_plugin_folder` imports one more such folder in a running
+   process, right after the person trusts it. A plugin that imports its own
+   project's packages puts that project's root on `sys.path` itself, at the top
+   of its file: the loader adds no import roots (D1116).
+
 In a frozen build (`sys.frozen`), `<user data dir>/plugins` is scanned the same
 way as a NAGASIM_PLUGIN_PATH directory, so a user can drop a plugin file in
 without a console. That directory is `settings/userpaths.user_data_dir()`:
@@ -43,14 +50,16 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from nagasim.core.block_registry import BLOCK_REGISTRY
+from nagasim.core.block_registry import BLOCK_REGISTRY, PLUGIN_BLOCK_TYPES
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY, _rebuild_derived_tables
 from nagasim.exporters import EXPORTER_REGISTRY
+from nagasim.settings import trusted
 from nagasim.settings.userpaths import user_data_dir
 
 log = logging.getLogger(__name__)
 
-__all__ = ["BlockUi", "PluginReport", "load_plugins", "reset_plugins"]
+__all__ = ["BlockUi", "PluginReport", "load_plugins", "load_plugin_folder", "reset_plugins",
+           "search_paths"]
 
 _ENV_VAR = "NAGASIM_PLUGIN_PATH"
 # entry-point group -> (registry dict, attribute holding the spec's own key)
@@ -87,6 +96,13 @@ class PluginReport:
     point that failed."""
     loaded: list[str] = field(default_factory=list)
     failed: list[tuple[str, str]] = field(default_factory=list)
+    # {folder as scanned: the block types its files registered}: what Settings > Plugins
+    # lists under each folder. A folder scanned with nothing registered maps to [].
+    folders: dict[str, list[str]] = field(default_factory=dict)
+
+    def has_folder(self, directory) -> bool:
+        key = _key(directory)
+        return any(_key(d) == key for d in self.folders)
 
 
 _report: PluginReport | None = None
@@ -113,8 +129,9 @@ def load_plugins(force: bool = False) -> PluginReport:
         return _report
 
     report = PluginReport()
-    for directory in _plugin_search_paths():
-        _load_dev_path(directory, report)
+    for directory in search_paths():
+        if not report.has_folder(directory):    # the same folder named twice is read once
+            _load_dev_path(directory, report)
     _load_entry_points(report)
     _rebuild_derived_tables()
     _report = report
@@ -123,9 +140,29 @@ def load_plugins(force: bool = False) -> PluginReport:
     return report
 
 
-def _plugin_search_paths() -> list[Path]:
+def load_plugin_folder(directory) -> PluginReport:
+    """Import one more plugin folder now (a folder the person has just trusted) and
+    return the process's report with it added. A folder already scanned is not imported
+    again. Registration cannot be undone: disabling a folder takes effect at the next
+    start."""
+    report = load_plugins()
+    directory = Path(directory)
+    if directory.is_dir() and not report.has_folder(directory):
+        _load_dev_path(directory, report)
+        _rebuild_derived_tables()
+    return report
+
+
+def _key(directory) -> str:
+    return os.path.normcase(str(Path(directory).resolve()))
+
+
+def search_paths() -> list[Path]:
+    """The plugin folders `load_plugins` scans, in order: NAGASIM_PLUGIN_PATH, the
+    enabled trusted folders, then a frozen build's own drop folder."""
     env = os.environ.get(_ENV_VAR, "")
     paths = [Path(p) for p in env.split(os.pathsep) if p]
+    paths += trusted.enabled_paths("plugin_folder")
     if getattr(sys, "frozen", False):
         # DEVLOG #107: resolved off %APPDATA% alone, so a frozen build on
         # Linux/macOS had no user plugin folder at all.
@@ -134,6 +171,7 @@ def _plugin_search_paths() -> list[Path]:
 
 
 def _load_dev_path(directory: Path, report: PluginReport) -> None:
+    provided = report.folders.setdefault(str(directory), [])
     for py_file in sorted(directory.glob("*.py")):
         module_name = f"_nagasim_plugin_{py_file.stem}"
         try:
@@ -145,7 +183,9 @@ def _load_dev_path(directory: Path, report: PluginReport) -> None:
             log.warning("plugin %s failed to import: %s", py_file, exc)
             continue
         for group, list_name in _DEV_LISTS.items():
-            _register_many(getattr(module, list_name, []), group, str(py_file), report)
+            added = _register_many(getattr(module, list_name, []), group, str(py_file), report)
+            if group == "nagasim.blocks":
+                provided.extend(added)
 
 
 def _load_entry_points(report: PluginReport) -> None:
@@ -169,9 +209,11 @@ def _load_entry_points(report: PluginReport) -> None:
             _register_many([obj], group, ep.value, report)
 
 
-def _register_many(objs, group: str, source: str, report: PluginReport) -> None:
+def _register_many(objs, group: str, source: str, report: PluginReport) -> list[str]:
+    """Register *objs*; returns the keys that were registered."""
     registry, key_attr = _GROUPS[group]
     kind = group.rsplit(".", 1)[-1]
+    added = []
     for obj in objs:
         key = getattr(obj, key_attr, None)
         if not key:
@@ -184,3 +226,7 @@ def _register_many(objs, group: str, source: str, report: PluginReport) -> None:
             continue
         registry[key] = obj
         report.loaded.append(f"{kind}:{key}")
+        added.append(key)
+        if group == "nagasim.blocks":
+            PLUGIN_BLOCK_TYPES.add(key)
+    return added

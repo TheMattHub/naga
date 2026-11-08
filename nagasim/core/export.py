@@ -20,7 +20,24 @@ from nagasim.core.timeunits import factor
 log = logging.getLogger(__name__)
 
 __all__ = ["write_sheet", "concat_runs", "calendar_of", "with_datetimes",
-           "export_workbook", "export_csv_folder"]
+           "export_workbook", "export_csv_folder", "plugin_outputs", "ARTIFACTS_KEY"]
+
+# The per-replication entry carrying a plugin's artifacts (E8): `(run id, {name: object})`, not
+# a frame, so `concat_runs` leaves it out and `api.run_model` gathers it into `Results.artifacts`.
+ARTIFACTS_KEY = "plugin_artifacts"
+
+
+def plugin_outputs(ctx, run_id) -> dict:
+    """What a plugin recorded in this replication (E8, D1119): a "plugin_kpis" frame
+    (Metric, Value, Run) and the artifacts entry, each only when there is something in it."""
+    out = {}
+    if ctx.plugin_kpis:
+        out["plugin_kpis"] = pd.DataFrame({"Metric": list(ctx.plugin_kpis),
+                                           "Value": list(ctx.plugin_kpis.values()),
+                                           "Run": run_id})
+    if ctx.artifacts:
+        out[ARTIFACTS_KEY] = (run_id, dict(ctx.artifacts))
+    return out
 
 
 def _run_first(df: pd.DataFrame) -> pd.DataFrame:
@@ -133,11 +150,15 @@ def write_sheet(writer, df: pd.DataFrame, sheet_name: str, format_percent: bool 
 # ---------- replication aggregation & workbook export ---------------
 def concat_runs(all_kpis: list[dict]) -> dict[str, pd.DataFrame]:
     """Concatenate the per-replication `calc_kpis` dicts into one frame per key.
-    Log sheets get the Run column first. Shared by the controller and api.run_model."""
+    Log sheets get the Run column first. Shared by the controller and api.run_model.
+    A frame only some replications have (a plugin's KPIs, E8) is concatenated over those;
+    an entry that is not a frame (a plugin's artifacts) is left out."""
     logs = {"entity_log", "resource_log", "store_log"}
+    keys = list(dict.fromkeys(key for k in all_kpis for key, value in k.items()
+                              if isinstance(value, pd.DataFrame)))
     return {key: (_run_first(df) if key in logs else df)
-            for key in all_kpis[0]
-            for df in [_concat([k[key] for k in all_kpis])]}
+            for key in keys
+            for df in [_concat([k[key] for k in all_kpis if key in k])]}
 
 
 def _concat(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -320,7 +341,11 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
                            ("agent_summary", "Agents"),
                            ("agent_attributes", "Agent attributes"),
                            ("dashboard", "Dashboard"),
-                           ("game_log", "Game log")):
+                           ("game_log", "Game log"),
+                           # E7, E8: present only when a queue row gives slots or a
+                           # plugin recorded a KPI, so other workbooks are unchanged.
+                           ("slot_summary", "Queue slots"),
+                           ("plugin_kpis", "Plugin KPIs")):
             frame = results.get(key)
             if frame is not None and not frame.empty:
                 write_sheet(wr, frame, sheet)

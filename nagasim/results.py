@@ -68,6 +68,25 @@ class Results(dict):
     # hand-built or reloaded Results keeps the None and has no checks.
     _layout: dict | None = None
     _warmup: float = 0.0
+    # E8 (D1119): {run id: {name: object}} a plugin handed over with `ctx.add_artifact`.
+    _artifacts: dict | None = None
+
+    @property
+    def artifacts(self) -> dict:
+        """The objects plugin blocks handed over, ``{run: {name: object}}``.
+
+        A plugin block calls ``self.ctx.add_artifact(name, obj)`` during a
+        replication, for instance with the schedule it executed; ``run`` is the
+        same id as the frames' "Run" column. Empty for a run no plugin added to,
+        and for a Results built by hand or loaded back. Numbers a plugin records
+        with ``self.ctx.record_kpi(name, value)`` are the ``"plugin_kpis"`` frame.
+
+        Returns
+        -------
+        dict
+            ``{run: {name: object}}``, one entry per replication that added one.
+        """
+        return self._artifacts or {}
 
     def checks(self) -> RunChecks:
         """Return the law checks of this run, computed once and kept.

@@ -66,8 +66,9 @@ options:
 ## naga viewer
 
 ```text
-usage: naga viewer [-h] [-o OUTPUT] [--title TITLE] [--runtime DIR] [--fetch]
-                   [--freeze] [--asked FILE] [--allow-network]
+usage: naga viewer [-h] [-o OUTPUT] [--title TITLE] [--runtime DIR]
+                   [--pyodide {embedded,cdn}] [--fetch] [--freeze]
+                   [--asked FILE] [--lang {en,it}] [--allow-network]
                    [--allow-private-network] [--allow-host HOST]
                    [--connections FILE]
                    [model]
@@ -89,6 +90,13 @@ options:
   --title TITLE         the page's title (default: the model file's name)
   --runtime DIR         the folder of the browser runtime (default:
                         $NAGASIM_VIEWER_RUNTIME, else the user's own copy)
+  --pyodide {embedded,cdn}
+                        embedded (default): the file carries the browser
+                        runtime and works offline (about 35 MB); cdn: a small
+                        file that carries the engine and fetches Pyodide's
+                        pinned files from cdn.jsdelivr.net when opened, each
+                        checked against its SHA-256, refusing to start on a
+                        mismatch or with no network
   --fetch               download the browser runtime (Pyodide 314.0.7, 29 MB,
                         from github.com and cdn.jsdelivr.net) into that
                         folder; nothing is downloaded without this flag
@@ -100,6 +108,7 @@ options:
                         asked.json, or a file of the editor's answers store;
                         its input-data and parameter rows quote them instead
                         of 'not measured'
+  --lang {en,it}        the language of the page (default en)
   --allow-network       permit sql / json_url data sources (refused by
                         default: opening a model must not make outbound
                         connections on its own)

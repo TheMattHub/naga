@@ -378,7 +378,7 @@ def _run_vec(fn, pop, idx, dtype, scope=None):
 
 class _Transition:
     __slots__ = ("k", "src", "dst", "kind", "value", "own", "shared", "guard", "actions",
-                 "text", "scan", "vec", "depth", "keep", "enter", "history", "leaves",
+                 "text", "scan", "vec", "depth", "keep", "enter", "history", "leaves", "lut",
                  "rate_factor")
 
 
@@ -504,6 +504,7 @@ class _Type:
             while keep < min(len(src_up), len(dst_up)) and src_up[keep] == dst_up[keep]:
                 keep += 1
             tr.depth, tr.keep, tr.leaves = self.depth[tr.src], keep, self.leaves[tr.src]
+            tr.lut = self.luts[tr.src]
             tr.enter, tr.history = self.path[tr.dst][keep:], spec.get("history")
             self.transitions.append(tr)
             self.out[tr.src].append(tr)
@@ -605,12 +606,17 @@ class _Type:
         self.leaves = [np.array([x for x in range(n) if not children[x] and s in self.path[x]],
                                 dtype=np.int16) if children[s] else None for s in range(n)]
         self.composites = [s for s in range(n) if children[s]]
+        # A composite's leaves as a lookup table indexed by state code: `lut[states]` is
+        # `np.isin(states, leaves)` without its per-call sort (BENCH-SCALE-2026-10-27). The
+        # extra last slot is False, so a removed agent's code -1 reads it.
+        self.luts = [None if leaves is None else np.isin(np.arange(n + 1), leaves) & (np.arange(n + 1) < n)
+                     for leaves in self.leaves]
 
     def mask(self, states: np.ndarray, s: int) -> np.ndarray:
         """Which of *states* (leaf codes) are in state s: s itself, or any leaf
         under a composite s (K1: COUNT/SUM/MEAN/NEAR... match descendants)."""
-        leaves = self.leaves[s]
-        return states == s if leaves is None else np.isin(states, leaves)
+        lut = self.luts[s]
+        return states == s if lut is None else lut[states]
 
     @staticmethod
     def _actions(items, names, cats=None, in_tick=False, py=None) -> list:

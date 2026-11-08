@@ -19,7 +19,9 @@ class DistParam:
     name: str
     default: object
     hint: str = ""        # reserved for a future per-field tooltip; unused by the UI today
-    kind: str = "number"  # "number" (spin box, fx-toggle to an expression) | "list" (JSON field) | "expression"
+    kind: str = "number"  # "number" (spin box, fx-toggle to an expression) | "list" (JSON field) | "expression" | "choice"
+    # "choice" only: the allowed words (a combo box); the value is a literal word, never an expression.
+    choices: tuple = ()
 
 
 @dataclass(frozen=True)

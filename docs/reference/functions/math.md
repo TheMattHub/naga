@@ -176,4 +176,4 @@ Used in the bundled models Emergency department: bedside scan (film template).
 ## See also
 
 - [All function groups and the grammar](index.md), [Distributions](../distributions/index.md)
-- Guides that use them: [Agent-based modelling](../../agent-based-modelling.md), [From an event log to a model in five minutes](../../event-log-tutorial.md), [System dynamics](../../system-dynamics.md), [Coming from SimPy](../../coming-from/simpy.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [How do I combine event flow, system dynamics and agents?](../../goals/hybrid-model.md) and 6 more
+- Guides that use them: [Agent-based modelling](../../agent-based-modelling.md), [From an event log to a model in five minutes](../../event-log-tutorial.md), [System dynamics](../../system-dynamics.md), [Coming from SimPy](../../coming-from/simpy.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [How do I combine event flow, system dynamics and agents?](../../goals/hybrid-model.md) and 7 more

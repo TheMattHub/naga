@@ -243,3 +243,15 @@ def test_self_state_compared_with_a_composite_warns():
     codes = {(p.code, p.path) for p in validate_model_structured(layout)}
     assert ("W_AGENT_STATE_COMPOSITE", "/agent_types/0/transitions/0/condition") in codes
     assert not any(c == "W_AGENT_STATE_COMPOSITE" and t.endswith("/1/condition") for c, t in codes)
+
+
+def test_a_composite_mask_is_isin_with_removed_agents_out():
+    """BENCH-SCALE-2026-10-27: the leaves lookup table gives np.isin exactly, -1 (removed) included."""
+    layout = _machine([{"from": "Working", "to": "Broken", "rate": "1e-9"}], count=4)
+    for state in layout["agent_types"][0]["states"]:
+        state.pop("entry"), state.pop("exit")
+    kind = _start(layout).ctx.agent_system.by_name["M"].type
+    states = np.array([-1] + list(range(len(kind.states))) * 2, dtype=np.int16)
+    for s in range(len(kind.states)):
+        want = states == s if kind.leaves[s] is None else np.isin(states, kind.leaves[s])
+        assert (kind.mask(states, s) == want).all()

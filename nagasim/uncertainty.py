@@ -48,7 +48,7 @@ import math
 import numpy as np
 from scipy import stats as sstats
 
-from nagasim import experiments, inputfit
+from nagasim import experiments, inputfit, pagetext
 from nagasim.core.stats import ci95
 
 __all__ = ["MAX_RUNS", "NOT_MEASURED", "input_uncertainty", "interval", "render", "same_change",
@@ -310,12 +310,12 @@ def same_change(a, b) -> bool:
                                                                          default=str)
 
 
-def what_if_note(asked, overrides, kpis) -> dict | None:
+def what_if_note(asked, overrides, kpis, language: str | None = None) -> dict | None:
     """The input-data note for a `what_if` answer, from recorded `input_uncertainty` answers
     (`agent_tools` keeps them in `Workspace.asked`): the latest difference measured for these
     same overrides, else the latest level, labelled as one; None when neither covers the
     verdict's KPIs. It only quotes: no run, and the verdict is never changed or merged with it
-    (D737)."""
+    (D737). The text is in *language* (a page's, D1088); the KPI keys stay as recorded."""
     recorded = [a for a in asked or [] if isinstance(a, dict)
                 and a.get("tool") == "input_uncertainty" and a.get("kpis")]
     pick = next((a for a in reversed(recorded) if a.get("measure") == "difference"
@@ -328,14 +328,10 @@ def what_if_note(asked, overrides, kpis) -> dict | None:
     if not rows:
         return None
     measure, used, reps = pick.get("measure", "level"), pick.get("resamples_used"), pick.get("replications")
-    spans = "; ".join(f"{r['kpi']} {_pair(r['input_interval'])}" for r in rows)
-    if measure == "difference":
-        text = (f"Input data: the change's difference over {used} resamples of the data "
-                f"({reps} replications each) is {spans}; the verdict above is on run noise.")
-    else:
-        text = (f"Input data, measured on the level and not on this change ({used} resamples, "
-                f"{reps} replications each): {spans}; a level's spread is not the difference's, "
-                f"which input_uncertainty with these overrides measures.")
+    words = pagetext.table(language)
+    spans = "; ".join(f"{r['kpi']} {_pair_in(r['input_interval'], words)}" for r in rows)
+    text = pagetext.say(words, "measured.note_difference" if measure == "difference"
+                        else "measured.note_level", used=used, reps=reps, spans=spans)
     return {"measure": measure, "resamples": used, "replications": reps,
             "kpis": [{k: r.get(k) for k in ("kpi", "mean", "input_interval", "input_share")}
                      for r in rows], "text": text}
@@ -345,10 +341,12 @@ def what_if_note(asked, overrides, kpis) -> dict | None:
 NOT_MEASURED = "not measured"
 
 
-def trust_texts(asked) -> dict:
+def trust_texts(asked, language: str | None = None) -> dict:
     """{"input", "params"}: one line each for the trust card from recorded answers (the latest
-    `input_uncertainty` and the latest ABC `calibrate`), or NOT_MEASURED. Each carries its own
-    basis; the three uncertainties (run noise, input data, parameters) are never summed (D739)."""
+    `input_uncertainty` and the latest ABC `calibrate`), or NOT_MEASURED (the page words that
+    one itself). Each carries its own basis, in *language* (a page's, D1088); the three
+    uncertainties (run noise, input data, parameters) are never summed (D739)."""
+    words = pagetext.table(language)
     rows = [a for a in asked or [] if isinstance(a, dict)]
     inp = next((a for a in reversed(rows) if a.get("tool") == "input_uncertainty" and a.get("kpis")), None)
     abc = next((a for a in reversed(rows) if a.get("tool") == "calibrate" and a.get("method") == "abc"
@@ -357,13 +355,17 @@ def trust_texts(asked) -> dict:
     if inp is not None:
         first = inp["kpis"][0]
         share = first.get("input_share")
-        out["input"] = (f"{inp.get('measure', 'level')}, {inp.get('resamples_used')} resamples x "
-                        f"{inp.get('replications')} replications; {first.get('kpi')} "
-                        f"{_pair(first.get('input_interval'))}"
-                        + (f", inputs {share * 100:.0f}% of the variance" if isinstance(share, (int, float)) else ""))
+        measure = str(inp.get("measure", "level"))
+        out["input"] = pagetext.say(
+            words, "measured.input", measure=words.get(f"measured.{measure}", measure),
+            used=inp.get("resamples_used"), reps=inp.get("replications"), kpi=first.get("kpi"),
+            span=_pair_in(first.get("input_interval"), words),
+            share=pagetext.say(words, "measured.share", pct=f"{share * 100:.0f}")
+            if isinstance(share, (int, float)) else "")
     if abc is not None:
-        out["params"] = (f"{abc['accepted']} of {abc.get('samples')} samples accepted, "
-                         f"tolerance {_g(abc.get('abc_tolerance'))}")
+        out["params"] = pagetext.say(words, "measured.params", accepted=abc["accepted"],
+                                     samples=abc.get("samples"),
+                                     tol=pagetext.number(_g(abc.get("abc_tolerance")), words))
     return out
 
 
@@ -374,6 +376,13 @@ def _g(value) -> str:
 
 def _pair(pair) -> str:
     return "-" if pair is None else f"[{_g(pair[0])}, {_g(pair[1])}]"
+
+
+def _pair_in(pair, words: dict) -> str:
+    """`_pair` in a page's language: its decimal sign and its separator."""
+    return "-" if pair is None else pagetext.say(
+        words, "measured.pair", lo=pagetext.number(_g(pair[0]), words),
+        hi=pagetext.number(_g(pair[1]), words))
 
 
 def render(answer: dict) -> str:

@@ -30,6 +30,13 @@ if not SITE.is_dir():
 DOCS = SITE / "docs"
 
 sys.path.insert(0, str(ROOT))
+# The pages document the shipped registries only: no plugin this machine's user trusted (a
+# client study's block types reached the generated pages that way, 2026-11-08). The tests'
+# conftest isolates the same way, so the pages they regenerate agree.
+if "NAGASIM_USER_DIR" not in os.environ:
+    import tempfile
+    os.environ["NAGASIM_USER_DIR"] = tempfile.mkdtemp(prefix="naga-docs-user-")
+    os.environ["NAGASIM_PLUGIN_PATH"] = ""
 
 from nagasim.core.block_registry import BLOCK_REGISTRY  # noqa: E402
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY  # noqa: E402
@@ -121,7 +128,8 @@ SECTION_FAMILIES = {
     "system-dynamics": ("auxiliaries", "delays", "subscripts"),
     "agents": ("agent_types", "populations"),
     "vehicles-and-layout": ("fleets", "motion_profiles", "zones", "chargers", "network"),
-    "structure-and-notes": ("submodels", "annotations", "background", "building", "info", "view"),
+    "structure-and-notes": ("submodels", "annotations", "background", "building", "cranes", "stockpiles",
+                            "info", "view"),
     "costs-and-decisions": ("fixed_costs", "investment", "dispatch"),
     "data-connections": ("data_sources", "data_bindings", "initial_state"),
     "run-and-scenarios": ("simulation", "outputs", "scenarios", "reality_checks"),
@@ -323,7 +331,7 @@ DISTRIBUTION_EXAMPLES: dict[str, dict] = {
     "DiscreteUniform": {"low": 1, "high": 6},
     "EmpiricalContinuous": {"values": [0, 2, 5, 10], "probs": [0.5, 0.3, 0.2]},
     "EmpiricalDiscrete": {"values": [1, 2, 3, 4], "probs": [0.4, 0.3, 0.2, 0.1]},
-    "Erlang": {"k": 3, "rate": 1.5}, "Exponential": {"rate": 0.5}, "FixedSchedule": {"schedule": [2, 5, 9]},
+    "Erlang": {"k": 3, "rate": 1.5}, "Exponential": {"rate": 0.5}, "FixedSchedule": {"schedule": [2, 5, 9], "jitter": 0.0, "jitter_law": "Normal"},
     "Gamma": {"alpha": 2, "beta": 3}, "Geometric": {"p": 0.25},
     "Hypergeometric": {"N": 50, "K": 10, "n": 8}, "InverseGaussian": {"mu": 5, "lambda": 10},
     "JohnsonSB": {"a1": 0, "a2": 1, "min": 0, "max": 10},
@@ -1389,6 +1397,12 @@ SECTION_EXAMPLES: dict[str, object] = {
                            {"name": "Store", "rect": [6, 1, 11, 7]}],
                  "openings": [{"wall": {"room": "Office", "edge": 1}, "at": 0.4, "width": 1.5},
                               {"a": [2, 7], "b": [4, 7]}]},
+    "cranes": [{"name": "Hall crane", "runway": [0, 0, 30, 12], "serves": ["create_1", "dispose_1"],
+                "axis": "x"}],
+    "stockpiles": {"source": "create_1", "keys": ["long", "short", "long"], "max_layers": 8,
+                   "areas": [{"block": "dispose_1", "label": "Store", "label_at": [20, 1],
+                              "piles": [{"key": "long", "rect": [20, 2, 24, 4], "label": "12 m"},
+                                        {"key": "short", "rect": [25, 2, 27, 4], "label": "6 m"}]}]},
     "info": {"description": "A one-server queue.", "author": "A. Modeller"},
     "data_sources": _SOURCE["data_sources"],
     "data_bindings": ([{"name": "Server count", "source": "Arrivals", "column": "servers", "transform": "last",
@@ -1606,8 +1620,8 @@ PROBLEM_AREAS = (
      "Resources and sets, schedules, failures, calendars and arrivals.",
      r"RESOURCE|SET_|RANKING|RERANK|SCHEDULE|CALENDAR|FAILURE|ARRIVAL|ENTITY_COST"),
     ("scenarios-and-checks", "Scenarios, checks and the editor",
-     "Scenarios, assertions, path checks, dashboards, annotations and the file version.",
-     r"SCENARIO|ASSERTION|PATH_CHECK|DASHBOARD|ANNOTATION|BACKGROUND|SCHEMA_VERSION"),
+     "Scenarios, assertions, path checks, dashboards, annotations, cranes and piles drawn in playback, and the file version.",
+     r"SCENARIO|ASSERTION|PATH_CHECK|DASHBOARD|ANNOTATION|BACKGROUND|SCHEMA_VERSION|CRANE|STOCKPILE"),
     ("blocks-and-flow", "Blocks, links and routing",
      "Blocks and their parameters, distributions, links, decisions, queues, routings and orders.", r""),
 )
@@ -1616,7 +1630,8 @@ PROBLEM_SECTION_WORDS = {"SERIES": "timeseries_inputs", "SET": "resource_sets", 
                          "ENTITY": "entities", "ASSERTION": "assertions", "PATH_CHECK": "path_checks",
                          "DASHBOARD": "dashboard", "ANNOTATION": "annotations", "BACKGROUND": "background",
                          "NETWORK": "network", "SUBMODEL": "submodels", "INITIAL": "initial_state",
-                         "CALENDAR": "simulation", "SD": "simulation", "SCENARIO": "scenarios"}
+                         "CALENDAR": "simulation", "SD": "simulation", "SCENARIO": "scenarios",
+                         "CRANE": "cranes", "STOCKPILE": "stockpiles"}
 
 
 def problem_area(code: str) -> str:
@@ -2701,8 +2716,11 @@ def draw_worked_example_charts(out: Path) -> None:
         ax.yaxis.get_major_locator().set_params(integer=True)
         ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0, 1), ncol=3)
         fig.tight_layout()
-        fig.savefig(out / "img" / f"{stem}.svg", format="svg", metadata={"Date": None},
-                    facecolor="white")
+        # Through a text buffer: matplotlib opens a path in text mode, which writes CRLF on
+        # Windows, and the tree stores LF (.gitattributes), so every regeneration showed noise.
+        buffer = io.StringIO()
+        fig.savefig(buffer, format="svg", metadata={"Date": None}, facecolor="white")
+        (out / "img" / f"{stem}.svg").write_text(buffer.getvalue(), encoding="utf-8", newline="\n")
         plt.close(fig)
 
 

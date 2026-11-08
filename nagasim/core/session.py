@@ -44,6 +44,7 @@ from nagasim.core.blocks.decide import Decide
 from nagasim.core.calendar import run_horizon
 from nagasim.core.control import PausingController
 from nagasim.core.expressions import compile_expression
+from nagasim.core.export import plugin_outputs
 from nagasim.core.outputs import calc_kpis, summarize_game_log
 from nagasim.core.schema import (ModelValidationError, requires_run_length,
                                  prepare, fatal_problems, format_problems)
@@ -690,6 +691,7 @@ class SimSession:
                     self.model.blocks[req.block]._fallback_action(entity, req.n_actions), rid)
         run_id = 0 if self.ctx.deterministic else self.seed
         results = calc_kpis(self.env, warmup=self.warmup, run_id=run_id)
+        results.update(plugin_outputs(self.ctx, run_id))     # E8
         results["game_log"] = summarize_game_log(self.game_log, run_id=run_id)
         return results
 

@@ -5,6 +5,8 @@ network access reads this file alone.
     fetch(directory)       download the pinned files; only `naga viewer --fetch` and the
                            editor's consent dialog call it
     load(directory)        {file name: bytes} of a copy, every byte checked
+    page_files(directory)  what a page carries: load's, each wheel trimmed of what a run
+                           never imports (D1047)
 
 * ONE constant pins everything: the SHA-256 of Pyodide's core archive. The wheels are
   checked against the SHA-256 the lock file INSIDE that archive states for them.
@@ -29,13 +31,15 @@ from pathlib import Path
 from nagasim.settings.userpaths import user_data_dir
 
 __all__ = ["VERSION", "ENV_VAR", "CORE_FILES", "PACKAGES", "ViewerRuntimeError", "Cancelled",
-           "default_dir", "resolve_dir", "wheels", "load", "fetch"]
+           "default_dir", "resolve_dir", "wheels", "load", "trim", "page_files", "cdn_files", "fetch"]
 
 VERSION = "314.0.7"
 CORE_NAME = f"pyodide-core-{VERSION}.tar.bz2"
 CORE_URL = f"https://github.com/pyodide/pyodide/releases/download/{VERSION}/{CORE_NAME}"
 CORE_SHA256 = "2abdcc2e35208af406e07724cffa85bc582ced97e9028383ecf5462541393f95"
 WHEEL_URL = f"https://cdn.jsdelivr.net/pyodide/v{VERSION}/full/"
+# A small page (D1087) fetches the core files and the wheels from WHEEL_URL too: the
+# release's own files there are the archive's, byte for byte (measured 2026-10-29).
 # What the page starts Python from, in the archive's `pyodide/` folder.
 CORE_FILES = ("pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip",
               "pyodide-lock.json")
@@ -110,6 +114,66 @@ def _missing(directory: Path, what: str) -> ViewerRuntimeError:
         f"Run `naga viewer --fetch` once on a machine with network access (29 MB from "
         f"github.com and cdn.jsdelivr.net), or pass --runtime DIR (or set {ENV_VAR}) "
         f"naming a folder copied from such a machine")
+
+
+# What a page leaves out of a wheel (D1047): the engine never imports it, so the page runs
+# the same without it and stays fully offline. Test suites, typing stubs, C headers and
+# sources, static libraries and Cython declarations serve a build or a test, not a run; of
+# scipy, the subpackages no run imports (measured: every bundled model run on the desktop,
+# and the browser tests), and the Sobol direction numbers (`qmc.Sobol` only: a design of
+# experiments, never in a page). A licence file is never left out. The wheels are checked
+# against the pin BEFORE this.
+_LEFT_OUT_SUFFIXES = (".pyi", ".pxd", ".h", ".c", ".a")
+_LEFT_OUT_FOLDERS = ("tests", "testing_data")
+_LEFT_OUT_SCIPY = ("cluster", "datasets", "differentiate", "fftpack", "io", "misc", "odr", "signal")
+_LEFT_OUT_FILES = ("scipy/stats/_sobol_direction_numbers.npz",)
+
+
+def _carried(inside: str) -> bool:
+    """Is the wheel member *inside* (its path in the wheel) in a page?"""
+    parts = inside.split("/")
+    if parts[0].endswith(".dist-info") or any(word in parts[-1].lower() for word in ("licen", "copying", "notice")):
+        return True
+    if inside.endswith(_LEFT_OUT_SUFFIXES) or inside in _LEFT_OUT_FILES:
+        return False
+    if any(part in _LEFT_OUT_FOLDERS for part in parts[:-1]):
+        return False
+    return not (parts[0] == "scipy" and len(parts) > 2 and parts[1] in _LEFT_OUT_SCIPY)
+
+
+def trim(data: bytes) -> bytes:
+    """A wheel's bytes without what `_carried` leaves out: the same bytes for the same wheel
+    (entries in their order, with their dates and modes). A wheel nothing is taken from
+    comes back as it was. Pyodide installs it from these bytes: the page's fetch hands
+    them over, so no hash of the full wheel is asked of them (the pin was checked first)."""
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(data)) as wheel:
+        members = wheel.infolist()
+        kept = [member for member in members if _carried(member.filename)]
+        if len(kept) == len(members):
+            return data
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as trimmed:
+            for member in kept:
+                trimmed.writestr(member, wheel.read(member), compress_type=zipfile.ZIP_DEFLATED,
+                                 compresslevel=9)
+    return out.getvalue()
+
+
+def page_files(directory=None) -> dict[str, bytes]:
+    """{file name: bytes} a page carries: `load`'s, every byte checked against the pin, each
+    wheel then trimmed (`trim`). One place, so a hosted runtime (D1047, later) can serve the
+    very files a page holds."""
+    return {name: trim(data) if name.endswith(".whl") else data
+            for name, data in load(directory).items()}
+
+
+def cdn_files(files: dict[str, bytes]) -> list[tuple[str, str, int]]:
+    """[(file name, sha256, bytes)] a small page (D1087) fetches from `WHEEL_URL`: *files*
+    is `load`'s, so every hash is read from bytes checked against the pin. The files as
+    released, untrimmed: they are what the address serves (measured byte for byte)."""
+    return [(name, _sha256(data), len(data)) for name, data in files.items()]
 
 
 def load(directory=None) -> dict[str, bytes]:

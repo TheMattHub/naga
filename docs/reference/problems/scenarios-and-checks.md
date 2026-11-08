@@ -3,7 +3,7 @@
 
 # Problem codes: Scenarios, checks and the editor
 
-Scenarios, assertions, path checks, dashboards, annotations and the file version. The list is generated from the codes' own table; the meaning is the table's sentence for the code.
+Scenarios, assertions, path checks, dashboards, annotations, cranes and piles drawn in playback, and the file version. The list is generated from the codes' own table; the meaning is the table's sentence for the code.
 
 | Code | Severity | Meaning | About |
 |---|---|---|---|
@@ -16,6 +16,7 @@ Scenarios, assertions, path checks, dashboards, annotations and the file version
 | <span id="e_assertion_op"></span>`E_ASSERTION_OP` | error | An assertion's "op" field is unknown or missing. | [`assertions`](../model-file/assertions.md) |
 | <span id="e_assertion_replications"></span>`E_ASSERTION_REPLICATIONS` | error | An assertion's "replications" is not an integer &gt;= 1. | [`assertions`](../model-file/assertions.md) |
 | <span id="e_background"></span>`E_BACKGROUND` | error | The background image section is malformed. | [`background`](../model-file/background.md) |
+| <span id="e_crane"></span>`E_CRANE` | error | The cranes section is malformed (a crane without a name or a valid runway, fewer than two served blocks, an unknown field, axis or colour). | [`cranes`](../model-file/cranes.md) |
 | <span id="e_dashboard_control"></span>`E_DASHBOARD_CONTROL` | error | A dashboard control is unnamed or duplicated, of an unknown kind, or names an unknown target; a slider's min &gt;= max, step &lt;= 0 or a capacity range outside 0..the declared capacity; a decision's policy has no Policy-mode DECIDE or a different option count. | [DECIDE](../blocks/decide.md), [`dashboard`](../model-file/dashboard.md) |
 | <span id="e_dashboard_definition"></span>`E_DASHBOARD_DEFINITION` | error | The dashboard section is malformed or over a ceiling: an unknown key, too many entries, a range that is not finite, ordered and within 10 000 steps, text that is too long or not printable, an item its page does not take or whose "ref" names nothing. | [`dashboard`](../model-file/dashboard.md) |
 | <span id="e_dashboard_expr"></span>`E_DASHBOARD_EXPR` | error | A dashboard widget's expression is empty, does not compile, names an unknown variable or resource, draws a random number, or is a constant that is not a number. | [`dashboard`](../model-file/dashboard.md) |
@@ -35,6 +36,7 @@ Scenarios, assertions, path checks, dashboards, annotations and the file version
 | <span id="e_scenario_name"></span>`E_SCENARIO_NAME` | error | A scenario has an empty name. | [`scenarios`](../model-file/scenarios.md) |
 | <span id="e_scenario_override"></span>`E_SCENARIO_OVERRIDE` | error | A scenario override is missing its path or its value. | [`scenarios`](../model-file/scenarios.md) |
 | <span id="e_schema_version"></span>`E_SCHEMA_VERSION` | error | The file's schema_version is newer than this build supports. | -- |
+| <span id="e_stockpile"></span>`E_STOCKPILE` | error | The stockpiles section is malformed (an area without a block or piles, a pile rect out of order, keys without a source, an unknown field). | [`stockpiles`](../model-file/stockpiles.md) |
 | <span id="w_background_missing"></span>`W_BACKGROUND_MISSING` | warning | The background image's path does not exist on disk (F3: this used to be a plain string ModelDocument.problems() appended itself, not a schema check; same text, now a coded Problem). | [`background`](../model-file/background.md) |
 
 ## How to fix

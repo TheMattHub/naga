@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from nagasim.core import network, schema, sections, submodels
-from nagasim.core.block_registry import BLOCK_REGISTRY
+from nagasim.core.block_registry import BLOCK_REGISTRY, PLUGIN_BLOCK_TYPES
 from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.quantities import SECTION_FIELDS, fill_units, time_expressions
 from nagasim.core.timeunits import convert, units_of
@@ -66,6 +66,8 @@ class _Part(NamedTuple):
 # plain section is added here once.
 _PARTS = (
     _Part("building", lambda: None, omit=lambda value: value is None),     # D1005
+    _Part("cranes", lambda: None, omit=lambda value: value is None),       # D1110
+    _Part("stockpiles", lambda: None, omit=lambda value: value is None),   # D1111
     _Part("info", dict),
     _Part("data_sources", None),                  # ROADMAP 3.4: the twin sections, ui/twin.py
     _Part("data_bindings", None),
@@ -123,6 +125,10 @@ class BlockData:
     # `out`, `exit:<branch>` or `entry:<port>`: (dx, dy) in scene units from the
     # counter's home. Schematic canvas only. None means every counter is home.
     counter_offsets: dict[str, tuple[float, float]] | None = None
+    # A placed asset's own queue row (D1089): `{"anchor": [x, y], "direction": degrees}`, either
+    # key alone, over the asset graphic's `queue_anchor` / `queue_direction`. None (the usual case)
+    # draws the asset's own row. Kept as written; `core.queuerow` checks and reads it.
+    queue_row: dict | None = None
 
 
 @dataclasses.dataclass
@@ -253,7 +259,7 @@ class ModelDocument:
         self.dirty = False
 
     def to_layout(self) -> dict:
-        return {
+        return _declare_plugins({
             "schema_version": schema.CURRENT_VERSION,
             "blocks": self._blocks_layout(""),
             "links": self._links_layout(""),
@@ -262,7 +268,7 @@ class ModelDocument:
             **{section: copy.deepcopy(getattr(self, section))
                for section in sections.RECORD_SECTIONS},
             **self._tail_layout(),
-        }
+        })
 
     def _tail_layout(self) -> dict:
         out = {
@@ -294,6 +300,8 @@ class ModelDocument:
                  # Same rule for dragged counters (D755).
                  **({"counter_offsets": {k: [v[0], v[1]] for k, v in b.counter_offsets.items()}}
                     if b.counter_offsets else {}),
+                 # Same rule for a turned queue row (D1089).
+                 **({"queue_row": copy.deepcopy(b.queue_row)} if b.queue_row else {}),
                  "params": copy.deepcopy(b.params)}
                 for b in self._level(scope).blocks.values()]
 
@@ -361,6 +369,7 @@ class ModelDocument:
                 counter_offsets=({str(k): (float(v[0]), float(v[1]))
                                   for k, v in b["counter_offsets"].items()} or None
                                  if b.get("counter_offsets") else None),
+                queue_row=copy.deepcopy(b["queue_row"]) if b.get("queue_row") else None,
             )
         for link in section.get("links", []):
             if isinstance(link, dict):
@@ -821,6 +830,36 @@ class ModelDocument:
             level.blocks[name] = dataclasses.replace(level.blocks[name], counter_offsets=value)
         self.dirty = True
         self._notify("blocks", action="counter", names=list(changed), scope=scope)
+
+    def set_queue_rows(self, rows: dict, *, scope: str = "") -> None:
+        """Set placed assets' own queue rows (D1089), one undo step: *rows* is
+        `{block: {"anchor": [x, y], "direction": degrees} | None}`, either key
+        alone, plus the row's `slots`, `frees` and `label` (D1113), kept as given (#1590);
+        None or {} goes back to the asset's own row. A value
+        `queuerow.override_problem` refuses is not stored."""
+        from nagasim.core import queuerow
+
+        level = self._level(scope)
+        changed = {}
+        for name, value in rows.items():
+            if name not in level.blocks:
+                continue
+            value = copy.deepcopy(value) or None
+            if value is not None:
+                if queuerow.override_problem(value):
+                    continue
+                value = {k: ([float(x) for x in v] if k == "anchor" else float(v) if k == "direction" else v)
+                         for k, v in value.items()}
+            if level.blocks[name].queue_row != value:
+                changed[name] = value
+        if not changed:
+            return
+        self._push_undo(f"Turn {next(iter(changed))} queue row" if len(changed) == 1
+                        else f"Turn {len(changed)} queue rows")
+        for name, value in changed.items():
+            level.blocks[name] = dataclasses.replace(level.blocks[name], queue_row=value)
+        self.dirty = True
+        self._notify("blocks", action="queue_row", names=list(changed), scope=scope)
 
     def set_layout_rotations(self, rotations: dict, *, scope: str = "") -> None:
         """Turn blocks on the FLOOR PLAN (PHASE4 T2, D74), one undo step for the
@@ -1796,6 +1835,28 @@ class ModelDocument:
         self.dirty = True
         self._notify("building")
 
+    def set_cranes(self, cranes: list | None) -> None:
+        """Set (list) or clear (None or []) the `cranes` section (D1110, U2): one undo step,
+        notification kind "cranes". Layout only: no run reads it."""
+        cranes = copy.deepcopy(cranes) or None
+        if cranes == self.cranes:
+            return
+        self._push_undo("Edit cranes" if cranes is not None else "Remove cranes")
+        self.cranes = cranes
+        self.dirty = True
+        self._notify("cranes")
+
+    def set_stockpiles(self, section: dict | None) -> None:
+        """Set (dict) or clear (None) the `stockpiles` section (D1111): one undo step,
+        notification kind "stockpiles". Layout only: no run reads it."""
+        section = None if section is None else copy.deepcopy(section)
+        if section == self.stockpiles:
+            return
+        self._push_undo("Edit stock piles" if section is not None else "Remove stock piles")
+        self.stockpiles = section
+        self.dirty = True
+        self._notify("stockpiles")
+
     # -- dashboard (PHASE6 G1, D132) -----------------------------------------
     # {"widgets": [{"name", "kind", "expr"|"series", ...}]}; `core/timeseries.py`
     # samples it, `nagasim.core.outputs.summarize_dashboard` reports it. One
@@ -1825,6 +1886,23 @@ class ModelDocument:
     @property
     def description_text(self) -> str:
         return self.info.get("description", "")
+
+
+def _declare_plugins(layout: dict) -> dict:
+    """D1117: list in `info.requires_plugins` the plugin block types the model uses, so
+    an editor without the plugin says where a type comes from instead of "unknown block
+    type". A type stays listed while the model uses it, even when the plugin is not
+    loaded here; a model with no plugin type gets no key, so its file is as before."""
+    info = layout.get("info") or {}
+    declared = info.get("requires_plugins") or ()
+    used = {b["type"] for b in layout["blocks"]}
+    used.update(b["type"] for d in layout["submodels"].values() for b in d["blocks"])
+    needed = sorted(used & (PLUGIN_BLOCK_TYPES | {t for t in declared if isinstance(t, str)}))
+    if needed:
+        layout["info"] = {**info, "requires_plugins": needed}
+    elif "requires_plugins" in info:
+        layout["info"] = {k: v for k, v in info.items() if k != "requires_plugins"}
+    return layout
 
 
 def _record_aliases(section: sections.Section) -> None:
@@ -1979,6 +2057,9 @@ class DefinitionView:
 
     def set_counter_offsets(self, offsets):
         self.document.set_counter_offsets(offsets, scope=self.name)
+
+    def set_queue_rows(self, rows):
+        self.document.set_queue_rows(rows, scope=self.name)
 
     def set_params(self, name, params):
         self.document.set_params(name, params, scope=self.name)

@@ -3222,5 +3222,46 @@
     },
     "name": "explain_kpi",
     "read_only": false
+  },
+  {
+    "description": "The open-and-run gate: does the model open in the editor with NO errors, using the\nplugins this person enabled, and run one replication? Call it before you say a model you\nbuilt or edited is done; a model that fails it is not done.\n\nReturns {\"model\", \"passed\", \"message\"}: the message says what failed first (an error in the\nProblems panel, with its fix, or the exception of the run). A block type that \"comes from a\nplugin that is not loaded\" needs the person to trust its folder in Settings > Plugins;\n`propose_plugin_folder` can only suggest one.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to check.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "check_model_opens",
+    "read_only": true
+  },
+  {
+    "description": "Propose a plugin folder for the person to trust. It is added to their Settings > Plugins\nlist SWITCHED OFF and marked \"added by assistant\": nothing in it runs until the person ticks\nit there. Only a folder inside this workspace can be proposed; a folder already listed is\nleft exactly as it is. Tell the person to open Settings > Plugins and enable it.\n\nReturns {\"model\", \"folder\", \"state\"}: \"proposed\" (added, off), or \"listed\" (already there,\nwith \"enabled\" saying whether the person turned it on).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "description": "The plugin folder, inside the workspace (relative to its root, or absolute under it).",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model that needs the plugin.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "folder"
+      ],
+      "type": "object"
+    },
+    "name": "propose_plugin_folder",
+    "read_only": false
   }
 ]

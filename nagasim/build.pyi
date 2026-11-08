@@ -326,11 +326,18 @@ def EmpiricalDiscrete(*, values: list[Any] = ..., probs: list[Any] = ...) -> Dis
     """
 
 
-def FixedSchedule(*, schedule: list[Any] = ...) -> Distribution:
-    """Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.
-    Param: schedule (ordered list of times).
+def FixedSchedule(
+    *,
+    schedule: list[Any] = ...,
+    jitter: float | str = 0.0,
+    jitter_law: Any = 'Normal',
+) -> Distribution:
+    """Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan; an optional jitter shifts each arrival at random and keeps their order.
+    Params: schedule (ordered list of times), jitter (standard deviation, 0 = off), jitter_law (Normal or Uniform).
 
     schedule: ordered list of absolute arrival/event times
+    jitter: standard deviation of each arrival's random shift, in the schedule's unit; 0 = exact times
+    jitter_law: shape of the shift: Normal or Uniform (same standard deviation)
     """
 
 
@@ -367,6 +374,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         e_type: str | dict[str, Any] = 'DEFAULT',
         arrival_mode: str | dict[str, Any] = 'Interarrival',
         schedule_name: str | dict[str, Any] = '',
@@ -406,6 +414,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
@@ -429,6 +438,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         assignments: list[Any] | dict[str, Any] = ...,
     ) -> Block:
         """Add a ASSIGN block. Sets attributes on a part, order or customer, or a model variable, from expressions as it passes, for example a due date, a type or a counter. Takes an ordered list of assignments, each is `{"target": "entity.<attr>" | "entity.agent.<attr>" | "<variable>", "expr": "<expression>"}`. Assignments run in order, so a later one sees what an earlier one wrote. Targets and expressions both go through core/expressions.py -- a model file never executes Python.
@@ -446,6 +456,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         mode: str | dict[str, Any] = 'Chance',
         probs: list[Any] | dict[str, Any] = ...,
         conditions: list[Any] | dict[str, Any] = ...,
@@ -475,6 +486,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
@@ -520,6 +532,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
@@ -541,6 +554,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
@@ -566,6 +580,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         batch_size: int | dict[str, Any] = 2,
         batched_entity_type: str | dict[str, Any] = 'BATCH',
         max_wait: float | str | dict[str, Any] = '',
@@ -597,6 +612,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         number_to_match: int | dict[str, Any] = 2,
         batch_option: bool | dict[str, Any] = False,
         batched_entity_type: str | dict[str, Any] = 'BATCH',
@@ -622,6 +638,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         mode: str | dict[str, Any] = 'Retain original entity values',
         attrs: list[Any] | dict[str, Any] = ...,
         carrier: str | dict[str, Any] = 'dispose',
@@ -649,6 +666,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         number_of_duplicates: int | dict[str, Any] = 2,
     ) -> Block:
         """Add a DUPLICATE block. Makes copies of an entity, for example to model one job spawning several; the original goes on unchanged. All copies leave by the one output link: follow it with a DECIDE to send them down different branches. Forwards the original entity unchanged, then forwards `number_of_duplicates - 1` shallow copies, each a fresh Entity with its own id and name (never a deepcopy: that used to clone the entity manager and any live resource requests).
@@ -666,6 +684,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         mode: str | dict[str, Any] = 'Signal',
         signal_name: str | dict[str, Any] = '',
         conditions: list[Any] | dict[str, Any] = ...,
@@ -691,6 +710,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
@@ -714,6 +734,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         logic_class: str | dict[str, Any] = 'SampleLogic',
     ) -> Block:
         """Add a LOGIC block. Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic, or first in the module the caller passes as `run_model(logic=...)`. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
@@ -731,6 +752,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         action: str | dict[str, Any] = 'Seize Delay Release',
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
@@ -798,6 +820,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         action: str | dict[str, Any] = 'Seize Delay Release',
         profile: str | dict[str, Any] = '',
         hrc: str | dict[str, Any] = 'none',
@@ -869,6 +892,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         stat_name: str | dict[str, Any] = '',
         kind: str | dict[str, Any] = 'count',
         expr: str | dict[str, Any] = '1',
@@ -892,6 +916,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         station: str | dict[str, Any] = '',
         node: str | dict[str, Any] = '',
         tending: dict[str, Any] = ...,
@@ -913,6 +938,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         distribution: str | Distribution = 'Constant',
         dist_params: dict[str, Any] = ...,
         time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
@@ -940,6 +966,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         level: str | dict[str, Any] = '',
         amount: float | str | dict[str, Any] = '1',
         mode: str | dict[str, Any] = 'remove',
@@ -963,6 +990,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         energy: float | str | dict[str, Any] = '0',
         max_power: float | str | dict[str, Any] = '0',
         time_limit: float | str | dict[str, Any] = '',
@@ -998,6 +1026,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         fleet: str | dict[str, Any] = '',
         destination: str | dict[str, Any] = '',
         priority: int | dict[str, Any] = 0,
@@ -1021,6 +1050,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         length: float | dict[str, Any] = 0.0,
         length_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'base',
         speed: float | dict[str, Any] = 1.0,
@@ -1062,6 +1092,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         capacity: int | dict[str, Any] = 1,
         level: str | dict[str, Any] = '',
     ) -> Block:
@@ -1081,6 +1112,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         message: str | dict[str, Any] = '',
         to: Any = 'entity.agent',
         payload: str | dict[str, Any] = '',
@@ -1102,6 +1134,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         definition: str | dict[str, Any] = '',
         arguments: dict[str, Any] = ...,
         preset: str | dict[str, Any] = '',
@@ -1123,6 +1156,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         port: str | dict[str, Any] = 'in',
     ) -> Block:
         """Add a SUB_ENTRY block. Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
@@ -1140,6 +1174,7 @@ class Level:
         layout_rotation: float | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
         port: str | dict[str, Any] = 'out',
     ) -> Block:
         """Add a SUB_EXIT block. Editor-only blocks (SUBMODEL, SUB_ENTRY, SUB_EXIT) that group blocks into a reusable sub-model with named ports, expanded away before the run. Editor-only placeholder shared by three types, never run directly -- `core/submodels.flatten()` expands them away before the engine builds any process. SUB_ENTRY: an input port of a submodel definition (`port` names it; exactly one outgoing link inside the definition, none incoming). SUB_EXIT: an output port of a definition (`port` names it; incoming links only). SUBMODEL: an instance of a definition dropped on the canvas (`definition` names it, `arguments` binds its parameters).
@@ -1206,6 +1241,8 @@ class Model(Level):
         annotations: list[Any] = ...,
         background: None | dict[str, Any] = ...,
         building: None | dict[str, Any] = ...,
+        cranes: None | list[Any] = ...,
+        stockpiles: None | dict[str, Any] = ...,
         info: dict[str, Any] = ...,
         initial_state: dict[str, Any] = ...,
         simulation: dict[str, Any] = ...,

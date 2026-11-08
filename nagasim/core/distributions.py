@@ -398,7 +398,51 @@ def _mean_empirical_discrete(p):
     return float(sum(float(v) * pi for v, pi in zip(values, probs)))
 
 
+# FixedSchedule's optional arrival jitter (E6, D1125): the law shapes the shift, `jitter` is
+# its standard deviation in either law, so switching law keeps the spread.
+JITTER_LAWS = ("Normal", "Uniform")
+
+
+def _jitter_shifts(rng, law, sigma: float, n: int):
+    if sigma < 0:
+        raise ValueError(f"FixedSchedule: jitter must be 0 or more, got {sigma}")
+    if law == "Normal":
+        return rng.normal(0.0, sigma, n)
+    if law == "Uniform":
+        half = sigma * math.sqrt(3.0)
+        return rng.uniform(-half, half, n)
+    raise ValueError(f"FixedSchedule: jitter_law must be one of {', '.join(JITTER_LAWS)}, got {law!r}")
+
+
+def _jittered_times(rng, p, start) -> list[float]:
+    """Every listed time from *start* on, each shifted by its own draw, all drawn at once from
+    the caller's stream (the block's, seeded per replication) so arrival i keeps its shift
+    whatever else the block draws later. A running maximum keeps them in list order (FIFO) and
+    never before *start* nor 0: `prev = max(prev, t + shift)`. A shift may move an arrival
+    earlier than its listed time; the block simply waits less, so no release lead is needed."""
+    start = 0.0 if start is None else max(float(start), 0.0)
+    planned = [t for t in p.get("schedule", []) if t >= start]
+    shifts = _jitter_shifts(rng, p.get("jitter_law", "Normal"), float(p["jitter"]), len(planned))
+    out, prev = [], start
+    for t, shift in zip(planned, shifts):
+        prev = max(prev, t + float(shift))
+        out.append(prev)
+    return out
+
+
 def _sample_fixed_schedule(rng, p, *, current=None, state=None, **_):
+    if p.get("jitter") and state is not None:
+        # The jittered times are drawn once, at the first call, and then served in order: the
+        # cursor walks them, not the listed times (a jittered time may lie before its neighbour's
+        # listed one, and the listed-time skip below would drop it).
+        times = state.get("times")
+        if times is None:
+            times = state["times"] = _jittered_times(rng, p, current)
+        cursor = state.get("cursor", 0)
+        if cursor >= len(times):
+            return None
+        state["cursor"] = cursor + 1
+        return times[cursor]
     schedule = p.get("schedule", [])
     cursor = state.get("cursor", 0) if state is not None else 0
     while cursor < len(schedule):
@@ -618,13 +662,18 @@ _add("EmpiricalDiscrete", [_p("values", [0], "list", hint="candidate integer val
     "Params: values (int list), probs (weights summing to 1).",
     arrival=True, delay=True, support_lower=0.0, mean=_mean_empirical_discrete)
 
-_add("FixedSchedule", [_p("schedule", [], "list", hint="ordered list of absolute arrival/event times")],
+_add("FixedSchedule", [_p("schedule", [], "list", hint="ordered list of absolute arrival/event times"),
+    _p("jitter", 0.0, hint="standard deviation of each arrival's random shift, in the schedule's unit; 0 = exact times"),
+    DistParam("jitter_law", "Normal", hint="shape of the shift: Normal or Uniform (same standard deviation)",
+              kind="choice", choices=JITTER_LAWS)],
     _sample_fixed_schedule, "continuous",
-    "Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.\nParam: schedule (ordered list of times).",
+    "Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan; "
+    "an optional jitter shifts each arrival at random and keeps their order.\n"
+    "Params: schedule (ordered list of times), jitter (standard deviation, 0 = off), jitter_law (Normal or Uniform).",
     arrival=True, support_lower=0.0)
-# No `mean`: driven by a cursor over explicit times, never a random draw
-# (`_sample_fixed_schedule` reads no rng), so deterministic mode changes
-# nothing here (StochasticDistribution.sample skips the substitution).
+# No `mean`: driven by a cursor over explicit times; only a jitter draws, and
+# deterministic mode drops it (StochasticDistribution.sample), keeping the
+# listed times.
 
 _add("CustomExpression", [_p("expression", "1", "expression", hint="model expression, e.g. '2 + EXPO(3)'")],
     _sample_custom_expression, "continuous",
@@ -685,12 +734,14 @@ class StochasticDistribution:
         # ... with plain numeric params), confirmed hot by profiling
         # tools/bench.py's mm1_100k benchmark.
         expression_params = {p.name for p in spec.params if p.kind == "expression"} if spec else set()
-        self._expression_params = expression_params
+        # A "choice" param is a literal word (E6's jitter_law), never evaluated as an expression.
+        self._literal_params = expression_params | (
+            {p.name for p in spec.params if p.kind == "choice"} if spec else set())
         # Bound once: `sample` calls it directly when there is nothing to
         # resolve, instead of a registry lookup on every draw.
         self._sampler = spec.sampler if spec else None
         self.needs_scope = bool(expression_params) or any(
-            isinstance(v, str) for k, v in self.params.items() if k not in expression_params)
+            isinstance(v, str) for k, v in self.params.items() if k not in self._literal_params)
 
     def _scope(self, rng, scope):
         """The expression scope for this sample: the caller's, with the rng the
@@ -709,7 +760,7 @@ class StochasticDistribution:
             return self.params
         resolved = self._scope(rng, scope)
         return {k: (compile_expression(v).evaluate(resolved)
-                    if isinstance(v, str) and k not in self._expression_params else v)
+                    if isinstance(v, str) and k not in self._literal_params else v)
                 for k, v in self.params.items()}
 
     def sample(self, rng, current=None, scope=None, deterministic=False):
@@ -737,6 +788,8 @@ class StochasticDistribution:
                     f"deterministic mode needs one (validate_model flags this before a run "
                     f"gets here)")
             return mean
+        if deterministic and self.dist_type == "FixedSchedule" and p.get("jitter"):
+            p = {**p, "jitter": 0.0}    # deterministic mode keeps the listed times (D1125)
         resolved_scope = self._scope(rng, scope) if self.needs_scope else scope
         return spec.sampler(rng, p, current=current, scope=resolved_scope, state=self._state)
 

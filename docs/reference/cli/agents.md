@@ -10,8 +10,9 @@ Serve the model operations to an assistant.
 ```text
 usage: naga mcp [-h] [--root ROOT] [--allow-network] [--allow-private-network]
                 [--allow-host HOST] [--connections FILE]
-                [--tools {all,compact}] [--room] [--tool-picker {gte,haiku}]
-                [--tool-picker-backup PATH] [--twin DIR]
+                [--tools {all,compact,build,run,study,twin}] [--room]
+                [--tool-picker {gte,haiku}] [--tool-picker-backup PATH]
+                [--twin DIR]
 
 Run the MCP server over stdio. File access is confined to --root, and network
 access is off unless you allow it here.
@@ -30,11 +31,12 @@ options:
   --connections FILE    the connections a live source (rest, mqtt, opcua) may
                         name: a JSON file of yours, never the model's; without
                         it every live source is refused
-  --tools {all,compact}
+  --tools {all,compact,build,run,study,twin}
                         all: every tool (default); compact: only what
                         building, running and saving a model needs
-                        (get_model_format, write_model, run_model, ...), so a
-                        client pays for fewer tool descriptions
+                        (get_model_format, write_model, run_model, ...);
+                        build, run, study, twin: the tools of that situation.
+                        A client then pays for fewer tool descriptions
   --room                also serve the live control room of the studies on
                         127.0.0.1 (a random port and token); every study
                         answer then carries its address
@@ -103,17 +105,21 @@ options:
 ## naga study
 
 ```text
-usage: naga study [-h] {rerun,deck} ...
+usage: naga study [-h] {rerun,numbers,deck} ...
 
 Checks on a study folder, and its slides as a PDF.
 
 positional arguments:
-  {rerun,deck}
-    rerun       re-run every version and compare the stored KPIs
-    deck        the slides as a PDF, printed by this machine's Chrome or Edge
+  {rerun,numbers,deck}
+    rerun               re-run every version and compare the stored KPIs, then
+                        run the reproduce.json steps and compare their outputs
+    numbers             check every tagged number of the write-ups against its
+                        source file
+    deck                the slides as a PDF, printed by this machine's Chrome
+                        or Edge
 
 options:
-  -h, --help    show this help message and exit
+  -h, --help            show this help message and exit
 ```
 
 ## naga room

@@ -6,15 +6,18 @@ compute statistics themselves.
 """
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass, field
 from functools import lru_cache
 
 import numpy as np
 from scipy import stats as _sp_stats
 
+from nagasim.core.sim_classes import EntityRecord
+
 __all__ = ["TimeWeighted", "Tally", "Counter", "UserStat", "USER_STAT_KINDS", "RECORD_KINDS", "ci95",
            "paired_diff_ci", "welch_diff_ci", "wilson_interval", "EntityTypeStats",
-           "DueDateStats", "account_and_retain", "account_due_date", "created_in_window"]
+           "DueDateStats", "FloatSeries", "account_and_retain", "account_due_date", "created_in_window"]
 
 
 def created_in_window(entity, warmup: float) -> bool:
@@ -97,13 +100,17 @@ class TimeWeighted:
 
 
 class Tally:
-    """Observation-based accumulator (waiting times, residence times)."""
+    """Observation-based accumulator (waiting times, residence times).
+
+    `values` is a packed `array('d')` (D1061): 8 B a value instead of a list
+    slot and a float object (32 B). Every value goes in through `float()`, so
+    nothing a reader sees changes."""
 
     def __init__(self):
         self.reset()
 
     def reset(self) -> None:
-        self.values: list[float] = []
+        self.values = array("d")
 
     def add(self, x: float) -> None:
         self.values.append(float(x))
@@ -202,6 +209,48 @@ class UserStat:
             self.collector.reset()
 
 
+class FloatSeries:
+    """An append-only sample kept packed in an `array('d')` (D1061) while every
+    value is a float; the first value that is not (an `int` throughput time on
+    an integer clock, a cost an expression set to an int) turns it into a plain
+    list, so readers get back exactly the objects appended -- a frame's dtype
+    and a mode's value depend on them."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, values=()):
+        self._data = array("d")
+        for value in values:
+            self.append(value)
+
+    def append(self, value) -> None:
+        data = self._data
+        if isinstance(value, float) or type(data) is list:
+            data.append(value)
+        else:
+            self._data = [*data, value]
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __getitem__(self, index):
+        return self._data[index]
+
+    def __eq__(self, other):
+        if isinstance(other, FloatSeries):
+            other = other._data
+        try:
+            return list(self._data) == list(other)
+        except TypeError:
+            return NotImplemented
+
+    def __repr__(self) -> str:
+        return f"FloatSeries({list(self._data)!r})"
+
+
 @dataclass
 class EntityTypeStats:
     """Streaming per-entity-type accumulator (ROADMAP 2.5, DEVLOG #62).
@@ -216,8 +265,8 @@ class EntityTypeStats:
 
     created: int = 0
     completed: int = 0
-    times: list = field(default_factory=list)
-    costs: list = field(default_factory=list)
+    times: FloatSeries = field(default_factory=FloatSeries)
+    costs: FloatSeries = field(default_factory=FloatSeries)
     holding_sum: float = 0.0
     assigned_sum: float = 0.0   # sum of (entity.cost - entity._auto_cost)
 
@@ -319,6 +368,12 @@ def account_and_retain(ctx, entity) -> None:
         _drop(ctx, entity)
     elif ctx.entity_log_count < ctx.entity_log_limit:
         ctx.entity_log_count += 1
+        # D1061: the flat log keeps only what its row reads, in place of the
+        # whole entity (same key, so the same position). An entity still
+        # holding a resource, or inside a batch, stays whole: its report-time
+        # cost is still a projection (`outputs.entity_cost_asof`).
+        if not getattr(entity, "req_params", None) and getattr(entity, "in_batch", None) is None:
+            ctx.all_entities.append(EntityRecord.of(entity))
     else:
         ctx.entity_log_truncated = True
         _drop(ctx, entity)

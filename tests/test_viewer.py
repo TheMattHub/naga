@@ -53,6 +53,25 @@ def _opener(urls, asked):
     return open_
 
 
+def test_a_page_carries_each_wheel_without_what_a_run_never_imports():
+    """D1047: tests, stubs, headers, static libraries and the scipy subpackages a run never
+    imports stay out of the page; licences and the dist-info stay in; the same wheel gives
+    the same bytes, and a wheel with nothing to leave out is passed on as it was."""
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, "w") as wheel:
+        for name in ("scipy/__init__.py", "scipy/stats/_stats.py", "scipy/stats/tests/test_x.py",
+                     "scipy/io/__init__.py", "scipy/signal/x.py", "scipy/stats/_sobol_direction_numbers.npz",
+                     "scipy/special/x.pyi", "scipy/_lib/include/x.h", "scipy/libs/libx.a",
+                     "scipy/io/LICENSE.txt", "scipy-1.0.dist-info/RECORD", "scipy-1.0.dist-info/LICENSE.txt"):
+            wheel.writestr(name, name)
+    trimmed = vr.trim(raw.getvalue())
+    assert zipfile.ZipFile(io.BytesIO(trimmed)).namelist() == [
+        "scipy/__init__.py", "scipy/stats/_stats.py", "scipy/io/LICENSE.txt",
+        "scipy-1.0.dist-info/RECORD", "scipy-1.0.dist-info/LICENSE.txt"]
+    assert vr.trim(raw.getvalue()) == trimmed
+    assert vr.trim(_wheel("six")) == _wheel("six")
+
+
 def test_fetch_keeps_only_the_pinned_files_and_load_gives_them(tmp_path, monkeypatch):
     urls, wheels = _fake_runtime(monkeypatch)
     asked = []
@@ -113,7 +132,7 @@ import copy                                                         # noqa: E402
 from pathlib import Path                                            # noqa: E402
 
 import nagasim                                                      # noqa: E402
-from nagasim import dashboard, experiments, viewer                  # noqa: E402
+from nagasim import dashboard, experiments, pagetext, viewer        # noqa: E402
 from nagasim.api import load_layout                                 # noqa: E402
 
 MODELS = Path(nagasim.__file__).parent / "models"
@@ -474,7 +493,7 @@ def test_engine_zip_round_trip(tmp_path, monkeypatch):
     """D919: the zip the build writes is what a frozen build carries, licences and all."""
     unfrozen = viewer._engine_zip()
     base = _frozen_layout(tmp_path, monkeypatch)
-    assert viewer.engine_available() and viewer.engine_on_disk()
+    assert viewer.engine_available() and not hasattr(viewer, "engine_on_disk")    # alias dropped after 0.19.0
     assert viewer._engine_zip() == unfrozen
     assert (base / "nagasim" / "viewer_engine.zip").read_bytes() == unfrozen[0]
 
@@ -561,11 +580,27 @@ console.log(JSON.stringify({
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
-def test_the_scripts_pure_half_under_node(tmp_path):
-    (tmp_path / "main.js").write_text(viewer._MAIN + _NODE_PROBE, encoding="utf-8")
-    done = subprocess.run([NODE, str(tmp_path / "main.js")], capture_output=True, text=True, timeout=60)
+def _pure_half(tmp_path, language):
+    """The probe's answers with the words of *language* (D1056) as the page sets them."""
+    (tmp_path / "main.js").write_text(viewer._MAIN + f"\nT = {json.dumps(pagetext.table(language))};\n"
+                                      + _NODE_PROBE, encoding="utf-8")
+    done = subprocess.run([NODE, str(tmp_path / "main.js")], capture_output=True, text=True,
+                          encoding="utf-8", timeout=60)
     assert done.returncode == 0, done.stderr[-2000:]
-    out = json.loads(done.stdout)
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_pure_half_speaks_italian_with_a_decimal_comma(tmp_path):
+    out = _pure_half(tmp_path, "it")
+    assert out["fmt"] == ["-", "0", "4,658", "1,235e-4", "1,235e+7", "-39,46", "1"]
+    assert out["span"] == ["da 1 a 2,5", "-"] and out["seconds"] == ["1 s", "89 s", "3 min"]
+    assert out["same"][0].startswith("Stesso motore: in questo browser lo scenario base coincide")
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_scripts_pure_half_under_node(tmp_path):
+    out = _pure_half(tmp_path, "en")
     assert out["fmt"] == ["-", "0", "4.658", "1.235e-4", "1.235e+7", "-39.46", "1"]
     assert out["span"] == ["1 to 2.5", "-"] and out["seconds"] == ["1 s", "89 s", "3 min"]
     assert out["moved"] == {"b": False, "constructor": 2}
@@ -662,7 +697,7 @@ def _text(name):
     return {"eval": 'document.getElementById("%s").textContent' % name}
 
 
-# The author's baseline is drawn by the page's script, which follows 40 MB of data: on a
+# The author's baseline is drawn by the page's script, which follows 35 MB of data: on a
 # slow runner the markup is there before the table is. Wait for the table, then read it.
 BASELINE_SHOWN = {"eval": 'new Promise(function (done) { var tries = 0; (function look() {'
                           ' var body = document.getElementById("results-body");'   # not parsed yet on a slow runner
@@ -710,7 +745,7 @@ def test_exit_check_a_changed_input_run_in_the_page_gives_the_desktops_numbers(t
     an input changed, re-run, and the KPIs are desktop Python's for that input and seed."""
     page = tmp_path / "single_server.html"
     made = viewer.build_viewer(MODELS / "single_server.json", page, runtime=RUNTIME)
-    assert 35e6 < made["bytes"] < 45e6
+    assert 30e6 < made["bytes"] < 37e6          # D1047: 41.2 MB before the runtime was trimmed
     out = _drive(browser, page, tmp_path, [
         BASELINE_SHOWN, READY, _set(2), _click("run"), RAN, _text("record"),
         _text("results-body"), _text("same"), _text("made"), _text("results"),
@@ -803,7 +838,7 @@ def test_the_levers_tabs_footer_and_a_page_without_the_new_fields(tmp_path, monk
     assert plain["answers"][:2] == ["Plain|true", "Baseline*,Yours"] and "Avg Throughput Time" in plain["answers"][2]
 
 
-@pytest.mark.slow          # two pages in a browser, one of 40 MB
+@pytest.mark.slow          # two pages in a browser, one of 35 MB
 @in_a_browser
 def test_the_shared_pages_fit_a_phone_and_a_wide_screen(tmp_path):
     """D697, D704: at 360 and at 1920 px neither page scrolls sideways; the console is one
@@ -973,7 +1008,7 @@ def test_frozen_data_is_plain_model_data_and_runs_as_the_bound_model_does(tmp_pa
     model_shipped = json.loads(_blocks(page)["model"])
     assert not model_shipped.get("data_sources") and not model_shipped.get("data_bindings")
     assert json.loads(_blocks(page)["data"])["frozen"] == "2026-10-10"
-    assert '"Data as read on " + D.frozen' in viewer._MAIN
+    assert 'tr("viewer.frozen", {date: D.frozen})' in viewer._MAIN
 
 
 def test_freezing_refuses_by_name_what_it_cannot_read_or_must_not_keep(tmp_path, monkeypatch):
@@ -1058,7 +1093,10 @@ def test_the_pages_own_scripts_hold_nothing_that_leaves_without_a_request():
     # imports of embedded bytes; the main thread makes none.
     assert "fetch" not in viewer._MAIN and "fetch" not in player.SCRIPT
     assert re.findall(r"\bimport\s*\(([^)]*)\)", viewer._WORKER) == ['url("pyodide.mjs"', 'url("pyodide.asm.mjs"']
-    assert re.findall(r"fetch\b[^;\n]*", viewer._WORKER) == ["fetch = async function (what) {"]
+    assert re.findall(r"fetch\b[^;\n]*", viewer._WORKER) == ["fetch", "fetch = async function (what) {"]
+    # D1087: a small page's one request, to the pinned folder only (REMOTE is the builder's).
+    assert re.findall(r"\bNET\.call\(([^)]*)\)", viewer._WORKER) == [
+        'self, REMOTE.base + entry[0], {credentials: "omit", referrerPolicy: "no-referrer"}']
 
 
 _LEAKY = """<!doctype html><html><body><p id="status">start</p><script>
@@ -1324,3 +1362,202 @@ def test_1466_fleets_keep_their_size_on_a_page_without_a_floor_plan(tmp_path):
                     ' new Promise(function (done) { setTimeout(function () { done(JSON.stringify(seen)); }, 600); })'}
     seen = json.loads(_drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "a", [shot])["answers"][0])
     assert [0.75, 0.75] not in seen["scales"], seen          # on the broken page this is the vehicle scale
+
+
+# -- D1056: one language per file; the Italian words run longer --------------------------
+# Per theme: its name, the overflow at 360 px, what spills out of its own box there (a
+# button, tab, heading or label wider than itself), the overflow at 1920 px.
+_THEMES_AND_WIDTHS = [step for theme in ("light", "dark") for step in (
+    {"eval": 'document.documentElement.dataset.theme = "%s"' % theme},
+    {"width": 360}, {"eval": "document.documentElement.scrollWidth - window.innerWidth"},
+    {"eval": 'Array.prototype.filter.call(document.querySelectorAll("button, .tab, h2, label"), function (n) {'
+             ' return n.offsetParent && n.scrollWidth > n.clientWidth + 1; }).map(function (n) {'
+             ' return n.id || n.textContent; }).join("|")'},
+    {"width": 1920}, {"eval": "document.documentElement.scrollWidth - window.innerWidth"})]
+
+
+def _fits(answers):
+    assert len(answers) == 8, answers
+    for theme, narrow, spilled, wide in (answers[:4], answers[4:]):
+        assert narrow <= 0 and wide <= 0 and spilled == "", (theme, narrow, spilled, wide)
+
+
+@pytest.mark.slow
+@needs_browser
+def test_an_italian_player_speaks_italian_in_both_themes_at_a_phone_width(tmp_path):
+    from nagasim import api, player
+    from nagasim.core.trace import TraceRecorder
+
+    layout = model("line_with_buffers.json")
+    recorder = TraceRecorder()
+    results = api.run_model(layout, replications=2, trace=recorder)
+    player.build_player(layout, {experiments.BASELINE: recorder, "Two": recorder}, results=results,
+                        path=tmp_path / "p.html", language="it")
+    out = _drive(BROWSERS[0], tmp_path / "p.html", tmp_path, [
+        {"eval": "document.documentElement.lang"}, _text("play"), _click("play"), _text("play"),
+        _text("theme"), _click("theme"), _text("theme"), _text("line-h"),
+        {"eval": 'document.querySelector("#tabs .tab").textContent'},
+        {"eval": 'document.getElementById("speed").options[2].textContent'}] + _THEMES_AND_WIDTHS)
+    lang, play, _clicked, pause, auto, _again, light, line, tab, speed = out["answers"][:10]
+    assert (lang, play, pause, auto, light, line) == ("it", "Avvia", "Pausa", "Tema: automatico", "Tema: chiaro",
+                                                      "La linea")
+    assert tab == "Scenario base" and speed == "60x (1 min/s)"
+    _fits(out["answers"][10:])
+    assert not [text for text in out["console"] if "Content Security" in text]
+
+
+@pytest.mark.slow          # a 35 MB page, its engine started and one run
+@in_a_browser
+def test_an_italian_viewer_runs_and_answers_in_italian_in_both_themes_at_a_phone_width(tmp_path):
+    page = tmp_path / "v.html"
+    viewer.build_viewer(MODELS / "single_server.json", page, runtime=RUNTIME, language="it")
+    out = _drive(BROWSERS[0], page, tmp_path, [
+        BASELINE_SHOWN, {"wait": "^Pronto in|non .{1,3} riuscito"}, _set(2), _click("run"),
+        {"wait": "^Simulazione completata|^Simulazione non eseguita|errore"},
+        {"eval": "document.documentElement.lang"}, _text("run"), _text("results-title"),
+        _text("answer-kicker"), _text("answer-head"), _text("made"), _text("same"),
+        {"eval": 'document.getElementById("player").srcdoc.indexOf(\'<html lang="it" class="framed"\') > 0'},
+        {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 1500); })"}]
+        + _THEMES_AND_WIDTHS)
+    (_shown, ready, _value, _clicked, ran, lang, run, title, kicker, head, made, same, framed,
+     _waited) = out["answers"][:14]
+    assert ready.startswith("Pronto in") and ran.startswith("Simulazione completata in")
+    assert lang == "it" and run == "Simula la mia versione" and framed is True
+    assert title == "Risultati: La mia versione rispetto a Scenario base"
+    assert kicker == "Risposta per la mia versione"
+    assert head.split(":")[0] in ("Sì, molto probabilmente", "No", "Non ancora chiaro",
+                                  "Nessuna differenza percepibile")
+    assert "repliche, semi da 0 a" in made and same.startswith("Stesso motore")
+    _fits(out["answers"][14:])
+    assert out["asked"] == [] and not [text for text in out["console"] if "Content Security" in text]
+
+
+# ---------------------------------------------------------------- the small page (D1087)
+def _remote(page):
+    return json.loads(re.search(r"var REMOTE = (.*?);\n", page).group(1))
+
+
+def test_a_small_page_carries_the_engine_and_only_the_pins_address_and_hashes(tmp_path, monkeypatch):
+    folder = _fake_folder(tmp_path, monkeypatch)
+    viewer.build_viewer(model(), tmp_path / "small.html", runtime=folder, pyodide="cdn")
+    viewer.build_viewer(model(), tmp_path / "full.html", runtime=folder)
+    small = (tmp_path / "small.html").read_text("ascii")
+    full = (tmp_path / "full.html").read_text("ascii")
+    policy = re.search(r'Content-Security-Policy" content="([^"]+)"', small).group(1)
+    assert policy.startswith(f"default-src 'none'; connect-src {vr.WHEEL_URL}; script-src ")
+    assert "connect-src" not in full and _remote(full) is None
+    # It carries the engine alone; it fetches every file `load` checks, with the pin's hash.
+    assert re.findall(r'data-name="([^"]+)"', small) == ["engine.zip"]
+    pinned = vr.load(folder)
+    remote = _remote(small)
+    assert remote["base"] == vr.WHEEL_URL
+    assert remote["files"] == [[name, hashlib.sha256(data).hexdigest(), len(data)] for name, data in pinned.items()]
+    assert json.loads(_blocks(small)["data"])["cdn"] is True and json.loads(_blocks(full)["data"])["cdn"] is False
+    with pytest.raises(ValueError, match="pyodide must be 'embedded' or 'cdn'"):
+        viewer.build_viewer(model(), tmp_path / "x.html", runtime=folder, pyodide="https://elsewhere/")
+    # An address that could end the policy or the script is refused, not written.
+    monkeypatch.setattr(vr, "WHEEL_URL", "https://cdn.jsdelivr.net/x/; script-src *")
+    with pytest.raises(AssertionError, match="plain folder address"):
+        viewer.build_viewer(model(), tmp_path / "x.html", runtime=folder, pyodide="cdn")
+    assert not (tmp_path / "x.html").exists()
+
+
+def test_naga_viewer_writes_a_small_page_on_request(tmp_path, monkeypatch, capsys):
+    folder = _fake_folder(tmp_path, monkeypatch)
+    page = tmp_path / "small.html"
+    assert viewer.main([str(MODELS / "single_server.json"), "-o", str(page), "--runtime", str(folder),
+                        "--pyodide", "cdn"]) == 0
+    assert "connect-src" in page.read_text("ascii")
+
+
+class _Served:
+    """The pinned files on a local server, one of them changed: a test-only build fetches
+    them from here (WHEEL_URL swapped), as a page would from the CDN."""
+
+    def __init__(self, files):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                name = self.path.rsplit("/", 1)[-1]
+                body = files.get(name)
+                self.send_response(200 if body is not None else 404)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(body or b"")))
+                self.end_headers()
+                self.wfile.write(body or b"")
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/full/"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.mark.slow
+@in_a_browser
+@pytest.mark.parametrize("name", ["pyodide.mjs", "pyodide.asm.wasm", "pyodide-lock.json"])
+def test_a_small_page_refuses_a_file_that_is_not_the_pinned_one(tmp_path, monkeypatch, name):
+    files = dict(vr.load(RUNTIME))
+    changed = bytearray(files[name])
+    changed[-2] ^= 1                                 # same size: the hash, not the length, says no
+    served = _Served({**files, name: bytes(changed)})
+    try:
+        monkeypatch.setattr(vr, "WHEEL_URL", served.url)
+        tampered = tmp_path / "tampered.html"
+        viewer.build_viewer(MODELS / "single_server.json", tampered, runtime=RUNTIME, pyodide="cdn",
+                            recording="")
+        out = _drive(BROWSERS[0], tampered, tmp_path, [{"wait": "^The engine (was not|could not)"}])
+        assert out["answers"][0].startswith(f"The engine was not started: {name}, downloaded from")
+        order = [entry[0] for entry in vr.cdn_files(files)]
+        assert out["asked"] == [served.url + n for n in order[:order.index(name) + 1]]   # nothing after the refusal
+        assert not [line for line in out["console"] if "Content Security" in line]
+    finally:
+        served.close()
+
+
+@pytest.mark.slow
+@in_a_browser
+def test_a_small_page_says_so_when_the_network_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(vr, "WHEEL_URL", "http://127.0.0.1:9/full/")       # nobody listens there
+    offline = tmp_path / "offline.html"
+    viewer.build_viewer(MODELS / "single_server.json", offline, runtime=RUNTIME, pyodide="cdn",
+                        recording="", language="it")
+    out = _drive(BROWSERS[0], offline, tmp_path / "it", [{"wait": "^Il motore non"}])
+    assert out["answers"][0].startswith("Il motore non \u00e8 partito: non \u00e8 stato possibile "
+                                       "scaricare pyodide.mjs")
+
+
+def _online():
+    import socket
+    try:
+        socket.create_connection(("cdn.jsdelivr.net", 443), timeout=5).close()
+        return True
+    except OSError:
+        return False
+
+
+@pytest.mark.live
+@pytest.mark.slow
+@in_a_browser
+def test_live_a_small_page_runs_a_model_on_the_real_cdn(tmp_path):
+    """D1087 against cdn.jsdelivr.net itself: the page asks for the pinned files there and
+    nowhere else, checks them, and a changed input runs to the desktop's numbers."""
+    if not _online():
+        pytest.skip("cdn.jsdelivr.net cannot be reached")
+    page = tmp_path / "small.html"
+    made = viewer.build_viewer(MODELS / "single_server.json", page, runtime=RUNTIME, pyodide="cdn")
+    assert made["bytes"] < 3.5e6          # 2.9 MB: the engine, the recording, the notices
+    out = _drive(BROWSERS[0], page, tmp_path, [READY, _set(2), _click("run"), RAN, _text("record"),
+                                               _text("versions")])
+    ready, _value, _clicked, ran, record, versions = out["answers"]
+    assert ready.startswith("Ready after") and ran.startswith("Run finished in"), (ready, ran)
+    assert sorted(out["asked"]) == sorted(vr.WHEEL_URL + name for name in vr.load(RUNTIME))
+    assert "downloaded from cdn.jsdelivr.net and checked" in versions
+    _same_run(json.loads(record), _desktop(model(), {"resources.Server.capacity": 2}))

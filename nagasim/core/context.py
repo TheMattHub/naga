@@ -281,6 +281,9 @@ class SimulationContext:
     # `block/<name>/out`, cleared with the statistics.
     counted_blocks: tuple = ()
     block_out_counts: dict = field(default_factory=dict)
+    # The live slot counter (E7, D1126): a `queuerow.SlotCounter` subscribed only when a block's
+    # `queue_row` gives `slots`, else None (no subscriber, no "slot_summary" frame).
+    slot_counter: object = None
     # Roser active-period tracker (PHASE6 W3 M2, ARCHITECTURE D113), built only
     # when `outputs.bottleneck` is set (`GraphModel.load_from_json`); None
     # otherwise, so every hook that would feed it is a cheap `is not None` away
@@ -315,10 +318,26 @@ class SimulationContext:
     # the logger can refuse it. Decided once, by `build_context`, so the level
     # has to be chosen before the run starts.
     debug: bool = False
+    # A plugin block's own results of this replication (E8, D1119): `record_kpi` and
+    # `add_artifact` fill them; both stay empty for every other model, which then has no
+    # "plugin_kpis" frame and no artifacts at all.
+    plugin_kpis: dict = field(default_factory=dict)
+    artifacts: dict = field(default_factory=dict)
 
     @property
     def now(self) -> float:
         return self.env.now + self.stage_offset
+
+    def record_kpi(self, name: str, value: float) -> None:
+        """Record a KPI of this replication from a plugin block (E8): one number per name, the
+        last call wins. It reaches `Results["plugin_kpis"]` as a Metric/Value/Run row."""
+        self.plugin_kpis[str(name)] = float(value)
+
+    def add_artifact(self, name: str, obj) -> None:
+        """Hand an object of this replication to the caller (E8), such as an executed schedule:
+        `Results.artifacts[run][name]`. It must pickle, since a replication may run in another
+        process; the last call for a name wins."""
+        self.artifacts[str(name)] = obj
 
     def raise_signal(self, name) -> None:
         """Succeed signal *name* (releasing every HOLD waiting on it) and

@@ -74,7 +74,7 @@ print(round(results.kpi("entity/DEFAULT/Avg Time"), 2), "mean time in the model 
 
 Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Priority jobs with rework](../../gallery/manufacturing.md) and 6 more.
 
-Guides: [Coming from Vensim](../../coming-from/vensim.md), [Event log to model](../../event-log-to-model.md), [System dynamics](../../system-dynamics.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md) and 9 more.
+Guides: [Coming from Vensim](../../coming-from/vensim.md), [Event log to model](../../event-log-to-model.md), [How do I total a subscripted value and remember a past one?](../../how-to/recipes/regions-memory.md), [System dynamics](../../system-dynamics.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md) and 10 more.
 
 ## See also
 

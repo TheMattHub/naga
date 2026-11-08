@@ -28,10 +28,10 @@ from __future__ import annotations
 
 __all__ = ["Factor", "parse_factor", "parse_constraint", "full_factorial", "latin_hypercube",
            "one_at_a_time", "overrides_for", "DesignResult", "run_design", "SelectionResult",
-           "select_best", "OptimizationResult", "optimize", "sensitivity", "tornado", "sobol",
-           "build_design", "main"]
+           "select_best", "OptimizationResult", "optimize", "current_point", "sensitivity", "tornado", "sobol",
+           "build_design", "main", "METHODS"]
 
-from ._constants import KINDS, _DEFAULT_RESPONSE_PREFIX, _KIND_ALIASES
+from ._constants import KINDS, METHODS, _DEFAULT_RESPONSE_PREFIX, _KIND_ALIASES
 
 # Public names plus the few privates `calibrate.py` and the tests reach for
 # (`_Evaluator`, `_point_key`, `_Record`, `_pattern_search`, `_fmt_point`,
@@ -42,7 +42,7 @@ from .designs import full_factorial, latin_hypercube, one_at_a_time
 from .evaluation import _Evaluator
 from .doe import DesignResult, run_design
 from .selection import SelectionResult, select_best
-from .optimization import OptimizationResult, _Record, _fmt_point, _pattern_search, optimize
+from .optimization import OptimizationResult, _Record, _fmt_point, _pattern_search, current_point, optimize
 from .sensitivity import sensitivity
 from .tornado import tornado
 from .sobol import sobol

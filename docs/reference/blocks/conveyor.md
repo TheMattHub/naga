@@ -87,7 +87,7 @@ print(results["conveyor_summary"].round(2).to_string(index=False))
 
 ## Used in
 
-Bundled models: [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md).
+Bundled models: [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md).
 
 Guides: [How do I move parts along a belt?](../../how-to/recipes/belt-transit.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Time units and transfer delays](../../modelling-guide/time-units.md).
 

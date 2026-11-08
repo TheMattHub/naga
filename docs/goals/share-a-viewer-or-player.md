@@ -51,7 +51,7 @@ naga viewer model.json -o model.html
 |---|---|---|
 | The reader can | watch one run | change inputs, run again, compare |
 | The reader can read | names, layout, the run | the whole model and the engine's source |
-| Size | under 10 MB, usually far less | about 40 MB |
+| Size | under 10 MB, usually far less | about 35 MB |
 | Send it by | email | a link or a shared drive |
 
 ## Check yourself

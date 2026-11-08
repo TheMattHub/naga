@@ -46,7 +46,7 @@ m = nb.Model(network={'nodes': [{'name': 'A', 'x': 0, 'y': 0}, {'name': 'B', 'x'
 
 Bundled models: [Courier on a path network](../../gallery/agent-based.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md), [Container terminal: quay to yard](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md) and 3 more.
 
-Guides: [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Agent-based modelling](../../agent-based-modelling.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from Mesa](../../coming-from/mesa.md), [Coming from NetLogo](../../coming-from/netlogo.md).
+Guides: [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Agent-based modelling](../../agent-based-modelling.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from Mesa](../../coming-from/mesa.md), [Coming from NetLogo](../../coming-from/netlogo.md) and 1 more.
 
 ## See also
 

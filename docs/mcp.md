@@ -39,6 +39,25 @@ Besides the tools the server publishes:
   each bundled model;
 - two prompts: `build_model_from_description` and `analyse_results`.
 
+## Publish fewer tools
+
+`naga mcp --tools PROFILE` publishes the tools of one situation instead of all of them, so a
+client pays for fewer tool descriptions on every turn and picks among fewer. Tool names, arguments
+and answers are the same in every profile, and a tool outside the profile cannot be called by name.
+The default, `--tools all`, publishes every tool. Only the person who starts the server chooses a
+profile; no tool argument can change it.
+
+| Profile | Tools | For |
+|---|---|---|
+| `compact` | 8 | Write a whole model file, run it, save it. |
+| `build` | 38 | Make and change a model: blocks and links, records, reference, validation, a picture. |
+| `run` | 21 | Run a finished model: scenarios, what-if, precision, reality checks, the run debugger. |
+| `study` | 31 | A decision study (`study_*`) and the searches behind it: `optimize`, `calibrate`, `evaluate_policy`. |
+| `twin` | 13 | A live twin: data bindings, initial state, forecast, plant timeline, recommendations. |
+
+Pick the profile that matches the session, or `all` when the work moves between situations.
+A product built on the engine may add its own tools to a profile.
+
 ## How the tools behave
 
 - **An edit answers with the problems it introduced and the ones it fixed**, each with a stable

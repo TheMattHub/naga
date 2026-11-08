@@ -4,9 +4,32 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.19: the building around the model
+## 0.20: yards, plugin results and checked studies
 
 <!-- --8<-- [start:latest] -->
+- **Cranes, piles and full rows.** Layout-only `cranes` and `stockpiles` sections draw each lift
+  and a slab per stored entity in the player, and a block's `queue_row` may give `slots`. A run
+  counts the arrivals that find the row full in a `slot_summary` frame, which a study can rank.
+- **Plugin results.** A plugin block calls `ctx.record_kpi` and `ctx.add_artifact`, so its own
+  KPIs reach `Results["plugin_kpis"]` and studies, and its objects `Results.artifacts`. The plugin
+  folders and policy files a person trusts live in a per-user store, and `naga check` opens and
+  runs a model before it calls it done.
+- **Sharper studies.** `optimize` searches on a percentile or a composite with penalties and checks
+  the winner on unseen holdout seeds; `experiments.size_capacity` sizes a capacity on paired
+  runs, and `tornado` takes named structural changes. A FixedSchedule takes a `jitter`.
+- **Studies you can check.** `naga study rerun` runs a folder's `reproduce.json` steps and compares
+  their outputs, and `naga study numbers` checks every tagged number of a write-up against its
+  source file, as in the snippet below.
+- **Before you upgrade.** Bundled models give the same results, except level averages in three
+  hybrid models, which differ in the last digit.
+
+```console
+naga study numbers my_study
+```
+<!-- --8<-- [end:latest] -->
+
+## 0.19: the building around the model
+
 - **A building.** An optional `building` section holds rooms, walls with a height, thickness and
   finish, doors that stay on their wall, floor markings, labels and fixtures, in metres. A run
   never reads it, so it cannot change a result; drawing programs make the floor plan and 3D walls
@@ -20,7 +43,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 - **Before you upgrade.** `InverseGaussian(mu, lambda)` now has mean `mu`, a FixedSchedule CREATE
   no longer adds an entity at its start, and a DECIDE in Condition mode with no true condition and
   no ELSE link stops the run. Bundled models give the same results.
-<!-- --8<-- [end:latest] -->
 
 ## 0.18: logistics and energy sites as they run
 

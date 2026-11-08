@@ -75,7 +75,7 @@ COMMANDS = {
     "forecast": ("forecast", "main", "short-horizon forecast with prediction bands"),
     "plan": ("planning", "main", "deterministic plan, optional CP-SAT proposal and risk"),
     "loops": ("loopdominance", "main", "loop dominance (Loops That Matter) of an SD model"),
-    "study": ("studyrerun", "main", "check a study folder: rerun every version and compare its KPIs"),
+    "study": ("studyrerun", "main", "check a study folder: rerun its versions and reproduce steps, check its numbers"),
     "room": ("studyroom", "main", "the live control room of a study in your browser"),
     "skill": ("skillcli", "main", "show or copy the simulation-study guide for an assistant"),
     "mcp": ("mcp_server", "main", "Model Context Protocol server over stdio"),

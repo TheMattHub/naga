@@ -181,6 +181,11 @@ one worker, each process imports the module again by name, so it must live in a 
 the path. Only the caller chooses the module: a model file has no key for it, so opening a
 model never runs code it names.
 
+A study runs the same logic as the single run it explores. `run_scenarios`, `optimize`,
+`run_design`, `select_best`, `sobol`, `tornado`, `sensitivity` and `calibrate` take
+`logic=`, and `naga doe`, `naga optimize` and `naga calibrate` take `--logic MODULE`, with
+the same rules. Agent tools take no logic argument.
+
 ## What else is importable
 
 - `nagasim.modelschema.build_json_schema()`: the JSON Schema of a model file (`naga schema`).

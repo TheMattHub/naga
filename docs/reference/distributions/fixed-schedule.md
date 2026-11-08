@@ -3,8 +3,8 @@
 
 # FixedSchedule
 
-Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan.  
-Param: schedule (ordered list of times).
+Exact listed times, for arrivals or events that follow a fixed timetable such as a roster or a delivery plan; an optional jitter shifts each arrival at random and keeps their order.  
+Params: schedule (ordered list of times), jitter (standard deviation, 0 = off), jitter_law (Normal or Uniform).
 
 Category: continuous. Arrival: yes. Delay: no. Support lower bound: 0.0.
 
@@ -13,10 +13,12 @@ Category: continuous. Arrival: yes. Delay: no. Support lower bound: 0.0.
 | Parameter | Default | Hint |
 |---|---|---|
 | `schedule` | `[]` | ordered list of absolute arrival/event times |
+| `jitter` | `0.0` | standard deviation of each arrival's random shift, in the schedule's unit; 0 = exact times |
+| `jitter_law` | `'Normal'` | shape of the shift: Normal or Uniform (same standard deviation) |
 
 ## Draws
 
-With schedule=[2, 5, 9], 3 draws from a stream seeded 0:
+With schedule=[2, 5, 9], jitter=0.0, jitter_law='Normal', 3 draws from a stream seeded 0:
 
 It is not random: it returns the listed times in order, then nothing. The first draws are 2, 5, 9.
 
@@ -25,13 +27,13 @@ It is not random: it returns the listed times in order, then nothing. The first 
 In a model file, on any block or section that takes a duration:
 
 ```json
-{"distribution": "FixedSchedule", "dist_params": {"schedule": [2, 5, 9]}}
+{"distribution": "FixedSchedule", "dist_params": {"schedule": [2, 5, 9], "jitter": 0.0, "jitter_law": "Normal"}}
 ```
 
 In the Python builder:
 
 ```python
-nb.FixedSchedule(schedule=[2, 5, 9])
+nb.FixedSchedule(schedule=[2, 5, 9], jitter=0.0, jitter_law='Normal')
 ```
 
 ## Used in

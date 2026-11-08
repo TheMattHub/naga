@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.20.0 (2026-11-08)
+
+0.20.0 adds yards, plugin results and study checks. Layout-only `cranes` and `stockpiles` sections and queue rows with slots show lifts, piles and full rows in playback, and a run counts the arrivals that find a row full. A plugin block can record its own KPIs and hand objects to the caller, and the plugin folders and Python policy files a person trusts live in a per-user store. Optimisation gains percentile and composite objectives with holdout seeds, and a study folder can be rerun step by step and its write-up numbers checked. Bundled models give the same results as 0.19.0, except level averages in three hybrid models, which differ in the last digit.
+
+Added:
+
+- `naga run --player`, `naga scenarios --player` and `naga viewer` draw the model's floor plan: its building, or an SVG or PNG background read from the model's own folder.
+- `experiments.run_scenarios(logic=...)` takes the caller's LOGIC module, as `run_model` does.
+- `nagasim.optimize.METHODS` lists the optimiser's methods with the packages each needs.
+- A bundled model, `belt_points`: one belt with stops, a divert and a merge.
+- Layout-only `cranes` and `stockpiles` sections: overhead and gantry cranes whose traced moves between served blocks are drawn as lifts, and store blocks drawn as piles keyed per area. A run never reads them, so they cannot change a result.
+- A block's `queue_row` may give `slots` (with `label` and `frees`); a run counts the arrivals finding the row full in a `slot_summary` frame, present only when a block gives slots.
+- FixedSchedule takes `jitter` and `jitter_law`: each listed arrival shifts by a random amount drawn per replication from the CREATE's stream, kept in order.
+- Plugin results hook: `ctx.record_kpi(name, value)` and `ctx.add_artifact(name, obj)` from a plugin block fill `Results["plugin_kpis"]` and `Results.artifacts`, present only when a plugin recorded something; studies and the workbook carry the KPIs.
+- A per-user trusted-code store (`nagasim.settings.trusted`) of plugin folders and policy files, read by `load_plugins` besides `NAGASIM_PLUGIN_PATH`; an agent can only add an entry switched off. `info.requires_plugins` names the plugin types a model uses, and `E_PLUGIN_NOT_LOADED` a listed type no loaded plugin provides.
+- `naga check` and the agent tools open a model as the editor does, read its errors, then run it.
+- `controllers=` passes through every study function, and `naga run --controllers MODULE[:NAME]` takes them from your module (NAME defaults to `CONTROLLERS`).
+- `optimize` takes `statistic` (a percentile), `penalties` (a composite objective), `holdout` and `holdout_seed` (the winner rerun on unseen seeds) and `baseline` (the current design as trial 0).
+- `experiments.size_capacity` finds the smallest capacity that meets a criterion on paired replications.
+- `tornado(scenarios=..., secondary=...)`: named structural changes as low/high override sets, and a second KPI that breaks ties.
+- `naga study rerun` also runs a folder's `reproduce.json` steps in fresh processes with time limits and compares their output hashes; `naga study numbers` checks the write-ups' tagged numbers against their source files.
+- The HTML player draws slot rows, piles and crane lifts, follows a token into its group and shows a carrier's load (`nagasim.core.grouping`).
+- `logic=` and `--logic` reach `optimize`, `run_design`, `calibrate` and the other study functions, and `naga doe`, `naga optimize` and `naga calibrate`, so a study runs the same logic as the single run.
+- `naga mcp --tools` takes `build`, `run`, `study` and `twin` as well as `compact`; the default is unchanged.
+- Player, viewer and twin monitor pages in Italian: `--lang it` (`naga run --player`, `naga scenarios --player`, `naga viewer`, `naga twin --monitor`) or `language="it"`.
+- `naga viewer --pyodide cdn` and `build_viewer(pyodide="cdn")`: a viewer of about 3 MB that loads the pinned Pyodide from cdn.jsdelivr.net, checks every file against the hash in the page and refuses to start on a mismatch or with no network. The offline file stays the default.
+- An asset's graphics may name seats (`queue_slots`): waiting entities sit on them in order, then queue in the usual row.
+- A placed asset may turn its own waiting row; `W_QUEUE_ROW_CROSSING` warns when a row runs through another place.
+
+Changed:
+
+- `workers="auto"` uses up to 8 processes (was 4) and starts a pool for less work on Windows and macOS.
+- Faster nearest-vehicle dispatch on large path networks and faster composite-state checks for agents. Results are identical.
+- The hybrid levels solver re-solves only the groups of levels whose flows or bounds changed, and levels no flow touches are no longer integrated on every update: about 2.3x faster on the 100-copy line model. Level averages may differ in the last digit.
+- A run keeps about a third of the memory per finished entity (packed resource and entity logs, float sample arrays), and the resource log table builds faster on long runs. Results are unchanged.
+- The offline viewer is about 35 MB instead of 41 MB: it carries only the parts of its numerical libraries a run uses.
+
+Removed:
+
+- `nagasim.viewer.engine_on_disk`, the old name of `engine_available`.
+
+Fixed:
+
+- Study numbers are compared after rounding half up, as a report writes them.
+- `optimize` refuses holdout seeds that overlap the search's seeds.
+- The controllers pickling check covers a caller's own process pool.
+
 ## 0.19.0 (2026-10-28)
 
 0.19.0 adds the building around a model. An optional `building` section holds rooms, walls with a height, thickness and finish, doors that stay on their wall, floor markings, labels and fixtures; a run never reads it, and two new checks flag a path through a wall and a door on no wall. `naga run` now prints a summary with intervals and law-check warnings. Bundled models give the same results as 0.18.0.

@@ -43,8 +43,9 @@ import math
 import re
 from pathlib import Path
 
-from nagasim.core import tape
-from nagasim.core.svgsafe import check_svg
+from nagasim import pagetext
+from nagasim.core import queuerow, tape
+from nagasim.core.svgsafe import MAX_QUEUE_SLOTS, check_svg
 from nagasim.core.timeunits import UNITS, units_of
 
 __all__ = ["MAX_BYTES", "DEFAULT_TOKENS", "build_player",
@@ -208,6 +209,13 @@ CSS = """.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 
 #play { min-width: 5.5em; }
 #seek { display: block; width: 100%; margin: 8px 0 12px; accent-color: var(--accent); }
 #view { display: block; width: 100%; height: 40vh; }
+/* What a hovered carrier holds (D1148): over the view, never wider than it. */
+.view-box { position: relative; }
+.card { position: absolute; z-index: 2; width: max-content; max-width: min(320px, 100%); padding: 6px 8px; font-size: 12px;
+        background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius);
+        pointer-events: none; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.card-head { font-weight: 600; margin-bottom: 2px; }
+.follow { min-height: 1.4em; margin: 4px 0 0; }
 #lanes { display: block; width: 100%; height: 60px; cursor: ew-resize; touch-action: none; }
 .callout { margin: 8px 0 0; padding: 6px 10px; background: var(--raised); border-left: 3px solid var(--down);
            border-radius: var(--radius); }
@@ -241,8 +249,33 @@ THEME = """try { var chosen = window.localStorage.getItem("naga-theme");
 PANELS = """/* Signs beside the words; the file is ASCII and the script holds no escape. */
 var SIGN = {up: String.fromCharCode(0x25b2), down: String.fromCharCode(0x25bc), warn: String.fromCharCode(0x26a0),
             tick: String.fromCharCode(0x2713), plusMinus: String.fromCharCode(0xb1)};
+/* The page's words (D1056): one language per file, the table in the data block, set by
+   the page half's boot. A key the table lacks shows as itself (a test holds every
+   language to the English keys). */
+var T = {};
+function tr(key, values) {
+  var text = Object.prototype.hasOwnProperty.call(T, key) && typeof T[key] === "string" ? T[key] : key;
+  return text.replace(/[{]([a-z_]+)[}]/g, function (all, name) {
+    return values && Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : all;
+  });
+}
+/* The table of the page's words block; none (an old page, a stub) leaves keys as keys. */
+function words(block) {
+  var table;
+  try { table = JSON.parse(block && block.textContent || "{}"); } catch (e) { table = {}; }
+  return table && typeof table === "object" && !Array.isArray(table) ? table : {};
+}
+/* A number's text with the language's decimal sign. */
+function num(text) {
+  var sign = typeof T.decimal === "string" ? T.decimal : ".";
+  return sign === "." ? String(text) : String(text).replace(/[.]/g, sign);
+}
+/* The engine's two scenario names are words of the page; any other is the author's. */
+function scenarioName(name) {
+  return name === "Baseline" ? tr("name.baseline") : name === "Yours" ? tr("name.yours") : name;
+}
 /* A percentage with one decimal and its sign. */
-function percent(value) { return (value > 0 ? "+" : "") + (Math.round(value * 10) / 10) + "%"; }
+function percent(value) { return (value > 0 ? "+" : "") + num(Math.round(value * 10) / 10) + "%"; }
 
 /* The results panel (Goal 6): per row, yours and the baseline as 95% interval bars on
    one scale, the target as a dotted line, the value, and the change as an arrow and a
@@ -278,15 +311,17 @@ function resultsPanel(rows, parent, add) {
     mark(row.yours, "yours");
     if (has(row.target)) { add("div", track, undefined, "r-target").style.left = at(row.target); seen.target = true; }
     if (row.base && has(row.base.mean)) { seen.base = true; }
-    track.title = "yours " + fmt(row.yours.mean) + (has(row.yours.lo) ? " (" + fmt(row.yours.lo) + " to " + fmt(row.yours.hi) + ")" : "") +
-      (row.base ? ", baseline " + fmt(row.base.mean) : "") + (has(row.target) ? ", target " + fmt(row.target) : "");
+    track.title = tr("result.tip_yours", {value: fmt(row.yours.mean)}) +
+      (has(row.yours.lo) ? tr("result.tip_range", {range: tr("range", {lo: fmt(row.yours.lo), hi: fmt(row.yours.hi)})}) : "") +
+      (row.base ? tr("result.tip_base", {value: fmt(row.base.mean)}) : "") +
+      (has(row.target) ? tr("result.tip_target", {value: fmt(row.target)}) : "");
     add("span", num, fmt(row.yours.mean), "r-value");
     delta = add("span", num, undefined, "r-delta");     /* its line kept when empty: no shift */
     if (row.verdict) {
       change = row.base && has(row.base.mean) ? row.yours.mean - row.base.mean : 0;
       add("span", delta, row.verdict === "no clear change" ? "~" : change > 0 ? SIGN.up : SIGN.down,
           "r-arrow " + row.verdict.replace(/ /g, "-"));
-      add("span", delta, " " + (has(row.delta_pct) ? percent(row.delta_pct) + " " : "") + row.verdict);
+      add("span", delta, " " + (has(row.delta_pct) ? percent(row.delta_pct) + " " : "") + tr("verdict." + row.verdict));
     }
   });
   return seen;
@@ -295,16 +330,18 @@ function resultsPanel(rows, parent, add) {
 /* The trust card (Goal 8): {laws_pass, laws_warn, warmup, replications, half_width_pct}
    as label and word rows; *unit* is the model's time unit. */
 function trustPanel(trust, parent, add, unit) {
-  var laws = trust.laws_warn ? [SIGN.warn + " ", trust.laws_warn + (trust.laws_warn === 1 ? " warning" : " warnings"), "mark-warn"] :
-    trust.laws_pass ? [SIGN.tick + " ", "pass", "mark-ok"] : ["", "none to check", ""];
-  [["Flow and Little's law checks", laws],
-   ["Warm-up removed", ["", trust.warmup > 0 ? fmt(trust.warmup) + " " + unit : "none", ""]],
-   ["Replications, precision", ["", trust.replications + (trust.half_width_pct !== null && trust.half_width_pct !== undefined ?
-     ", " + SIGN.plusMinus + (Math.round(trust.half_width_pct * 10) / 10) + "%" : ""), ""]],
+  var laws = trust.laws_warn ? [SIGN.warn + " ", tr(trust.laws_warn === 1 ? "trust.warning" : "trust.warnings", {n: trust.laws_warn}), "mark-warn"] :
+    trust.laws_pass ? [SIGN.tick + " ", tr("trust.pass"), "mark-ok"] : ["", tr("trust.none_to_check"), ""];
+  /* The engine's "not measured" is a word of the page; a measured text is quoted as recorded. */
+  function quoted(text) { return typeof text === "string" && text !== "not measured" ? text : tr("trust.not_measured"); }
+  [[tr("trust.laws"), laws],
+   [tr("trust.warmup"), ["", trust.warmup > 0 ? fmt(trust.warmup) + " " + unit : tr("trust.none"), ""]],
+   [tr("trust.precision"), ["", trust.replications + (trust.half_width_pct !== null && trust.half_width_pct !== undefined ?
+     ", " + SIGN.plusMinus + num(Math.round(trust.half_width_pct * 10) / 10) + "%" : ""), ""]],
    /* Three uncertainties, three rows with their own basis; never summed (D739). Old data
       without the texts reads as not measured. */
-   ["Input data", ["", typeof trust.input_text === "string" ? trust.input_text : "not measured", ""]],
-   ["Parameters", ["", typeof trust.params_text === "string" ? trust.params_text : "not measured", ""]]].forEach(function (pair) {
+   [tr("trust.input"), ["", quoted(trust.input_text), ""]],
+   [tr("trust.params"), ["", quoted(trust.params_text), ""]]].forEach(function (pair) {
     var line = add("tr", parent), cell;
     add("td", line, pair[0]);
     cell = add("td", line);
@@ -318,7 +355,7 @@ function trustPanel(trust, parent, add, unit) {
    redraws what the page draws itself. */
 function themeSwitch(button, onChange) {
   var THEMES = ["auto", "light", "dark"], root = document.documentElement;
-  function label() { button.textContent = "Theme: " + (root.dataset.theme || "auto"); }
+  function label() { button.textContent = tr("theme", {theme: tr("theme." + (root.dataset.theme || "auto"))}); }
   button.addEventListener("click", function () {
     var next = THEMES[(THEMES.indexOf(root.dataset.theme || "auto") + 1) % THEMES.length];
     try {
@@ -341,10 +378,32 @@ SCRIPT = """"use strict";
 /* A lamp's state as one of four looks (D705): running is quiet, idle neutral, and only
    down and blocked are loud, each with a word. */
 var KIND = {busy: "run", loaded: "run", handling: "run", blocked: "blocked", down: "down"};
-var WORD = {blocked: "BLOCKED", down: "DOWN"};
+var WORD = {blocked: "player.pill_blocked", down: "player.pill_down"};
 var MAX_LANES = 8;
 /* The waiting entities drawn one by one before a block; the queue badge says how many in all. */
 var FEW = 6;
+/* Where waiting entity j is drawn (D1057): on seat j of the picture's `queue_slots` (normalised
+   over its box) while there is one, then the row, its first place after the last seat -- the
+   rule of the editor (`animation.seat_point`) and the 3D view. The row runs from `row`
+   ([anchor x, anchor y, step x, step y], the place's own queue row, D1089), else off the
+   left edge's middle. */
+function seatAt(j, seats, left, top, bw, bh, k, row) {
+  var m = 8 * k + (j - seats.length) * 9 * k;
+  if (j < seats.length) { return [left + seats[j][0] * bw, top + seats[j][1] * bh]; }
+  if (row) { return [left + row[0] * bw + row[2] * m, top + row[1] * bh + row[3] * m]; }
+  return [left - m, top + bh / 2];
+}
+/* The scale (at most 1) of a token `diameter` px across on those seats, so neighbours do not
+   overlap: 0.9 of the gap to the nearest seat (`libraries.geometry.seat_scale`). */
+function seatScale(seats, bw, bh, diameter) {
+  var i, j, gap = Infinity;
+  for (i = 0; i < seats.length; i += 1) {
+    for (j = i + 1; j < seats.length; j += 1) {
+      gap = Math.min(gap, Math.hypot((seats[i][0] - seats[j][0]) * bw, (seats[i][1] - seats[j][1]) * bh));
+    }
+  }
+  return gap === Infinity || !(diameter > 0) ? 1 : Math.min(1, 0.9 * gap / diameter);
+}
 /* On a floor plan, people and fleets are drawn this many times their size on the schematic (D967,
    as the video's film look does, D956): at the plan's scale a person is a few pixels. */
 var PEOPLE = 2;
@@ -353,6 +412,8 @@ var MAX_SLIDES = 200;
 /* The speeds (D711): model seconds per wall second, so 1x is real time in any time unit. */
 var SPEEDS = [1, 10, 60, 300, 600, 1800, 3600, 7200, 21600, 86400, 604800, 2592000, 31536000];
 var PER = [[31536000, "year"], [2592000, "month"], [604800, "week"], [86400, "day"], [3600, "h"], [60, "min"], [1, "s"]];
+/* What a lamp's word reads as on the page; another word is shown as the model has it. */
+var LAMP = {busy: 1, idle: 1, off: 1, loaded: 1, empty: 1, handling: 1, held: 1};
 
 /* A name from the data is a key of a table, never a member every object inherits
    (`constructor`, `__proto__`, `toString`): every lookup by name goes through here. */
@@ -408,7 +469,7 @@ function blend(now, next, f, named) {
 function speedLabel(speed) {
   var i = 0;
   while (i < PER.length - 1 && speed % PER[i][0]) { i += 1; }
-  var per = speed / PER[i][0] + " " + PER[i][1] + "/s";
+  var per = tr("player.per", {n: speed / PER[i][0], unit: tr("player.per_" + PER[i][1])});
   return speed > 3600 ? per : speed + "x (" + per + ")";
 }
 
@@ -451,7 +512,11 @@ function frameAt(run, t) {
   var a = run.frames[k], b = run.frames[Math.min(k + 1, last)];
   var span = k < last ? times[k + 1] - times[k] : 0;
   var f = span > 0 ? Math.min(1, Math.max(0, (t - times[k]) / span)) : 0;
-  return {k: k, f: f, n: a.n, s: a.s, st: a.st || [], u: a.u || {}, q: a.q || {},
+  return {k: k, f: f, n: a.n, s: a.s, st: a.st || [], u: a.u || {}, q: a.q || {}, qi: a.qi || {},
+          cr: (a.cr || []).map(function (hook, i) {      /* one entry per crane: floor and hook points blend */
+            var to = (b.cr || [])[i];
+            return hook.map(function (v, j) { return to && j < 4 ? v + (to[j] - v) * f : v; });
+          }),
           r: a.r || [], kpi: a.k, lv: blendLevels(a.lv, b.lv, f),
           tok: blend(a.tok, b.tok, f, 1), veh: blend(a.veh, b.veh, f, 2),
           ag: blend(a.ag, b.ag, f, 2), more: (a.tokx || 0) + (a.agx || 0), skipped: a.mvx || 0};
@@ -469,7 +534,7 @@ function fit(box, w, h, pad) {
 
 function fmt(value) {
   if (value === null || value === undefined) { return "-"; }
-  return String(Math.round(value * 1000) / 1000);
+  return num(Math.round(value * 1000) / 1000);
 }
 
 /* The smallest centre-to-centre distance between two blocks on one row (same y), in
@@ -495,7 +560,7 @@ function short(name) {
 
 /* A time on the clock, with as many decimals as a run of length *end* needs and always
    that many, so the clock keeps its width (#841). */
-function clockTime(t, end) { return t.toFixed(end >= 100 ? 0 : end >= 10 ? 1 : 2); }
+function clockTime(t, end) { return num(t.toFixed(end >= 100 ? 0 : end >= 10 ? 1 : 2)); }
 
 /* Per block, for a buffer (`buf`), its nearest blocks on its row that are not buffers,
    [left, right] (-1 for none): the tray is drawn in the room between them (#842).
@@ -597,15 +662,116 @@ function lanes(run) {
   return out;
 }
 
+/* ---- Q2: what the editor's 2D drawing added, looked up in the scene's series and
+   intervals (the tape read them with the editor's own rules; nothing is worked out here) ---- */
+var OBLIQUE = [-0.5, -0.866];   /* plan direction of "up" in the light oblique view (cranes2d) */
+var LAYER_M = 0.14;             /* a slab's shift up the oblique per layer, plan metres */
+var FLASH_S = 0.8, OVERFLOW_FLASH_S = 1.6, OVERFLOW_HOLD_S = 3;   /* wall seconds */
+
+function stamp(row) { return typeof row === "number" ? row : row[0]; }
+/* The last index of *rows* (sorted by time: numbers, or rows whose first field is the time)
+   at or before t; -1 when none. */
+function lastAt(rows, t) {
+  var lo = 0, hi = rows.length, mid;
+  while (lo < hi) { mid = (lo + hi) >> 1; if (stamp(rows[mid]) <= t) { lo = mid + 1; } else { hi = mid; } }
+  return lo - 1;
+}
+
+/* A slot row at t with *waiting* entities in its row (D1113, the editor's `_draw_slots`):
+   the slots held, the row's shift (slots still held by loads lifted out), how many stand
+   past the last slot, and the last overflow at or before t. */
+function slotMarks(row, t, waiting) {
+  var i = lastAt(row.held, t), held = i >= 0 ? row.held[i][1] : 0, shift = Math.max(0, held - waiting);
+  var j = lastAt(row.ovf, t);
+  return {held: held, shift: shift, full: held >= row.n, last: j >= 0 ? row.ovf[j] : null,
+          over: Math.max(0, Math.min(waiting, waiting - Math.max(0, row.n - shift)))};
+}
+
+/* A stay [entity, group, slot, from, to (null: still in), type] holds at t. */
+function holds(stay, t) { return stay[3] <= t && (stay[4] === null || t < stay[4]); }
+function stayAt(grp, entity, t) {
+  var st = grp ? grp.st : [], i;
+  for (i = 0; i < st.length; i += 1) { if (st[i][0] === entity && holds(st[i], t)) { return st[i]; } }
+  return null;
+}
+/* [[group, slot], ...] holding *entity* at t, innermost first (`Grouping.path`). */
+function groupPath(grp, entity, t) {
+  var out = [], seen = {}, stay = stayAt(grp, entity, t);
+  seen[entity] = true;
+  while (stay && !seen[stay[1]]) { out.push([stay[1], stay[2]]); seen[stay[1]] = true; stay = stayAt(grp, stay[1], t); }
+  return out;
+}
+/* The stays inside *group* at t, in load order (`Grouping.load`). */
+function groupLoad(grp, group, t) {
+  return (grp ? grp.st : []).filter(function (stay) { return stay[1] === group && holds(stay, t); });
+}
+/* What *group* holds at t, by slot, with the order they come off (`Grouping.carrier_load`;
+   `inside` counts a nested group's own members). */
+function carrierLoad(grp, group, t, types) {
+  var changes = grp ? own(grp.lifo || {}, String(group)) : undefined, lifo = false, members, n;
+  if (changes && changes.length) { lifo = changes[Math.max(lastAt(changes, t), 0)][1] === 1; }
+  members = groupLoad(grp, group, t);
+  n = members.length;
+  return {group: group, order: lifo ? "lifo" : "fifo", slots: members.map(function (stay, k) {
+    var type = types && types[stay[5]];
+    return {slot: stay[2], entity: stay[0], type: type ? type.name : "", unloads: lifo ? n - k : k + 1,
+            inside: groupLoad(grp, stay[0], t).length};
+  })};
+}
+
+/* A pile stay [entity, pile, landed, left (null: still there)] holds at t. */
+function onPile(stay, t) { return stay[2] <= t && (stay[3] === null || t < stay[3]); }
+/* Each pile's count of an area at t (D1111). */
+function pileCounts(area, t) {
+  var out = area.piles.map(function () { return 0; });
+  area.stays.forEach(function (stay) { if (onPile(stay, t)) { out[stay[1]] += 1; } });
+  return out;
+}
+/* Where *entity* lies in an area at t: its pile, its layer from the bottom in landing order
+   and the pile's count (the editor's `slab_at`); null when it is not on a pile there. */
+function pileSpot(area, entity, t) {
+  var mine = null, on = [];
+  area.stays.forEach(function (stay) { if (stay[0] === entity && onPile(stay, t)) { mine = stay; } });
+  if (!mine) { return null; }
+  area.stays.forEach(function (stay) { if (stay[1] === mine[1] && onPile(stay, t)) { on.push(stay); } });
+  return {pile: mine[1], layer: on.indexOf(mine) + 1, count: on.length};
+}
+/* The latest landing at or before t still on its pile, as [pile, landed]; null for none. */
+function newestLanding(area, t) {
+  var best = null;
+  area.stays.forEach(function (stay) { if (stay[2] <= t && (!best || stay[2] >= best[2])) { best = stay; } });
+  return best && onPile(best, t) ? [best[1], best[2]] : null;
+}
+
+/* Where the follow ring goes (D1147, the editor's `highlight_target`): the outermost group
+   holding *entity* that is drawn, else the entity itself; *drawn* is {id: [x, y, r]} of
+   the tokens drawn this frame, *slab(id)* [x, y, r, layer, count] of a pile slab or null.
+   {x, y, r, slot: [k, n] or null, layer: [k, n] or null}, or null when nothing stands for it. */
+function ringTarget(grp, entity, t, drawn, slab) {
+  var path = groupPath(grp, entity, t), targets = [], i, at, s;
+  for (i = path.length - 1; i >= 0; i -= 1) {
+    targets.push([path[i][0], [path[i][1], groupLoad(grp, path[i][0], t).length]]);
+  }
+  targets.push([entity, null]);
+  for (i = 0; i < targets.length; i += 1) {
+    at = own(drawn, String(targets[i][0]));
+    if (at) { return {x: at[0], y: at[1], r: at[2], slot: targets[i][1], layer: null}; }
+    s = slab(targets[i][0]);
+    if (s) { return {x: s[0], y: s[1], r: s[2], slot: targets[i][1], layer: [s[3], s[4]]}; }
+  }
+  return null;
+}
+
 """ + PANELS + """/* ---- the page half: runs only where there is a document ---- */
 
 function boot() {
   var data = JSON.parse(document.getElementById("tape").textContent);
+  T = words(document.getElementById("words"));
   var el = function (id) { return document.getElementById(id); };
   var canvas = el("view"), ctx = canvas.getContext("2d");
   var strip = el("lanes"), pen = strip.getContext("2d");
   var art = data.art || {blocks: {}, types: {}, fleets: {}, fills: {}};
-  var unit = data.unit || "time units", unitS = data.unit_s > 0 ? data.unit_s : 1;
+  var unit = data.unit || tr("player.time_units"), unitS = data.unit_s > 0 ? data.unit_s : 1;
   var pics = (data.pics || []).map(function (source) {
     var image = new Image();
     image.onload = function () { wake(); };
@@ -614,7 +780,8 @@ function boot() {
   });
   var state = {name: own(data.runs, data.start) !== undefined ? data.start : data.scenarios[0], t: 0, playing: false, speed: 1, wall: null,
                slides: [], busy: false, shown: -1, roles: [], lanes: [], queues: [], seeking: false,
-               use: [], pitch: null, trays: [], stock: [], fed: {}, overlay: false};
+               use: [], pitch: null, trays: [], stock: [], fed: {}, overlay: false,
+               slotOf: {}, piled: {}, drawn: {}, follow: null, hover: null, hoverAt: [0, 0]};
   /* The page's tokens, as the style sheet holds them for the theme shown: the drawing
      wears the page's look, and reads it again when the theme changes. */
   var INK, MUTED, LINE, RAISED, PANEL, FONT, RADIUS, FILL, STATE, YOURS, BASE, THIRD;
@@ -723,6 +890,7 @@ function boot() {
     function px(x) { return view.x + x * view.scale; }
     function py(y) { return view.y + y * view.scale; }
     var plan = art.floor ? ready(art.floor.i) : null, people = clean() ? PEOPLE : 1;
+    state.drawn = {};
     if (plan) {
       ctx.globalAlpha = art.floor.a;
       ctx.drawImage(plan, px(art.floor.x), py(art.floor.y), art.floor.w * view.scale, art.floor.h * view.scale);
@@ -779,7 +947,7 @@ function boot() {
       }
       ctx.beginPath(); ctx.moveTo(cx + w / 2 + 7, y); ctx.lineTo(cx + w / 2 + 2, y - 4); ctx.lineTo(cx + w / 2 + 2, y + 4);
       ctx.closePath(); ctx.fillStyle = MUTED; ctx.fill();
-      if (full) { pill("FULL", cx, y - h / 2 - 9, STATE.blocked); }
+      if (full) { pill(tr("player.pill_full"), cx, y - h / 2 - 9, STATE.blocked); }
       ctx.font = "11px " + FONT;
       return cx;
     }
@@ -798,13 +966,205 @@ function boot() {
 
     ctx.font = "11px " + FONT;
     ctx.textBaseline = "middle";
-    /* The head of the queue stands before the block, the people in service on it (k: larger on a plan). */
-    function waiting(rows, index, left, y, bottom, k) {
-      var j;
-      if (!rows) { return; }
-      for (j = 0; !state.fed[index] && j < Math.min(FEW, rows[0].length); j += 1) { token(left - 8 * k - j * 9 * k, y, scene.types[rows[0][j]], 3.5 * k); }
-      for (j = 0; j < rows[1].length; j += 1) { token(left + 8 * k + j * 9 * k, bottom - 7 * k, scene.types[rows[1][j]], 3.5 * k); }
+    /* A token with an entity id is remembered where it is drawn: a click follows it, a hover
+       shows what it holds (D1147, D1148). */
+    function seen(id, x, y, r) { if (typeof id === "number") { state.drawn[String(id)] = [x, y, r]; } }
+    function rounded(x, y, w, h, r) {
+      ctx.beginPath();
+      if (ctx.roundRect) { ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2)); } else { ctx.rect(x, y, w, h); }
     }
+    /* Video seconds since model time *t0* at the speed shown. */
+    function wallSince(t0) { return (state.t - t0) * unitS / Math.max(state.speed, 1e-9); }
+    /* A slot row (D1113): that many numbered slots under the waiting row, a "label n/N"
+       counter (loud when every slot is held), a ring round each entity past the last slot and
+       an "overflow" badge, held a few seconds after an overflow so a short one is seen. */
+    function slotTable(row, marks, place, k) {
+      var j, at, side = 8.3 * k, first = place(0), last = place(row.n - 1), text, w;
+      ctx.lineWidth = 1;
+      rounded(Math.min(first[0], last[0]) - side * 0.68, Math.min(first[1], last[1]) - side * 0.68,
+              Math.abs(last[0] - first[0]) + side * 1.36, Math.abs(last[1] - first[1]) + side * 1.36, 2 * k);
+      ctx.fillStyle = RAISED; ctx.fill(); ctx.strokeStyle = LINE; ctx.stroke();
+      ctx.font = Math.max(7, Math.round(5 * k)) + "px " + FONT;
+      ctx.textAlign = "center";
+      for (j = 0; j < row.n; j += 1) {
+        at = place(j);
+        rounded(at[0] - side / 2, at[1] - side / 2, side, side, 1.5 * k);
+        if (j < marks.held) { ctx.fillStyle = LINE; ctx.fill(); }
+        if (ctx.setLineDash) { ctx.setLineDash(j < marks.held ? [] : [3, 2]); }
+        ctx.strokeStyle = MUTED; ctx.stroke();
+        if (ctx.setLineDash) { ctx.setLineDash([]); }
+        ctx.fillStyle = MUTED;
+        ctx.fillText(String(j + 1), at[0], at[1] + side * 0.95);
+      }
+      text = (row.label ? row.label + " " : "") + marks.held + "/" + row.n;
+      ctx.font = "bold 10px " + FONT;
+      at = [(first[0] + last[0]) / 2, Math.max(first[1], last[1]) + side * 1.9];
+      w = Math.min(measureText(text) + 10, 220);
+      rounded(at[0] - w / 2, at[1] - 8, w, 16, 8);
+      ctx.fillStyle = marks.full ? STATE.down : PANEL; ctx.fill();
+      ctx.strokeStyle = marks.full ? STATE.down : LINE; ctx.stroke();
+      ctx.fillStyle = marks.full ? onColour(STATE.down) : INK;
+      ctx.fillText(clip(text, w - 6, measureText), at[0], at[1]);
+      ctx.font = "11px " + FONT;
+    }
+    function measureText(text) { return ctx.measureText(text).width; }
+    function overflowMarks(row, marks, place, shift, waitingCount, k) {
+      var j, at, ring = 6.2 * k, age = marks.last === null ? Infinity : wallSince(marks.last), badge = null, alpha = 1, flash = 0, w;
+      for (j = 0; j < waitingCount; j += 1) {
+        if (shift + j < row.n) { continue; }
+        at = place(shift + j);
+        ctx.beginPath(); ctx.arc(at[0], at[1], ring, 0, 2 * Math.PI);
+        ctx.strokeStyle = STATE.down; ctx.lineWidth = 2; ctx.stroke();
+        badge = at;
+      }
+      if (badge && marks.last !== null) { flash = Math.max(0, 1 - age / OVERFLOW_FLASH_S); }
+      if (flash > 0) {
+        ctx.globalAlpha = 0.8 * flash;
+        ctx.beginPath(); ctx.arc(badge[0], badge[1], ring * (1.25 + 0.6 * (1 - flash)), 0, 2 * Math.PI);
+        ctx.lineWidth = 4; ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      if (!badge && age < OVERFLOW_HOLD_S) { badge = place(row.n); alpha = Math.min(1, 3 * (1 - age / OVERFLOW_HOLD_S)); }
+      ctx.lineWidth = 1;
+      if (!badge) { return; }
+      ctx.globalAlpha = alpha;
+      ctx.font = "bold 9px " + FONT;
+      w = measureText(tr("player.overflow")) + 10;
+      rounded(badge[0] - w / 2, badge[1] - ring - 15, w, 13, 6.5);
+      ctx.fillStyle = STATE.down; ctx.fill();
+      ctx.fillStyle = onColour(STATE.down); ctx.textAlign = "center";
+      ctx.fillText(tr("player.overflow"), badge[0], badge[1] - ring - 8.5);
+      ctx.globalAlpha = 1;
+      ctx.font = "11px " + FONT;
+    }
+    /* The head of the queue stands before the block, the people in service on it (k: larger on a plan). */
+    function waiting(rows, index, left, y, bottom, k, picture, bw, bh) {
+      var j, at, seats = picture && picture.sl ? picture.sl : [], seated, r;
+      var ids = own(frame.qi, String(index)) || [[], []], row = own(state.slotOf, String(index)), marks = null, shift = 0, few = FEW;
+      function place(j) { return seatAt(j, seats, left, y - bh / 2, bw, bh, k, picture ? picture.qr : null); }
+      if (own(state.piled, String(index))) { return; }   /* a pile draws its own (D1111) */
+      if (!rows && !row) { return; }
+      rows = rows || [[], []];                          /* an empty slot row still shows its slots */
+      if (row && !state.fed[index]) {
+        marks = slotMarks(row, state.t, rows[0].length);
+        shift = marks.shift;
+        few = Math.max(FEW, row.n + 2);
+        slotTable(row, marks, place, k);
+      }
+      seated = 3.5 * k * seatScale(seats, bw, bh, 7 * k);
+      for (j = 0; !state.fed[index] && j < Math.min(seats.length + few, rows[0].length); j += 1) {
+        at = place(j + shift);
+        r = j + shift < seats.length ? seated : 3.5 * k;
+        token(at[0], at[1], scene.types[rows[0][j]], r);
+        seen(ids[0][j], at[0], at[1], r);
+      }
+      if (marks) { overflowMarks(row, marks, place, shift, Math.min(seats.length + few, rows[0].length), k); }
+      for (j = 0; j < rows[1].length; j += 1) {
+        token(left + 8 * k + j * 9 * k, bottom - 7 * k, scene.types[rows[1][j]], 3.5 * k);
+        seen(ids[1][j], left + 8 * k + j * 9 * k, bottom - 7 * k, 3.5 * k);
+      }
+    }
+    /* Cranes (D1110, D1112): the bridge across the runway at the trolley, the trolley up the
+       oblique from the floor point it serves ("low", under the rows), then the rope and the
+       hook, hollow when empty and filled when it carries ("high"). The tape holds the points. */
+    function cranes(part) {
+      (scene.cranes || []).forEach(function (crane, i) {
+        var hook = frame.cr[i], rw = crane.runway, alongX = crane.axis === "x", hw, hh, tx, ty, s = view.scale, tl, tw, short;
+        if (!hook) { return; }
+        hw = (alongX ? 1.3 : 1.0) / 2; hh = (alongX ? 1.0 : 1.3) / 2;
+        tx = Math.min(Math.max(hook[0] + OBLIQUE[0] * crane.th, rw[0] + hw), rw[2] - hw);
+        ty = Math.min(Math.max(hook[1] + OBLIQUE[1] * crane.th, rw[1] + hh), rw[3] - hh);
+        ctx.strokeStyle = INK; ctx.lineWidth = 1;
+        if (part === "low") {
+          short = Math.min(1, (alongX ? rw[3] - rw[1] : rw[2] - rw[0]) / 6);
+          tl = 1.6 * short; tw = 0.5 * short;
+          ctx.globalAlpha = 0.9; ctx.fillStyle = crane.colour;
+          if (alongX) { ctx.fillRect(px(tx - 0.4), py(rw[1]), 0.8 * s, (rw[3] - rw[1]) * s); ctx.strokeRect(px(tx - 0.4), py(rw[1]), 0.8 * s, (rw[3] - rw[1]) * s); }
+          else { ctx.fillRect(px(rw[0]), py(ty - 0.4), (rw[2] - rw[0]) * s, 0.8 * s); ctx.strokeRect(px(rw[0]), py(ty - 0.4), (rw[2] - rw[0]) * s, 0.8 * s); }
+          ctx.globalAlpha = 1; ctx.fillStyle = INK;
+          if (alongX) { ctx.fillRect(px(tx - tl / 2), py(rw[1] - tw / 2), tl * s, tw * s); ctx.fillRect(px(tx - tl / 2), py(rw[3] - tw / 2), tl * s, tw * s); }
+          else { ctx.fillRect(px(rw[0] - tw / 2), py(ty - tl / 2), tw * s, tl * s); ctx.fillRect(px(rw[2] - tw / 2), py(ty - tl / 2), tw * s, tl * s); }
+          rounded(px(tx - hw), py(ty - hh), 2 * hw * s, 2 * hh * s, 2);
+          ctx.fillStyle = MUTED; ctx.fill();
+          return;
+        }
+        ctx.lineWidth = Math.max(1, 0.09 * s);
+        ctx.beginPath(); ctx.moveTo(px(tx), py(ty)); ctx.lineTo(px(hook[2]), py(hook[3])); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px(hook[2]), py(hook[3]), 6.2 * people, 0, 2 * Math.PI);
+        if (hook[4]) { ctx.fillStyle = crane.colour; ctx.fill(); ctx.lineWidth = 1.4; } else { ctx.lineWidth = 2.4; }
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      });
+    }
+    /* A pile's slab *layer* (0 at the floor) as [left, top, w, h] in pixels. */
+    function slabBox(rect, layer) {
+      var dx = OBLIQUE[0] * LAYER_M * layer, dy = OBLIQUE[1] * LAYER_M * layer;
+      return [px(rect[0] + dx), py(rect[1] + dy), (rect[2] - rect[0]) * view.scale, (rect[3] - rect[1]) * view.scale];
+    }
+    /* Stock piles (D1111, D1146): per pile one slab per entity up to max layers, each a step
+       up the oblique and darker, then "xN" counts; an empty pile is a dashed footprint; the
+       newest slab flashes as it lands and the area's label gives its total. */
+    function drawPiles() {
+      var piles = scene.piles;
+      if (!piles) { return; }
+      piles.areas.forEach(function (area) {
+        var counts = pileCounts(area, state.t), newest = newestLanding(area, state.t), flash = 0, total = 0;
+        if (newest) { flash = Math.max(0, 1 - wallSince(newest[1]) / FLASH_S); }
+        area.piles.forEach(function (pile, j) {
+          var n = counts[j], layers = Math.min(n, piles.max), k, box;
+          total += n;
+          ctx.lineWidth = 1;
+          if (!layers) {
+            box = slabBox(pile.rect, 0);
+            if (ctx.setLineDash) { ctx.setLineDash([3, 3]); }
+            rounded(box[0], box[1], box[2], box[3], 2); ctx.strokeStyle = MUTED; ctx.stroke();
+            if (ctx.setLineDash) { ctx.setLineDash([]); }
+          }
+          for (k = 0; k < layers; k += 1) {
+            box = slabBox(pile.rect, k);
+            rounded(box[0], box[1], box[2], box[3], 1.5);
+            ctx.fillStyle = area.colour; ctx.fill();
+            /* darker with height: 0 at the floor to the editor's 45 % "darker" at max layers */
+            ctx.fillStyle = "rgba(0,0,0," + (1 - 1 / (1 + 0.45 * k / Math.max(piles.max - 1, 1))).toFixed(3) + ")";
+            ctx.fill();
+            ctx.strokeStyle = k ? "rgba(255,255,255,0.47)" : INK; ctx.stroke();
+          }
+          if (layers) {
+            box = slabBox(pile.rect, layers - 1);
+            if (newest && newest[0] === j && flash > 0) {
+              ctx.globalAlpha = flash; ctx.strokeStyle = STATE.blocked; ctx.lineWidth = 3;
+              rounded(box[0], box[1], box[2], box[3], 1.5); ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+            }
+            ctx.font = "bold " + Math.max(7, Math.min(12, Math.round(box[3] * 0.62))) + "px " + FONT;
+            ctx.fillStyle = "#ffffff"; ctx.textAlign = "center";
+            ctx.fillText(clip("x" + n, box[2] - 2, measureText), box[0] + box[2] / 2, box[1] + box[3] / 2);
+          }
+          if (pile.label) {
+            box = slabBox(pile.rect, 0);
+            ctx.font = "9px " + FONT; ctx.fillStyle = MUTED; ctx.textAlign = "center";
+            ctx.fillText(clip(pile.label, Math.max(box[2], 30), measureText), box[0] + box[2] / 2, box[1] + box[3] + 7);
+          }
+        });
+        if (area.label && area.at) {
+          ctx.font = "bold " + Math.round(11 * (1 + 0.25 * flash)) + "px " + FONT;
+          ctx.fillStyle = INK; ctx.textAlign = "left";
+          ctx.fillText(tr("player.pile_area", {label: area.label, n: total}), px(area.at[0]), py(area.at[1]));
+        }
+        ctx.font = "11px " + FONT;
+      });
+    }
+    /* A followed entity on a pile: its slab, [x, y, r, layer, count] (the editor's `slab_at`). */
+    function slabOf(entity) {
+      var piles = scene.piles, found = null;
+      (piles ? piles.areas : []).forEach(function (area) {
+        var spot = found ? null : pileSpot(area, entity, state.t), rect, box;
+        if (!spot) { return; }
+        rect = area.piles[spot.pile].rect;
+        box = slabBox(rect, Math.min(spot.layer - 1, piles.max - 1));
+        found = [box[0] + box[2] / 2, box[1] + box[3] / 2, Math.min(box[2], box[3]) / 2, spot.layer, spot.count];
+      });
+      return found;
+    }
+    cranes("low");
     scene.blocks.forEach(function (block, index) {
       var picture = own(art.blocks, block.name), lamp = frame.st[index] || "", kind = kindOf(lamp);
       var bw = (picture ? picture.w : block.w) * view.scale, bh = (picture ? picture.h : block.h) * view.scale;
@@ -814,7 +1174,7 @@ function boot() {
       if (clean()) {
         /* The plan shows the block's own picture and the people waiting at it, no box, tag or count. */
         if (image) { ctx.drawImage(image, left, top, bw, bh); }
-        waiting(rows, index, left, y, top + bh, people);
+        waiting(rows, index, left, y, top + bh, people, picture, bw, bh);
         return;
       }
       if (state.trays[index]) {
@@ -852,7 +1212,7 @@ function boot() {
       }
       if (own(WORD, kind)) {
         ctx.font = "bold 10px " + FONT;
-        pill(kind === "down" ? WORD.down + " " + fmt(downFor(index, frame.k)) : WORD[kind], x, top + bh - 9, STATE[kind]);
+        pill(kind === "down" ? tr(WORD.down) + " " + fmt(downFor(index, frame.k)) : tr(WORD[kind]), x, top + bh - 9, STATE[kind]);
         ctx.font = "11px " + FONT;
       }
       ctx.fillStyle = INK;
@@ -864,15 +1224,17 @@ function boot() {
         ctx.fillText(clip(text, Math.min(Math.max(bw * 2, 140), room), measure), x, top + bh + 22);
       }
       /* The queue badge: how many wait here, where anything is served (or how many are in). */
-      text = block.q || lamp ? (n - s > 0 ? "Q " + (n - s) : "") : (n > 0 ? String(n) : "");
+      text = block.q || lamp ? (n - s > 0 ? tr("player.queue_badge", {n: n - s}) : "") : (n > 0 ? String(n) : "");
       if (text) {
         ctx.font = "bold 10px " + FONT;
         pill(text, left + bw, top, PANEL);
         ctx.strokeStyle = LINE; ctx.stroke();
         ctx.font = "11px " + FONT;
       }
-      waiting(rows, index, left, y, top + bh, 1);
+      waiting(rows, index, left, y, top + bh, 1, picture, bw, bh);
     });
+    drawPiles();
+    cranes("high");
 
     scene.levels.forEach(function (level, index) {
       var fill = own(art.fills, level.name), block, value = frame.lv[index], share, x, y, bh;
@@ -887,9 +1249,13 @@ function boot() {
       ctx.fillStyle = YOURS; ctx.fillRect(x, y - bh * share, 5, bh * share);
     });
 
-    frame.tok.forEach(function (entry) { token(px(entry[2]), py(entry[3]), scene.types[entry[1]], 5 * people); });
+    frame.tok.forEach(function (entry) {
+      token(px(entry[2]), py(entry[3]), scene.types[entry[1]], 5 * people);
+      seen(entry[0], px(entry[2]), py(entry[3]), 5 * people);
+    });
     frame.veh.forEach(function (entry) {
       var image = ready(own(art.fleets, scene.fleets[entry[0]]));
+      seen(entry[6], px(entry[2]), py(entry[3]), 9 * (people !== 1 ? people * 0.75 : 1));
       ctx.save();
       ctx.translate(px(entry[2]), py(entry[3]));
       ctx.rotate(entry[4] * Math.PI / 180);
@@ -915,6 +1281,54 @@ function boot() {
       var a = scene.blocks[slide.move[1]], b = scene.blocks[slide.move[2]], f = (wall - slide.start) / j;
       token(px(a.x + (b.x - a.x) * f), py(a.y + (b.y - a.y) * f), scene.types[slide.move[0]], 5 * people);
     });
+    followRing(slabOf);
+    hoverCard();
+  }
+
+  /* Follow (D1147): an amber ring round what draws the followed entity now, naming its slot
+     in a group or its layer on a pile; nothing when nothing on the view stands for it. */
+  function followRing(slab) {
+    var ring = state.follow === null ? null : ringTarget(run().scene.grp, state.follow, state.t, state.drawn, slab), text, r;
+    if (!ring) { return; }
+    r = Math.max(ring.r * 1.35, 4);
+    ctx.beginPath(); ctx.arc(ring.x, ring.y, r, 0, 2 * Math.PI);
+    ctx.strokeStyle = STATE.blocked; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
+    text = "#" + state.follow;
+    if (ring.slot) { text += ", " + tr("player.slot", {k: ring.slot[0], n: ring.slot[1]}); }
+    if (ring.layer) { text += ", " + tr("player.layer", {k: ring.layer[0], n: ring.layer[1]}); }
+    ctx.font = "bold 11px " + FONT; ctx.textAlign = "left"; ctx.fillStyle = STATE.blocked;
+    ctx.fillText(text, ring.x + r * 0.75, ring.y - r * 0.75 - 4);
+    ctx.font = "11px " + FONT;
+  }
+  /* What the token under the pointer holds (D1148): its load by slot, in the order it comes
+     off; hidden over anything that holds nothing. Words and model text as textContent only. */
+  function hoverCard() {
+    var card = el("card"), load, slots, rule;
+    if (!card) { return; }
+    load = state.hover === null ? null : carrierLoad(run().scene.grp, state.hover, state.t, run().scene.types);
+    if (!load || !load.slots.length) { card.hidden = true; return; }
+    clear(card);
+    slots = load.slots.slice().sort(function (a, b) { return a.unloads - b.unloads; });
+    rule = tr(load.order === "lifo" ? "player.lifo" : "player.fifo");
+    add("div", card, tr("player.holds", {id: load.group, n: slots.length, rule: rule}), "card-head");
+    slots.forEach(function (row) {
+      add("div", card, tr("player.holds_line", {k: row.unloads, slot: row.slot, id: row.entity, type: row.type}) +
+        (row.inside ? tr("player.holding", {n: row.inside}) : ""));
+    });
+    card.hidden = false;
+    card.style.left = Math.max(0, Math.min(state.hoverAt[0] + 14, canvas.clientWidth - card.offsetWidth)) + "px";
+    card.style.top = (state.hoverAt[1] + 14) + "px";
+  }
+  /* The entity whose token is under (x, y) in canvas pixels, or null. */
+  function tokenAt(x, y) {
+    var best = null, gap = Infinity, id, at, d;
+    for (id in state.drawn) {
+      if (!Object.prototype.hasOwnProperty.call(state.drawn, id)) { continue; }
+      at = state.drawn[id];
+      d = Math.hypot(at[0] - x, at[1] - y);
+      if (d <= Math.max(at[2] + 3, 7) && d < gap) { gap = d; best = Number(id); }
+    }
+    return best;
   }
 
   /* "What happened when": the lanes, the bottleneck's queue (this scenario's solid, the
@@ -946,13 +1360,13 @@ function boot() {
     });
     if (state.lanes.length > shown.length) {
       pen.fillStyle = MUTED;
-      pen.fillText("+" + (state.lanes.length - shown.length) + " more", 0, top + 2);
+      pen.fillText(tr("player.more_lanes", {n: state.lanes.length - shown.length}), 0, top + 2);
       top += ROW;
     }
     state.queues.forEach(function (queue) { queue.v.forEach(function (v) { peak = Math.max(peak, v); }); });
     if (state.queues.length && peak > 0) {
       pen.fillStyle = MUTED;
-      pen.fillText("queue " + state.queues[0].label, 0, top + 22, LEFT - 6);
+      pen.fillText(tr("player.queue_of", {name: state.queues[0].label}), 0, top + 22, LEFT - 6);
       state.queues.forEach(function (queue, i) {
         pen.beginPath();
         queue.t.forEach(function (t, k) {
@@ -974,8 +1388,8 @@ function boot() {
   function panel(frame) {
     var scene = run().scene, t = state.t, text = "";
     el("clock").textContent = clockTime(t, duration()) + " / " + clockTime(duration(), duration()) + " " + unit;
-    if (frame.more) { text += "+" + frame.more + " not drawn. "; }
-    if (frame.skipped) { text += frame.skipped + " moves not animated."; }
+    if (frame.more) { text += tr("player.not_drawn", {n: frame.more}); }
+    if (frame.skipped) { text += tr("player.not_animated", {n: frame.skipped}); }
     el("clock").title = text;
     if (document.activeElement !== el("seek")) {
       el("seek").value = duration() > 0 ? Math.round(1000 * t / duration()) : 0;
@@ -998,7 +1412,8 @@ function boot() {
       var line = add("div", el("res"), undefined, "row"), kind = kindOf(row[1]);
       add("span", line, undefined, "dot").style.background = STATE[kind] || STATE.idle;
       add("span", line, short(scene.resources[row[0]]), "name").title = scene.resources[row[0]];
-      add("span", line, (own(WORD, kind) || row[1]) + " " + row[2] + " of " + fmt(row[3]));
+      add("span", line, tr("player.resource", {state: own(WORD, kind) ? tr(WORD[kind]) :
+        own(LAMP, row[1]) ? tr("player.state_" + row[1]) : row[1], n: num(row[2]), cap: fmt(row[3])}));
     });
   }
 
@@ -1026,6 +1441,12 @@ function boot() {
     });
     state.fed = {};
     state.trays.forEach(function (sides) { if (sides && sides[1] >= 0) { state.fed[sides[1]] = true; } });
+    state.slotOf = {}; state.piled = {};
+    (scene.slots || []).forEach(function (row) { state.slotOf[String(row.b)] = row; });
+    (scene.piles ? scene.piles.areas : []).forEach(function (area) { state.piled[String(area.b)] = true; });
+    /* An entity id names one entity of one run: a new scenario starts with no one followed. */
+    state.follow = null; state.hover = null;
+    el("follow").textContent = tr("player.follow_hint");
     /* The clock's slot fits its longest text, so the transport never moves (#841). */
     el("clock").style.minWidth = (2 * clockTime(duration(), duration()).length + 1.3 * unit.length + 3) + "ch";
     Array.prototype.forEach.call(el("tabs").children, function (tab) {
@@ -1045,10 +1466,10 @@ function boot() {
     el("neck").hidden = !neck;
     state.queues = [];
     if (neck) {
-      add("span", el("neck"), "Bottleneck: " + scene.blocks[neck.block].label, "callout-head");
-      text = (Math.round(neck.wait * 10) / 10) + " waiting on average";
-      if (neck.down >= 0.005) { text += "; failures cause " + Math.round(100 * neck.down) + "% of the waiting"; }
-      if (neck.blocked >= 0.005) { text += "; being blocked, " + Math.round(100 * neck.blocked) + "%"; }
+      add("span", el("neck"), tr("player.neck", {name: scene.blocks[neck.block].label}), "callout-head");
+      text = tr("player.neck_wait", {n: num(Math.round(neck.wait * 10) / 10)});
+      if (neck.down >= 0.005) { text += tr("player.neck_down", {pct: Math.round(100 * neck.down)}); }
+      if (neck.blocked >= 0.005) { text += tr("player.neck_blocked", {pct: Math.round(100 * neck.blocked)}); }
       add("span", el("neck"), text + ".");
       state.queues.push(queueOf(current, neck.block));
       base = state.name === data.scenarios[0] ? null : own(data.runs, data.scenarios[0]);
@@ -1059,7 +1480,7 @@ function boot() {
     strip.style.height = (12 + Math.min(state.lanes.length, MAX_LANES + 1) * ROW + (state.queues.length ? 48 : 0)) + "px";
     el("lanes-box").hidden = !state.lanes.length && !state.queues.length;
     el("seed").textContent = current.seed === undefined ? "" :
-      "Replication with seed " + current.seed + " (1 of " + current.of + ")";
+      tr("player.seed", {seed: current.seed, of: current.of});
     clear(el("lev"));
     scene.levels.forEach(function (level) {
       var line = add("div", el("lev"), undefined, "row");
@@ -1071,24 +1492,22 @@ function boot() {
     el("allnote").textContent = "";
     el("all-box").hidden = !(data.kpis && current.of > 1);
     if (data.kpis && current.of > 1) {
-      el("allnote").textContent = "Mean and 95% interval over " + current.of + " replications";
+      el("allnote").textContent = tr("player.all_note", {n: current.of});
       text = add("tr", el("all"));
-      ["KPI", "Mean", "95% interval", "This run"].forEach(function (head) { add("th", text, head); });
+      ["player.all_kpi", "player.all_mean", "player.all_interval", "player.all_this"].forEach(function (head) { add("th", text, tr(head)); });
       data.kpis.forEach(function (row) {
         var line;
         if (row[1] !== state.name) { return; }
         line = add("tr", el("all"));
         add("td", line, row[0]);
         add("td", line, fmt(row[2]));
-        add("td", line, fmt(row[3]) + " to " + fmt(row[4]));
+        add("td", line, tr("range", {lo: fmt(row[3]), hi: fmt(row[4])}));
         add("td", line, fmt(row[5]));
       });
     }
-    text = times.length > 1 ? "Sampled every " + fmt(times[1] - times[0]) + " " + unit + " (" +
-      (times.length - 1) + " steps): between two samples a count is the earlier one, a position or a level is on the line between them, and a move shows when it happened." : "Nothing was recorded.";
-    if (current.truncated) {
-      text += " The recording stopped at its limit of " + current.events + " events: the run went on after t = " + fmt(duration()) + ".";
-    }
+    text = times.length > 1 ? tr("player.sampled", {dt: fmt(times[1] - times[0]), unit: unit, n: times.length - 1}) :
+      tr("player.nothing");
+    if (current.truncated) { text += tr("player.truncated", {n: current.events, t: fmt(duration())}); }
     el("foot").textContent = text;
   }
 
@@ -1097,7 +1516,7 @@ function boot() {
     if (state.playing && state.wall !== null) {
       /* Real time (D711): *speed* model seconds a wall second, in the model's unit. */
       state.t = Math.min(duration(), state.t + (wall - state.wall) / 1000 * state.speed / unitS);
-      if (state.t >= duration()) { state.playing = false; el("play").textContent = "Play"; }
+      if (state.t >= duration()) { state.playing = false; el("play").textContent = tr("player.play"); }
       movesBetween(current, from, state.t).forEach(function (move) {
         if (state.slides.length < MAX_SLIDES) { state.slides.push({move: move, start: wall}); }
       });
@@ -1138,11 +1557,11 @@ function boot() {
   el("title").textContent = data.title;
   if (art.floor) {
     /* A plan is a place, not a line (D969); the model's wiring is one tick away. */
-    el("line-h").textContent = "Layout";
+    el("line-h").textContent = tr("player.layout");
     el("overlay-box").hidden = false;
     el("overlay").addEventListener("change", function () { state.overlay = el("overlay").checked; wake(); });
   }
-  data.scenarios.forEach(function (name) { add("button", el("tabs"), name, "tab").value = name; });
+  data.scenarios.forEach(function (name) { add("button", el("tabs"), scenarioName(name), "tab").value = name; });
   el("tabs").hidden = data.scenarios.length < 2;
   el("tabs").addEventListener("click", function (event) {
     var name = event && event.target ? event.target.value : undefined;
@@ -1154,12 +1573,12 @@ function boot() {
   el("play").addEventListener("click", function () {
     if (!state.playing && state.t >= duration()) { state.t = 0; }
     state.playing = !state.playing;
-    el("play").textContent = state.playing ? "Pause" : "Play";
+    el("play").textContent = tr(state.playing ? "player.pause" : "player.play");
     wake();
   });
   function step(dir) {
     state.playing = false;
-    el("play").textContent = "Play";
+    el("play").textContent = tr("player.play");
     state.t = stepTime(run().t, state.t, dir);
     state.slides = [];
     wake();
@@ -1191,6 +1610,21 @@ function boot() {
   el("speed").value = String(state.speed);
   el("speed").addEventListener("change", function () { state.speed = Number(el("speed").value) || state.speed; });
   window.addEventListener("resize", wake);
+  /* Click a token to follow it, again to stop; hover one that holds others to see its load. */
+  canvas.addEventListener("click", function (event) {
+    var id = tokenAt(event.offsetX, event.offsetY);
+    if (id === null) { return; }
+    state.follow = state.follow === id ? null : id;
+    el("follow").textContent = state.follow === null ? tr("player.follow_hint") : tr("player.following", {id: id});
+    wake();
+  });
+  canvas.addEventListener("mousemove", function (event) {
+    var id = tokenAt(event.offsetX, event.offsetY);
+    canvas.style.cursor = id === null ? "" : "pointer";
+    state.hover = id; state.hoverAt = [event.offsetX, event.offsetY];
+    wake();
+  });
+  canvas.addEventListener("mouseleave", function () { state.hover = null; wake(); });
   /* In the viewer's frame the page outside cannot see how tall the plan wants to be: say so
      (a height only; a sandboxed frame has no origin to name, so the parent checks the sender). */
   function tell() {
@@ -1208,66 +1642,68 @@ if (typeof document !== "undefined") { boot(); }
 """
 
 _PAGE = """<!doctype html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'sha256-__CSS_HASH__'; script-src 'sha256-__THEME_HASH__' 'sha256-__HASH__'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Run player</title>
+<title>{{player.title}}</title>
 <style>__CSS__</style>
 <script id="theme-pick">__THEME__</script>
 __HEAD__</head>
 <body>
 <header class="topbar">
 <div class="ident"><h1 id="title"></h1></div>
-<div id="tabs" class="tabs" aria-label="Scenario"></div>
+<div id="tabs" class="tabs" aria-label="{{scenario.aria}}"></div>
 <div id="bar" class="transport">
-<button id="play" type="button" class="primary">Play</button>
-<button id="back" type="button" aria-label="Step back">&lt;|</button>
-<button id="step" type="button" aria-label="Step">|&gt;</button>
-<select id="speed" aria-label="Speed, plant time per second"></select>
+<button id="play" type="button" class="primary">{{player.play}}</button>
+<button id="back" type="button" aria-label="{{player.back}}">&lt;|</button>
+<button id="step" type="button" aria-label="{{player.step}}">|&gt;</button>
+<select id="speed" aria-label="{{player.speed}}"></select>
 <span id="clock"></span>
 </div>
-<button id="theme" type="button" aria-label="Light or dark">Theme: auto</button>
+<button id="theme" type="button" aria-label="{{theme.aria}}">{{theme_auto}}</button>
 </header>
-<input id="seek" type="range" min="0" max="1000" value="0" aria-label="Time">
+<input id="seek" type="range" min="0" max="1000" value="0" aria-label="{{player.seek}}">
 __TOP__<main class="console">
 <section class="centre">
 <div class="panel">
-<div class="panel-head"><h2 id="line-h">The line</h2><label id="overlay-box" class="toggle" hidden><input id="overlay" type="checkbox"> Show model blocks</label><span class="legend"><span class="key run">working</span><span class="key">idle</span><span class="key down">down</span><span class="key blocked">blocked</span></span></div>
-<canvas id="view"></canvas>
+<div class="panel-head"><h2 id="line-h">{{player.line}}</h2><label id="overlay-box" class="toggle" hidden><input id="overlay" type="checkbox"> {{player.overlay}}</label><span class="legend"><span class="key run">{{player.working}}</span><span class="key">{{player.idle}}</span><span class="key down">{{player.down}}</span><span class="key blocked">{{player.blocked}}</span></span></div>
+<div class="view-box"><canvas id="view"></canvas><div id="card" class="card" role="tooltip" hidden></div></div>
+<p id="follow" class="note follow"></p>
 <p id="neck" class="callout" hidden></p>
 </div>
 <div class="panel" id="lanes-box">
-<div class="panel-head"><h2>What happened when</h2><span class="note">drag to seek</span></div>
+<div class="panel-head"><h2>{{player.lanes}}</h2><span class="note">{{player.lanes_note}}</span></div>
 <canvas id="lanes"></canvas>
 </div>
 </section>
 <aside class="side">
 <div class="panel" id="results-box">
-<div class="panel-head"><h2>Results</h2><span class="legend"><span class="key yours">scenario</span><span class="key base" id="key-base">baseline</span><span class="key target" id="key-target">target</span></span></div>
+<div class="panel-head"><h2>{{player.results}}</h2><span class="legend"><span class="key yours">{{player.key_scenario}}</span><span class="key base" id="key-base">{{player.key_baseline}}</span><span class="key target" id="key-target">{{player.key_target}}</span></span></div>
 <div id="results"></div>
 </div>
-<div class="panel" id="trust-box"><div class="panel-head"><h2>Can I trust this?</h2></div><table id="trust" class="trust"></table></div>
-<details class="panel" id="run-box"><summary><h2 id="run-h">This run</h2></summary>
+<div class="panel" id="trust-box"><div class="panel-head"><h2>{{player.trust}}</h2></div><table id="trust" class="trust"></table></div>
+<details class="panel" id="run-box"><summary><h2 id="run-h">{{player.run}}</h2></summary>
 <table>
-<tr><td>Time</td><td id="now-t"></td></tr>
-<tr><td>In the system</td><td id="now-wip"></td></tr>
-<tr><td>Created</td><td id="now-in"></td></tr>
-<tr><td>Completed</td><td id="now-out"></td></tr>
+<tr><td>{{player.now_time}}</td><td id="now-t"></td></tr>
+<tr><td>{{player.now_wip}}</td><td id="now-wip"></td></tr>
+<tr><td>{{player.now_in}}</td><td id="now-in"></td></tr>
+<tr><td>{{player.now_out}}</td><td id="now-out"></td></tr>
 </table>
 <div id="res"></div>
 <div id="lev"></div>
 <p class="note" id="seed"></p>
 <p class="note" id="foot"></p>
 </details>
-<details class="panel" id="all-box"><summary id="all-h">All replications</summary>
+<details class="panel" id="all-box"><summary id="all-h">{{player.all}}</summary>
 <p class="note" id="allnote"></p>
 <div class="scroll"><table id="all"></table></div>
 </details>
 </aside>
 </main>
 __BOTTOM__
+<script type="application/json" id="words">__WORDS__</script>
 <script type="application/json" id="tape">__TAPE__</script>
 <script>__SCRIPT__</script>
 </body>
@@ -1280,19 +1716,28 @@ def csp_hash(text: str) -> str:
 
 
 def page_shell(script: str = SCRIPT, head: str = "", top: str = "", bottom: str = "",
-           tokens: dict | None = None, rules: str | None = None) -> str:
+           tokens: dict | None = None, rules: str | None = None, language: str | None = None,
+           areas: tuple = ()) -> str:
     """The constant page: everything but the data block. The policy pins the script and
     the style sheet by their sha256, so the browser applies these and no other. A page
     built on the player (the twin's monitor, `monitor.py`) gives its own constant
     *script* (the player's with a `monitor` function before it), style *rules* (the
     player's with its own after them) and constant markup for the head and around the
-    view. *tokens* are the page's look (`check_tokens`)."""
+    view. *tokens* are the page's look (`check_tokens`). *language* picks the page's words
+    (`pagetext.LANGUAGES`, default English, D1056): the markup's and, in the words block,
+    the script's; the script itself is the same in every language, so its hash is too.
+    *areas* are the table's key areas a page built on the player adds to its words block
+    (the monitor's `monitor.`, D1088)."""
+    words = pagetext.table(language)
     css = style_sheet(tokens, rules)
-    parts = {"CSS": css, "CSS_HASH": csp_hash(css), "HASH": csp_hash(script), "HEAD": head,
-             "TOP": top, "BOTTOM": bottom, "SCRIPT": script, "THEME": THEME,
-             "THEME_HASH": csp_hash(THEME)}
+    parts = {"CSS": css, "CSS_HASH": csp_hash(css), "HASH": csp_hash(script),
+             "HEAD": pagetext.markup(head, words), "TOP": pagetext.markup(top, words),
+             "BOTTOM": pagetext.markup(bottom, words), "SCRIPT": script, "THEME": THEME,
+             "THEME_HASH": csp_hash(THEME), "WORDS": embed(pagetext.page_words(words, areas))}
+    page = pagetext.markup(_PAGE, {**words, "lang": language or pagetext.DEFAULT,
+                                   "theme_auto": pagetext.say(words, "theme", theme=words["theme.auto"])})
     # One pass: a part is never searched for another part's mark; __TAPE__ stays.
-    return re.sub("__([A-Z_]+)__", lambda found: parts.get(found.group(1), found.group(0)), _PAGE)
+    return re.sub("__([A-Z_]+)__", lambda found: parts.get(found.group(1), found.group(0)), page)
 
 
 def plain(value):
@@ -1315,6 +1760,35 @@ def embed(data) -> str:
 
 
 _SVG_TAG = re.compile(r"<svg\b[^>]*>")
+
+
+def _seats(slots) -> list:
+    """A picture's seats as `[[x, y], ...]` normalised over its box, or [] when *slots* is not a
+    list of at most MAX_QUEUE_SLOTS finite number pairs (anything else draws the plain row)."""
+    if not isinstance(slots, (list, tuple)) or len(slots) > MAX_QUEUE_SLOTS:
+        return []
+    out = []
+    for slot in slots:
+        if not (isinstance(slot, (list, tuple)) and len(slot) >= 2
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                        and math.isfinite(v) for v in slot[:2])):
+            return []
+        out.append([round(float(slot[0]), 4), round(float(slot[1]), 4)])
+    return out
+
+
+def _row(row) -> list:
+    """A picture's queue row `[anchor x, anchor y, direction degrees]` as the page's
+    `[x, y, step x, step y]`, or [] when it is not three finite numbers with the anchor in
+    `queuerow.ANCHOR_RANGE` (D1089: anything else draws the player's own row)."""
+    low, high = queuerow.ANCHOR_RANGE
+    if not (isinstance(row, (list, tuple)) and len(row) == 3
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                    for v in row)
+            and all(low <= v <= high for v in row[:2])):
+        return []
+    dx, dy = queuerow.direction_vector(float(row[2]))
+    return [round(float(row[0]), 4), round(float(row[1]), 4), round(dx, 4), round(dy, 4)]
 
 
 def _art(pictures: dict | None) -> tuple[list, dict]:
@@ -1349,6 +1823,12 @@ def _art(pictures: dict | None) -> tuple[list, dict]:
         size = (entry or {}).get("size") or ()
         if states and len(size) == 2:
             blocks[str(name)] = {"w": float(size[0]), "h": float(size[1]), "states": states}
+            seats = _seats((entry or {}).get("slots"))
+            if seats:
+                blocks[str(name)]["sl"] = seats
+            row = _row((entry or {}).get("row"))
+            if row:
+                blocks[str(name)]["qr"] = row
     fills = {str(level): [str(block), float(capacity)]
              for level, (block, capacity) in (pictures.get("fills") or {}).items()}
     art = {"blocks": blocks, "types": one(pictures.get("entities")),
@@ -1392,6 +1872,76 @@ def _floor_plan(entry, image, images: list) -> dict | None:
     if index is None:
         return None
     return {"i": index, "x": x, "y": y, "w": w, "h": h, "a": opacity}
+
+
+_SVG_SIDE = r'\b{}\s*=\s*"\s*([0-9.]+)\s*(px)?\s*"'
+
+
+def background_from_disk(layout: dict, model_path) -> dict | None:
+    """The model's `background` as the floor-plan picture, read by the engine's own commands
+    (`naga run --player`, `naga viewer`; D1052): the person ran them on this model, so its plan
+    is read for them, as the editor reads it. Confined to the model's folder (the model names
+    the path), at most `MAX_FLOOR_BYTES`; an SVG sized by its root's plain or px width and
+    height, a PNG by its header. Anything else, refused or missing leaves the plain page."""
+    from nagasim import netguard
+
+    spec = layout.get("background") if isinstance(layout, dict) else None
+    if not isinstance(spec, dict) or not spec.get("path") or model_path is None:
+        return None
+    folder = Path(model_path).resolve().parent
+    try:
+        path = netguard.confine_path(folder / str(spec["path"]), folder)
+        data = netguard.read_caller_file(path, max_bytes=MAX_FLOOR_BYTES, what="the floor plan")
+    except (netguard.GuardError, OSError):
+        return None
+    kind = path.suffix.lower()
+    if kind == ".svg":
+        text = data.decode("utf-8", errors="replace")
+        root = _SVG_TAG.search(text)
+        sides = [re.search(_SVG_SIDE.format(side), root.group(0)) if root else None
+                 for side in ("width", "height")]
+        if not all(sides):
+            return None
+        entry, (width, height) = {"svg": text}, (float(m.group(1)) for m in sides)
+    elif kind == ".png" and data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) > 24:
+        width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        entry = {"image": "data:image/png;base64," + base64.b64encode(data).decode("ascii")}
+    else:
+        return None
+    # The editor's placement (`product.ui.playerpics`): top-left at the layout origin, natural
+    # size times `scale` over `units_per_metre` (the canvas default 6 when the model gives none).
+    per_metre = float(spec.get("units_per_metre") or 6.0)
+    scale = float(spec.get("scale") or 1.0)
+    return {**entry, "x": 0.0, "y": 0.0, "w": width * scale / per_metre,
+            "h": height * scale / per_metre, "opacity": float(spec.get("opacity", 1.0))}
+
+
+def disk_pictures(layout: dict, model_path) -> dict | None:
+    """`build_player`'s *pictures* for an engine command: the floor plan read from disk, or None."""
+    floor = background_from_disk(layout, model_path)
+    return {"background": floor} if floor else None
+
+
+BUILDING_PX = 20        # the plan's pixels per metre on the page: vector, so only its byte size moves
+
+
+def with_building(layout: dict, pictures: dict | None) -> dict | None:
+    """*pictures* with the model's `building` as the floor plan when the caller gave none (D1051):
+    the canvas draws the building where a background would be, and so does the page. A
+    building with errors is left out (the plain page), as a refused picture is."""
+    building = layout.get("building") if isinstance(layout, dict) else None
+    if not building or (pictures or {}).get("background") is not None:
+        return pictures
+    from nagasim.buildingplan import plan_svg
+    from nagasim.core.building import validate_building
+
+    problems: list = []
+    validate_building({"building": building}, problems)
+    if any(p.severity == "error" for p in problems):
+        return pictures
+    x0, y0, x1, y1 = (float(v) for v in building["extent"])
+    floor = {"svg": plan_svg(building, BUILDING_PX), "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
+    return {**(pictures or {}), "background": floor}
 
 
 def _replications(results, experiment, names) -> tuple[dict, list | None]:
@@ -1495,12 +2045,14 @@ def result_rows(layout, results, experiment, names) -> dict | None:
     return out or None
 
 
-def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked=None) -> dict | None:
+def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked=None,
+               language: str | None = None) -> dict | None:
     """{scenario: {laws_pass, laws_warn, warmup, replications, half_width_pct, input_text,
     params_text}} for the trust card: the run's law checks (`laws`, D684), the model's warm-up,
     the replications, and the half-width of the first result's 95% interval as a share of its
     mean; `input_text` and `params_text` quote the recorded input-uncertainty and ABC answers
-    in *asked*, else "not measured" (D739). None without results."""
+    in *asked*, else "not measured" (D739); a measured text is worded in *language* (D1088).
+    None without results."""
     from nagasim import laws, uncertainty
     from nagasim.experiments import apply_overrides
 
@@ -1509,7 +2061,7 @@ def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked
     else:
         frames = {names[0]: results} if results is not None else {}
     warmup = float((layout.get("simulation") or {}).get("warmup") or 0)
-    texts = uncertainty.trust_texts(asked)
+    texts = uncertainty.trust_texts(asked, language)
     out = {}
     for name in names:
         if name not in frames:
@@ -1576,8 +2128,9 @@ def _neck(run: dict, layout: dict | None = None) -> dict | None:
 def build_player(layout: dict, recordings: dict, *, results=None, experiment=None,
                  title: str | None = None, view: str | None = None, pictures: dict | None = None,
                  samples: int = tape.SAMPLES, tokens: dict | None = None, start: str | None = None,
-                 path=None, asked=None) -> str:
-    """Return the player page of *recordings*; write it to *path* when given. *asked* is the
+                 path=None, asked=None, language: str | None = None) -> str:
+    """Return the player page of *recordings*; write it to *path* when given. *language* is
+    the page's (`pagetext.LANGUAGES`, default English; D1056): one language per file. *asked* is the
     recorded tool answers of the model (`Workspace.asked`): the trust card's input-data and
     parameter rows quote them, else say "not measured" (D739).
 
@@ -1601,15 +2154,16 @@ def build_player(layout: dict, recordings: dict, *, results=None, experiment=Non
 
     if not recordings:
         raise ValueError("the player needs at least one recorded run")
-    shell = page_shell(tokens=tokens)               # a bad token: refused before any work
+    shell = page_shell(tokens=tokens, language=language)   # a bad token or language: refused first
     view = view or tape.default_view(layout)
     names = list(recordings)
     overrides = {scenario.get("name"): scenario.get("overrides") or []
                  for scenario in scenarios_of(layout)}
     seeds, rows = _replications(results, experiment, names)
     rows_by_scenario = result_rows(layout, results, experiment, names)
-    trust = trust_card(layout, results, experiment, names, overrides, rows_by_scenario, seeds, asked)
-    images, art = _art(pictures)
+    trust = trust_card(layout, results, experiment, names, overrides, rows_by_scenario, seeds, asked, language)
+    images, art = _art(with_building(layout, pictures))
+    seats = {name: len(entry["sl"]) for name, entry in art["blocks"].items() if "sl" in entry}
     unit = units_of(layout.get("simulation")).time
     samples = max(int(samples), 1)
     while True:
@@ -1617,14 +2171,14 @@ def build_player(layout: dict, recordings: dict, *, results=None, experiment=Non
         for name, trace in recordings.items():
             changed = overrides.get(name)
             model = apply_overrides(layout, changed) if changed else layout
-            run = tape.TapeWriter(model, view).run(trace, samples)
+            run = tape.TapeWriter(model, view, seats).run(trace, samples)
             if name in seeds:
                 run["seed"], run["of"] = seeds[name]
             neck = _neck(run, model)
             if neck is not None:
                 run["neck"] = neck
             runs[name] = run
-        data = {"title": title or "Run", "scenarios": names, "runs": runs, "kpis": rows,
+        data = {"title": title or pagetext.table(language)["player.untitled"], "scenarios": names, "runs": runs, "kpis": rows,
                 "results": rows_by_scenario, "trust": trust,
                 "unit": unit, "unit_s": UNITS.get(unit, 1), "pics": images, "art": art,
                 "start": start}

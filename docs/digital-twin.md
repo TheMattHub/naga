@@ -593,6 +593,9 @@ naga twin run line.json --map line.plantmap.json --log plant.jsonl --out twin_ou
      --horizon 60 --every 2s --monitor
 ```
 
+`--lang it` writes the page in Italian: its headings, tables and age sentences. The prose
+of the forecast, the scores and the advice stays English.
+
 The page reloads itself (every half cadence, between 1 and 30 seconds) and shows:
 
 - the plant as it is now, drawn on the model's layout: items in each block, each resource's

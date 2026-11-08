@@ -1,0 +1,10 @@
+angle_deg           4.301
+run_m              19.944
+slope_check_deg     4.301
+grade_pct           7.521
+pallets            17.000
+soft_start          0.905
+catenary_sag        0.128
+growth              0.521
+decades             3.699
+doublings          12.288

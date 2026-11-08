@@ -147,8 +147,8 @@ def test_text_from_a_model_reaches_the_page_as_data_and_only_as_data():
     # an entity, a closing script or an address: every such character is escaped.
     assert not set("<>&\n") & set(block)
     assert not re.search(r"(?<!\\)/", block)       # every slash is written as backslash-slash
-    # The theme pick in the head, the data block and the drawer (D703).
-    assert page.lower().count("<script") == 3 and page.lower().count("</script") == 3
+    # The theme pick in the head, the words (D1056), the data block and the drawer (D703).
+    assert page.lower().count("<script") == 4 and page.lower().count("</script") == 4
     no_address(page)
     # ... and every string comes back exactly as the model had it.
     found = strings(data)
@@ -576,6 +576,52 @@ def test_naga_run_player_reports_a_too_large_file_as_a_refusal(tmp_path, monkeyp
                      "--player", str(out)]) == 1
     printed = capsys.readouterr().out
     assert "--export: " in printed and "byte limit" in printed and not out.exists()
+
+
+PLAN = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60"/></svg>'
+
+
+def test_a_models_building_is_the_floor_plan_unless_a_background_is_given():
+    """D1051: the engine draws the building (data, not a file) where a background would be."""
+    layout = {"building": {"extent": [2, 1, 12, 7], "rooms": [{"name": "A", "rect": [3, 2, 8, 6]}]}}
+    pics = player.with_building(layout, None)
+    floor = pics["background"]
+    assert (floor["x"], floor["y"], floor["w"], floor["h"]) == (2.0, 1.0, 10.0, 6.0)
+    _images, art = player._art(pics)
+    assert art["floor"]["w"] == 10.0
+    given = {"background": {"svg": PLAN, "x": 0, "y": 0, "w": 1, "h": 1}}
+    assert player.with_building(layout, given) is given
+    broken = {"building": {"extent": [0, 0], "rooms": []}}
+    assert player.with_building(broken, None) is None
+
+
+def test_engine_commands_read_the_models_floor_plan_from_its_folder_only(tmp_path):
+    """D1052: `naga run --player`/`naga viewer` read the background the model names, inside the
+    model's folder, sized like the editor (units_per_metre, scale)."""
+    (tmp_path / "plan.svg").write_text(PLAN, encoding="utf-8")
+    model = tmp_path / "m.json"
+    layout = {"background": {"path": "plan.svg", "units_per_metre": 10, "scale": 2}}
+    floor = player.background_from_disk(layout, model)
+    assert floor["svg"] == PLAN and (floor["w"], floor["h"]) == (24.0, 12.0)
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (300).to_bytes(4, "big") + (200).to_bytes(4, "big")
+    (tmp_path / "plan.png").write_bytes(png + b"\x00" * 20)
+    floor = player.background_from_disk({"background": {"path": "plan.png"}}, model)
+    assert floor["image"].startswith("data:image/png;base64,") and floor["w"] == 50.0
+    (tmp_path.parent / "outside.svg").write_text(PLAN, encoding="utf-8")
+    assert player.background_from_disk({"background": {"path": "../outside.svg"}}, model) is None
+    assert player.background_from_disk({"background": {"path": "missing.svg"}}, model) is None
+
+
+def test_naga_run_player_draws_the_models_floor_plan(tmp_path):
+    layout = json.loads(Path(SERVER).read_text(encoding="utf-8"))
+    layout["background"] = {"path": "plan.svg", "units_per_metre": 10}
+    (tmp_path / "plan.svg").write_text(PLAN, encoding="utf-8")
+    (tmp_path / "m.json").write_text(json.dumps(layout), encoding="utf-8")
+    out = tmp_path / "p.html"
+    assert api.main([str(tmp_path / "m.json"), "--replications", "1", "--run-length", "20", "--warmup", "0",
+                     "--player", str(out)]) == 0
+    _block, data = split(out.read_text(encoding="utf-8"))
+    assert data["art"]["floor"]["w"] == 12.0 and len(data["pics"]) == 1
 
 
 def test_naga_scenarios_player_reports_a_too_large_file_as_a_refusal(tmp_path, monkeypatch, capsys):

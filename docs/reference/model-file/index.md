@@ -39,6 +39,8 @@ One page per top-level key of the model file, from the published JSON Schema (`n
 | [`submodels`](submodels.md) | an object that maps a definition's name to its definition | Reusable definitions (parameters, inner blocks/links/ports), flattened before a run. |
 | [`background`](background.md) | `null` | Optional floor-plan image: path, position, scale, opacity, lock, real-world scale. |
 | [`building`](building.md) | `null` | Optional building: rooms, walls, wall openings, floor markings, labels and plan fixtures in metres; the walls are the walled rooms' outlines and the free-standing wall lines, each with a height, thickness and finish. |
+| [`cranes`](cranes.md) | `null` | Optional overhead and gantry cranes in metres: a runway, the blocks each crane serves and the axis its bridge travels along. |
+| [`stockpiles`](stockpiles.md) | `null` | Optional piles for store blocks: each listed block is drawn as a few piles of slabs (one per entity up to max_layers, then a count), an entity's pile chosen by a key per entity in creation order, with the area's total on its label; ignored by the engine. |
 | [`info`](info.md) | an object | Optional model metadata: description, author, notes; shown in the report header. |
 | [`data_sources`](data_sources.md) | a list of `data_source` entries | Declared CSV/Excel/SQLite/SQL/JSON sources model parameters can be read from. |
 | [`data_bindings`](data_bindings.md) | a list of `data_binding` entries | Which column, filtered and transformed how, feeds which override path. |

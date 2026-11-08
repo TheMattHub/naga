@@ -35,6 +35,7 @@ A scenario can override a block parameter with the path `blocks.<name>.params.<p
 | `layout_rotation` | number |  |  |  | How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned. |
 | `label_offset` | point |  |  |  | Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only. |
 | `counter_offsets` | object |  |  |  | Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only. |
+| `queue_row` | object |  |  |  | A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame). |
 | `locals` | object |  |  |  | Submodel parameter bindings, written by flattening; not authored by hand. |
 | `params` | object |  |  |  | The block type's parameters, by name (see the [block reference](../blocks/index.md)). |
 
@@ -66,7 +67,7 @@ arrive >> leave        # links the two blocks
 
 ## Used in
 
-Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 50 more.
+Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 51 more.
 
 Guides: [Submodels](../../modelling-guide/submodels.md), [Model file format](../../model-file-format.md), [A plant as a timeline](../../plant-timeline.md), [Semantic diff](../../semantic-diff.md), [Coming from SimPy](../../coming-from/simpy.md), [Quick start](../../quickstart.md).
 

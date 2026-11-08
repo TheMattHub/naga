@@ -10,6 +10,7 @@ from nagasim import api, experiments, explain, investment, laws, loopdominance, 
 from nagasim import optimize as optimize_mod
 from nagasim.core.schema import ModelValidationError
 from nagasim.exporters import EXPORTER_REGISTRY
+from nagasim.settings import trusted
 
 from .core import (
     MAX_ROWS, ToolError, _budget, _document_args, report as _progress, _edit_result, _finite, _digest, _open,
@@ -25,6 +26,51 @@ _document_args("run_model", model="Workspace name of the model to run.",
                          "false), like the UI/CLI's `--bind`. This does NOT write bulk data "
                          "into the model; it only affects this run.",
                max_seconds="Wall-clock budget; the run stops cleanly and returns what finished.")
+
+
+_document_args("check_model_opens", model="Workspace name of the model to check.")
+
+
+@tool(read_only=True)
+def check_model_opens(model: str) -> dict:
+    """The open-and-run gate: does the model open in the editor with NO errors, using the
+    plugins this person enabled, and run one replication? Call it before you say a model you
+    built or edited is done; a model that fails it is not done.
+
+    Returns {"model", "passed", "message"}: the message says what failed first (an error in the
+    Problems panel, with its fix, or the exception of the run). A block type that "comes from a
+    plugin that is not loaded" needs the person to trust its folder in Settings > Plugins;
+    `propose_plugin_folder` can only suggest one.
+    """
+    doc = workspace().document(model)
+    gate = modelcheck.open_and_run(doc.to_layout())
+    return {"model": model, "passed": gate.passed, "message": gate.message}
+
+
+_document_args("propose_plugin_folder", model="Workspace name of the model that needs the plugin.",
+               folder="The plugin folder, inside the workspace (relative to its root, or absolute "
+                      "under it).")
+
+
+@tool()
+def propose_plugin_folder(model: str, folder: str) -> dict:
+    """Propose a plugin folder for the person to trust. It is added to their Settings > Plugins
+    list SWITCHED OFF and marked "added by assistant": nothing in it runs until the person ticks
+    it there. Only a folder inside this workspace can be proposed; a folder already listed is
+    left exactly as it is. Tell the person to open Settings > Plugins and enable it.
+
+    Returns {"model", "folder", "state"}: "proposed" (added, off), or "listed" (already there,
+    with "enabled" saying whether the person turned it on).
+    """
+    workspace().document(model)
+    path = workspace().resolve(folder, must_exist=True)
+    if not path.is_dir():
+        raise ToolError("E_NOT_A_FOLDER", f"not a folder: {folder}", "give the plugin folder itself")
+    found = trusted.find("plugin_folder", path)
+    if found is not None:
+        return {"model": model, "folder": str(path), "state": "listed", "enabled": found.enabled}
+    trusted.add("plugin_folder", path, added_by="assistant", enabled=False)
+    return {"model": model, "folder": str(path), "state": "proposed", "enabled": False}
 
 
 @tool()

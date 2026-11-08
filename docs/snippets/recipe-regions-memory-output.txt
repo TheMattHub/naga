@@ -1,0 +1,9 @@
+total          day 0    60.00   day 20    60.00
+product        day 0  6000.00   day 20  6000.00
+best           day 0    30.00   day 20    30.00
+worst          day 0    10.00   day 20    10.00
+opening_price  day 0     5.00   day 20     5.00
+stock_take     day 0   100.00   day 20    16.00
+arriving       day 0     0.00   day 20    59.81
+forecast       day 0    54.00   day 20    54.00
+hours_at_15    day 0     6.00   day 20     6.00

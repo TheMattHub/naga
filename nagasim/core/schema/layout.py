@@ -13,6 +13,7 @@ from nagasim.core.blocks.create import ARRIVAL_MODES
 from nagasim.core.calendar import run_horizon, validate_calendar_structured
 from nagasim.core.conversions import (validate_conversion_expressions,
                                       validate_conversions_structured)
+from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 from nagasim.core.costs import validate_energy_price_structured, validate_fixed_costs_structured
 from nagasim.core.expressions import (LOOKUP_SECTION, RESERVED_NAMES, ExpressionError, functions_with,
                                       is_variable_name, parse_target)
@@ -516,13 +517,22 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
                           tables=tables, refs=refs)
 
     in_scope = variables | _EXTRA_SCOPE.get(btype, frozenset())
+    dist = params.get("distribution")
+    spec = DISTRIBUTION_REGISTRY.get(dist) if isinstance(dist, str) else None
+    words = {p.name for p in spec.params if p.kind == "choice"} if spec else set()
     for key, value in params.get("dist_params", {}).items():
-        if isinstance(value, str):      # an expression-valued parameter
+        if isinstance(value, str) and key not in words:      # an expression-valued parameter
             check(problems, name, value, in_scope, f"{at}/dist_params/{key}", tables=tables, refs=refs)
 
 
 # validate_params problem strings -> a stable code plus a hint (ROADMAP 3.1).
-def _param_problem(text: str, name: str, btype: str, at: str) -> Problem:
+def _param_problem(text: str, name: str, btype: str, at: str,
+                   plugin_types: frozenset = frozenset()) -> Problem:
+    if text.startswith("unknown block type: ") and btype in plugin_types:     # D1117
+        return problem("E_PLUGIN_NOT_LOADED", f"{name}: {btype} comes from a plugin that is not "
+                       "loaded", f"/blocks/{at}/type", block=name,
+                       hint="trust and enable the plugin folder that provides it (Settings > "
+                            "Plugins in the editor, or NAGASIM_PLUGIN_PATH), then reopen the model")
     if text.startswith("unknown block type: "):
         return problem("E_UNKNOWN_BLOCK_TYPE", f"{name}: {text}", f"/blocks/{at}/type", block=name,
                        hint=f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}")
@@ -1114,6 +1124,9 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
             getattr(import_module(module), function)(layout, problems)
     deterministic = bool(layout.get("simulation", {}).get("deterministic"))   # PHASE6 W4 P1, D119
 
+    info = layout.get("info")
+    declared = info.get("requires_plugins") if isinstance(info, dict) else None
+    plugin_types = frozenset(str(t).upper() for t in declared or () if isinstance(t, str))
     seen_names = set()
     for index, block in enumerate(blocks):
         name = block.get("name", "<unnamed>")
@@ -1122,7 +1135,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
         at = f"/blocks/{index}"
 
         for text in validate_params(btype, params):
-            problems.append(_param_problem(text, name, btype, str(index)))
+            problems.append(_param_problem(text, name, btype, str(index), plugin_types))
         # A `distribution` that is not a name or a `dist_params` that is not a mapping is
         # reported just above; the checks below read them as what they should be (#407).
         misshapen = [key for key, kind in (("distribution", str), ("dist_params", dict))

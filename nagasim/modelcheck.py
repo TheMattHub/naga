@@ -111,7 +111,8 @@ from nagasim.core.levels import LevelSystem
 from nagasim.core.schema.sections_validation import parse_when
 from nagasim.core.stats import ci95
 
-__all__ = ["Result", "check", "assert_model", "main", "run_reality_checks", "RESULT_COLUMNS"]
+__all__ = ["Result", "check", "assert_model", "main", "run_reality_checks", "RESULT_COLUMNS",
+           "open_and_run"]
 
 _OPS = ("<", "<=", ">", ">=", "==")
 _STATUSES = ("pass", "fail", "inconclusive")
@@ -133,7 +134,7 @@ class Result:
     upper: float | None
     status: str  # "pass" | "fail" | "inconclusive"
     message: str
-    kind: str  # "assertion" | "reality_check" | "path_check"
+    kind: str  # "assertion" | "reality_check" | "path_check" | "gate"
     note: str = ""  # a reality check's extra word on its outcome (D677); it is also in `message`
 
     @property
@@ -444,7 +445,8 @@ def check(layout, *, workers: int = 1, runs: dict | None = None) -> list[Result]
     `api.run_model` replications (the KPI is read off the same run for all of
     them), so N assertions at 5 replications each cost 5 runs total, not 5N.
     `workers` is passed straight through to that run. *runs*, when given, receives each
-    batch's results by replication count, so the law check can reuse one (seed 0 here too).
+    batch's results by replication count, so the law check can reuse one (seed 0 here too), and
+    a run already in it at a batch's count (the gate's, `open_and_run`) is used, not repeated.
     """
     base = api.load_layout(layout)
     results: list[Result] = []
@@ -455,7 +457,9 @@ def check(layout, *, workers: int = 1, runs: dict | None = None) -> list[Result]
 
     for reps in sorted(by_reps):
         group = by_reps[reps]
-        run_results = api.run_model(base, replications=reps, seed=0, workers=workers)
+        run_results = (runs or {}).get(reps)        # the gate's run at this count (U5)
+        if run_results is None:
+            run_results = api.run_model(base, replications=reps, seed=0, workers=workers)
         if runs is not None:
             runs[reps] = run_results
         flat = experiments.flatten_kpis(run_results) if run_results is not None else None
@@ -471,6 +475,75 @@ def check(layout, *, workers: int = 1, runs: dict | None = None) -> list[Result]
         results.extend(_path_result(row) for row in pathcheck.check_paths(base))
 
     return results
+
+
+_GATE_SHOWN = 5      # problems named in a failed gate's message; the rest are counted
+
+
+def open_and_run(path_or_layout, *, replications: int | None = 1, seed: int = 0, workers: int = 1,
+                 runs: dict | None = None) -> Result:
+    """The open-and-run gate (U5, D1118): does the model open in the editor's loader with no
+    error, using the plugins this user enabled, and run one replication?
+
+    The three steps are the ones a person takes: open the file (`schema.load_layout`, then
+    `ModelDocument`, as File > Open does), read the Problems panel (`document.problems()`, errors
+    only), and run once (`api.run_model`, one replication, the model's own run length). The first
+    step that fails is the verdict, and its message says why, e.g. "MY_PLACE comes from a plugin
+    that is not loaded" with the hint to trust its folder. A missing or unreadable file raises
+    OSError, as `check` does, and so does a model whose Python behaviour the caller has not
+    consented to (`PythonRefused`).
+
+    *replications* None runs the model's own count: `naga check` does, and keeps that run in
+    *runs* (by replication count, as `check` does), so its assertions and laws reuse it rather
+    than run the model again.
+
+    Returns a `Result` of kind "gate", status "pass" or "fail".
+    """
+    from nagasim.core import schema
+    from nagasim.core.document import ModelDocument
+    from nagasim.plugins import load_plugins
+
+    load_plugins()
+
+    def verdict(passed: bool, message: str) -> Result:
+        return Result("open and run", None, None, None, None, None, None, None,
+                      "pass" if passed else "fail", message, "gate")
+
+    try:
+        layout = schema.load_layout(path_or_layout)
+        document = ModelDocument(layout)
+    except ValueError as exc:        # JSON and ModelValidationError are ValueErrors
+        return verdict(False, f"does not open: {exc}")
+    except OSError:                  # a missing or unreadable file: the caller's, as `check` raises it
+        raise
+    except Exception as exc:         # the loader tripping on an odd file is a verdict, not a traceback (#1707)
+        return verdict(False, f"does not open: {type(exc).__name__}: {exc}")
+    errors = [p for p in document.problems() if p.severity == "error"]
+    if errors:
+        # A hint that lists every block type would bury the message; a short one says the fix.
+        lines = [p.message + (f" ({p.hint})" if p.hint and len(p.hint) <= 200 else "")
+                 for p in errors[:_GATE_SHOWN]]
+        more = len(errors) - _GATE_SHOWN
+        unknown = any(p.code == "E_UNKNOWN_BLOCK_TYPE" for p in errors)
+        return verdict(False, f"opens with {len(errors)} error(s): " + "; ".join(lines)
+                       + (f"; and {more} more" if more > 0 else "")
+                       + (". A type from a plugin needs its folder trusted and enabled (Settings > "
+                          "Plugins in the editor, or NAGASIM_PLUGIN_PATH)" if unknown else ""))
+    try:
+        if replications is None:
+            replications = api.run_settings(layout, None, None, None)[0]
+        results = api.run_model(path_or_layout if isinstance(path_or_layout, (str, Path)) else layout,
+                                replications=replications, seed=seed, workers=workers)
+    except PermissionError:          # Python behaviour without the caller's consent: theirs to give
+        raise
+    except Exception as exc:         # a plugin or a block raising: the gate reports it, never raises
+        return verdict(False, f"does not run: {type(exc).__name__}: {exc}")
+    if results is None:
+        return verdict(False, "does not run: the replication produced no results")
+    if runs is not None:
+        runs[replications] = results
+    return verdict(True, "opens with no errors and runs" + (
+        " one replication" if replications == 1 else f" {replications} replications"))
 
 
 def assert_model(path_or_layout, strict: bool = False) -> None:
@@ -543,8 +616,9 @@ def _junit_xml(all_results: list[tuple[str, list[Result]]]) -> str:
     return ET.tostring(root, encoding="unicode", xml_declaration=True)
 
 
-def _print_table(model_path: str, results: list[Result]) -> None:
-    print(f"{model_path}:")
+def _print_table(model_path: str, results: list[Result], header: bool = True) -> None:
+    if header:
+        print(f"{model_path}:")
     if not results:
         print("  (no assertions, reality checks or path checks)")
         return
@@ -610,20 +684,26 @@ def _run_check(model_paths: list[str], *, junit: str | None, workers: int, stric
     all_results: list[tuple[str, list[Result]]] = []
     for path in model_paths:
         try:
+            # U5: a model that does not open and run once has nothing else worth checking.
             runs: dict = {}
-            results = check(path, workers=workers, runs=runs)
+            gate = open_and_run(path, replications=None, workers=workers, runs=runs)
+            results = check(path, workers=workers, runs=runs) if gate.passed else [gate]
         except (OSError, ValueError) as exc:
             print(f"naga check: {path}: {exc}", file=sys.stderr)
             return 2
         if as_json:     # D909: the `naga validate --json` problems, plus the laws summary
-            checks = _law_checks(path, workers, runs)
+            checks = _law_checks(path, workers, runs) if gate.passed else None
             print(json.dumps(api._json_safe({
+                "gate": dataclasses.asdict(gate),
                 "problems": [p.as_dict() for p in _validation_problems(path)],
                 "laws": checks.as_dict() if checks is not None else None,
                 "results": [dataclasses.asdict(r) for r in results]}), indent=2, default=str))
+        elif gate.passed:
+            print(f"{path}:\n  [PASS] {'gate':13s} {gate.message}")
+            _print_table(path, results, header=False)
+            _print_laws(path, workers, runs)
         else:
             _print_table(path, results)
-            _print_laws(path, workers, runs)
         all_results.append((path, results))
 
     if junit:
@@ -644,7 +724,9 @@ def main(argv=None) -> int:
     subs = parser.add_subparsers(dest="command", required=True)
 
     check_p = subs.add_parser("check",
-                              help="run a model's assertions, reality checks and path checks")
+                              help="check that a model opens with no errors and runs one "
+                                   "replication, then run its assertions, reality checks and "
+                                   "path checks")
     check_p.add_argument("models", nargs="+", help="model file(s) to check")
     check_p.add_argument("--junit", default=None, help="write a JUnit XML report here")
     check_p.add_argument("--workers", type=int, default=1)

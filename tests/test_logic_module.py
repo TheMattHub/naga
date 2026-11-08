@@ -121,3 +121,14 @@ def test_model_file_cannot_name_a_module(on_path):
     model["simulation"]["logic_module"] = "my_logic"
     with pytest.raises(LogicClassNotFound, match="in nagasim.core.custom_logic$"):
         api.run_model(model)
+
+
+def test_scenarios_take_the_callers_logic(on_path):
+    """Phase 16 follow-up: `run_scenarios(logic=...)` as `run_model` takes it, by name or as a module."""
+    from nagasim import experiments
+    layout = {**_model(), "scenarios": [{"name": "Longer", "overrides": [
+        {"path": "simulation.time_limit", "value": 80}]}]}
+    for logic in ("my_logic", importlib.import_module("my_logic")):
+        result = experiments.run_scenarios(layout, replications=2, logic=logic)
+        assert all(_to(frames, "out_b") > 0 and _to(frames, "out_a") == 0
+                   for frames in result.results.values())

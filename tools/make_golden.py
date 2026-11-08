@@ -116,7 +116,7 @@ def write_view_state(read) -> None:
     """Write VIEW_STATE from *read*. Only ever deliberately, like the hashes above."""
     record = {"artwork": [model for model in view_models() if has_artwork(model)],
               "hashes": {model: view_state_hash(model, read) for model in view_models()}}
-    VIEW_STATE.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+    VIEW_STATE.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
 
 
 def read_view_state(path, trace, times) -> dict:
@@ -154,7 +154,7 @@ def main() -> int:
             payload = golden_payload(model, seed)
             record = {"model": model, "seed": seed, "hash": golden_hash(payload), "payload": payload}
             out = GOLDEN_DIR / f"{Path(model).stem}_seed{seed}.json"
-            out.write_text(json.dumps(record, indent=2, sort_keys=True))
+            out.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
             print(f"{out.relative_to(REPO_ROOT)}: {record['hash'][:12]}...")
     return 0
 

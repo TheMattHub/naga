@@ -39,7 +39,6 @@ force is tracked in the `available` collector.
 import bisect
 import math
 from bisect import insort_right
-from collections import deque
 from operator import attrgetter
 
 import numpy as np
@@ -52,7 +51,7 @@ from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.problems import problem
 from nagasim.core.stats import TimeWeighted, Tally
 from nagasim.core.timeunits import ModelUnits, base_factor
-from nagasim.core.utils import ResourceSnapshot, timeout_at
+from nagasim.core.utils import ResourceLog, timeout_at
 from nagasim.settings import config
 
 import logging
@@ -499,13 +498,13 @@ class LoggedSimpyResource:
         self._core = resolved_cls(env, capacity)
         if self.rerank:
             self._core.rank_of = self.rank_for
-        # Snapshot deque feeds the flat Excel log sheet only; KPIs come from
+        # Snapshot log (packed, D1061) feeds the flat Excel log sheet only; KPIs come from
         # the collectors below. `log_truncated` (ROADMAP 2.5, DEVLOG #62):
         # True once a run has produced more than LOG_HISTORY snapshots for
         # this resource, so the flat log/mode/percentile cosmetics it feeds
-        # are no longer a complete history (the deque's own maxlen silently
+        # are no longer a complete history (the log's own maxlen silently
         # drops the oldest entry with no signal otherwise).
-        self.log = deque(maxlen=config.LOG_HISTORY)
+        self.log = ResourceLog(maxlen=config.LOG_HISTORY)
         # Events that WOULD have been logged: `outputs._reportable` asks "did
         # anything happen to this resource", which must stay true with
         # `record_logs` off (PHASE4 T7).
@@ -878,7 +877,7 @@ class LoggedSimpyResource:
             waiting = len(core.put_queue) - pending
         else:                          # no schedule or failure: SimPy's counts are the entities
             in_use, waiting = len(core.users), len(core.put_queue)
-        buffer.append(ResourceSnapshot(time, in_use, waiting, event_type))
+        buffer.add(time, in_use, waiting, event_type)
 
     def open_waits(self, t_end):
         """Waits of requests still queued at *t_end* (censored observations).
@@ -919,7 +918,7 @@ class ResourceSet:
         self.rule = rule
         self._cursor = -1          # Cyclical: index of the last member picked
         self.log_events = 0
-        self.log = deque(maxlen=config.LOG_HISTORY)
+        self.log = ResourceLog(maxlen=config.LOG_HISTORY)
         self.log_truncated = False
         self.seize_count = 0
         self.queue_len = TimeWeighted(env.now)
@@ -1049,7 +1048,7 @@ class ResourceSet:
         buffer = self.log
         if buffer.maxlen and len(buffer) >= buffer.maxlen:
             self.log_truncated = True
-        buffer.append(ResourceSnapshot(time, self.count, int(self.queue_len.level), event_type))
+        buffer.add(time, self.count, int(self.queue_len.level), event_type)
 
     def open_waits(self, t_end):
         return [max(t_end - t, 0.0) for t in self._open]

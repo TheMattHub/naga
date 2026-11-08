@@ -42,6 +42,7 @@ System-dynamics functions that delay, smooth and extrapolate a signal.
 - [How do I delay goods in transit by a fixed time or a spread of times?](transit-delay.md)
 - [How do I smooth a noisy signal?](smooth-noise.md)
 - [How do I extrapolate a growing trend?](trend-forecast.md)
+- [How do I total a subscripted value and remember a past one?](regions-memory.md)
 
 ## Rates, tests and money
 
@@ -52,6 +53,7 @@ Cycles, test inputs, discounting, safe division and trigonometry in rates.
 - [How do I discount a stream of cash?](discounted-cash.md)
 - [How do I stop a ratio dividing by zero?](safe-ratio.md)
 - [How do I turn a heading and a distance into x and y?](bearing.md)
+- [How do I work out an angle, a length or a count in an expression?](ramp-geometry.md)
 
 ## Agents
 
@@ -59,6 +61,7 @@ Reading the agents around an agent, in continuous space and on a grid.
 
 - [How do I let an agent react to the agents near it?](near-agents.md)
 - [How do I let an agent read the agents in the cells around it?](neighbour-grid.md)
+- [How do I let an agent read the agents it is linked to?](linked-agents.md)
 
 ## Flow blocks
 

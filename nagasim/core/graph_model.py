@@ -1,4 +1,4 @@
-from nagasim.core import blocking, bottleneck, sd, timeseries
+from nagasim.core import blocking, bottleneck, queuerow, sd, timeseries
 from nagasim.core.base_process import Block
 from nagasim.core.blocks import Batch, Hold, Match
 from nagasim.core.block_registry import BLOCK_REGISTRY
@@ -115,6 +115,14 @@ class GraphModel:
             if isinstance(name, str) and name in there)
         if env.ctx.counted_blocks:
             env.ctx.bus.subscribe(timeseries.count_departures(env.ctx))
+        # Slot rows (E7, D1126): only a model whose top-level blocks give `queue_row.slots`
+        # gets the subscriber, so every other model runs exactly as before.
+        slot_rows = {block["name"]: row for block in layout.get("blocks") or []
+                     if isinstance(block, dict)
+                     and (row := queuerow.slots_of(block.get(queuerow.KEY))) is not None}
+        if slot_rows:
+            env.ctx.slot_counter = queuerow.SlotCounter(slot_rows)
+            env.ctx.bus.subscribe(env.ctx.slot_counter)
 
         # Entity-log memory bound (ROADMAP 2.5, DEVLOG #62): same pattern as
         # timeseries_points above, a plain optional setting with a default.

@@ -306,7 +306,7 @@ def test_text_of_a_plant_reaches_the_page_as_data_only(tmp_path):
     doc["model"]["name"] = HOSTILE
     text = page.build(doc, [TraceEvent(t=1.0, kind="entity_created", entity_id=1,
                                        e_type=HOSTILE, block="p", target=None)])
-    assert text.count("</script>") == 3 and "<img" not in text      # theme pick, data, drawer
+    assert text.count("</script>") == 4 and "<img" not in text      # theme pick, words, data, drawer
     data = data_of(page, text)
     assert data["monitor"]["summary"]["problems"][0][2] == HOSTILE
     assert data["monitor"]["events"][-1][2] == HOSTILE + " entered at p"
@@ -595,6 +595,6 @@ def test_a_setpoint_says_what_it_would_write_from_the_callers_file_only(tmp_path
     assert monitor.setpoint_text({"verb": "hold", "target": "x", "value": True}, tags) is None
     doc["recommend"]["items"] = [item, hostile]
     text = page.build(doc, [])
-    assert "<img src=x" not in text.replace(HOSTILE, "") and text.count("</script>") == 3
+    assert "<img src=x" not in text.replace(HOSTILE, "") and text.count("</script>") == 4
     assert "range 1 to 5" in data_of(page, text)["monitor"]["summary"]["recommend"]["lead"][1]
     assert "fetch(" not in text and "XMLHttpRequest" not in text    # read-only: it sends nothing

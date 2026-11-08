@@ -29,7 +29,7 @@ def _sobol_indices(y_a: np.ndarray, y_b: np.ndarray, y_ab: np.ndarray) -> tuple[
 def sobol(layout, factors, kpi: str, n: int = 256, seed: int = 0, replications: int = 1,
          bootstrap: int = 100, *, run_length=None, warmup=None, workers: int = 1,
          on_progress=None, should_stop=None, pool=None, evaluator=None,
-         record_logs=None) -> pd.DataFrame:
+         record_logs=None, logic=None, controllers=None) -> pd.DataFrame:
     """Sobol first- and total-order sensitivity indices (PHASE6 S7): how much
     of *kpi*'s variance each factor accounts for alone (S1) and together with
     every interaction it takes part in (ST).
@@ -78,8 +78,8 @@ def sobol(layout, factors, kpi: str, n: int = 256, seed: int = 0, replications: 
                     for j in range(n)]
 
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
-                                        workers=workers, pool=pool, record_logs=record_logs,
-                                        kpis=[kpi])
+                                        workers=workers, pool=pool, record_logs=record_logs, logic=logic,
+                                        controllers=controllers, kpis=[kpi])
     settled = evaluator.values_many(requests, on_progress=on_progress, should_stop=should_stop,
                                     total=len(requests))
 

@@ -11,15 +11,16 @@ from math import isfinite
 from typing import Optional
 from dataclasses import asdict, is_dataclass
 from collections import Counter
+from itertools import compress, repeat
 from functools import lru_cache
 
-from nagasim.core import blocking, bottleneck
+from nagasim.core import blocking, bottleneck, queuerow
 from nagasim.core.expressions import ExpressionError
 from nagasim.core.levels import visible
 from nagasim.core.resource_manager import ENERGY_STATES
 from nagasim.core.stats import _t_quantile, ci95, created_in_window
 from nagasim.core.timeunits import factor
-from nagasim.core.utils import ResourceSnapshot, StoreSnapshot
+from nagasim.core.utils import StoreSnapshot
 
 import logging
 
@@ -96,6 +97,7 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
     # real simulated time, over which every rate was constant.
     if env.ctx.level_system is not None:
         env.ctx.level_system.sync(t1)
+        env.ctx.level_system.settle()   # the levels sync folds lazily (D1097)
 
     ent_sum, ent_log   = summarize_entities(env, warmup=warmup, run_id=run_id)
     res_sum, res_log   = summarize_resources(env, warmup=warmup, run_id=run_id)
@@ -177,6 +179,10 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
         # PHASE4 T5, the same rule again: EMPTY with its fixed columns for a
         # model with no BUFFER and no `queue_capacity`.
         "buffer_summary":   summarize_buffers(env, warmup=warmup, run_id=run_id),
+        # E7 (D1126), the D732 rule: only a model whose blocks give `queue_row.slots` has
+        # this frame at all, so every other model keeps its keys and digests.
+        **({"slot_summary": summarize_slots(env, warmup=warmup, run_id=run_id)}
+           if env.ctx.slot_counter is not None else {}),
         # PHASE6 W3 M2 (D113), the same rule once more: EMPTY with its fixed
         # columns for a model with no entity traversal (never happens once a
         # block has run, but a run with only unreachable blocks is legal).
@@ -474,20 +480,25 @@ def summarize_resources(env, warmup: float = 0.0, run_id: int | None = None):
         if not _reportable(res):
             continue
 
-        res_entries = filter_warmup(res.log, warmup)
+        # Read the packed log's columns, not a snapshot per row (#1561).
+        times, in_use, queue_lengths, event_types = res.log.columns()
+        if warmup > 0:
+            kept = [t >= warmup for t in times]
+            times, in_use, queue_lengths, event_types = (
+                list(compress(c, kept)) for c in (times, in_use, queue_lengths, event_types))
+        res_rows = zip(repeat(name), times, in_use, queue_lengths, event_types)
 
         # Time-weighted KPIs come from the collectors, never from the event
         # snapshots (DEVLOG #21, #22); snapshots only feed the flat log sheet
         # and the mode/percentile cosmetics.
         util = utilization(res, observed, t1)
         avg_queue = res.queue_len.time_avg(t1) if observed > 0 else 0.0
-        queue_lengths = [e.queue_length for e in res_entries]
         waits = res.wait.values
         # DEVLOG #24: waits are only recorded on acquisition, so a request still
         # queued at t1 is invisible. Its censored wait feeds a separate column;
         # the original one keeps its (completed-waits-only) definition.
         open_waits = res.open_waits(t1)
-        all_waits = waits + open_waits
+        all_waits = [*waits, *open_waits]
         mode_len, mode_perc = mode_stats(queue_lengths)
         wait_mode, wait_perc = mode_stats(waits)
         bottleneck_score = round(util * avg_queue, 2)
@@ -533,12 +544,7 @@ def summarize_resources(env, warmup: float = 0.0, run_id: int | None = None):
             "Bottleneck %": 0,   # overwritten below for the top scorer
         })
 
-        for entry in res_entries:
-            if type(entry) is ResourceSnapshot:     # asdict() deep-copies every field (perf K1)
-                logs.append((name, entry.time, entry.in_use, entry.queue_length, entry.event_type))
-            else:
-                row = asdict(entry) if is_dataclass(entry) else entry
-                logs.append(tuple({"Resource": name, **row}.get(c) for c in _RESOURCE_LOG_COLS))
+        logs.extend(res_rows)
 
     # -- decide ONE bottleneck (highest score) and flag it -------------
     if bottleneck_scores:
@@ -1328,6 +1334,24 @@ def summarize_buffers(env, *, warmup: float = 0.0,
                           if res is not None and capacity_time > 0 else np.nan),
         })
     return _frame(rows, _BUFFER_SUMMARY_COLS)
+
+
+_SLOT_SUMMARY_COLS = ["Run", "Block", "Label", "Slots", "Frees", "Entered", "Overflows"]
+
+
+def summarize_slots(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "slot_summary" frame (E7, D1126): per block whose `queue_row` gives `slots`, the
+    entities that entered it and the arrivals that found it full -- the instants counted by
+    `queuerow.overflow_instants` (one per instant, however many enter at once), from the
+    run's own events, no trace needed. Both counts start at the warm-up; the slots held then
+    still count."""
+    counter = env.ctx.slot_counter
+    rows = []
+    for name, row in counter.rows.items():
+        entered, overflows = queuerow.overflow_count(counter.changes[name], row["slots"], since=warmup)
+        rows.append({"Run": run_id, "Block": name, "Label": row["label"], "Slots": row["slots"],
+                     "Frees": row["frees"], "Entered": entered, "Overflows": overflows})
+    return _frame(rows, _SLOT_SUMMARY_COLS)
 
 
 # ------------------------------------------------------- entity flow / bottleneck (M2, D113)

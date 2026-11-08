@@ -36,13 +36,12 @@ import time
 from pathlib import Path
 
 from nagasim import __version__, agent_tools, examples, netguard, study, studyapp
-from nagasim.agent_tools import discover
-from nagasim.assistant import COMPACT_TOOL_NAMES
+from nagasim.agent_tools import discover, profiles as tool_profiles
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 
 __all__ = ["build_server", "add_arguments", "serve", "main", "MCPUnavailable", "INSTALL_HINT",
-           "INSTRUCTIONS", "COMPACT_TOOLS"]
+           "INSTRUCTIONS", "COMPACT_TOOLS", "PROFILES"]
 
 INSTALL_HINT = (
     "The Model Context Protocol SDK is not installed. It is an optional extra:\n"
@@ -55,15 +54,18 @@ INSTRUCTIONS = (
     "existing study folder) and follow its next_step. "
     "Build, validate, run and analyse discrete-event simulation models. To build one: "
     "get_model_format once, write_model with the whole model file, fix what its answer lists "
-    "with one more write_model, run_model, save_model. run_model returns a compact KPI digest "
+    "with one more write_model, run_model, check_model_opens (it must pass before the model is "
+    "done), save_model. run_model returns a compact KPI digest "
     "with confidence intervals; get_kpi_table pages the raw frames. The block-by-block tools "
     "(add_block, connect, upsert_record, ...) edit an open model."
 )
 # `naga mcp --tools compact` (D397): what building and running a model needs, and the file
 # tools around it. Every tool's description is part of each turn an agent pays for, so a
-# client that only builds models is better served by eight tools than by every one. The
-# five are a local model's compact list (`assistant`), the three are the file tools.
-COMPACT_TOOLS = COMPACT_TOOL_NAMES | {"open_model", "get_model_json", "save_model"}
+# client that only builds models is better served by eight tools than by every one.
+COMPACT_TOOLS = tool_profiles.COMPACT
+# `--tools NAME` (D1048): the situation profiles of `agent_tools.profiles`. A product adds its
+# own tools to a profile and passes the merged mapping to add_arguments/serve.
+PROFILES = tool_profiles.PROFILES
 
 
 class MCPUnavailable(ImportError):
@@ -286,7 +288,8 @@ Work in this order:
 4. The answer lists every problem with its JSON path and a hint: fix them all
    in ONE more write_model. Warnings (W_ codes) are advisory but usually worth
    reading.
-5. run_model, then save_model.
+5. run_model, then check_model_opens: the model is done only when it passes.
+6. save_model.
 
 Rules of thumb: interarrival times are Exponential unless the description says
 otherwise; service times are rarely Normal (it can go negative -- use Lognormal,
@@ -435,15 +438,16 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     return server
 
 
-def add_arguments(parser) -> None:
+def add_arguments(parser, profiles=None) -> None:
     parser.add_argument("--root", default=".",
                         help="workspace root: the only directory models may be read from or "
                              "written to (default: the current directory)")
     netguard.add_arguments(parser)
-    parser.add_argument("--tools", choices=("all", "compact"), default="all",
+    parser.add_argument("--tools", choices=("all", *(profiles or PROFILES)), default="all",
                         help="all: every tool (default); compact: only what building, running "
                              "and saving a model needs (get_model_format, write_model, "
-                             "run_model, ...), so a client pays for fewer tool descriptions")
+                             "run_model, ...); build, run, study, twin: the tools of that "
+                             "situation. A client then pays for fewer tool descriptions")
     parser.add_argument("--room", action="store_true",
                         help="also serve the live control room of the studies on 127.0.0.1 (a random "
                              "port and token); every study answer then carries its address")
@@ -463,7 +467,8 @@ def add_arguments(parser) -> None:
                              "can start a twin or choose this directory")
 
 
-def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIONS) -> int:
+def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIONS,
+          profiles=None) -> int:
     agent_tools.drop_python_consent()       # D186: before anything can run, in this process and its workers
     from nagasim import toolpicker
     from nagasim.agent_tools import discover
@@ -483,7 +488,7 @@ def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIO
         server = build_server(args.root, network=netguard.policy_from_args(args), twin=twin,
                               twin_dir=getattr(args, "twin_dir", None),
                               name=name, instructions=instructions,
-                              tools=COMPACT_TOOLS if getattr(args, "tools", "all") == "compact" else None,
+                              tools=(profiles or PROFILES).get(getattr(args, "tools", "all")),
                               room=getattr(args, "room", False))
     except MCPUnavailable as exc:
         print(str(exc))     # stdout is the transport only once the server runs

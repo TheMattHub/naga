@@ -16,15 +16,26 @@ Frame keys, each left out when empty:
     n, s    per drawn block: entities in it, and in service
     st      per drawn block: its lamp ("" for none)
     u       {block: [[label, units], ...]}              unit counts
-    q       {block: [[type, ...], [type, ...]]}         first ROW waiting, first ROW serving
+    q       {block: [[type, ...], [type, ...]]}         first ROW (+ seats) waiting, first ROW serving
+    qi      {block: [[id, ...], [id, ...]]}             the same rows' entity ids (a click follows one)
     r       [[resource, state, busy, capacity], ...]
     lv      {level: value}
     k       [created, completed]
     tok     [[id, type, x, y], ...]                     entities on a delayed link (tokx: the rest)
-    veh     [[fleet, unit, x, y, heading, state], ...]
+    veh     [[fleet, unit, x, y, heading, state(, id)], ...]   id: the entity holding the unit (#1470)
     ag      [[population, index, x, y, colour], ...]    layout view only (agx: the rest)
     mv      [[type, source block, target block, t], ...]   moves since the sample before,
             each at its own time t (mvx: their number, when over MAX_MOVES)
+    cr      [[floor x, floor y, hook x, hook y, carrying], ...]   per scene crane (layout view)
+
+What the 2D drawing added for stock yards and cranes (Q2) is read once per run by the display modules the
+editor draws with, and written into the scene as exact series and intervals, so the player
+only looks a time up in them: `slots` (queue-row slots, `queuerow.held_series` and
+`overflow_instants`, D1113), `piles` (stock areas, each entity's stay on its pile from its
+landing to its leaving, `stockpiles`, D1111/D1146), `cranes` (`cranes.hook_at` per frame,
+D1110/D1112) and `grp` (who is inside what, `grouping.Grouping`, D1147/D1148). A crane lift
+changes the drawn rows as the editor's does: the load stays in its source row until the grab
+and is in its target row from the landing (`n` and `s` stay the run's).
 """
 from __future__ import annotations
 
@@ -32,7 +43,10 @@ import math
 import re
 
 import nagasim.settings.color_palette as cp
-from nagasim.core import playback
+from nagasim.core import cranes as cr
+from nagasim.core import playback, queuerow
+from nagasim.core import stockpiles as sp
+from nagasim.core.grouping import Grouping
 from nagasim.core.network import block_place, build_network, point_on_path
 from nagasim.core.playback import Timeline
 from nagasim.core.seizing import QUEUEING_BLOCK_TYPES
@@ -69,6 +83,18 @@ def block_label(name: str, description: str = "") -> str:
 
 
 _STORING = ("BUFFER", "STORE")
+# The editor's crane and pile look (`product/ui/cranes2d.py`, which the engine cannot
+# import): the oblique "up", the trolley's height and the default paints.
+OBLIQUE = (-0.5, -0.866)
+TROLLEY_HEIGHT_M, TROLLEY_HEIGHT_SHARE = 1.8, 0.35
+CRANE_COLOUR, PILE_COLOUR = "#F2C14E", "#8A939E"
+
+
+def trolley_height(crane: dict) -> float:
+    """A crane's trolley height in plan metres: TROLLEY_HEIGHT_M, less on a short bridge."""
+    x0, y0, x1, y1 = crane["runway"]
+    span = (y1 - y0) if cr.crane_axis(crane) == "x" else (x1 - x0)
+    return min(TROLLEY_HEIGHT_M, TROLLEY_HEIGHT_SHARE * span)
 
 
 def _buffer(block: dict, layout: dict) -> tuple[bool, float | None]:
@@ -130,10 +156,13 @@ class TapeWriter:
     frames from a `Timeline` asked at rising times (a vehicle keeps the heading it
     last drove with, so the writer remembers one per vehicle)."""
 
-    def __init__(self, layout: dict, view: str):
+    def __init__(self, layout: dict, view: str, seats: dict | None = None):
+        """*seats* is `{block: number of seats}` (D1057): a block's waiting row lists that many
+        more than ROW, so a player draws everyone on a seat as well as the row after them."""
         if view not in VIEWS:
             raise ValueError(f"unknown view '{view}'; use one of: {', '.join(VIEWS)}")
         self.view = view
+        self._seats = dict(seats or {})
         self._floor = view == "layout"
         network_section = layout.get("network") or {}
         nodes = {node.get("name"): node for node in network_section.get("nodes") or []}
@@ -198,6 +227,27 @@ class TapeWriter:
         self._fleets, self._pops, self._palette = _Names(), _Names(), _Names()
         self._headings: dict[tuple, float] = {}
 
+        # Q2: slot rows on any drawn block; cranes and piles have plan metres, so only on the
+        # floor plan (as in the editor). A malformed section draws nothing rather than failing.
+        self._layout = layout
+        self._slot_rows = {}
+        for block in layout.get("blocks") or []:
+            row = queuerow.slots_of(block.get(queuerow.KEY)) if isinstance(block, dict) else None
+            if row is not None and block.get("name") in self._blocks:
+                self._slot_rows[block["name"]] = row
+        problems: list = []
+        cr.validate_cranes(layout, problems)
+        sp.validate_stockpiles(layout, problems)
+        bad = {p.code for p in problems}
+        self._cranes = ([c for c in layout.get("cranes") or [] if c.get("serves")]
+                        if self._floor and "E_CRANE" not in bad else [])
+        section = (layout.get("stockpiles") or {}) if self._floor and "E_STOCKPILE" not in bad else {}
+        self._pile_section = section
+        self._areas = [a for a in section.get("areas") or [] if a.get("block") in self._blocks]
+        self._lifts: dict = {}
+        self._pile_keys: dict = {}
+        self._derived: dict | None = None      # set by `run`: the series and intervals above
+
     # -- one sample -------------------------------------------------------------------
     def frame(self, timeline: Timeline, t: float, t_prev: float | None = None) -> dict:
         """What to draw at *t*. *t_prev* is the sample before: its moves up to *t*
@@ -221,9 +271,13 @@ class TapeWriter:
                  if block in self._blocks}
         if units:
             frame["u"] = units
-        rows = self._rows(state)
+        raw_transit = state.get("in_transit") or {}
+        carried: dict = {}
+        if self._cranes and self._derived is not None:
+            state, frame["cr"], carried = self._lifted(state, t)
+        rows, ids = self._rows(state)
         if rows:
-            frame["q"] = rows
+            frame["q"], frame["qi"] = rows, ids
         if resources:
             frame["r"] = [[self._resources.index(row["name"]), row["state"], row["busy"],
                            row["capacity"]] for row in playback.resource_rows(state)]
@@ -233,11 +287,14 @@ class TapeWriter:
             frame["lv"] = levels
 
         in_transit = state.get("in_transit") or {}
-        self._capped(frame, "tok", [entry for entry in (
+        tokens = [entry for entry in (
             self._token(entity, *transit) for entity, transit in sorted(in_transit.items()))
-            if entry is not None])
-        vehicles = [entry for entry in (
-            self._vehicle(key, *mover) for key, mover in sorted((state.get("movers") or {}).items()))
+            if entry is not None]
+        tokens += [[entity, self._type(e_type), x, y] for entity, (e_type, x, y) in sorted(carried.items())]
+        self._capped(frame, "tok", tokens)
+        holders = state.get("carriers") or {}
+        vehicles = [entry + ([holders[key]] if key in holders else []) for key, entry in (
+            (key, self._vehicle(key, *mover)) for key, mover in sorted((state.get("movers") or {}).items()))
             if entry is not None]
         if vehicles:
             frame["veh"] = vehicles
@@ -252,7 +309,7 @@ class TapeWriter:
                      for entity, e_type, source, target, when, _branch
                      in timeline.moves_between(t_prev, t)
                      # A delayed link draws its entity itself (`tok`), not as a hop.
-                     if entity not in in_transit and source in self._blocks
+                     if entity not in raw_transit and source in self._blocks
                      and target in self._blocks]
             if len(moves) > MAX_MOVES:
                 frame["mvx"] = len(moves)
@@ -272,8 +329,9 @@ class TapeWriter:
     def _color(self, color) -> int:
         return -1 if color is None else self._palette.index(color)
 
-    def _rows(self, state: dict) -> dict:
-        """{block: [waiting types, serving types]}, the first ROW of each."""
+    def _rows(self, state: dict) -> tuple[dict, dict]:
+        """{block: [waiting types, serving types]}, the first ROW of each (and the seats), and
+        the same rows as entity ids."""
         queues = state.get("queues") or {}
         occupants: dict[str, list] = {}
         types: dict[int, str] = {}
@@ -281,15 +339,117 @@ class TapeWriter:
             if block in self._blocks:
                 occupants.setdefault(block, []).append(entity)
                 types[entity] = e_type
-        out = {}
+        out, ids = {}, {}
         for block, inside in occupants.items():
             waiting = queues.get(block, [])
             queued = set(waiting)
-            serving = [entity for entity in inside if entity not in queued]
-            out[str(self._blocks[block])] = [
-                [self._type(types[entity]) for entity in waiting[:ROW] if entity in types],
-                [self._type(types[entity]) for entity in serving[:ROW]]]
-        return out
+            serving = [entity for entity in inside if entity not in queued][:ROW]
+            waiting = [entity for entity in waiting[:ROW + self._seats.get(block, 0)] if entity in types]
+            key = str(self._blocks[block])
+            out[key] = [[self._type(types[entity]) for entity in waiting],
+                        [self._type(types[entity]) for entity in serving]]
+            ids[key] = [waiting, serving]
+        return out, ids
+
+    # -- Q2: cranes, piles, slot rows and groups -------------------------------------
+    def _point(self, block: str, entity: int, home):
+        """Where a crane picks from or sets down in *block*: its entity's pile, else the block's
+        place. Not the row slot: the player spaces a row in screen pixels, the tape is in plan
+        units (D1166)."""
+        area = next((a for a in self._areas if a["block"] == block), None)
+        if area is not None:
+            x0, y0, x1, y1 = area["piles"][sp.pile_of(area, self._pile_keys[block].get(entity))]["rect"]
+            return (x0 + x1) / 2, (y0 + y1) / 2
+        index = self._blocks.get(block)
+        return self._centres[index] if index is not None else home
+
+    def _lifted(self, state: dict, t: float):
+        """(a copy of *state* with each crane lift drawn as the editor draws it, the cranes'
+        `cr` entries, {entity: (type, x, y)} of the loads on a hook): the rule of
+        `product/ui/cranes2d.CraneLayer.adjust` -- a load stays in its source row until the
+        grab and is in its target row from the landing; counts are not changed."""
+        state = dict(state, entities=dict(state["entities"]),
+                     in_transit=dict(state.get("in_transit") or {}),
+                     queues={b: list(ids) for b, ids in (state.get("queues") or {}).items()})
+        hooks, carried = [], {}
+        for crane in self._cranes:
+            lifts = self._lifts.get(crane["name"], [])
+            home = cr.home_of(crane)
+            after, speed = cr.park_options(crane)
+            x, y, height, carrying, _lift, _phase = cr.hook_at(
+                lifts, t, home, lambda lf: (self._point(lf.src, lf.entity_id, home),
+                                            self._point(lf.dst, lf.entity_id, home)),
+                park=(after, speed))
+            drop = height * trolley_height(crane)
+            hx, hy = x + OBLIQUE[0] * drop, y + OBLIQUE[1] * drop
+            hooks.append([_r(x), _r(y), _r(hx), _r(hy), int(carrying is not None)])
+            for lift in lifts:
+                if not (min(lift.t0, lift.s0) <= t < max(lift.t1, lift.s1)):
+                    continue
+                eid = lift.entity_id
+                u = (t - lift.s0) / max(lift.s1 - lift.s0, 1e-12)
+                state["in_transit"].pop(eid, None)
+                block = state["entities"].pop(eid, (None,))[0]
+                if eid in state["queues"].get(block, ()):
+                    state["queues"][block].remove(eid)
+                if u < cr.GRAB:
+                    if lift.src_slot is not None:      # else it rides a carrier until the grab
+                        self._insert(state, lift.src, eid, lift.e_type, lift.src_slot)
+                elif u >= cr.LAND:
+                    self._insert(state, lift.dst, eid, lift.e_type, lift.dst_slot)
+                else:
+                    carried[eid] = (lift.e_type, _r(hx), _r(hy))
+        return state, hooks, carried
+
+    @staticmethod
+    def _insert(state, block, eid, e_type, slot):
+        row = state["queues"].setdefault(block, [])
+        row.insert(min(len(row), slot if slot is not None else len(row)), eid)
+        state["entities"][eid] = (block, e_type)
+
+    def _prepare(self, events) -> None:
+        """Read what the scene's slot rows, piles, cranes and groups need from *events*."""
+        self._lifts = cr.lifts(events, self._cranes) if self._cranes else {}
+        self._pile_keys = {a["block"]: sp.pile_keys(events, self._pile_section, a) for a in self._areas}
+        derived: dict = {}
+        if self._slot_rows:
+            derived["slots"] = [
+                {"b": self._blocks[name], "n": row["slots"], "label": row["label"],
+                 "held": [[t, h] for t, h in queuerow.held_series(events, name, row["frees"])],
+                 "ovf": queuerow.overflow_instants(events, name, row["slots"], row["frees"])}
+                for name, row in self._slot_rows.items()]
+        if self._areas:
+            derived["piles"] = {
+                "max": int(self._pile_section.get("max_layers", sp.MAX_LAYERS)),
+                "areas": [{"b": self._blocks[a["block"]], "label": str(a.get("label") or ""),
+                           "at": a.get("label_at"), "colour": a.get("colour") or PILE_COLOUR,
+                           "piles": [{"rect": [_r(v) for v in p["rect"]], "label": str(p.get("label") or "")}
+                                     for p in a["piles"]],
+                           "stays": [list(s) for s in sp.stays(events, a, self._pile_keys[a["block"]],
+                                                                 self._lifts)]}
+                          for a in self._areas]}
+        if self._cranes:
+            derived["cranes"] = [{"name": c["name"], "runway": [_r(v) for v in c["runway"]],
+                                  "axis": cr.crane_axis(c), "colour": c.get("colour") or CRANE_COLOUR,
+                                  "th": _r(trolley_height(c))} for c in self._cranes]
+        grouping = Grouping(events)
+        stays, lifo = [], {}
+        for group, members in grouping.members.items():
+            for s in members:
+                if s.t1 > s.t0:          # in and out in one instant: never inside
+                    stays.append([s.entity, s.group, s.slot, s.t0, s.t1, self._type(s.e_type)])
+            # The unload order changes only where the group enters a block (`unload_order`).
+            changes, last = [], None
+            for t in sorted({t for t, _block in grouping.blocks.get(group) or ()}):
+                order = int(grouping.unload_order(group, t, self._layout) == "lifo")
+                if order != last:
+                    changes.append([t, order])
+                    last = order
+            if any(order for _t, order in changes):
+                lifo[str(group)] = changes
+        if stays:
+            derived["grp"] = {"st": stays, "lifo": lifo}
+        self._derived = derived
 
     def _between(self, source, target, progress: float):
         """The point *progress* of the way from one drawn block to another."""
@@ -341,6 +501,7 @@ class TapeWriter:
         """The tape of *trace* (a `TraceRecorder` or an event list): `samples` equal
         steps from 0 to the last event. A truncated trace ends at its last event."""
         events = getattr(trace, "events", trace)
+        self._prepare(events)
         timeline = Timeline(events)
         duration = timeline.duration
         steps = max(int(samples), 1) if duration > 0 else 0
@@ -370,6 +531,14 @@ class TapeWriter:
                     ys.append(entry[3])
             for level, value in frame.get("lv", {}).items():
                 peaks[level] = max(peaks.get(level, 0.0), value)
+        derived = self._derived or {}
+        for crane in derived.get("cranes", ()):
+            xs += crane["runway"][0::2]
+            ys += crane["runway"][1::2]
+        for area in derived.get("piles", {}).get("areas", ()):
+            for pile in area["piles"]:
+                xs += pile["rect"][0::2]
+                ys += pile["rect"][1::2]
         box = [min(xs), min(ys), max(xs), max(ys)] if xs else [0.0, 0.0, 1.0, 1.0]
         levels = []
         for index, name in enumerate(self._levels.names):
@@ -384,4 +553,4 @@ class TapeWriter:
         return {**self._static, "box": [_r(v) for v in box], "types": types,
                 "resources": self._resources.names, "levels": levels,
                 "fleets": self._fleets.names, "pops": self._pops.names,
-                "colors": self._palette.names}
+                "colors": self._palette.names, **derived}

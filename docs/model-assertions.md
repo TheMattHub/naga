@@ -58,9 +58,17 @@ naga check model.json --junit out.xml
 ```
 
 It takes several model files, `--workers N` and `--strict`. With `--json` and one model it
-prints `{problems, laws, results}` instead of the table, for a script to read.
+prints `{gate, problems, laws, results}` instead of the table, for a script to read.
 
-Prints a pass/fail/inconclusive table per model. Exit code 0 when nothing failed, 1 when any
+**The open-and-run gate comes first.** A model passes only if it opens with no error, with the
+plugins you enabled (`NAGASIM_PLUGIN_PATH`, or the folders you trusted), and runs at its own
+replication count. A model that fails the gate gets one `[FAIL] gate` line that says why, such as
+"Yard: MY_PLACE comes from a plugin that is not loaded", and none of its assertions run. That run
+is reused by the assertions and the law checks at the same replication count, so the gate costs
+nothing extra there. `nagasim.modelcheck.open_and_run(path)` is the same gate on one replication;
+the agent tool `check_model_opens` runs it before an agent calls a model done.
+
+Prints a pass/fail/inconclusive table per model. Exit code 0 when nothing failed, 1 when the gate or any
 assertion, reality check or path check failed (or, with `--strict`, was inconclusive too), 2 on error (a
 missing file, invalid JSON). `--junit` writes one JUnit XML `<testcase>` per assertion/reality
 check (`classname` is the model file's stem): a `<failure>` element for `fail`, a `<skipped>`

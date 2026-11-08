@@ -47,7 +47,7 @@ import time
 import uuid
 from pathlib import Path
 
-from nagasim import netguard, plant, readers, score
+from nagasim import netguard, pagetext, plant, readers, score
 from nagasim import refit as refits
 from nagasim.core import initial_state
 from nagasim.core.playback import Timeline, resource_rows
@@ -1254,6 +1254,8 @@ def main(argv=None, *, wait=time.sleep) -> int:
         verb.add_argument("--monitor", action="store_true",
                           help="also write DIR/monitor.html, a page to open in a browser that "
                                "reloads itself; the model's layout (names and places) is in it")
+        verb.add_argument("--lang", choices=pagetext.LANGUAGES, default=pagetext.DEFAULT,
+                          help="the language of monitor.html (default en)")
         verb.add_argument("--candidates", default=None, metavar="FILE",
                           help="your candidate actions (format 1, kind naga-candidates): each "
                                "is compared with doing nothing after every forecast, on one "
@@ -1421,7 +1423,8 @@ def main(argv=None, *, wait=time.sleep) -> int:
             from nagasim import monitor
 
             page = monitor.Page(layout, Path(args.out) / monitor.PAGE_FILE,
-                                every=every if running else None, setpoints=setpoints)
+                                every=every if running else None, setpoints=setpoints,
+                                language=args.lang)
             print(f"monitor page: {page.path} (it reloads every {page.refresh} s)")
 
         def shown() -> dict:

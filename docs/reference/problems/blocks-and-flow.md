@@ -37,9 +37,11 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="e_param_missing"></span>`E_PARAM_MISSING` | error | A param the block type declares as required is absent. | -- |
 | <span id="e_param_type"></span>`E_PARAM_TYPE` | error | A param has the wrong Python type for its ParamSpec. | -- |
 | <span id="e_param_unknown"></span>`E_PARAM_UNKNOWN` | error | A param key this block type does not declare. | -- |
+| <span id="e_plugin_not_loaded"></span>`E_PLUGIN_NOT_LOADED` | error | The block's `type` is one the model lists in info.requires_plugins, and no loaded plugin provides it. | -- |
 | <span id="e_preempt_blocking"></span>`E_PREEMPT_BLOCKING` | error | preempt names a resource a station holds while blocked after service; a finished part cannot be interrupted. | -- |
 | <span id="e_preempt_scope"></span>`E_PREEMPT_SCOPE` | error | preempt is set where the block does not own the whole service (its action is not "Seize Delay Release"), or another block holds the same resource across blocks. | -- |
 | <span id="e_queue_no_leave_link"></span>`E_QUEUE_NO_LEAVE_LINK` | error | A block with balk_if/renege_after has no second outgoing link for the entities that leave without service. | -- |
+| <span id="e_queue_row"></span>`E_QUEUE_ROW` | error | A block's queue_row is not {"anchor": [x, y], "direction": degrees}, with x and y in -1..2 over the picture and 0 &lt;= direction &lt; 360. | -- |
 | <span id="e_record_kind"></span>`E_RECORD_KIND` | error | A RECORD block's kind is not a known user-statistic kind. | [RECORD](../blocks/record.md) |
 | <span id="e_record_kind_conflict"></span>`E_RECORD_KIND_CONFLICT` | error | Two RECORD blocks give the same statistic different kinds. | [RECORD](../blocks/record.md) |
 | <span id="e_record_stat_name"></span>`E_RECORD_STAT_NAME` | error | A RECORD block has an empty stat_name. | [RECORD](../blocks/record.md) |
@@ -68,6 +70,7 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="w_plan_station_unknown"></span>`W_PLAN_STATION_UNKNOWN` | warning | An order's `plan` names a station with no STATION block . | [STATION](../blocks/station.md) |
 | <span id="w_preempt_no_priority"></span>`W_PREEMPT_NO_PRIORITY` | warning | preempt is set but every block seizing that resource uses the same priority, so nothing can ever preempt anything. | -- |
 | <span id="w_queue_leave_link_unused"></span>`W_QUEUE_LEAVE_LINK_UNUSED` | warning | A SEIZE/PROCESS has a second outgoing link but neither balk_if nor renege_after, so nothing ever takes it. | [PROCESS](../blocks/process.md), [SEIZE](../blocks/seize.md) |
+| <span id="w_queue_row_crossing"></span>`W_QUEUE_ROW_CROSSING` | warning | A placed asset's drawn queue row (up to its queue capacity, at most ten places 0.8 m apart) runs through another placed asset on the floor plan; turn the row (queue_row) so the picture reads right. | -- |
 | <span id="w_station_unused"></span>`W_STATION_UNUSED` | warning | A STATION block is named by no sequence step. | [STATION](../blocks/station.md) |
 | <span id="w_unbounded_duration"></span>`W_UNBOUNDED_DURATION` | warning | A duration uses a distribution that can sample below 0; samples truncate to 0. | -- |
 | <span id="w_unknown_key"></span>`W_UNKNOWN_KEY` | warning | A key the model file format does not have (write_model): the document drops it. | -- |
@@ -108,6 +111,7 @@ Each code with the usual remedy:
 - `E_PARAM_MISSING`: Add the required parameter to the block. The block's reference page marks the required ones, for example `resource_name` on a RELEASE.
 - `E_PARAM_TYPE`: Give the parameter a value of the declared type, for example a number rather than the text "5", or a list rather than a single value. The hint names the types the block takes.
 - `E_PARAM_UNKNOWN`: Remove the parameter, or rename it to one the block type declares. The block's reference page lists every parameter; a typo or a parameter of a neighbouring block is the usual cause.
+- `E_PLUGIN_NOT_LOADED`: Load the plugin that provides the type, for example by adding its folder to NAGASIM_PLUGIN_PATH, or remove the type from info.requires_plugins if the model no longer uses it.
 - `E_PREEMPT_BLOCKING`: Drop `preempt` on this block, or give the downstream BUFFER enough `capacity` that the station holding the resource never blocks after service.
 - `E_PREEMPT_SCOPE`: Use `preempt` only on a PROCESS with action `Seize Delay Release`, and make every other block seizing that resource one too. Otherwise drop `preempt`.
 - `E_QUEUE_NO_LEAVE_LINK`: Add a second outgoing link, from the block that balks or reneges to where entities that leave without service go, often a DISPOSE. Or clear `balk_if` and `renege_after`.

@@ -70,7 +70,7 @@ def _values_from_frames(frames, extra=None, seed=None) -> dict[str, dict[int, fl
 
 
 def _evaluate_point(layout, overrides, seeds, *, run_length=None, warmup=None, workers=1,
-                    extra=None, pool=None):
+                    extra=None, pool=None, logic=None, controllers=None):
     """Run ONE point of the factor space on exactly *seeds*: {KPI: {seed: value}}.
 
     The single seam everything in this module evaluates through, so a test can
@@ -82,12 +82,16 @@ def _evaluate_point(layout, overrides, seeds, *, run_length=None, warmup=None, w
     `nagasim.calibrate` uses it to add its own objective and the per-replication
     KS statistics its distributional targets need, so calibration reuses this
     evaluator (and `optimize`'s whole search) instead of duplicating either.
+
+    *logic* is the caller's LOGIC module (D1062) and *controllers* its Policy-mode DECIDE
+    controllers (D1122), as `api.run_model` takes them.
     """
     candidate = _candidate_layout(layout, overrides)
     values: dict[str, dict[int, float]] = {}
     for start, count in _consecutive(seeds):
         frames = api.run_model(candidate, replications=count, seed=start,
-                               run_length=run_length, warmup=warmup, workers=workers, pool=pool)
+                               run_length=run_length, warmup=warmup, workers=workers, pool=pool,
+                               logic=logic, controllers=controllers)
         if frames is None:
             continue
         for kpi, by_seed in _values_from_frames(frames, extra, seed=start).items():
@@ -96,7 +100,8 @@ def _evaluate_point(layout, overrides, seeds, *, run_length=None, warmup=None, w
 
 
 def _evaluate_points(layout, requests, *, run_length=None, warmup=None, workers=1,
-                     extra=None, pool=None, on_progress=None, should_stop=None, total=None):
+                     extra=None, pool=None, on_progress=None, should_stop=None, total=None,
+                     logic=None, controllers=None):
     """Run SEVERAL points as ONE wave of (point, replication) tasks (PHASE4 T3).
 
     *requests* is `[(key, overrides, seeds)]`; returns `{key: {KPI: {seed:
@@ -121,7 +126,8 @@ def _evaluate_points(layout, requests, *, run_length=None, warmup=None, workers=
             if should_stop is not None and should_stop():
                 break
             out[key] = _evaluate_point(layout, overrides, seeds, run_length=run_length,
-                                       warmup=warmup, workers=workers, extra=extra)
+                                       warmup=warmup, workers=workers, extra=extra, logic=logic,
+                                       controllers=controllers)
             count += len(seeds)
             if on_progress is not None:
                 on_progress(count, total)
@@ -136,8 +142,10 @@ def _evaluate_points(layout, requests, *, run_length=None, warmup=None, workers=
             for seed in seeds:
                 yield (key, candidate, seed, run_len, warm)
 
+    # A pooled task carries the module by NAME (D914/D1062), like run_scenarios.
     collected = api.run_jobs(jobs(), pool=pool, workers=workers, on_progress=on_progress,
-                             should_stop=should_stop, total=total)
+                             should_stop=should_stop, total=total, controllers=controllers,
+                             logic=api._logic_module(logic, workers)[1])
     for key, _overrides, seeds in requests:
         pairs = collected.get(key) or []
         if len(pairs) == len(seeds):
@@ -194,7 +202,13 @@ class _Evaluator:
     """
 
     def __init__(self, layout, *, run_length=None, warmup=None, workers=1, budget=None,
-                 extra=None, pool=None, record_logs=None, kpis=()):
+                 extra=None, pool=None, record_logs=None, kpis=(), logic=None, controllers=None):
+        # Imported (and checked importable for workers) before the first run,
+        # so a bad caller module fails at once, not on the first design point.
+        api._logic_module(logic, workers)
+        api._check_controllers(controllers, workers, pool)
+        self.logic = logic
+        self.controllers = controllers
         self.layout = study_layout(layout, kpis, record_logs)
         self.run_length = run_length
         self.warmup = warmup
@@ -277,7 +291,7 @@ class _Evaluator:
                                   for key, (overrides, _todo, run) in plan.items() if run],
                                  run_length=self.run_length, warmup=self.warmup,
                                  workers=self.workers, extra=self.extra, pool=self.pool(),
-                                 **kwargs)
+                                 logic=self.logic, controllers=self.controllers, **kwargs)
         settled = set()
         for index, (key, (_overrides, todo, run)) in enumerate(plan.items()):
             store, have = self._cache[key]
@@ -334,7 +348,11 @@ class _Evaluator:
         return out
 
 
-def _response(values: dict, key: str) -> np.ndarray:
+def _response(values: dict, key) -> np.ndarray:
+    """One KPI's per-replication values; *key* may also be a function of all of them (a
+    composite objective, E3), so `select_best` ranks it like any KPI."""
+    if callable(key):
+        return np.asarray(key(values), dtype=float)
     arr = values.get(key)
     if arr is None:
         raise ValueError(f"unknown response KPI: {key!r}")

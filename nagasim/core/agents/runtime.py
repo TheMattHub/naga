@@ -1070,7 +1070,7 @@ class AgentSystem(_SpaceMixin):
             if not pop.counts[tr.src]:
                 continue
             members = np.flatnonzero(pop.state == tr.src if tr.leaves is None
-                                     else np.isin(pop.state, tr.leaves))    # K1
+                                     else tr.lut[pop.state])    # K1, the leaves as a lookup table
             if not tr.own:
                 if not tr.value(pop.shared_scope):
                     continue

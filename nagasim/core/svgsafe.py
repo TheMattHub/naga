@@ -46,7 +46,7 @@ import re
 import xml.etree.ElementTree as ET
 from functools import lru_cache
 
-__all__ = ["MAX_SVG_BYTES", "MAX_LIBRARY_SVG_BYTES", "THEME_TOKENS", "FILL_ELEMENT_ID",
+__all__ = ["MAX_SVG_BYTES", "MAX_QUEUE_SLOTS", "MAX_LIBRARY_SVG_BYTES", "THEME_TOKENS", "FILL_ELEMENT_ID",
            "check_svg", "substitute_tokens"]
 
 # The element an icon may mark as its own fill region (PHASE4 T2, D75): the
@@ -60,6 +60,8 @@ _FILL_EPS = 1e-6
 # bounds what a library can push into a model file.
 MAX_SVG_BYTES = 64_000
 MAX_LIBRARY_SVG_BYTES = 1_000_000
+# D1057: the most seats a graphic's `queue_slots` may list; the player and the asset parser share it.
+MAX_QUEUE_SLOTS = 64
 
 # Colour placeholders the renderer substitutes so an icon follows the app
 # theme (docs/ASSET_GRAPHICS.md). `currentColor` is real SVG; the others are

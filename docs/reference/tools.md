@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 96 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -64,6 +64,8 @@ The 96 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 
 | Tool | Reads | What it does |
 |---|---|---|
+| `check_model_opens` | yes | The open-and-run gate: does the model open in the editor with NO errors, using the plugins this person enabled, and run one replication? Call it before you say a model you built or edited is done; a model that fails it is not done. |
+| `propose_plugin_folder` |  | Propose a plugin folder for the person to trust. |
 | `run_model` |  | Run a model and return a COMPACT KPI digest -- never the raw frames. |
 | `get_kpi_table` | yes | Page through one results frame of the last `run_model` for this model. |
 | `run_scenarios` |  | Run the model's scenarios and compare them against the baseline with confidence intervals and a significance verdict. |

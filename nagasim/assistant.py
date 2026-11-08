@@ -46,6 +46,7 @@ import tempfile
 from pathlib import Path
 
 from nagasim import agent_tools, llm, modeldiff
+from nagasim.agent_tools.profiles import COMPACT_TOOL_NAMES
 from nagasim.core.document import ModelDocument
 
 __all__ = [
@@ -72,19 +73,14 @@ CURATED_TOOL_NAMES = frozenset({
     "get_record_schema", "list_records", "upsert_record", "remove_record",
     "list_sequences", "list_orders",
     "set_simulation_settings", "set_calendar", "auto_layout",
-    "validate_model",
+    "validate_model", "check_model_opens", "propose_plugin_folder",
     "run_model", "get_kpi_table",
     "upsert_scenario", "run_scenarios", "investment_case",
     "run_to_precision", "suggest_warmup",
     "fit_distribution",
 })
 
-# What a small local model is offered (D179; reshaped after the LLM study, D396): the whole
-# model in one write instead of block by block, since every tool's description is re-read on
-# every turn and every round trip re-reads the conversation. update_block stays for a small
-# change to an open model.
-COMPACT_TOOL_NAMES = frozenset({
-    "get_model_format", "write_model", "update_block", "run_model", "get_kpi_table"})
+# What a small local model is offered: `agent_tools.profiles.COMPACT_TOOL_NAMES` (D179, D396).
 
 
 def offered_tools(kind: str, extra: tuple = ()) -> list[str]:
@@ -132,6 +128,9 @@ service times are rarely Normal (it can go negative) -- prefer Lognormal, Gamma 
 BoundedNormal.
 5. run_model; its digest carries the KPIs. For a small change to an open model, \
 update_block is enough.
+6. Before you say a model you built or edited is done, call check_model_opens: it must \
+pass. A type that comes from a plugin that is not loaded needs the person to trust its \
+folder in Settings > Plugins; propose_plugin_folder can only suggest one, switched off.
 
 Reading results honestly:
 - Every KPI comes back with `ci_half_width`, the half-width of its 95% CI over \

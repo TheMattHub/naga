@@ -54,7 +54,7 @@ m.add_auxiliary(name='Demand', expr='10 + 2')
 
 Bundled models: [Supply line: order-rate management game](../../gallery/games.md), [Bass diffusion](../../gallery/system-dynamics.md), [Inventory with lead time](../../gallery/system-dynamics.md), [Population (logistic)](../../gallery/system-dynamics.md), [SIR epidemic](../../gallery/system-dynamics.md), [Training pipeline with attrition](../../gallery/system-dynamics.md) and 1 more.
 
-Guides: [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I turn a heading and a distance into x and y?](../../how-to/recipes/bearing.md), [How do I add a daily or weekly cycle to a rate?](../../how-to/recipes/daily-cycle.md), [How do I discount a stream of cash?](../../how-to/recipes/discounted-cash.md), [How do I add a first-order information delay to a forecast?](../../how-to/recipes/forecast-lag.md) and 5 more.
+Guides: [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I turn a heading and a distance into x and y?](../../how-to/recipes/bearing.md), [How do I add a daily or weekly cycle to a rate?](../../how-to/recipes/daily-cycle.md), [How do I discount a stream of cash?](../../how-to/recipes/discounted-cash.md), [How do I add a first-order information delay to a forecast?](../../how-to/recipes/forecast-lag.md) and 7 more.
 
 ## See also
 

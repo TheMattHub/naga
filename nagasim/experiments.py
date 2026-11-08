@@ -39,7 +39,8 @@ from nagasim.core.stats import ci95, paired_diff_ci, welch_diff_ci
 
 __all__ = ["BASELINE", "apply_overrides", "value_at", "list_override_paths", "override_targets",
            "scenarios_of", "flatten_kpis", "needs_event_logs", "KPI_PREFIXES", "ExperimentResult",
-           "run_scenarios", "what_if", "paired_until_clear",
+           "run_scenarios", "what_if", "paired_until_clear", "statistic", "bootstrap_ci",
+           "size_capacity", "SizingResult", "SIZING_COLS",
            "record_scenarios",
            "run_until_precision", "suggest_warmup", "WarmupSuggestion", "COMPARISON_COLS", "main"]
 
@@ -433,9 +434,13 @@ _OBJECT_FRAMES = (("resource_summary", "Resource", "resource"),
                   # PHASE6 C2: `agent/<population>/<attribute>/<state>/End Mean`
                   # and friends ("All" for the population-wide row) -- nothing
                   # for a model whose agents declare no attributes.
-                  ("agent_attributes", "Agent Attribute", "agent"))
+                  ("agent_attributes", "Agent Attribute", "agent"),
+                  # E7 (D1126): `slot/<block>/Overflows` and `.../Entered` -- nothing
+                  # unless a block's queue_row gives slots.
+                  ("slot_summary", "Block", "slot"))
 # The first part of every `flatten_kpis` key.
-KPI_PREFIXES = ("system", "user", *dict.fromkeys(prefix for _f, _c, prefix in _OBJECT_FRAMES))
+KPI_PREFIXES = ("system", "user", "plugin",
+                *dict.fromkeys(prefix for _f, _c, prefix in _OBJECT_FRAMES))
 
 
 def flatten_kpis(results: dict) -> pd.DataFrame:
@@ -451,6 +456,8 @@ def flatten_kpis(results: dict) -> pd.DataFrame:
         store/<name>/<column>
         entity/<type>/<column>
         user/<statistic>             the RECORD statistic's own Value
+        plugin/<name>                a plugin's ctx.record_kpi value
+        slot/<block>/<column>        a queue row's slots, e.g. slot/Bay/Overflows
         cost/<item>/Amount           a fixed, per-event or peak cost
         stop/<belt>/<index>/<column> a conveyor stop, e.g. stop/Line/0/Avg Wait
         divert/<belt>/<index>/<column> a conveyor divert, e.g. divert/Line/0/Diverted
@@ -514,6 +521,14 @@ def flatten_kpis(results: dict) -> pd.DataFrame:
             if pd.notna(value):
                 rows.append((run, f"user/{name}", float(value)))
 
+    # E8 (D1119): what a plugin recorded with `ctx.record_kpi`, so a study can name it.
+    plugin = results.get("plugin_kpis")
+    if plugin is not None and not plugin.empty:
+        for run, name, value in zip(plugin["Run"], plugin["Metric"],
+                                    pd.to_numeric(plugin["Value"], errors="coerce")):
+            if pd.notna(value):
+                rows.append((run, f"plugin/{name}", float(value)))
+
     return pd.DataFrame(rows, columns=["Run", "KPI", "Value"])
 
 
@@ -550,6 +565,46 @@ def needs_event_logs(kpis) -> bool:
         if rest.rpartition("/")[2] in LOG_DERIVED_COLUMNS.get(frames.get(prefix), ()):
             return True
     return False
+
+
+def statistic(name: str):
+    """The statistic over replications *name* stands for: "mean", or "p<q>" for a quantile
+    ("p95" is the 95th percentile, "p50" the median). A function of a 1-D array."""
+    text = str(name).strip().lower()
+    if text == "mean":
+        return lambda x: float(np.nanmean(x))
+    try:
+        q = float(text[1:]) / 100.0 if text.startswith("p") else math.nan
+    except ValueError:
+        q = math.nan
+    if not 0.0 < q < 1.0:
+        raise ValueError(f"statistic must be 'mean' or a percentile such as 'p95', not {name!r}")
+    return lambda x: float(np.nanquantile(x, q))
+
+
+_statistic = statistic          # for `size_capacity`, whose parameter has the same name
+
+
+def bootstrap_ci(stat, *samples, confidence: float = 0.95, n_boot: int = 1000,
+                 seed: int = 0) -> dict[str, float]:
+    """`{"mean", "lb", "ub"}`: *stat* of *samples* and its percentile bootstrap interval.
+
+    Every sample is resampled with the SAME replication indices, so two arms run on common
+    random numbers stay paired: `stat=lambda a, b: p95(a) - p95(b)` gives a paired quantile
+    delta. A quantile has no t interval, hence the bootstrap; the fixed *seed* keeps a study's
+    verdict reproducible."""
+    arrays = [np.asarray(s, dtype=float) for s in samples]
+    n = min(len(a) for a in arrays)
+    arrays = [a[:n] for a in arrays]
+    point = float(stat(*arrays))
+    if n < 2:
+        return {"mean": point, "lb": math.nan, "ub": math.nan}
+    rng = np.random.default_rng(seed)
+    draws = np.array([stat(*(a[idx] for a in arrays))
+                      for idx in rng.integers(0, n, size=(int(n_boot), n))], dtype=float)
+    tail = (1.0 - float(confidence)) / 2.0
+    lb, ub = np.nanquantile(draws, [tail, 1.0 - tail])
+    return {"mean": point, "lb": float(lb), "ub": float(ub)}
 
 
 def _series(flat: pd.DataFrame, kpi: str) -> np.ndarray:
@@ -664,7 +719,8 @@ def _scenario_layouts(base: dict, scenario_names, baseline: bool = True) -> dict
         fatal = schema.fatal_problems(schema.validate_model_structured(candidate))  # by severity (#247)
         if fatal:
             raise ModelValidationError(
-                [f"scenario '{name}': {p}" for p in schema.format_problems(fatal)])
+                [f"scenario '{name}': {p}" for p in schema.format_problems(fatal)],
+                structured=fatal)       # the codes, for a page that words them (D1088)
         layouts[name] = candidate
     if wanted is not None:
         missing = [n for n in wanted if n not in layouts]
@@ -688,7 +744,8 @@ def _window(candidate: dict, replications, run_length, warmup) -> tuple:
 def run_scenarios(layout, scenario_names=None, *, replications: int | None = None, seed: int = 0,
                   run_length: float | None = None, warmup: float | None = None, crn: bool = True,
                   workers: int | str = 1, on_progress=None, should_stop=None,
-                  pool=None, baseline: bool = True) -> ExperimentResult:
+                  pool=None, baseline: bool = True, logic=None,
+                  controllers: dict | None = None) -> ExperimentResult:
     """Run every named scenario (all of them by default) and return the results.
 
     Parameters
@@ -722,6 +779,13 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         False skips the baseline, for a caller that keeps the baseline's results
         from an earlier run; the result then has nothing to compare against until
         the caller adds it.
+    logic : str or module, optional
+        The caller's LOGIC module, as `nagasim.api.run_model` takes it; every
+        scenario's LOGIC blocks take their classes from it first.
+    controllers : dict, optional
+        ``{decision point: controller}`` for the Policy-mode DECIDE blocks of every
+        scenario, as `nagasim.api.run_model` takes it; with *workers* not 1 each
+        controller must pickle.
 
     Returns
     -------
@@ -766,6 +830,8 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         windows[name] = (length, warm)
     total = len(layouts) * replications
     result = ExperimentResult(crn=crn)
+    api._check_controllers(controllers, workers, pool)
+    logic_module, logic_name = api._logic_module(logic, workers)    # imported before any run
 
     if workers == "auto":
         # ponytail: this probe replication is thrown away rather than folded
@@ -780,7 +846,8 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         t0 = time.perf_counter()
         run_length, warmup = next(iter(windows.values()))
         probe = api.run_single_simulation(first_layout, seed=seed, run_len=run_length,
-                                          warmup=warmup, should_stop=should_stop)
+                                          warmup=warmup, should_stop=should_stop,
+                                          controllers=controllers, logic_module=logic_module)
         elapsed = time.perf_counter() - t0
         if probe is None:
             result.completed = False
@@ -801,7 +868,9 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
     with (nullcontext(pool) if pool is not None else api.scenario_pool(workers)) as pool:
         collected = api.run_jobs(jobs(), pool=pool,
                                  workers=workers if isinstance(workers, int) else 1,
-                                 on_progress=on_progress, should_stop=should_stop, total=total)
+                                 on_progress=on_progress, should_stop=should_stop, total=total,
+                                 controllers=controllers,
+                                 logic=logic_module if pool is None and workers == 1 else logic_name)
 
     for name in layouts:
         pairs = collected.get(name) or []
@@ -887,6 +956,140 @@ def what_if(layout, overrides: list[dict], kpis: list[str] | None = None, *, sta
                      "diff": diff, "diff_lb": float(r["Diff LB"]), "diff_ub": float(r["Diff UB"]),
                      "verdict": verdict})
     return {"n": n, "met": met, "completed": True, "kpis": rows}
+
+
+SIZING_COLS = ["Level", "Next", "N", "Stat", "Stat next", "Delta", "Delta LB", "Delta UB",
+               "Half width", "Half width next", "Guard", "Guard next", "Pays", "Reason"]
+_SIZING = "Sizing"          # the temporary scenario's name; never stored in the model
+MAX_SIZING_STEPS = 20
+
+
+@dataclass
+class SizingResult:
+    """What `size_capacity` returns. `answer` is the smallest level whose next step does not
+    pay, None when *stop* came first (or the study was stopped); `steps` one row per step
+    tried (SIZING_COLS)."""
+
+    path: str
+    kpi: str
+    statistic: str
+    answer: object
+    steps: pd.DataFrame
+    completed: bool = True
+
+
+def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: str = "p95",
+                  tolerance: float = 0.0, guard: str | None = None, guard_goal: str = "min",
+                  guard_tolerance: float = 0.0, start=None, step=1, stop=None,
+                  replications: int = 20, max_replications: int = 320,
+                  precision: float | None = None, seed: int = 0, confidence: float = 0.95,
+                  run_length: float | None = None, warmup: float | None = None,
+                  workers: int | str = 1, on_progress=None, should_stop=None, logic=None,
+                  controllers: dict | None = None) -> SizingResult:
+    """How much of a capacity is enough: raise the value at *path* by *step* from *start*
+    (default: the model's own) until one more step does not pay.
+
+    *stop* is the highest level tried (default: *start* + MAX_SIZING_STEPS steps). Each step
+    compares level L with L + step on common random numbers (replication r of
+    both on seed ``seed + r``), the same pairing `what_if` uses. Replications start at
+    *replications* and double, up to *max_replications*, until each arm's 95% interval of
+    the *kpi* mean has a half-width under *precision* (default: 5% of that arm's mean).
+
+    The next step does not pay when BOTH hold:
+
+    * the gain in *statistic* (``"mean"`` or a percentile such as ``"p95"``) of *kpi*, in
+      the *goal*'s direction, is under *tolerance* (in the KPI's units);
+    * the *guard* KPI, when given (e.g. a count of overflows, `slot/<block>/Overflows`),
+      does not improve in its mean by more than *guard_tolerance* in *guard_goal*'s
+      direction -- so a step that removes counted events still pays.
+
+    Each row of ``steps`` carries the paired delta of the statistic (next minus level) with
+    a bootstrap interval on the shared seeds (`bootstrap_ci`). Levels already run are reused,
+    so each step pays only for the new level. *logic* and *controllers* are the caller's
+    policies, as `run_scenarios` takes them.
+    """
+    base = schema.load_layout(layout)
+    stat_of = _statistic(statistic)       # the parameter shadows the function here
+    better = -1.0 if goal == "min" else 1.0
+    guard_better = -1.0 if guard_goal == "min" else 1.0
+    level = value_at(base, path) if start is None else start
+    if isinstance(level, bool) or not isinstance(level, (int, float)):
+        raise ValueError(f"size_capacity: {path} is {level!r}, not a number")
+    if not step > 0:
+        raise ValueError("size_capacity: step must be above 0")
+    if stop is None:            # a step that always pays must not run forever
+        stop = level + MAX_SIZING_STEPS * step
+    runs: dict = {}         # level -> long KPI frame (Run, KPI, Value) of the seeds run so far
+
+    def ensure(value, n: int) -> bool:
+        have = runs.get(value)
+        count = 0 if have is None else int(have["Run"].nunique())
+        if count >= n:
+            return True
+        model = dict(base, scenarios=[{"name": _SIZING, "overrides": [{"path": path, "value": value}]}])
+        result = run_scenarios(model, [_SIZING], replications=n - count, seed=seed + count,
+                               run_length=run_length, warmup=warmup, workers=workers,
+                               on_progress=on_progress, should_stop=should_stop, baseline=False,
+                               logic=logic, controllers=controllers)
+        if not result.completed:
+            return False
+        flat = flatten_kpis(result.results[_SIZING])
+        runs[value] = flat if have is None else pd.concat([have, flat], ignore_index=True)
+        return True
+
+    def values(value, key: str, n: int) -> np.ndarray:
+        found = _series(runs[value], key)[:n]
+        if not found.size:
+            raise ValueError(f"unknown KPI: {key!r}")
+        return found
+
+    def half(arr) -> tuple[float, float]:
+        stat = ci95(arr, confidence)
+        return stat["ub"] - stat["mean"], abs(stat["mean"])
+
+    rows, answer, completed = [], None, True
+    while level + step <= stop:
+        nxt = level + step
+        # The level's earlier doubling stands: never judge it again on fewer runs.
+        have = runs.get(level)
+        n = max(2, int(replications), 0 if have is None else int(have["Run"].nunique()))
+        while True:
+            if not (ensure(level, n) and ensure(nxt, n)):
+                completed = False
+                break
+            widths = [half(values(v, kpi, n)) for v in (level, nxt)]
+            tight = all(h < (precision if precision is not None else 0.05 * m) for h, m in widths)
+            if tight or n >= max_replications:
+                break
+            n = min(int(max_replications), 2 * n)
+        if not completed:
+            break
+        a, b = values(level, kpi, n), values(nxt, kpi, n)
+        delta = bootstrap_ci(lambda x, y: stat_of(y) - stat_of(x), a, b, confidence=confidence,
+                             seed=seed)
+        gain = better * delta["mean"]
+        row = {"Level": level, "Next": nxt, "N": n, "Stat": stat_of(a), "Stat next": stat_of(b),
+               "Delta": delta["mean"], "Delta LB": delta["lb"], "Delta UB": delta["ub"],
+               "Half width": widths[0][0], "Half width next": widths[1][0],
+               "Guard": math.nan, "Guard next": math.nan}
+        guarded = False
+        if guard:
+            g_a, g_b = values(level, guard, n), values(nxt, guard, n)
+            row["Guard"], row["Guard next"] = float(np.nanmean(g_a)), float(np.nanmean(g_b))
+            guarded = guard_better * (row["Guard next"] - row["Guard"]) > guard_tolerance
+        pays = gain >= tolerance or guarded
+        row["Pays"] = bool(pays)
+        row["Reason"] = (f"{statistic} gain {gain:.4g} >= tolerance {tolerance:g}" if gain >= tolerance
+                         else f"{statistic} gain {gain:.4g} < tolerance, but {guard} improves" if guarded
+                         else f"{statistic} gain {gain:.4g} < tolerance"
+                              + (f" and {guard} does not improve" if guard else ""))
+        rows.append(row)
+        if not pays:
+            answer = level
+            break
+        level = nxt
+    return SizingResult(path=path, kpi=kpi, statistic=str(statistic), answer=answer,
+                        steps=pd.DataFrame(rows, columns=SIZING_COLS), completed=completed)
 
 
 def record_scenarios(layout, result: ExperimentResult, *, run_length: float | None = None,
@@ -1165,6 +1368,8 @@ def main(argv=None) -> int:
     from nagasim import netguard
     from nagasim.viewer import ASKED_HELP, read_asked     # late: viewer builds on this module
     parser.add_argument("--asked", metavar="FILE", help="with --player: " + ASKED_HELP)
+    parser.add_argument("--lang", choices=("en", "it"), default="en",
+                        help="with --player: the language of the page (default en)")
     args = parser.parse_args(argv)
     asked = None
     if args.asked:
@@ -1221,13 +1426,14 @@ def main(argv=None) -> int:
         if not result.results:
             print("no scenarios completed; player not written")
         else:
-            from nagasim.player import build_player
+            from nagasim.player import build_player, disk_pictures
             layout = api.load_layout(args.model)
             recordings = record_scenarios(layout, result, run_length=args.run_length,
                                           warmup=args.warmup)
             try:
                 build_player(layout, recordings, experiment=result, title=Path(args.model).stem,
-                             path=args.player, asked=asked)
+                             path=args.player, asked=asked, pictures=disk_pictures(layout, args.model),
+                             language=args.lang)
             except ValueError as exc:       # over the size limit
                 print(f"--player: {exc}")
                 return 1

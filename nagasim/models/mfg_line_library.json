@@ -34,6 +34,7 @@
       "description": "Workstation",
       "position": [200.0, 0.0],
       "layout_position": [22.0, 1.0],
+      "queue_row": {"direction": 90.0},
       "params": {
         "definition": "Workstation",
         "arguments": {
@@ -53,6 +54,7 @@
       "description": "Inspection",
       "position": [400.0, 0.0],
       "layout_position": [32.0, 1.0],
+      "queue_row": {"direction": 90.0},
       "params": {
         "definition": "Inspection",
         "arguments": {"inspection_time": 4.0, "pass_probability": 0.85, "rework_probability": 0.1}

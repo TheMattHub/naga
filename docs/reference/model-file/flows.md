@@ -78,7 +78,7 @@ m.add_flow(name='Fill', to='Tank', rate='5')
 
 Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Depot: PV, EV charging and heat pump](../../gallery/energy.md), [PV + battery sizing and dispatch](../../gallery/energy.md), [PV + battery site (library assets)](../../gallery/energy.md) and 11 more.
 
-Guides: [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from SimPy](../../coming-from/simpy.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I turn a heading and a distance into x and y?](../../how-to/recipes/bearing.md), [How do I add a daily or weekly cycle to a rate?](../../how-to/recipes/daily-cycle.md) and 9 more.
+Guides: [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from SimPy](../../coming-from/simpy.md), [Coming from Vensim](../../coming-from/vensim.md), [How do I turn a heading and a distance into x and y?](../../how-to/recipes/bearing.md), [How do I add a daily or weekly cycle to a rate?](../../how-to/recipes/daily-cycle.md) and 11 more.
 
 ## See also
 

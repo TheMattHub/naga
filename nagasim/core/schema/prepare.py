@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from nagasim.core import sd, submodels
+from nagasim.core import queuerow, sd, submodels
 from nagasim.core.orders import ORDERS_MODE
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.graph import long_name_problem, validate_graph_structured
@@ -37,7 +37,15 @@ def format_problems(problems: list[Problem]) -> list[str]:
 def _prepare_structured(layout: dict) -> tuple[dict, list[Problem]]:
     """validate_model_structured's actual work, keeping the flattened, expanded
     layout instead of discarding it -- so `prepare()` (Wave A2) does not
-    flatten/expand a second time to get what validation already built."""
+    flatten/expand a second time to get what validation already built.
+
+    The queue-row checks (D1089) read the placed instances as saved, before
+    flattening removes them, and never touch the layout that runs."""
+    flat, problems = _prepare_flat(layout)
+    return flat, problems + queuerow.problems(layout)
+
+
+def _prepare_flat(layout: dict) -> tuple[dict, list[Problem]]:
     if not submodels.has_submodels(layout):
         # SD delays are validated EXPANDED (PHASE5 SD-2): the generated records
         # and hidden stages are what will run; identity for a non-SD layout.

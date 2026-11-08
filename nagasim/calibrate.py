@@ -72,7 +72,7 @@ import pandas as pd
 from scipy import stats as sp_stats
 
 from nagasim import api, experiments, inputfit, optimize as optimize_mod
-from nagasim._cli import add_model_argument, setup_cli
+from nagasim._cli import add_logic_argument, add_model_argument, logic_import_error, setup_cli
 from nagasim.core import schema
 from nagasim.core.stats import ci95
 
@@ -354,7 +354,7 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
               seed: int = 0, workers: int = 1, run_length=None, warmup=None,
               confidence: float = 0.95, evaluator=None, on_progress=None,
               should_stop=None, record_logs=None, method: str = "optimize",
-              accept: float = ABC_ACCEPT) -> CalibrationResult:
+              accept: float = ABC_ACCEPT, logic=None) -> CalibrationResult:
     """Tune factors until the model reproduces observed targets.
 
     Every target's term is summed into one objective, which `nagasim.optimize`
@@ -435,7 +435,7 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
 
     evaluator = evaluator or optimize_mod._Evaluator(
         base, run_length=run_length, warmup=warmup, workers=workers, budget=int(budget),
-        extra=_extra_kpis(wanted), record_logs=record_logs,
+        extra=_extra_kpis(wanted), record_logs=record_logs, logic=logic,
         kpis=[t.kpi for t in wanted if isinstance(t, CalibrationTarget)])
     if method == "abc":
         return _calibrate_abc(base, wanted, factors, evaluator, budget=int(budget),
@@ -447,7 +447,8 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
         base, factors, response=OBJECTIVE_KPI, goal="min", budget=int(budget),
         replications_per_point=replications_per_point, seed=seed, confidence=confidence,
         workers=workers, run_length=run_length, warmup=warmup, on_progress=on_progress,
-        should_stop=should_stop, evaluator=evaluator)
+        should_stop=should_stop, evaluator=evaluator,
+        logic=logic)
 
     # The winner's own replications, free from the evaluator's cache.
     key = optimize_mod._point_key(factors, search.best)
@@ -455,7 +456,7 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
     values = evaluator.values(key, search.best_overrides, seeds)
     reps = 1 if getattr(evaluator, "deterministic", None) else replications_per_point
     residuals = _residuals(base, wanted, search.best_overrides, reps=reps, seed=seed,
-                           run_length=run_length, warmup=warmup, workers=workers)
+                           run_length=run_length, warmup=warmup, workers=workers, logic=logic)
     objective = float(np.nanmean(values.get(OBJECTIVE_KPI, [np.nan])))
     return CalibrationResult(
         best=dict(search.best), overrides=list(search.best_overrides),
@@ -488,7 +489,8 @@ def _target_table(wanted, values) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=RESULT_COLUMNS)
 
 
-def _residuals(base, wanted, overrides, *, reps, seed, run_length, warmup, workers) -> dict:
+def _residuals(base, wanted, overrides, *, reps, seed, run_length, warmup, workers,
+               logic=None) -> dict:
     """Each series target's residual frame at the best point, averaged over *reps*.
     The frames need the point's timeseries, which the evaluator's cache does not
     keep (only per-replication numbers): one more run of it."""
@@ -497,7 +499,7 @@ def _residuals(base, wanted, overrides, *, reps, seed, run_length, warmup, worke
         return {}
     frames = api.run_model(experiments.apply_overrides(base, overrides),
                            replications=reps, seed=seed, run_length=run_length,
-                           warmup=warmup, workers=workers)
+                           warmup=warmup, workers=workers, logic=logic)
     residuals = {}
     for target in series_targets:
         res = series_residuals(frames, target)
@@ -595,7 +597,7 @@ def _calibrate_abc(base, wanted, factors, evaluator, *, budget, replications_per
     overrides = optimize_mod.overrides_for(factors, best)
     values = evaluator.values(("abc", "best"), overrides, [seed + r for r in range(reps)])
     residuals = _residuals(base, wanted, overrides, reps=reps, seed=seed,
-                           run_length=run_length, warmup=warmup, workers=workers)
+                           run_length=run_length, warmup=warmup, workers=workers, logic=evaluator.logic)
     return CalibrationResult(
         best=best, overrides=overrides, table=_target_table(wanted, values),
         objective=float(np.nanmean(values.get(OBJECTIVE_KPI, [np.nan]))),
@@ -645,6 +647,7 @@ def main(argv=None) -> int:
     parser.add_argument("--warmup", type=float, default=None,
                         help="default: the model's own 'simulation.warmup'")
     parser.add_argument("--seed", type=int, default=0)
+    add_logic_argument(parser)
     parser.add_argument("--workers", type=int, default=1,
                         help="replications to run in parallel processes (default: 1)")
     parser.add_argument("--method", choices=METHODS, default="optimize",
@@ -659,12 +662,17 @@ def main(argv=None) -> int:
                         help="write the model back here with the tuned values as a scenario")
     args = parser.parse_args(argv)
 
+    problem = logic_import_error(args.logic)
+    if problem:
+        print(problem)
+        return 2
     layout = api.load_layout(args.model)
     result = calibrate(layout, [parse_target(s) for s in args.targets],
                        [optimize_mod.parse_factor(s) for s in args.factors],
                        budget=args.budget, replications_per_point=args.replications,
                        seed=args.seed, workers=args.workers, run_length=args.run_length,
-                       warmup=args.warmup, method=args.method, accept=args.accept)
+                       warmup=args.warmup, method=args.method, accept=args.accept,
+                       logic=args.logic)
 
     print(f"Best point: {optimize_mod._fmt_point(result.best)}")
     print(f"objective = {result.objective:.6g} ({result.budget_used} replications)")
@@ -687,7 +695,8 @@ def main(argv=None) -> int:
 
         results = api.run_model(experiments.apply_overrides(layout, result.overrides),
                                 replications=args.replications, seed=args.seed,
-                                run_length=args.run_length, warmup=args.warmup)
+                                run_length=args.run_length, warmup=args.warmup,
+                                logic=args.logic)
         build_report(schema.migrate(layout), results, calibration=result,
                      title=Path(args.model).stem, path=args.report)
         print(f"Report written to {args.report}")

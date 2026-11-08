@@ -1,9 +1,10 @@
 import itertools
 import logging
+import sys
 
 log = logging.getLogger(__name__)
 
-__all__ = ["Entity", "spawn_entity"]
+__all__ = ["Entity", "EntityRecord", "spawn_entity"]
 
 
 def spawn_entity(ctx, e_type=None, attrs=None, creation_time=None) -> "Entity":
@@ -112,3 +113,88 @@ class Entity:
         if holding:
             self._holding_cost += amount
 
+
+
+# What a disposed entity's attribute dict holds that an `EntityRecord` either keeps
+# in a slot, can give back unchanged (`_DEFAULTS`) or drops as service-in-progress
+# state that is stale once the entity has left (`_ends`, `_since`, `_auto_cost`):
+# only the rest is copied.
+_STALE = ("_ends", "_since")        # never copied; read back as None
+_IN_SLOTS = frozenset({"_id", "_e_type", "_creation_time", "_deletion_time", "_throughput_time",
+                       "cost", "_holding_cost", "_auto_cost", "in_batch",
+                       "initial", "agent"}) | frozenset(_STALE)
+_DEFAULTS = {"_resource": None, "finished": True, **dict.fromkeys(_STALE)}
+
+
+class EntityRecord:
+    """What the flat entity log keeps of a disposed entity (D1061), in place of
+    the whole `Entity` and its attribute dict (about 550 B less each, at up to
+    `entity_log_limit` of them).
+
+    Slots hold what the log row reads. Any other attribute the entity carries
+    (a model's own `tag`, a batch's members, a renamed `name`) is copied into
+    `_extra` and read back as before, so a script inspecting
+    `ctx.all_entities` after a run still sees it; a plain entity has none and
+    pays for no dict. Read-only by intent: the entity is finished. The type
+    name is interned: `Entity.e_type` makes a new string per entity.
+    `_auto_cost` is dropped: Dispose already summed it into the type totals."""
+
+    __slots__ = ("_id", "e_type", "creation_time", "deletion_time",
+                 "cost", "_holding_cost", "initial", "agent", "_extra")
+    in_batch = None         # only an entity outside any batch is recorded
+
+    @classmethod
+    def of(cls, entity) -> "EntityRecord":
+        record = cls()
+        record._id = entity.id
+        record.e_type = sys.intern(entity.e_type)
+        record.creation_time = entity.creation_time
+        record.deletion_time = entity.deletion_time
+        record.cost = entity.cost
+        record._holding_cost = entity._holding_cost
+        record.initial = getattr(entity, "initial", False)
+        record.agent = getattr(entity, "agent", None)
+        # Only the few keys outside the slots are looked at (a set difference in
+        # C, #1561): this runs once per disposed entity.
+        attrs = vars(entity)
+        default_name = f"Entity {record._id}"
+        kept = {key for key in attrs.keys() - _IN_SLOTS
+                if not (key in _DEFAULTS and attrs[key] is _DEFAULTS[key])
+                and not (key == "name" and attrs[key] == default_name)
+                and not (key == "batch_elems" and type(attrs[key]) is list and not attrs[key])}
+        # In the entity's own attribute order, as before.
+        record._extra = {key: value for key, value in attrs.items() if key in kept} if kept else None
+        return record
+
+    def __getattr__(self, name):
+        # Only reached for a name no slot or property answers.
+        if name == "_extra":
+            raise AttributeError(name)
+        extra = self._extra
+        if extra is not None and name in extra:
+            return extra[name]
+        if name == "name":
+            return f"Entity {self._id}"
+        if name == "batch_elems":
+            return []
+        if name == "resource":
+            return self._resource
+        if name in ("_e_type", "_creation_time", "_deletion_time", "_throughput_time"):
+            return getattr(self, name[1:])      # what the entity's property reads
+        if name in _DEFAULTS:
+            return _DEFAULTS[name]
+        raise AttributeError(f"{type(self).__name__} has no attribute {name!r}")
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def throughput_time(self):
+        """As Dispose stamped it on the entity, recomputed instead of kept."""
+        if self.deletion_time is None or self.creation_time is None:
+            return None
+        return self.deletion_time - self.creation_time
+
+    def __repr__(self):
+        return self.name

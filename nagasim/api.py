@@ -18,14 +18,15 @@ import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from contextlib import ExitStack, contextmanager, redirect_stdout
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
 from nagasim import __version__
-from nagasim._cli import add_model_argument, setup_cli
+from nagasim._cli import add_controllers_argument, add_model_argument, load_controllers, setup_cli
 from nagasim.core import initial_state, logic_authoring, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
-from nagasim.core.export import concat_runs
+from nagasim.core.export import ARTIFACTS_KEY, concat_runs
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.sim_runner import Pacer, run_single_simulation
 from nagasim.core.timeunits import UNITS, units_of
@@ -55,10 +56,21 @@ class _Collect(logging.Handler):
             self.handleError(record)
 
 
-def _pool_replication(task):
+@dataclass(frozen=True)
+class _PoolTask:
+    """One replication for a pool worker; a module-level dataclass, so it pickles."""
+    layout: object
+    seed: int
+    run_len: float | None
+    warmup: float | None
+    controllers: object = None
+    logic: str | None = None
+
+
+def _pool_replication(task: _PoolTask):
     """One replication in a worker process: `(KPIs, what it logged)`.
 
-    `task` is (layout, seed, run_len, warmup, controllers, logic). Module level and
+    `task` is a `_PoolTask`. Module level and
     picklable on purpose (ROADMAP 1.6): a ProcessPoolExecutor pickles its
     callable by qualified name, so a closure or a bound method cannot be the
     pool task. `layout` may equally be a path -- both are what
@@ -70,7 +82,7 @@ def _pool_replication(task):
     A worker process has no console of its own once the editor is started from
     an icon, and no handler of the parent's either, so its warnings travel back
     with the result and `run_jobs` logs them again in the parent."""
-    layout, seed, run_len, warmup, controllers, logic = task
+    logic = task.logic
     handler = _Collect()
     root = logging.getLogger()
     root.addHandler(handler)
@@ -79,9 +91,11 @@ def _pool_replication(task):
         # interpreter -- plugin blocks/distributions registered in the parent
         # process are not there until this runs again here.
         load_plugins()
-        logic_module = None if logic is None else logic_authoring.resolve_logic(logic)
-        kpis = run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warmup,
-                                     controllers=controllers, logic_module=logic_module)
+        logic_module = (logic if isinstance(logic, ModuleType) or logic is None
+                        else logic_authoring.resolve_logic(logic))
+        kpis = run_single_simulation(task.layout, seed=task.seed, run_len=task.run_len,
+                                     warmup=task.warmup, controllers=task.controllers,
+                                     logic_module=logic_module)
         return kpis, handler.records
     finally:
         root.removeHandler(handler)
@@ -90,15 +104,16 @@ def _pool_replication(task):
 # What a process pool costs before it returns a single result: worker start-up
 # plus the pickling of the first tasks. SPAWN (Windows, macOS) starts a fresh
 # interpreter per worker that re-imports pandas, scipy and simpy: measured
-# around 0.8 s for 2 workers and 2.5 s for 20, so 3 s is the round number above
-# both. FORK (the Linux default) copies the parent instead and re-imports
+# around 0.8 s for 2 workers and 2.5 s for 20; up to the cap of 8 that is about 1.5 s
+# (BENCH-SCALE-2026-10-27: 3 s and a cap of 4 left `auto` at 2.6x where 4 workers gave
+# 3.8x). FORK (the Linux default) copies the parent instead and re-imports
 # nothing, which is roughly an order of magnitude cheaper -- charging it the
 # spawn price kept small-but-real workloads sequential on Linux (PHASE4 T9).
-_SPAWN_SETUP_COST = 3.0
+_SPAWN_SETUP_COST = 1.5
 _FORK_SETUP_COST = 0.3
 # The most workers `auto` will ever ask for. No core is held back for the
 # caller: while the pool runs, the parent only waits on results.
-_MAX_AUTO_WORKERS = 4
+_MAX_AUTO_WORKERS = 8
 
 
 def pool_setup_cost() -> float:
@@ -239,14 +254,16 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
     child process is left to finish, since nothing can hear the flag there.
     Serial (`pool is None`) it is also polled inside a run, as before.
 
-    *logic*: the dotted name of the caller's LOGIC module (see `run_model`).
+    *logic*: the dotted name of the caller's LOGIC module (see `run_model`); serial, the
+    module itself will do.
     """
     jobs = iter(jobs)
     collected: dict[object, list] = {}
     count = done
 
     if pool is None:
-        logic_module = None if logic is None else logic_authoring.resolve_logic(logic)
+        logic_module = (logic if isinstance(logic, ModuleType) or logic is None
+                        else logic_authoring.resolve_logic(logic))
         for tag, layout, seed, run_len, warm in jobs:
             if should_stop is not None and should_stop():
                 break
@@ -275,7 +292,7 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
                 tag, layout, seed, run_len, warm = task
                 collected.setdefault(tag, [])
                 future = pool.submit(_pool_replication,
-                                     (layout, seed, run_len, warm, controllers, logic))
+                                     _PoolTask(layout, seed, run_len, warm, controllers, logic))
                 futures[future] = (tag, seed)
                 pending.add(future)
             if not pending:
@@ -317,6 +334,23 @@ def _run_pool(path, seeds, run_length, warmup, workers, on_progress, should_stop
                        workers=workers, on_progress=on_progress, should_stop=should_stop,
                        done=done, total=total, controllers=controllers, logic=logic)
     return out.get(None, [])
+
+
+def _check_controllers(controllers, workers, pool=None) -> None:
+    """Refuse, before any run, a controller that cannot travel to a worker process: with
+    *workers* not 1, or a caller's *pool* (used whatever *workers* says, #1706), each pooled
+    replication needs its own pickled copy. Shared by `run_model` and the studies
+    (`run_scenarios`, `optimize`, ...), so one rule holds for all of them."""
+    if controllers and (workers != 1 or pool is not None):
+        import pickle
+        for name, controller in controllers.items():
+            try:
+                pickle.dumps(controller)
+            except Exception as exc:
+                raise ValueError(
+                    f"controller '{name}' is not picklable, but workers={workers!r} may spread "
+                    f"replications across processes (each needs its own copy): run with "
+                    f"workers=1, or make the controller picklable ({exc})") from exc
 
 
 def _logic_module(logic, workers):
@@ -464,17 +498,7 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         unit = units_of((path if isinstance(path, dict) else load_layout(path)).get("simulation")).time
         pacer = Pacer(pace, UNITS.get(unit, 1))
 
-    if controllers and workers != 1:
-        import pickle
-        for name, controller in controllers.items():
-            try:
-                pickle.dumps(controller)
-            except Exception as exc:
-                raise ValueError(
-                    f"controller '{name}' is not picklable, but workers={workers!r} may spread "
-                    f"replications across processes (each needs its own copy): run with "
-                    f"workers=1, or make the controller picklable ({exc})") from exc
-
+    _check_controllers(controllers, workers)
     logic_module, logic_name = _logic_module(logic, workers)
 
     if record_logs is not None:
@@ -553,6 +577,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     if not collected:
         return None
     results = Results(concat_runs([kpi for _, kpi in collected]))
+    # E8: a plugin's objects, by run id; what it recorded as numbers is the "plugin_kpis" frame.
+    results._artifacts = dict(kpi[ARTIFACTS_KEY] for _, kpi in collected if ARTIFACTS_KEY in kpi)
     # D906: what `Results.checks()` judges the run by; read_layout returns a
     # dict as given and re-reads a file path (already read once above).
     results._layout = schema.read_layout(path)
@@ -668,6 +694,7 @@ def main(argv=None) -> int:
     parser.add_argument("--logic", default=None, metavar="MODULE",
                         help="take LOGIC block classes from this importable module first "
                              "(a dotted name on PYTHONPATH), then from nagasim.core.custom_logic")
+    add_controllers_argument(parser)
     parser.add_argument("--pace", type=_pace_type, default=None, metavar="FACTOR",
                         help="keep pace with the wall clock: FACTOR model seconds per wall "
                              "second, converted from the model's time unit (1 = real time, "
@@ -686,6 +713,8 @@ def main(argv=None) -> int:
                              "server (the same as --export player:PATH)")
     parser.add_argument("--asked", metavar="FILE",
                         help="with --player or --export player:PATH: " + ASKED_HELP)
+    parser.add_argument("--lang", choices=("en", "it"), default="en",
+                        help="with --player or --export player:PATH: the language of the page (default en)")
     parser.add_argument("--state", default=None, metavar="FILE",
                         help="start from this state document (`naga state take`): "
                              "the run's clock starts where the state was taken and its "
@@ -702,6 +731,11 @@ def main(argv=None) -> int:
                         help="skip the law checks (the WARN lines)")
     args = parser.parse_args(argv)
 
+    try:        # imported before the run, so a bad module costs no run (as `naga doe` does)
+        controllers = load_controllers(args.controllers)
+    except ValueError as exc:
+        print(f"--controllers: {exc}")
+        return 2
     try:
         model = _with_calendar(args)
     except CalendarError as exc:
@@ -737,7 +771,7 @@ def main(argv=None) -> int:
         results = run_model(model, replications=args.replications, seed=args.seed,
                             warmup=args.warmup, run_length=args.run_length, workers=args.workers,
                             record_logs=False if args.no_logs else None, trace=recorder,
-                            pace=args.pace, logic=args.logic)
+                            pace=args.pace, logic=args.logic, controllers=controllers)
     except (logic_authoring.LogicClassNotFound, ImportError) as exc:
         if isinstance(exc, ImportError) and not args.logic:
             raise       # only the --logic module's import is this command's to explain
@@ -776,7 +810,7 @@ def main(argv=None) -> int:
         try:
             # "<fmt> written to" must not land inside the --json document
             with redirect_stdout(sys.stderr) if args.as_json else ExitStack():
-                _run_export(spec, results, args.model, layout, recorder, asked)
+                _run_export(spec, results, args.model, layout, recorder, asked, args.lang)
         except ValueError as exc:       # e.g. a player over its size limit
             print(f"--export: {exc}")
             return 1
@@ -821,10 +855,11 @@ def _needs_trace(specs) -> bool:
     return any(exporter is not None and exporter.needs_trace for exporter in found)
 
 
-def _run_export(spec: str, results, model_path: str, layout=None, trace=None, asked=None) -> None:
+def _run_export(spec: str, results, model_path: str, layout=None, trace=None, asked=None,
+                language=None) -> None:
     """One `--export FORMAT:PATH` entry (ROADMAP 2.4 C): FORMAT is a key in
     `nagasim.exporters.EXPORTER_REGISTRY` (built-in or plugin-added). *asked* (`--asked`)
-    reaches the player only."""
+    reaches the player only, and so does *language* (`--lang`, D1056)."""
     from nagasim.exporters import EXPORTER_REGISTRY
 
     fmt, _, out_path = spec.partition(":")
@@ -838,7 +873,13 @@ def _run_export(spec: str, results, model_path: str, layout=None, trace=None, as
     extra = {"trace": trace} if exporter.needs_trace else {}
     if asked is not None and fmt == "player":
         extra["asked"] = asked
-    exporter.write(results, out_path, layout=_layout(layout, model_path),
+    layout = _layout(layout, model_path)
+    if fmt == "player":
+        from nagasim.player import disk_pictures     # D1052: the person's own command reads the plan
+        extra["pictures"] = disk_pictures(layout, model_path)
+        if language:
+            extra["language"] = language
+    exporter.write(results, out_path, layout=layout,
                    title=Path(model_path).stem, **extra)
     print(f"{exporter.name} written to {out_path}")
 

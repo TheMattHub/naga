@@ -59,7 +59,7 @@ def select_best(layout, candidates, *, response: str, goal: str = "min", confide
                 indifference: float = 0.0, n0: int = 10, max_replications: int = 100,
                 crn: bool = True, workers: int = 1, seed: int = 0, run_length=None, warmup=None,
                 evaluator=None, on_progress=None, should_stop=None,
-                record_logs=None) -> SelectionResult:
+                record_logs=None, logic=None, controllers=None) -> SelectionResult:
     """Pick the best of a finite set of candidates by the fully sequential
     indifference-zone procedure KN (Kim and Nelson 2001).
 
@@ -103,8 +103,8 @@ def select_best(layout, candidates, *, response: str, goal: str = "min", confide
         raise ValueError("select_best needs at least one candidate")
     base = load_layout(layout) if layout is not None else {}
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
-                                        workers=workers, record_logs=record_logs,
-                                        kpis=[response])
+                                        workers=workers, record_logs=record_logs, logic=logic,
+                                        controllers=controllers, kpis=[response])
     started = evaluator.used
     sign = -1.0 if goal == "min" else 1.0
     k = len(entries)

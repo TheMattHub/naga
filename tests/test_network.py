@@ -741,3 +741,14 @@ def test_a_scoped_fleet_clones_per_instance_and_the_template_is_consumed():
         "forklifts/Movers": (3, "dock"), "agvs/Movers": (2, "store")}
     assert {b["params"]["fleet"] for b in flat["blocks"] if b["type"] == "TRANSPORT"} == {
         "forklifts/Movers", "agvs/Movers"}
+
+
+def test_distance_is_memoised_per_pair_and_still_refuses_an_unknown_node():
+    """BENCH-SCALE-2026-10-27: the pair cache returns the computed float; a miss still checks the nodes."""
+    net = build_network({"nodes": [{"name": "a", "x": 0, "y": 0}, {"name": "b", "x": 3, "y": 4},
+                                   {"name": "c", "x": 9, "y": 9}],
+                         "segments": [{"from": "a", "to": "b"}]})
+    assert net.distance("a", "b") == net.distance("a", "b") == 5.0 and ("a", "b") in net._pairs
+    assert net.distance("a", "c") == math.inf and net.distance("b", "b") == 0.0
+    with pytest.raises(KeyError, match="unknown network node"):
+        net.distance("a", "zz")

@@ -123,7 +123,7 @@ class DesignResult:
 def run_design(layout, factors, design, *, responses=None, replications: int = 5, seed: int = 0,
                crn: bool = True, workers: int = 1, run_length=None, warmup=None,
                on_progress=None, should_stop=None, evaluator=None, pool=None,
-               record_logs=None) -> DesignResult:
+               record_logs=None, logic=None, controllers=None) -> DesignResult:
     """Run every point of *design* and collect *responses*.
 
     *design* is a frame from `full_factorial` / `latin_hypercube` /
@@ -138,8 +138,8 @@ def run_design(layout, factors, design, *, responses=None, replications: int = 5
     factors = list(factors)
     points = design.reset_index(drop=True)
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
-                                        workers=workers, pool=pool, record_logs=record_logs,
-                                        kpis=responses or ())
+                                        workers=workers, pool=pool, record_logs=record_logs, logic=logic,
+                                        controllers=controllers, kpis=responses or ())
     total = len(points) * replications
     values: dict[int, dict] = {}
     seeds: dict[int, list[int]] = {}
