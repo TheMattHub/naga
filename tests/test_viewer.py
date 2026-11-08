@@ -706,6 +706,16 @@ BASELINE_SHOWN = {"eval": 'new Promise(function (done) { var tries = 0; (functio
                           ' })(); })'}
 
 
+def _title_then(expr):
+    """A first step that reads the title once the page's script has filled it, then *expr*: the
+    driver starts once the markup is there, and a slow CI runner read the title still empty
+    (0.20.0's first CI run)."""
+    return {"eval": "new Promise(function (done) { var t0 = Date.now(); (function poll() {"
+                    " var title = document.getElementById('title').textContent;"
+                    " if (title || Date.now() - t0 > 20000) { done(title + '|' + (" + expr + ")); }"
+                    " else { setTimeout(poll, 100); } })(); })"}
+
+
 def _drive(browser, page, tmp_path, steps):
     done = subprocess.run(
         [NODE, str(Path(__file__).with_name("viewer_drive.cjs")), browser, str(page),
@@ -802,7 +812,7 @@ def test_the_levers_tabs_footer_and_a_page_without_the_new_fields(tmp_path, monk
     folder = _fake_folder(tmp_path, monkeypatch)
     viewer.build_viewer(_lever_model(), tmp_path / "v.html", runtime=folder, title="Clinic")
     out = _drive(BROWSERS[0], tmp_path / "v.html", tmp_path, [
-        {"eval": 'document.getElementById("title").textContent + "|" + document.getElementById("subtitle").textContent'},
+        _title_then('document.getElementById("subtitle").textContent'),
         _TABS, _text("inputs"), _text("answer-head"),
         _set(3), _text("changed"), _TABS, {"eval": 'document.getElementById("side").className'},
         _click("reset"), {"eval": _VALUE + ' + "|" + document.getElementById("changed").textContent'},
@@ -833,7 +843,7 @@ def test_the_levers_tabs_footer_and_a_page_without_the_new_fields(tmp_path, monk
     # No question, no target, no note: the title on top and no answer card.
     viewer.build_viewer(model(), tmp_path / "plain.html", runtime=folder, title="Plain")
     plain = _drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "p", [
-        {"eval": 'document.getElementById("title").textContent + "|" + document.getElementById("answer-box").hidden'},
+        _title_then('document.getElementById("answer-box").hidden'),
         _TABS, _text("results")])
     assert plain["answers"][:2] == ["Plain|true", "Baseline*,Yours"] and "Avg Throughput Time" in plain["answers"][2]
 
