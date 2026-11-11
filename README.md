@@ -116,8 +116,8 @@ hand; the `$schema` line gives completion in an editor that reads JSON Schema:
 
 ```json
 {
-  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
-  "schema_version": 29,
+  "$schema": "https://thematthub.github.io/naga/schema/model-v30.json",
+  "schema_version": 30,
   "blocks": [
     {
       "name": "create_1",

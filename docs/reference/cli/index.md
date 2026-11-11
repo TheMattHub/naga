@@ -83,5 +83,5 @@ Serve the model operations to an assistant.
 | [`naga mcp`](agents.md#naga-mcp) | Model Context Protocol server over stdio |
 | [`naga assist`](agents.md#naga-assist) | one headless assistant turn |
 | [`naga skill`](agents.md#naga-skill) | show or copy the simulation-study guide for an assistant |
-| [`naga study`](agents.md#naga-study) | check a study folder: rerun its versions and reproduce steps, check its numbers |
+| [`naga study`](agents.md#naga-study) | check a study folder: rerun its versions (its reproduce steps with --steps), check its numbers |
 | [`naga room`](agents.md#naga-room) | the live control room of a study in your browser |

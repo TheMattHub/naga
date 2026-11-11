@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import difflib
 from contextlib import nullcontext
 import math
 import time
@@ -630,6 +631,7 @@ class ExperimentResult:
 
     results: dict[str, dict] = field(default_factory=dict)
     seeds: dict[str, list[int]] = field(default_factory=dict)
+    warmups: dict[str, float] = field(default_factory=dict)   # the warm-up each scenario ran with (#1760)
     crn: bool = True
     completed: bool = True
 
@@ -879,10 +881,67 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
             break
         result.results[name] = concat_runs([kpi for _, kpi in pairs])
         result.seeds[name] = [s for s, _ in pairs]
+        result.warmups[name] = float(windows[name][1] or 0)
     return result
 
 
 WHAT_IF = "What-if"      # the temporary scenario's name; never stored in the model
+
+
+class UnknownKPIError(ValueError):
+    """KPI keys the results do not have; `nearest` holds the closest keys they do have."""
+
+    def __init__(self, unknown: list[str], nearest: list[str]):
+        self.unknown, self.nearest = unknown, nearest
+        super().__init__("unknown KPI " + ", ".join(repr(k) for k in unknown)
+                         + ": the results have no such key")
+
+
+# The study tools print a KPI without its frame ("Avg Throughput Time", "Share over 20 min",
+# "Server/Time in Queue Avg"); these frames are tried in order before any other.
+_BARE_FRAMES = ("system", "user", "resource")
+
+
+def match_kpi(key: str, known) -> str | None:
+    """The results key *key* names: itself, or a bare name under one frame; None when it names none."""
+    if key in known:
+        return key
+    for frame in _BARE_FRAMES:
+        if f"{frame}/{key}" in known:
+            return f"{frame}/{key}"
+    tails = [k for k in sorted(known) if k.partition("/")[2] == key]
+    return tails[0] if len(tails) == 1 else None
+
+
+def study_kpi_name(key: str) -> str:
+    """The name the study tools measure for results key *key*: `match_kpi`'s frames dropped
+    ("system/Avg Queue Length" -> "Avg Queue Length"); any other name comes back as is (#1758)."""
+    frame, _, rest = key.partition("/")
+    return rest if frame in _BARE_FRAMES and rest else key
+
+
+def resolve_kpis(layout, kpis, scenario_names=None, *, seed: int = 0, run_length: float | None = None,
+                 warmup: float | None = None, should_stop=None) -> dict[str, str] | None:
+    """{asked: results key} for *kpis* (None stays None), learned from one replication of the
+    chosen scenarios before the real run, so a typo costs one replication and not the whole
+    sweep (#1728). Raises UnknownKPIError, with the nearest keys, for a key no result has; a
+    stopped probe resolves nothing and passes the keys through."""
+    if kpis is None:
+        return None
+    probe = run_scenarios(layout, scenario_names, replications=1, seed=seed, run_length=run_length,
+                          warmup=warmup, should_stop=should_stop)
+    known = set(probe.kpis()["KPI"])
+    if not probe.completed or not known:
+        return {k: k for k in kpis}
+    found = {k: match_kpi(k, known) for k in kpis}
+    unknown = [k for k, v in found.items() if v is None]
+    if unknown:
+        tails = {}
+        for full in sorted(known):
+            tails.setdefault(full.partition("/")[2], full)
+        near = difflib.get_close_matches(unknown[0], list(known) + list(tails), n=3, cutoff=0.5)
+        raise UnknownKPIError(unknown, list(dict.fromkeys(tails.get(k, k) for k in near)))
+    return found
 
 
 def paired_until_clear(layout, overrides: list[dict], kpis: list[str] | None = None, *,
@@ -932,9 +991,17 @@ def what_if(layout, overrides: list[dict], kpis: list[str] | None = None, *, sta
     one the verdict is "better"/"worse", without it "higher"/"lower". Returns
     {"n", "met" (every KPI separated or unchanged), "completed", "kpis": [{"kpi", "baseline",
     "scenario", "diff", "diff_lb", "diff_ub", "verdict"}]}. An override naming
-    something the model does not have raises ModelValidationError before any run.
+    something the model does not have raises ModelValidationError before any run, and a KPI
+    key the results do not have UnknownKPIError after one probe replication (`resolve_kpis`).
     """
     goals = goals or {}
+    if kpis is not None:        # resolved before any replication of the sweep (#1728)
+        base = schema.load_layout(layout)
+        base["scenarios"] = [{"name": WHAT_IF, "overrides": list(overrides)}]
+        names = resolve_kpis(base, kpis, [WHAT_IF], seed=seed, run_length=run_length, warmup=warmup,
+                             should_stop=should_stop)
+        goals = {names.get(k, k): v for k, v in goals.items()}
+        kpis = list(dict.fromkeys(names.values()))
     n, met, result, table = paired_until_clear(layout, overrides, kpis, start=start, cap=cap,
                                                seed=seed, run_length=run_length, warmup=warmup,
                                                should_stop=should_stop)
@@ -993,12 +1060,14 @@ def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: 
     compares level L with L + step on common random numbers (replication r of
     both on seed ``seed + r``), the same pairing `what_if` uses. Replications start at
     *replications* and double, up to *max_replications*, until each arm's 95% interval of
-    the *kpi* mean has a half-width under *precision* (default: 5% of that arm's mean).
+    the *kpi* mean has a half-width under *precision* (default: 5% of that arm's mean); an arm
+    whose values are all equal is precise as it is.
 
     The next step does not pay when BOTH hold:
 
     * the gain in *statistic* (``"mean"`` or a percentile such as ``"p95"``) of *kpi*, in
-      the *goal*'s direction, is under *tolerance* (in the KPI's units);
+      the *goal*'s direction, is not above *tolerance* (in the KPI's units), so a step that
+      changes nothing does not pay;
     * the *guard* KPI, when given (e.g. a count of overflows, `slot/<block>/Overflows`),
       does not improve in its mean by more than *guard_tolerance* in *guard_goal*'s
       direction -- so a step that removes counted events still pays.
@@ -1043,9 +1112,18 @@ def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: 
             raise ValueError(f"unknown KPI: {key!r}")
         return found
 
-    def half(arr) -> tuple[float, float]:
+    def tight(arr) -> bool:
+        # An arm whose values are all equal (a wait of 0 in every replication) is as precise as it
+        # gets; 5% of a mean of 0 is a target no interval can meet (#1730).
+        if arr.size and np.all(arr == arr[0]):
+            return True
         stat = ci95(arr, confidence)
-        return stat["ub"] - stat["mean"], abs(stat["mean"])
+        h = stat["ub"] - stat["mean"]
+        return h < (precision if precision is not None else 0.05 * abs(stat["mean"]))
+
+    def half(arr) -> float:
+        stat = ci95(arr, confidence)
+        return stat["ub"] - stat["mean"]
 
     rows, answer, completed = [], None, True
     while level + step <= stop:
@@ -1057,9 +1135,8 @@ def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: 
             if not (ensure(level, n) and ensure(nxt, n)):
                 completed = False
                 break
-            widths = [half(values(v, kpi, n)) for v in (level, nxt)]
-            tight = all(h < (precision if precision is not None else 0.05 * m) for h, m in widths)
-            if tight or n >= max_replications:
+            arms = [values(v, kpi, n) for v in (level, nxt)]
+            if all(tight(a) for a in arms) or n >= max_replications:
                 break
             n = min(int(max_replications), 2 * n)
         if not completed:
@@ -1070,18 +1147,20 @@ def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: 
         gain = better * delta["mean"]
         row = {"Level": level, "Next": nxt, "N": n, "Stat": stat_of(a), "Stat next": stat_of(b),
                "Delta": delta["mean"], "Delta LB": delta["lb"], "Delta UB": delta["ub"],
-               "Half width": widths[0][0], "Half width next": widths[1][0],
+               "Half width": half(a), "Half width next": half(b),
                "Guard": math.nan, "Guard next": math.nan}
         guarded = False
         if guard:
             g_a, g_b = values(level, guard, n), values(nxt, guard, n)
             row["Guard"], row["Guard next"] = float(np.nanmean(g_a)), float(np.nanmean(g_b))
             guarded = guard_better * (row["Guard next"] - row["Guard"]) > guard_tolerance
-        pays = gain >= tolerance or guarded
+        # Strictly above (#1730): on common random numbers a step that changes nothing has a
+        # delta of exactly 0, which must not pay at the default tolerance of 0.
+        pays = gain > tolerance or guarded
         row["Pays"] = bool(pays)
-        row["Reason"] = (f"{statistic} gain {gain:.4g} >= tolerance {tolerance:g}" if gain >= tolerance
-                         else f"{statistic} gain {gain:.4g} < tolerance, but {guard} improves" if guarded
-                         else f"{statistic} gain {gain:.4g} < tolerance"
+        row["Reason"] = (f"{statistic} gain {gain:.4g} > tolerance {tolerance:g}" if gain > tolerance
+                         else f"{statistic} gain {gain:.4g} <= tolerance, but {guard} improves" if guarded
+                         else f"{statistic} gain {gain:.4g} <= tolerance"
                               + (f" and {guard} does not improve" if guard else ""))
         rows.append(row)
         if not pays:
@@ -1426,12 +1505,13 @@ def main(argv=None) -> int:
         if not result.results:
             print("no scenarios completed; player not written")
         else:
-            from nagasim.player import build_player, disk_pictures
+            from nagasim.player import build_player, disk_pictures, page_title
             layout = api.load_layout(args.model)
             recordings = record_scenarios(layout, result, run_length=args.run_length,
                                           warmup=args.warmup)
             try:
-                build_player(layout, recordings, experiment=result, title=Path(args.model).stem,
+                build_player(layout, recordings, experiment=result,
+                             title=page_title(layout, Path(args.model).stem),
                              path=args.player, asked=asked, pictures=disk_pictures(layout, args.model),
                              language=args.lang)
             except ValueError as exc:       # over the size limit

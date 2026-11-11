@@ -46,7 +46,10 @@ PROBLEM_CODES: dict[str, str] = {
     "E_PLUGIN_NOT_LOADED": "The block's `type` is one the model lists in info.requires_plugins, and no loaded plugin provides it.",
     "E_PARAM_UNKNOWN": "A param key this block type does not declare.",
     "W_AVAILABLE_IS_CAPACITY": "A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE).",
-    "W_UNKNOWN_KEY": "A key the model file format does not have (write_model): the document drops it.",
+    "W_UNKNOWN_KEY": "A key the model file format does not have. At the top level it is kept through "
+                     "load and save (D1193); inside a section the document drops it.",
+    "W_WRITTEN_BY_NEWER": "The file was last saved by a newer nagasim than this one; sections this "
+                          "build does not know are kept, but it may read others differently.",
     "E_PARAM_TYPE": "A param has the wrong Python type for its ParamSpec.",
     "E_PARAM_MISSING": "A param the block type declares as required is absent.",
     "E_FIELD_RANGE": "A numeric field of a section (a fleet, a charger, a level, a series, ...) is outside the bounds the field table and the published schema state.",
@@ -55,6 +58,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_UNKNOWN_DISTRIBUTION": "A distribution name that is in no registry entry.",
     "E_DISTRIBUTION_MISSING": "A duration spec (link delay, failure uptime/downtime) names no distribution.",
     "E_DIST_PARAM_UNKNOWN": "A dist_params key the distribution does not take (it would be ignored).",
+    "E_DIST_PARAM_VALUE": "A dist_params value the distribution cannot use: a choice outside its list, "
+                          "or a jitter that is negative or not a number.",
     "W_UNBOUNDED_DURATION": "A duration uses a distribution that can sample below 0; samples truncate to 0.",
     "W_EMPIRICAL_CONTINUOUS": "EmpiricalContinuous given equal-length values/probs samples discrete points.",
     "E_DETERMINISTIC_NO_MEAN": "simulation.deterministic is set and a "
@@ -691,6 +696,10 @@ PROBLEM_CODES: dict[str, str] = {
                      "not a place a record may be written.",
     "W_OUTBOX": "The outbox could not take a record, stopped at a ceiling, or took one again "
                 "after a refusal. Said once a change; records wait until they expire.",
+    "W_DECIDE_NO_ELSE": "A Condition-mode DECIDE has no ELSE link, so an entity no condition "
+                        "takes stops the run.",
+    "E_WARMUP_PAST_END": "The warm-up is as long as the run or longer, so nothing after it is "
+                         "observed and every result is zero.",
     "W_INITIAL_STATE_WARMUP": "Both an initial state and a warm-up are set; warm-up discards the "
                               "very history the initial state supplies.",
     # -- path network, movers and conveyors (PHASE4 E1, ARCHITECTURE D68) -----

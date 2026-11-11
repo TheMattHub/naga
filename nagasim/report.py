@@ -17,7 +17,9 @@ into the page -- see `esc`, used everywhere such a string is embedded.
 """
 from __future__ import annotations
 
+import base64
 import datetime
+import hashlib
 import html
 import math
 from pathlib import Path
@@ -33,7 +35,7 @@ from nagasim.core.calendar import date_ticks, run_horizon
 from nagasim.core.stats import ci95
 from nagasim import svgcharts
 
-__all__ = ["build_report", "has_costs", "esc", "fmt", "table"]     # the last three: for `extra_sections`
+__all__ = ["build_report", "has_costs", "esc", "fmt", "table", "csp", "source_hash"]     # esc, fmt, table: for `extra_sections`
 
 _HIST_BINS = 20
 _MAX_QUEUE_CHARTS = 6
@@ -249,7 +251,9 @@ def _queue_charts(mean_df: "pd.DataFrame", calendar=None) -> tuple[list[str], li
     capped at `_MAX_QUEUE_CHARTS`. Both chart helpers take the ALREADY-averaged
     frame: `timeseries_mean` is the most expensive thing in a report, and
     building it twice per report bought nothing."""
-    names = sorted({s.split("/")[1] for s in mean_df["Series"].unique()
+    # A resource inside a submodel or asset is "station_1/Mfg Machine": everything between the
+    # prefix and the suffix, not the first path segment (#1744).
+    names = sorted({s[len("resource/"):-len("/queue")] for s in mean_df["Series"].unique()
                     if s.startswith("resource/") and s.endswith("/queue")})
     shown, overflow = names[:_MAX_QUEUE_CHARTS], names[_MAX_QUEUE_CHARTS:]
     charts = []
@@ -847,6 +851,17 @@ footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line);
 """
 
 
+def source_hash(text: str) -> str:
+    """The CSP source that admits exactly one inline block holding *text*: `'sha256-...'`."""
+    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii") + "'"
+
+
+def csp(css: str) -> str:
+    """The no-script policy of a page whose one style block is *css*, pinned by its sha256 as the
+    player pins its own (#1740): the browser applies that sheet and no other style."""
+    return f"default-src 'none'; img-src data:; style-src {source_hash(css)}; base-uri 'none'; form-action 'none'"
+
+
 def build_report(layout: dict, results: dict, *, experiment=None, design=None, optimization=None,
                  calibration=None, forecast=None, surrogate=None, extra_sections=(), plan_risk=None,
                  title: str | None = None, path=None) -> str:
@@ -940,8 +955,10 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     body += extra_sections
     body.append(f"<footer><h2>Methods</h2><p>{esc(_METHODS_NOTE)}</p></footer>")
 
-    head = (f'<meta charset="utf-8"><meta name="viewport" content="width=device-width, '
-           f'initial-scale=1"><title>{esc(title)}</title><style>{_CSS}</style>')
+    # #1740: no script, and the one style block pinned by hash (the study pages use the same policy)
+    head = (f'<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="{csp(_CSS)}">'
+            f'<meta name="viewport" content="width=device-width, '
+            f'initial-scale=1"><title>{esc(title)}</title><style>{_CSS}</style>')
     doc = f"<!doctype html><html lang=\"en\"><head>{head}</head><body>{''.join(body)}</body></html>"
 
     if path is not None:

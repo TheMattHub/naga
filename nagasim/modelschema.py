@@ -2595,7 +2595,11 @@ def _defs() -> dict:
                                        "rank": {"type": "integer", "minimum": 0,
                                                 "description": "Its place among arrivals "
                                                                "drawn at one instant for one "
-                                                               "instant."}},
+                                                               "instant."},
+                                       "times": {"type": "array", "items": {"type": "number"},
+                                                 "description": "A jittered FixedSchedule's "
+                                                                "times still to come after the "
+                                                                "next one."}},
                         "additionalProperties": False}},
                 "orders": {
                     "type": "object",
@@ -2621,7 +2625,9 @@ def _defs() -> dict:
                     "description": "Per block, what it carries: a changeover's setup key its "
                                    "last job left; a BATCH's running maximum wait, the time it "
                                    "falls due; a CONVEYOR's next free entry slot and when "
-                                   "the last part left each of its points and its end.",
+                                   "the last part left each of its points and its end; for "
+                                   "a slot row that frees at move_end, when each load still "
+                                   "moving out of it frees its slot.",
                     "additionalProperties": {
                         "type": "object",
                         "properties": {"setup": {"type": ["string", "number"]},
@@ -2631,7 +2637,8 @@ def _defs() -> dict:
                                                 "items": {"type": ["number", "null"]}},
                                        "sections": {"type": "array",
                                                     "items": {"type": "array",
-                                                              "items": {"type": "number"}}}},
+                                                              "items": {"type": "number"}}},
+                                       "frees": {"type": "array", "items": {"type": "number"}}},
                         "additionalProperties": False}},
                 "variables": {"type": "object",
                               "description": "Model variable values to start from."},
@@ -3068,6 +3075,7 @@ _FILLED_DESCRIPTIONS = {
         "description": "A short description of the model.",
         "author": "Who made the model.",
         "notes": "Free notes about the model.",
+        "written_by": "The nagasim version that last saved the file, written on every save (D1193).",
         "labels": "Which blocks the editor labels: all, only assets, or none.",
         "node_names": "Whether the editor shows network node names on hover or always."},
     "view": {
@@ -3260,7 +3268,7 @@ def build_json_schema() -> dict:
         "info": {
             "type": "object",
             "properties": {"description": {"type": "string"}, "author": {"type": "string"},
-                           "notes": {"type": "string"},
+                           "notes": {"type": "string"}, "written_by": {"type": "string"},
                            # Editor view settings remembered with the model (PHASE4 G2, D82).
                            "labels": {"enum": ["all", "assets", "none"]},
                            "node_names": {"enum": ["hover", "always"]}},

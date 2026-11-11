@@ -25,10 +25,16 @@ SAFE = ('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">'
         '<rect width="24" height="24"/></svg>')
 
 
+# The one thing a scenario name adds to the page outside the data block: its tab (escaped text only;
+# anything else in its place leaves the page unequal to the constant one, and `split` fails).
+TABS = re.compile(r'<button type="button" class="tab" value="[^"<>]*">[^<>]*</button>')
+
+
 def split(page: str, tokens=None) -> tuple[str, dict]:
     """(the data block as written, the data in it). Also checks the file's whole
     shape: the constant page, the block, the rest of the constant page."""
     before, after = player.page_shell(tokens=tokens).split("__TAPE__")
+    page = TABS.sub("", page)
     assert page.startswith(before) and page.endswith(after)
     block = page[len(before):len(page) - len(after)]
     return block, json.loads(block)
@@ -190,7 +196,8 @@ def test_the_script_puts_text_on_the_page_only_as_text():
     # One place makes elements, from a tag written in the script itself.
     assert script.count("createElement") == 1 and "document.createElement(tag)" in script
     tags = set(re.findall(r"\badd\(([^,)]*)", script))
-    assert tags == {"tag", '"div"', '"span"', '"tr"', '"th"', '"td"', '"button"', '"option"'}
+    # <wbr>: a line-break opportunity after a "/" of a KPI key (#1761), no content.
+    assert tags == {"tag", '"div"', '"span"', '"tr"', '"th"', '"td"', '"button"', '"option"', '"wbr"'}
     # Rule 13: the drawer reads the tape and never a trace event.
     named = [kind for kind in sorted(trace_module._RECORDED_EVENTS)
              if re.search(rf"\b{kind}\b", script)]
@@ -231,7 +238,7 @@ def test_tokens_colour_the_page_and_stay_pinned():
     assert "--accent: #AB12CD;" not in plain and "--accent: #2f6fe0;" in plain   # the console's
     assert f"style-src 'sha256-{_digest(style)}'" in branded
     # The data block is the same: the look is the style sheet's, not the tape's.
-    assert split(plain)[0] == branded[len(player.page_shell(tokens={"accent": "#AB12CD", "page": "#101010",
+    assert split(plain)[0] == TABS.sub("", branded)[len(player.page_shell(tokens={"accent": "#AB12CD", "page": "#101010",
                                       "radius": "12", "font": "Georgia, serif"}).split("__TAPE__")[0]):]\
         .split("</script>")[0]
     for bad in ({"accent": "red;}</style><script>"}, {"font": "x</style>"}, {"radius": "1e9"},
@@ -496,7 +503,7 @@ def test_naga_run_player_writes_the_one_file_it_was_asked_for(tmp_path, capsys):
     assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*")) \
         == ["a", "a/short.html", "b", "b/long.html"]
     _block, data = split(short.read_text(encoding="ascii"))
-    assert data["title"] == "single_server" and data["runs"][BASELINE]["of"] == 2
+    assert data["title"] == "Single server (M/M/1)" and data["runs"][BASELINE]["of"] == 2
     no_address(short.read_text(encoding="ascii"))
 
 

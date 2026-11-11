@@ -91,7 +91,8 @@ unknown tool or argument name answers "did you mean", and for a guessed tool nam
 that fit by meaning; `find_tool` searches the tools by a few words of intent. `study_start` takes the whole plan in one call and
 `study_step` can record what was learned in the same call as the step, so a study needs fewer calls.
 `naga study rerun FOLDER` reruns every version from its stored model and seed and reports whether the
-results reproduce, so a study can be checked without an assistant.
+results reproduce, so a study can be checked without an assistant. It lists the folder's `reproduce.json`
+steps and runs them only with `--steps`.
 
 ## In the chat
 

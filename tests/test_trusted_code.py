@@ -128,3 +128,72 @@ def test_a_saved_model_lists_its_plugin_types_and_names_them_when_missing(monkey
 def test_an_undeclared_unknown_type_is_still_the_bare_unknown_type():
     codes = {p.code for p in schema.validate_model_structured(_plugin_model()) if p.block == "Yard"}
     assert codes == {"E_UNKNOWN_BLOCK_TYPE"}
+
+
+@pytest.mark.slow       # three processes that import the agent tools
+def test_repo_tools_run_without_user_plugins(tmp_path, monkeypatch):
+    """Review S8-15: every repo tool that imports the engine imports `tools/_isolate.py` first, so a tool
+    that lists the registries (gen_docs_coverage writes a committed file from them) never sees a plugin the
+    machine's user trusted; `naga --no-plugins` loads none, in the process and its workers."""
+    import ast
+    import re
+    tools = REPO_ROOT / "tools"
+    for path in sorted(tools.glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if path.name == "_isolate.py" or not re.search(r"^\s*(from|import) (nagasim|product)\b", text, re.M):
+            continue
+        body = [n for n in ast.parse(text).body if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))
+                and not (isinstance(n, ast.ImportFrom) and n.module == "__future__")]
+        assert isinstance(body[0], ast.Try) and "_isolate" in ast.unparse(body[0]), path.name
+    # a profile whose store trusts a folder that leaves a mark: what the laptop of a person with a plugin has
+    profile = tmp_path / "profile"
+    monkeypatch.setenv("NAGASIM_USER_DIR", str(profile / "Naga"))
+    folder, marker = tmp_path / "plug", tmp_path / "ran.txt"
+    folder.mkdir()
+    (folder / "mark.py").write_text(f"open({str(marker)!r}, 'a').write('x')\nNAGASIM_BLOCKS = []\n", encoding="utf-8")
+    trusted.add("plugin_folder", folder)
+    env = {k: v for k, v in os.environ.items() if k not in ("NAGASIM_USER_DIR", "NAGASIM_PLUGIN_PATH")}
+    env.update(APPDATA=str(profile), XDG_DATA_HOME=str(profile), PYTHONPATH=str(REPO_ROOT))
+
+    def run(code):
+        return subprocess.run([sys.executable, "-c", code], cwd=str(tools), env=env, capture_output=True,
+                              text=True, timeout=120)
+    assert run("import nagasim.agent_tools").returncode == 0 and marker.exists()      # the profile is live
+    marker.unlink()
+    assert run("import _isolate, nagasim.agent_tools").returncode == 0 and not marker.exists()
+    proc = run("from nagasim import cli, plugins; import sys; sys.argv = ['naga']; "
+               "cli.main(['--no-plugins', 'validate', 'nothing.json']); assert plugins.load_plugins().folders == {}")
+    assert proc.returncode == 0 and not marker.exists(), proc.stderr
+
+
+def test_the_store_round_trips_and_survives_a_cut_short_write(store, monkeypatch):
+    """Review gate (P04, #1736): what is written reads back the same, digests included, and a write cut
+    short half way leaves the store as it was."""
+    folder = store / "plugs"
+    folder.mkdir()
+    (folder / "a.py").write_text("NAGASIM_BLOCKS = []\n", encoding="utf-8")
+    trusted.add("plugin_folder", folder)
+    trusted.add("policy", store / "p.py", added_by="assistant", enabled=False)
+    found = trusted.entries()
+    assert found[0].digest and not trusted.changed(found[0]) and found[1].digest is None
+    real = os.fdopen
+
+    class Cut:
+        def __init__(self, fh):
+            self.fh = fh
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.fh.close()
+
+        def write(self, text):
+            self.fh.write(text[: len(text) // 2])
+            raise OSError("power cut")
+    monkeypatch.setattr(os, "fdopen", lambda *a, **k: Cut(real(*a, **k)))
+    with pytest.raises(OSError, match="power cut"):
+        trusted.remove("policy", store / "p.py")
+    monkeypatch.undo()
+    monkeypatch.setenv("NAGASIM_USER_DIR", str(store / "user"))
+    assert trusted.entries() == found and len(list(trusted.store_path().parent.iterdir())) == 1

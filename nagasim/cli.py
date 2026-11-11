@@ -20,6 +20,8 @@ import multiprocessing
 import os
 import sys
 
+from nagasim.core.errors import ModelRunError
+
 # Subcommand -> (module under nagasim, its entry function, a one-line summary).
 # ONE table drives dispatch below, `tools/gen_docs.py`'s CLI reference and
 # `naga --help` alike (ARCH-REVIEW-PLAN B4; `product.cli.COMMANDS` extends
@@ -75,7 +77,7 @@ COMMANDS = {
     "forecast": ("forecast", "main", "short-horizon forecast with prediction bands"),
     "plan": ("planning", "main", "deterministic plan, optional CP-SAT proposal and risk"),
     "loops": ("loopdominance", "main", "loop dominance (Loops That Matter) of an SD model"),
-    "study": ("studyrerun", "main", "check a study folder: rerun its versions and reproduce steps, check its numbers"),
+    "study": ("studyrerun", "main", "check a study folder: rerun its versions (its reproduce steps with --steps), check its numbers"),
     "room": ("studyroom", "main", "the live control room of a study in your browser"),
     "skill": ("skillcli", "main", "show or copy the simulation-study guide for an assistant"),
     "mcp": ("mcp_server", "main", "Model Context Protocol server over stdio"),
@@ -86,13 +88,15 @@ COMMANDS = {
 # plain strings (never a `product.*` import or module reference) so an
 # engine-only install can still print a one-line hint instead of "unknown
 # command" for them.
-_PRODUCT_COMMAND_NAMES = ("library", "mes")
+_PRODUCT_COMMAND_NAMES = ("asset", "building", "film", "hero", "library", "mes", "package",
+                          "render", "seed")   # the product's, but one the engine may not name (D1014); a test keeps them equal (#1718)
 
 # An ordinary input-shape failure (bad path, malformed model file, wrong
 # --policy/--method name, a missing optional backend), turned into a one-line
 # message instead of a raw traceback below. schema.ModelValidationError is a
 # ValueError subclass, so it needs no entry of its own.
-_INPUT_ERRORS = (FileNotFoundError, json.JSONDecodeError, ValueError, TypeError, ImportError)
+_INPUT_ERRORS = (FileNotFoundError, json.JSONDecodeError, ValueError, TypeError, ImportError,
+                 ModelRunError)   # a run the model itself cannot go on with (#1721)
 
 
 def _dispatch(entry, argv: list, prog: str, name: str) -> int:
@@ -117,9 +121,10 @@ def _dispatch(entry, argv: list, prog: str, name: str) -> int:
 
 
 def _print_help(prog: str = "naga") -> None:
-    print(f"usage: {prog} [COMMAND] [ARGS ...]")
+    print(f"usage: {prog} [--no-plugins] [COMMAND] [ARGS ...]")
     print()
-    print("Each command also takes its own --help.")
+    print("Each command also takes its own --help. --no-plugins runs with the shipped blocks only:")
+    print("no trusted plugin folder, NAGASIM_PLUGIN_PATH or installed plugin is loaded.")
     print()
     print("commands:")
     width = max(len(name) for name in COMMANDS)
@@ -135,6 +140,12 @@ def main(argv=None, prog: str = "naga") -> int:
     multiprocessing.freeze_support()
 
     args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["--no-plugins"]:
+        # A clean run (review S8-15). The person's flag, never a file's: set in the environment so
+        # every pool worker this command spawns loads no plugin either.
+        from nagasim.plugins import NO_PLUGINS_ENV
+        args = args[1:]
+        os.environ[NO_PLUGINS_ENV] = "1"
 
     # Help comes before the plugins load: loading them imports most of the
     # engine. Plugins add blocks, distributions and exporters, never commands
@@ -167,8 +178,8 @@ def main(argv=None, prog: str = "naga") -> int:
         return _dispatch(entry, args[1:], prog, name)
 
     if name in _PRODUCT_COMMAND_NAMES:
-        sys.stderr.write(f"{prog}: '{name}' is part of the Naga product; "
-                         "install the 'product' package for it.\n")
+        sys.stderr.write(f"{prog}: '{name}' is part of Naga, a desktop editor "
+                         "built on Naga; this engine does not have it.\n")
         return 2
 
     _print_help(prog)

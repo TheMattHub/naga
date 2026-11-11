@@ -61,7 +61,7 @@ def test_steps_regenerate_identically(tmp_path, capsys):
     (pkg / "out").mkdir()
     (pkg / "out" / "a.txt").write_text("1", encoding="utf-8")       # the committed outputs
     (pkg / "out" / "b.txt").write_text("2", encoding="utf-8")
-    assert studyrerun.main(["rerun", str(pkg)]) == 0
+    assert studyrerun.main(["rerun", str(pkg), "--steps"]) == 0
     out = capsys.readouterr().out
     assert "== a: python scripts/write.py out/a.txt 1" in out
     assert "a: ok" in out and "b: ok" in out and "0 changed, 0 new, 0 gone, 1 identical" in out
@@ -71,7 +71,7 @@ def test_changed_output_is_reported(tmp_path, capsys):
     pkg = _package(tmp_path, [_write("a", "out/a.txt", "new")])
     (pkg / "out").mkdir()
     (pkg / "out" / "a.txt").write_text("old", encoding="utf-8")
-    assert studyrerun.main(["rerun", str(pkg)]) == 1
+    assert studyrerun.main(["rerun", str(pkg), "--steps"]) == 1
     assert "changed: out/a.txt" in capsys.readouterr().out
     res = studyrerun.run_steps(pkg, studyrerun.load_manifest(pkg), capture=True)
     assert res[0]["status"] == "ok" and res[0]["same"] == 1      # the second run finds its own file
@@ -84,7 +84,7 @@ def test_failing_step_stops_the_run(tmp_path, capsys):
     res = studyrerun.run_steps(pkg, studyrerun.load_manifest(pkg), capture=True)
     assert [r["status"] for r in res] == ["ok", "failed", "not_run"] and res[1]["code"] == 3
     assert res[0]["added"] == ["a.txt"] and not (pkg / "c.txt").exists()
-    assert studyrerun.main(["rerun", str(pkg)]) == 1
+    assert studyrerun.main(["rerun", str(pkg), "--steps"]) == 1
     assert "c: not run" in capsys.readouterr().out
 
 

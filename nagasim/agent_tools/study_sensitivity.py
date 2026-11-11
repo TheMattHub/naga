@@ -23,7 +23,9 @@ def study_sensitivity(study: str, version: str | None = None, factors: list[str]
     with common random numbers and the version's stored replications and seed, and rank them by
     how much each moves the goal KPIs. Answers {"file", "ranked": [{path, label, swing}],
     "changes_answer": [paths where a goal verdict flips]}; the full table and a swing chart per
-    goal KPI are in the file. Rate parameters are varied as rates (a higher rate is a shorter time)."""
+    goal KPI are in the file. Rate parameters are varied as rates (a higher rate is a shorter time).
+    Named factors may be any numeric override path; one that is not is listed in "not_varied", and
+    an end the model cannot run with (e.g. a capacity below its schedule) is skipped with a note."""
     started = time.monotonic()
     folder, s = _open(study, write=True)
 
@@ -41,4 +43,4 @@ def study_sensitivity(study: str, version: str | None = None, factors: list[str]
                       "swing": max((k["swing"] or 0 for k in r["kpis"].values()), default=0.0)}
                      for r in out["factors"]), key=lambda r: -r["swing"])
     return {"file": f"{_sid(folder)}/versions/{out['version']}/sensitivity.json", "ranked": ranked,
-            "changes_answer": out["changes_answer"]}
+            "changes_answer": out["changes_answer"], "not_varied": out["not_varied"], "notes": out["notes"]}

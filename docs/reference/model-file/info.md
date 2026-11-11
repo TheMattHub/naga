@@ -26,6 +26,7 @@ A crane's lift is any traced move with a duration between two blocks it serves. 
 | `description` | string |  |  |  | A short description of the model. |
 | `author` | string |  |  |  | Who made the model. |
 | `notes` | string |  |  |  | Free notes about the model. |
+| `written_by` | string |  |  |  | The nagasim version that last saved the file, written on every save. |
 | `labels` | choice |  |  |  | Which blocks the editor labels: all, only assets, or none. One of `all`, `assets`, `none`. |
 | `node_names` | choice |  |  |  | Whether the editor shows network node names on hover or always. One of `hover`, `always`. |
 

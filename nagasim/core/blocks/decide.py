@@ -5,6 +5,7 @@ from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, ParamSpec
 from nagasim.core.blocks._common import compiled_closure, entity_scope, evaluate_expression, validated_probs
 from nagasim.core.control import DecisionRequest, PausingController
+from nagasim.core.errors import ModelRunError
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class Decide(BaseProcess):
                 self.forward(entity, len(self.next_process) - 1)
             else:
                 # Same rule as Chance mode: never strand an entity silently (#1392).
-                raise RuntimeError(
+                raise ModelRunError(
                     f"Decide block '{self.name}': no condition was true for this entity "
                     f"and it has no ELSE link. Add an ELSE link or a condition that covers it."
                 )
@@ -104,7 +105,7 @@ class Decide(BaseProcess):
             # ELSE case - no warning needed
             if not (self.next_process and len(self.next_process) > len(self.probs)):
                 # No ELSE link: dropping the entity here would silently lose work
-                raise RuntimeError(
+                raise ModelRunError(
                     f"Decide block '{self.name}' drew {r:.4f} but its probabilities sum to "
                     f"{sum(float(p) for p in self.probs):.4f} and it has no ELSE link. "
                     f"Add an ELSE link or make the probabilities sum to 1."

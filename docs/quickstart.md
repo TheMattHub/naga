@@ -17,7 +17,7 @@ this as `mm1.json`:
 
 ```json title="mm1.json"
 {
-  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
+  "$schema": "https://thematthub.github.io/naga/schema/model-v30.json",
   "blocks": [
     {"name": "arrive", "type": "CREATE",
      "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}},

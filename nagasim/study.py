@@ -490,6 +490,8 @@ def next_options(study: dict, folder: Path, study_id: str | None = None, limit: 
 def next_step(study: dict, folder: Path | None = None) -> str:
     text = _next_step(study, folder)
     last = _last(study)
+    if last and last.get("scenario_error"):     # a scenario of the decision did not run (#1729)
+        text = f"{last['scenario_error']} Then: {text}"
     status = (last or {}).get("precision") or {}
     if last and status and not all(v["met"] for v in status.values())             and (last.get("replications") or 0) >= PRECISION[study["size"]]["cap"]:
         return f"{text} The replication cap stopped the precision target. {cap_hint(status)}"
@@ -578,7 +580,7 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
     write_json(target / "step.json", {
         "id": vid, "changed": sorted(changed), "note": note, "verdict": verdict, "checks": checks, "kpis": kpis,
         "changes": lines[:_MAX_CHANGES], "problems": problems, **({"scenarios": scenarios} if scenarios else {}),
-        **{k: run[k] for k in ("replications", "precision", "seed") if run and k in run},
+        **{k: run[k] for k in ("replications", "precision", "seed", "scenario_error") if run and k in run},
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     if keep:   # the flowchart shows this step's changes and what of the target is not built yet
         geom = flowchart.geometry(layout, changed,
@@ -589,7 +591,8 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
                                   "verification": overall([c for c in checks if c["kind"] not in ("goal", "precision")]),
                                   "kpis": kpis, "changes_count": len(lines),
                                   **({"scenarios": scenarios} if scenarios else {}),
-                                  **{k: run[k] for k in ("replications", "precision") if run}})
+                                  **{k: run[k] for k in ("replications", "precision") if run},
+                                  **{k: run[k] for k in ("scenario_error",) if run and k in run}})
     answer = {"id": vid, "kind": "version" if keep else "draft", "verdict": verdict, "checks": checks,
               "changes": lines[:_MAX_CHANGES], "kpis": kpis}
     if scenarios:

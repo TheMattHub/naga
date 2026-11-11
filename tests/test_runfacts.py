@@ -149,7 +149,9 @@ def test_submodel_blocks_carry_their_instance_and_a_template_resource_is_no_fact
     # two_cell_line clones its "$Machine" template per cell: the template stays declared
     # but idle by design, so it is no never-seized fact; blocks are named cell_N/inner.
     from nagasim.examples import model_path
-    answer = run(model_path("two_cell_line"), run_length=50)
+    model = json.loads(open(model_path("two_cell_line"), encoding="utf-8").read())
+    model["simulation"]["warmup"] = 0       # its own 1000 would cover the whole 50 (#1720)
+    answer = run(model, run_length=50)
     assert not [f for f in answer["facts"] if f["kind"] == "never_seized"]
     assert all(f["block"].startswith("cell_") for f in answer["facts"] if f["block"])
 

@@ -4,6 +4,8 @@ surrogate fitting and export (F2: runs and studies).
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import numpy as np
 
 from nagasim import api, experiments, explain, investment, laws, loopdominance, modelcheck, uncertainty
@@ -28,23 +30,27 @@ _document_args("run_model", model="Workspace name of the model to run.",
                max_seconds="Wall-clock budget; the run stops cleanly and returns what finished.")
 
 
-_document_args("check_model_opens", model="Workspace name of the model to check.")
+_document_args("check_model_opens", model="Workspace name of the model to check.",
+               max_seconds="Wall-clock budget for the run; a run it stops answers status \"stopped\", "
+                           "neither a pass nor a fail.")
 
 
 @tool(read_only=True)
-def check_model_opens(model: str) -> dict:
+def check_model_opens(model: str, max_seconds: float | None = None) -> dict:
     """The open-and-run gate: does the model open in the editor with NO errors, using the
     plugins this person enabled, and run one replication? Call it before you say a model you
     built or edited is done; a model that fails it is not done.
 
-    Returns {"model", "passed", "message"}: the message says what failed first (an error in the
+    Returns {"model", "passed", "status" ("pass", "fail" or "stopped": the budget ran out, so it
+    opens with no errors but the run was not finished), "message"}: the message says what failed first (an error in the
     Problems panel, with its fix, or the exception of the run). A block type that "comes from a
     plugin that is not loaded" needs the person to trust its folder in Settings > Plugins;
     `propose_plugin_folder` can only suggest one.
     """
     doc = workspace().document(model)
-    gate = modelcheck.open_and_run(doc.to_layout())
-    return {"model": model, "passed": gate.passed, "message": gate.message}
+    gate = modelcheck.open_and_run(doc.to_layout(), max_seconds=max_seconds)
+    status = "stopped" if gate.status == "inconclusive" else gate.status
+    return {"model": model, "passed": gate.passed, "status": status, "message": gate.message}
 
 
 _document_args("propose_plugin_folder", model="Workspace name of the model that needs the plugin.",
@@ -66,10 +72,18 @@ def propose_plugin_folder(model: str, folder: str) -> dict:
     path = workspace().resolve(folder, must_exist=True)
     if not path.is_dir():
         raise ToolError("E_NOT_A_FOLDER", f"not a folder: {folder}", "give the plugin folder itself")
+    if path.resolve() == workspace().root.resolve():
+        # #1738: the root holds every file the assistant writes; only a folder inside it is proposed
+        raise ToolError("E_WORKSPACE_ROOT", "the workspace root itself cannot be a plugin folder",
+                        "put the plugin's .py files in a folder inside the workspace and propose that")
     found = trusted.find("plugin_folder", path)
     if found is not None:
         return {"model": model, "folder": str(path), "state": "listed", "enabled": found.enabled}
-    trusted.add("plugin_folder", path, added_by="assistant", enabled=False)
+    try:
+        trusted.add("plugin_folder", path, added_by="assistant", enabled=False)
+    except trusted.StoreUnreadable as exc:
+        raise ToolError("E_TRUST_STORE_UNREADABLE", str(exc),
+                        "ask the person to repair or remove the file; it is never written over") from None
     return {"model": model, "folder": str(path), "state": "proposed", "enabled": False}
 
 
@@ -167,6 +181,17 @@ def get_kpi_table(model: str, frame: str, offset: int = 0, limit: int = 50) -> d
     return {"model": model, "frame": frame, **_rows(data, offset, limit)}
 
 
+@contextmanager
+def _kpi_errors():
+    """A KPI key the results do not have is E_UNKNOWN_KPI with the nearest keys, before the run (#1728)."""
+    try:
+        yield
+    except experiments.UnknownKPIError as exc:
+        raise ToolError("E_UNKNOWN_KPI", str(exc),
+                        f"nearest: {', '.join(exc.nearest)}" if exc.nearest
+                        else "name a KPI from run_model's digest or get_kpi_table", exc.nearest) from None
+
+
 _document_args("run_scenarios", model="Workspace name of the model to run.",
                scenarios="Scenario names to run; omit for all of them plus Baseline.",
                kpis="KPI keys to report, e.g. [\"system/Avg Throughput Time\"]; omit for the "
@@ -202,10 +227,14 @@ def run_scenarios(model: str, scenarios: list | None = None, kpis: list | None =
                         "pass scenario name strings, e.g. [\"Second server\"], or omit the "
                         "argument for all of them plus Baseline")
     doc = workspace().document(model)
+    stop = _budget(max_seconds)
+    with _kpi_errors():
+        names = experiments.resolve_kpis(doc.to_layout(), kpis, scenarios, seed=seed, run_length=run_length,
+                                         warmup=warmup, should_stop=stop)
     result = experiments.run_scenarios(doc.to_layout(), scenarios, replications=replications,
                                        seed=seed, run_length=run_length, warmup=warmup, crn=crn,
-                                       should_stop=_budget(max_seconds), on_progress=_progress)
-    table = result.comparison(kpis=kpis)
+                                       should_stop=stop, on_progress=_progress)
+    table = result.comparison(kpis=None if names is None else list(names.values()))
     if kpis is None:
         table = table[table["KPI"].str.startswith("system/")]
     rows = _records(table.head(MAX_ROWS), {
@@ -254,9 +283,11 @@ def what_if(model: str, overrides: list, kpis: list | None = None, goals: dict |
     {"measure", "resamples", "replications", "kpis", "text"}}.
     """
     try:
-        out = experiments.what_if(workspace().document(model).to_layout(), overrides, kpis,
-                                  start=start, cap=max(2, min(int(cap), 200)), seed=seed, run_length=run_length,
-                                  warmup=warmup, goals=goals, should_stop=_budget(max_seconds))
+        with _kpi_errors():
+            out = experiments.what_if(workspace().document(model).to_layout(), overrides, kpis,
+                                      start=start, cap=max(2, min(int(cap), 200)), seed=seed,
+                                      run_length=run_length, warmup=warmup, goals=goals,
+                                      should_stop=_budget(max_seconds))
     except ModelValidationError as exc:
         raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
                         "fix the override paths (list_override_paths shows the valid ones)")
@@ -323,6 +354,8 @@ def explain_kpi(model: str, kpi: str, overrides: list | None = None, replication
     except ModelValidationError as exc:
         raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
                         "fix the override paths (list_override_paths shows the valid ones)")
+    except api.WarmupPastEndError as exc:
+        raise ToolError(exc.code, str(exc), "shorten the warm-up or lengthen the run") from None
     except ValueError as exc:
         raise ToolError("E_UNKNOWN_KPI", str(exc),
                         "name a KPI from run_model's digest or get_kpi_table") from None
@@ -435,6 +468,8 @@ def run_reality_checks(model: str, run_length: float | None = None, warmup: floa
     try:
         table = modelcheck.run_reality_checks(layout, seed=seed, run_length=run_length,
                                                  warmup=warmup, should_stop=_budget(max_seconds))
+    except api.WarmupPastEndError as exc:
+        raise ToolError(exc.code, str(exc), "shorten the warm-up or lengthen the run") from None
     except ValueError as exc:
         raise ToolError("E_REALITY_CHECK", str(exc),
                         "fix the reality_checks section, or the model it overrides into") from None

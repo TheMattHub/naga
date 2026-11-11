@@ -93,6 +93,7 @@ def test_writeup_without_discussion_or_sensitivity(ws):
     sid = T.call("study_start", question="q")["study"]
     layout = json.loads((ws.root / "m.json").read_text(encoding="utf-8"))
     layout["simulation"]["time_limit"] = 100
+    layout["simulation"]["warmup"] = 0  # #1720
     T.call("study_step", study=sid, layout=layout, note="n")
     r = T.call("study_writeup", study=sid)
     html = (ws.root / r["html"]).read_text(encoding="utf-8")
@@ -140,6 +141,7 @@ def test_slides_skip_sensitivity_when_absent(ws):
     sid = T.call("study_start", question="q")["study"]
     layout = json.loads((ws.root / "m.json").read_text(encoding="utf-8"))
     layout["simulation"]["time_limit"] = 100
+    layout["simulation"]["warmup"] = 0  # #1720
     T.call("study_step", study=sid, layout=layout, note="n")
     html = (ws.root / T.call("study_slides", study=sid)["path"]).read_text(encoding="utf-8")
     assert html.count('<section class="slide"') == 8

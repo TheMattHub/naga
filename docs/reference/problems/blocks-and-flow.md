@@ -21,6 +21,7 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="e_dispose_has_output"></span>`E_DISPOSE_HAS_OUTPUT` | error | A DISPOSE block has an outgoing link. | [DISPOSE](../blocks/dispose.md) |
 | <span id="e_distribution_missing"></span>`E_DISTRIBUTION_MISSING` | error | A duration spec (link delay, failure uptime/downtime) names no distribution. | -- |
 | <span id="e_dist_param_unknown"></span>`E_DIST_PARAM_UNKNOWN` | error | A dist_params key the distribution does not take (it would be ignored). | -- |
+| <span id="e_dist_param_value"></span>`E_DIST_PARAM_VALUE` | error | A dist_params value the distribution cannot use: a choice outside its list, or a jitter that is negative or not a number. | -- |
 | <span id="e_duplicate_block"></span>`E_DUPLICATE_BLOCK` | error | Two blocks share a name. | [DUPLICATE](../blocks/duplicate.md) |
 | <span id="e_duplicate_station"></span>`E_DUPLICATE_STATION` | error | Two STATION blocks answer to the same station name. | [DUPLICATE](../blocks/duplicate.md), [STATION](../blocks/station.md) |
 | <span id="e_field_range"></span>`E_FIELD_RANGE` | error | A numeric field of a section (a fleet, a charger, a level, a series, ...) is outside the bounds the field table and the published schema state. | -- |
@@ -59,8 +60,10 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="e_too_many_outputs"></span>`E_TOO_MANY_OUTPUTS` | error | A single-output block has more than one outgoing link. | -- |
 | <span id="e_unknown_block_type"></span>`E_UNKNOWN_BLOCK_TYPE` | error | The block's `type` is not in BLOCK_REGISTRY. | -- |
 | <span id="e_unknown_distribution"></span>`E_UNKNOWN_DISTRIBUTION` | error | A distribution name that is in no registry entry. | -- |
+| <span id="e_warmup_past_end"></span>`E_WARMUP_PAST_END` | error | The warm-up is as long as the run or longer, so nothing after it is observed and every result is zero. | -- |
 | <span id="w_available_is_capacity"></span>`W_AVAILABLE_IS_CAPACITY` | warning | A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE). | [DECIDE](../blocks/decide.md) |
 | <span id="w_create_no_orders"></span>`W_CREATE_NO_ORDERS` | warning | A CREATE block is in "Orders" mode but no order names it. | [CREATE](../blocks/create.md) |
+| <span id="w_decide_no_else"></span>`W_DECIDE_NO_ELSE` | warning | A Condition-mode DECIDE has no ELSE link, so an entity no condition takes stops the run. | [DECIDE](../blocks/decide.md) |
 | <span id="w_empirical_continuous"></span>`W_EMPIRICAL_CONTINUOUS` | warning | EmpiricalContinuous given equal-length values/probs samples discrete points. | -- |
 | <span id="w_long_name"></span>`W_LONG_NAME` | warning | A block name is over 20 characters; the canvas wraps it. | -- |
 | <span id="w_opening_off_wall"></span>`W_OPENING_OFF_WALL` | warning | A building opening cuts no wall: it names a room, wall line or edge that does not exist, is wider than its wall edge, or its two points lie on no wall line. | -- |
@@ -73,9 +76,10 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="w_queue_row_crossing"></span>`W_QUEUE_ROW_CROSSING` | warning | A placed asset's drawn queue row (up to its queue capacity, at most ten places 0.8 m apart) runs through another placed asset on the floor plan; turn the row (queue_row) so the picture reads right. | -- |
 | <span id="w_station_unused"></span>`W_STATION_UNUSED` | warning | A STATION block is named by no sequence step. | [STATION](../blocks/station.md) |
 | <span id="w_unbounded_duration"></span>`W_UNBOUNDED_DURATION` | warning | A duration uses a distribution that can sample below 0; samples truncate to 0. | -- |
-| <span id="w_unknown_key"></span>`W_UNKNOWN_KEY` | warning | A key the model file format does not have (write_model): the document drops it. | -- |
+| <span id="w_unknown_key"></span>`W_UNKNOWN_KEY` | warning | A key the model file format does not have. At the top level it is kept through load and save; inside a section the document drops it. | -- |
 | <span id="w_unreachable"></span>`W_UNREACHABLE` | warning | A block cannot be reached from any CREATE. | [CREATE](../blocks/create.md) |
 | <span id="w_wall_crossing"></span>`W_WALL_CROSSING` | warning | A path-network segment crosses a building wall where it has no opening; walls never change routing, so movers would walk through it. | -- |
+| <span id="w_written_by_newer"></span>`W_WRITTEN_BY_NEWER` | warning | The file was last saved by a newer nagasim than this one; sections this build does not know are kept, but it may read others differently. | -- |
 
 ## How to fix
 

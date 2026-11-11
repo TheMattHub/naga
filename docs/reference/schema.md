@@ -3,7 +3,7 @@
 
 # Model file format (generated)
 
-Current schema version: **29** (`nagasim/core/schema/migrate.py`). See [Model file format](../model-file-format.md) for the full field-by-field guide; this page is the generated top-level key list. `naga schema` prints the whole JSON Schema; a file saved by an older version is migrated forward when it is read.
+Current schema version: **30** (`nagasim/core/schema/migrate.py`). See [Model file format](../model-file-format.md) for the full field-by-field guide; this page is the generated top-level key list. `naga schema` prints the whole JSON Schema; a file saved by an older version is migrated forward when it is read.
 
 ## Top-level keys
 

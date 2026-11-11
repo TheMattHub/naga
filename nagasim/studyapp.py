@@ -6,8 +6,9 @@ client (no library): it asks the host to call the study tools, and the assistant
 the same client talks to the loopback server with `fetch` and polls it for changes. The two differ only
 in the transport chunk, so the host page holds no address and the room page no postMessage.
 
-The returned page is parsed with DOMParser and only its <style> and <main> are imported; scripts and
-on* attributes are dropped even though `studypage.render` never emits them. Every button is drawn
+In the chat the returned page is parsed with DOMParser and only its <style> and <main> are imported;
+scripts and on* attributes are dropped even though `studypage.render` never emits them. In the room the
+page is shown whole in a sandboxed frame that runs no script, under its own policy (#1757). Every button is drawn
 from the page's data-* marks; every message shown uses textContent. The host's default CSP allows
 no network, and the host variant needs none."""
 URI = "ui://naga/study.html"
@@ -67,26 +68,13 @@ img.naga-flow{display:block;max-width:100%;margin:6px 0}
     pageEl.querySelectorAll("button").forEach(function (b) { b.disabled = on; });
   }
 
-  function insert(html) {
-    var doc = new DOMParser().parseFromString(html, "text/html");
-    doc.querySelectorAll("script").forEach(function (s) { s.remove(); });
-    doc.querySelectorAll("*").forEach(function (el) {
-      Array.prototype.slice.call(el.attributes).forEach(function (a) {
-        var v = a.value.replace(/\s+/g, "").toLowerCase();
-        if (a.name.slice(0, 2) === "on" || v.indexOf("javascript:") === 0) { el.removeAttribute(a.name); }
-      });
-    });
-    var y = window.scrollY;
-    pageEl.textContent = "";
-    doc.querySelectorAll("style, main").forEach(function (el) {
-      pageEl.appendChild(document.importNode(el, true));
-    });
+  // The page is in place (under pageEl): read the study id, then add the controls.
+  function ready() {
     var cover = pageEl.querySelector("[data-study]");
     if (!study && cover) { study = cover.getAttribute("data-study"); }
     restorePanels();
     toolbar();
     decorate();
-    window.scrollTo(0, y);
   }
 
   function note(b, text) {
@@ -253,6 +241,24 @@ _HOST = r"""  // Host transport: JSON-RPC over postMessage with the MCP Apps hos
       return out;
     });
   }
+  // The page's <style> and <main> go into this document, under the host's own policy.
+  function insert(html) {
+    var doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script").forEach(function (s) { s.remove(); });
+    doc.querySelectorAll("*").forEach(function (el) {
+      Array.prototype.slice.call(el.attributes).forEach(function (a) {
+        var v = a.value.replace(/\s+/g, "").toLowerCase();
+        if (a.name.slice(0, 2) === "on" || v.indexOf("javascript:") === 0) { el.removeAttribute(a.name); }
+      });
+    });
+    var y = window.scrollY;
+    pageEl.textContent = "";
+    doc.querySelectorAll("style, main").forEach(function (el) {
+      pageEl.appendChild(document.importNode(el, true));
+    });
+    ready();
+    window.scrollTo(0, y);
+  }
   function load() {
     loaded = true;
     return callTool("study_page_html", { study: study }).then(function (r) { insert(r.html); });
@@ -334,8 +340,38 @@ _ROOM = r"""  // Room transport: fetch to the loopback server that served this p
       return out;
     });
   }
+  // #1757: the page is shown whole in a frame that runs no script (its sandbox grants no script), so it
+  // keeps its own no-script policy on top of this one; allow-same-origin only lets this script read its
+  // marks and add the buttons there. The frame fills the window and scrolls inside, so the page's
+  // sticky header stays in view; a reload keeps that scroll.
+  // Two loads can overlap (the poll and a button's reload): the newer page replaces the older before it
+  // loads, so every waiter is released by the one load that happens, and the scroll is the one before both.
+  var frame = null, waiting = [], keepY = 0;
+  function showPage(html) {
+    return new Promise(function (resolve) {
+      if (!frame) {
+        frame = document.createElement("iframe");
+        frame.id = "naga-frame";
+        frame.title = "Study page";
+        frame.setAttribute("sandbox", "allow-same-origin");
+        document.getElementById("page").appendChild(frame);
+      }
+      if (!waiting.length && frame.contentWindow) { keepY = frame.contentWindow.scrollY; }
+      waiting.push(resolve);
+      frame.onload = function () {
+        pageEl = frame.contentDocument.body;
+        pageEl.addEventListener("toggle", function (ev) { openState[panelKey(ev.target)] = ev.target.open; }, true);
+        ready();
+        frame.contentWindow.scrollTo(0, keepY);
+        var done = waiting;
+        waiting = [];
+        done.forEach(function (r) { r(); });
+      };
+      frame.srcdoc = html;
+    });
+  }
   function load() {
-    return getJson("./api/page").then(function (r) { rev = r.rev; insert(r.html); });
+    return getJson("./api/page").then(function (r) { rev = r.rev; return showPage(r.html); });
   }
   function askAssistant(text) { return chatSend(text); }
   function openFile(path) {
@@ -355,7 +391,8 @@ _ROOM = r"""  // Room transport: fetch to the loopback server that served this p
 # The room's assistant panel (room variant only): a message list, a box, Send and Stop, a microphone
 # when the browser has speech recognition, and an optional read-aloud. No library, no server code
 # for the voice: the browser's Web Speech API.
-_CHAT_STYLE = """#naga-chat{max-width:1100px;margin:8px auto;padding:8px 16px;border:1px solid #dde1e6;border-radius:8px;
+_CHAT_STYLE = """#naga-frame{display:block;width:100%;height:calc(100vh - 16px);border:0}
+#naga-chat{max-width:1100px;margin:8px auto;padding:8px 16px;border:1px solid #dde1e6;border-radius:8px;
  background:#fff}
 #naga-chat h2{font-size:15px;margin:0 0 4px}#chat-log{max-height:40vh;overflow:auto;margin:4px 0}
 #chat-log p{margin:4px 0;white-space:pre-wrap}.chat-user{font-weight:600}.chat-tool{color:#666;font-size:13px}

@@ -1,6 +1,6 @@
 {
-  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
-  "schema_version": 29,
+  "$schema": "https://thematthub.github.io/naga/schema/model-v30.json",
+  "schema_version": 30,
   "blocks": [
     {
       "name": "pushback",
@@ -157,8 +157,7 @@
           "entity.stand == 'S06'",
           "entity.stand == 'S07'",
           "entity.stand == 'S08'",
-          "entity.stand == 'S09'",
-          "entity.stand == 'S10'"
+          "entity.stand == 'S09'"
         ]
       }
     },

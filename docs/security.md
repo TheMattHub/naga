@@ -164,6 +164,8 @@ own.
 - Logic classes and plugins execute arbitrary Python with the same trust as your own scripts --
   only use them with code you trust, and never exchange a model file that relies on a Logic block
   or a plugin with someone who should not run code on their machine.
+- A study folder's `reproduce.json` names programs: `naga study rerun` lists them and starts them
+  only with `--steps` or `--step NAME`, so read them before you add the flag.
 - Every other expression path (Assign, Decide/Hold conditions, Record, distribution parameters) is
   compiled by a restricted-Python allow-list, never `eval`/`exec`, and this is enforced by a hygiene
   test over the whole codebase.

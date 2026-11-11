@@ -598,7 +598,7 @@ def test_391_the_readme_reads_a_result_frame_that_exists():
     from nagasim.api import run_model
 
     readme = (gen.SITE / "README.md").read_text(encoding="utf-8")
-    results = run_model(str(MODELS / "single_server.json"), replications=1, seed=0, run_length=50)
+    results = run_model(str(MODELS / "single_server.json"), replications=1, seed=0, run_length=50, warmup=0)
     named = re.findall(r'results\["(\w+)"\]', readme)
     assert named and all(key in results for key in named), named
 

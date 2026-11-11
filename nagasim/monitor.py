@@ -44,49 +44,31 @@ PER_STEP = 100          # of one step; the rest is counted
 PAGE_FILE = "monitor.html"
 _KPIS, _POINTS, _TEXT, _SCORES, _ADVICE, _ALERTS = 12, 60, 400, 300, 20, 100
 
-APPROXIMATE = ("Counts are approximate: this plant names no items, so the numbers of items in "
-               "a block are estimates, and item events in the list are inferred from those "
-               "counts. What a counter signal counts is observed, not estimated.")
-COUNTED = ("Counted by the plant: what left each block since the twin first saw its counter. "
-           "Observed, not estimated. A counter that went back lost count there (resets), and its "
-           "total is a lower bound from then on.")
-SCORED = ("How the stored forecasts held, by how far ahead they looked. Coverage is the share of "
-          "readings inside the 5% to 95% band (about 90% when the model is right); bias is "
-          "observed minus forecast mean; the pinball loss is lower for a band that is narrow and "
-          "right. A row marked * holds whole numbers only (units in service, items, counts): a "
-          "right model covers more than 90% of those, so compare its pinball loss, not its "
-          "coverage. Readings overlap in time and share one plant history: evidence in "
-          "distribution, not a test.")
-MISSED = ("Missed: the twin was not there in time, or a source was not ready. Not compared: a "
-          "counter lost count, or was first seen, after the forecast started.")
-ALERTED = ("An alert is a sustained shift of what the plant shows against the forecasts: a "
-           "two-sided CUSUM of each series' residuals, scaled by their 5% to 95% bands, over its "
-           "limit h (the twin's --alert-k and --alert-h). Readings of overlapping forecasts share "
-           "one plant history and are not independent, so h sets no false-alarm rate: an alert "
-           "is a signal to look into, not a diagnosis.")
+# The sentences of the forecast, alerts, scores and event lines are the page table's
+# `twin.*` texts (#1762): English here, the page's language on a page.
+_EN = pagetext.table("en")
+APPROXIMATE = _EN["twin.approximate"]
+COUNTED = _EN["twin.counted"]
+SCORED = _EN["twin.scored"]
+MISSED = _EN["twin.missed_note"]
+ALERTED = _EN["twin.alerted"]
 REFITTED = ("A refit calibrates the factors of the twin's --refit file on the readings under a "
             "held alert, then runs the candidate beside each later forecast on the same seed. It "
             "is proposed only when its pinball loss on those later readings is below the current "
             "model's, and adopted only by a person's \"taken\" reply; \"ended\" reverts it. The "
             "model file is never written.")
-SAME_SEED = ("{n} of these forecasts ran on the seed of the one before (a twin stepped by a "
-             "scheduler): they are not independent samples.")
-NO_SCORE = {"not_observed": "No score: this twin's source gives no observed series to set a "
-                            "forecast against.",
-            "no_forecast": "No score yet: no forecast has finished.",
-            "none_due": "No score yet: no stated time of a stored forecast has come.",
-            # A result of a twin older than 7.14 has no `scores` at all.
-            "old": "No score: this result was written before scores existed."}
-IN_DISTRIBUTION = ("Evidence in distribution, not a replay: work in progress is drawn afresh at "
-                   "each forecast, so a point inside its 5% to 95% band agrees with the forecast "
-                   "and one outside it is a signal, not a proof.")
+SAME_SEED = _EN["twin.same_seed"]
+# "old": a result of a twin older than 7.14 has no `scores` at all.
+NO_SCORE = {reason: _EN[f"twin.no_score_{reason}"]
+            for reason in ("not_observed", "no_forecast", "none_due", "old")}
+IN_DISTRIBUTION = _EN["twin.in_distribution"]
 ADVICE = ("What this model says each action would change, compared with doing nothing on the "
           "same random numbers. Effect: the mean difference, with its 95% interval; confidence: "
           "the share of replications in which the action did better. Only an action whose "
           "interval excludes \"no effect\" is recommended. Each candidate is judged alone: of "
           "candidates that change nothing, about 1 in 20 pass by chance, so of N of them about "
           "N/20. Evidence in distribution from the model, not a promise about the plant.")
-ASSUMES = "This forecast assumes {n} taken action(s): see Recommendations."
+ASSUMES = _EN["twin.assumes"]
 # D812: who writes a setpoint, said once wherever one is offered.
 WRITES = ("A setpoint is never written by the twin or this monitor. Approving one writes one "
           "reply line to your outbox; only `naga plc-write`, run by a person as its own "
@@ -104,7 +86,6 @@ _EFFECT = {"waiting": "being measured", "measured": "measured", "missed": "misse
            "was not there in time", "lost": "not compared: the counter lost count, or the "
            "twin was started again", "not_observable": "not observable: the plant counts no "
            "such figure"}
-_LIMIT = "Stated limit: this model is monitored, not forecast. "
 # The age of a result, by the clock of whoever looks: {age} is filled in when it is looked at
 # (the sentences are the page table's `monitor.updated`, `monitor.stale`, ...: D1088).
 # D576: whether a plant has dates is decided once per twin, from its mapping: an epoch of
@@ -113,9 +94,8 @@ _LIMIT = "Stated limit: this model is monitored, not forecast. "
 # A clock past 1980 on such an epoch is a real one (a live plant read in Unix seconds).
 # ponytail: a model-time log over 10 years long would read as dated from then on.
 _NO_DATE, _WALL = 366 * 86400, 10 * 365 * 86400
-_INSIDE = {True: "yes", False: "no", None: ""}
-_WHY = {"skipped": "No forecast was started: ", "refused": "The forecast was refused: ",
-        "failed": "The latest forecast failed: "}
+_INSIDE = {True: "yes", False: "no", None: ""}     # data the page's script reads, and words
+_WHY = ("skipped", "refused", "failed")
 
 
 # ---------------------------------------------------------------- reading a result
@@ -154,25 +134,42 @@ def _dated(doc: dict) -> bool:
     return epoch >= _NO_DATE or (unit is not None and at is not None and epoch + at * unit >= _WALL)
 
 
-def _scores(doc: dict, unit: str) -> dict:
+def _say(words: dict, key: str, **values) -> str:
+    return pagetext.say(words, key, **values)
+
+
+def _n(text: str, words: dict) -> str:
+    """A number's text (`_g`) with the language's decimal sign."""
+    return pagetext.number(text, words)
+
+
+def _worded(words: dict, area: str, value) -> str:
+    """A value of a closed set (a source's state, a problem's severity, a forecast's status)
+    in the table's language; one the table lacks as written. Display only."""
+    text = _text(value)
+    return words.get(area + text, text)
+
+
+def _scores(doc: dict, unit: str, words: dict = _EN) -> dict:
     """The scores of a result as lines and rows: the basis always, or the reason for none."""
     scores = _table(doc.get("scores"))
     basis, rows = _table(scores.get("basis")), _rows(scores.get("rows"))
     if not rows:
         reason = _text(scores.get("reason")) if "scores" in doc else "old"
-        return {"lines": [NO_SCORE.get(reason, f"No score: {reason or 'no reason was given'}.")],
+        return {"lines": [words[f"twin.no_score_{reason}"] if reason in NO_SCORE
+                          else _say(words, "twin.no_score", reason=reason or words["twin.no_reason"])],
                 "rows": [], "more": 0}
     first, last = _number(basis.get("first")), _number(basis.get("last"))
-    lines = [f"{_g(basis.get('forecasts'))} forecasts, {_g(basis.get('points'))} readings scored, "
-             f"{_g(basis.get('missed'))} missed, {_g(basis.get('lost'))} not compared, since "
-             f"{_text(basis.get('since')) or '?'}"
+    counts = {key: _n(_g(basis.get(key)), words) for key in ("forecasts", "points", "missed", "lost")}
+    lines = [_say(words, "twin.score_basis", since=_text(basis.get("since")) or "?", **counts)
              + ("" if first is None or last is None
-                else f" (plant time {first:g} to {last:g} {unit}".rstrip() + ")") + ".", SCORED]
+                else _say(words, "twin.score_span", first=_n(f"{first:g}", words),
+                          last=f"{_n(f'{last:g}', words)} {unit}".rstrip())) + ".", words["twin.scored"]]
     if _number(basis.get("missed")) or _number(basis.get("lost")):
-        lines.append(MISSED)
+        lines.append(words["twin.missed_note"])
     same = _number(basis.get("same_seed"))
     if same:
-        lines.append(SAME_SEED.replace("{n}", f"{same:g}"))
+        lines.append(_say(words, "twin.same_seed", n=_n(f"{same:g}", words)))
 
     def share(row):
         value = _number(row.get("coverage"))
@@ -184,22 +181,22 @@ def _scores(doc: dict, unit: str) -> dict:
                      for r in rows[:_SCORES]]}
 
 
-def _alerts(doc: dict) -> dict | None:
+def _alerts(doc: dict, words: dict = _EN) -> dict | None:
     """The alerts of a result as lines: one an alerting side, then the basis and ALERTED.
     None for a result written before alerts existed."""
     if "alerts" not in doc:
         return None
     said = _table(doc.get("alerts"))
     basis, rows = _table(said.get("basis")), _rows(said.get("rows"))
-    lines = [f"Alert: {_text(row.get('message'))}." for row in rows[:_ALERTS]] or [
-        f"No alert: no compared series shows a sustained shift (k = {_g(said.get('k'))}, "
-        f"h = {_g(said.get('h'))})."]
+    # An alert's message is the twin's own text, as a problem's is (English).
+    lines = [_say(words, "twin.alert", message=_text(row.get("message"))) for row in rows[:_ALERTS]] or [
+        _say(words, "twin.no_alert", k=_n(_g(said.get("k")), words), h=_n(_g(said.get("h")), words))]
     if len(rows) > _ALERTS:
-        lines.append(f"+{len(rows) - _ALERTS} more alerts not listed.")
-    lines += [f"{_g(basis.get('points'))} readings summed since {_text(basis.get('since')) or '?'}, "
-              f"{_g(basis.get('raised'))} alerts raised"
-              + (f", {_g(basis.get('flat'))} readings with no band or a band with no width "
-                 "not summed" if _number(basis.get("flat")) else "") + ".", ALERTED]
+        lines.append(_say(words, "twin.more_alerts", n=len(rows) - _ALERTS))
+    lines += [_say(words, "twin.alert_basis", points=_n(_g(basis.get("points")), words),
+                   since=_text(basis.get("since")) or "?", raised=_n(_g(basis.get("raised")), words))
+              + (_say(words, "twin.alert_flat", flat=_n(_g(basis.get("flat")), words))
+                 if _number(basis.get("flat")) else "") + ".", words["twin.alerted"]]
     return {"lines": lines, "alerting": min(len(rows), _ALERTS)}
 
 
@@ -373,47 +370,50 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
     """What a monitor shows of one result, as plain data. Read defensively: the document may
     come from a file, and is then only known to be format 1. *setpoints*: the caller's
     setpoints file, loaded (`setpoints.load(...)["tags"]`), for what a setpoint would write.
-    *language* (a page's, `pagetext.LANGUAGES`) words the headline and the age sentences;
-    the prose of the forecast, scores and advice stays English (D1088)."""
+    *language* (a page's, `pagetext.LANGUAGES`) words the headline, the age sentences, the
+    forecast, alerts and scores, a problem's severity and a source's state (D1088, #1762);
+    the recommendations and the refit stay English, as do the twin's and the engine's own
+    messages (a problem's, an alert's, a refusal's reason)."""
     words = pagetext.table(language)
     doc = _table(doc)
     model, view, forecast = _table(doc.get("model")), _table(doc.get("view")), _table(doc.get("forecast"))
-    unit = _text(model.get("time_unit"))
+    unit = pagetext.unit(_text(model.get("time_unit")), words)
     problems = _rows(doc.get("problems"))
     date = _text(doc.get("stamp")) if _dated(doc) else words["monitor.no_date"]
     head = (f"{words['monitor.plant_time']} {pagetext.number(_clock(doc.get('at')), words)} {unit}".rstrip()
             + (f" ({date})" if date else "") + f"; {words['monitor.cycle']} {_text(doc.get('cycle'))}")
     status, reason = _text(forecast.get("status")) or "none", _text(forecast.get("reason"))
     record = isinstance(forecast.get("state"), str)
-    lines = [f"Status: {status}"]
+    lines = [_say(words, "twin.status", status=_worded(words, "twin.status_", status))]
     if status == "none":
-        lines.append("No forecast yet.")
+        lines.append(words["twin.no_forecast_yet"])
     elif status == "running":
-        lines.append("A forecast is running.")
+        lines.append(words["twin.running"])
     elif status in _WHY:
         why = [_text(p.get("message")) for p in problems
-               if reason and p.get("code") == reason] or [reason or "no reason was given"]
-        lead = _LIMIT if reason == "E_TWIN_STATE" else _WHY[status]
+               if reason and p.get("code") == reason] or [reason or words["twin.no_reason"]]
+        lead = words["twin.limit" if reason == "E_TWIN_STATE" else f"twin.why_{status}"]
         lines += [lead + text for text in why]
     if record:
+        def span(key):          # "40 seconds"; for a model with no unit, the number alone
+            return f"{_n(_g(forecast.get(key)), words)} {unit}".rstrip()
         lines.append(
-            ("" if status == "ok" else "Shown: the last finished forecast. ")
-            + f"From t = {_g(forecast.get('from'))} {unit}".rstrip()
-            + (f" ({_text(forecast.get('stamp'))})" if forecast.get("stamp") else "")
-            + f", {_g(forecast.get('replications'))} replications over "
-              f"{_g(forecast.get('horizon'))} {unit}".rstrip()
-            + f", seed {_g(forecast.get('seed'))}, state {_text(forecast.get('state'))[:12]}.")
+            ("" if status == "ok" else words["twin.shown_last"])
+            + _say(words, "twin.from", t=span("from"))
+            + (f" ({_text(forecast.get('stamp'))})" if forecast.get("stamp") and _dated(doc) else "")
+            + _say(words, "twin.over", n=_n(_g(forecast.get("replications")), words), horizon=span("horizon"))
+            + _say(words, "twin.seed", seed=_n(_g(forecast.get("seed")), words),
+                   state=_text(forecast.get("state"))[:12]))
     assumed = forecast.get("actions") if record else None
     if isinstance(assumed, list) and assumed:       # D307: said wherever a forecast is
-        lines.append(ASSUMES.replace("{n}", str(len(assumed))))
+        lines.append(_say(words, "twin.assumes", n=len(assumed)))
     points = _rows(forecast.get("points")) if record else []
     compared = _rows(doc.get("comparison"))
     if compared:
-        lines.append(f"{len(compared)} compared points over the stored forecasts, "
-                     f"{sum(1 for row in compared if row.get('inside') is True)} inside their "
-                     f"5% to 95% band.")
+        lines.append(_say(words, "twin.compared", n=len(compared),
+                          inside=sum(1 for row in compared if row.get("inside") is True)))
     if points or compared:
-        lines.append(IN_DISTRIBUTION)
+        lines.append(words["twin.in_distribution"])
 
     def inside(point):
         low, high, seen = (_number(point.get(key)) for key in ("q05", "q95", "observed"))
@@ -432,20 +432,22 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
         "head": head, "written": written, "started": _text(doc.get("started")), "every": every,
         "state": {"fresh": fresh, "stale": None if every is None
                   else pagetext.say(words, "monitor.stale", every=shown_every)},
-        "notes": [APPROXIMATE] if view.get("approximate") or forecast.get("approximate") else [],
-        "sources": [[_text(row.get("name")), _text(row.get("state")), _number(row.get("age")),
+        "notes": [words["twin.approximate"]] if view.get("approximate") or forecast.get("approximate") else [],
+        "sources": [[_text(row.get("name")), _worded(words, "twin.state_", row.get("state")),
+                     _number(row.get("age")),
                      _number(row.get("lost")), _number(row.get("gaps"))]
                     for row in _rows(doc.get("sources"))],
-        "problems": [[_text(p.get("severity")), _text(p.get("code")), _text(p.get("message")),
+        "problems": [[_worded(words, "twin.severity_", p.get("severity")), _text(p.get("code")),
+                      _text(p.get("message")),
                       _text(p.get("hint"))] for p in problems],
         # What the plant counted (D288): block, total, since (model time), resets.
         "counters": [[_text(name), _number(said.get("total")), _number(said.get("since")),
                       _number(said.get("resets"))]
                      for name, said in list(_table(view.get("counters")).items())[:_POINTS]
                      if isinstance(said, dict)],
-        "counted": COUNTED,
-        "scores": _scores(doc, unit),
-        "alerts": _alerts(doc),
+        "counted": words["twin.counted"],
+        "scores": _scores(doc, unit, words),
+        "alerts": _alerts(doc, words),
         "refit": _refit(doc),
         "recommend": _recommend(doc, setpoints),
         "forecast": {
@@ -460,34 +462,34 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
 
 
 # ---------------------------------------------------------------- event lines
-def _item(event) -> str:
+def _item(event, words: dict) -> str:
     # The type of an entity nothing gives one, in a trace and in a plant mapping.
-    return "an item" if event.e_type in ("", "Unknown", "DEFAULT", None) else str(event.e_type)
+    return words["twin.item"] if event.e_type in ("", "Unknown", "DEFAULT", None) else str(event.e_type)
 
 
-def _said(event) -> str | None:
+def _said(event, words: dict = _EN) -> str | None:
     """One trace event as an operator reads it, or None for what the drawing carries."""
-    kind = event.kind
+    kind, item = event.kind, _item(event, words)
     if kind == "entity_created":
-        return f"{_item(event)} entered at {event.block}"
+        return _say(words, "twin.entered", item=item, block=event.block)
     if kind == "entity_moved":
         if not event.block:
-            return f"{_item(event)} back at {event.target}"
+            return _say(words, "twin.back", item=item, target=event.target)
         # Inside one asset (`pick_a/waited` to `pick_a/pick`) its steps; between two, the assets.
         here, _, step = str(event.block).rpartition("/")
         there, _, then = str(event.target).rpartition("/")
         if here and here == there:
-            return f"{_item(event)} in {here}: {step} to {then}"
-        return f"{_item(event)} moved from {here or step} to {there or then}"
+            return _say(words, "twin.within", item=item, here=here, step=step, then=then)
+        return _say(words, "twin.moved", item=item, here=here or step, there=there or then)
     if kind == "entity_disposed":
-        return f"{_item(event)} left from {event.block}"
+        return _say(words, "twin.left", item=item, block=event.block)
     if kind == "resource_state":
         if event.state in ("down", "up"):
-            return f"{event.resource} {event.state}"
+            return _say(words, f"twin.{event.state}", resource=event.resource)
         if event.state == "capacity":
-            return f"{event.resource} capacity {event.value:g}"
+            return _say(words, "twin.capacity", resource=event.resource, value=_n(f"{event.value:g}", words))
         if event.state == "blocked":
-            return f"{event.resource} blocked" if event.value else f"{event.resource} no longer blocked"
+            return _say(words, "twin.blocked" if event.value else "twin.unblocked", resource=event.resource)
     return None
 
 
@@ -512,7 +514,8 @@ class Log:
     """The event lines of one twin, oldest first: `rows` is `[t, stamp or None, text]`, at
     most `KEPT`; `more` counts what a step had over `PER_STEP`."""
 
-    def __init__(self):
+    def __init__(self, language: str | None = None):
+        self._words = pagetext.table(language)  # the lines' language (#1762); English by default
         self.rows: deque = deque(maxlen=KEPT)
         self.more = 0
         self._was: tuple = ({}, None, set())
@@ -538,7 +541,7 @@ class Log:
         # in no time are one move, and the same line N times is said once.
         counted: dict = {}
         for event in _folded(events):
-            if (text := _said(event)) is not None:
+            if (text := _said(event, self._words)) is not None:
                 counted[(event.t, text)] = counted.get((event.t, text), 0) + 1
         said = [(t, text if n == 1 else f"{n} x {text}") for (t, text), n in counted.items()]
         self.more += max(len(said) - PER_STEP, 0)
@@ -549,11 +552,16 @@ class Log:
         status = (_text(forecast.get("status")), _text(forecast.get("reason")))
         codes = {(_text(p.get("code")), _text(p.get("message"))) for p in _rows(doc.get("problems"))}
         was_sources, was_status, was_codes = self._was
-        own = [f"source {name}: {state}" if name not in was_sources
-               else f"source {name}: {was_sources[name]} to {state}"
+        words = self._words
+
+        def shown(state):
+            return _worded(words, "twin.state_", state)
+        own = [_say(words, "twin.source", name=name, state=shown(state)) if name not in was_sources
+               else _say(words, "twin.source_changed", name=name, was=shown(was_sources[name]), state=shown(state))
                for name, state in sources.items() if was_sources.get(name) != state]
         if status != was_status and status[0]:
-            own.append(f"forecast: {status[0]}" + (f" ({status[1]})" if status[1] else ""))
+            own.append(_say(words, "twin.forecast_event", status=_worded(words, "twin.status_", status[0]))
+                       + (f" ({status[1]})" if status[1] else ""))
         seen = {code for code, _message in was_codes}
         own += [f"{code}: {message}" for code, message in sorted(codes) if code not in seen]
         at = _number(doc.get("at"))
@@ -570,7 +578,13 @@ class Log:
 _STYLE = """
 .stale { color: var(--down); font-weight: bold; }
 .warn { color: var(--down); }
-table.text th, table.text td { text-align: left; overflow-wrap: anywhere; }
+/* A cell wraps between words only (bug 1761): a word is never split. */
+table.text th, table.text td { text-align: left; overflow-wrap: normal; hyphens: manual; }
+#m-events.dated td:nth-child(2) { white-space: nowrap; }     /* a date is not broken at its "-" */
+/* A wide table scrolls inside the page, so 360 px has no sideways page scroll (#1747). */
+section table { display: block; max-width: 100%; overflow-x: auto; }
+summary { cursor: pointer; font-weight: bold; }
+summary h2 { display: inline; }
 section { margin-top: 8px; font-size: 13px; }
 #view { height: 45vh; }
 """
@@ -582,7 +596,8 @@ _TOP = """<p id="m-head"></p>
 _BOTTOM = """<section><h2>{{monitor.sources}}</h2><table id="m-sources" class="text"></table></section>
 <section><h2>{{monitor.problems}}</h2><table id="m-problems" class="text"></table></section>
 <section><h2>{{monitor.forecast}}</h2><div id="m-forecast"></div>
-<table id="m-kpis"></table><table id="m-points"></table></section>
+<details id="d-m-kpis"><summary>{{monitor.col_kpi_end}}</summary><table id="m-kpis"></table></details>
+<details id="d-m-points"><summary>{{monitor.col_series}}</summary><table id="m-points"></table></details></section>
 <section id="m-advice-box"><h2>{{monitor.advice}}</h2><div id="m-advice"></div>
 <details><summary>{{monitor.advice_fold}}</summary>
 <div id="m-advice-fold"></div><table id="m-advice-rows" class="text"></table></details></section>
@@ -591,8 +606,8 @@ _BOTTOM = """<section><h2>{{monitor.sources}}</h2><table id="m-sources" class="t
 <section><h2>{{monitor.scores}}</h2><div id="m-scores"></div><table id="m-score-rows"></table></section>
 <section id="m-counted-box"><h2>{{monitor.counted}}</h2><p class="note" id="m-counted"></p>
 <table id="m-counters"></table></section>
-<section><h2>{{monitor.events}}</h2><p class="note" id="m-more"></p>
-<table id="m-events" class="text"></table></section>
+<section><details id="d-m-events"><summary><h2>{{monitor.events}}</h2></summary><p class="note" id="m-more"></p>
+<table id="m-events" class="text"></table></details></section>
 """
 _SCRIPT = """/* The panel of a twin's monitor: it shows the summary and the event lines it is given
    and works out one thing, how old the result is now. */
@@ -610,10 +625,28 @@ function monitor(m, el, add, clear) {
       cells(item).forEach(function (cell) { add("td", line, cell); });
     });
   }
+  /* A fold the reader set stays set across the page's own reloads; else it is open only when
+     something is wrong. A private window can refuse the storage: then the default stands. */
+  function fold(id, open) {
+    var box = el(id), kept = null;
+    try { kept = sessionStorage.getItem("fold:" + id); } catch (e) { kept = null; }
+    box.open = kept === null ? open : kept === "1";
+    box.dataset.set = box.open ? "1" : "0";
+    box.ontoggle = function () {
+      if (String(+box.open) === box.dataset.set) { return; }      /* our own change, not the reader's */
+      box.dataset.set = String(+box.open);
+      try { sessionStorage.setItem("fold:" + id, box.dataset.set); } catch (e) { /* storage refused: the fold is per load */ }
+    };
+  }
   ["bar", "seek", "all-box", "seed", "lanes-box"].forEach(function (id) { el(id).style.display = "none"; });
   el("run-h").textContent = tr("monitor.now");
   el("run-box").open = true;           /* the present is what this page is for */
   el("m-head").textContent = s.head;
+  el("d-m-kpis").style.display = f.kpis.length ? "" : "none";
+  el("d-m-points").style.display = f.points.length ? "" : "none";
+  fold("d-m-kpis", false);
+  fold("d-m-points", f.points.some(function (r) { return r[6] === "no" || r[6] === "missed"; }));
+  fold("d-m-events", s.problems.length > 0 || !!(s.alerts && s.alerts.alerting > 0));
   /* The sentence is the summary's; only the age is worked out here, by this clock. */
   if (old) { el("m-state").className = "stale"; }
   el("m-state").textContent = (old ? s.state.stale : s.state.fresh).replace(
@@ -642,7 +675,8 @@ function monitor(m, el, add, clear) {
     rows("m-points", [tr("monitor.col_series"), tr("monitor.col_at"), tr("monitor.col_forecast_mean"),
                       "5%", "95%", tr("monitor.col_observed"), tr("monitor.col_inside")],
          f.points, "", function (r) {
-      return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5] === null ? "" : fmt(r[5]), r[6]];
+      return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5] === null ? "" : fmt(r[5]),
+              r[6] ? tr("monitor.inside_" + r[6]) : ""];
     });
   }
   /* Read-only: a page opened from disk can send nothing, so it cannot approve. */
@@ -698,6 +732,7 @@ function monitor(m, el, add, clear) {
   el("m-more").textContent = m.more ? tr("monitor.more_events", {n: m.more}) : tr("monitor.newest");
   /* A recorded log without dates has no Date column (D20 of the review). */
   var dated = m.events.some(function (r) { return r[1] !== null; });
+  el("m-events").className = dated ? "text dated" : "text";
   rows("m-events", dated ? [tr("monitor.plant_time"), tr("monitor.col_date"), tr("monitor.col_event")]
                          : [tr("monitor.plant_time"), tr("monitor.col_event")], m.events,
        tr("monitor.no_events"), function (r) {
@@ -735,7 +770,7 @@ class Page:
         self._title = title or str((info or {}).get("name") or "") or self._words["monitor.title"]
         self._writer = tape.TapeWriter(layout, tape.default_view(layout))
         self._timeline = Timeline([], live=True)
-        self._log = Log()
+        self._log = Log(language)
 
     def build(self, doc, events) -> str:
         """The page of this step, as text."""

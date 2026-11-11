@@ -598,3 +598,75 @@ def test_a_setpoint_says_what_it_would_write_from_the_callers_file_only(tmp_path
     assert "<img src=x" not in text.replace(HOSTILE, "") and text.count("</script>") == 4
     assert "range 1 to 5" in data_of(page, text)["monitor"]["summary"]["recommend"]["lead"][1]
     assert "fetch(" not in text and "XMLHttpRequest" not in text    # read-only: it sends nothing
+
+
+# ---------------------------------------------------------------- the page's language (#1762)
+_WORDED = {"base": {}, "scores": {"scores": SCORES},
+           "same_seed": {"scores": {**SCORES, "basis": {**SCORES["basis"], "same_seed": 11}}},
+           "none": {"forecast": {"status": "none"}, "comparison": []},
+           "running": {"forecast": {"status": "running"}},
+           "skipped": {"forecast": {"status": "skipped", "reason": "E_X"}},
+           "refused": {"forecast": {"status": "refused", "reason": "E_TWIN_STATE"}},
+           "failed": {"forecast": {"status": "failed"}},
+           "approximate": {"view": {"approximate": True, "counters": COUNTERS}},
+           "assumes": {"forecast": {**result()["forecast"], "actions": [{"verb": "hold"}]}},
+           "alerts": {"alerts": {"k": 0.5, "h": 4, "rows": [{"message": "m"}] * 101,
+                                 "basis": {"points": 3, "since": "S", "raised": 1, "flat": 2}}},
+           "no_alert": {"alerts": {"k": 0.5, "h": 4, "rows": [], "basis": {"points": 3, "since": "S"}}},
+           "no_score": {"scores": {"rows": [], "reason": "weird", "basis": {}}}}
+_ENGLISH = ("Status", "forecast", "replications", "seed", "minutes", "Evidence", "Alert", "alerts raised", "readings",
+            "score", "Counts are", "Counted by", "Shown:", "No ", "inside", "missed", "live", "warning")
+
+
+def _lines(shown):
+    alerts = shown["alerts"]["lines"] if shown["alerts"] else []
+    return ([shown["head"], shown["counted"]] + shown["notes"] + shown["forecast"]["lines"]
+            + shown["scores"]["lines"] + alerts + [cell for row in shown["sources"] for cell in row[:2]]
+            + [row[0] for row in shown["problems"]])
+
+
+def _events(language):
+    def event(**said):
+        return TraceEvent(**{"t": 1.0, "kind": "entity_created", "entity_id": 1, "e_type": "", "block": "c",
+                             "target": "", "resource": "", "state": "", "value": 0, **said})
+    log = monitor.Log(language)
+    log.add(result(), [event(), event(kind="entity_moved", target="p"), event(kind="entity_moved", block="", target="q"),
+                       event(kind="entity_moved", block="a/x", target="a/y"), event(kind="entity_disposed"),
+                       event(kind="resource_state", resource="R", state="down"),
+                       event(kind="resource_state", resource="R", state="up"),
+                       event(kind="resource_state", resource="R", state="capacity", value=2.5),
+                       event(kind="resource_state", resource="R", state="blocked", value=1),
+                       event(kind="resource_state", resource="R", state="blocked", value=0)])
+    log.add(result(sources=[{"name": "plc", "state": "down"}], forecast={"status": "refused", "reason": "E_Y"}), [])
+    return [row[2] for row in log.rows]
+
+
+def test_an_italian_summary_and_its_event_lines_are_italian_and_english_is_as_it_was():
+    """#1762: every branch of the forecast, alerts, scores, notes and event lines is in the
+    page's language; English says what it said (pinned as text, not as the module's constants,
+    which read the same table)."""
+    for name, changes in _WORDED.items():
+        doc = result(problems=[said("E_X", "boom"), said("E_TWIN_STATE", "cannot", "error")], **changes)
+        italian = " | ".join(_lines(monitor.summary(doc, language="it")))
+        assert [word for word in _ENGLISH if word in italian] == [], (name, italian)
+    english = monitor.summary(result(scores=SCORES, alerts=_WORDED["no_alert"]["alerts"]))
+    assert english["forecast"]["lines"][:2] == [
+        "Status: ok", "From t = 700 minutes (2026-10-10T11:40:00+00:00), 50 replications over 60 minutes, "
+                      "seed 7, state ssssssssssss."]
+    assert english["alerts"]["lines"][:2] == [
+        "No alert: no compared series shows a sustained shift (k = 0.5, h = 4).",
+        "3 readings summed since S, - alerts raised."]
+    assert english["forecast"]["lines"][-1].startswith("Evidence in distribution, not a replay: ")
+    assert english["scores"]["lines"][1].startswith("How the stored forecasts held, by how far ahead")
+    italian = monitor.summary(result(alerts=_WORDED["no_alert"]["alerts"]), language="it")
+    assert italian["head"].startswith("Tempo dell'impianto 720 minuti") and italian["sources"][0][1] == "attiva"
+    assert italian["alerts"]["lines"][0].endswith("(k = 0,5, h = 4).")
+    assert _events(None) == ["an item entered at c", "an item moved from c to p", "an item back at q",
+                             "an item in a: x to y", "an item left from c", "R down", "R up", "R capacity 2.5",
+                             "R blocked", "R no longer blocked", "source plc: live", "forecast: ok",
+                             "source plc: live to down", "forecast: refused (E_Y)"]
+    assert _events("it") == ["un pezzo \u00e8 entrato in c", "un pezzo \u00e8 passato da c a p",
+                             "un pezzo \u00e8 tornato in q", "un pezzo in a: da x a y", "un pezzo \u00e8 uscito da c",
+                             "R guasto", "R di nuovo in funzione", "R: capacit\u00e0 2,5", "R bloccato",
+                             "R non pi\u00f9 bloccato", "fonte plc: attiva", "previsione: ok",
+                             "fonte plc: da attiva a non raggiungibile", "previsione: rifiutata (E_Y)"]

@@ -15,7 +15,7 @@ block types and parameters, show each parameter's description, and flag a wrong 
 type:
 
 ```json
-{"$schema": "https://thematthub.github.io/naga/schema/model-v29.json", "schema_version": 29}
+{"$schema": "https://thematthub.github.io/naga/schema/model-v30.json", "schema_version": 30}
 ```
 
 The engine ignores `"$schema"`.
@@ -41,8 +41,8 @@ you leave out of a file you write by hand means its default in the
 
 ```jsonc
 {
-  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
-  "schema_version": 29,
+  "$schema": "https://thematthub.github.io/naga/schema/model-v30.json",
+  "schema_version": 30,
   "blocks": [ ... ], "links": [ ... ],
   "resources": [ ... ], "resource_sets": [ ... ],
   "entities": [ ... ], "variables": [ ... ], "tables": [ ... ], "sequences": [ ... ], "orders": [ ... ],

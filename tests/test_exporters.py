@@ -10,7 +10,7 @@ from nagasim.core.trace import TraceRecorder
 from nagasim.exporters import EXPORTER_REGISTRY, Exporter
 
 MODEL = str(Path(__file__).resolve().parents[1] / "nagasim" / "models" / "single_server.json")
-RUN = ["--replications", "2", "--run-length", "50"]
+RUN = ["--replications", "2", "--run-length", "50", "--warmup", "0"]
 
 
 @pytest.fixture
@@ -67,9 +67,9 @@ def test_the_recorded_trace_is_the_first_replication_whatever_the_workers(seam, 
     """Review focus: with a process pool the recorder cannot come back from a child,
     so the first replication stays in this process; the file is the same either way."""
     one, two = tmp_path / "one.txt", tmp_path / "two.txt"
-    assert api.main([MODEL, "--replications", "3", "--run-length", "50",
+    assert api.main([MODEL, "--replications", "3", "--run-length", "50", "--warmup", "0",
                      "--export", f"tape:{one}"]) == 0
-    assert api.main([MODEL, "--replications", "3", "--run-length", "50", "--workers", "2",
+    assert api.main([MODEL, "--replications", "3", "--run-length", "50", "--warmup", "0", "--workers", "2",
                      "--export", f"tape:{two}"]) == 0
     assert one.read_text(encoding="utf-8") == two.read_text(encoding="utf-8") != "0"
 

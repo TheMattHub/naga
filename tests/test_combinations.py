@@ -59,7 +59,7 @@ def test_calibrate_and_forecast_answers_carry_laws(tmp_path):
 
 def test_at_point_says_when_the_budget_ran_out():
     layout = json.loads((MODELS / "single_server.json").read_text(encoding="utf-8"))
-    out = laws.at_point(layout, [], replications=2, run_length=50, should_stop=lambda: True)
+    out = laws.at_point(layout, [], replications=2, run_length=50, warmup=0, should_stop=lambda: True)
     assert out["replications"] == 0 and out["partial"] == [] and "budget" in out["note"]
     stable = laws.at_point(layout, [{"path": SERVICE, "value": 2.0}], replications=2,
                            run_length=300, warmup=30)

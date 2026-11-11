@@ -2,6 +2,10 @@
 
 Thanks for looking. Bug reports and small, focused pull requests are welcome.
 
+This repository is published from a development repository: each release replaces its files.
+A pull request merged here is carried over by the maintainer, so it is not lost at the next
+release.
+
 ## Before you open a pull request
 
 - Run the tests: `pip install -e ".[plan,ml,sql,plot]" -r requirements-dev.txt`, then

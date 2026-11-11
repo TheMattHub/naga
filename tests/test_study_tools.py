@@ -649,3 +649,46 @@ def test_answers_carry_page_url(ws, monkeypatch):
     monkeypatch.setattr(studyroom, "url_for", lambda s: f"http://127.0.0.1:9/s/{s}/")
     assert T.call("study_status", study=sid)["room_url"] == f"http://127.0.0.1:9/s/{sid}/"
     assert "page_url" not in T.call("study_status", study="nope")      # a refusal carries no links
+
+
+def test_precision_rerun_never_runs_fewer_replications(ws):
+    """Review S2-16: relaxing the precision target after a capped step made the next version of the
+    same base model run fewer replications (from a 10-replication pilot), moving every number. A
+    version of the same base model (scenarios aside) now runs at least as many as the last one."""
+    sid = start(ws, size="quick")
+    T.call("study_update", study=sid, changes={"goals": [GOAL], "precision": {"relative": 0.01}})
+    model = layout(ws)
+    model["simulation"].update(time_limit=100, warmup=0)
+    first = T.call("study_step", study=sid, layout=model, note="first")
+    assert first["kind"] == "version" and first["replications"] == 50, first      # the quick cap
+    T.call("study_update", study=sid, changes={"precision": {"relative": 0.5}})
+    more = dict(model, scenarios=[{"name": "Two", "overrides": [
+        {"path": "resources.Server.capacity", "value": 2}]}])
+    again = T.call("study_step", study=sid, layout=more, note="a scenario")
+    assert again["kind"] == "version" and again["replications"] == 50, again
+    assert again["kpis"] == first["kpis"]
+    model["blocks"][1]["params"]["dist_params"]["rate"] = 2.0     # a changed base model starts afresh
+    other = T.call("study_step", study=sid, layout=model, note="faster server")
+    assert other["replications"] < 50, other
+
+
+def test_every_kpi_key_a_study_tool_accepts_is_a_results_kpi():
+    """Gate (review S2-10): every KPI name a study tool judges a goal on (the digest's system KPIs,
+    user statistics and "<resource>/<column>") is one `results.kpis()` returns, by the same mapping
+    what_if and run_scenarios use, with the same mean. Tail shares are computed, not results KPIs."""
+    import math
+    from nagasim import api, experiments
+    from nagasim.digest import digest
+    from nagasim.studychecks import kpi_entry
+    results = api.run_model(str(EXAMPLES / "call_centre_day.json"), replications=2, run_length=600, seed=0)
+    table = results.kpis().set_index("metric")["mean"]
+    d = digest(results)
+    accepted = [*d["system"], *d["user_stats"],
+                *(f"{res}/{col}" for res, cols in d["resources"].items() for col in cols)]
+    assert d["user_stats"] and d["resources"] and len(accepted) > 10
+    for name in accepted:
+        entry = kpi_entry(d, name)
+        key = experiments.match_kpi(name, set(table.index))
+        assert entry is not None and key is not None, name
+        if entry["mean"] is not None:
+            assert math.isclose(entry["mean"], table[key], rel_tol=1e-9, abs_tol=1e-12), name

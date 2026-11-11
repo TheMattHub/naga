@@ -373,7 +373,9 @@ options:
                         objective). 0 widens on any significant gain
   --statistic mean|pNN  the objective over a point's replications: mean
                         (default) or a percentile such as p95
-  --penalty KPI:WEIGHT  add WEIGHT x mean(KPI) to the objective; repeatable
+  --penalty KPI:WEIGHT  charge WEIGHT x mean(KPI) against the objective (added
+                        when minimising, subtracted when maximising);
+                        repeatable
   --holdout N           evaluate the final points (and --baseline) on N seeds
                         the search never used, from --holdout-seed
   --holdout-seed HOLDOUT_SEED

@@ -11,6 +11,10 @@ for the product's site too (`product=True`: the links only that site has).
 """
 from __future__ import annotations
 
+try:       # first: the shipped registries only, never the user's trusted plugins (tools/_isolate.py)
+    from tools import _isolate  # noqa: F401
+except ImportError:     # run as a script: tools/ itself is on sys.path
+    import _isolate  # noqa: F401
 import contextlib
 import functools
 import inspect
@@ -31,12 +35,8 @@ DOCS = SITE / "docs"
 
 sys.path.insert(0, str(ROOT))
 # The pages document the shipped registries only: no plugin this machine's user trusted (a
-# client study's block types reached the generated pages that way, 2026-11-08). The tests'
-# conftest isolates the same way, so the pages they regenerate agree.
-if "NAGASIM_USER_DIR" not in os.environ:
-    import tempfile
-    os.environ["NAGASIM_USER_DIR"] = tempfile.mkdtemp(prefix="naga-docs-user-")
-    os.environ["NAGASIM_PLUGIN_PATH"] = ""
+# client study's block types reached the generated pages that way, 2026-11-08); `_isolate`,
+# imported above, sees to it, as the tests' conftest does, so the pages they regenerate agree.
 
 from nagasim.core.block_registry import BLOCK_REGISTRY  # noqa: E402
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY  # noqa: E402
@@ -3125,4 +3125,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.parse_args()
     main()

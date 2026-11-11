@@ -19,7 +19,7 @@ Use DECIDE when entities must split across several links. It can send a share by
 
 The outgoing links are the branches, in link order. In `Chance` mode, `probs` holds one probability per branch, and branch i is taken with the probability at position i. The numbers are not cumulative. Their sum must not exceed 1. If there is one more link than probabilities, the last link is the ELSE branch and takes the rest. A check reports probabilities that sum to less than 1 without that extra link.
 
-In `Condition` mode, the conditions are tested in order and the first true one wins. The last link is again the ELSE branch when there is one more link than conditions. If no condition is true and there is no ELSE link, the block logs a warning and the entity goes nowhere. Always add an ELSE link.
+In `Condition` mode, the conditions are tested in order and the first true one wins. The last link is again the ELSE branch when there is one more link than conditions. If no condition is true and there is no ELSE link, the run stops with an error naming the block; validation warns about it first (`W_DECIDE_NO_ELSE`). Always add an ELSE link.
 
 In `Chance` mode, a draw that falls outside the probabilities with no ELSE link stops the run with an error. A deterministic run does not draw. It allocates the branches in the exact proportions instead.
 
@@ -64,6 +64,7 @@ A check of the model reports these about this block:
 | `E_DECIDE_PROBS` | A DECIDE's chance probabilities do not fit its branches. |
 | `E_DECIDE_QUEUE_EXPRS` | A Policy-mode DECIDE with fallback "shortest" needs one queue_exprs entry per outgoing link. |
 | `W_AVAILABLE_IS_CAPACITY` | A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE). |
+| `W_DECIDE_NO_ELSE` | A Condition-mode DECIDE has no ELSE link, so an entity no condition takes stops the run. |
 
 ## Example
 

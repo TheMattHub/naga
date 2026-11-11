@@ -50,8 +50,18 @@ MAX_BODY = 1_000_000
 DIRECT = frozenset({"study_report", "study_view", "study_package", "study_sensitivity", "study_extensions",
                     "study_animation", "study_writeup", "study_slides", "study_revert", "study_accept"})
 _LOG = logging.getLogger(__name__)
-_SHELL_CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-              "img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+
+
+def _shell_csp(shell: str) -> str:
+    """The shell's policy (#1757): its own inline script and style pinned by sha256, never 'unsafe-inline'.
+    The study page's style hash is admitted too, because the srcdoc frame that shows the page inherits
+    this policy on top of the page's own (`report.csp`); the page runs no script either way."""
+    from nagasim.report import source_hash
+    from nagasim.studypage import PAGE_CSS
+    scripts = " ".join(source_hash(s) for s in re.findall(r"<script>(.*?)</script>", shell, re.S))
+    styles = " ".join(source_hash(s) for s in re.findall(r"<style>(.*?)</style>", shell, re.S) + [PAGE_CSS])
+    return (f"default-src 'none'; script-src {scripts}; style-src {styles}; img-src data:; connect-src 'self'; "
+            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 
 def url_for(study_id: str) -> str | None:
@@ -484,8 +494,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         from nagasim import studyapp, studypage
         if route == "":
             cookie = f"{self.room.cookie}={self.room.token}; HttpOnly; SameSite=Strict; Path=/"
-            self._send(200, studyapp.room_html().encode("ascii"), "text/html; charset=utf-8",
-                       {"Set-Cookie": cookie, "Content-Security-Policy": _SHELL_CSP})
+            shell = studyapp.room_html()
+            self._send(200, shell.encode("ascii"), "text/html; charset=utf-8",
+                       {"Set-Cookie": cookie, "Content-Security-Policy": _shell_csp(shell)})
         elif route == "api/page":
             rev = self.room.rev(folder)
             self._json({"html": studypage.render(folder, study_id=sid, in_room=True), "rev": rev})

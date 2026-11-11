@@ -172,7 +172,9 @@ def test_the_agent_tool_and_the_cli_take_the_method(monkeypatch, tmp_path, capsy
 
     monkeypatch.setattr("nagasim.optimize.evaluation._evaluate_point", _noisy(0.5))
     path = tmp_path / "m.json"
-    path.write_text(MODEL.read_text(), encoding="utf-8")
+    doc = json.loads(MODEL.read_text(encoding="utf-8"))
+    doc["simulation"]["warmup"] = 0  # #1720: the factor sets run lengths below the model's warm-up
+    path.write_text(json.dumps(doc), encoding="utf-8")
     T.use_workspace(T.Workspace(tmp_path))
     assert "error" not in T.call("open_model", path="m.json", name="m")
     out = T.call("calibrate", model="m", targets=[{"kpi": KPI, "observed": TRUE_X}],

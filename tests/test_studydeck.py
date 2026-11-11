@@ -26,12 +26,15 @@ def folder(tmp_path):
 def test_the_browser_prints_the_slides_page_offline_in_a_throwaway_profile(folder, monkeypatch, capsys):
     seen = {}
 
-    def fake(args, **kwargs):
-        seen["args"], seen["timeout"] = args, kwargs.get("timeout")
-        out = next(a for a in args if a.startswith("--print-to-pdf=")).split("=", 1)[1]
-        Path(out).write_bytes(b"%PDF-1.4 fake")
-        return subprocess.CompletedProcess(args, 0)
-    monkeypatch.setattr(studydeck.subprocess, "run", fake)
+    class Fake:
+        def __init__(self, args, **kwargs):
+            seen["args"] = args
+            out = next(a for a in args if a.startswith("--print-to-pdf=")).split("=", 1)[1]
+            Path(out).write_bytes(b"%PDF-1.4 fake")
+
+        def wait(self, timeout=None):
+            seen["timeout"] = timeout
+    monkeypatch.setattr(studydeck.subprocess, "Popen", Fake)
     assert studyrerun.main(["deck", str(folder), "--browser", "C:/my/chrome.exe"]) == 0
     pdf = folder / "package" / "slides.pdf"
     assert capsys.readouterr().out.strip() == str(pdf) and pdf.read_bytes().startswith(b"%PDF-")
@@ -47,7 +50,8 @@ def test_no_browser_or_no_pdf_says_what_to_do(folder, monkeypatch, capsys):
     assert studyrerun.main(["deck", str(folder)]) == 2
     err = capsys.readouterr().err
     assert "no Chrome, Edge or Chromium found" in err and "slides.html" in err
-    monkeypatch.setattr(studydeck.subprocess, "run", lambda args, **kw: subprocess.CompletedProcess(args, 1))
+    monkeypatch.setattr(studydeck.subprocess, "Popen", lambda args, **kw: subprocess.CompletedProcess(args, 1))
+    monkeypatch.setattr(subprocess.CompletedProcess, "wait", lambda self, timeout=None: 1, raising=False)
     assert studyrerun.main(["deck", str(folder), "--browser", "x"]) == 2
     assert "the browser wrote no PDF" in capsys.readouterr().err
 
@@ -83,12 +87,20 @@ def test_a_browser_planted_in_the_current_folder_is_never_found(tmp_path, monkey
 def test_858_a_browser_that_hangs_is_a_message_not_a_traceback(folder, monkeypatch, capsys):
     """#858: at the timeout the browser's helpers can hold the profile folder; its cleanup
     raised PermissionError over the DeckError. Cleanup errors are now ignored."""
-    def hangs(args, **kwargs):
-        raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
-    monkeypatch.setattr(studydeck.subprocess, "run", hangs)
+    class Hangs:
+        pid = 0
+
+        def __init__(self, args, **kwargs):
+            pass
+
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired("x", timeout)
+    killed = []
+    monkeypatch.setattr(studydeck.subprocess, "Popen", Hangs)
+    monkeypatch.setattr(studydeck, "_kill_tree", killed.append)
     made = []
     real = studydeck.tempfile.TemporaryDirectory
     monkeypatch.setattr(studydeck.tempfile, "TemporaryDirectory", lambda **k: made.append(k) or real(**k))
     assert studyrerun.main(["deck", str(folder), "--browser", "x"]) == 2
     assert "did not finish within" in capsys.readouterr().err
-    assert made[0]["ignore_cleanup_errors"] is True
+    assert made[0]["ignore_cleanup_errors"] is True and len(killed) == 1

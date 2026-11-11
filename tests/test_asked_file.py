@@ -63,7 +63,7 @@ def test_a_malformed_row_from_a_tool_never_reaches_a_page():
 
 def test_run_player_quotes_the_file_on_its_trust_card(tmp_path, capsys):
     page = tmp_path / "p.html"
-    code = api.main([MODEL, "--replications", "1", "--run-length", "60", "--player", str(page),
+    code = api.main([MODEL, "--replications", "1", "--run-length", "60", "--warmup", "0", "--player", str(page),
                      "--asked", str(_file(tmp_path, [INPUT, ABC]))])
     assert code == 0
     card = split(page.read_text(encoding="ascii"))[1]["trust"][BASELINE]
@@ -84,7 +84,7 @@ def test_run_refuses_asked_without_a_player_or_a_bad_file_before_running(tmp_pat
 def test_scenarios_player_gets_the_rows(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr("nagasim.player.build_player", lambda *a, **k: seen.update(k))
-    code = experiments.main([MODEL, "--replications", "1", "--run-length", "30",
+    code = experiments.main([MODEL, "--replications", "1", "--run-length", "30", "--warmup", "0",
                              "--player", str(tmp_path / "p.html"),
                              "--asked", str(_file(tmp_path, [ABC]))])
     assert code == 0 and seen["asked"] == [ABC]

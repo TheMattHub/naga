@@ -23,6 +23,7 @@ from nagasim import study as study_mod
 from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, step_checks
 from nagasim.studyformulas import queue_formula, wait_shares, why_not
 from nagasim.study import CHECKLIST, FIRST_PASS, LEVELS, MODES, PRECISION, SIZES, StudyError
+from nagasim.core.schema import ModelValidationError
 from nagasim.twin import write_json, write_text
 
 from .core import SLOTS, ToolError, _PROGRESS, _digest, _document_args, call, report, reporting, tool, workspace
@@ -199,11 +200,59 @@ def _tails(s: dict, digest: dict, results, layout: dict, where: str = "") -> lis
     return why
 
 
+def _scenario_fix(layout: dict, problem) -> str:
+    """The corrected override for a scenario problem, when one follows from it (a capacity under
+    its schedule's maximum), else the problem's own hint."""
+    m = re.fullmatch(r"/resources/(\d+)/capacity", problem.path or "")
+    least = re.search(r"at least (\d+)", problem.hint or "")
+    resources = layout.get("resources") or []
+    if problem.code == "E_RESOURCE_CAPACITY" and m and least and int(m[1]) < len(resources):
+        fix = json.dumps({"path": f"resources.{resources[int(m[1])].get('name')}.capacity",
+                          "value": int(least[1])})
+        return f"add {fix} to its overrides and step again"
+    return problem.hint or "fix its overrides (list_override_paths shows the valid ones) and step again"
+
+
+def _runnable(layout: dict, names: list[str]) -> tuple[list[str], list[str]]:
+    """(the scenarios that validate, one sentence per scenario that does not) -- checked one by one,
+    so one bad scenario does not lose the others (#1729)."""
+    ok, bad = [], []
+    for name in names:
+        try:
+            experiments._scenario_layouts(layout, [name], baseline=False)
+        except ModelValidationError as exc:
+            what = "; ".join(p.removeprefix(f"scenario '{name}': ") for p in exc.problems)
+            fix = (_scenario_fix(layout, exc.structured[0]) if exc.structured
+                   else "fix its overrides (list_override_paths shows the valid ones) and step again")
+            bad.append(f"Scenario '{name}' did not run: {what}; {fix}.")
+        else:
+            ok.append(name)
+    return ok, bad
+
+
+def _same_base_replications(folder: Path, s: dict, layout: dict) -> int:
+    """The last version's replications when it is the same base model (its scenarios aside), else 0.
+    A relaxed precision target must not make the next version of the same model run fewer
+    replications and move every number (review S2-16): the two-pass estimate comes from a
+    10-replication pilot and can fall short of what the last version needed."""
+    if not s["versions"] or not isinstance(layout, dict):
+        return 0
+    last = s["versions"][-1]
+    try:
+        before = _read_layout(folder, last["id"])
+    except (OSError, ValueError):
+        return 0
+    same = {k: v for k, v in before.items() if k != "scenarios"} == \
+        {k: v for k, v in layout.items() if k != "scenarios"}
+    return int(last.get("replications") or 0) if same else 0
+
+
 def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | None, dict]:
     """Run the layout's scenarios (not the baseline: the step just ran it) with the step's
     replications and seed, from the layout itself so a fresh process needs no model slot.
     Answers ({name: {"kpis": {goal kpi: {mean, ci_half_width}}, "goals": {goal id: verdict}}} or
-    None, extra answer keys). A failing scenario run is reported, never fails the step."""
+    None, extra answer keys). A failing scenario run is reported, never fails the step; a
+    scenario that does not validate is left out and named in "scenario_error" (#1729)."""
     names = [sc.get("name") for sc in layout.get("scenarios") or [] if isinstance(sc, dict) and sc.get("name")]
     extra: dict = {}
     cap = SIZES[s["size"]]["scenarios"]
@@ -211,13 +260,16 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | Non
         extra["scenarios_skipped"] = (f"size {s['size']} runs at most {cap} scenarios; not run: "
                                       + ", ".join(names[cap:]))
         names = names[:cap]
+    names, bad = _runnable(layout, names)
+    if bad:
+        extra["scenario_error"] = " ".join(bad)
     if not names:
         return None, extra
     try:
         run = experiments.run_scenarios(layout, names, replications=n, seed=seed, baseline=False, on_progress=report)
-    except Exception as exc:    # an override that does not apply, a run error: the base step stands
+    except Exception as exc:    # a run error: the base step stands
         logging.getLogger(__name__).warning("study scenarios failed", exc_info=True)
-        extra["scenario_error"] = f"{type(exc).__name__}: {exc}"
+        extra["scenario_error"] = " ".join(bad + [f"The scenarios did not run: {type(exc).__name__}: {exc}."])
         return None, extra
     out, why = {}, []
     for name, results in run.results.items():
@@ -231,7 +283,7 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | Non
             verdicts[g.get("id", f"g{i + 1}")] = study_mod.judge(g, e["mean"] if e else None)
         out[name] = {"kpis": kpis, "goals": verdicts}
     if not run.completed:
-        extra["scenario_error"] = "the scenario run did not finish"
+        extra["scenario_error"] = " ".join(bad + ["The scenario run did not finish."])
     if why:
         extra["tail_note"] = "; ".join(why)
     return out or None, extra
@@ -360,8 +412,24 @@ def _check(changes: dict) -> tuple[dict, list[str]]:
     unknown = [k for k in changes if k not in _SETTABLE]
     if unknown:
         raise _bad(unknown[0], f"cannot be set; settable keys: {', '.join(_SETTABLE)}")
+    notes += _study_kpi_names(changes)      # before the checks, so they see the stored name
     checked = {k: _SETTABLE[k](k, v) for k, v in changes.items()}     # all checked before any is set
     return checked, notes
+
+
+def _study_kpi_names(changes: dict) -> list[str]:
+    """Store a goal's or an assumption check's KPI given in the results.kpis() form under the name
+    the study measures, so it is judged and not left not_verified forever (#1758)."""
+    notes = []
+    for key, field in (("goals", None), ("assumptions", "check")):
+        recs = changes.get(key)
+        for i, rec in enumerate(recs if isinstance(recs, list) else []):
+            spec = (rec.get(field) if field else rec) if isinstance(rec, dict) else None
+            kpi = spec.get("kpi") if isinstance(spec, dict) else None
+            if isinstance(kpi, str) and (name := experiments.study_kpi_name(kpi)) != kpi:
+                spec["kpi"] = name
+                notes.append(f"{key}[{rec.get('id', i)}]: kpi {kpi!r} -> {name!r}")
+    return notes
 
 
 def _set(s: dict, changes: dict) -> list[str]:
@@ -737,7 +805,8 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                 first_results = workspace().results[model]
                 tail_why = _tails(s, digest, first_results, layout)
                 status = study_mod.precision_status(s, digest)
-                n = study_mod.replications_needed(status, FIRST_PASS, cap)
+                n = max(study_mod.replications_needed(status, FIRST_PASS, cap),
+                        min(_same_base_replications(folder, s, layout), cap))
                 if n > FIRST_PASS:
                     # Replication i uses seed + i, so the extra n - FIRST_PASS replications continue the
                     # first pass and the merge equals one run of n.
@@ -759,6 +828,8 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
               if digest is not None else [])
     _log(s, "study_step", started, study_mod.error_code(problems) if problems else None)
     run = {"replications": n, "seed": seed, "precision": status, "precision_note": study_mod.precision_sentence(n, status, cap)}
+    if "scenario_error" in extra:   # marks the version, so next_step names it first (#1729)
+        run["scenario_error"] = extra.pop("scenario_error")
     answer = dict(study_mod.record_step(folder, s, layout, digest, checks, note, request_id, problems, scenarios,
                                         run))
     if tail_why:

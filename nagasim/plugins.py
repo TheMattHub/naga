@@ -25,7 +25,9 @@ both completely inert until `load_plugins()` runs (called once from
 
 3. The plugin folders a person trusted in Settings > Plugins
    (`settings/trusted.py`, kind "plugin_folder", enabled), scanned the same way
-   (D1115). `load_plugin_folder` imports one more such folder in a running
+   (D1115), each only while its files match the digest stored at the person's
+   tick (D1194): a changed folder loads nothing, logs one line and is listed in
+   the report's `changed`. `load_plugin_folder` imports one more such folder in a running
    process, right after the person trusts it. A plugin that imports its own
    project's packages puts that project's root on `sys.path` itself, at the top
    of its file: the loader adds no import roots (D1116).
@@ -62,6 +64,8 @@ __all__ = ["BlockUi", "PluginReport", "load_plugins", "load_plugin_folder", "res
            "search_paths"]
 
 _ENV_VAR = "NAGASIM_PLUGIN_PATH"
+# Set by `naga --no-plugins` (S8-15): this process and its workers load no plugin at all.
+NO_PLUGINS_ENV = "NAGASIM_NO_PLUGINS"
 # entry-point group -> (registry dict, attribute holding the spec's own key)
 _GROUPS = {
     "nagasim.blocks": (BLOCK_REGISTRY, "type_name"),
@@ -99,6 +103,8 @@ class PluginReport:
     # {folder as scanned: the block types its files registered}: what Settings > Plugins
     # lists under each folder. A folder scanned with nothing registered maps to [].
     folders: dict[str, list[str]] = field(default_factory=dict)
+    # trusted folders skipped because their files moved since the person's tick (D1194, #1738)
+    changed: list[str] = field(default_factory=list)
 
     def has_folder(self, directory) -> bool:
         key = _key(directory)
@@ -129,9 +135,12 @@ def load_plugins(force: bool = False) -> PluginReport:
         return _report
 
     report = PluginReport()
+    if os.environ.get(NO_PLUGINS_ENV) == "1":
+        _report = report
+        return report
     for directory in search_paths():
         if not report.has_folder(directory):    # the same folder named twice is read once
-            _load_dev_path(directory, report)
+            _load_dev_path(directory, report, _pinned(directory))
     _load_entry_points(report)
     _rebuild_derived_tables()
     _report = report
@@ -148,7 +157,7 @@ def load_plugin_folder(directory) -> PluginReport:
     report = load_plugins()
     directory = Path(directory)
     if directory.is_dir() and not report.has_folder(directory):
-        _load_dev_path(directory, report)
+        _load_dev_path(directory, report, _pinned(directory))
         _rebuild_derived_tables()
     return report
 
@@ -170,12 +179,38 @@ def search_paths() -> list[Path]:
     return [p for p in paths if p.is_dir()]
 
 
-def _load_dev_path(directory: Path, report: PluginReport) -> None:
+def _pinned(directory: Path):
+    """The trusted entry whose digest *directory* must match, or None for a folder the caller's own
+    environment names (NAGASIM_PLUGIN_PATH, a frozen build's drop folder): those are not pinned."""
+    key = _key(directory)
+    if any(_key(p) == key for p in os.environ.get(_ENV_VAR, "").split(os.pathsep) if p):
+        return None
+    entry = trusted.find("plugin_folder", directory)
+    return entry if entry is not None and entry.enabled else None
+
+
+def _load_dev_path(directory: Path, report: PluginReport, pinned=None) -> None:
+    try:
+        files = trusted.folder_files(directory)
+    except OSError as exc:
+        report.failed.append((str(directory), str(exc)))
+        log.warning("plugin folder %s does not read: %s", directory, exc)
+        return
+    if pinned is not None:
+        if trusted.changed(pinned, files):
+            report.changed.append(str(directory))
+            log.warning("plugin folder %s changed since it was trusted: nothing loaded from it until it is "
+                        "enabled again in Settings > Plugins", directory)
+            return
+        log.info("plugins: importing trusted folder %s", directory)
     provided = report.folders.setdefault(str(directory), [])
-    for py_file in sorted(directory.glob("*.py")):
+    if str(directory) in report.changed:
+        report.changed.remove(str(directory))
+    for py_file, data in files:
         module_name = f"_nagasim_plugin_{py_file.stem}"
         try:
-            spec = importlib.util.spec_from_file_location(module_name, py_file)
+            spec = importlib.util.spec_from_file_location(module_name, py_file,
+                                                          loader=trusted.BytesLoader(py_file, data))
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
         except Exception as exc:

@@ -19,7 +19,7 @@ import json
 import re
 from pathlib import Path
 
-__all__ = ["LANGUAGES", "DEFAULT", "table", "say", "number", "markup", "Refusal", "page_words",
+__all__ = ["LANGUAGES", "DEFAULT", "table", "say", "number", "unit", "markup", "Refusal", "page_words",
            "explain"]
 
 LANGUAGES = ("en", "it")
@@ -52,6 +52,11 @@ def number(text: str, words: dict) -> str:
     return text.replace(".", words["decimal"]) if words["decimal"] != "." else text
 
 
+def unit(name: str, words: dict) -> str:
+    """A time unit's name ("minutes") in the table's language; one it lacks as written."""
+    return words.get(f"unit.{name}", name)
+
+
 def _html(text: str) -> str:
     """HTML text in ASCII: every other character as a numeric reference."""
     return html.escape(text, quote=True).encode("ascii", "xmlcharrefreplace").decode("ascii")
@@ -76,7 +81,9 @@ class Refusal(ValueError):
         self.reason, self.values, self.structured = reason, dict(values or {}), list(structured)
 
 
-_PYTHON_AREAS = ("error.", "lever.", "measured.", "monitor.")
+# "twin.": the monitor's sentences Python words (`monitor.summary`, its event lines, #1762);
+# "unit.": time units, named in Python into a page's data.
+_PYTHON_AREAS = ("error.", "lever.", "measured.", "monitor.", "twin.", "unit.")
 
 
 def page_words(words: dict, areas: tuple = ()) -> dict:

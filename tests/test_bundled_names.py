@@ -12,7 +12,7 @@ def test_a_plain_name_with_no_file_there_is_the_bundled_model(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     assert examples.model_path("single_server") == str(examples.DIR / "single_server.json")
     assert cli.main(["validate", "single_server"]) == 0
-    assert cli.main(["run", "single_server", "--replications", "1", "--run-length", "50"]) == 0
+    assert cli.main(["run", "single_server", "--replications", "1", "--run-length", "50", "--warmup", "0"]) == 0
     assert "Total Entities Completed" in capsys.readouterr().out
 
 

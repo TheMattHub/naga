@@ -902,3 +902,52 @@ def test_initial_state_validation_lives_in_its_own_module():
     from nagasim.core import initial_state_validation
 
     assert initial_state_validation.validate_initial_state_structured({"blocks": []}) == []
+
+
+# ------------------------------------------- resumed equals uninterrupted, by feature (P03)
+# A model with nothing random but the feature's own, resumed from `state.take` at t, against
+# the uninterrupted run with a warm-up of t (`_reproduces`, every KPI): a jittered timetable
+# (#1732), slot rows (#1733, #1734), a belt, and crane lifts (timed moves between the blocks a
+# crane serves) with slots freed at the lift's end.
+def _gate_jitter():
+    c = create("c", distribution="FixedSchedule", e_type="truck",
+               dist_params={"schedule": [10, 20, 30, 40, 50, 60], "jitter": 6})
+    keeper = create("k", dist_params={"value": 7.0})        # the run outlives the timetable
+    p, d = process("p", value=4.0), dispose("d")
+    return layout([c, keeper, p, d], chain(c, p, d) + [{"source": "k", "target": "d"}],
+                  resources=SERVER, simulation={"time_limit": 90, "warmup": 0, "replications": 1})
+
+
+def _gate_slots(frees="leave", lift=None, cranes=None, slots=2):
+    c = create("c", dist_params={"value": 1.0})
+    table = delay("table", value=3.5)
+    table["queue_row"] = {"slots": slots, "frees": frees, "label": "Table"}
+    bay, d = delay("bay", value=0.5), dispose("d")
+    links = chain(c, table, bay, d)
+    if lift is not None:
+        links[1]["delay"] = {"distribution": "Constant", "dist_params": {"value": lift}}
+    return layout([c, table, bay, d], links, **({"cranes": cranes} if cranes else {}),
+                  simulation={"time_limit": 30, "warmup": 0, "replications": 1})
+
+
+def _gate_belt():
+    from test_state_belts import _belt_line
+    return _belt_line("station")
+
+
+_GATE_CRANE = [{"name": "C", "runway": [0, 0, 40, 20], "serves": ["table", "bay"]}]
+
+
+@pytest.mark.parametrize("build, at", [
+    (_gate_jitter, 25.5), (_gate_jitter, 66.5),
+    (_gate_slots, 10.25),
+    (lambda: _gate_belt(), 8.3),
+    (lambda: _gate_slots("move_end", lift=1.25, cranes=_GATE_CRANE), 10.6),
+    (lambda: _gate_slots("move_end", lift=1.25, cranes=_GATE_CRANE, slots=4), 10.6)],
+    ids=["jitter-mid", "jitter-after", "slots", "belt", "crane", "crane-4-slots"])
+def test_a_resumed_run_equals_the_uninterrupted_one_by_feature(build, at):
+    model = build()
+    if any(b.get("queue_row") for b in model["blocks"]):        # the slot counts are compared
+        reference = _kpis(api.run_model(model, warmup=at, replications=1))
+        assert {"slot/table/Entered", "slot/table/Overflows"} <= reference.keys()
+    _reproduces(model, at)

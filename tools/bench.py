@@ -31,6 +31,10 @@ without it, so its figures are not like-for-like.
 """
 from __future__ import annotations
 
+try:       # first: the shipped registries only, never the user's trusted plugins (tools/_isolate.py)
+    from tools import _isolate  # noqa: F401
+except ImportError:     # run as a script: tools/ itself is on sys.path
+    import _isolate  # noqa: F401
 import argparse
 import copy
 import json

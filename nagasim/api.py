@@ -165,7 +165,23 @@ def with_run_setting(path, key: str, value):
     return layout
 
 
+class WarmupPastEndError(ValueError):
+    """#1720's refusal, a ValueError with its own code so a tool does not read it as a bad KPI
+    or check (#1752)."""
+    code = "E_WARMUP_PAST_END"
+
+
 def run_settings(path, replications=None, warmup=None, run_length=None):
+    """The settings `_resolve_settings` gives, refused when the warm-up leaves no observed
+    time (#1720): a run whose warm-up reaches its end reports only zeros."""
+    replications, warmup, run_length = _resolve_settings(path, replications, warmup, run_length)
+    if warmup and run_length and float(warmup) >= float(run_length):
+        raise WarmupPastEndError(f"the warm-up {warmup:g} reaches the run length {run_length:g}, so nothing "
+                         f"would be observed; shorten the warm-up or lengthen the run")
+    return replications, warmup, run_length
+
+
+def _resolve_settings(path, replications=None, warmup=None, run_length=None):
     """(replications, warmup, run_length), each falling back to the model's own
     "simulation" section (ROADMAP 1.5) when left None -- an explicit value (0
     included) always wins.

@@ -398,7 +398,7 @@ def tool_schemas() -> list[dict]:
 
 # ---------------------------------------------------------------- helpers
 def _problems(doc: ModelDocument) -> list[schema_mod.Problem]:
-    return schema_mod.validate_model_structured(doc.to_layout())
+    return doc.problems()
 
 
 def _open(model: str) -> tuple[ModelDocument, list]:

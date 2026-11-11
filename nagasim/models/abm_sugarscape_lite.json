@@ -1,6 +1,6 @@
 {
-  "$schema": "https://thematthub.github.io/naga/schema/model-v29.json",
-  "schema_version": 29,
+  "$schema": "https://thematthub.github.io/naga/schema/model-v30.json",
+  "schema_version": 30,
   "blocks": [
     {
       "name": "sugarscape_lite_1",

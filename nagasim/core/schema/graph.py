@@ -250,6 +250,12 @@ def validate_graph_structured(layout: dict) -> list[Problem]:
                         f"{name}: {len(conditions)} conditions but only {len(outs)} outgoing links",
                         f"{at}/params/conditions", block=name,
                         hint="each condition needs its own outgoing link, in the same order"))
+                elif conditions and len(conditions) == len(outs):
+                    problems.append(problem(
+                        "W_DECIDE_NO_ELSE",
+                        f"{name}: no ELSE link, so an entity no condition takes stops the run",
+                        f"{at}/params/conditions", block=name,
+                        hint="add one more outgoing link, last, for the entities no condition takes"))
             elif mode == "Policy":
                 # Actions = outgoing links, whatever their count -- no probs/
                 # conditions to match against (ROADMAP 3.7 A).

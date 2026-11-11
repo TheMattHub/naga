@@ -8,6 +8,7 @@ initial bias) are computed by `nagasim.laws` from the run's frames; the digest c
 """
 from __future__ import annotations
 
+import difflib
 
 
 def _check(name: str, verdict: str, why: str, kind: str) -> dict:
@@ -39,6 +40,14 @@ def kpi_entry(digest: dict, kpi: str) -> dict | None:
     return e if _mean(e) is not None else None
 
 
+def _nearest(digest: dict, kpi: str) -> str:
+    """The closest names the digest measures, as "; nearest: ...", so a misnamed goal says why (#1758)."""
+    names = [*(digest.get("system") or {}), *(digest.get("user_stats") or {}), *(digest.get("tails") or {}),
+             *(f"{r}/{c}" for r, cols in (digest.get("resources") or {}).items() for c in cols)]
+    near = difflib.get_close_matches(kpi, names, n=3, cutoff=0.5)
+    return f"; nearest: {', '.join(near)}" if near else ""
+
+
 def kpi_mean(digest: dict, kpi: str) -> float | None:
     return _mean(kpi_entry(digest, kpi))
 
@@ -59,7 +68,7 @@ def _range_check(name: str, kind: str, spec: dict, digest: dict) -> dict | None:
         return None
     m = kpi_mean(digest, kpi)
     if m is None:
-        return _check(name, "not_verified", f"KPI '{kpi}' is not in the run digest", kind)
+        return _check(name, "not_verified", f"KPI '{kpi}' is not in the run digest" + _nearest(digest, kpi), kind)
     ok = (lo is None or m >= lo) and (hi is None or m <= hi)
     return _check(name, "passed" if ok else "failed",
                   f"{kpi} = {m:g}, expected within [{lo}, {hi}]", kind)

@@ -155,7 +155,7 @@ def test_cli_and_agent_tool(tmp_path, capsys):
     model = str(tmp_path / "single_server.json")
     assert uncertainty.main([model, "--data", f"{SERVICE}={data}:minutes", "--kpi", TT,
                              "--resamples", "3", "--replications", "2",
-                             "--run-length", "100"]) == 0
+                             "--run-length", "100", "--warmup", "0"]) == 0
     text = capsys.readouterr().out
     assert "3 resamples" in text and TT in text and "inputs' share" in text
 
@@ -163,7 +163,7 @@ def test_cli_and_agent_tool(tmp_path, capsys):
     assert "error" not in T.call("open_model", path="single_server.json", name="m")
     out = T.call("input_uncertainty", model="m",
                  inputs=[{"path": SERVICE, "data": "service.csv", "column": "minutes"}],
-                 kpis=[TT], resamples=3, replications=2, run_length=100)
+                 kpis=[TT], resamples=3, replications=2, run_length=100, warmup=0)
     assert "error" not in out, out
     assert out["resamples_used"] == 3 and out["kpis"][0]["kpi"] == TT
     refused = T.call("input_uncertainty", model="m",

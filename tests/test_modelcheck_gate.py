@@ -85,3 +85,17 @@ def test_the_agent_can_only_propose_a_folder_inside_its_workspace_switched_off(s
     assert trusted.is_trusted("plugin_folder", plugs)
     # No argument of the tool can switch an entry on (permission is the caller's).
     assert set(agent_tools.TOOLS["propose_plugin_folder"].input_schema["properties"]) == {"model", "folder"}
+
+
+def test_check_model_opens_stops_at_its_budget(tmp_path):
+    """Review S8-12: the gate ran the model's whole run length with no budget. `max_seconds` stops it, and a
+    run stopped by the budget is neither a pass nor a fail: it opens with no errors and says when it stopped."""
+    layout = json.loads(SINGLE.read_text(encoding="utf-8"))
+    layout["simulation"] = {**layout["simulation"], "time_limit": 1e9, "warmup": 0}     # far longer than a call
+    gate = modelcheck.open_and_run(layout, max_seconds=0.2)
+    assert gate.status == "inconclusive" and not gate.passed
+    assert gate.message == "opens with no errors; the run was stopped after 0.2 s"
+    agent_tools.use_workspace(agent_tools.Workspace(tmp_path))
+    agent_tools.call("write_model", model="m", layout=layout)
+    found = agent_tools.call("check_model_opens", model="m", max_seconds=0.2)
+    assert (found["passed"], found["status"]) == (False, "stopped") and "stopped after 0.2 s" in found["message"]

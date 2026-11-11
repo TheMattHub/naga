@@ -15,7 +15,7 @@ from nagasim.core import sections
 from nagasim.settings.config import LEGACY_BLOCK_W, LEGACY_BLOCK_H
 
 
-CURRENT_VERSION = 29
+CURRENT_VERSION = 30   # 30: unknown top-level keys kept, info.written_by (D1193)
 
 
 # Keys a model file may carry but must never be OBEYED (ARCHITECTURE 7.4: a

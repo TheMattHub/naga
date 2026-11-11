@@ -1344,11 +1344,14 @@ def summarize_slots(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -
     entities that entered it and the arrivals that found it full -- the instants counted by
     `queuerow.overflow_instants` (one per instant, however many enter at once), from the
     run's own events, no trace needed. Both counts start at the warm-up; the slots held then
-    still count."""
+    still count. Both stop at the run's end (#1733). The entities a state places hold their
+    slots, they do not enter them (#1734, `SlotCounter.held`)."""
     counter = env.ctx.slot_counter
+    end = observed_window(env, warmup)[1]
     rows = []
     for name, row in counter.rows.items():
-        entered, overflows = queuerow.overflow_count(counter.changes[name], row["slots"], since=warmup)
+        entered, overflows = queuerow.overflow_count(counter.changes[name], row["slots"], since=warmup,
+                                                     until=end, held=counter.held[name])
         rows.append({"Run": run_id, "Block": name, "Label": row["label"], "Slots": row["slots"],
                      "Frees": row["frees"], "Entered": entered, "Overflows": overflows})
     return _frame(rows, _SLOT_SUMMARY_COLS)

@@ -123,7 +123,7 @@ def test_literal_problems_are_expression_errors():
 def test_error_carries_structure():
     with pytest.raises(ModelValidationError) as info:
         run_model(_layout(assign=[{"attr": "x", "value": "1"}]), replications=1, seed=0,
-                  run_length=10)
+                  run_length=10, warmup=0)
     err = info.value
     assert err.structured[0].code == "E_ASSIGN_KEY"
     assert err.problems == [p.message for p in err.structured]
@@ -140,7 +140,7 @@ def test_plain_error_has_no_structure():
 def test_cli_prints_codes_and_hints(tmp_path, capsys):
     model = tmp_path / "bad.json"
     model.write_text(json.dumps(_layout(assign=[{"attr": "x", "value": "1"}])), encoding="utf-8")
-    assert cli.main(["run", str(model), "--replications", "1", "--run-length", "10"]) == 2
+    assert cli.main(["run", str(model), "--replications", "1", "--run-length", "10", "--warmup", "0"]) == 2
     err = capsys.readouterr().err
     assert err.count("E_ASSIGN_KEY /blocks/1/params/assignments/0/attr: ") == 1
     assert "    hint: an ASSIGN entry takes: target, expr" in err

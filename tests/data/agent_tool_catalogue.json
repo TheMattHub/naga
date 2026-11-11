@@ -2860,7 +2860,7 @@
     "read_only": false
   },
   {
-    "description": "Vary one assumption at a time (arrival and service parameters, capacities) around a version,\nwith common random numbers and the version's stored replications and seed, and rank them by\nhow much each moves the goal KPIs. Answers {\"file\", \"ranked\": [{path, label, swing}],\n\"changes_answer\": [paths where a goal verdict flips]}; the full table and a swing chart per\ngoal KPI are in the file. Rate parameters are varied as rates (a higher rate is a shorter time).",
+    "description": "Vary one assumption at a time (arrival and service parameters, capacities) around a version,\nwith common random numbers and the version's stored replications and seed, and rank them by\nhow much each moves the goal KPIs. Answers {\"file\", \"ranked\": [{path, label, swing}],\n\"changes_answer\": [paths where a goal verdict flips]}; the full table and a swing chart per\ngoal KPI are in the file. Rate parameters are varied as rates (a higher rate is a shorter time).\nNamed factors may be any numeric override path; one that is not is listed in \"not_varied\", and\nan end the model cannot run with (e.g. a capacity below its schedule) is skipped with a note.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -3224,10 +3224,17 @@
     "read_only": false
   },
   {
-    "description": "The open-and-run gate: does the model open in the editor with NO errors, using the\nplugins this person enabled, and run one replication? Call it before you say a model you\nbuilt or edited is done; a model that fails it is not done.\n\nReturns {\"model\", \"passed\", \"message\"}: the message says what failed first (an error in the\nProblems panel, with its fix, or the exception of the run). A block type that \"comes from a\nplugin that is not loaded\" needs the person to trust its folder in Settings > Plugins;\n`propose_plugin_folder` can only suggest one.",
+    "description": "The open-and-run gate: does the model open in the editor with NO errors, using the\nplugins this person enabled, and run one replication? Call it before you say a model you\nbuilt or edited is done; a model that fails it is not done.\n\nReturns {\"model\", \"passed\", \"status\" (\"pass\", \"fail\" or \"stopped\": the budget ran out, so it\nopens with no errors but the run was not finished), \"message\"}: the message says what failed first (an error in the\nProblems panel, with its fix, or the exception of the run). A block type that \"comes from a\nplugin that is not loaded\" needs the person to trust its folder in Settings > Plugins;\n`propose_plugin_folder` can only suggest one.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "max_seconds": {
+          "description": "Wall-clock budget for the run; a run it stops answers status \"stopped\", neither a pass nor a fail.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "model": {
           "description": "Workspace name of the model to check.",
           "type": "string"

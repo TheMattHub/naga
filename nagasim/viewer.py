@@ -1715,7 +1715,8 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
         "packages": list(viewer_runtime.PACKAGES), "pyodide": viewer_runtime.VERSION,
         "python": str(lock["info"]["python"]), "frozen": frozen, "tokens": tokens,
         "question": (model.get("dashboard") or {}).get("question"),
-        "scenarios": _lever_scenarios(model, definition), "unit": units_of(model.get("simulation")).time,
+        "scenarios": _lever_scenarios(model, definition),
+        "unit": pagetext.unit(units_of(model.get("simulation")).time, pagetext.table(language)),   # #1762
         "asked": _quoted(asked),
         "pictures": _kept_pictures(pictures), "language": language, "cdn": cdn,
     }

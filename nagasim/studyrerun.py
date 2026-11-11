@@ -7,8 +7,10 @@ step.json matches a fresh run (same replications and seed) within a relative 1e-
 Steps (P9, D1170): ordered commands, each a fresh process under a time limit, cwd the folder; the
 run stops at the first failed required step. Every file a step's `outputs` globs name is hashed
 before the run and after its step, so "regenerates identically" is one command on a clean checkout.
-Steps run only when a PERSON runs this command or presses Reproduce in the editor: loading the
-manifest never runs anything (permission is the caller's, never the file's)."""
+Steps run only when a PERSON asks for them: `--steps` or `--step NAME` here (D1195, #1737), or
+Reproduce in the editor after its list. Without either the command reruns the versions and lists the
+steps it did not run, since a folder received from someone else must not start a program unasked.
+Loading the manifest never runs anything (permission is the caller's, never the file's)."""
 from __future__ import annotations
 
 import argparse
@@ -226,9 +228,12 @@ def _print_steps(folder: Path, manifest: dict, only: list[str] | None) -> int:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="naga study", description="Checks on a study folder, and its slides as a PDF.")
     sub = p.add_subparsers(dest="action", required=True)
-    r = sub.add_parser("rerun", help="re-run every version and compare the stored KPIs, then run the "
-                                     "reproduce.json steps and compare their outputs")
+    r = sub.add_parser("rerun", help="re-run every version and compare the stored KPIs; with --steps, then run "
+                                     "the reproduce.json steps and compare their outputs")
     r.add_argument("folder", help="the study folder (holds study.json and/or reproduce.json)")
+    r.add_argument("--steps", action="store_true",
+                   help="also run the reproduce.json steps: each starts a program on this machine, as you, "
+                        "so read them first (without this flag they are only listed)")
     r.add_argument("--step", action="append", metavar="NAME",
                    help="run only this reproduce step (repeatable); the versions are then not rerun")
     n = sub.add_parser("numbers", help="check every tagged number of the write-ups against its source file")
@@ -267,7 +272,15 @@ def main(argv=None) -> int:
                 ok, text = False, f"{type(exc).__name__}: {exc}"
             failed += not ok
             print(f"{v['id']}: {'ok' if ok else 'MISMATCH'} ({text})")
-    if manifest and manifest["steps"]:
+    if manifest and manifest["steps"] and not (args.steps or args.step):
+        # D1195: listed, never started, unless the person asks with --steps or --step
+        print("reproduce steps not run (each starts a program on this machine, as you; read them, then "
+              "add --steps, or --step NAME):")
+        for s in manifest["steps"]:
+            print(f"  {s['name']}: {describe(s)}")
+        if not has_study:
+            return 2        # nothing was checked
+    elif manifest and manifest["steps"]:
         code = _print_steps(folder, manifest, args.step)
         if code == 2:
             return 2

@@ -4,6 +4,7 @@ of a duration spec."""
 from __future__ import annotations
 
 import ast
+import math
 
 from nagasim.core import agents, sd
 from nagasim.core.distributions import (DISTRIBUTION_REGISTRY, distribution_mean,
@@ -60,6 +61,21 @@ def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: 
             problems.append(problem("E_DIST_PARAM_UNKNOWN",
                                     f"{label}: {dist} takes no parameter '{key}'",
                                     f"{path}/{key}", block=block, hint=hint))
+    # #1723: a choice outside its list, or a jitter that is negative or not a number, stopped
+    # the run (or, for NaN, put every arrival at t = 0); refused here, before any run.
+    for param in spec.params:
+        value = dist_params.get(param.name)
+        if value is None or isinstance(value, str) and param.kind != "choice":
+            continue        # absent, or an expression resolved at run time
+        if param.kind == "choice" and value not in (param.choices or ()):
+            bad = f"'{value}' is not one of {', '.join(param.choices or ())}"
+        elif param.name == "jitter" and not (isinstance(value, (int, float)) and math.isfinite(value)
+                                             and value >= 0):
+            bad = f"jitter must be a number, 0 or more; got {value!r}"
+        else:
+            continue
+        problems.append(problem("E_DIST_PARAM_VALUE", f"{label}: {dist} {param.name}: {bad}",
+                                f"{path}/{param.name}", block=block, hint=param.hint))
 
 
 def _check_deterministic_mean(problems: list, deterministic: bool, dist, dist_params: dict,

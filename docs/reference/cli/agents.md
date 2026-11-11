@@ -111,8 +111,9 @@ Checks on a study folder, and its slides as a PDF.
 
 positional arguments:
   {rerun,numbers,deck}
-    rerun               re-run every version and compare the stored KPIs, then
-                        run the reproduce.json steps and compare their outputs
+    rerun               re-run every version and compare the stored KPIs; with
+                        --steps, then run the reproduce.json steps and compare
+                        their outputs
     numbers             check every tagged number of the write-ups against its
                         source file
     deck                the slides as a PDF, printed by this machine's Chrome

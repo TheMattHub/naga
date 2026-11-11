@@ -403,6 +403,10 @@ def apply(env, model, state: dict) -> int:
             if spec.get("scheduled") is not None:     # orders the starts (#467)
                 block.scheduled_at = float(spec["scheduled"])
             block.rank = spec.get("rank")             # and breaks a tie on it (#472)
+            if spec.get("times") is not None:         # a jittered timetable's own (#1732)
+                due = [] if spec.get("next") is None else [float(spec["next"])]
+                block.time_between_arrivals._state = {
+                    "times": due + [float(t) for t in spec["times"]], "cursor": 0}
 
     for name, spec in (state.get("resources") or {}).items():
         resource = ctx.resource_manager.get(name)
@@ -439,6 +443,8 @@ def apply(env, model, state: dict) -> int:
             block._next_entry = float(spec["next_entry"])   # the belt's next slot (D430)
         if spec.get("left") or spec.get("sections"):
             block.restore_history(spec)     # what the parts ahead left behind (D922, #1336)
+        if spec.get("frees") and ctx.slot_counter is not None:
+            ctx.slot_counter.lifted(name, spec["frees"])    # its loads still lifted out (#1749)
 
     fleets = state.get("fleets") or {}
     for name, spec in fleets.items():           # before any load: where each vehicle is
@@ -450,6 +456,9 @@ def apply(env, model, state: dict) -> int:
 
     injected, waiting, blocked = 0, [], False
     belts: dict = {}                # conveyor -> the parts on it (D429, D430)
+    counter = ctx.slot_counter      # what is placed now holds its slot, it did not enter (#1753)
+    if counter is not None:
+        counter.placing = True
     for entry in state.get("entities") or []:
         block = model.blocks.get(entry.get("block"))
         if block is None:
@@ -552,6 +561,8 @@ def apply(env, model, state: dict) -> int:
                         and block.space.capacity and entry.get("place") is not False:
                     block.space.occupy(entity)      # the place it had, before any other (D382)
                 waiting.append((block, entity))
+    if counter is not None:
+        counter.placing = False
     # Every cell is taken before a part waiting for one asks; the part at an end stop joins
     # that queue with the other waiting ones.
     for belt in sorted(belts, key=lambda b: b.name):

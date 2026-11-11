@@ -82,8 +82,9 @@ def _write_player(results, path, *, layout=None, title=None, trace=None, asked=N
         raise ValueError("the player is drawn from the run's recorded trace: use "
                          "`naga run MODEL --player PATH`, or pass trace= (a TraceRecorder)")
     from nagasim.experiments import BASELINE    # local, like the report above
-    from nagasim.player import build_player
-    build_player(layout or {}, {BASELINE: trace}, results=results, title=title, path=path,
+    from nagasim.player import build_player, page_title
+    build_player(layout or {}, {BASELINE: trace}, results=results, title=page_title(layout, title or "Model"),
+                 path=path,
                  asked=asked, pictures=pictures, language=language)
     return Path(path)
 

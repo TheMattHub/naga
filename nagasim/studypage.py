@@ -12,11 +12,10 @@ import time
 from pathlib import Path
 
 from nagasim import flowchart, study as study_mod
-from nagasim.report import esc
+from nagasim.report import csp, esc
 from nagasim.studychecks import goal_kpi
 
-_CSP = ("default-src 'none'; img-src data:; style-src 'unsafe-inline'; "
-        "base-uri 'none'; form-action 'none'")
+
 _CSS = """
 body{font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#222;
  background:#f6f7f9;margin:0}
@@ -43,11 +42,20 @@ th,td{text-align:left;padding:3px 8px;border-bottom:1px solid #eee;vertical-alig
 .badge.failed,.badge.not_met{background:#c62828}.badge.not_verified{background:#777}
 .muted{color:#666;font-size:13px}.flow{overflow-x:auto}.flow svg{max-width:100%;height:auto;max-height:200px}
 summary{cursor:pointer}
+.naga-bar{padding:4px 0}.naga-bar button{margin-right:6px}
+.naga-err{color:#7a1f1f;font-weight:600;margin-left:8px}
+#actions input{width:40%;padding:4px 8px;margin:0 8px}
+button{cursor:pointer;padding:3px 10px;margin:2px 4px 2px 0}button:disabled{cursor:default}
+img.naga-flow{display:block;max-width:100%;margin:6px 0}
 @media print{body{background:#fff}header{position:static;max-height:none;overflow:visible}
  details{display:block}
  details>*:not(summary){display:block!important;content-visibility:visible!important}
  .version{break-inside:avoid}}
 """
+# The study page's one style block. The room shell frames the page with srcdoc, which inherits the shell's
+# policy as well as the page's own, so the shell admits this hash too (#1757). The naga-* and button rules
+# style the controls the shell adds into the framed page: no other sheet reaches them there.
+PAGE_CSS = _CSS
 
 
 def _badge(verdict: str) -> str:
@@ -62,7 +70,7 @@ def _ascii(text: str) -> str:
 def _page(title: str, css: str, body: str) -> str:
     """One HTML document, no script allowed by the CSP; `body` holds ready-made (escaped) markup."""
     return _ascii("<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
-                  f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">'
+                  f'<meta http-equiv="Content-Security-Policy" content="{csp(css)}">'
                   '<meta name="viewport" content="width=device-width,initial-scale=1">'
                   f"<title>{esc(title[:80])}</title><style>{css}</style></head><body>{body}</body></html>\n")
 
@@ -436,7 +444,7 @@ def render(folder: Path, study: dict | None = None, study_id: str | None = None,
     # `<` as < keeps a note holding "</script>" from closing the data block.
     data = json.dumps(study, ensure_ascii=True).replace("<", "\\u003c")
     page = ("<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
-            f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">'
+            f'<meta http-equiv="Content-Security-Policy" content="{csp(_CSS)}">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
             + _header(study, goals, steps, folder, study_id, room_url, in_room) + '<div id="actions"></div>'

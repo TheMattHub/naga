@@ -254,6 +254,39 @@ def test_warmup_excludes_the_initial_burst(make_model):
     assert _resource_row(cold)["Usage % (snapshot)"] / 100.0 == pytest.approx(25.0 / observed, abs=1e-4)
 
 
+def test_warmup_resets_the_queue_kpis_and_divides_by_the_observed_window(make_model):
+    """Review S1-01: the queue KPIs restart at the warm-up like every other one.
+
+    Ten entities arrive at t=0 for one server with service 1.0, so the queue is
+    9, 8, ... 0. At the reset (t=5.5) four wait; the run is cut at 8.5. Area
+    4*0.5 + 3 + 2 + 1*0.5 = 7.5 over 8.5 - 5.5 = 3 -> 2.5; max 4 (the level
+    standing at the reset), not 9. A wait is tallied whole when it ends after
+    the reset (waits 6, 7, 8 -> 7), the "no retroactive split" rule.
+    """
+    blocks = [
+        {"name": "create_1", "type": "CREATE", "position": [0, 0],
+         "params": {"distribution": "Constant", "dist_params": {"value": 1.0},
+                    "entities_per_arrival": 10, "max_arrivals": 1, "start_time": 0}},
+        {"name": "process_1", "type": "PROCESS", "position": [1, 0],
+         "params": {"distribution": "Constant", "dist_params": {"value": 1.0},
+                    "resource_name": "Server"}},
+        {"name": "dispose_1", "type": "DISPOSE", "position": [2, 0]},
+    ]
+    links = [["create_1", "process_1"], ["process_1", "dispose_1"]]
+    path = make_model(blocks, links, resources=[{"name": "Server", "capacity": 1}])
+
+    kpi = run_single_simulation(path, seed=0, run_len=8.5, warmup=5.5)
+    row = _resource_row(kpi)
+    assert _metric(kpi, "Simulation Time") == pytest.approx(3.0)
+    assert _metric(kpi, "Avg Queue Length") == pytest.approx(2.5)
+    assert _metric(kpi, "Max Queue Length") == 4
+    assert row["Queue Length Avg"] == pytest.approx(2.5)
+    assert row["Queue Length Max"] == 4
+    assert row["Total Seizes"] == 3
+    assert row["Queue Length at End"] == 1
+    assert row["Time in Queue Avg"] == pytest.approx(7.0)
+
+
 # ---------------------------------------------------------------- resource set
 @pytest.mark.slow
 def test_mm2_as_a_set_of_two_single_servers_matches_erlang_c(worker_pool):

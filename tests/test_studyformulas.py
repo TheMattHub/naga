@@ -65,7 +65,7 @@ def test_wait_shares_on_a_short_run(single):
 
 
 def test_wait_shares_none_without_logs(single):
-    res = api.run_model(single, replications=1, run_length=100, record_logs=False)
+    res = api.run_model(single, replications=1, run_length=100, warmup=0, record_logs=False)
     assert F.wait_shares(res, "Server", 1.0) is None
     assert F.wait_shares(res, "Nope", 1.0) is None
 

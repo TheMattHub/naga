@@ -290,6 +290,9 @@ def writeup(folder: Path, study: dict, discussion: str | None = None) -> tuple[P
 
 # --- slides -----------------------------------------------------------------------------------------
 
+OPTION_ROWS = 4        # table rows per "Options compared" slide: more would be cut by the card
+OPTION_ROWS_WITH_CHART = 2   # the slide that also holds the bar chart (#1759: four ran 48 px past it)
+
 _SLIDE_CSS = """
 html{scroll-snap-type:y mandatory}
 body{margin:0;background:#e6e8eb;color:#222;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
@@ -322,6 +325,19 @@ main{padding:24px 16px}
 """
 
 
+def _options_slides(f: dict, charts: list, base: list) -> list:
+    """The "Options compared" slide, continued on further slides every OPTION_ROWS rows: a card
+    clips what does not fit (#1746), so no row is left to overflow."""
+    scenarios = [[f"{i}. {r[0]}"] + r[1:] for i, r in enumerate(f["scenarios"], 1)] if charts else f["scenarios"]
+    rows = [base] + scenarios
+    head = ["Option"] + f["goal_heads"]
+    first = OPTION_ROWS_WITH_CHART if charts else OPTION_ROWS
+    out = [("Options compared", ([["bars", charts]] if charts else []) + [["table", head, rows[:first]]])]
+    for at in range(first, len(rows), OPTION_ROWS):
+        out.append(("Options compared (continued)", [["table", head, rows[at:at + OPTION_ROWS]]]))
+    return out
+
+
 def _slide_list(f: dict) -> list:
     base = [f"base model ({f['version']})"] + [f"{g['value']} ({g['status'].replace('_', ' ')})" for g in f["goals"]]
     charts = []
@@ -329,14 +345,16 @@ def _slide_list(f: dict) -> list:
         rows = f["options"].get(g["kpi"])
         if rows and isinstance(g["num"], (int, float)):
             sh = _is_share(g["kpi"])
+            # the bars are labelled "base", "1", "2" ...: names do not fit under six or more bars; the
+            # table beside them carries the same numbers
             charts.append((g["kpi"], [(n, v * 100 if sh and 0 <= v <= 1 else v)
-                                      for n, v in [(f"base ({f['version']})", g["num"])] + rows], sh))
+                                      for n, v in zip(["base"] + [str(i) for i in range(1, len(rows) + 1)],
+                                                      [g["num"]] + [v for _, v in rows])], sh))
     slides = [(f["question"], [["p", f"Decision: {f['decision'] or 'not recorded'}"]]),
               ("The answer", [["banner", f["banner"], f"The study is {f['label']}."
                                + (f" Best option: {', '.join(f['best'])}." if f["best"] else "")],
                               ["tiles", f["goals"]], ["p", f"Validation: {f['level']}."]]),
-              ("Options compared", ([["bars", charts]] if charts else [])
-               + [["table", ["Option"] + f["goal_heads"], [base] + f["scenarios"]]]),
+              *_options_slides(f, charts, base),
               ("Goals and verdict", [_goal_table(f)]),
               ("The model", [["fig", "flow", f"Flowchart of {f['version']}"]]),
               ("Assumptions", [["table", ["Assumption", "Value or range", "Source"], f["assumptions"]]]),

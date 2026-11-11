@@ -80,8 +80,10 @@ def test_room_puts_the_assistant_in_a_side_column_on_wide_screens():
 
 
 def test_insert_drops_javascript_urls():
-    html = studyapp.room_html()
+    """The chat variant inserts the page into itself; the room frames it instead (#1757)."""
+    html = studyapp.HTML
     assert 'indexOf("javascript:") === 0' in html and r'replace(/\s+/g, "")' in html and "toLowerCase()" in html
+    assert "importNode" not in studyapp.room_html()
 
 
 # -- the room's conversation in a real browser, with a fake microphone and voice (D727) ---------------
@@ -211,3 +213,13 @@ def test_hands_free_listens_again_after_speaking_and_stops_on_stop(tmp_path):
     boxes = [x.split()[1] for x in log if x.startswith("box ")]
     assert len(set(boxes)) == 1 and any("chat-slot on" in x for x in log), log
     assert any(x.startswith("options 1 1. Run sensitivity: 8 parameters") for x in log), log
+
+
+def test_each_function_is_declared_once_per_variant():
+    """The transport and the chat chunks share one scope: a second `function show` silently replaced the
+    room's page loader (found while framing the page, #1757)."""
+    import re
+    from collections import Counter
+    for html in (studyapp.HTML, studyapp.room_html()):
+        names = Counter(re.findall(r"\bfunction (\w+)\s*\(", html))
+        assert not [n for n, k in names.items() if k > 1], names

@@ -32,7 +32,7 @@ An `initial_state` places entities in blocks, sets variables, levels and resourc
 | `arrivals` | object |  |  |  | Per CREATE block: the arrivals already made and the absolute time of the next one. |
 | `orders` | object |  |  |  | Per declared order released before the clock: the entities it released and completed, and when the last one completed. |
 | `resource_sets` | object |  |  |  | Per resource set: the index of the member a Cyclical set picked last (-1: none yet). |
-| `blocks` | object |  |  |  | Per block, what it carries: a changeover's setup key its last job left; a BATCH's running maximum wait, the time it falls due; a CONVEYOR's next free entry slot and when the last part left each of its points and its end. |
+| `blocks` | object |  |  |  | Per block, what it carries: a changeover's setup key its last job left; a BATCH's running maximum wait, the time it falls due; a CONVEYOR's next free entry slot and when the last part left each of its points and its end; for a slot row that frees at move_end, when each load still moving out of it frees its slot. |
 | `variables` | object |  |  |  | Model variable values to start from. |
 | `fleets` | object |  |  |  | Where each vehicle of a fleet is: one record per unit, in unit order. Times are absolute. |
 | `levels` | object |  |  |  | Level values to start from: the state of charge of a battery, the stock on hand in a warehouse. |

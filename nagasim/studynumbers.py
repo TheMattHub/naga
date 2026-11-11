@@ -10,6 +10,11 @@ in the tag add to it) and the column, or for JSON a dotted `key`. The source val
 `scale`, is formatted with the entry's `format` (a Python format spec such as ",.0f") or, by default,
 with as many decimals as the text shows, and must equal the written number. Untagged numbers in the
 `sections` each write-up names are listed as warnings. Read-only: the check runs nothing.
+
+Every comment whose ID is in the registry is a row (#1726): one with no number before it is
+"unresolved", so a wrong number cannot pass by not being attached. A write-up entry may name its
+`language`; in one that writes a decimal comma (it, de, fr, es, pt, nl) 12,5 reads as 12.5 and
+1.250 as 1250, elsewhere a decimal comma is refused rather than guessed.
 """
 from __future__ import annotations
 
@@ -23,8 +28,14 @@ from pathlib import Path
 from .netguard import GuardError, confine_path
 
 _NUM = r"(?<![\w.,])-?\d+(?:,\d{3})*(?:\.\d+)?(?![\w])"
-# a number, an optional %, then a comment whose first word is the ID; later words are row filters
-_TAG = re.compile(rf"(?P<num>{_NUM})(?P<pct>\s?%)?\s*<!--\s*(?P<id>[A-Za-z_][\w.-]*)(?P<rest>[^>]*?)\s*-->")
+_NUM_COMMA = r"(?<![\w.,])-?\d+(?:\.\d{3})*(?:,\d+)?(?![\w])"      # 1.250,5 in a decimal-comma language
+# a comment whose first word is the ID; later words are row filters
+_TAG = re.compile(r"<!--\s*(?P<id>[A-Za-z_][\w.-]*)(?P<rest>[^>]*?)\s*-->")
+# what may sit between a number and its tag: a %, emphasis closing (**12.5**), spaces
+_BEFORE = r"(?P<pct>\s?%)?[*_]*\s*$"
+_LAST = {",": re.compile(rf"(?P<num>{_NUM_COMMA}){_BEFORE}"), ".": re.compile(rf"(?P<num>{_NUM}){_BEFORE}")}
+_STRAY_COMMA = re.compile(r"\d,\d+(?:\s?%)?[*_]*\s*$")
+_COMMA_LANGUAGES = {"it", "de", "fr", "es", "pt", "nl"}
 _BARE = re.compile(_NUM)
 _COMMENT = re.compile(r"<!--.*?-->")
 _CODE = re.compile(r"`[^`]*`")
@@ -86,9 +97,20 @@ def _expected(value: float, written: str, fmt: str | None) -> str:
         # Half up on the decimal digits (#1700): a person writes 2.5 as 3 and 0.125 as 0.13, while
         # f-strings round the binary float half to even (2.5 -> 2, 0.125 -> 0.12).
         decimals = len(written.partition(".")[2])
-        text = str(Decimal(repr(float(value))).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP))
+        try:
+            text = str(Decimal(repr(float(value))).quantize(Decimal(1).scaleb(-decimals),
+                                                            rounding=ROUND_HALF_UP))
+        except ArithmeticError:     # inf, nan (#1726)
+            raise SourceError(f"the source value {value!r} cannot be written with {decimals} decimals") from None
     text = text.replace(",", "")
     return "0" + text[2:] if re.fullmatch(r"-0(\.0*)?", text) else text     # -0.0 reads as 0.0
+
+
+def _plain(written: str, decimal: str) -> str:
+    """The written number in the engine's notation: no thousands separator, a point for decimals."""
+    if decimal == ",":
+        return written.replace(".", "").replace(",", ".")
+    return written.replace(",", "")
 
 
 def _sections(lines: list[str], wanted: list[str]) -> list[str | None]:
@@ -129,6 +151,8 @@ def check(folder: Path, manifest: dict | None) -> dict:
             result["errors"].append(f"{name}: {exc}")
             continue
         in_section = _sections(lines, list(w.get("sections") or []))
+        language = str(w.get("language") or "en").lower().split("-")[0].split("_")[0]
+        decimal = "," if language in _COMMA_LANGUAGES else "."
         fenced = False
         for no, line in enumerate(lines, 1):
             if line.lstrip().startswith(("```", "~~~")):
@@ -137,23 +161,37 @@ def check(folder: Path, manifest: dict | None) -> dict:
             if fenced:
                 continue
             text = _CODE.sub(lambda m: " " * len(m.group()), line)
+            tagged = []                 # (start, end) of each tagged number and its comment
             for m in _TAG.finditer(text):
-                row = {"file": name, "line": no, "id": m["id"], "written": m["num"], "expected": "",
-                       "where": "", "verdict": "unresolved"}
+                num = _LAST[decimal].search(text, 0, m.start())
+                if num is None and m["id"] not in registry:
+                    continue            # an ordinary comment, not a tag
+                row = {"file": name, "line": no, "id": m["id"], "written": num["num"] if num else "",
+                       "expected": "", "where": "", "verdict": "unresolved"}
+                tagged.append((num.start() if num else m.start(), m.end()))
                 entry = registry.get(m["id"])
                 try:
+                    if num is None:
+                        if decimal == "." and _STRAY_COMMA.search(text, 0, m.start()):
+                            raise SourceError("a decimal comma is not accepted: name the write-up's "
+                                              "\"language\" (e.g. \"it\") in reproduce.json, or write a point")
+                        raise SourceError("no number before the tag")
                     if not isinstance(entry, dict):
                         raise SourceError(f"no entry {m['id']!r} in reproduce.json numbers")
                     extra = dict(p.split("=", 1) for p in m["rest"].split() if "=" in p)
                     value, row["where"] = source_value(folder, entry, extra)
-                    row["expected"] = _expected(value, m["num"].replace(",", ""), entry.get("format"))
-                    row["verdict"] = "ok" if row["expected"] == m["num"].replace(",", "") else "wrong"
+                    plain = _plain(num["num"], decimal)
+                    expected = _expected(value, plain, entry.get("format"))
+                    row["expected"] = expected.replace(".", ",") if decimal == "," else expected
+                    row["verdict"] = "ok" if expected == plain else "wrong"
                 except (SourceError, OSError, ValueError) as exc:
                     row["where"] = str(exc)
                 result["numbers"].append(row)
             if in_section[no - 1] is None:
                 continue
-            rest = _COMMENT.sub(" ", _TAG.sub(" ", text))
+            for a, b in tagged:
+                text = text[:a] + " " * (b - a) + text[b:]
+            rest = _COMMENT.sub(" ", text)
             rest = _LIST.sub(" ", rest)
             for m in _BARE.finditer(rest):
                 result["untagged"].append({"file": name, "line": no, "section": in_section[no - 1],

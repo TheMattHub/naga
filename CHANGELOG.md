@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.20.1 (2026-11-11)
+
+0.20.1 fixes the defects a review of 0.20.0 confirmed. Models that ran when they should have been refused, wrong study numbers, a resumed run that differed from the whole one, and trusted code that could change unasked are each fixed and kept fixed by a test. Bundled models give the same results as 0.20.0.
+
+Changed:
+
+- A warm-up at or past the run length is refused (`E_WARMUP_PAST_END`) at validate and at run, never a table of zeros.
+- Model files keep keys this version does not know, with a warning naming the nearest valid key, and record the version that wrote them (`info.written_by`, `W_WRITTEN_BY_NEWER`); the schema is `model-v30.json`.
+- An optimisation penalty always makes a point worse, also when the goal is max; a negative weight used as a workaround now has the opposite effect.
+- Trust in a plugin folder is pinned by a digest of its top-level Python files: a changed folder loads nothing until a person trusts it again, and existing entries are asked about once.
+- `naga study rerun` reruns the versions and lists a folder's `reproduce.json` steps; `--steps` or `--step NAME` runs them.
+- `naga --no-plugins` runs without plugins, also in worker processes.
+
+Fixed:
+
+- A DECIDE that no branch takes is `W_DECIDE_NO_ELSE` at validate and one line at run; a choice outside its list or a negative jitter is `E_DIST_PARAM_VALUE`; a JSON file with no model section is refused on open.
+- Studies: the optimisation baseline is the model's own values; capacity sizing stops on a plateau; a study step runs the scenarios that validate; sensitivity skips a variant the model cannot run; an unknown KPI is `E_UNKNOWN_KPI` with the nearest name; a goal named as a results key (`system/...`) is judged like its bare name; `naga study numbers` checks every registry tag and reads a decimal comma only for a write-up whose `language` writes one.
+- A run resumed from a state serves a jittered timetable's remaining times and counts queue-row slots as the uninterrupted run does; including a load mid-lift and a state taken at time 0; slot counts stop at the run's end. A state may carry `blocks.<row>.frees`.
+- The trust store is never written over when it does not parse, and a policy whose name resolves to another module is refused before import.
+- Study pages and the report run no script; a run player is titled by its question and its trust card names the warm-up the run used; the study deck's options table continues on further slides; the monitor folds tables unless something is wrong.
+- Italian pages (`--lang it`): the monitor's forecast, alerts, scores and event lines and the time units are in Italian, and tables wrap between words on a phone instead of inside them.
+- The source package no longer ships the tests.
+
 ## 0.20.0 (2026-11-08)
 
 0.20.0 adds yards, plugin results and study checks. Layout-only `cranes` and `stockpiles` sections and queue rows with slots show lifts, piles and full rows in playback, and a run counts the arrivals that find a row full. A plugin block can record its own KPIs and hand objects to the caller, and the plugin folders and Python policy files a person trusts live in a per-user store. Optimisation gains percentile and composite objectives with holdout seeds, and a study folder can be rerun step by step and its write-up numbers checked. Bundled models give the same results as 0.19.0, except level averages in three hybrid models, which differ in the last digit.

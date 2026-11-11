@@ -152,7 +152,13 @@ def current_point(layout, factors) -> dict:
         if not inside:
             raise ValueError(f"baseline: the model's {factor.name} = {value!r} is outside the "
                              "factor's range; widen the range to include it")
-        point[factor.name] = factor.coerce(value)
+        coerced = factor.coerce(value)
+        # #1725: snapping to the step grid would also evaluate another model than the person's.
+        if factor.kind != "categorical" and not math.isclose(float(coerced), float(value), abs_tol=1e-9):
+            raise ValueError(f"baseline: the model's {factor.name} = {value!r} is not on the factor's "
+                             f"grid (step {factor.step} from {factor.low}); change the step or the range "
+                             "so it includes the model's value")
+        point[factor.name] = coerced
     return point
 
 
@@ -277,8 +283,10 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         guarantee is about means (``selection.guaranteed`` is then False).
     penalties : sequence of (kpi, weight), default ()
         A composite objective: *response*'s statistic plus ``weight x mean(kpi)``
-        for each pair, in the response's units (``[("slot/Bay/Overflows", 30)]``
-        charges 30 time units per overflow). Constraints stay separate.
+        for each pair with goal "min", minus it with goal "max", in the response's
+        units (``[("slot/Bay/Overflows", 30)]`` charges 30 time units per
+        overflow): a positive weight always makes a point worse, a negative one
+        rewards the KPI. Constraints stay separate.
     holdout : int, default 0
         Replications on seeds the search never used (from *holdout_seed*, default
         ``seed + 1000000``) for the final candidates and the baseline: the
@@ -321,7 +329,9 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
     sign = -1.0 if goal == "min" else 1.0
     stat_of = experiments.statistic(statistic)        # refuses an unknown name at once
     quantile = str(statistic).strip().lower() != "mean"
-    penalties = [(str(kpi), float(weight)) for kpi, weight in penalties]
+    # A penalty always makes a point worse (#1731): added to a response to minimise, subtracted
+    # from one to maximise; from here on each weight carries that sign.
+    penalties = [(str(kpi), -sign * float(weight)) for kpi, weight in penalties]
     start = current_point(base, factors) if baseline else None
     if start is not None:
         warm_start_points = [start, *(warm_start_points or ())]

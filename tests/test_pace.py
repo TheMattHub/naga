@@ -137,7 +137,7 @@ def test_paced_replications_run_one_after_another(workers):
 def test_cli_pace_prints_its_summary(capsys, tmp_path):
     path = tmp_path / "m.json"
     path.write_text(json.dumps(_layout()), encoding="utf-8")
-    assert api.main([str(path), "--replications", "1", "--run-length", "5", "--pace", "1e6"]) == 0
+    assert api.main([str(path), "--replications", "1", "--run-length", "5", "--warmup", "0", "--pace", "1e6"]) == 0
     out = capsys.readouterr().out
     assert "paced at 1e+06x" in out and "late events" in out
 

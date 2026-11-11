@@ -505,7 +505,7 @@ def test_an_agent_adds_a_fixed_cost_and_reads_it_back_as_a_kpi(ws):
     assert records(model, "fixed_costs") == [{"name": "Machine capex", "category": "Capital",
                                               "amount": "servers_bought * 12000"}]
 
-    digest = ok(T.call("run_model", model=model, replications=1, run_length=50))
+    digest = ok(T.call("run_model", model=model, replications=1, run_length=50, warmup=0))
     assert digest["system"]["Total Cost"]["mean"] == 36000.0
 
     ok(remove(model, "fixed_costs", "Machine capex"))

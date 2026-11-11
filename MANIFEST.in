@@ -1,0 +1,2 @@
+# The tests need conftest, data and golden files the sdist does not carry (#1719): leave them out.
+prune tests

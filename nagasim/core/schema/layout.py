@@ -180,6 +180,13 @@ def _validate_simulation(layout: dict, problems: list) -> None:
         if unit is not None and unit not in table:
             problems.append(problem(code, f"simulation: unknown {key} '{unit}'",
                                     f"/simulation/{key}", hint=f"one of: {', '.join(table)}"))
+    # #1720: a warm-up that reaches the run's end leaves only zeros to report.
+    limit, warmup = sim.get("time_limit"), sim.get("warmup")
+    if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (limit, warmup)) \
+            and 0 < limit <= warmup:
+        problems.append(problem("E_WARMUP_PAST_END", f"simulation: the warm-up {warmup:g} reaches "
+                                f"the run length {limit:g}, so nothing would be observed",
+                                "/simulation/warmup", hint="shorten the warm-up or lengthen the run"))
     # The blocks whose departures are sampled (PHASE7 7.14, D290): names of blocks there
     # are. An authored model with submodels is judged again flattened, and its counted
     # names are the flattened ones: here they are only judged as a list.

@@ -210,6 +210,8 @@ class ModelDocument:
     """
     def __init__(self, layout: dict | None = None):
         self.path: Path | None = None
+        self.kept: dict = {}          # top-level keys this build does not know (load, D1193)
+        self.written_by = None        # the file's info.written_by, for W_WRITTEN_BY_NEWER (#1751)
         self.dirty = False
         self._listeners: list = []
         self._undo_stack: list[dict] = []
@@ -229,18 +231,36 @@ class ModelDocument:
     # -- persistence ----------------------------------------------------
     @classmethod
     def load(cls, path) -> "ModelDocument":
+        # #1722: a JSON file with none of a model's sections (a settings file, a results
+        # export) is refused, so a later Save cannot replace it with an empty model.
+        raw = schema.read_layout(path)
+        known = {s.name for s in sections.SECTIONS} | {"schema_version"}
+        if not isinstance(raw, dict) or not known & raw.keys():
+            raise schema.ModelValidationError(
+                [f"{Path(path).name} is not a Naga model: it has no blocks, levels, agent types "
+                 f"or other model section"])
         doc = cls(schema.load_layout(path))   # utf-8 (#253), migrated
+        # D1193: what this build does not know (a newer version's section, the editor's
+        # `$schema` pointer) goes back into the file on save, as it was.
+        doc.kept = {key: value for key, value in raw.items() if key not in known}
+        # The writer's version is the file's, not the model's: kept off the document, so a
+        # load and save round trip is the same model, and written again by `save`.
+        doc.written_by = doc.info.pop("written_by", None)
         doc.path = Path(path)
         doc.dirty = False
         return doc
 
-    def save(self, path=None) -> None:
+    def save(self, path=None, *, written_by: bool = True) -> None:
         target = Path(path) if path is not None else self.path
         if target is None:
             raise ValueError("ModelDocument.save: no path given and the document has no path")
         # D159: a saved file names every unit; what a session left "base" is
         # written as the model unit it means now (load fills the same way).
-        text = json.dumps(fill_units(self.to_layout()), indent=2)
+        from nagasim import __version__
+        out = {**self.kept, **fill_units(self.to_layout())}
+        if written_by:      # D1193; a bundled file skips it (it ships with its own version)
+            out["info"] = {**(out.get("info") or {}), "written_by": __version__}
+        text = json.dumps(out, indent=2)
         # D920: written next to the target, then swapped in by one os.replace, so a
         # crash or a full disk mid-write leaves the old file whole, never half of each.
         temp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
@@ -257,6 +277,8 @@ class ModelDocument:
             raise
         self.path = target
         self.dirty = False
+        if written_by:
+            self.written_by = __version__
 
     def to_layout(self) -> dict:
         return _declare_plugins({
@@ -483,7 +505,10 @@ class ModelDocument:
         through `schema.format_problems`. The background-image check lives
         here (not `core/schema/`) because it reads the filesystem next to the
         model file, not the layout dict."""
+        from nagasim.core.schema.prepare import _top_level_problems
         probs = schema.validate_model_structured(self.to_layout())
+        # #1751: what load moved off the layout (D1193) is still warned about.
+        probs += _top_level_problems({**self.kept, "info": {"written_by": self.written_by}})
         if self.background:
             path = self.background_abs_path()
             if path is not None and not path.exists():

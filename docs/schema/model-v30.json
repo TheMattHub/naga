@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://thematthub.github.io/naga/schema/model-v29.json",
-  "title": "Model file, schema version 29",
+  "$id": "https://thematthub.github.io/naga/schema/model-v30.json",
+  "title": "Model file, schema version 30",
   "description": "A discrete-event model: blocks, the links between them, the resources they seize, and the run settings. Generated from the live registries (nagasim.modelschema). RECORD kinds: count, tally, time_between, time_persistent, cost. CREATE arrival modes: Interarrival, Schedule, Orders.",
   "type": "object",
   "properties": {
@@ -12,8 +12,8 @@
     },
     "schema_version": {
       "type": "integer",
-      "maximum": 29,
-      "default": 29,
+      "maximum": 30,
+      "default": 30,
       "description": "Older files migrate on load; a newer one is refused."
     },
     "blocks": {
@@ -290,6 +290,10 @@
         "notes": {
           "type": "string",
           "description": "Free notes about the model."
+        },
+        "written_by": {
+          "type": "string",
+          "description": "The nagasim version that last saved the file, written on every save (D1193)."
         },
         "labels": {
           "enum": [
@@ -13772,6 +13776,13 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "Its place among arrivals drawn at one instant for one instant."
+              },
+              "times": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "description": "A jittered FixedSchedule's times still to come after the next one."
               }
             },
             "additionalProperties": false
@@ -13815,7 +13826,7 @@
         },
         "blocks": {
           "type": "object",
-          "description": "Per block, what it carries: a changeover's setup key its last job left; a BATCH's running maximum wait, the time it falls due; a CONVEYOR's next free entry slot and when the last part left each of its points and its end.",
+          "description": "Per block, what it carries: a changeover's setup key its last job left; a BATCH's running maximum wait, the time it falls due; a CONVEYOR's next free entry slot and when the last part left each of its points and its end; for a slot row that frees at move_end, when each load still moving out of it frees its slot.",
           "additionalProperties": {
             "type": "object",
             "properties": {
@@ -13847,6 +13858,12 @@
                   "items": {
                     "type": "number"
                   }
+                }
+              },
+              "frees": {
+                "type": "array",
+                "items": {
+                  "type": "number"
                 }
               }
             },

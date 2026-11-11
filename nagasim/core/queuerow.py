@@ -104,26 +104,29 @@ def slots_of(value) -> dict | None:
     return {"slots": value["slots"], "frees": value.get("frees", "leave"), "label": value.get("label", "")}
 
 
-def _changes(events, block: str, frees: str) -> list[tuple[float, int]]:
+def _changes(events, block: str, frees: str, until: float = math.inf) -> list[tuple[float, int]]:
     """(time, +1 entry / -1 slot freed) of *block*, from a trace's events, in time order: the
     trace replayed through `SlotCounter`, the run's own counter, so the player and the
-    "slot_summary" frame cannot drift apart (D1180)."""
+    "slot_summary" frame cannot drift apart (D1180). A change after *until*, the run's end, is an
+    entry dated at the end of a move the run did not finish (#1733). A trace does not say where
+    the run ended (its last event may be earlier: an entity that waits emits nothing), so the
+    bound is the caller's; the player shows nothing after the last event anyway."""
     counter = SlotCounter({block: {"slots": 0, "frees": frees, "label": ""}})
     for e in sorted(events, key=lambda e: e.t):
         counter.record(e.kind, e.block, e.entity_id, e.t, e.target, e.duration)
-    return sorted(counter.changes[block], key=lambda c: c[0])
+    return sorted((c for c in counter.changes[block] if c[0] <= until), key=lambda c: c[0])
 
 
-def _instants(events, block: str, frees: str, eps: float):
-    return _grouped(_changes(events, block, frees), eps)
+def _instants(events, block: str, frees: str, eps: float, until: float = math.inf):
+    return _grouped(_changes(events, block, frees, until), eps)
 
 
-def _grouped(changes, eps: float):
+def _grouped(changes, eps: float, held: int = 0):
     """[(time, slots held after it, an entry in it)] per instant of *changes*, (time, +1/-1)
-    pairs in time order; changes within *eps* of each other are one instant, as a model that
-    lets every event of an instant land first. Within an instant the order does not matter: the
-    count after it is their sum."""
-    rows, held = [], 0
+    pairs in time order, from *held* slots held at the start; changes within *eps* of each other
+    are one instant, as a model that lets every event of an instant land first. Within an
+    instant the order does not matter: the count after it is their sum."""
+    rows = []
     for t, d in changes:
         if rows and t - rows[-1][3] <= eps:
             t0, _h, entry, _last = rows[-1]
@@ -135,16 +138,19 @@ def _grouped(changes, eps: float):
     return [(t, h, entry) for t, h, entry, _last in rows]
 
 
-def held_series(events, block: str, frees: str = "leave", eps: float = 1e-9) -> list[tuple[float, int]]:
-    """[(time, slots held from then on)] of *block* (D1113): a step series for a counter."""
-    return [(t, h) for t, h, _entry in _instants(events, block, frees, eps)]
+def held_series(events, block: str, frees: str = "leave", eps: float = 1e-9,
+                until: float = math.inf) -> list[tuple[float, int]]:
+    """[(time, slots held from then on)] of *block* (D1113) up to *until*: a step series for a
+    counter."""
+    return [(t, h) for t, h, _entry in _instants(events, block, frees, eps, until)]
 
 
 def overflow_instants(events, block: str, slots: int, frees: str = "leave",
-                      eps: float = 1e-9) -> list[float]:
-    """The instants at which an entity enters *block* and more than *slots* are held after
-    every change of that instant (D1113): one overflow each, however many enter at once."""
-    return [t for t, h, entry in _instants(events, block, frees, eps) if entry and h > slots]
+                      eps: float = 1e-9, until: float = math.inf) -> list[float]:
+    """The instants up to *until* at which an entity enters *block* and more than *slots* are
+    held after every change of that instant (D1113): one overflow each, however many enter at
+    once."""
+    return [t for t, h, entry in _instants(events, block, frees, eps, until) if entry and h > slots]
 
 
 class SlotCounter:
@@ -153,11 +159,18 @@ class SlotCounter:
     replayed from a trace (`record`, through `_changes`: one rule for the run and the player,
     D1180). An entity enters at the end of its move in and frees its slot when it leaves, or
     with `move_end` when its timed move out ends, so a change may lie ahead of the clock;
-    `overflow_count` sorts them."""
+    `overflow_count` sorts them.
+
+    A run started from a state holds the slots of what the state places (`placing`, set by
+    `initial_state.apply`) from its start, in `held`: those entities did not enter (#1734). It
+    is a count, not a change at the clock, because an arrival due at the clock is a real entry
+    (#1754) and a clock of 0 is a state too (#1753)."""
 
     def __init__(self, rows: dict):
         self.rows = rows                                  # block name -> slots_of(...)
         self.changes = {name: [] for name in rows}
+        self.held = {name: 0 for name in rows}
+        self.placing = False
         self._inside = {name: set() for name in rows}
 
     def __call__(self, name, *, block=None, entity=None, t=0.0, target=None, duration=0.0, **_):
@@ -168,7 +181,10 @@ class SlotCounter:
         if name == "entity_created":
             if here in self.rows:
                 self._inside[here].add(eid)
-                self.changes[here].append((t, 1))
+                if self.placing:
+                    self.held[here] += 1
+                else:
+                    self.changes[here].append((t, 1))
         elif name == "entity_moved":
             if not target or target == here:
                 return
@@ -184,13 +200,23 @@ class SlotCounter:
                 self._inside[here].discard(eid)
                 self.changes[here].append((t, -1))
 
+    def lifted(self, here, frees) -> None:
+        """Slots of *here* held from the start by loads a state has on their way out of it,
+        each freed when its timed move ends at a time of *frees* (`frees: move_end`, #1749)."""
+        self.held[here] += len(frees)
+        self.changes[here].extend((float(t), -1) for t in frees)
 
-def overflow_count(changes, slots: int, since: float = 0.0, eps: float = 1e-9) -> tuple[int, int]:
-    """(entries, overflow instants) at or after *since* among *changes*: the `overflow_instants`
-    rule on a `SlotCounter`'s record."""
-    ordered = sorted(changes, key=lambda c: c[0])
+
+def overflow_count(changes, slots: int, since: float = 0.0, eps: float = 1e-9,
+                   until: float = math.inf, held: int = 0) -> tuple[int, int]:
+    """(entries, overflow instants) from *since* to *until*, both included, among *changes*, with
+    *held* slots held from the start (`SlotCounter.held`): the `overflow_instants` rule on a
+    `SlotCounter`'s record. A change after *until*, the run's end, is an entry dated at the end
+    of a move the run did not finish (#1733)."""
+    ordered = sorted((c for c in changes if c[0] <= until), key=lambda c: c[0])
     entries = sum(1 for t, d in ordered if d > 0 and t >= since)
-    overflows = sum(1 for t, h, entry in _grouped(ordered, eps) if entry and h > slots and t >= since)
+    overflows = sum(1 for t, h, entry in _grouped(ordered, eps, held)
+                    if entry and h > slots and t >= since)
     return entries, overflows
 
 

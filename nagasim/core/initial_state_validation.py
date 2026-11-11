@@ -252,6 +252,23 @@ def _check_arrivals(c) -> None:
                      "whole number, orders the ones drawn for one instant at one instant"))
         elif drawn is not None:
             ties.setdefault((due, drawn), []).append((name, rank))
+        times = spec.get("times") if isinstance(spec, dict) else None
+        if times is not None:
+            # #1732: a jittered timetable's times not yet due, in order, from the next one on.
+            params = (block or {}).get("params") or {}
+            listed = (params.get("dist_params") or {}).get("schedule")
+            floor = max(start, due) if is_finite_number(due) else start
+            if not (isinstance(times, list) and params.get("distribution") == "FixedSchedule"
+                    and mode == "Interarrival" and isinstance(listed, list)
+                    and len(times) <= len(listed)
+                    and all(is_finite_number(t) for t in times)
+                    and all(a <= b for a, b in zip([floor] + times, times))):
+                problems.append(problem(
+                    "E_INITIAL_ARRIVALS", f"initial_state: arrivals of '{name}': times must be "
+                    f"the jittered times of its FixedSchedule still to come, in order, at or after "
+                    f"the next time and the clock", f"/{SECTION}/arrivals/{name}/times",
+                    hint="what `naga state take` writes for a timetable with a jitter; no more "
+                         "times than the schedule lists"))
     for tied in ties.values():
         ranks = [rank for _name, rank in tied if rank is not None]
         # A rank on all of two or more, each its own, or on none (an older document: block
@@ -390,17 +407,23 @@ def _check_blocks(c) -> None:
                 and len(v) == n and all(isinstance(times, list) and all(
                     is_finite_number(t) and t <= start for t in times)
                     and times == sorted(times) for times in v)
+        row = (block.get("queue_row") or {}) if isinstance(block.get("queue_row"), dict) else {}
+        if row.get("slots") and row.get("frees") == "move_end":     # #1749
+            fits["frees"] = lambda v: isinstance(v, list) and all(
+                is_finite_number(t) and t >= start for t in v)
         if not (isinstance(spec, dict) and spec and set(spec) <= set(fits)
                 and all(fits[key](value) for key, value in spec.items())):
             problems.append(problem(
                 "E_INITIAL_BLOCK", f"initial_state: blocks.{name} must be a block of this model "
                 f"with what it carries: setup (a changeover), due (a BATCH's maximum wait, with "
-                f"parts waiting there), next_entry or left (a CONVEYOR)",
+                f"parts waiting there), next_entry or left (a CONVEYOR), frees (a slot row that frees "
+                f"at move_end)",
                 f"/{SECTION}/blocks/{name}",
                 hint="setup is the key the station's last job left; due and next_entry are "
                      "absolute times, due at or after the clock; left is a list, one time or "
                      "null per stop, divert and merge and one for the end, each at or before "
-                     "the clock"))
+                     "the clock; frees lists when the loads moving out free their slots, "
+                     "at or after the clock"))
 
 def _check_entry(c, index, entry) -> None:
     """One entry of `entities`."""

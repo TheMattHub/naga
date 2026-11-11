@@ -17,12 +17,13 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 - **Sharper studies.** `optimize` searches on a percentile or a composite with penalties and checks
   the winner on unseen holdout seeds; `experiments.size_capacity` sizes a capacity on paired
   runs, and `tornado` takes named structural changes. A FixedSchedule takes a `jitter`.
-- **Studies you can check.** `naga study rerun` runs a folder's `reproduce.json` steps and compares
-  their outputs, and `naga study numbers` checks every tagged number of a write-up against its
+- **Studies you can check.** `naga study rerun` reruns a folder's versions (its `reproduce.json` steps
+  only with `--steps`), and `naga study numbers` checks every tagged number of a write-up against its
   source file, as in the snippet below.
 - **Before you upgrade.** Bundled models give the same results, except level averages in three
   hybrid models, which differ in the last digit.
 
+<!-- no-run: my_study stands for your own study folder -->
 ```console
 naga study numbers my_study
 ```
@@ -242,7 +243,7 @@ print(m.run().kpis().head())
   builds it again, the bundled models included, so you can start from an example.
 - **Short, readable model files.** `naga fmt` rewrites a file in its shortest form (defaults
   left out) without changing what it does; the bundled models ship that way. Add
-  `"$schema": "https://thematthub.github.io/naga/schema/model-v29.json"` and an editor completes
+  `"$schema": "https://thematthub.github.io/naga/schema/model-v30.json"` and an editor completes
   the keys of a JSON model too.
 - **A twin from plant data on more lines.** A state read from a live plant now covers conveyors,
   batches, transfers and robot and cobot cycles, so a twin forecasts the warehouse and

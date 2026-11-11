@@ -761,6 +761,14 @@ def _read(session, tap: Tap) -> dict:
             arrivals[name]["next"] = float(block.next_at)
             if block.scheduled_at is not None:      # #467; None: an older document's
                 arrivals[name]["scheduled"] = float(block.scheduled_at)
+        # #1732: a jittered timetable drew all its times at its first arrival; the ones not
+        # yet due go with the state, or the resumed run would draw new ones.
+        drawn = getattr(block.time_between_arrivals, "_state", {}).get("times")
+        if block.arrival_mode == "Interarrival" and drawn is not None:
+            cursor = block.time_between_arrivals._state.get("cursor", 0)
+            if "next" in arrivals[name]:    # it is drawn[cursor - 1], or drawn[0] put back by a
+                cursor = max(cursor, 1)     # state and not yet reached: never in `times` too
+            arrivals[name]["times"] = [float(t) for t in drawn[cursor:]]
     # #472: two drawn in one instant for one instant come in their events' queue order,
     # which `rank` carries (only on such a tie); put back and not yet run, their own rank.
     eids = {id(event): eid for _t, _p, eid, event in session.env._queue}
@@ -828,6 +836,13 @@ def _read(session, tap: Tap) -> dict:
             if block.block.block_type == "CONVEYOR" and block.accumulating else {}
         if history:
             setups.setdefault(name, {}).update(history)
+    # #1749: a load on its timed move out of a `frees: move_end` slot row holds its slot until
+    # the move ends; the entity's entry is at the next block, so the row carries those times.
+    counter = ctx.slot_counter
+    for name, changes in (counter.changes.items() if counter is not None else ()):
+        frees = sorted(float(t) for t, d in changes if d < 0 and t > now)
+        if frees:
+            setups.setdefault(name, {})["frees"] = frees
     if setups:              # D263: what each station is set up for; a changeover under
         state["blocks"] = setups        # way is refused with the job that is in it
     fleets, trips = _fleets(session)

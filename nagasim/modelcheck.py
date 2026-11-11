@@ -481,7 +481,7 @@ _GATE_SHOWN = 5      # problems named in a failed gate's message; the rest are c
 
 
 def open_and_run(path_or_layout, *, replications: int | None = 1, seed: int = 0, workers: int = 1,
-                 runs: dict | None = None) -> Result:
+                 runs: dict | None = None, max_seconds: float | None = None) -> Result:
     """The open-and-run gate (U5, D1118): does the model open in the editor's loader with no
     error, using the plugins this user enabled, and run one replication?
 
@@ -497,17 +497,28 @@ def open_and_run(path_or_layout, *, replications: int | None = 1, seed: int = 0,
     *runs* (by replication count, as `check` does), so its assertions and laws reuse it rather
     than run the model again.
 
-    Returns a `Result` of kind "gate", status "pass" or "fail".
+    *max_seconds* is a wall-clock budget for the run (S8-12): a run it stops is neither a pass nor a
+    fail but status "inconclusive", "opens with no errors; the run was stopped after N s".
+
+    Returns a `Result` of kind "gate", status "pass", "fail" or "inconclusive".
     """
+    import time
     from nagasim.core import schema
     from nagasim.core.document import ModelDocument
     from nagasim.plugins import load_plugins
 
     load_plugins()
 
-    def verdict(passed: bool, message: str) -> Result:
+    def verdict(passed: bool | None, message: str) -> Result:
         return Result("open and run", None, None, None, None, None, None, None,
-                      "pass" if passed else "fail", message, "gate")
+                      "inconclusive" if passed is None else "pass" if passed else "fail", message, "gate")
+
+    deadline = time.monotonic() + max_seconds if max_seconds and max_seconds > 0 else None
+    stopped = [False]
+
+    def should_stop() -> bool:
+        stopped[0] = stopped[0] or time.monotonic() > deadline
+        return stopped[0]
 
     try:
         layout = schema.load_layout(path_or_layout)
@@ -533,11 +544,14 @@ def open_and_run(path_or_layout, *, replications: int | None = 1, seed: int = 0,
         if replications is None:
             replications = api.run_settings(layout, None, None, None)[0]
         results = api.run_model(path_or_layout if isinstance(path_or_layout, (str, Path)) else layout,
-                                replications=replications, seed=seed, workers=workers)
+                                replications=replications, seed=seed, workers=workers,
+                                should_stop=should_stop if deadline is not None else None)
     except PermissionError:          # Python behaviour without the caller's consent: theirs to give
         raise
     except Exception as exc:         # a plugin or a block raising: the gate reports it, never raises
         return verdict(False, f"does not run: {type(exc).__name__}: {exc}")
+    if stopped[0]:
+        return verdict(None, f"opens with no errors; the run was stopped after {max_seconds:g} s")
     if results is None:
         return verdict(False, "does not run: the replication produced no results")
     if runs is not None:

@@ -54,8 +54,23 @@ def find_browser() -> Path | None:
     return None
 
 
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Stop the browser and the helpers it started; killing only the parent leaves them running."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
+    else:
+        import signal
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+    proc.kill()
+    proc.wait()
+
+
 def print_pdf(html: Path, pdf: Path, browser: Path) -> None:
     """Print *html* to *pdf* with *browser* (headless). Raises DeckError when no PDF comes out."""
+    pdf = pdf.resolve()  # the browser would read a relative path against its own folder (#1743)
     pdf.unlink(missing_ok=True)
     # A browser killed at the timeout can leave helpers holding the profile (#858): its
     # folder is left for the system to clear rather than raise over the DeckError.
@@ -63,10 +78,15 @@ def print_pdf(html: Path, pdf: Path, browser: Path) -> None:
         args = [str(browser), "--headless", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                 "--disable-extensions", "--host-resolver-rules=MAP * ~NOTFOUND", f"--user-data-dir={profile}",
                 "--no-pdf-header-footer", f"--print-to-pdf={pdf}", html.resolve().as_uri()]
+        # Output to DEVNULL: a pipe nobody drains can block a browser whose helpers inherit it (#1743).
         try:
-            subprocess.run(args, capture_output=True, timeout=TIMEOUT_S, check=False)
-        except subprocess.TimeoutExpired:
-            raise DeckError(f"the browser did not finish within {TIMEOUT_S} s") from None
+            proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
+            try:
+                proc.wait(timeout=TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                _kill_tree(proc)
+                raise DeckError(f"the browser did not finish within {TIMEOUT_S} s") from None
         except OSError as exc:
             raise DeckError(f"the browser could not start ({exc})") from None
     head = b""

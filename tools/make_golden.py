@@ -13,6 +13,10 @@ commit/report; regenerating it to silence a failing test defeats the test.
 """
 from __future__ import annotations
 
+try:       # first: the shipped registries only, never the user's trusted plugins (tools/_isolate.py)
+    from tools import _isolate  # noqa: F401
+except ImportError:     # run as a script: tools/ itself is on sys.path
+    import _isolate  # noqa: F401
 import hashlib
 import json
 import sys
@@ -160,4 +164,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.parse_args()
     raise SystemExit(main())

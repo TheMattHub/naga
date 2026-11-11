@@ -158,7 +158,8 @@ def main(argv=None, command: str = "doe") -> int:
                                  "a percentile such as p95")
         parser.add_argument("--penalty", action="append", dest="penalties", default=None,
                             metavar="KPI:WEIGHT",
-                            help="add WEIGHT x mean(KPI) to the objective; repeatable")
+                            help="charge WEIGHT x mean(KPI) against the objective (added when "
+                                 "minimising, subtracted when maximising); repeatable")
         parser.add_argument("--holdout", type=int, default=0, metavar="N",
                             help="evaluate the final points (and --baseline) on N seeds the "
                                  "search never used, from --holdout-seed")
@@ -230,7 +231,7 @@ def main(argv=None, command: str = "doe") -> int:
         return 0
     print(f"Best point: {_fmt_point(result.best)}")
     label = args.response if args.statistic == "mean" and not args.penalties else (
-        f"objective ({args.statistic} of {args.response}{' + penalties' if args.penalties else ''})")
+        f"objective ({args.statistic} of {args.response}{' with penalties' if args.penalties else ''})")
     print(f"{label} = {result.best_mean:.6g} "
           f"({'converged' if result.converged else 'budget or step limit reached'}; "
           f"{result.budget_used} replications)")

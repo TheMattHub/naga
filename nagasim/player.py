@@ -144,6 +144,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { border-bottom: 1px solid var(--line); padding: 3px 6px; text-align: right; }
 th:first-child, td:first-child { text-align: left; }
+/* A cell wraps between words only (bug 1761); a KPI key also after each "/" (a wbr). Wider
+   than its card, the table scrolls in its own box (bug 1748), never splitting a word. */
+#all th, #all td { overflow-wrap: normal; hyphens: manual; }
 .note { color: var(--muted); margin: 2px 0; }
 summary { cursor: pointer; }
 summary h2 { display: inline; }
@@ -1496,10 +1499,14 @@ function boot() {
       text = add("tr", el("all"));
       ["player.all_kpi", "player.all_mean", "player.all_interval", "player.all_this"].forEach(function (head) { add("th", text, tr(head)); });
       data.kpis.forEach(function (row) {
-        var line;
+        var line, cell;
         if (row[1] !== state.name) { return; }
         line = add("tr", el("all"));
-        add("td", line, row[0]);
+        cell = add("td", line);
+        String(row[0]).split("/").forEach(function (part, index, parts) {
+          add("span", cell, part + (index < parts.length - 1 ? "/" : ""));
+          if (index < parts.length - 1) { add("wbr", cell); }
+        });
         add("td", line, fmt(row[2]));
         add("td", line, tr("range", {lo: fmt(row[3]), hi: fmt(row[4])}));
         add("td", line, fmt(row[5]));
@@ -1561,7 +1568,10 @@ function boot() {
     el("overlay-box").hidden = false;
     el("overlay").addEventListener("change", function () { state.overlay = el("overlay").checked; wake(); });
   }
-  data.scenarios.forEach(function (name) { add("button", el("tabs"), scenarioName(name), "tab").value = name; });
+  /* The player's own tabs are already in the page, so its header has its height at first paint. */
+  if (!el("tabs").children.length) {
+    data.scenarios.forEach(function (name) { add("button", el("tabs"), scenarioName(name), "tab").value = name; });
+  }
   el("tabs").hidden = data.scenarios.length < 2;
   el("tabs").addEventListener("click", function (event) {
     var name = event && event.target ? event.target.value : undefined;
@@ -2060,7 +2070,7 @@ def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked
         frames = experiment.results
     else:
         frames = {names[0]: results} if results is not None else {}
-    warmup = float((layout.get("simulation") or {}).get("warmup") or 0)
+    model_warmup = float((layout.get("simulation") or {}).get("warmup") or 0)
     texts = uncertainty.trust_texts(asked, language)
     out = {}
     for name in names:
@@ -2074,6 +2084,10 @@ def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked
             mean, lo, hi = (first["yours"][key] for key in ("mean", "lo", "hi"))
             if mean and all(v is not None and math.isfinite(v) for v in (lo, hi)):
                 half = 50 * (hi - lo) / abs(mean)
+        # #1760: the warm-up the results were measured after (a run may override the file's).
+        used = (getattr(experiment, "warmups", {}).get(name) if experiment is not None
+                else vars(frames[name]).get("_warmup") if hasattr(frames[name], "__dict__") else None)
+        warmup = model_warmup if used is None else float(used)
         out[name] = {"laws_pass": found["passed"], "laws_warn": len(found["partial"]),
                      "warmup": warmup, "replications": seeds.get(name, (None, 1))[1],
                      "half_width_pct": half, "input_text": texts["input"], "params_text": texts["params"]}
@@ -2125,6 +2139,17 @@ def _neck(run: dict, layout: dict | None = None) -> dict | None:
     return out
 
 
+def page_title(layout: dict, fallback: str = "Model") -> str:
+    """The title of a page made from the command line: the dashboard's question, else the model's
+    `info.title`, else *fallback* made readable ("line_with_buffers" -> "Line with buffers") (#1745)."""
+    layout = layout or {}
+    for text in ((layout.get("dashboard") or {}).get("question"), (layout.get("info") or {}).get("title")):
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    words = " ".join(str(fallback).replace("_", " ").replace("-", " ").split()) or "Model"
+    return words[:1].upper() + words[1:]
+
+
 def build_player(layout: dict, recordings: dict, *, results=None, experiment=None,
                  title: str | None = None, view: str | None = None, pictures: dict | None = None,
                  samples: int = tape.SAMPLES, tokens: dict | None = None, start: str | None = None,
@@ -2157,6 +2182,10 @@ def build_player(layout: dict, recordings: dict, *, results=None, experiment=Non
     shell = page_shell(tokens=tokens, language=language)   # a bad token or language: refused first
     view = view or tape.default_view(layout)
     names = list(recordings)
+    words = pagetext.table(language)
+    shown = {"Baseline": words["name.baseline"], "Yours": words["name.yours"]}
+    tabs = "".join('<button type="button" class="tab" value="%s">%s</button>' % (
+        pagetext._html(name), pagetext._html(shown.get(name, name))) for name in names)
     overrides = {scenario.get("name"): scenario.get("overrides") or []
                  for scenario in scenarios_of(layout)}
     seeds, rows = _replications(results, experiment, names)
@@ -2180,9 +2209,12 @@ def build_player(layout: dict, recordings: dict, *, results=None, experiment=Non
             runs[name] = run
         data = {"title": title or pagetext.table(language)["player.untitled"], "scenarios": names, "runs": runs, "kpis": rows,
                 "results": rows_by_scenario, "trust": trust,
-                "unit": unit, "unit_s": UNITS.get(unit, 1), "pics": images, "art": art,
+                # The unit as the page names it (#1762); its length in seconds from the model's.
+                "unit": pagetext.unit(unit, words), "unit_s": UNITS.get(unit, 1), "pics": images, "art": art,
                 "start": start}
         page = shell.replace("__TAPE__", embed(data))
+        # After the tape is in: a scenario name that reads "__TAPE__" must not meet the placeholder.
+        page = re.sub(r'(<div id="tabs" class="tabs"[^>]*>)', lambda found: found.group(1) + tabs, page, count=1)
         if len(page) <= MAX_BYTES:
             break
         if samples <= tape.MIN_SAMPLES:

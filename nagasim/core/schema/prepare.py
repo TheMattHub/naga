@@ -3,10 +3,11 @@ one read -> migrate -> validate -> flatten -> sd.expand pass (`prepare`), the
 whole-model validators and `requires_run_length`."""
 from __future__ import annotations
 
+import itertools
 import json
 from pathlib import Path
 
-from nagasim.core import queuerow, sd, submodels
+from nagasim.core import queuerow, sd, sections, submodels
 from nagasim.core.orders import ORDERS_MODE
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.graph import long_name_problem, validate_graph_structured
@@ -42,7 +43,39 @@ def _prepare_structured(layout: dict) -> tuple[dict, list[Problem]]:
     The queue-row checks (D1089) read the placed instances as saved, before
     flattening removes them, and never touch the layout that runs."""
     flat, problems = _prepare_flat(layout)
-    return flat, problems + queuerow.problems(layout)
+    return flat, problems + queuerow.problems(layout) + _top_level_problems(layout)
+
+
+def _top_level_problems(layout: dict) -> list[Problem]:
+    """D1193: a top-level key this build does not know is kept by the document, so it is a
+    warning with its nearest name, not an error; a file a newer nagasim saved is named."""
+    from nagasim import __version__
+    from nagasim.core.suggest import did_you_mean
+    known = [s.name for s in sections.SECTIONS] + ["schema_version", "$schema"]
+    found = []
+    for key in layout:
+        if key not in known:
+            said = did_you_mean(key, known)
+            found.append(problem("W_UNKNOWN_KEY", f"unknown top-level key '{key}': this build "
+                                 "does not use it and keeps it as it is", f"/{key}",
+                                 hint=said or "a section of a newer version, or a misspelt one"))
+    info = layout.get("info")
+    writer = info.get("written_by") if isinstance(info, dict) else None
+    if isinstance(writer, str) and _version(writer) > _version(__version__):
+        found.append(problem("W_WRITTEN_BY_NEWER", f"saved by nagasim {writer}, newer than this "
+                             f"{__version__}", "/info/written_by", hint="upgrade nagasim to read it as written"))
+    return found
+
+
+def _version(text: str) -> tuple:
+    """'0.20.1' -> (0, 20, 1); anything after the numbers is ignored."""
+    parts = []
+    for piece in text.split("."):
+        digits = "".join(itertools.takewhile(str.isdigit, piece))
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
 
 
 def _prepare_flat(layout: dict) -> tuple[dict, list[Problem]]:
