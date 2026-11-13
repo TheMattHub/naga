@@ -2,7 +2,18 @@
 
 ## Unreleased
 
+Added:
+
+- Studies: a person can record their own check that the model matches reality, with the live room's "I checked this" form or `naga study confirm FOLDER --text ... --against ... [--by NAME] [--failed]`. Only the engine (`study_validate`) or the person makes the validation item pass; an assistant's note reads "reported, not checked", and a check reopens when the model's blocks or links change.
+- Studies: each option's difference from the Baseline comes with its paired 95% interval (`diff_vs_baseline`, common seeds), a modest note when a goal KPI is markedly steadier, and goal tables that lead with the recommended option.
+- Python: `Results.interval(key)`, a short `repr`, and `run_model` takes a bundled model's name.
+- `naga --version`, the nearest command for a misspelt one, and a short table for `naga scenarios`.
+
 Changed:
+
+- MCP: every tool declares a typed output schema and each answer is sent once as structured content with a one-line summary (breaking for clients that parsed the text answer).
+- `naga run --json` rows carry `key` and `ci95`; the old field names are deprecated.
+- Long tools (`study_step`, `study_validate`, `optimize`) report progress and can be stopped between replications.
 
 - `naga plugins` lists the plugin folders that load (and honours `--no-plugins`); an unknown `--export` format is refused before the run with exit 2.
 - Every command on the hand-written documentation pages runs in the release check; the SimPy page's example and the quickstart notebook run as written.
@@ -14,6 +25,9 @@ Fixed:
 - A zero, negative or empty distribution value is `E_DIST_PARAM_VALUE` before the run, and a run error names its block on one line. Now refused where they ran before: a Triangular out of order, a Bernoulli p outside [0, 1], an explicit null number.
 - A wrongly shaped tool argument answers E_BAD_ARGUMENT naming it, not a raw Python error; an unknown `logic_class` is `E_LOGIC_CLASS_UNKNOWN`.
 - `naga fit` no longer prints a SciPy FutureWarning on SciPy 1.17 and later.
+- The live study room refuses a HEAD request on the routes that write.
+- On Windows a study, DOE or optimisation whose worker process never started could hang forever; it now stops after 120 s with a clear error.
+- The paired interval's bounds are plain floats in a Python answer.
 - The PyPI page links the changelog and issues, its README links work, and the wheel ships `CITATION.cff`.
 
 ## 0.20.1 (2026-11-11)

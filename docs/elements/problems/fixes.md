@@ -36,7 +36,7 @@ E_CONVEYOR_MERGE: Write each merge as `at`, `from` and optionally `priority`, wi
 E_SEND_TARGET: Write `to` as `entity.agent`, an `AGENT("Pop", i)` expression, or an object with a `population`. A SEND block needs a model that declares at least one population.
 E_SUBMODEL: Read the message for the definition that failed to flatten. The usual causes are a missing definition, an argument the definition does not declare, or a link to a port that does not exist.
 E_SCENARIO_OVERRIDE: Give every override a `path` and a `value`. A path has the form `resources.<name>.capacity`, as listed on the section's page.
-W_UNKNOWN_KEY: Remove the key, or correct its spelling. The model file format drops keys it does not have, so the setting would be lost when the file is saved.
+W_UNKNOWN_KEY: Correct the key's spelling to the nearest valid name the hint gives, or remove it. The file keeps a key it does not know through load and save, but no run reads it, so the setting has no effect.
 E_SCHEMA_VERSION: Open the file with a newer version of the tool. It was written by a version that is newer than this one, so this build cannot be sure to read it right.
 W_UNBOUNDED_DURATION: Use a distribution that cannot go below 0, such as `Lognormal`, `Gamma` or `BoundedNormal` in place of `Normal`. Negative samples are cut to 0, which raises the mean.
 E_BUILDING: Correct the part of the `building` section the path names. The `building` section page gives the shape of each room, wall line, opening, marking, label and fixture, and the hint names the field or colour that is wrong.

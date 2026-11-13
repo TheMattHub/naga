@@ -114,6 +114,27 @@ model is in it, text from the model is shown as text and never read as markup, a
 Content-Security-Policy makes the browser refuse every request and every script but the page's
 own.
 
+## The live study room
+
+The live room of a study (`naga room FOLDER`, or `naga mcp --room`) is a small web server on your
+machine, and any web page you have open could try to reach it. So every request must prove it comes
+from the room's own page:
+
+- **Only you start it.** A command or a server flag starts the room; no tool argument or model file can.
+- **On this machine only.** It listens on `127.0.0.1` at a random port, and the Host header must name
+  that address and port, which stops DNS rebinding.
+- **A token.** A random token comes in the link on the first load, then in a cookie a foreign site can
+  neither read nor send; no log line holds it.
+- **Writes are POSTs from the room's page.** A route that writes needs a POST with a JSON body and an
+  Origin equal to the room's own, and a GET or HEAD never reaches it. Bodies are capped, and files are
+  served from the study folder only.
+- **A short list of buttons.** They reach a fixed set of study tools (outputs, revert, accept,
+  re-validate), always on the room's own study.
+- **The person's check is the person's.** The **I checked this** form writes a check by the person,
+  and so does `naga study confirm`. No agent tool can record, change or remove such a check; a
+  tool that writes the study keeps it exactly as stored. The time and version are set by the
+  engine, never taken from the form.
+
 ## Residual risks
 
 - **A `sql` source is not pinned to its vetted address**: the database driver resolves the host

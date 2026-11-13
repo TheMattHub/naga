@@ -59,7 +59,8 @@ Besides the tools the server publishes:
 client pays for fewer tool descriptions on every turn and picks among fewer. Tool names, arguments
 and answers are the same in every profile, and a tool outside the profile cannot be called by name.
 The default, `--tools all`, publishes every tool. Only the person who starts the server chooses a
-profile; no tool argument can change it.
+profile; no tool argument can change it. The server's instructions name only the profile's own tools,
+and `find_tool` is in every profile, so an assistant can always search for the right tool.
 
 | Profile | Tools | For |
 |---|---|---|
@@ -89,14 +90,21 @@ Every flag of `naga mcp` is set by the person who starts the server; no tool arg
 - **An edit answers with the problems it introduced and the ones it fixed**, each with a stable
   code, a path into the model and a hint. An agent learns of a broken model at the edit, not at
   the run.
-- **An error is a value**, `{"error": {"code", "message", "hint"}}`, never a traceback.
+- **An error is a value**, `{"error": {"code", "message", "hint"}}`, never a traceback. Over MCP
+  the answer is also flagged `isError`, and a wrongly shaped argument answers `E_BAD_ARGUMENT`
+  naming it, before the tool runs.
+- **An answer is data, sent once.** Each tool publishes a typed `outputSchema`, and its answer
+  is the `structuredContent` with a one-line text summary beside it. A client that reads only
+  the text gets the summary, not the answer.
 - **A result is a digest.** `run_model` returns the system KPIs with their confidence-interval
   half-widths and a summary per resource; `get_kpi_table` pages a whole frame on request.
 - **A long call reports its progress.** A client that sends a progress token gets progress
   notifications from `run_model`, `run_scenarios`, `run_to_precision`, `forecast`, `optimize`,
-  `calibrate`, `fit_surrogate` and `study_step`.
+  `calibrate`, `fit_surrogate`, `study_step` and `study_validate`.
 - **Every edit can be undone** (`undo`, `redo`).
-- **Tool names are permanent.** So are problem codes.
+- **Tool names are permanent.** So are problem codes. A tool merged into another keeps answering
+  under its old name, unlisted: `import_xmile` and `import_mdl` are now `import_sd_model` (it
+  reads the file's extension), and `list_sequences` and `list_orders` are `list_records`.
 
 ## A session, without a model
 
@@ -165,7 +173,9 @@ writes the edited file. It talks to a local OpenAI-compatible server by default 
 `http://localhost:11434/v1`; name the model with `--model-id`), or to Claude when
 `ANTHROPIC_API_KEY` is set and the `assistant` extra is installed. Where the request goes is set
 by you alone: flags, then `NAGASIM_LLM_PROVIDER`, `NAGASIM_LLM_BASE_URL`, `NAGASIM_LLM_MODEL`,
-`NAGASIM_LLM_API_KEY` and `NAGASIM_LLM_REASONING`, then the defaults. It works on the one file
+`NAGASIM_LLM_API_KEY` and `NAGASIM_LLM_REASONING`, then the defaults. An address given with
+`--base-url` or `NAGASIM_LLM_BASE_URL` selects the OpenAI-compatible provider unless `--provider`
+says otherwise. It works on the one file
 you name and reaches only the endpoint you configured.
 
 <!-- no-run: needs a language model to answer -->

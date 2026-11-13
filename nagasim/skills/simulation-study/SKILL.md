@@ -31,14 +31,19 @@ decision, ask only what you cannot find out, and report honestly.
    - **incremental**: show each step and let the person steer.
 4. Record what you learn with `study_update` (shapes below).
 5. Build by sending the **whole model** to `study_step(study, layout={...}, note=...)` (call
-   `get_model_format` once first); every step sends the whole layout, and `changes={...}` in the same call
+   `get_model_format` once first), or the name of a model open in the workspace (`model=`), or a
+   `patch=` on the last version; `changes={...}` in the same call
    records what you learned (for record-only changes use `study_update`). A step that
    does not run is kept as a draft with its problems: fix and step again. The engine picks the
    replications from the study's precision target and says how many and how precise; when the cap stops
    it first, relax the target and record that as an assumption, or move to the deep size. `study_view` shows
    the flowchart: what changed and what is still missing.
-6. Validate against the person's data, a known answer or an expert's judgement, and record it with its
-   level. For a single queue, `study_validate(study=...)` runs the textbook comparison and records it.
+6. Validate: only the engine or the person can make "The model matches reality" pass. For a single
+   queue, `study_validate(study=...)` runs the textbook comparison and records it as checked. Otherwise
+   show the person what to compare (which KPI, against which data) and ask them to record their own
+   check: **I checked this** in the live room, or `naga study confirm FOLDER --text "..." --against "..."`.
+   No tool can record it for them; your own record reads "reported, not checked". When the status says
+   the person's check was on an earlier version (the blocks or links changed), ask them to check again.
 7. Run the scenarios the decision needs, then give the answer with the control room (`study_show`) and,
    when the person is satisfied, the package (`study_package`).
 
@@ -62,8 +67,8 @@ answered under `normalised` with the canonical form; use that form next time.
   (blocks once built);
 - assumption: `{"id": "a1", "text": "arrivals are random", "value": "exponential, mean 6 min", "source": "manager"}`;
 - source: `{"id": "s1", "text": "manager's message", "input": "inputs/message.txt"}`;
-- validation: `{"level": "known_answer", "passed": true, "text": "M/G/1 wait vs model"}`
-  (`level`: `data`, `known_answer` or `expert`);
+- validation: `{"level": "data", "passed": true, "text": "wait vs log"}` (`level`: `data`,
+  `known_answer` or `expert`); yours reads "reported, not checked", never passing;
 - experiment: `{"id": "e1", "text": "one vs two stations", "result": "..."}`;
 - `"plan_approved": true` once the person approves the plan card.
 
@@ -76,11 +81,22 @@ record in the model. `study_step` answers the KPIs it measured; use those names.
 Put the alternatives in the model file, the base model being the baseline:
 `"scenarios": [{"name": "Two stations", "overrides": [{"path": "resources.Packer.capacity", "value": 2}]}]`.
 Every `study_step` runs them with the same replications and seed and answers, per scenario, each goal
-KPI (mean and confidence half-width) and whether each goal is met. Record the comparison with
-`study_update(changes={"experiments": [...]})`. The size sets the replications and caps the scenarios;
-call one option better only when the intervals separate. When the base model misses a goal and a
+KPI (mean, confidence half-width, paired difference) and whether each goal is met.
+The size sets the replications and caps the scenarios; call one option better only when its paired
+difference's interval leaves out zero. When the base model misses a goal and a
 scenario meets them all, the label says so ("sufficient for its goals with: Two stations"): the answer
 to the person is that option.
+
+## Reading the results
+
+Each goal KPI of a scenario carries "diff_vs_baseline", the paired difference from the baseline on
+common random numbers: `{"mean", "lo", "hi", "n"}`, a 95% interval over n pairs. Say it as the pages do:
+"a difference of -3.4 (95% interval -3.8 to -2.9)" when the interval leaves out zero, "no clear
+difference" when it holds zero (never "slightly better"). A share KPI (a tail goal's "Share ...") is a
+fraction: give its difference in percentage points. The pages add one line when an option made a KPI
+markedly steadier; quote it if asked, never infer it from "spread", and never call it a cause or put it
+in the headline. With an option recommended, the room's goal chips and the client page's goals table
+lead with it, the baseline beside it.
 
 ## Modelling notes
 
@@ -121,6 +137,8 @@ and `study_package` (the deliverable).
 - **Facts are yours to find, decisions are the person's.** Look up what documents, data or the engine can
   settle; ask the person only what they must decide.
 - **Only the person accepts.** Never call `study_accept` on your own judgement; they give the reason.
+- **Only the engine or the person validates.** Your validation note is "reported, not checked". When a
+  page or answer offers a re-check, offer it: `study_validate` where it applies, else ask the person.
 - **Small, visible steps.** After each version, one or two sentences: what changed, what the numbers say,
   what is next.
 - **Respect the size.** A quick question gets a quick study; the checklist records what was skipped.

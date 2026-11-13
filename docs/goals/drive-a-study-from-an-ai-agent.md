@@ -46,7 +46,7 @@ You should see this. The script seeds itself, so the numbers are the same on you
 naga mcp --root path/to/models
 ```
 
-8. Give the assistant a whole study to run. The three tools `study_start`, `study_step` and `study_status` keep the question, the model versions and the checks in a folder, so another assistant can resume it tomorrow.
+8. Give the assistant a whole study to run. The three tools `study_start`, `study_step` and `study_status` keep the question, the model versions and the checks in a folder, so another assistant can resume it tomorrow. The assistant can build, run and compare, but it cannot vouch that the model matches reality. That check is the engine's (`study_validate`, for a single queue) or yours (`naga study confirm`, or the room's **I checked this**). See [Run a study with an assistant](../ai-study.md#who-checks-the-model).
 
 ## Check yourself
 

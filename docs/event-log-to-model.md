@@ -57,8 +57,10 @@ and `naga export --python draft.json` turns it into builder code.
 
 Columns are found by their usual names (`case`, `case:concept:name`, `activity`,
 `concept:name`, `timestamp`, `time:timestamp`, `lifecycle:transition`, `org:resource`, `start`,
-`end`, ...); `--case`, `--activity`, `--timestamp` and the like name any other. XES files
-(`.xes`) are read too. An instant is ISO 8601 text or a number; `--time-unit` sets the draft's
+`end`, ...); `--case`, `--activity`, `--timestamp` and the like name any other, by the log's
+own column headers. XES files (`.xes`) and Excel workbooks (`.xlsx`) are read too; `--sheet`
+picks a workbook's sheet (the first by default), and a damaged or encrypted workbook is a clear
+error naming the file. An instant is ISO 8601 text or a number; `--time-unit` sets the draft's
 unit (minutes by default), and a number is taken as already in it.
 
 **Routing.** By default the draft routes by chance: after each activity, a DECIDE to the

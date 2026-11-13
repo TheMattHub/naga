@@ -153,7 +153,7 @@ Each code with the usual remedy:
 - `W_QUEUE_LEAVE_LINK_UNUSED`: Set `balk_if` or `renege_after` on the block, or remove its second outgoing link.
 - `W_STATION_UNUSED`: Add the station to a sequence's `steps`, or delete the STATION block if no route visits it.
 - `W_UNBOUNDED_DURATION`: Use a distribution that cannot go below 0, such as `Lognormal`, `Gamma` or `BoundedNormal` in place of `Normal`. Negative samples are cut to 0, which raises the mean.
-- `W_UNKNOWN_KEY`: Remove the key, or correct its spelling. The model file format drops keys it does not have, so the setting would be lost when the file is saved.
+- `W_UNKNOWN_KEY`: Correct the key's spelling to the nearest valid name the hint gives, or remove it. The file keeps a key it does not know through load and save, but no run reads it, so the setting has no effect.
 - `W_UNREACHABLE`: Link the block into the flow from a CREATE, or delete it. A block that no entity can reach never runs and adds nothing to the results.
 - `W_WALL_CROSSING`: Add an opening where the path goes through the wall, or move the path segment. Walls never change routing, so without an opening the movers in a run walk through the wall.
 

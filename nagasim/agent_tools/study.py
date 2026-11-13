@@ -317,7 +317,8 @@ def _paired(base: dict[int, float] | None, scen: dict[int, float] | None) -> dic
     test = pitman_morgan(x, y)
     if test["p"] is not None:
         spread["p"] = test["p"]
-    return {"diff_vs_baseline": {"mean": diff["mean"], "lo": diff["lb"], "hi": diff["ub"], "n": n},
+    # Plain floats: a numpy scalar prints as np.float64(...) in a Python answer (#1862).
+    return {"diff_vs_baseline": {"mean": float(diff["mean"]), "lo": float(diff["lb"]), "hi": float(diff["ub"]), "n": n},
             "spread": spread}
 
 

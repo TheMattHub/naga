@@ -13,9 +13,12 @@ them, so you can explain a step to the person or decide how much of it a study n
    and utilisation against hand calculations, run with the same seed twice (Sargent: verification).
 5. **Validate.** Does it match reality closely enough for the decision? Compare with data, with a known
    answer for a simplified case (a queue with a textbook result), or with an expert's judgement, and say
-   which (Sargent: operational validity; face validity is the weakest).
+   which (Sargent: operational validity; face validity is the weakest). In the engine only its own
+   check (`study_validate`) or the person's makes this step pass; the assistant prepares the comparison.
 6. **Experiment.** Warm-up when the system starts empty, enough replications for a confidence interval
-   that can tell the options apart, the same random numbers across scenarios (Law, ch. 9-12).
+   that can tell the options apart, the same random numbers across scenarios (Law, ch. 9-12). With
+   common random numbers, compare options by the paired difference and its interval, not by whether
+   their own intervals overlap (Law, ch. 10-11).
 7. **Report.** The answer to the question, how sure, the assumptions and their sources, the validation
    done, what was left out (STRESS for discrete-event, agent-based and system dynamics studies; ODD for
    agent-based models).

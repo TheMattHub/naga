@@ -38,6 +38,8 @@ the interview; asking them for facts you could find wastes their time.
 - Demand and variability: arrival pattern, peaks, mix.
 - Resources and rules: capacities, schedules, breakdowns, priorities.
 - Data: what exists, how old, who owns it; otherwise an expert estimate recorded as such.
+- Validation: what the person will compare the model with (a log, counts, their own experience), since
+  only they can record that check.
 
 ## When to stop
 

@@ -56,7 +56,7 @@ m.add_scenario(name='Two servers', overrides=[{'path': 'resources.Server.capacit
 
 Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Depot: PV, EV charging and heat pump](../../gallery/energy.md), [PV + battery sizing and dispatch](../../gallery/energy.md), [PV + battery site (library assets)](../../gallery/energy.md) and 14 more.
 
-Guides: [Model file format](../../model-file-format.md), [Investment case](../../modelling-guide/investment.md), [Python API](../../python-api.md), [Semantic diff](../../semantic-diff.md).
+Guides: [Run a study with an assistant](../../ai-study.md), [Model file format](../../model-file-format.md), [Investment case](../../modelling-guide/investment.md), [Python API](../../python-api.md), [Semantic diff](../../semantic-diff.md).
 
 ## See also
 

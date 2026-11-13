@@ -6,7 +6,8 @@ API may change between minor versions, with a changelog line each time.
 
 ## Run a model
 
-`run_model` takes a path or a model as a dictionary. The bundled models ship inside the package:
+`run_model` takes a path, a model as a dictionary or a bundled model's name (`run_model("single_server")`,
+the names `naga examples` lists). The bundled models ship inside the package:
 
 ```python
 from pathlib import Path
@@ -26,7 +27,14 @@ kpis = results.kpis()               # metric, mean, std, ci95 over the replicati
 print(kpis.head())
 print(results.kpi("system/Avg Queue Length"))   # one KPI's mean; KeyError if the key is absent
 print(results.checks().lines())     # the law checks this run did not pass; [] when all passed
+
+wait = results.interval("system/Avg Queue Length")   # Interval(mean, half_width, n)
+print(f"{wait.mean:.2f} +- {wait.half_width:.2f} over {wait.n} replications")
 ```
+
+`repr(results)` is short: the number of replications, the frame names and the first KPIs, so a
+notebook or a console shows what a run holds without printing every frame. `Model.run()` returns
+the same `Results`, and both are typed, so an editor completes their methods.
 
 `results.checks()` holds the run against the laws of queues (utilisation, offered load,
 Little's law, flow conservation, censoring, initial bias), the same checks as the `WARN` lines

@@ -42,6 +42,7 @@ This page defines the terms the learning path and the goal tutorials use, one li
 |---|---|
 | <a id="scenario"></a>**Scenario** | A name and a list of overrides on the base model. It answers one what-if question. |
 | <a id="common-random-numbers"></a>**Common random numbers** | Running every scenario or design point on the same seeds, so the random noise they share cancels in the comparison. |
+| <a id="paired-difference"></a>**Paired difference** | The difference between an option and the Baseline (the model as it stands), replication by replication on common random numbers, with a 95% interval. An interval that holds zero means no clear difference. |
 | <a id="factor"></a>**Factor** | One model parameter an experiment varies, with its range, such as the number of agents from 5 to 7. |
 | <a id="response"></a>**Response** | The KPI an experiment measures at each design point. |
 | <a id="doe"></a>**DOE** | Design of experiments: choosing which combinations of factor values to run so that effects can be read from few runs. |
@@ -96,6 +97,7 @@ This page defines the terms the learning path and the goal tutorials use, one li
 | <a id="tool-call"></a>**Tool call** | One request an AI assistant makes to the engine, such as adding a block or running a model. Each tool is a plain Python function. |
 | <a id="mcp"></a>**MCP** | The Model Context Protocol, a standard way for an AI assistant to call tools. `naga mcp` publishes the engine's tools over it. |
 | <a id="workspace"></a>**Workspace** | The folder an assistant may reach through the tools. The person who starts the server sets it, and a tool cannot widen it. |
+| <a id="study-folder"></a>**Study folder** | The folder that holds one decision study: the question, the goals, the assumptions, every model version and its checks. Any assistant, or you, can resume the study from it. |
 | <a id="player-file"></a>**Player file** | One HTML page that replays a recorded run in a browser. It holds names, layout and the run, and no parameter of the model. |
 | <a id="viewer-file"></a>**Viewer file** | One HTML page in which the engine itself runs, so the reader can change inputs and run again. It holds the whole model. |
 | <a id="plugin"></a>**Plugin** | A Python file or package that adds a block, a distribution or an exporter to the engine. It is trusted code. |

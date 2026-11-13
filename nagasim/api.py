@@ -15,6 +15,7 @@ import math
 import multiprocessing
 import os
 import sys
+import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from contextlib import ExitStack, contextmanager, redirect_stdout
@@ -225,6 +226,107 @@ def _resolve_settings(path, replications=None, warmup=None, run_length=None):
     return replications, warmup, run_length
 
 
+# #1861 (D1293): a ProcessPoolExecutor starts its workers inside `submit`, on the caller's
+# thread and holding the pool's shutdown lock. On Windows the start writes the job's
+# set-up to the new child through a pipe of about 4 KB; when the set-up is larger (a long
+# sys.path) and the child never reads it, that write blocks forever, and since the parent
+# keeps the pipe's read end, even a child that died does not end it. After this many
+# seconds a watchdog ends the child and reads the pipe empty itself, so the study fails
+# with an error instead of hanging. Generous on purpose: a healthy child on a loaded
+# machine can take tens of seconds to start.
+_SPAWN_DEADLINE = 120.0
+
+
+class _SpawnWatchdog:
+    """Frees the caller's thread from a worker start that outlives _SPAWN_DEADLINE (Windows).
+
+    One per pooled `run_jobs` call, armed around each submit. Cancelling the blocked
+    write (CancelSynchronousIo) was tried first and dropped: under load the cancel itself
+    hung about one time in ten. Reading the pipe's other end, which the parent holds
+    anyway, always lets the write finish; the start then returns normally, the pool sees
+    its terminated child and goes broken, and `_submit` raises.
+    """
+
+    def __init__(self, deadline: float):
+        self.deadline = deadline
+        self._fired = False
+        self._armed_at: float | None = None
+        self._lock = threading.Lock()
+        self._closed = threading.Event()
+        self._thread = threading.get_ident()
+        threading.Thread(target=self._watch, name="naga-spawn-watchdog", daemon=True).start()
+
+    def arm(self) -> None:
+        with self._lock:
+            self._armed_at = time.monotonic()
+
+    def disarm(self) -> bool:
+        """Whether the watchdog ended this submit's worker start."""
+        with self._lock:
+            self._armed_at = None
+            fired, self._fired = self._fired, False
+            return fired
+
+    def close(self) -> None:
+        self._closed.set()
+
+    def _watch(self) -> None:
+        # Polls rather than firing once: at the deadline the thread may still be in
+        # CreateProcess, before there is a child to end.
+        while not self._closed.wait(min(1.0, self.deadline / 4)):
+            with self._lock:
+                if self._armed_at is None or time.monotonic() - self._armed_at < self.deadline:
+                    continue
+                popen, rhandle = _blocked_spawn(self._thread)
+                if popen is None or getattr(popen, "_handle", None) is None or rhandle is None:
+                    continue
+                self._fired = True
+                try:
+                    popen.terminate()          # first, so no live child reads alongside
+                except OSError:
+                    pass
+                _drain(rhandle)
+
+
+def _blocked_spawn(thread_id: int):
+    """The Popen and pipe read handle of the worker start *thread_id* is inside, if any.
+    multiprocessing keeps both as locals of its Windows Popen's __init__ until the write
+    is done, so that frame is the only place to reach them."""
+    frame = sys._current_frames().get(thread_id)
+    while frame is not None:
+        code = frame.f_code
+        if code.co_name == "__init__" and code.co_filename.endswith("popen_spawn_win32.py"):
+            names = frame.f_locals
+            return names.get("self"), names.get("rhandle")
+        frame = frame.f_back
+    return None, None
+
+
+def _drain(rhandle: int) -> None:
+    """Reads the start pipe until its writer closes it (a broken pipe), so the blocked
+    write, and any write after it, completes."""
+    import _winapi                     # Windows only, as multiprocessing itself uses it
+    try:
+        while True:
+            _winapi.ReadFile(rhandle, 65536)
+    except OSError:
+        pass
+
+
+def _submit(pool, task: _PoolTask, watchdog: _SpawnWatchdog | None):
+    if watchdog is None:
+        return pool.submit(_pool_replication, task)
+    watchdog.arm()
+    try:
+        future = pool.submit(_pool_replication, task)
+    finally:
+        fired = watchdog.disarm()
+    if fired:
+        raise RuntimeError(f"a worker process did not start within {watchdog.deadline:g} s; "
+                           "try again, or run with workers=1")
+    return future
+
+
 @contextmanager
 def scenario_pool(workers: int | str):
     """One process pool for a whole multi-run study (ROADMAP 2.5, PHASE4 A4).
@@ -300,38 +402,49 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
         pending: set = set()
         relogged: set = set()
         exhausted = False
-        while True:
-            while not exhausted and len(pending) < window:
-                task = next(jobs, None)
-                if task is None:
-                    exhausted = True
+        # Any submit may start a worker until the pool is full, so every one is guarded (#1861).
+        watchdog = _SpawnWatchdog(_SPAWN_DEADLINE) if sys.platform == "win32" else None
+        try:
+            while True:
+                while not exhausted and len(pending) < window:
+                    task = next(jobs, None)
+                    if task is None:
+                        exhausted = True
+                        break
+                    tag, layout, seed, run_len, warm = task
+                    collected.setdefault(tag, [])
+                    try:
+                        future = _submit(pool, _PoolTask(layout, seed, run_len, warm, controllers, logic),
+                                         watchdog)
+                    except RuntimeError:
+                        for future in pending:      # so leaving the pool's `with` does not run them
+                            future.cancel()
+                        raise
+                    futures[future] = (tag, seed)
+                    pending.add(future)
+                if not pending:
                     break
-                tag, layout, seed, run_len, warm = task
-                collected.setdefault(tag, [])
-                future = pool.submit(_pool_replication,
-                                     _PoolTask(layout, seed, run_len, warm, controllers, logic))
-                futures[future] = (tag, seed)
-                pending.add(future)
-            if not pending:
-                break
-            finished, pending = wait(pending, return_when=FIRST_COMPLETED)
-            for future in finished:
-                tag, seed = futures.pop(future)
-                kpi, logged = future.result()
-                for record in logged:
-                    # Every replication repeats the model's load-time warnings: once is enough.
-                    if record not in relogged:
-                        relogged.add(record)
-                        logging.getLogger(record[0]).log(record[1], record[2])
-                if kpi is not None:
-                    collected[tag].append((seed, kpi))
-                    count += 1
-                    if on_progress is not None:
-                        on_progress(count, total)
-            if should_stop is not None and should_stop():
-                for future in pending:
-                    future.cancel()
-                break
+                finished, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in finished:
+                    tag, seed = futures.pop(future)
+                    kpi, logged = future.result()
+                    for record in logged:
+                        # Every replication repeats the model's load-time warnings: once is enough.
+                        if record not in relogged:
+                            relogged.add(record)
+                            logging.getLogger(record[0]).log(record[1], record[2])
+                    if kpi is not None:
+                        collected[tag].append((seed, kpi))
+                        count += 1
+                        if on_progress is not None:
+                            on_progress(count, total)
+                if should_stop is not None and should_stop():
+                    for future in pending:
+                        future.cancel()
+                    break
+        finally:
+            if watchdog is not None:
+                watchdog.close()
     return {tag: sorted(pairs, key=lambda pair: pair[0]) for tag, pairs in collected.items()}
 
 

@@ -8,7 +8,15 @@ A single-server queue, from nothing to numbers.
 pip install nagasim
 ```
 
-Python 3.11 or later. This gives you the `nagasim` package and the `naga` command.
+Python 3.11 or later. This gives you the `nagasim` package and the `naga` command, and
+`naga --version` prints the version you have:
+
+```console
+naga --version
+```
+
+A misspelt command or bundled model name answers with the nearest match, so `naga rnu` suggests
+`naga run`.
 
 ## A model file
 
@@ -44,13 +52,17 @@ naga validate mm1.json
 naga run mm1.json
 ```
 
-`validate` prints `mm1.json: OK`, or each problem with a stable code. `run` prints one row per
+`validate` prints `mm1.json: OK`, or each problem with a stable code, all found in one pass. A
+misspelt key is a warning that names the nearest valid key, and the file keeps it. A value that
+cannot work, such as a negative rate or text where a number goes, is an error before the run.
+A run error names its block on one line. `run` prints one row per
 system KPI (entities created and completed, average time in the system, throughput, queue
 lengths, utilisation) with its mean over the replications, the 95% half-width and the number of
 replications behind it. Below the table come a `WARN` line for each law check the run did not
 pass, such as an offered load of 1 or more, and the replications a half-width of 5% of the
-mean would need. `--raw` prints the per-replication table instead, `--json` prints the same
-summary as JSON, and `--no-checks` leaves the `WARN` lines out.
+mean would need. `--raw` prints the per-replication table instead, and `--no-checks` leaves the
+`WARN` lines out. `--json` prints the same summary as JSON, with each row's `key` and `ci95`; the
+older `metric` and `half_width` fields go in the next minor release.
 
 Queueing theory gives this queue a mean time in the system of 1 / (1.25 - 1) = 4 minutes and a
 utilisation of 80%. Your numbers should be close to both; the half-width in the table says how
@@ -97,7 +109,8 @@ m.save("mm1.json")
 
 - Build one model step by step in Python, from a queue to scenarios and the event log:
   the [learning path](learn/index.md).
-- Change the model and compare: `naga scenarios`, `naga optimize`, `naga doe`
+- Change the model and compare: `naga scenarios` (the system KPIs in a short table; `--kpi KEY`
+  or `--all` for more), `naga optimize`, `naga doe`
   ([command line reference](reference/cli/index.md)).
 - Larger models that run as they are: `naga examples` lists them, `naga run job_shop_jackson`
   runs one, and the [gallery](gallery/index.md) shows each with its numbers.
