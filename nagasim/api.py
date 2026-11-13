@@ -313,9 +313,13 @@ def _drain(rhandle: int) -> None:
         pass
 
 
+class _NotStarted(RuntimeError):
+    """The #1861 start error; its own class only so `run_jobs` knows not to wait again."""
+
+
 def _not_started(deadline: float) -> RuntimeError:
-    return RuntimeError(f"a worker process did not start within {deadline:g} s; "
-                        "try again, or run with workers=1")
+    return _NotStarted(f"a worker process did not start within {deadline:g} s; "
+                       "try again, or run with workers=1")
 
 
 def _submit(pool, task: _PoolTask, watchdog: _SpawnWatchdog | None):
@@ -335,8 +339,9 @@ def _submit(pool, task: _PoolTask, watchdog: _SpawnWatchdog | None):
 # pipe, blocks no write: the parent then waits on it forever, in `wait` or when the pool's
 # `with` joins it, and from outside it looks like a long replication. So every pool the
 # engine builds gives its workers an initializer that signals "up" before any task, and
-# `run_jobs` ends a pool whose worker has not signalled within _SPAWN_DEADLINE. A pool the
-# caller built (no check attached) is used as before.
+# `run_jobs` ends a pool whose worker has not signalled within _SPAWN_DEADLINE. A plain
+# ProcessPoolExecutor a caller passes in has no check (nothing can be attached once it is
+# built), so `new_pool` is the public way to build a checked one (D1296).
 def _worker_started(signal) -> None:
     signal.release()
 
@@ -380,8 +385,19 @@ def _end_workers(pool, pending) -> None:
             pass
 
 
-def _new_pool(workers: int) -> ProcessPoolExecutor:
-    """The process pool the engine builds for itself: one whose workers report they are up."""
+def _await_starts(pool, check: _StartCheck, pending, tick: float) -> None:
+    """Waits for the workers yet to signal; once one is late, ends them all and raises."""
+    while check.outstanding(pool, tick):
+        if check.late():
+            _end_workers(pool, pending)
+            raise _not_started(_SPAWN_DEADLINE)
+
+
+def new_pool(workers: int) -> ProcessPoolExecutor:
+    """A process pool to pass as ``pool=`` to `run_model`, `run_jobs`, the studies and the
+    optimisers: a `ProcessPoolExecutor` whose workers report they are up, so a worker that
+    never starts ends the run with an error after a deadline instead of hanging it. A plain
+    `ProcessPoolExecutor` works too but has no such check. Use it as a context manager."""
     context = multiprocessing.get_context()
     signal = context.Semaphore(0)
     pool = ProcessPoolExecutor(max_workers=workers, mp_context=context,
@@ -408,7 +424,7 @@ def scenario_pool(workers: int | str):
     if workers == "auto" or not isinstance(workers, int) or workers <= 1:
         yield None
         return
-    with _new_pool(workers) as pool:
+    with new_pool(workers) as pool:
         yield pool
 
 
@@ -514,10 +530,20 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
                     break
             # A worker still starting when the work ran out is waited for here: one that never
             # starts would otherwise hang the pool's `with` on its way out (D1294).
-            while check is not None and check.outstanding(pool, tick):
-                if check.late():
-                    _end_workers(pool, ())
-                    raise _not_started(_SPAWN_DEADLINE)
+            if check is not None:
+                _await_starts(pool, check, (), tick)
+        except Exception as exc:
+            # A task error while a worker is still starting (D1296): wait for it as above, or
+            # the pool's exit hangs on one that never starts. Workers that did start are left
+            # alone, so a caller's reused pool stays usable. A start error or a broken pool
+            # (a crashed or ended worker, which never signals) needs no wait.
+            if check is None or isinstance(exc, _NotStarted) or getattr(pool, "_broken", False):
+                raise
+            try:
+                _await_starts(pool, check, pending, tick)
+            except _NotStarted as start_error:
+                raise start_error from exc
+            raise
         finally:
             if watchdog is not None:
                 watchdog.close()
@@ -535,7 +561,7 @@ def _run_pool(path, seeds, run_length, warmup, workers, on_progress, should_stop
     """
     with ExitStack() as stack:
         if pool is None:
-            pool = stack.enter_context(_new_pool(workers))
+            pool = stack.enter_context(new_pool(workers))
         out = run_jobs(((None, path, s, run_length, warmup) for s in seeds), pool=pool,
                        workers=workers, on_progress=on_progress, should_stop=should_stop,
                        done=done, total=total, controllers=controllers, logic=logic)
@@ -694,7 +720,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         file. With ``workers != 1`` each worker imports it again by name.
     pool : ProcessPoolExecutor, optional
         A pool the caller owns and reuses across calls (see `scenario_pool`), so
-        a study pays the process start-up once. Results are identical.
+        a study pays the process start-up once. Results are identical. Build it
+        with `new_pool`, so a worker that never starts raises instead of hanging.
     record_logs : bool, optional
         False switches the per-event logs off: the log frames keep their columns
         and have no rows, and every summary statistic is untouched. None keeps

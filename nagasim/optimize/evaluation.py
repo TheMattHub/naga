@@ -232,7 +232,7 @@ class _Evaluator:
         effect.
         """
         if self._pool is None and isinstance(self.workers, int) and self.workers > 1:
-            self._pool = api._new_pool(self.workers)
+            self._pool = api.new_pool(self.workers)
             weakref.finalize(self, self._pool.shutdown, wait=False)
         return self._pool
 

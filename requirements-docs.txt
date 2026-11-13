@@ -7,4 +7,3 @@ salabim==26.0.8
 greenlet==3.5.6  # salabim 26.0.8 imports it but does not declare it
 mesa==3.5.1
 networkx==3.6.1  # mesa 3.5.1 imports it but does not declare it
-playwright==1.65.1  # tools/room_shots.py only (docs screenshots); its browser: playwright install chromium

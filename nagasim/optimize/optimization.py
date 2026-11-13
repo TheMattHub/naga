@@ -266,7 +266,7 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         simulated rather than trusted and count in *budget*.
         `nagasim.surrogate.Surrogate.suggest` proposes such points.
     pool : ProcessPoolExecutor, optional
-        A pool the caller owns.
+        A pool the caller owns (best built with `nagasim.api.new_pool`).
     min_improvement : float, default 0.01
         How much better a move must be, as a fraction of the objective's size, to
         count as a success: below it the point is still taken but the step does

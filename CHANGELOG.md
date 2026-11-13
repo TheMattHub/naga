@@ -4,6 +4,7 @@
 
 Added:
 
+- `api.new_pool(workers)`: a process pool to pass as `pool=` whose workers report they are up, so a worker that never starts ends the run with an error instead of hanging it. A plain `ProcessPoolExecutor` still works, without that check.
 - Studies: a person can record their own check that the model matches reality, with the live room's "I checked this" form or `naga study confirm FOLDER --text ... --against ... [--by NAME] [--failed]`. Only the engine (`study_validate`) or the person makes the validation item pass; an assistant's note reads "reported, not checked", and a check reopens when the model's blocks or links change.
 - Studies: each option's difference from the Baseline comes with its paired 95% interval (`diff_vs_baseline`, common seeds), a modest note when a goal KPI is markedly steadier, and goal tables that lead with the recommended option.
 - Python: `Results.interval(key)`, a short `repr`, and `run_model` takes a bundled model's name.
@@ -22,6 +23,7 @@ Changed:
 
 Fixed:
 
+- A task error at the same time as a pool worker that never starts no longer hangs when the pool closes; the run raises the start error, with the task error as its cause.
 - A process-pool worker that never starts now ends the run with a clear error after 120 s at any start-payload size, instead of hanging until the pool closes.
 - A zero, negative or empty distribution value is `E_DIST_PARAM_VALUE` before the run, and a run error names its block on one line. Now refused where they ran before: a Triangular out of order, a Bernoulli p outside [0, 1], an explicit null number.
 - A wrongly shaped tool argument answers E_BAD_ARGUMENT naming it, not a raw Python error; an unknown `logic_class` is `E_LOGIC_CLASS_UNKNOWN`.

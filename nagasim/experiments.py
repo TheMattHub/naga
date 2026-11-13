@@ -477,7 +477,8 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
     should_stop : callable, optional
         Stops between replications and leaves ``completed`` False on the result.
     pool : ProcessPoolExecutor, optional
-        A pool the caller owns and reuses across studies. Results are unchanged.
+        A pool the caller owns and reuses across studies (best built with
+        `nagasim.api.new_pool`). Results are unchanged.
     baseline : bool, default True
         False skips the baseline, for a caller that keeps the baseline's results
         from an earlier run; the result then has nothing to compare against until

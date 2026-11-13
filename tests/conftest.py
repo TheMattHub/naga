@@ -338,7 +338,8 @@ def curated_results():
 
 @pytest.fixture(scope="session")
 def worker_pool():
-    """ONE `ProcessPoolExecutor` for the whole session.
+    """ONE process pool for the whole session, built by `api.new_pool` so a worker that
+    never starts fails the run instead of hanging it (#1861).
 
     On Windows every pool spawns fresh interpreters that re-import pandas,
     scipy and simpy: about 2.5 s for 20 workers and 0.8 s for 2. Three tests
@@ -348,13 +349,13 @@ def worker_pool():
     replication is seeded from its own seed and the frames are re-ordered by
     seed before they are concatenated, whoever ran them.
     """
-    from concurrent.futures import ProcessPoolExecutor
+    from nagasim import api
 
     # Under xdist every test worker that asks builds its OWN pool while the
     # other workers already hold every core: 20 more interpreters each bought
     # nothing but spawn time. Serially (the full set) the machine is ours.
     cap = 4 if os.environ.get("PYTEST_XDIST_WORKER") else 20
-    with ProcessPoolExecutor(max_workers=min(cap, os.cpu_count() or 1)) as pool:
+    with api.new_pool(min(cap, os.cpu_count() or 1)) as pool:
         yield pool
 
 
