@@ -355,7 +355,8 @@ def test_naga_run_names_the_block_of_a_division_by_zero(tmp_path, capsys):
     path.write_text(json.dumps(_with(_set("/blocks/1/params/dist_params", {"rate": "0"}))),
                     encoding="utf-8")
     assert main(["run", str(path)]) == 2
-    assert capsys.readouterr().err.strip() == "naga run: E_RUN_BLOCK serve: float division by zero"
+    err = capsys.readouterr().err.strip()          # Python 3.14 says "division by zero", 3.12 "float division by zero"
+    assert err.startswith("naga run: E_RUN_BLOCK serve: ") and err.endswith("division by zero") and "\n" not in err
 
 
 def test_the_shape_check_builds_the_schema_once_and_sees_a_late_block_type(monkeypatch):
