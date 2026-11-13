@@ -313,6 +313,11 @@ def _drain(rhandle: int) -> None:
         pass
 
 
+def _not_started(deadline: float) -> RuntimeError:
+    return RuntimeError(f"a worker process did not start within {deadline:g} s; "
+                        "try again, or run with workers=1")
+
+
 def _submit(pool, task: _PoolTask, watchdog: _SpawnWatchdog | None):
     if watchdog is None:
         return pool.submit(_pool_replication, task)
@@ -322,9 +327,67 @@ def _submit(pool, task: _PoolTask, watchdog: _SpawnWatchdog | None):
     finally:
         fired = watchdog.disarm()
     if fired:
-        raise RuntimeError(f"a worker process did not start within {watchdog.deadline:g} s; "
-                           "try again, or run with workers=1")
+        raise _not_started(watchdog.deadline)
     return future
+
+
+# #1861 (D1294): a child that is alive but never starts, its set-up small enough to sit in the
+# pipe, blocks no write: the parent then waits on it forever, in `wait` or when the pool's
+# `with` joins it, and from outside it looks like a long replication. So every pool the
+# engine builds gives its workers an initializer that signals "up" before any task, and
+# `run_jobs` ends a pool whose worker has not signalled within _SPAWN_DEADLINE. A pool the
+# caller built (no check attached) is used as before.
+def _worker_started(signal) -> None:
+    signal.release()
+
+
+class _StartCheck:
+    """How many of one pool's workers have signalled they are up, and since when each was
+    seen. Counts signals rather than matching pids: in a frozen build the pid a worker sees
+    for itself need not be the one the parent holds."""
+
+    def __init__(self, signal):
+        self.signal = signal
+        self.started = 0
+        self.seen: dict[int, float] = {}
+
+    def outstanding(self, pool, timeout: float = 0.0) -> int:
+        """Workers yet to signal, after waiting up to *timeout* s for one more signal."""
+        now = time.monotonic()
+        for pid in list(getattr(pool, "_processes", None) or ()):
+            self.seen.setdefault(pid, now)
+        if self.started < len(self.seen) and self.signal.acquire(True, timeout):
+            self.started += 1
+        while self.started < len(self.seen) and self.signal.acquire(False):
+            self.started += 1
+        return len(self.seen) - self.started
+
+    def late(self) -> bool:
+        """Whether fewer workers have signalled than were seen _SPAWN_DEADLINE ago."""
+        cutoff = time.monotonic() - _SPAWN_DEADLINE
+        return self.started < sum(1 for since in self.seen.values() if since <= cutoff)
+
+
+def _end_workers(pool, pending) -> None:
+    """Ends every worker (the pool breaks at the first anyway) and cancels what is queued,
+    so neither `wait` nor leaving the pool's `with` waits on a child that never started."""
+    for future in pending:
+        future.cancel()
+    for process in list((getattr(pool, "_processes", None) or {}).values()):
+        try:
+            process.terminate()
+        except (OSError, ValueError, AttributeError):
+            pass
+
+
+def _new_pool(workers: int) -> ProcessPoolExecutor:
+    """The process pool the engine builds for itself: one whose workers report they are up."""
+    context = multiprocessing.get_context()
+    signal = context.Semaphore(0)
+    pool = ProcessPoolExecutor(max_workers=workers, mp_context=context,
+                               initializer=_worker_started, initargs=(signal,))
+    pool._naga_start_check = _StartCheck(signal)
+    return pool
 
 
 @contextmanager
@@ -345,7 +408,7 @@ def scenario_pool(workers: int | str):
     if workers == "auto" or not isinstance(workers, int) or workers <= 1:
         yield None
         return
-    with ProcessPoolExecutor(max_workers=workers) as pool:
+    with _new_pool(workers) as pool:
         yield pool
 
 
@@ -404,6 +467,8 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
         exhausted = False
         # Any submit may start a worker until the pool is full, so every one is guarded (#1861).
         watchdog = _SpawnWatchdog(_SPAWN_DEADLINE) if sys.platform == "win32" else None
+        check = getattr(pool, "_naga_start_check", None)
+        tick = min(1.0, _SPAWN_DEADLINE / 4)
         try:
             while True:
                 while not exhausted and len(pending) < window:
@@ -424,7 +489,12 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
                     pending.add(future)
                 if not pending:
                     break
-                finished, pending = wait(pending, return_when=FIRST_COMPLETED)
+                # Only while a worker has yet to report does `wait` wake up to look (D1294).
+                timeout = tick if check is not None and check.outstanding(pool) else None
+                finished, pending = wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
+                if check is not None and check.late():
+                    _end_workers(pool, pending)
+                    raise _not_started(_SPAWN_DEADLINE)
                 for future in finished:
                     tag, seed = futures.pop(future)
                     kpi, logged = future.result()
@@ -442,6 +512,12 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
                     for future in pending:
                         future.cancel()
                     break
+            # A worker still starting when the work ran out is waited for here: one that never
+            # starts would otherwise hang the pool's `with` on its way out (D1294).
+            while check is not None and check.outstanding(pool, tick):
+                if check.late():
+                    _end_workers(pool, ())
+                    raise _not_started(_SPAWN_DEADLINE)
         finally:
             if watchdog is not None:
                 watchdog.close()
@@ -459,7 +535,7 @@ def _run_pool(path, seeds, run_length, warmup, workers, on_progress, should_stop
     """
     with ExitStack() as stack:
         if pool is None:
-            pool = stack.enter_context(ProcessPoolExecutor(max_workers=workers))
+            pool = stack.enter_context(_new_pool(workers))
         out = run_jobs(((None, path, s, run_length, warmup) for s in seeds), pool=pool,
                        workers=workers, on_progress=on_progress, should_stop=should_stop,
                        done=done, total=total, controllers=controllers, logic=logic)

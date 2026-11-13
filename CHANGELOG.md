@@ -22,6 +22,7 @@ Changed:
 
 Fixed:
 
+- A process-pool worker that never starts now ends the run with a clear error after 120 s at any start-payload size, instead of hanging until the pool closes.
 - A zero, negative or empty distribution value is `E_DIST_PARAM_VALUE` before the run, and a run error names its block on one line. Now refused where they ran before: a Triangular out of order, a Bernoulli p outside [0, 1], an explicit null number.
 - A wrongly shaped tool argument answers E_BAD_ARGUMENT naming it, not a raw Python error; an unknown `logic_class` is `E_LOGIC_CLASS_UNKNOWN`.
 - `naga fit` no longer prints a SciPy FutureWarning on SciPy 1.17 and later.
