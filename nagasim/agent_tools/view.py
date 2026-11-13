@@ -13,14 +13,15 @@ _document_args("view_model", model="Workspace name of the model.",
                format="png (an image, the default), svg (drawing source) or text (a list of blocks and links).")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "format": str, "text": str, "image": dict, "svg": str, "note": str})
 def view_model(model: str, format: str = "png") -> dict:
     """See a model as a picture: its blocks, each where it sits in the editor's process view, and the
     links between them. Use it to check that the model looks like the process you meant to build.
 
-    Returns {"model", "format", "text"} (every block with its type, then every link) plus "image" for
-    png; svg answers {"model", "format", "svg"} instead. Without matplotlib a png request answers with
-    the text and a "note", as format "text".
+    The text lists every block with its type, then every link; "image" comes for png, and svg
+    answers "svg" instead of "text". Without matplotlib a png request answers with the text and a
+    "note", as format "text".
     """
     if format not in FORMATS:
         raise ToolError("E_BAD_ARGUMENT", f"format must be one of {', '.join(FORMATS)}, not {format!r}",

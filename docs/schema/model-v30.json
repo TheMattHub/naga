@@ -8438,16 +8438,18 @@
         "source_port": {
           "type": [
             "string",
+            "integer",
             "null"
           ],
-          "description": "Out port, only when the source is a SUBMODEL instance."
+          "description": "Out port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks branch by link order and ignore it."
         },
         "target_port": {
           "type": [
             "string",
+            "integer",
             "null"
           ],
-          "description": "In port, only when the target is a SUBMODEL instance."
+          "description": "In port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks ignore it."
         }
       },
       "required": [
@@ -14444,6 +14446,11 @@
           "type": "boolean",
           "default": true,
           "description": "Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants."
+        },
+        "entity_waits": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sum each entity's queue time over every seize into a \"Total Wait\" column of the entity log (what a tail goal on Total Wait reads). Off: no column."
         },
         "timeseries_points": {
           "type": [

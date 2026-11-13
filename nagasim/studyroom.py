@@ -13,7 +13,9 @@ request must prove it is the person's own page:
 * no log line carries the query string (the token).
 
 Permission is the caller's: the room is started by the person (`naga room`, or the `--room` flag of
-`naga mcp`), never by a tool argument, and its buttons reach only the tools in `DIRECT`.
+`naga mcp`), never by a tool argument, and its buttons reach only the tools in `DIRECT`. The one
+write that is no tool is the person's "I checked this" (`api/confirm`, D1259): only the person's
+page can post it, and the room's assistant has no way to it.
 
 The room's assistant (`StudyAdapter` under `assistant.AssistantSession`) is offered the study tools
 plus `explain_kpi` and `what_if` (on the study's last version, never saved), always on the room's own
@@ -48,7 +50,8 @@ MAX_BODY = 1_000_000
 # The direct buttons: tools that make a file or take one recorded step the person asked for.
 # study_update is allowed only as {"plan_approved": true} (checked in _tool).
 DIRECT = frozenset({"study_report", "study_view", "study_package", "study_sensitivity", "study_extensions",
-                    "study_animation", "study_writeup", "study_slides", "study_revert", "study_accept"})
+                    "study_animation", "study_writeup", "study_slides", "study_revert", "study_accept",
+                    "study_validate"})      # D1253: Re-validate; the study is the room's, no path
 _LOG = logging.getLogger(__name__)
 
 
@@ -476,7 +479,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             sid, rest, query = self._check()
             folder = self.room.folder(sid)
             route = "/".join(rest)
-            if self.command == "GET":
+            if self.command in ("GET", "HEAD"):
+                # #1816: only a POST reaches the writing routes; a HEAD had skipped POST's Origin
+                # and JSON checks in `_check` and gone to `_post`.
                 self._get(sid, folder, route, rest, query)
             else:
                 self._post(sid, folder, route)
@@ -536,8 +541,29 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._body()
             self.room.chat(sid).cancel.set()
             self._json({"ok": True})
+        elif route == "api/confirm":
+            self._confirm(folder, self._body())
         else:
             raise _Refused(404)
+
+    def _confirm(self, folder: Path, body: dict) -> None:
+        """D1259: the person's "I checked this" (the form's POST, behind every check of `_check`).
+        Not a tool: the room's assistant cannot reach it. It takes no path and writes only this
+        study's study.json (`study.confirm` sets source, time and version) and its page."""
+        from nagasim import study as study_mod
+        from nagasim.agent_tools.study import _page
+        text, against, by = body.get("text"), body.get("against"), body.get("by")
+        if not isinstance(text, str) or not isinstance(against, str) or not isinstance(by, (str, type(None))):
+            raise _Refused(400)
+        with self.room.lock:
+            try:
+                entry = study_mod.confirm(folder, text, against, by, body.get("passed", True))
+            except study_mod.StudyError as exc:
+                self._json({"error": {"code": exc.code, "message": str(exc)}}, 400)
+                return
+            _page(folder, study_mod.load(folder))
+            self.room.changes += 1
+        self._json({"ok": True, "passed": entry["passed"], "version": entry["version"]})
 
     def _tool(self, sid: str, body: dict) -> dict:
         from nagasim import agent_tools

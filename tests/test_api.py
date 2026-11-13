@@ -354,3 +354,41 @@ def test_a_pool_workers_warnings_are_logged_once_in_the_parent(caplog):
         api.run_model(doc, replications=3, seed=0, run_length=20, workers=2)
     unreachable = [r for r in caplog.records if "orphan is unreachable" in r.getMessage()]
     assert len(unreachable) == 1 and unreachable[0].levelname == "WARNING"
+
+
+def test_interval_and_json_keys_agree(capsys):
+    path = str(MODELS_DIR / "single_server.json")
+    argv = ["--replications", "4", "--run-length", "300"]
+    assert api.main([path, *argv, "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)["kpis"]
+    results = api.run_model(path, replications=4, run_length=300)
+    assert rows and all(r["key"] == "system/" + r["metric"] and r["ci95"] == r["half_width"]
+                        for r in rows)
+    row = rows[0]
+    got = results.interval(row["key"])
+    assert (got.mean, got.half_width, got.n) == (row["mean"], row["half_width"], row["n"])
+    assert results.kpis().set_index("metric").loc[row["key"], "ci95"] == got.half_width
+    one = api.run_model(path, replications=1, run_length=300).interval(row["key"])
+    assert one.n == 1 and one.half_width != one.half_width       # NaN
+    with pytest.raises(KeyError):
+        results.interval("system/nope")
+
+
+def test_results_repr_is_the_kpi_summary():
+    results = api.run_model(str(MODELS_DIR / "single_server.json"), replications=3, run_length=300)
+    text = repr(results)
+    assert len(text) < 2000
+    assert "system" in text and "entity_summary" in text        # the frame names
+    assert "system/Avg Throughput Time" in text or "system/Total Entities Created" in text
+    assert repr(api.Results()) and "Results" in repr(api.Results())     # empty: no failure
+
+
+def test_run_model_takes_a_bundled_name(tmp_path, monkeypatch):
+    by_name = api.run_model("single_server", replications=1, run_length=300)
+    by_path = api.run_model(str(MODELS_DIR / "single_server.json"), replications=1, run_length=300)
+    assert by_name.kpi("system/Total Entities Created") == by_path.kpi("system/Total Entities Created")
+    monkeypatch.chdir(tmp_path)         # a file at that path always wins over the bundled model
+    (tmp_path / "single_server").write_text("not json")
+    with pytest.raises(Exception) as err:
+        api.run_model("single_server", replications=1)
+    assert "bundled" not in str(err.value)

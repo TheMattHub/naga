@@ -125,7 +125,7 @@ def test_two_gantry_cranes_cross_the_shared_segment_with_no_blocking():
 
 
 # The interrupted park-home return (position by interpolation) and a gantry
-# multi-load tour are both asserted by test_regressions.py::test_194 (which
+# multi-load tour are both asserted by tests/regressions/ test_194 (which
 # imports crane/lanes/times from here).
 
 

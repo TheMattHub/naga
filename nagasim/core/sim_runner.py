@@ -3,6 +3,8 @@ from nagasim.core.context import build_context
 from nagasim.core.export import plugin_outputs
 from nagasim.core.outputs import calc_kpis
 from nagasim.core import blocking, costs, initial_state, timeseries
+from nagasim.core.base_process import BaseProcess
+from nagasim.core.errors import ModelRunError
 from nagasim.core.schema import read_layout
 import math
 import logging
@@ -181,6 +183,44 @@ def schedule_warmup_reset(env, warmup: float) -> None:
     env.process(_reset())
 
 def step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None = None) -> bool:
+    """`_step_until`, with a model error that stops the run named by its block (#1766): a
+    value a block computed or drew that it cannot use (a negative scale, an attribute no
+    block assigned) keeps its type, so a caller that catches ValueError still does, and
+    gains `block` and `code` (E_RUN_BLOCK) and the block's name in front of its message.
+    An error raised outside any block is left as it is."""
+    try:
+        return _step_until(env, run_len, should_stop, pacer)
+    except (ModelRunError, ValueError, TypeError, ArithmeticError) as exc:
+        block = getattr(exc, "block", None) or _failing_block(exc)
+        if block is not None and getattr(exc, "code", None) is None:
+            exc.block, exc.code = block, "E_RUN_BLOCK"
+            # One plain message argument only: an error built from several (a decoding
+            # error) would no longer rebuild from its args in a worker's answer.
+            message = exc.args[0] if len(exc.args) == 1 else None
+            # A ModelRunError's own message already names its block.
+            if isinstance(message, str) and not isinstance(exc, ModelRunError):
+                exc.args = (f"{block}: {message}",)
+        raise
+
+
+def _failing_block(exc: BaseException) -> str | None:
+    """The name of the innermost block whose code is on the error's traceback: the one that
+    was handling the entity (a block that forwards an entity calls the next one in the same
+    step, so the outer frames are its predecessors). SimPy re-raises a failed process's
+    error as a copy whose `__cause__` is the original, so the causes are read too."""
+    name = None
+    while exc is not None and name is None:
+        tb = exc.__traceback__
+        while tb is not None:
+            owner = tb.tb_frame.f_locals.get("self")
+            if isinstance(owner, BaseProcess):
+                name = owner.name
+            tb = tb.tb_next
+        exc = exc.__cause__
+    return name
+
+
+def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None = None) -> bool:
     """Step the environment until the time limit, an empty event queue, or
     `should_stop()` returns True. Returns whether `should_stop` interrupted the run.
 

@@ -54,7 +54,7 @@ options:
                         that ranks every tool when Haiku cannot answer (no
                         network, timeout, API error, or no key at startup)
   --twin DIR            the result directory of a twin you started (naga twin
-                        run --out DIR): two read-only tools then answer from
+                        run --out DIR): three read-only tools then answer from
                         it. No tool can start a twin or choose this directory
 ```
 
@@ -79,8 +79,9 @@ options:
   -h, --help            show this help message and exit
   --provider {anthropic,openai}
                         anthropic, or openai for any OpenAI-compatible server
-                        (Ollama, LM Studio); default: anthropic when
-                        ANTHROPIC_API_KEY is set, else a local Ollama
+                        (Ollama, LM Studio); default: anthropic when a key is
+                        set (ANTHROPIC_API_KEY, or stored for your Windows
+                        user) and no --base-url is given, else a local Ollama
   --base-url BASE_URL   default http://localhost:11434/v1
   --model-id MODEL_ID   the provider's model name (for Ollama, one from
                         `ollama list`)
@@ -105,12 +106,12 @@ options:
 ## naga study
 
 ```text
-usage: naga study [-h] {rerun,numbers,deck} ...
+usage: naga study [-h] {rerun,numbers,deck,package,confirm} ...
 
-Checks on a study folder, and its slides as a PDF.
+Checks on a study folder, its slides as a PDF, and its hand-over package.
 
 positional arguments:
-  {rerun,numbers,deck}
+  {rerun,numbers,deck,package,confirm}
     rerun               re-run every version and compare the stored KPIs; with
                         --steps, then run the reproduce.json steps and compare
                         their outputs
@@ -118,6 +119,12 @@ positional arguments:
                         source file
     deck                the slides as a PDF, printed by this machine's Chrome
                         or Edge
+    package             write the hand-over package: the client page, the
+                        modeller's control room, the workbook, the model and
+                        its metadata
+    confirm             record your own check that the model matches reality,
+                        on the last version (only you can: no assistant tool
+                        records it)
 
 options:
   -h, --help            show this help message and exit

@@ -47,18 +47,13 @@ pattern applied consistently, not a guess at engine internals):
     This is the one place a landed engine's real key name may need a
     one-line swap; nothing about test 3's LOGIC depends on the guess.
 """
-import numpy as np
 import pytest
 
-from conftest import chain, create, delay, dispose, layout as make_layout, problem_codes, run_env
+from conftest import chain, create, delay, dispose, layout as make_layout, problem_codes
+from helpers import run as _run
 
 
 # --------------------------------------------------------------- run helpers
-def _run(layout, run_len, seed=0):
-    env, _model = run_env(layout, run_len, seed=seed)
-    return env
-
-
 def _pop(env, name):
     return next(p for p in env.ctx.agent_system.populations if p.name == name)
 

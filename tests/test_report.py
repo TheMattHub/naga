@@ -18,8 +18,8 @@ MODELS = sorted(MODELS_DIR.glob("*.json"))
 _VOID = {"meta", "link", "br", "hr", "img", "input", "area", "base", "col", "embed",
         "source", "track", "wbr"}
 
-_HEADINGS = ["Model summary", "System KPIs", "Resources", "Stores", "Entities",
-            "User statistics", "Charts", "Methods"]
+_HEADINGS = ["Settings", "Model summary", "System KPIs",
+            "Methods"]       # D1239: the others only when they hold something
 
 
 class _BalanceChecker(HTMLParser):
@@ -268,7 +268,8 @@ def test_charts_have_one_consistent_fixed_size():
 def test_report_chart_grid_is_two_columns_max_460px(single_server):
     doc = single_server[2]
 
-    assert "grid-template-columns: repeat(2, minmax(0, 460px))" in doc
+    # D1239: at most 460 px a chart, as many columns as fit, one on a phone.
+    assert "grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 460px))" in doc
     assert 'width="100%"' not in doc  # no chart stretches to fill a lone row
 
 
@@ -332,3 +333,37 @@ def test_line_chart_x_ticks_replace_the_numeric_ladder():
                                x_ticks=[(0.0, "05 Jan 06:00"), (60.0, "05 Jan 07:00")])
     assert "05 Jan 06:00" in svg and "05 Jan 07:00" in svg
     assert "rotate(-30" in svg            # long date labels are slanted, not overlapped
+
+
+def test_report_leads_with_the_question_and_drops_empty_parts():
+    """S4-11, D1239: the report opens with the question, the results and (with scenarios) the
+    scenario table; empty sections and empty charts are left out; each table scrolls in its own
+    box; settings come last; bookkeeping rows are not results."""
+    import re
+
+    path = MODELS_DIR / "line_with_buffers.json"
+    layout = schema.migrate(json.loads(path.read_text()))
+    results = api.run_model(str(path), replications=2, run_length=300, warmup=0)
+    doc = build_report(layout, results, title="line_with_buffers")
+    question = layout["dashboard"]["question"]
+    assert re.search(r"<h1>([^<]*)</h1>", doc).group(1) == question.replace("'", "&#x27;")
+    first = [m.group(1) for m in re.finditer(r"<h2>([^<]*)</h2>", doc)]
+    assert first[0] == "Results" and first.index("Settings") > first.index("System KPIs")
+    assert "No data" not in doc and ">Stores<" not in doc and ">User statistics<" not in doc
+    assert "Entity Log Truncated" not in doc and "Time Unit" not in doc
+    assert doc.count("<table") == doc.count('<div class="tbl"><table')
+    _assert_well_formed(doc)
+
+
+def test_bar_labels_are_shortened_never_overprinted():
+    """S4-11: six labels like "Mfg Machine station_1/Mfg Machine" overprinted each other; a label
+    wider than its bar's band is cut with "..." and keeps its full name in a <title>."""
+    import re
+    names = [f"station_{i}/Mfg Machine" for i in range(1, 7)]
+    chart = svgcharts.bar_chart("t", names, [1.0] * 6, "y")
+    ET.fromstring(chart)
+    shown = re.findall(r'text-anchor="middle" fill="[^"]+">([^<]*)<title>([^<]*)</title>', chart)
+    assert len(shown) == 6 and all(text.endswith("...") and full in names for text, full in shown)
+    band = (svgcharts._W - svgcharts._MARGIN["left"] - svgcharts._MARGIN["right"]) / 6
+    assert all(len(text) * 6.6 <= band for text, _ in shown)
+    assert ">A<" in svgcharts.bar_chart("t", ["A"], [1.0], "y")       # a short one is as it was

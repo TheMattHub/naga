@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-__all__ = ["DistParam", "DistributionSpec", "ScaleParam"]
+import math
+
+__all__ = ["DistParam", "DistributionSpec", "ScaleParam", "bound_text", "value_problems"]
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,12 @@ class DistParam:
     kind: str = "number"  # "number" (spin box, fx-toggle to an expression) | "list" (JSON field) | "expression" | "choice"
     # "choice" only: the allowed words (a combo box); the value is a literal word, never an expression.
     choices: tuple = ()
+    # D1221: the bounds of a "number" value, as a block ParamSpec states them (`min`, `max`,
+    # `min_exclusive` = "> min"); validation (E_DIST_PARAM_VALUE) and the Properties field
+    # read these, never their own copy. Set where the sampler refuses or divides by the value.
+    min: float | None = None
+    max: float | None = None
+    min_exclusive: bool = False
 
 
 @dataclass(frozen=True)
@@ -74,3 +82,46 @@ class DistributionSpec:
     # params (e.g. BoundedNormal, Beta, JohnsonSB): `tablegen.py` refuses a
     # per-product `process_time` override at such a station.
     scale_params: tuple | None = None   # tuple[ScaleParam, ...] | None
+    # D1221: (smaller, larger) parameter pairs the values must keep, e.g. Triangular's
+    # (("low", "mode"), ("mode", "high")): low <= mode <= high.
+    order: tuple = ()
+
+
+def bound_text(param: DistParam) -> str:
+    """'> 0', '>= 0', 'in [0, 1]', '<= 1' or '' for a parameter's bounds."""
+    low = None if param.min is None else f"{'(' if param.min_exclusive else '['}{param.min:g}"
+    if low is not None and param.max is not None:
+        return f"in {low}, {param.max:g}]"
+    if low is not None:
+        return f"{'>' if param.min_exclusive else '>='} {param.min:g}"
+    return "" if param.max is None else f"<= {param.max:g}"
+
+
+def value_problems(spec: DistributionSpec, values: dict) -> list[tuple[str, str]]:
+    """(parameter, what is wrong) for each value *values* gives that *spec* cannot use: an
+    empty one, one outside its bounds, or a pair out of order. A string is an expression
+    and is judged when it is evaluated; an absent key takes its default."""
+    found = []
+    for param in spec.params:
+        if param.name not in values or param.kind != "number":
+            continue
+        value = values[param.name]
+        if value is None:
+            found.append((param.name, "has no value"))
+        elif isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            found.append((param.name, f"must be a number or an expression; got {value!r}"))
+        elif isinstance(value, str):
+            continue
+        elif not math.isfinite(value) or (
+                param.min is not None and (value <= param.min if param.min_exclusive
+                                           else value < param.min)) or (
+                param.max is not None and value > param.max):
+            found.append((param.name, f"must be {bound_text(param) or 'a finite number'}; "
+                                      f"got {value:g}"))
+    numbers = {k: v for k, v in values.items()
+               if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    for smaller, larger in spec.order:
+        if smaller in numbers and larger in numbers and numbers[smaller] > numbers[larger]:
+            found.append((larger, f"must be at least {smaller} ({numbers[smaller]:g}); "
+                                  f"got {numbers[larger]:g}"))
+    return found

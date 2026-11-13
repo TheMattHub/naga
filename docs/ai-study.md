@@ -77,9 +77,12 @@ precision and the item still open. Below it, panels open on demand: goals and ch
 model's flowchart, the versions (one row each, expanding to their changes and flowchart), the scenarios
 against the goals, the assumptions and sources, and what can be made on request. The page runs no script,
 so it can be emailed or put on a shared drive, and printing it gives the PDF with every panel open. When
-the person is satisfied, `study_package` writes the deliverable to `package/`: the page, an Excel workbook,
-the current model and an RO-Crate description. The page embeds the study's record, so a copy of it is
-enough to pick the study up again.
+the person is satisfied, `study_package` writes the deliverable to `package/`: two pages, an Excel
+workbook, the current model and an RO-Crate description. `client.html` is the page to hand over: the
+answer against the Baseline, the options, how far to trust it and what the package holds, with no command
+or internal name. `control-room.html` is the modeller's copy; it embeds the study's record, so a copy of
+it is enough to pick the study up again. On the command line, `naga study package FOLDER --out DIR`
+writes the same package into a folder you name.
 
 ## Fewer, safer tool calls
 

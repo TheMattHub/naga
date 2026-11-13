@@ -9,10 +9,10 @@ from nagasim.core.distributions import DISTRIBUTION_REGISTRY, get_available_dist
 from nagasim.core.expressions import FUNCTION_NOTES, FUNCTIONS, RESERVED_NAMES
 
 from .core import (MAX_PROBLEMS, ToolError, _document_args, _first_sentence, _problem_dicts,
-                   tool, workspace)
+                   logic_problems, tool, workspace)
 
 # ============================================================ reference tools
-@tool(read_only=True)
+@tool(read_only=True, returns={"block_types": list})
 def list_block_types() -> dict:
     """List every block type this build can place in a model, with a one-line
     summary and its required parameters.
@@ -21,9 +21,8 @@ def list_block_types() -> dict:
     vocabulary. The `type` strings it returns are exactly what `add_block`
     expects. Plugin block types appear here automatically.
 
-    Returns {"block_types": [{"type", "summary", "required", "multi_output"}]}.
-    `multi_output` marks the only types allowed more than one outgoing link
-    (DECIDE, LOGIC): every other block may have at most one.
+    `multi_output` marks the only types allowed more than one outgoing link (DECIDE, LOGIC):
+    every other block may have at most one.
     """
     out = []
     for name in sorted(BLOCK_REGISTRY):
@@ -40,7 +39,8 @@ _document_args("describe_block_type",
                detail="Every description in full; by default each is its first sentence.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "type": str, "description": str, "multi_output": bool, "params": list})
 def describe_block_type(type_name: str, detail: bool = False) -> dict:
     """Describe one block type: what it does and every parameter with its type,
     default and meaning.
@@ -49,9 +49,6 @@ def describe_block_type(type_name: str, detail: bool = False) -> dict:
     params a type takes -- passing an unknown key is an error, and the defaults
     tell you what you may safely leave out. Each description is its first
     sentence unless `detail` is true.
-
-    Returns {"type", "description", "multi_output", "params": [{"name", "type",
-    "default", "required", "description"}]}.
     """
     spec = BLOCK_REGISTRY.get(str(type_name).upper())
     if spec is None:
@@ -73,7 +70,7 @@ _document_args("list_distributions",
                           "distributions offered for it; omit for the whole catalogue.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={"distributions": list})
 def list_distributions(block_type: str | None = None) -> dict:
     """List the distribution names available for a duration or a random draw.
 
@@ -82,9 +79,8 @@ def list_distributions(block_type: str | None = None) -> dict:
     The names are what goes in a block's `distribution` param, a link delay, or
     a failure's uptime/downtime.
 
-    Returns {"distributions": [{"name", "summary", "category", "arrival", "delay",
-    "params"}]}; `summary` is one plain sentence on when to use it. Call
-    describe_distribution for parameter meanings.
+    `summary` is one plain sentence on when to use it. Call describe_distribution for parameter
+    meanings.
     """
     names = get_available_distributions(block_type) if block_type else sorted(DISTRIBUTION_REGISTRY)
     out = []
@@ -98,7 +94,9 @@ def list_distributions(block_type: str | None = None) -> dict:
     return {"distributions": out}
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "name": str, "category": str, "use_case": str, "support_lower": float, "params": list,
+    "arrival": bool, "delay": bool})
 def describe_distribution(name: str) -> dict:
     """Describe one distribution: when to use it and what each parameter means.
 
@@ -106,9 +104,6 @@ def describe_distribution(name: str) -> dict:
     time, or when you need the exact parameter names for `dist_params`. Every
     numeric parameter also accepts an expression string, so a rate may depend
     on an entity attribute.
-
-    Returns {"name", "category", "use_case", "support_lower", "params":
-    [{"name", "default", "hint", "kind"}]}.
     """
     spec = DISTRIBUTION_REGISTRY.get(name)
     if spec is None:
@@ -123,7 +118,8 @@ def describe_distribution(name: str) -> dict:
     }
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "names": list, "operators": str, "functions": list, "reserved": list, "examples": list})
 def get_expression_help() -> dict:
     """Explain the expression language used by ASSIGN, DECIDE/HOLD conditions,
     RECORD, ranking expressions and expression-valued distribution parameters.
@@ -131,9 +127,6 @@ def get_expression_help() -> dict:
     Read this before writing any expression: it is a restricted-Python subset
     (an AST allow-list, never eval), so anything not listed here is refused at
     validation time rather than at run time.
-
-    Returns {"names", "operators", "functions": [{"name", "arity", "note"}],
-    "reserved", "examples"}.
     """
     functions = []
     for fname in sorted(FUNCTIONS):
@@ -156,22 +149,21 @@ def get_expression_help() -> dict:
     }
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "ok": bool, "errors": int, "warnings": int, "requires_run_length": bool,
+    "problems": list, "truncated": float})
 def validate_model(model: str) -> dict:
-    """Validate a model and return every problem with a stable code, a
+    """Validate a model file (is it valid?) and return every problem with a stable code, a
     JSON-pointer path, and a hint saying how to fix it.
 
     Call this after each batch of edits and ALWAYS before running. Errors stop a
     run; warnings (code prefix W_) do not, but usually point at a modelling
     mistake. `requires_run_length` tells you whether the model can drain on its
     own -- if it is true and the run length is 0, a run will be refused.
-
-    Returns {"model", "ok", "errors", "warnings", "requires_run_length",
-    "problems": [{"code", "severity", "message", "path", "block", "hint"}]}.
     """
     doc = workspace().document(model)
     layout = doc.to_layout()
-    problems = schema_mod.validate_model_structured(layout)
+    problems = schema_mod.validate_model_structured(layout) + logic_problems(layout)
     errors = [p for p in problems if p.severity == "error"]
     return {"model": model, "ok": not errors, "errors": len(errors),
             "warnings": len(problems) - len(errors),

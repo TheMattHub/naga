@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = str(Path(__file__).resolve().parent.parent)
 
 
@@ -54,3 +56,22 @@ def test_excel_still_writes(simple_model_path, tmp_path):
     out = tmp_path / "r.xlsx"
     api.run_model(simple_model_path, replications=1, run_length=20).to_excel(out)
     assert openpyxl.load_workbook(out).sheetnames
+
+
+def test_core_imports_no_scipy_stats():
+    """`scipy.stats` costs about 1.5 s to import and most commands never need it (D1228)."""
+    r = _py("import sys, nagasim.api\nprint('SCIPY_STATS', 'scipy.stats' in sys.modules)")
+    assert "SCIPY_STATS False" in r.stdout, r.stderr
+
+
+@pytest.mark.perf
+@pytest.mark.slow
+def test_api_import_within_budget():
+    """`import nagasim.api` took 3.4 s before scipy.stats went lazy (review S7-09), 0.86 s after;
+    the budget is 10x the local time (D1224), so a heavy import back in the chain fails it."""
+    import time
+    started = time.perf_counter()
+    r = _py("import nagasim.api")
+    elapsed = time.perf_counter() - started
+    assert r.returncode == 0, r.stderr
+    assert elapsed < 8.5, f"import nagasim.api took {elapsed:.1f} s"

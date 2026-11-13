@@ -173,7 +173,7 @@ def timeout_at(env, t: float):
     instant. SimPy's own `timeout` adds a delay to now, and for some pairs no
     delay makes that sum land on *t* (DEVLOG #341), so this pushes the event on
     SimPy's heap at the absolute time instead: the one place the engine writes
-    SimPy internals (D207; `tests/test_regressions.py` pins the behaviour). A
+    SimPy internals (D207; `tests/regressions/` pins the behaviour). A
     *t* already past fires in the current instant; the clock never runs back."""
     event = env.event()
     event._ok = True

@@ -83,29 +83,49 @@ def ro_crate(study: dict, files: list[str]) -> dict:
     return {"@context": "https://w3id.org/ro/crate/1.1/context", "@graph": graph}
 
 
-def package(folder: Path, study: dict) -> list[str]:
-    """Write the package; returns its paths (four, plus any write-up or slides) relative to the study folder."""
+def package(folder: Path, study: dict, out: Path | None = None) -> list[str]:
+    """Write the package; returns its paths. Into `<study>/package/` by default, the paths then
+    relative to the study folder; *out* is another folder, named by the person on the command line
+    (`naga study package FOLDER --out DIR`; the agent tool has no such parameter), the paths then
+    absolute. The package holds both pages (S4-03 ruling (b)): `client.html` for the person who asked
+    and `control-room.html` for the modeller, plus the workbook, the model, any current write-up or
+    slides, and the RO-Crate metadata."""
     folder = Path(folder)
     if not study["versions"]:
         raise study_mod.StudyError("E_STUDY_NO_VERSION", "the study has no model version yet",
                                    "Build a version with study_step first.")
-    out = folder / "package"
-    out.mkdir(exist_ok=True)
-    write_text(out / "control-room.html", studypage.render(folder, study))
+    home = folder / "package"
+    out = home if out is None else Path(out)
+    out.mkdir(parents=True, exist_ok=True)
     workbook(folder, study, out / "study.xlsx")
     model = folder / "versions" / study["versions"][-1]["id"] / "model.json"
-    tmp = out / f"model.json.{uuid.uuid4().hex[:8]}.tmp"
-    try:
-        shutil.copyfile(model, tmp)
-        os.replace(tmp, out / "model.json")
-    finally:
-        tmp.unlink(missing_ok=True)
-    names = ["control-room.html", "study.xlsx", "model.json"]
+    _copy(model, out / "model.json")
+    names = ["client.html", "control-room.html", "study.xlsx", "model.json"]
     # Written by study_writeup and study_slides, which record the version they were built from in
     # outputs.json; listed only when that is still the last version (an older one would mislead).
-    built = studypage._read(out / "outputs.json") or {}
+    built = studypage._read(home / "outputs.json") or {}
     last = study["versions"][-1]["id"]
-    names += [n for key, files in (("writeup", ("writeup.html", "writeup.md")), ("slides", ("slides.html",)))
-              if built.get(key) == last for n in files if (out / n).is_file()]
+    extra = [n for key, files in (("writeup", ("writeup.html", "writeup.md")), ("slides", ("slides.html",)))
+             if built.get(key) == last for n in files if (home / n).is_file()]
+    for n in extra:
+        if out.resolve() != home.resolve():
+            _copy(home / n, out / n)
+    names += extra
+    # #1789: the pages are written last, so what they say the package holds is what it holds.
+    write_text(out / "control-room.html", studypage.render(folder, study, packaged=True))
+    write_text(out / "client.html", studypage.render_client(folder, study, names + ["ro-crate-metadata.json"]))
     write_json(out / "ro-crate-metadata.json", ro_crate(study, names))
-    return [f"package/{n}" for n in names + ["ro-crate-metadata.json"]]
+    paths = [out / n for n in names + ["ro-crate-metadata.json"]]
+    if out.resolve() == home.resolve():
+        return [f"package/{p.name}" for p in paths]
+    return [str(p) for p in paths]
+
+
+def _copy(source: Path, target: Path) -> None:
+    """Copy through a temporary name, so a reader never sees half a file."""
+    tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        shutil.copyfile(source, tmp)
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)

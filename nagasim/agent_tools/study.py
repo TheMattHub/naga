@@ -8,25 +8,33 @@ import base64
 import functools
 import logging
 import json
+import math
 import os
 import re
 import shutil
+import statistics
 import uuid
 import time
+from typing import Literal
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim import api, experiments, flowchart, studyinput, studypackage, studypage, studyroom
-from nagasim.core.stats import ci95
+from nagasim.core.stats import ci95, paired_diff_ci, pitman_morgan
 from nagasim import study as study_mod
 from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, step_checks
-from nagasim.studyformulas import queue_formula, wait_shares, why_not
+from nagasim.studyformulas import TOTAL_WAIT, queue_formula, total_wait_shares, wait_shares, why_not
 from nagasim.study import CHECKLIST, FIRST_PASS, LEVELS, MODES, PRECISION, SIZES, StudyError
 from nagasim.core.schema import ModelValidationError
 from nagasim.twin import write_json, write_text
 
-from .core import SLOTS, ToolError, _PROGRESS, _digest, _document_args, call, report, reporting, tool, workspace
+from .core import (SLOTS, ToolError, _PROGRESS, _digest, _document_args, call, override_hint, report,
+                   reporting, tool, workspace)
+
+# The study's closed sets as enums in the schema (D1219), from the constants the study checks.
+Mode = Literal[MODES]
+Size = Literal[tuple(SIZES)]
 from .runs import _run_laws
 
 _ID = "Study folder relative to the workspace root (the id study_start returned)."
@@ -46,15 +54,18 @@ _document_args("study_update", study=_ID,
                        "target component is {name, purpose, blocks: [block names]}; a source is "
                        "{id, text, input, path?} (path: the model field the data feeds, e.g. "
                        "blocks.<name>.params.distribution); a validation entry is {level: data|known_answer|expert, "
-                       "passed: true|false, text}, e.g. {\"level\": \"known_answer\", \"passed\": true, "
-                       "\"text\": \"M/G/1 formula vs model wait\"}; an experiment is {id, text, result}.")
+                       "passed: true|false, text}, and yours reads \"reported, not checked\" (only "
+                       "study_validate or the person makes it pass); an experiment is {id, text, result}.")
 _document_args("study_update", **{k: f"Same as the \"{k}\" key of changes." for k in (
     "question", "mode", "size", "plan_approved", "precision", "goals", "target", "assumptions",
     "sources", "validation", "experiments", "skipped")})
 _document_args("study_add_input", study=_ID, name="File name to store under inputs/ (no folders).",
                path="Workspace file to copy in; give this or text.",
                text="Text to store (a transcript, notes); give this or path.")
-_document_args("study_step", study=_ID, layout="The complete model file as one JSON object (as write_model).",
+_document_args("study_step", study=_ID, layout="The complete model file as one JSON object (get_model_format shows its shape).",
+               model="Instead of layout: the name of a model open in the workspace, stepped as it is.",
+               patch="Instead of layout: [{\"path\", \"value\"}] changes to the last version, in the "
+                     "scenario override form, e.g. [{\"path\": \"resources.Server.capacity\", \"value\": 2}].",
                note="One line: what changed in this step and why.",
                request_id="Any unique string; a retried call with the same one is not recorded twice.",
                seed="First replication's seed.", changes=_CH + " Recorded before the step.")
@@ -186,8 +197,15 @@ def _tails(s: dict, digest: dict, results, layout: dict, where: str = "") -> lis
         x = g.get("share_above")
         if x is None or not g.get("kpi"):
             continue
-        res = g["kpi"].partition("/")[0]
-        shares = wait_shares(results, res, x, layout)
+        if g["kpi"] == TOTAL_WAIT:
+            shares = total_wait_shares(results, x)
+            if shares is None:
+                why.append(f"goal {g.get('id')}{where}: the run's entity log has no complete Total Wait "
+                           f"column (empty or truncated), so the share over {x:g} is not verified")
+                continue
+        else:
+            res = g["kpi"].partition("/")[0]
+            shares = wait_shares(results, res, x, layout)
         if shares is None:
             why.append(f"goal {g.get('id')}{where}: the waits at {res} cannot be rebuilt from the run's "
                        "resource log (absent, truncated or not FIFO), so the share over "
@@ -210,7 +228,7 @@ def _scenario_fix(layout: dict, problem) -> str:
         fix = json.dumps({"path": f"resources.{resources[int(m[1])].get('name')}.capacity",
                           "value": int(least[1])})
         return f"add {fix} to its overrides and step again"
-    return problem.hint or "fix its overrides (list_override_paths shows the valid ones) and step again"
+    return problem.hint or "fix its overrides and step again"
 
 
 def _runnable(layout: dict, names: list[str]) -> tuple[list[str], list[str]]:
@@ -223,7 +241,7 @@ def _runnable(layout: dict, names: list[str]) -> tuple[list[str], list[str]]:
         except ModelValidationError as exc:
             what = "; ".join(p.removeprefix(f"scenario '{name}': ") for p in exc.problems)
             fix = (_scenario_fix(layout, exc.structured[0]) if exc.structured
-                   else "fix its overrides (list_override_paths shows the valid ones) and step again")
+                   else "fix its overrides and step again")
             bad.append(f"Scenario '{name}' did not run: {what}; {fix}.")
         else:
             ok.append(name)
@@ -247,12 +265,69 @@ def _same_base_replications(folder: Path, s: dict, layout: dict) -> int:
     return int(last.get("replications") or 0) if same else 0
 
 
-def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | None, dict]:
+def _series(results, layout: dict, s: dict) -> dict[str, dict[int, float]]:
+    """{goal kpi: {seed: value}} per replication, read in `kpi_entry`'s order (system, user
+    statistic, tail share, resource column). A run's "Run" is its seed, so two runs pair by seed,
+    never by position. A tail share list has no seed: it pairs only when it has one value per run."""
+    if results is None:
+        return {}
+    flat = experiments.flatten_kpis(results)
+    seeds = sorted(int(x) for x in flat["Run"].unique()) if not flat.empty else []
+    out: dict = {}
+    for g in s["goals"]:
+        kpi = goal_kpi(g) if g.get("kpi") else None
+        if not kpi or kpi in out:
+            continue
+        for key in (f"system/{kpi}", f"user/{kpi}", None, f"resource/{kpi}"):
+            if key is None:         # the tail share, rebuilt as `_tails` does
+                if g.get("share_above") is None:
+                    continue
+                shares = (total_wait_shares(results, g["share_above"]) if g["kpi"] == TOTAL_WAIT
+                          else wait_shares(results, g["kpi"].partition("/")[0], g["share_above"], layout))
+                if shares is not None and len(shares) == len(seeds):
+                    out[kpi] = dict(zip(seeds, map(float, shares)))
+                    break
+                continue
+            rows = flat[flat["KPI"] == key]
+            if not rows.empty:
+                out[kpi] = {int(r): float(v) for r, v in zip(rows["Run"], rows["Value"])}
+                break
+    return out
+
+
+def _paired(base: dict[int, float] | None, scen: dict[int, float] | None) -> dict | None:
+    """D1263, D1265: an option against the Baseline over their common seeds -- the first n of
+    each, n = min of the two counts -- as {"diff_vs_baseline": {mean, lo, hi, n} (the 95%
+    t-interval of the per-replication differences), "spread": {n, sd, base_sd, mean, base_mean,
+    p}} (p: two-sided Pitman-Morgan, absent when the test cannot run). None without pairing:
+    other seeds, or fewer than 2 pairs."""
+    if not base or not scen:
+        return None
+    b, o = sorted(base), sorted(scen)
+    n = min(len(b), len(o))
+    if n < 2 or b[:n] != o[:n]:
+        return None
+    x = [scen[k] for k in o[:n]]
+    y = [base[k] for k in b[:n]]
+    diff = paired_diff_ci(x, y)
+    if not all(math.isfinite(diff[k]) for k in ("mean", "lb", "ub")):
+        return None
+    sd, base_sd = (float(statistics.stdev(v)) for v in (x, y))
+    spread = {"n": n, "sd": sd, "base_sd": base_sd, "mean": statistics.fmean(x), "base_mean": statistics.fmean(y)}
+    test = pitman_morgan(x, y)
+    if test["p"] is not None:
+        spread["p"] = test["p"]
+    return {"diff_vs_baseline": {"mean": diff["mean"], "lo": diff["lb"], "hi": diff["ub"], "n": n},
+            "spread": spread}
+
+
+def _run_scenarios(layout: dict, s: dict, n: int, seed: int, base=None) -> tuple[dict | None, dict]:
     """Run the layout's scenarios (not the baseline: the step just ran it) with the step's
     replications and seed, from the layout itself so a fresh process needs no model slot.
     Answers ({name: {"kpis": {goal kpi: {mean, ci_half_width}}, "goals": {goal id: verdict}}} or
-    None, extra answer keys). A failing scenario run is reported, never fails the step; a
-    scenario that does not validate is left out and named in "scenario_error" (#1729)."""
+    None, extra answer keys). With the Baseline's results *base*, a goal KPI's entry also holds
+    its paired difference and spread (`_paired`). A failing scenario run is reported, never fails
+    the step; a scenario that does not validate is left out and named in "scenario_error" (#1729)."""
     names = [sc.get("name") for sc in layout.get("scenarios") or [] if isinstance(sc, dict) and sc.get("name")]
     extra: dict = {}
     cap = SIZES[s["size"]]["scenarios"]
@@ -272,14 +347,18 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int) -> tuple[dict | Non
         extra["scenario_error"] = " ".join(bad + [f"The scenarios did not run: {type(exc).__name__}: {exc}."])
         return None, extra
     out, why = {}, []
+    base_series = _series(base, layout, s)
     for name, results in run.results.items():
         digest = _digest(results)
         why += _tails(s, digest, results, layout, f" in scenario {name}")
+        mine = _series(results, layout, s) if base_series else {}
         kpis, verdicts = {}, {}
         for i, g in enumerate(s["goals"]):
             e = kpi_entry(digest, goal_kpi(g)) if g.get("kpi") else None
             if e is not None:
                 kpis[goal_kpi(g)] = {k: e[k] for k in ("mean", "ci_half_width") if e.get(k) is not None}
+                if pair := _paired(base_series.get(goal_kpi(g)), mine.get(goal_kpi(g))):
+                    kpis[goal_kpi(g)].update(pair)
             verdicts[g.get("id", f"g{i + 1}")] = study_mod.judge(g, e["mean"] if e else None)
         out[name] = {"kpis": kpis, "goals": verdicts}
     if not run.completed:
@@ -366,7 +445,7 @@ SLOTS[_SLOT_PREFIX] = {"load": _load_slot, "asked": _keep_asked, "recorded": _re
 def _validate_call(folder: Path, s: dict) -> str | None:
     """The ready-to-send study_validate call when the validation item is open and the last version is
     a queue the formula covers; None otherwise."""
-    if not s["versions"] or any(v.get("passed") for v in s["validation"]):
+    if not s["versions"] or any(study_mod.checked(v) for v in s["validation"]):
         return None
     layout = _read_layout(folder, s["versions"][-1]["id"])
     return f'study_validate(study="{_sid(folder)}")' if queue_formula(layout) else None
@@ -383,10 +462,25 @@ def _next(folder: Path, s: dict) -> str:
     offer = _validate_call(folder, s)
     if offer and text == study_mod._TODO["validation"]:
         text = f"Check the model against the textbook queue formula with {offer}, or record another validation."
+    elif offer and text == study_mod._REPORTED:     # another recorded one would not close it (D1234)
+        text = (f"The validation is reported, not checked: check it with {offer}, or show the person "
+                "what was compared.")
     if text == study_mod._TODO["model"]:
         text = (f'Build the first model version with study_step(study="{sid}", layout=<the whole model file>, '
                 'note="first model").')
     return text
+
+
+def _patched(folder: Path, s: dict, patch: list) -> dict:
+    """The last version's model with *patch* applied (S2-18): a one-line fix without resending the file."""
+    if not s["versions"]:
+        raise ToolError("E_STUDY_NO_VERSION", "the study has no version to patch",
+                        "step the first version with layout or model")
+    try:
+        return experiments.apply_overrides(_read_layout(folder, s["versions"][-1]["id"]), patch)
+    except ModelValidationError as exc:
+        raise ToolError("E_BAD_ARGUMENT", f"`patch`: {'; '.join(exc.problems)}",
+                        override_hint(exc)) from None
 
 
 def _merge(changes, top: dict) -> dict:
@@ -434,8 +528,35 @@ def _study_kpi_names(changes: dict) -> list[str]:
 
 def _set(s: dict, changes: dict) -> list[str]:
     checked, notes = _check(changes)    # nothing is set if any key is refused
+    if "validation" in checked:
+        checked["validation"] = _sourced(s["validation"], checked["validation"])
     s.update(checked)
     return notes
+
+
+def _vkey(v: dict) -> tuple:
+    return v.get("level"), v.get("passed"), v.get("text")
+
+
+def _sourced(old: list, new: list) -> list:
+    """D1234: every entry this path writes is the assistant's, whatever its payload says (the source
+    is the caller's, never the file's). A list key replaces the whole list, so an entry resent
+    unchanged (level, passed and text equal to a stored one) keeps the stored source.
+    D1259 (#1815): a person's entry is the person's alone. It is kept exactly as stored, whether
+    the list resends it (with any field changed) or leaves it out; no tool edits or drops it."""
+    person = [v for v in old if v.get("source") == "person"]
+    stored: dict[tuple, list] = {}
+    for v in old:
+        if v.get("source") != "person":
+            stored.setdefault(_vkey(v), []).append(v.get("source"))
+    taken = {_vkey(v) for v in person}
+    out = []
+    for v in new:
+        if _vkey(v) in taken:
+            continue        # the person's entry, resent: the stored one stands (added below)
+        kept = stored.get(_vkey(v)) or [None]
+        out.append({**v, "source": kept.pop(0) or v.get("source") or "assistant"})
+    return person + out
 
 
 def _squash(name) -> str:
@@ -457,15 +578,29 @@ def _map_targets(s: dict, layout: dict) -> list[str]:
     return notes
 
 
+# The guide's sections a cold assistant needs before its first goal or scenario (D1218): what to
+# ask, the record shapes with what a KPI name is, the scenario shape. Sliced from SKILL.md, the one
+# source the prompt and the naga://guide/study resource serve whole.
+_GUIDE_SECTIONS = ("Ask the person first", "Records", "Scenarios")
+
+
+def _guide() -> str:
+    text = study_mod.skill_text()
+    return "\n".join(m.group(0).strip() + "\n" for h in _GUIDE_SECTIONS
+                     if (m := re.search(rf"^## {re.escape(h)}\b.*?(?=^## |\Z)", text, re.S | re.M)))
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40].strip("-") or "study"
 
 
-@tool()
+@tool(returns={
+    "study": str, "next_step": str, "plan_card": dict, "effort": dict, "guide": str,
+    "options": list, "normalised": list, "page_url": str, "room_url": str})
 @_linked
-def study_start(question: str, study: str | None = None, mode: str = "one_go",
-                size: str = "standard", changes: dict | None = None) -> dict:
-    """Start a simulation study: make its folder and say what to do first.
+def study_start(question: str, study: str | None = None, mode: Mode = "one_go",
+                size: Size = "standard", changes: dict | None = None) -> dict:
+    """Start a simulation study: make its folder, say what to do first and which KPI names a goal can use.
 
     Use it for a decision question ("how many cranes do we need?"), then follow the
     next_step in every answer. The study keeps its state in the folder; pass the returned
@@ -475,8 +610,8 @@ def study_start(question: str, study: str | None = None, mode: str = "one_go",
     study_update). Example: study_start(question="How many cranes do we need?",
     changes={"goals": [{"id": "g1", "text": "wait under 5", "kpi": "Avg Throughput Time", "high": 5}]}).
 
-    Returns {"study", "next_step", "plan_card", "effort"}, plus "normalised" when a near-miss
-    input was mapped.
+    "guide" is what to ask the person, the record shapes with what a KPI name is, and the
+    scenario shape (once, here); "normalised" appears when a near-miss input was mapped.
     """
     started = time.monotonic()
     if not isinstance(question, str) or not question.strip():
@@ -498,21 +633,24 @@ def study_start(question: str, study: str | None = None, mode: str = "one_go",
     _log(s, "study_start", started)
     _save(folder, s)
     out = {"study": _sid(folder), "next_step": _next(folder, s), "options": _options(folder, s),
-           "plan_card": study_mod.plan_card(s), "effort": study_mod.effort(s)}
+           "plan_card": study_mod.plan_card(s), "effort": study_mod.effort(s), "guide": _guide()}
     return {**out, "normalised": notes} if notes else out
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "study": str, "question": str, "mode": str, "size": str, "sufficiency": str,
+    "why_not_sufficient": list, "goals": list, "checklist": list, "last_version": dict | None,
+    "versions": int, "effort": dict, "next_step": str, "options": list, "plan_card": dict,
+    "room_url": str, "page": str, "validate": str, "page_url": str})
 @_linked
 def study_status(study: str) -> dict:
     """Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the
     last version's KPIs with how confident they are (precision of the confidence intervals) and
     the next step. Call it first on an existing study folder.
 
-    Returns {"study", "question", "mode", "size", "sufficiency", "why_not_sufficient", "goals",
-    "checklist", "last_version", "versions", "effort", "next_step", "options"}, plus "plan_card"
-    until the plan is approved and "validate" (a ready-to-send study_validate call) while no
-    validation has passed and the last version is a queue with a textbook answer.
+    Plus "plan_card" until the plan is approved and "validate" (a ready-to-send study_validate
+    call) while no validation has passed and the last version is a queue with a textbook
+    answer.
 
     "options" (in every answer that has next_step) is what next, at most 3, ranked fix > missing >
     improve > extend from the study's recorded numbers: {"kind", "title", "why" (with its number),
@@ -558,8 +696,8 @@ def _check_goals(key, value):
         if x is not None:
             if isinstance(x, bool) or not isinstance(x, (int, float)) or x < 0:
                 raise _bad(key, "share_above must be a number of at least 0 (the wait the share is counted above)")
-            if not (isinstance(g.get("kpi"), str) and "/" in g["kpi"]):
-                raise _bad(key, 'a goal with share_above needs kpi "<resource>/Time in Queue"')
+            if not (isinstance(g.get("kpi"), str) and ("/" in g["kpi"] or g["kpi"] == TOTAL_WAIT)):
+                raise _bad(key, 'a goal with share_above needs kpi "<resource>/Time in Queue" or "Total Wait"')
         p = g.get("precision")
         if p is not None and (isinstance(p, bool) or not isinstance(p, (int, float)) or not p > 0):
             raise _bad(key, "precision must be a number above 0 (absolute half-width in the KPI's unit)")
@@ -595,6 +733,10 @@ def _check_validation(key, value):
             raise ToolError("E_STUDY_BAD_VALUE", f"{key}: level must be one of {list(LEVELS)}", _VALIDATION_HINT)
         if not isinstance(v.get("passed"), bool):
             raise ToolError("E_STUDY_BAD_VALUE", f"{key}: passed must be true or false", _VALIDATION_HINT)
+    # D1234: every path that checks changes (study_start, study_update, study_step) is the
+    # assistant's; `_set` gives an entry resent unchanged its stored source back.
+    for v in value if isinstance(value, list) else []:
+        v["source"] = "assistant"
     return value
 
 
@@ -644,15 +786,18 @@ _SETTABLE = {
 }
 
 
-@tool()
+@tool(returns={
+    "ok": bool, "next_step": str, "options": list, "room_url": str, "page_url": str,
+    "normalised": list})
 @_linked
 def study_update(study: str, changes: dict | None = None, question: str | None = None,
-                 mode: str | None = None, size: str | None = None,
+                 mode: Mode | None = None, size: Size | None = None,
                  plan_approved: bool | None = None, precision: dict | None = None,
-                 goals: list | None = None, target: list | None = None, assumptions: list | None = None,
-                 sources: list | None = None, validation: list | None = None,
-                 experiments: list | None = None, skipped: list | None = None) -> dict:
-    """Record what the study has learned or the person decided (fewer or more replications:
+                 goals: list[dict] | None = None, target: list[dict] | None = None, assumptions: list[dict] | None = None,
+                 sources: list[dict] | None = None, validation: list[dict] | None = None,
+                 experiments: list[dict] | None = None, skipped: list[str] | None = None) -> dict:
+    """Record what the study has learned or the person decided (a goal such as at most 5% of people
+    waiting more than 20 minutes; fewer or more replications:
     set precision): set any of question,
     decision, mode, size, plan_approved, precision, goals, target, assumptions, sources, validation,
     experiments, skipped, inside `changes` or (all but decision) as parameters of the same name
@@ -663,7 +808,7 @@ def study_update(study: str, changes: dict | None = None, question: str | None =
     Example: study_update(study="naga-studies/cranes", validation=[{"level": "known_answer",
     "passed": true, "text": "M/G/1 formula vs model wait"}]).
 
-    Returns {"ok", "next_step"}, plus "normalised" (a list of notes) when something was mapped.
+    "normalised" (a list of notes) appears when something was mapped.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
@@ -680,14 +825,12 @@ def study_update(study: str, changes: dict | None = None, question: str | None =
     return {**out, "normalised": notes} if notes else out
 
 
-@tool()
+@tool(returns={"input": str, "page_url": str, "room_url": str})
 @_linked
 def study_add_input(study: str, name: str, path: str | None = None, text: str | None = None) -> dict:
     """Keep a source of the study in its inputs/ folder: copy a workspace file, or store text
     (a call transcript, notes). Then name it with study_update(changes={"sources": [{"id",
     "text", "input": <the returned path>}]}) so the inputs step can check it.
-
-    Returns {"input": "inputs/<name>"}.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
@@ -715,14 +858,20 @@ def study_add_input(study: str, name: str, path: str | None = None, text: str | 
     return {"input": f"inputs/{name}"}
 
 
-@tool()
+@tool(returns={
+    "id": str, "kind": str, "verdict": str, "checks": list, "changes": list, "kpis": dict,
+    "replications": int, "precision": dict, "precision_note": str, "sufficiency": str,
+    "next_step": str, "problems": list, "options": list, "room_url": str, "page": str,
+    "page_url": str, "tail_note": str, "scenarios": dict, "normalised": list,
+    "scenarios_skipped": str, "scenario_error": str})
 @_linked
 def study_step(study: str, layout: dict | None = None, note: str | None = None, request_id: str | None = None, seed: int = 0,
-               changes: dict | None = None) -> dict:
+               changes: dict | None = None, model: str | None = None, patch: list[dict] | None = None) -> dict:
     """Test one model step: write the whole model, run it, check it, and store it as a new
-    version (or as a draft when it fails). Always send the complete model file and a one-line
-    note. A model that does not validate or run is stored as a draft with its problems, not
-    refused: read "problems", fix the model, step again.
+    version (or as a draft when it fails). Send the complete model file as `layout`, or `model`
+    (the name of a model open in the workspace), or `patch` (changes to the
+    last version), and a one-line note. A model that does not validate or run is stored as a
+    draft with its problems, not refused: read "problems", fix the model, step again.
 
     The replications come from a precision target, not from the model's own
     simulation.replications: a first pass of 10, then, if a goal KPI's 95% confidence interval is
@@ -744,32 +893,40 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
     note="add the second crane", changes={"assumptions": [{"id": "a1", "text": "...", "source": "..."}]}).
 
     A tail goal {"id", "text", "kpi": "<resource>/Time in Queue", "share_above": 15, "high": 0.05}
-    bounds the share of entities that waited more than 15 at that resource. The engine rebuilds
-    the waits from the run's resource log (FIFO resources only) and stores the share per
-    replication as the KPI "<resource>/Share waiting over 15", with its confidence interval, so it is
-    judged, sized (precision) and compared across scenarios like any KPI. When the waits cannot be
-    rebuilt the goal stays not_verified and "tail_note" says why.
+    bounds the share of entities that waited over 15 at that resource (FIFO only), stored per
+    replication as the KPI "<resource>/Share waiting over 15"; "kpi": "Total Wait" sums each
+    entity's waits over every queue ("Share with total wait over 15"). Either is judged, sized and
+    compared like any KPI; when it cannot be computed it stays not_verified and "tail_note" says why.
 
-    Returns {"id", "kind": "version"|"draft", "verdict", "checks", "changes", "kpis",
-    "replications", "precision": {goal KPI: {half_width, target, met}}, "precision_note" (one
-    sentence), "sufficiency", "next_step"}. A version has no
-    report file by default (the answer is the light output); study_report writes it on request. With scenarios: "scenarios": {name: {"kpis": {goal KPI: {mean,
+    A version has no report file by default (the answer is the light output); study_report
+    writes it on request. With scenarios: "scenarios": {name: {"kpis": {goal KPI: {mean,
     ci_half_width}}, "goals": {goal id: met|not_met|not_verified}}}, and "scenario_error" or
-    "scenarios_skipped" when a run failed or the cap cut some; "normalised" when an input was mapped.
+    "scenarios_skipped" when a run failed or the cap cut some; "normalised" when an input was
+    mapped.
     """
     started = time.monotonic()
-    if layout is None:
-        raise ToolError("E_BAD_ARGUMENT", "`layout` is required: a step runs a whole model",
-                        "for record-only changes use study_update(changes=...), or resend the whole layout to step")
+    if sum(x is not None for x in (layout, model, patch)) != 1:
+        raise ToolError("E_BAD_ARGUMENT", "give one of `layout`, `model` and `patch`: a step runs a whole model",
+                        "layout: the whole file; model: an open workspace model; patch: changes to the last "
+                        "version. For record-only changes use study_update(changes=...)")
     if note is None:
         raise ToolError("E_BAD_ARGUMENT", "`note` is required", "send a one-line note saying what the step changes")
     folder, s = _open(study, write=True)
+    if model is not None:
+        layout = workspace().document(model).to_layout()
+    elif patch is not None:
+        layout = _patched(folder, s, patch)
     notes: list[str] = []
     if changes is not None:     # refused before anything runs, so a bad record never costs a step
         notes += _set(s, _merge(changes, {}))
     with _study_errors():
         layout, layout_notes = studyinput.normalise_layout(layout)
     notes += layout_notes
+    if any(g.get("kpi") == TOTAL_WAIT and g.get("share_above") is not None for g in s["goals"])             and isinstance(layout, dict) and not (layout.get("simulation") or {}).get("entity_waits"):
+        # D1232: only a run that asks keeps each entity's total wait; recorded in the version's
+        # model, so a rerun of it reads the same column.
+        layout = {**layout, "simulation": {**(layout.get("simulation") or {}), "entity_waits": True}}
+        notes.append("simulation.entity_waits set to true: a goal reads each entity's Total Wait")
     key = study_mod.request_key("step", request_id)
     cached = key is not None and key in s["requests"]
     digest = rerun = scenarios = first = None
@@ -823,7 +980,7 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                         status = study_mod.precision_status(s, digest)
             if digest is not None:
                 with _stage(3, 3, "scenarios"):
-                    scenarios, extra = _run_scenarios(layout, s, n, seed)
+                    scenarios, extra = _run_scenarios(layout, s, n, seed, workspace().results.get(model))
     checks = (step_checks(layout, digest, rerun, s, {"status": status, "n": n, "cap": cap}, first)
               if digest is not None else [])
     _log(s, "study_step", started, study_mod.error_code(problems) if problems else None)
@@ -846,9 +1003,11 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
     return answer
 
 
-@tool()
+@tool(returns={
+    "kind": str, "model": float, "formula": float, "rel_error": float, "passed": bool,
+    "next_step": str, "options": list, "page_url": str, "room_url": str})
 @_linked
-def study_validate(study: str, kind: str = "queue_formula") -> dict:
+def study_validate(study: str, kind: Literal["queue_formula"] = "queue_formula") -> dict:
     """Check the last model version against a textbook answer and record the validation.
 
     kind="queue_formula" applies when the model is one arrival stream (exponential interarrival
@@ -859,13 +1018,11 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
     reason, so the person is asked for another validation.
     Example: study_validate(study="naga-studies/cranes").
 
-    Returns {"kind", "model", "formula", "rel_error", "passed", "next_step"}: the simulated and the
-    formula's mean wait, their relative difference and whether it is within 5%.
+    "model" and "formula" are the simulated and the formula's mean wait, "rel_error" their
+    relative difference and "passed" whether it is within 5%.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
-    if kind != "queue_formula":
-        raise _bad("kind", "must be queue_formula")
     if not s["versions"]:
         raise ToolError("E_STUDY_NO_VERSION", "the study has no model version to validate",
                         "build a version with study_step first")
@@ -873,14 +1030,16 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
     f = queue_formula(layout)
     if f is None:
         raise ToolError("E_STUDY_NOT_APPLICABLE", f"the queue formula does not apply: {why_not(layout)}",
-                        "validate against data or an expert and record it with study_update")
+                        "compare with data or an expert; the person must confirm it (the assistant's "
+                        "own record reads \"reported, not checked\")")
     # ponytail: no time_limit in the model falls back to 1000; run through api (no logs) because the
     # 100x run would only fill the resource log.
     length = 100 * float((layout.get("simulation") or {}).get("time_limit") or 1000)
     ws = workspace()
     try:
         results = api.run_model(layout, replications=10, seed=0, run_length=length, warmup=0.1 * length,
-                                record_logs=False, network=ws.network, confine_to=ws.root)
+                                record_logs=False, network=ws.network, confine_to=ws.root,
+                                on_progress=report)     # D1262: the dock's Stop lands at a progress point
     except RuntimeError as exc:
         raise ToolError("E_RUN_FAILED", str(exc), "fix the model with study_step") from exc
     res = layout["resources"][0]["name"]
@@ -891,7 +1050,8 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
     passed = abs(rel) <= 0.05
     entry = {"level": "known_answer", "passed": passed,
              "text": f"{kind}: model {wait:.4g} vs formula {f['wq']:.4g} ({100 * rel:+.1f}%)"}
-    _set(s, {"validation": s["validation"] + [entry]})      # the path study_update uses
+    # The engine's own write (D1234): not through _set, which marks what it writes as the assistant's.
+    s["validation"] = s["validation"] + [{**entry, "source": "engine"}]
     _log(s, "study_validate", started)
     _save(folder, s)
     _page(folder, s)
@@ -899,14 +1059,12 @@ def study_validate(study: str, kind: str = "queue_formula") -> dict:
             "passed": passed, "next_step": _next(folder, s), "options": _options(folder, s)}
 
 
-@tool()
+@tool(returns={"sufficiency": str, "page_url": str, "room_url": str})
 @_linked
 def study_accept(study: str, reason: str) -> dict:
     """Record that the person accepts the study as it stands. Call it only with the
     person's own words, after they have explicitly accepted; never on your own judgment. It
     changes the label, not the checks: open issues stay listed.
-
-    Returns {"sufficiency": label}.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
@@ -920,13 +1078,14 @@ def study_accept(study: str, reason: str) -> dict:
     return {"sufficiency": _label(s)}
 
 
-@tool()
+@tool(returns={
+    "id": str, "kind": str, "verdict": str, "checks": list, "changes": list, "kpis": dict,
+    "replications": int, "precision": dict, "page": str, "sufficiency": str, "next_step": str,
+    "options": list, "page_url": str, "room_url": str})
 @_linked
 def study_revert(study: str, version: str, note: str, request_id: str | None = None) -> dict:
     """Go back to an earlier version: it is recorded again as a new version, so no history is
     lost. Use it when a later step made things worse.
-
-    Returns the new version, like study_step.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
@@ -946,14 +1105,12 @@ def study_revert(study: str, version: str, note: str, request_id: str | None = N
     return answer
 
 
-@tool()
+@tool(returns={"path": str, "page_url": str, "room_url": str})
 @_linked
 def study_report(study: str, version: str | None = None) -> dict:
     """Write a version's full HTML report (KPIs with intervals, resources, charts) on request.
     Steps do not write it, to keep the default output light. It reruns the version's stored
     model with the step's stored replications and seed, so the numbers match the step.
-
-    Returns {"path": the report file relative to the workspace root}.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
@@ -979,15 +1136,13 @@ def study_report(study: str, version: str | None = None) -> dict:
     return {"path": f"{_sid(folder)}/versions/{vid}/report.html"}
 
 
-@tool()
+@tool(returns={"files": list, "next_step": str, "page_url": str, "room_url": str})
 @_linked
 def study_package(study: str) -> dict:
     """Build the study's deliverable, the final files to hand over, in its package/ folder:
-    the control room page, an Excel
+    the client page, the control room page, any current write-up and slides, an Excel
     workbook (goals, versions with KPIs, checklist, assumptions), the current model and
     RO-Crate metadata. Use it when the person is satisfied with the study.
-
-    Returns {"files": [paths relative to the workspace root], "next_step"}.
     """
     started = time.monotonic()
     folder, s = _open(study, write=True)
@@ -996,22 +1151,47 @@ def study_package(study: str) -> dict:
     _log(s, "study_package", started)
     _save(folder, s)
     return {"files": [f"{_sid(folder)}/{n}" for n in names],
-            "next_step": "Give the person package/control-room.html (print it to PDF) and study.xlsx."}
+            "next_step": "Give the person package/client.html (print it to PDF) and study.xlsx; "
+                         "package/control-room.html is the modeller's page."}
 
 
-@tool(read_only=True)
+# The parameters that say what a block does, as get_model_summary keeps them (S2-11).
+_KEY_PARAMS = ("resource_name", "distribution", "dist_params", "mode", "probs", "conditions", "assignments",
+               "stat_name", "kind", "expr", "max_arrivals", "batch_size", "capacity", "schedule")
+
+
+def _parameters(layout: dict) -> str:
+    """One line per block with its key parameters, per resource with its capacity, and per schedule
+    (cut at 200 characters): what an assistant checks its model against, without get_model_json."""
+    def short(value) -> str:
+        text = json.dumps(value)
+        return text if len(text) <= 200 else text[:200] + "..."
+    lines = ["Parameters:"]
+    for b in layout.get("blocks") or []:
+        keep = {k: v for k, v in (b.get("params") or {}).items() if k in _KEY_PARAMS}
+        if keep:
+            lines.append(f"- {b.get('name')}: " + ", ".join(f"{k}={short(v)}" for k, v in keep.items()))
+    for r in layout.get("resources") or []:
+        lines.append(f"- resource {r.get('name')}: capacity={r.get('capacity')}"
+                     + (f", capacity_schedule={r['capacity_schedule']}" if r.get("capacity_schedule") else ""))
+    lines += [f"- schedule {sc.get('name')}: {short({k: v for k, v in sc.items() if k != 'name'})}"
+              for sc in layout.get("schedules") or [] if isinstance(sc, dict)]
+    return "\n".join(lines).encode("ascii", "replace").decode("ascii")
+
+
+@tool(read_only=True, returns={
+    "version": str, "format": str, "text": str, "image": dict, "page_url": str, "svg": str,
+    "note": str, "room_url": str})
 @_linked
-def study_view(study: str, version: str | None = None, format: str = "png") -> dict:
+def study_view(study: str, version: str | None = None, format: Literal["png", "svg", "text"] = "png") -> dict:
     """See a version's flowchart: built blocks, what this step changed and what of the agreed
     target is not built yet. Use it to check the model looks like the process.
 
-    Returns {"version", "format", "text"} (the text lists every block, state and link), plus
-    "image" for png or "svg" for svg. Without matplotlib a png request answers with the text
-    and a "note".
+    The text lists every block, state and link, then each block's key parameters, the resources
+    and the schedules; "image" comes for png, "svg" for svg. Without matplotlib a png request
+    answers with the text and a "note".
     """
     folder, s = _open(study)
-    if format not in ("png", "svg", "text"):
-        raise _bad("format", "must be png, svg or text")
     with _study_errors():
         vid = study_mod.version_id(s, version)
     base = folder / "versions" / vid
@@ -1025,7 +1205,7 @@ def study_view(study: str, version: str | None = None, format: str = "png") -> d
     geom = flowchart.geometry(layout, changed,
                               pending=[c for c in s["target"] if not c.get("blocks")])
     title = next(v["note"] for v in s["versions"] if v["id"] == vid)
-    out = {"version": vid, "format": format, "text": flowchart.to_text(geom)}
+    out = {"version": vid, "format": format, "text": flowchart.to_text(geom) + "\n" + _parameters(layout)}
     if format == "svg":
         out["svg"] = flowchart.to_svg(geom, f"{vid}: {title}")
     elif format == "png":
@@ -1039,14 +1219,14 @@ def study_view(study: str, version: str | None = None, format: str = "png") -> d
     return out
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "study": str, "sufficiency": str, "goals_met": str, "versions": int, "page": str | None,
+    "text": str, "page_url": str, "room_url": str})
 @_linked
 def study_show(study: str) -> dict:
     """Show the study's control room, its dashboard. In chats that support MCP Apps the page appears inline,
     with buttons to revert to a version or accept the study; elsewhere this is a short summary
     and the path of the page file.
-
-    Returns {"study", "sufficiency", "goals_met": "k of n", "versions", "page": path or None, "text"}.
     """
     folder, s = _open(study)
     goals = study_mod.goals_status(s)
@@ -1059,12 +1239,10 @@ def study_show(study: str) -> dict:
             "versions": len(s["versions"]), "page": page, "text": text}
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={"html": str})
 def study_page_html(study: str) -> dict:
     """The control room page as one HTML string. It exists for the in-chat page, which fetches
     it itself so the HTML never enters the conversation; assistants should call study_show instead.
-
-    Returns {"html"}.
     """
     folder, s = _open(study)
     return {"html": studypage.render(folder, s, study_id=_sid(folder))}

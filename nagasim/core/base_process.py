@@ -142,7 +142,10 @@ class BaseProcess(ABC):
             value *= base_factor("time", unit, self.ctx.units)
         if value < 0:
             if self.negative_samples == 0:
-                log.warning(f"{self.name}: sampled negative duration ({value:.4g}); truncating to 0.")
+                # The same words every replication, so a run says it once (S1-14); the
+                # count is `negative_samples`.
+                log.warning(f"{self.name}: sampled a negative duration; such samples are "
+                            f"truncated to 0")
             self.negative_samples += 1
             return 0.0
         return value

@@ -46,6 +46,7 @@ A check of the model reports these about this block:
 
 | Code | Meaning |
 |---|---|
+| `E_LOGIC_CLASS_UNKNOWN` | A LOGIC block names a class the logic module (nagasim.core.custom_logic) does not define, so a run from an agent tool would fail on it. |
 | `E_VIEWER_MODEL` | A model cannot be shared as a browser viewer as it is: it holds agent Python, a LOGIC block, something a plugin registered, a data source that was not frozen into the copy, or it is too large. |
 
 ## Example

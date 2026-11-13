@@ -19,6 +19,9 @@ from nagasim.core.trace import TraceRecorder
 
 from conftest import create, dispose, layout
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # A 3-4-5 triangle plus a long way round, so the shortest path is not the only

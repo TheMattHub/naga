@@ -18,13 +18,14 @@ COMPACT_TOOL_NAMES = frozenset({
     "get_model_format", "write_model", "update_block", "run_model", "get_kpi_table"})
 
 # What a session that only builds and runs a model needs (D397): that list plus the three
-# file tools.
-COMPACT = COMPACT_TOOL_NAMES | {"open_model", "get_model_json", "save_model"}
+# file tools, the check a model must pass before it is done, and find_tool (D1217: in every
+# profile, so a task the list misses is found among the published tools).
+COMPACT = COMPACT_TOOL_NAMES | {"open_model", "get_model_json", "save_model", "check_model_opens", "find_tool"}
 
 # Make and change a model: whole-file or block by block, reference, validation, a picture.
 BUILD = COMPACT | {
-    "new_model", "list_models", "get_model_summary", "undo", "redo", "import_xmile",
-    "import_mdl", "add_block", "remove_blocks", "connect", "disconnect", "reorder_branches",
+    "new_model", "list_models", "get_model_summary", "undo", "redo", "import_sd_model",
+    "add_block", "remove_blocks", "connect", "disconnect", "reorder_branches",
     "set_resources", "set_calendar", "set_entity_types", "set_simulation_settings",
     "set_sd_settings", "auto_layout", "get_record_schema", "list_records", "upsert_record",
     "remove_record", "list_block_types", "describe_block_type", "list_distributions",
@@ -37,7 +38,7 @@ RUN = frozenset({
     "run_scenarios", "upsert_scenario", "what_if", "explain_kpi", "investment_case",
     "run_to_precision", "suggest_warmup", "run_reality_checks", "run_loop_dominance",
     "fit_distribution", "input_uncertainty", "export", "run_facts", "debug_run",
-    "debug_inspect", "view_model"})
+    "debug_inspect", "view_model", "find_tool"})
 
 # A decision study and the searches behind it: the study_* workflow, optimise, calibrate.
 STUDY = frozenset({
@@ -47,13 +48,13 @@ STUDY = frozenset({
     "study_animation", "study_writeup", "study_slides",
     "open_model", "save_model", "validate_model", "run_model", "get_kpi_table",
     "run_scenarios", "upsert_scenario", "optimize", "calibrate", "evaluate_policy",
-    "fit_surrogate", "export", "view_model"})
+    "fit_surrogate", "export", "view_model", "get_model_format", "find_tool"})
 
 # A live twin: plant data in, forecast and recommendations out (the product adds its MES tools).
 TWIN = frozenset({
     "open_model", "get_model_summary", "validate_model", "run_model", "get_kpi_table",
     "resolve_data_bindings", "set_initial_state", "upsert_timeseries_input_from_csv",
     "forecast", "get_plant_timeline", "get_twin_monitor", "get_twin_forecast",
-    "get_twin_recommendations"})
+    "get_twin_recommendations", "find_tool"})
 
 PROFILES = {"compact": COMPACT, "build": BUILD, "run": RUN, "study": STUDY, "twin": TWIN}

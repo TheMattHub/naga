@@ -14,10 +14,11 @@ from nagasim.core import agents as A
 from nagasim.core.schema import migrate
 from nagasim.core.sim_runner import run_single_simulation
 from nagasim.experiments import flatten_kpis
+from functools import partial
+from helpers import model
 
 
-def _model(*records, time_limit=20):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=20)
 
 
 def _run(layout, seed=1):

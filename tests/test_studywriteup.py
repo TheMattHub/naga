@@ -11,6 +11,9 @@ import nagasim.agent_tools.study_sensitivity  # noqa: F401  registers the tool
 import nagasim.agent_tools.study_writeup  # noqa: F401  registers the tools
 from nagasim import study as study_mod, studywriteup
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 KPI = "Avg Throughput Time"
 EVIL = '<script>alert(1)</script> & "q"'
@@ -184,3 +187,109 @@ def test_number_formatting():
     assert studywriteup._span({"high": 5, "low": float("-inf")}) == "<= 5"
     assert studywriteup._span({"low": 2}) == ">= 2" and studywriteup._span({"low": 1, "high": 3}) == "1 to 3"
     assert studywriteup._span({}) == ""
+
+
+def test_1784_answer_slide_leads_with_the_recommended_option(nurse_study):
+    """S4-01, S2-08: when the study is sufficient with a scenario, "The answer" leads with that
+    option's number and a "met" verdict, the Baseline beside it as the comparison (D1237)."""
+    folder, st = nurse_study
+    html = studywriteup.slides(folder, st).read_text(encoding="utf-8")
+    answer = html.split("The answer</h2>")[1].split("</section>")[0]
+    big = answer.split('class="big">')[1].split("<")[0]
+    assert big.startswith("5.4%"), big                      # the option, not the base's 27.6%
+    assert "Fourth nurse" in answer and "Baseline" in answer and "27.6%" in answer
+    assert answer.index("5.4%") < answer.index("27.6%")
+    assert 'class="badge met"' in answer and "not met" not in answer.split("Baseline")[0]
+    assert "at most 10%" in answer
+    # One name for the reference case (Open 2): the options table says Baseline too.
+    assert "base model" not in html
+
+
+def test_deck_says_reported_not_checked(nurse_study):
+    """S2-19: a validation the assistant wrote itself (source "assistant", D1234) is not a passed
+    check: the deck, the write-up and both package pages say "reported, not checked" and do not
+    count it in the validation level; the engine's and the person's do count; an entry without a
+    source (a file from before D1234) is reported, not checked, as study.checked has it (P10)."""
+    from nagasim import studypackage, studypage
+
+    folder, st = nurse_study
+    st["validation"] = [{"level": "known_answer", "passed": True, "text": "my arithmetic", "source": "assistant"}]
+    html = studywriteup.slides(folder, st).read_text(encoding="utf-8")
+    assert "reported, not checked" in html and "Validation: known answer" not in html
+    assert studypage._validation_level(st) == "none recorded"
+    studypackage.package(folder, st)
+    for page in ("client.html", "control-room.html"):
+        text = (folder / "package" / page).read_text(encoding="utf-8")
+        assert "reported, not checked" in text, page
+    for source in ("engine", "person"):
+        entry = {"level": "known_answer", "passed": True, "text": "formula"}
+        if source:
+            entry["source"] = source
+        st["validation"] = [entry]
+        assert studypage._validation_level(st) == "known answer", source
+        assert "reported, not checked" not in studywriteup.slides(folder, st).read_text(encoding="utf-8")
+    st["validation"] = [{"level": "known_answer", "passed": True, "text": "formula"}]
+    assert studypage._validation_level(st) == "none recorded"
+
+
+def test_run_noise_row_speaks_the_pages_wording(nurse_study):
+    """Tier review: the deck's Run noise row printed the raw fractions ("... 0.05958 (target 0.02851)")
+    where the client page says percentage points; every surface uses the one wording (D1236)."""
+    from nagasim import studypage
+    folder, st = nurse_study
+    steps = {v["id"]: studypage._read(folder / "versions" / v["id"] / "step.json") or {} for v in st["versions"]}
+    noise = dict(studypage.trust_rows(folder, st, steps))["Run noise"]
+    assert "3.6 points (target 2 points)" in noise and "0.036" not in noise
+    assert "3.6 points (target 2 points)" in studypage._precision_line(st, steps)
+    deck = studywriteup.slides(folder, st).read_text(encoding="utf-8")
+    assert "0.036" not in deck and "3.6 points" in deck
+
+
+def test_old_validation_is_reported_with_a_revalidate_offer(nurse_study):
+    """D1253 (journeys item 5): an entry from before D1234 (no source) still does not pass, and
+    every page that shows the checklist says "reported, not checked" and offers the engine's check
+    where it applies: the call on a static page, a Re-validate button in the room."""
+    from nagasim import studyapp, studypage, studyroom
+
+    folder, st = nurse_study
+    st["validation"] = [{"level": "known_answer", "passed": True, "text": "queueing formula"}]
+    assert study_mod.validation_state(st) == "reported" and not study_mod.sufficiency(st)["sufficient"]
+    item = next(c for c in study_mod.checklist(st, folder) if c["item"] == "validation")
+    assert item["verdict"] == "not_verified" and item["why"].startswith(study_mod.REPORTED)
+    assert not study_mod.can_revalidate(st, folder)          # a Delay: the queue formula does not cover it
+    assert "study_validate(" not in studypage.render(folder, st, study_id="s")
+    shutil.copy(MODELS / "single_server.json", folder / "versions" / st["versions"][-1]["id"] / "model.json")
+    assert study_mod.can_revalidate(st, folder)
+    call = 'study_validate(study=&quot;s&quot;)'
+    room = studypage.render(folder, st, study_id="s", in_room=True)
+    assert "data-revalidate" in room and call in room and study_mod.REPORTED in room
+    client = studypage.render_client(folder, st, [])      # no id known: the tool and the room, no guess
+    assert "study_validate on this study" in client and "naga room s" in client and study_mod.REPORTED in client
+    assert "study_validate" in studyroom.DIRECT and "[data-revalidate]" in studyapp.room_html()
+    for state, entry in (("checked", {"source": "engine"}), ("failed", {"passed": False}), ("none", None)):
+        st["validation"] = [] if entry is None else [{"level": "data", "passed": True, **entry}]
+        assert study_mod.validation_state(st) == state and not study_mod.can_revalidate(st, folder)
+    assert studypage.validation_result is study_mod.validation_result      # one rule, not a copy
+
+
+def test_goals_lead_with_the_recommended_option(nurse_study):
+    """D1252 (journeys item 14): the room's goal chips and the client page's Goals table show the
+    recommended option's value and verdict, the Baseline's as the comparison; with no option
+    recommended they show the Baseline as before."""
+    from nagasim import studypage
+    from nagasim.pagefmt import REFERENCE
+
+    folder, st = nurse_study
+    room = studypage.render(folder, st, study_id="s", in_room=True)
+    chips = re.search(r'<div class="chips">(.*?)</div>', room).group(1)
+    assert 'class="chip met"' in chips and "with Fourth nurse" in chips
+    assert f"({REFERENCE} " in chips and ": not met)" in chips
+    assert f"met in the {REFERENCE}, 1 with Fourth nurse" in room          # the Goals panel's summary
+    client = studypage.render_client(folder, st, [])
+    goals = client[client.index("<h2>Goals</h2>"):client.index("How far to trust it")]
+    assert "<th>Fourth nurse value</th>" in goals and f"<th>{REFERENCE} value</th>" in goals
+    assert '<span class="badge met">' in goals and "not met" in goals
+    shutil.rmtree(folder / "versions" / st["versions"][-1]["id"], ignore_errors=True)
+    st["versions"][-1]["scenarios"] = {}                                    # no option recommended
+    plain = studypage.render(folder, st, study_id="s")
+    assert "with Fourth nurse" not in plain and 'class="chip not_met"' in plain

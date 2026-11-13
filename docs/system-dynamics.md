@@ -131,7 +131,7 @@ dominant set (the fewest loops explaining at least half the change).
 
 ## Import from XMILE or Vensim
 
-`naga sdimport model.xmile` (or the `import_xmile` agent tool)
+`naga sdimport model.xmile` (or the `import_sd_model` agent tool)
 reads a Stella/iThink `.xmile`/`.stmx` file into a new model: stocks, flows, auxiliaries,
 graphical functions (as lookup tables), dimensions (as subscripts), non-apply-to-all arrays
 (`<element subscript="...">`, as per-element equations), with `Pop[north]`, `Pop[*]` and
@@ -150,7 +150,7 @@ rather than guessed at; an approximation (a bare `DELAY`, a non-`euler`/`rk4` me
 too. The file is refused outright, before parsing, if it carries a `DOCTYPE`/`ENTITY` declaration
 or is over 20 MB -- the same rule every file the engine reads follows.
 
-`naga sdimport model.mdl` (or the `import_mdl` agent tool)
+`naga sdimport model.mdl` (or the `import_sd_model` agent tool)
 reads a Vensim `.mdl` file the same way, for the common subset: `INTEG` stocks (a rate that is a
 plain flow name or a `+`/`-` chain of them), `WITH LOOKUP(...)` as a lookup table, `DELAY1`/`DELAY3`/
 `DELAY1I`/`DELAY3I`, subscript ranges and subranges (a range of another range's elements),

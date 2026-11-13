@@ -139,6 +139,16 @@ def _x_tick_labels(x_ticks, xmin: float, xmax: float, x_of, y1: float,
     return parts
 
 
+def _bar_label(x: float, y: float, name: str, band: float) -> str:
+    """A bar's label, cut with "..." when wider than its band (S4-11: neighbours overprinted),
+    the whole name kept as its tooltip. About 7 px a character at the chart's 12 px."""
+    room = max(int(band / 7.0), 4)
+    if len(name) <= room:
+        return f'<text x="{x:.1f}" y="{y}" text-anchor="middle" fill="{_TEXT}">{html.escape(name)}</text>'
+    return (f'<text x="{x:.1f}" y="{y}" text-anchor="middle" fill="{_TEXT}">{html.escape(name[:room - 3])}...'
+            f'<title>{html.escape(name)}</title></text>')
+
+
 def bar_chart(title: str, categories: list[str], values: list[float], y_title: str,
              *, err: list[tuple[float, float]] | None = None) -> str:
     """One bar per category. `err[i]` (optional), a (lb, ub) pair, draws a CI
@@ -177,8 +187,7 @@ def bar_chart(title: str, categories: list[str], values: list[float], y_title: s
                 for yy in (lb_y, ub_y):
                     parts.append(f'<line x1="{cx - 5:.1f}" y1="{yy:.1f}" x2="{cx + 5:.1f}" '
                                  f'y2="{yy:.1f}" stroke="{_TITLE}" stroke-width="1.5" />')
-        parts.append(f'<text x="{cx:.1f}" y="{y1 + 16}" text-anchor="middle" '
-                     f'fill="{_TEXT}">{html.escape(str(cat))}</text>')
+        parts.append(_bar_label(cx, y1 + 16, str(cat), band))
 
     parts.append(f'<line x1="{x0}" y1="{y1}" x2="{x1}" y2="{y1}" stroke="{_AXIS}" />')
     parts.append('</svg>')
@@ -215,8 +224,7 @@ def stacked_bar_chart(title: str, categories: list[str], series: dict[str, list[
             parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{top:.1f}" width="{bar_w:.1f}" '
                          f'height="{max(bot - top, 0):.1f}" fill="{PALETTE[s % len(PALETTE)]}" />')
             running += v
-        parts.append(f'<text x="{cx:.1f}" y="{y1 + 16}" text-anchor="middle" '
-                     f'fill="{_TEXT}">{html.escape(str(cat))}</text>')
+        parts.append(_bar_label(cx, y1 + 16, str(cat), band))
 
     if len(series) > 1:
         for i, label in enumerate(series):

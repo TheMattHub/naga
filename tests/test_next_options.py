@@ -258,9 +258,9 @@ def test_law_warnings_name_their_fix(tmp_path):
 
 
 def test_validation_only_against_a_formula(tmp_path):
-    s, folder = build(tmp_path, validation=[{"level": "known_answer", "passed": True, "text": "M/M/1"}])
+    s, folder = build(tmp_path, validation=[{"level": "known_answer", "passed": True, "text": "M/M/1", "source": "engine"}])
     assert "Validate against data or an expert" in titles(everything(s, folder))
-    s2, folder2 = build(tmp_path / "b", validation=[{"level": "data", "passed": True, "text": "log"}])
+    s2, folder2 = build(tmp_path / "b", validation=[{"level": "data", "passed": True, "text": "log", "source": "person"}])
     assert "Validate against data or an expert" not in titles(everything(s2, folder2))
 
 
@@ -334,8 +334,10 @@ def test_the_same_folder_gives_the_same_options(tmp_path):
 
 
 def test_a_sufficient_study_still_gets_numbered_improvements_and_extensions(tmp_path):
-    s, folder = build(tmp_path, validation=[{"level": "known_answer", "passed": True, "text": "M/M/1"}])
-    s["experiments"] = [{"id": "e1", "text": "x", "result": "y"}]
+    s, folder = build(tmp_path, validation=[{"level": "known_answer", "passed": True, "text": "M/M/1", "source": "engine"}])
+    # the step's scenario results pass the experiments step, a note does not (#1802)
+    s["versions"][-1]["scenarios"] = {"Two servers": {"kpis": {"Avg Throughput Time": {"mean": 2.0}},
+                                                      "goals": {"g1": "met"}}}
     assert study_mod.sufficiency(s)["sufficient"]
     out = opts(s, folder)
     assert out and {o["kind"] for o in out} <= {"improve", "extend"}
@@ -353,7 +355,7 @@ def _schema_ok(o):
 def test_every_option_names_a_tool_and_arguments_that_validate(tmp_path):
     folders = [build(tmp_path / "a", checks=[BIAS], mean=4.9, h=0.3, target=0.4,
                      sources=[{"id": "s1", "text": "x", "input": "inputs/a.csv"}],
-                     validation=[{"level": "known_answer", "passed": True, "text": "f"}]),
+                     validation=[{"level": "known_answer", "passed": True, "text": "f", "source": "engine"}]),
                build(tmp_path / "b", versions=0), build(tmp_path / "c", h=0.5, target=0.1, n=200, size="deep")]
     (tmp_path / "a" / "s" / "inputs" / "a.csv").write_text("a\n1\n", encoding="utf-8")
     seen = set()

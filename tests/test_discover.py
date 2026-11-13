@@ -489,6 +489,121 @@ def test_agent_tool_opens_the_draft_and_stays_in_the_workspace(tmp_path):
     assert T.call("import_event_log", path="bad.xes")["error"]["code"] == "E_DISCOVER_LOG"
 
 
+def _clinic_rows(n=30):
+    """The review's clinic log (S2-03) in its own headers: one desk step and one nurse step per
+    patient, start and end on one row (Disco's shape), dated instants."""
+    rows = [["Patient", "Step", "Start time", "End time", "Staff"]]
+    for i in range(n):
+        t = 10 * i
+        for step, staff, at, took in (("Check-in", "Desk", t, 2), ("Blood test", "Nurse", t + 3, 6)):
+            rows.append([f"p{i}", step, f"2026-01-05T08:{at // 60:02d}:{at % 60:02d}",
+                         f"2026-01-05T08:{(at + took) // 60:02d}:{(at + took) % 60:02d}", staff])
+    return rows
+
+
+def _xlsx(path, rows, sheet="Log", first=None):
+    import openpyxl
+    book = openpyxl.Workbook()
+    if first is not None:                  # a sheet before the log, to test sheet=
+        book.active.title = "Notes"
+        for row in first:
+            book.active.append(row)
+        book.create_sheet(sheet)
+    else:
+        book.active.title = sheet
+    for row in rows:
+        book[sheet].append(row)
+    book.save(path)
+
+
+def test_1790_event_log_error_names_no_missing_flag(tmp_path):
+    """DEVLOG #1790 (review S2-03): a log with its own column names was refused with a way out the
+    tool did not have (once `--case`, after #1773 "rename that column", which no tool can do), and
+    an .xlsx with the right headers was read as CSV bytes and answered "no case column", which is
+    false. The refusal names the tool's `columns` argument and the file's headers; a workbook is read."""
+    from nagasim import agent_tools as T
+    T.use_workspace(T.Workspace(tmp_path))
+    _write(tmp_path, "\n".join(",".join(r) for r in _clinic_rows()) + "\n", "clinic.csv")
+    error = T.call("import_event_log", path="clinic.csv")["error"]
+    said = error["message"] + " " + error["hint"]
+    assert not re.search(r"--[a-z]", said), said
+    assert "columns" in said and "Patient" in said, said
+    _xlsx(tmp_path / "canonical.xlsx", [["case", "activity", "start", "complete", "resource"]]
+          + _clinic_rows()[1:])
+    answer = T.call("import_event_log", path="canonical.xlsx")
+    assert "error" not in answer, answer
+
+
+def test_event_log_columns_and_xlsx(tmp_path):
+    """D1233: `columns={role: header}` names a log's own headers and the answer echoes what was
+    read; "Start time" is guessed as start_time; an .xlsx is read from its first sheet or
+    `sheet=`, values only (a formula with no cached value is not read as text); any other
+    format, a damaged workbook, a DOCTYPE in a part and a non-text header are refused."""
+    import zipfile
+    from datetime import datetime
+    from nagasim import agent_tools as T
+    T.use_workspace(T.Workspace(tmp_path))
+    rows = _clinic_rows()
+    _write(tmp_path, "\n".join(",".join(r) for r in rows) + "\n", "clinic.csv")
+    named = {"case": "Patient", "activity": "Step", "resource": "Staff"}
+    answer = T.call("import_event_log", path="clinic.csv", columns=named)
+    assert "error" not in answer, answer
+    assert answer["columns"] == {**named, "start": "Start time", "complete": "End time"}
+    assert {a["block"] for a in answer["activities"]} == {"Check_in", "Blood_test"}
+    assert answer["observed"]["cases"] == 30
+    # The same log as a workbook, behind a notes sheet; real date cells and a formula row.
+    dated = [r[:2] + [datetime.fromisoformat(r[2]), datetime.fromisoformat(r[3])] + r[4:]
+             for r in rows[1:]]
+    _xlsx(tmp_path / "clinic.xlsx", [rows[0]] + dated + [["=A2", "Check-in", None, None, "Desk"]],
+          first=[["read me"]])
+    assert "Patient" in T.call("import_event_log", path="clinic.xlsx", name="first",
+                               columns=named)["error"]["message"]      # the notes sheet
+    book = T.call("import_event_log", path="clinic.xlsx", name="book", sheet="Log", columns=named)
+    assert "error" not in book, book
+    assert book["observed"] == answer["observed"]
+    assert "no sheet 'Nope'" in T.call("import_event_log", path="clinic.xlsx", name="n",
+                                       sheet="Nope")["error"]["message"]
+    for name, data in (("old.xls", b"\xd0\xcf\x11\xe0"), ("log.ods", b"PK"), ("bad.xlsx", b"not a zip")):
+        (tmp_path / name).write_bytes(data)
+        message = T.call("import_event_log", path=name, name=name.replace(".", "_"))["error"]["message"]
+        assert ("'." + name.split(".")[1] + "' file is not read" in message) or "not a workbook" in message, message
+    # A DOCTYPE anywhere in any part: after a long comment, or in a part with an odd name.
+    for i, (part, pad) in enumerate((("xl/workbook.xml", ""), ("xl/sheet.bin", ""),
+                                     ("xl/styles.xml", "<!--" + "x" * 100_000 + "-->"))):
+        with zipfile.ZipFile(tmp_path / f"doctype{i}.xlsx", "w") as zf:
+            zf.writestr(part, f'<?xml version="1.0"?>{pad}<!DOCTYPE x [<!ENTITY a "b">]><x/>')
+        assert "DOCTYPE" in T.call("import_event_log", path=f"doctype{i}.xlsx")["error"]["message"], part
+    assert "header text" in T.call("import_event_log", path="clinic.csv", name="x",
+                                   columns={"case": 3})["error"]["message"]
+    # A damaged sheet fails as openpyxl reads it (read-only parses lazily); a UTF-16 part is refused.
+    with zipfile.ZipFile(tmp_path / "clinic.xlsx") as good,             zipfile.ZipFile(tmp_path / "cut.xlsx", "w") as cut, zipfile.ZipFile(tmp_path / "u16.xlsx", "w") as u16:
+        for item in good.infolist():
+            data = good.read(item)
+            cut.writestr(item.filename, data[:len(data) // 2] if item.filename.startswith("xl/worksheets/") else data)
+            u16.writestr(item.filename, data.decode("utf-8").encode("utf-16") if item.filename == "xl/workbook.xml" else data)
+    for name, said in (("cut.xlsx", "cannot be read"), ("u16.xlsx", "UTF-16")):
+        error = T.call("import_event_log", path=name, name=name[:3], sheet="Log", columns=named)["error"]
+        assert error["code"] == "E_DISCOVER_LOG" and said in error["message"], error
+
+
+def test_check_draft_reads_the_log_as_its_import_did(tmp_path):
+    """D1233 review: check_draft re-reads the source log; a draft imported with columns= or from a
+    workbook's sheet= is checked against the same reading (an .xlsx is otherwise taken as tables)."""
+    from nagasim import agent_tools as T
+    T.use_workspace(T.Workspace(tmp_path))
+    rows = _clinic_rows(40)
+    _write(tmp_path, "\n".join(",".join(r) for r in rows) + "\n", "clinic.csv")
+    _xlsx(tmp_path / "clinic.xlsx", rows, first=[["read me"]])
+    named = {"case": "Patient", "activity": "Step", "resource": "Staff"}
+    assert "error" not in T.call("import_event_log", path="clinic.csv", columns=named)
+    assert "error" not in T.call("import_event_log", path="clinic.xlsx", name="book", sheet="Log",
+                                 columns=named)
+    for model, source in (("clinic", "clinic.csv"), ("book", "clinic.xlsx")):
+        checked = T.call("check_draft", model=model, source=source, max_seconds=5)
+        assert "error" not in checked, (model, checked)
+        assert any(c["kpi"] == "cycle_time" for c in checked["compared"]), checked
+
+
 # ---------------------------------------------------------------- round trip
 
 @functools.lru_cache(maxsize=1)    # one trace held: up to a million events on a long run

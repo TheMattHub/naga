@@ -186,8 +186,9 @@ def test_the_answer_is_read_from_the_numbers_against_target_and_baseline():
     assert word(_row(1, 0.9, 1.1, target=0.75, better=None, verdict="higher")) is None
     assert word(_row(1, 0.9, 1.1, base=False)) is None and viewer.answer(None, 5) is None
     said = viewer.answer(_row(0.77, 0.76, 0.78, target=0.75, verdict="better"), 10)
-    assert said["headline"] == "Yes, very likely: 0.77 parts/min" and said["needed"] is None
-    assert said["detail"] == ("Throughput 0.77 parts/min (95% interval 0.76 to 0.78), +10.0% against "
+    # D1236: decimals as the interval supports (half-width 0.010: three decimals).
+    assert said["headline"] == "Yes, very likely: 0.770 parts/min" and said["needed"] is None
+    assert said["detail"] == ("Throughput 0.770 parts/min (95% interval 0.760 to 0.780), +10.0% against "
                               "the baseline (better); above the 0.75 target.")
     # Not clear: how many replications would make it clear, n x (half-width / distance)^2.
     assert viewer.answer(_row(0.76, 0.74, 0.78, target=0.75), 10)["needed"] == 40
@@ -941,7 +942,9 @@ def test_in_the_page_a_models_text_is_text_a_range_is_enforced_and_cancel_starts
                              "One replication of each, seed 0, recorded in this browser.")
     assert markup.count("&lt;img src=x onerror=alert(1)&gt;") == 3 and "<img" not in markup
     # The range a slider shows is enforced by the engine in the worker, not by the control.
-    assert refused.startswith("Not run: input 'resources.Server.capacity': 99 is not a number within")
+    # S4-06: named by the lever's label, not its model path.
+    assert refused.startswith("Not run: ") and "99 is outside the allowed range" in refused
+    assert "resources.Server" not in refused
     assert status.startswith(("Cancelled. Starting the engine again", "Starting the engine"))
     assert again.startswith("Ready after") and ran.startswith("Run finished in")
     assert json.loads(record)["record"]["inputs"] == {"resources.Server.capacity": 2}
@@ -1571,3 +1574,31 @@ def test_live_a_small_page_runs_a_model_on_the_real_cdn(tmp_path):
     assert sorted(out["asked"]) == sorted(vr.WHEEL_URL + name for name in vr.load(RUNTIME))
     assert "downloaded from cdn.jsdelivr.net and checked" in versions
     _same_run(json.loads(record), _desktop(model(), {"resources.Server.capacity": 2}))
+
+
+def test_viewer_progress_counts_what_was_asked():
+    """S4-06: a run is yours and the Baseline; "replication 3 of 60" under a box that says 30 now
+    says both runs and how many each (the count itself was true: #1786 closed as wording)."""
+    from nagasim import pagetext
+    for language in pagetext.LANGUAGES:
+        text = pagetext.say(pagetext.table(language), "viewer.progress_both", done=3, total=60, n=30)
+        assert "30" in text and "60" in text
+    # Two versions always run (what_if: yours and the Baseline, or the scenario compared with,
+    # observed: 3 replications asked, 6 counted), so the words name both without naming the second.
+    assert "compared with" in pagetext.table()["viewer.progress_both"]
+    source = Path(viewer.__file__).read_text(encoding="utf-8")
+    assert 'tr("viewer.progress_both", {done: message[1], total: message[2], n: message[2] / 2})' in source
+
+
+def test_refused_lever_named_by_its_label():
+    """S4-06: "Not run: input 'blocks.buffer_1.params.arguments.places': 99 ..." named the lever by
+    its override path; the page names it by the label its reader moved, in both languages."""
+    from nagasim import pagetext
+    layout = _lever_model()
+    for value, said in ((99, "99 is outside the allowed range, 1 to 3"), (2.5, "2.5 must be a whole number")):
+        with pytest.raises(ValueError) as caught:
+            viewer.what_if(layout, {"resources.Server.capacity": value})
+        for language in pagetext.LANGUAGES:
+            text = pagetext.explain(caught.value, language)
+            assert text.startswith("Servers:") and "resources." not in text, text
+        assert said in pagetext.explain(caught.value)

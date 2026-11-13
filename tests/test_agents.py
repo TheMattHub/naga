@@ -20,6 +20,8 @@ from nagasim.core.trace import TraceRecorder
 from nagasim.experiments import flatten_kpis
 
 from conftest import AgentStream, chain, create, delay, dispose, problem_codes, run_env
+from functools import partial
+from helpers import model
 
 PERSON = A.AgentType(
     "Person", parameters={"beta": 0.3, "gamma": 0.1}, attributes=[A.Attribute("t_inf", "-1")],
@@ -31,8 +33,7 @@ CLOCK = A.AgentType("Clock", states=["A", "B"],
                     transitions=[A.Transition("A", "B", "timeout", "1")])
 
 
-def _model(*records, time_limit=100):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=100)
 
 
 def _sir(*extra):

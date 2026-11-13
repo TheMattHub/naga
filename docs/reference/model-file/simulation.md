@@ -35,6 +35,7 @@ A scenario is a list of overrides applied in order to the base model. An overrid
 | `energy_price` | number or string |  | `0` | money | Money per kWh, a number or an expression, evaluated once at run start. Prices every resource/fleet's "power". |
 | `entity_log_limit` | integer or null |  |  | count | Cap on retained entity-log rows. |
 | `record_logs` | boolean |  | `true` |  | Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants. |
+| `entity_waits` | boolean |  | `false` |  | Sum each entity's queue time over every seize into a "Total Wait" column of the entity log (what a tail goal on Total Wait reads). Off: no column. |
 | `timeseries_points` | integer or null |  | `200` | count | How many samples the time-series OUTPUT sampler takes over a time-limited run (default 200). |
 | `timeseries_interval` | number or null |  |  | time (`time_unit`) | Fixed sampling interval for a draining run, which has no horizon to divide. |
 | `timeseries_counts` | list of string |  |  |  | Blocks whose departures the sampler counts, as the series block/&lt;name&gt;/out (flattened names). What a twin compares a plant counter with; none by default. |

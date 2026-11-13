@@ -49,7 +49,8 @@ def test_page_shows_verdict_goals_and_versions(tmp_path):
 
 
 def test_validation_level_is_the_strongest_passed(tmp_path):
-    val = [{"level": "data", "passed": True}, {"level": "expert", "passed": True},
+    # S2-19: only an entry the engine or the person established counts (study.checked, D1234).
+    val = [{"level": "data", "passed": True, "source": "engine"}, {"level": "expert", "passed": True, "source": "person"},
            {"level": "known_answer", "passed": False}]
     folder, st = _new(tmp_path, validation=val)
     assert "Validation: expert" in studypage.render(folder, st)
@@ -116,7 +117,7 @@ def test_page_shows_scenario_results_per_goal(tmp_path):
     study.record_step(folder, st, _layout("a"), _digest(), _OK, "first", None, scenarios=sc)
     page = studypage.render(folder, st)
     tl = page
-    assert "<th>Scenario</th>" in page and "8 +- 0.5" in tl and "Slow" in tl and "not met" in tl
+    assert "<th>Scenario</th>" in page and "8.00 (95% interval 7.50 to 8.50)" in tl and "Slow" in tl and "not met" in tl
     assert "Scenarios: Fast meets 1 of 1; Slow meets 0 of 1" in page
 
 
@@ -134,7 +135,7 @@ def test_header_has_chips_and_precision(tmp_path):
     st["versions"][-1]["precision"] = {"Throughput": {"half_width": 0.3, "target": 0.4, "met": True}}
     page = studypage.render(folder, st, study_id="s")
     head = page.split("<header")[1].split("</header>")[0]
-    assert 'class="chip met"' in head and "8 +- 0.3" in head and "<svg" in head
+    assert 'class="chip met"' in head and "8.00 (95% interval 7.70 to 8.30)" in head and "<svg" in head
     assert "25 replications" in head and "target 0.4" in head and "Latest version: v002" in head
     assert 'data-study="s"' in head and "<b>Open:</b>" in head and "study_update" not in head
     assert "replications" not in studypage.render(folder, _two_versions(tmp_path / "x")[1]).split("</header>")[0]
@@ -206,5 +207,5 @@ def test_734_a_deliverable_of_an_older_version_says_which(tmp_path):
     (folder / "versions" / "v001" / "sensitivity.json").write_text("{}", encoding="utf-8")
     (folder / "versions" / "v002" / "report.html").write_text("r", encoding="utf-8")
     page = studypage.render(folder, st)
-    assert re.search(r"Sensitivity of the answer: made for v001, \d\d:\d\d<", page)
-    assert re.search(r"Report of a version: made \d\d:\d\d<", page)
+    assert re.search(r"Sensitivity of the answer: made for v001, \d{4}-\d\d-\d\d \d\d:\d\d UTC<", page)
+    assert re.search(r"Report of a version: made \d{4}-\d\d-\d\d \d\d:\d\d UTC<", page)

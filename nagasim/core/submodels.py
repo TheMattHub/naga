@@ -371,7 +371,7 @@ def port_block_name(definition: dict, side: str, port: str | None) -> str | None
     if port is None:
         return candidates[0]["name"] if len(candidates) == 1 else None
     for block in candidates:
-        if str(block.get("params", {}).get("port", "")) == port:
+        if str(block.get("params", {}).get("port", "")) == str(port):    # 1 is port "1"
             return block["name"]
     return None
 

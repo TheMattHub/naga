@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nagasim import api, player
+from nagasim import api, pagefmt, pagetext, player
 from nagasim.core import tape, trace as trace_module
 from nagasim.core.trace import TraceEvent
 from nagasim.experiments import BASELINE, flatten_kpis
@@ -197,7 +197,9 @@ def test_the_script_puts_text_on_the_page_only_as_text():
     assert script.count("createElement") == 1 and "document.createElement(tag)" in script
     tags = set(re.findall(r"\badd\(([^,)]*)", script))
     # <wbr>: a line-break opportunity after a "/" of a KPI key (#1761), no content.
-    assert tags == {"tag", '"div"', '"span"', '"tr"', '"th"', '"td"', '"button"', '"option"', '"wbr"'}
+    # <details>, <summary>, <ul>, <li>: the trust card's folded warnings (S4-07), constant tags.
+    assert tags == {"tag", '"div"', '"span"', '"tr"', '"th"', '"td"', '"button"', '"option"', '"wbr"',
+                    '"details"', '"summary"', '"ul"', '"li"'}
     # Rule 13: the drawer reads the tape and never a trace event.
     named = [kind for kind in sorted(trace_module._RECORDED_EVENTS)
              if re.search(rf"\b{kind}\b", script)]
@@ -435,7 +437,12 @@ def test_this_run_and_all_replications_are_separate_and_labelled():
     assert (run["seed"], run["of"]) == (7, 4)
     flat = flatten_kpis(results)
     rows = {row[0]: row for row in data["kpis"]}
-    assert set(rows) == {kpi for kpi in flat["KPI"] if kpi.startswith(("system/", "user/"))}
+    # S4-09: bookkeeping rows (truncation flags, costs zero in every replication) are left out,
+    # and each row carries the label a reader sees, its key kept for the cell's title.
+    shown = {kpi for kpi in flat["KPI"] if kpi.startswith(("system/", "user/"))
+             and not pagefmt.is_bookkeeping(kpi, flat[flat["KPI"] == kpi]["Value"])}
+    assert set(rows) == shown and "system/Entity Log Truncated" not in rows
+    assert rows["system/Avg Queue Length"][6] == "Avg Queue Length"
     kpi = "system/Total Entities Created"
     values = flat[flat["KPI"] == kpi].sort_values("Run")["Value"].tolist()
     assert rows[kpi][1] == BASELINE and rows[kpi][2] == pytest.approx(sum(values) / 4)
@@ -545,6 +552,9 @@ def test_scenarios_share_one_file_each_drawn_on_its_own_layout():
     # "All replications" is the comparison table of the study, beside "this run".
     table = result.comparison()
     table = table[table["KPI"].str.startswith(("system/", "user/"))]
+    kept = {row[0] for row in data["kpis"]}
+    table = table[table["KPI"].isin(kept)]
+    assert not any(pagefmt.is_bookkeeping(kpi) for kpi in kept)
     expected = {(row.KPI, row.Scenario): (row.Mean, row.LB, row.UB) for row in table.itertuples()}
     got = {(row[0], row[1]): row[2:5] for row in data["kpis"]}
     assert got.keys() == expected.keys() and len(got) > 40
@@ -555,7 +565,7 @@ def test_scenarios_share_one_file_each_drawn_on_its_own_layout():
     this_run = {row[0]: row[5] for row in data["kpis"] if row[1] == "Four forklifts"}
     assert len(first) > 10
     for kpi, value in zip(first["KPI"], first["Value"]):
-        if kpi.startswith(("system/", "user/")):
+        if kpi in this_run:
             assert this_run[kpi] == pytest.approx(value), kpi
 
 
@@ -641,3 +651,50 @@ def test_naga_scenarios_player_reports_a_too_large_file_as_a_refusal(tmp_path, m
                              "Four forklifts", "--player", str(out)]) == 1
     printed = capsys.readouterr().out
     assert "--player: " in printed and "byte limit" in printed and not out.exists()
+
+
+def test_1785_no_bottleneck_where_nothing_waits():
+    """S4-15: "Bottleneck: Process 75 - 0 waiting on average" named a block where nothing waited
+    worth a word; under 0.05 waiting on average (shown as 0.0) there is no bottleneck, and the page
+    says so in both languages."""
+    blocks = [{"name": "in"}, {"name": "a"}]
+    frames = [{"n": [0, 1], "s": [0, 1], "st": ["", "busy"]}, {"n": [0, 2], "s": [0, 1], "st": ["", "busy"]},
+              {"n": [0, 0], "s": [0, 0]}]
+    run = {"t": [0.0, 99.0, 100.0, 101.0], "frames": frames, "scene": {"blocks": blocks}}
+    assert player._neck(run) is None                       # 1 x 1 over 101: 0.0099 waiting on average
+    for language in pagetext.LANGUAGES:
+        assert pagetext.table(language)["player.no_neck"]
+    assert 'tr("player.no_neck")' in player.SCRIPT
+
+
+def test_cut_notice_beside_the_clock():
+    """S4-15: a recording cut at its event limit says so beside the clock, not only in a closed fold."""
+    page = player.page_shell()
+    assert '<span id="clock"></span><span id="cut"' in page
+    assert 'el("cut").hidden = !current.truncated' in player.SCRIPT
+
+
+def test_trust_card_folds_the_warning_text_and_words_a_poor_precision(monkeypatch):
+    """S4-07: "1 warning" with no text, "+-88.8%" with no judgement. The card carries each
+    warning as a plain sentence (no law names) and a word for a precision past ROUGH_PCT."""
+    from nagasim import laws
+
+    found = [{"name": "initial bias", "verdict": "partial", "why": "MSER-5 ...", "law": "initial bias"},
+             {"name": "little (resource): Server", "verdict": "partial", "why": "...", "law": "little (resource)"},
+             {"name": "censoring", "verdict": "passed", "why": "", "law": "censoring"}]
+    monkeypatch.setattr(laws, "checks", lambda model, frames: found)
+    rows = {BASELINE: [{"yours": {"mean": 10.0, "lo": 1.0, "hi": 19.0}}]}
+    card = player.trust_card({"blocks": []}, object(), None, [BASELINE], {}, rows, {BASELINE: (0, 5)})[BASELINE]
+    assert card["laws_warn"] == 2 and card["rough"] is True
+    assert card["laws_why"] == [{"law": "initial_bias", "name": ""}, {"law": "little_resource", "name": "Server"}]
+    for language in pagetext.LANGUAGES:
+        words = pagetext.table(language)
+        for law in ("offered_load", "utilisation", "little_resource", "initial_bias", "flow_conservation",
+                    "censoring", "little_system"):
+            text = words[f"trust.why.{law}"]
+            assert "MSER" not in text and "Little" not in text
+        assert words["trust.rough"]
+    assert 'tr("trust.why." + why.law' in player.CSS + player.SCRIPT + player.style_sheet() or \
+        'tr("trust.why." + why.law' in player.page_shell()
+    rows[BASELINE][0]["yours"].update(lo=9.5, hi=10.5)
+    assert player.trust_card({"blocks": []}, object(), None, [BASELINE], {}, rows, {BASELINE: (0, 5)})[BASELINE]["rough"] is False

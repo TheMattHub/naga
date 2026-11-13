@@ -136,6 +136,28 @@ def share_above(waits: list[float], x: float) -> float:
     return float(np.mean(np.asarray(waits, dtype=float) > x)) if len(waits) else 0.0
 
 
+TOTAL_WAIT = "Total Wait"       # D1232: the entity log's column, and the KPI a tail goal names
+
+
+def total_wait_shares(results, x: float) -> list[float] | None:
+    """Per replication, the share of completed entities whose wait summed over every queue they
+    joined (the entity log's "Total Wait", D1232) exceeded x. None when the run kept no such
+    column (it was not asked for), or the entity log is empty or truncated."""
+    try:
+        log, system = results["entity_log"], results["system"]
+    except (KeyError, TypeError):
+        return None
+    if log is None or TOTAL_WAIT not in log or "Run" not in log:
+        return None
+    flag = system[system["Metric"] == "Entity Log Truncated"]["Value"]
+    if len(flag) and flag.max() > 0:
+        return None
+    done = log[log["Throughput Time"].notna()]
+    if done.empty:
+        return None
+    return [share_above(rows[TOTAL_WAIT].tolist(), x) for _, rows in done.groupby("Run", sort=True)]
+
+
 def wait_shares(results, resource: str, x: float, layout: dict | None = None) -> list[float] | None:
     """Per replication, the share of entities whose wait at `resource` exceeded x.
 

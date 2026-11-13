@@ -11,7 +11,7 @@ _document_args("study_writeup", study=_ID,
 _document_args("study_slides", study=_ID)
 
 
-@tool()
+@tool(returns={"html": str, "markdown": str, "page_url": str, "room_url": str})
 @_linked
 def study_writeup(study: str, discussion: str | None = None) -> dict:
     """Write a paper-style report of the study on request (STRESS-aligned sections: abstract, objective,
@@ -26,10 +26,10 @@ def study_writeup(study: str, discussion: str | None = None) -> dict:
     return {"html": f"{_sid(folder)}/package/{html.name}", "markdown": f"{_sid(folder)}/package/{md.name}"}
 
 
-@tool()
+@tool(returns={"path": str, "page_url": str, "room_url": str})
 @_linked
 def study_slides(study: str) -> dict:
-    """Make a slide deck of the study on request: one HTML file, 16:9 slides (title and question, the
+    """Make a slide deck of the study on request, to show a director or a board: one HTML file, 16:9 slides (title and question, the
     answer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was
     run, next steps). Scroll on screen; print to PDF gives one slide per page. Returns {"path"}."""
     folder, s = _open(study, write=True)

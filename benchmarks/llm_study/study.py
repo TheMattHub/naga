@@ -269,9 +269,9 @@ def grade_model(path: Path, reply: str, task, ran_model: bool, timeout: float) -
 def study_tools(_kind: str = "local", _extra: tuple = ()) -> list:
     """What the tools arm offers: the engine's compact list for a local model (D396: the
     whole model file in one write_model, which takes every section and the step grid)."""
-    from nagasim import assistant
+    from nagasim.agent_tools.profiles import COMPACT_TOOL_NAMES
 
-    return sorted(assistant.offered_tools("local"))
+    return sorted(COMPACT_TOOL_NAMES)       # the study's own list; the dock offers every tool that works in a turn (D1245, D1250)
 
 
 class Recorder:

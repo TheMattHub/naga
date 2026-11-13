@@ -109,28 +109,59 @@ def make_adapter(document=None):
 
 
 # ---------------------------------------------------------------- the tool lists
-def test_curated_tools_exclude_file_and_undo_tools():
-    excluded = {"new_model", "open_model", "save_model", "list_models", "undo", "redo",
-               "export", "get_model_json", "get_model_summary"}
-    assert asst.CURATED_TOOL_NAMES.isdisjoint(excluded)
-    assert asst.CURATED_TOOL_NAMES <= set(agent_tools.TOOLS)
-    assert asst.COMPACT_TOOL_NAMES <= asst.CURATED_TOOL_NAMES
+def test_offered_tools_include_the_study_workflow():
+    """S2-15, D1245: every engine tool, to a hosted and a local model alike, the study tools and
+    export included; left out are the page's own app call and (D1250) what cannot work in a turn."""
+    engine = {n for n, s in agent_tools.TOOLS.items() if s.origin.startswith("nagasim.")}
+    for kind in ("anthropic", "local"):
+        offered = set(asst.offered_tools(kind))
+        assert offered == engine - asst.APP_ONLY_TOOLS - asst.NOT_IN_DOCK, kind
+        assert {"study_start", "study_step", "study_package", "what_if", "explain_kpi", "export",
+                "run_facts"} <= offered
+
+
+def _makes_a_model(spec) -> bool:
+    """A tool that answers a new model under the name it is given, and takes no model."""
+    props = spec.input_schema.get("properties", {})
+    return ("name" in props and "model" not in props
+            and "model" in (spec.output_schema or {}).get("properties", {}))
+
+
+def test_the_dock_offers_only_tools_that_work_in_a_turn():
+    """D1250: the seven left out cannot do their job in a turn, and no offered tool is of their
+    kind; MCP keeps them all."""
+    assert asst.NOT_IN_DOCK <= set(agent_tools.TOOLS)          # MCP's default list is every tool
+    makers = {n for n, s in agent_tools.TOOLS.items() if s.origin.startswith("nagasim.") and _makes_a_model(s)}
+    assert makers == {"new_model", "open_model", "import_event_log", "import_sd_model"}
+    for kind in ("hosted", "local"):
+        assert not set(asst.offered_tools(kind)) & (makers | {"save_model", "undo", "redo"}), kind
+    assert asst.NOT_IN_DOCK == makers | {"save_model", "undo", "redo"}
+    # Offered anyway (a selector may), each one fails in the turn.
+    adapter = make_adapter()
+    adapter.offer(agent_tools.TOOLS)
+    adapter.begin_turn("t")
+    try:
+        assert "error" not in adapter.run_tool("new_model", {"name": "other"})
+        assert adapter.run_tool("get_model_summary", {"model": "other"})["error"]["code"] == "E_OTHER_MODEL"
+        assert adapter.run_tool("save_model", {})["error"]["code"] == "E_SAVE_IN_EDITOR"
+        assert {adapter.run_tool(n, {})["error"]["code"] for n in ("undo", "redo")} == {"E_UNDO_IN_TURN"}
+    finally:
+        adapter.rollback_turn()
 
 
 def test_tool_defs_strip_the_model_argument():
     defs = asst.tool_defs(asst.offered_tools("hosted"))
     names = [d["name"] for d in defs]
     assert names == sorted(names)
-    assert set(names) == {n for n in asst.CURATED_TOOL_NAMES if n in agent_tools.TOOLS}
+    assert set(names) == set(asst.offered_tools("hosted"))
     for d in defs:
         assert "model" not in d["input_schema"].get("properties", {})
         assert "model" not in d["input_schema"].get("required", [])
 
 
-def test_a_products_extra_tools_are_offered_to_a_hosted_model_only():
-    hosted = asst.offered_tools("hosted", ("list_models", "no_such_tool"))
-    assert "list_models" in hosted and "no_such_tool" not in hosted     # only what is registered
-    assert "list_models" not in asst.offered_tools("local", ("list_models",))
+def test_a_products_extra_tools_are_offered_when_registered():
+    for kind in ("hosted", "local"):
+        assert "no_such_tool" not in asst.offered_tools(kind, ("no_such_tool",))     # only what is registered
 
 
 def test_the_system_prompt_names_the_app():
@@ -311,24 +342,50 @@ def test_cancellation_between_rounds_stops_promptly():
 
 
 # ---------------------------------------------------------------- only an offered tool runs
-def test_a_local_model_gets_the_compact_list_and_cannot_call_outside_it():
+def test_a_local_model_gets_every_tool_and_cannot_call_outside_its_list():
     doc = ModelDocument()
-    provider = ScriptedProvider([calls_reply(("c1", "save_model", {"path": "x.json"})),
+    provider = ScriptedProvider([calls_reply(("c1", "study_page_html", {"study": "s"})),
                                  text_reply("ok")], kind="local")
     session = asst.AssistantSession(make_adapter(doc), provider)
-    result = session.run_turn("save it")
-    assert [t["name"] for t in provider.calls[0]["tools"]] == sorted(asst.COMPACT_TOOL_NAMES)
+    result = session.run_turn("show the page")
+    assert [t["name"] for t in provider.calls[0]["tools"]] == asst.offered_tools("local")
     assert result.tool_calls[0].result["error"]["code"] == "E_TOOL_NOT_OFFERED"
     assert "write_model" in result.tool_calls[0].result["error"]["hint"]
 
 
 def test_a_hosted_model_cannot_call_a_registered_tool_the_list_leaves_out():
     adapter = make_adapter()
-    provider = ScriptedProvider([calls_reply(("c1", "save_model", {"path": "x.json"})),
+    provider = ScriptedProvider([calls_reply(("c1", "study_page_html", {"study": "s"})),
                                  text_reply("ok")])
-    result = asst.AssistantSession(adapter, provider).run_turn("save it")
+    result = asst.AssistantSession(adapter, provider).run_turn("show the page")
     assert result.tool_calls[0].result["error"]["code"] == "E_TOOL_NOT_OFFERED"
-    assert not (adapter.workspace.root / "x.json").exists()
+
+
+# #1801: every path argument of an offered tool is either one the adapter guards (it writes there:
+# a new file only), refused outright (save_model), or read. A new tool with a path fails here until
+# it is placed in one of the lists.
+READ_PATHS = {("fit_distribution", "path"), ("import_event_log", "path"), ("import_sd_model", "path"),
+              ("open_model", "path"), ("propose_plugin_folder", "folder"), ("study_add_input", "path"),
+              ("upsert_orders_from_csv", "path"), ("upsert_table_from_csv", "path"),
+              ("upsert_timeseries_input_from_csv", "path")}
+
+
+def test_every_path_an_offered_tool_takes_is_guarded_refused_or_read():
+    from nagasim import agent_tools
+    guarded = set(asst._WRITES.items()) | {("save_model", "path")}
+    found = {(name, key) for name in asst.offered_tools("hosted")
+             for key in agent_tools.TOOLS[name].input_schema.get("properties", {})
+             if "path" in key or "folder" in key}
+    assert found - guarded - READ_PATHS == set()
+    assert not READ_PATHS & guarded
+
+
+def test_a_providers_notice_reaches_the_turn_once():
+    """#1804: a cut prompt is said under the answer, not raised: the reply still came."""
+    import dataclasses
+    cut = dataclasses.replace(text_reply("hi"), notice="The local server cut the prompt")
+    result = asst.AssistantSession(make_adapter(), ScriptedProvider([cut])).run_turn("hi")
+    assert result.error is None and result.notices == ["The local server cut the prompt"]
 
 
 def test_an_adapter_runs_nothing_until_a_session_offers_tools():
@@ -530,3 +587,27 @@ def test_naga_assist_is_a_command_with_its_own_help(capsys):
         cli.main(["assist", "--help"])
     assert stop.value.code == 0
     assert "usage: naga assist" in capsys.readouterr().out
+
+
+def test_the_docks_file_tools_stay_in_the_models_folder(tmp_path):
+    """S2-15 netguard review: with every tool offered, a write still lands under the adapter's root
+    (the model's folder) and a path out of it is refused; no tool argument widens it."""
+    from nagasim import examples
+    folder = tmp_path / "models"
+    folder.mkdir()
+    doc = ModelDocument.load(examples.path("single_server"))
+    doc.save(folder / "m.json")
+    adapter = make_adapter(doc)
+    adapter.offer(asst.offered_tools("hosted"))
+    assert "error" not in adapter.run_tool("run_model", {"replications": 1, "run_length": 50, "warmup": 0})
+    assert adapter.run_tool("export", {"format": "json", "path": "../out.json"})["error"]["code"] == "E_PATH_OUTSIDE_ROOT"
+    assert adapter.run_tool("export", {"format": "json", "path": "out.json"})["ok"]
+    assert (folder / "out.json").is_file() and not (tmp_path / "out.json").exists()
+
+
+def test_mcp_descriptions_are_whole():
+    """#1830: the dock's cut happens in tool_defs; the registry text MCP serves keeps its mentions."""
+    assert "save_model" in agent_tools.TOOLS["write_model"].description
+    assert "open_model" in agent_tools.TOOLS["list_models"].description
+    write = next(d for d in asst.tool_defs(asst.offered_tools("hosted")) if d["name"] == "write_model")
+    assert "save_model" not in write["description"] and "then run_model." in write["description"]

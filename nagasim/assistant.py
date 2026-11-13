@@ -1,7 +1,7 @@
 """The assistant's tool-use loop (ROADMAP 3.3, D179/D180): a language model is offered some of
-`nagasim.agent_tools`, calls them to edit and run ONE open `ModelDocument` -- never a copy --
-and the whole turn is one undo step. Pure Python, no Qt: an application's dock is a thin shell
-around `AssistantSession`, `naga assist` the headless one. The providers (a local OpenAI-
+`nagasim.agent_tools`, calls them to edit and run ONE open `ModelDocument` -- an edit never goes
+to a copy -- and the whole turn is one undo step. Pure Python, no Qt: an application's dock is a
+thin shell around `AssistantSession`, `naga assist` the headless one. The providers (a local OpenAI-
 compatible server, Anthropic's API) are `nagasim.llm`; the loop sees only its plain turn record.
 
 `anthropic` is an OPTIONAL extra (`pip install "nagasim[assistant]"`), imported lazily by
@@ -12,8 +12,9 @@ Design (docs/history/ROADMAP.md 3.3):
 * `WorkspaceAdapter` maps one live `ModelDocument` into an `agent_tools.Workspace`
   under a FIXED model id, confined to the model's own folder (or a fresh temp
   dir for an untitled model). The "model" argument every agent_tools mutator
-  takes is stripped from what the model sees and re-injected here, so the model
-  never needs to know the workspace's internal naming. It runs ONLY the tools a
+  takes is stripped from what the model sees and filled in here, so the model
+  never needs to know the workspace's internal naming; a call that names another
+  model is refused, never redirected (#1803). It runs ONLY the tools a
   session offered (`offer`): a name outside the list is an error the model reads,
   not a call.
 * `AssistantSession` drives the loop: one provider call per round, tool calls
@@ -31,77 +32,151 @@ Design (docs/history/ROADMAP.md 3.3):
   back as soon as the call returns.
 * An application marshals `WorkspaceAdapter`'s calls onto the thread that owns its
   document if the loop runs elsewhere; the headless command calls it in-place on
-  the same thread that runs the loop.
+  the same thread that runs the loop. A tool that does not change the document
+  (`OFF_GUI`, D1261) may instead run on the loop's thread against a `snapshot`,
+  so a long run leaves the application's window free.
 """
 from __future__ import annotations
 
 from nagasim._cli import add_model_argument
 
 import argparse
+import contextlib
 import copy
 import dataclasses
 import json
+import re
+import shutil
 import sys
 import tempfile
+import weakref
 from pathlib import Path
 
-from nagasim import agent_tools, llm, modeldiff
-from nagasim.agent_tools.profiles import COMPACT_TOOL_NAMES
+from nagasim import agent_tools, llm, modeldiff, nextoptions
 from nagasim.core.document import ModelDocument
 
 __all__ = [
-    "CURATED_TOOL_NAMES", "COMPACT_TOOL_NAMES", "offered_tools", "system_prompt", "tool_defs",
+    "APP_ONLY_TOOLS", "NOT_IN_DOCK", "ON_GUI", "OFF_GUI", "offered_tools", "system_prompt", "tool_defs",
     "ToolCallLog", "TurnResult", "WorkspaceAdapter", "AssistantSession", "redact", "main",
     "REVIEW_NOTES", "turn_label", "review_lines", "guard_lines",
 ]
 
 # ---------------------------------------------------------------- tool lists
-# ROADMAP 3.3 item 2: reference, editing, validate, run_model, get_kpi_table,
-# scenarios, run_to_precision, suggest_warmup, fit_distribution, auto_layout.
-# Explicitly excluded: undo/redo (the UI/CLI owns undo) and workspace
-# open/save/list/export (file access stays with the application, confined to one
-# already-open model). get_model_summary is not exposed as a callable tool
-# either -- the session injects it into every user turn itself (item 3).
-# A product adds its own through `extra_tools`.
-CURATED_TOOL_NAMES = frozenset({
-    "get_model_format", "write_model",
-    "list_block_types", "describe_block_type", "list_distributions",
-    "describe_distribution", "get_expression_help",
-    "add_block", "update_block", "remove_blocks", "connect", "disconnect",
-    "reorder_branches", "set_resources", "set_entity_types",
-    # D147: one generic record surface (resources, schedules, tables, orders, ...).
-    "get_record_schema", "list_records", "upsert_record", "remove_record",
-    "list_sequences", "list_orders",
-    "set_simulation_settings", "set_calendar", "auto_layout",
-    "validate_model", "check_model_opens", "propose_plugin_folder",
-    "run_model", "get_kpi_table",
-    "upsert_scenario", "run_scenarios", "investment_case",
-    "run_to_precision", "suggest_warmup",
-    "fit_distribution",
-})
+# S2-15, D1245: a session offers every engine tool, to a hosted and a local model alike, after the
+# overlap audit (docs/history/tool-overlap-2026-11-12.md) merged the near-duplicates. Left out:
+# the page's own call (`study_page_html`, which an MCP host shows to the app only, never to the
+# model), and (D1250) the tools that cannot do their job in a turn, `NOT_IN_DOCK`. A product adds
+# its own tools through `extra_tools` (the engine cannot know which of
+# them can run inside the editor's process). The adapter keeps the one open model: a call with no
+# "model" gets it, one naming another model is refused (#1803), it refuses to save that model
+# behind the editor (#1794) or to write over an existing file (#1801), and a picture reaches a
+# text-only provider as a note, not as base64 text (#1796).
+APP_ONLY_TOOLS = frozenset({"study_page_html"})
+# D1250 (narrows D1245): offered, they only cost the model's context (about 6 KB a turn). Four make
+# a new model under a new name, which the turn may not name afterwards (#1803); save_model is
+# refused (#1794), undo and redo wait for the turn to end (#1795). MCP keeps all seven;
+# tests/test_assistant.py holds the two classes, so an eighth such tool fails there.
+NOT_IN_DOCK = frozenset({"new_model", "open_model", "import_event_log", "import_sd_model",
+                         "save_model", "undo", "redo"})
+# #1801: the tools that write a path the call names, by that argument. In the editor they write
+# new files only; every other path argument of an offered tool is read (tests/test_assistant.py
+# keeps the two lists whole).
+_WRITES = {"export": "path", "study_start": "study"}
+# #1813: a tool whose optional "model" is one of several ways to name its input; the open model is
+# filled in only when the call named none of them.
+_MODEL_ALTERNATIVES = {"study_step": ("layout", "patch")}
 
-# What a small local model is offered: `agent_tools.profiles.COMPACT_TOOL_NAMES` (D179, D396).
+# D1261: where an editor's assistant runs each engine tool. ON_GUI: it changes the open model, or
+# a process-wide store the window also reads (the plugin trust list, the loaded plugin registries),
+# so it runs on the GUI thread as before. OFF_GUI: it only reads the model, or not at all, so it
+# runs on the turn's own thread against a copy taken on the GUI thread (`snapshot`); a tool that
+# never reads the model pays only that copy (milliseconds), and a tool put here by mistake changes
+# the copy, which `run_tool` refuses (E_NOT_APPLIED). A product classes its own extra tools.
+# tests/test_ui_assistant_thread.py classes every offered tool, so a new tool without a class fails.
+ON_GUI = frozenset({
+    "add_block", "auto_layout", "calibrate", "check_model_opens", "connect", "disconnect",
+    "propose_plugin_folder", "remove_blocks", "remove_node", "remove_record", "remove_segment",
+    "reorder_branches", "resolve_data_bindings", "set_calendar", "set_entity_types",
+    "set_initial_state", "set_resources", "set_sd_settings", "set_simulation_settings",
+    "update_block", "upsert_node", "upsert_orders_from_csv", "upsert_record", "upsert_scenario",
+    "upsert_segment", "upsert_table_from_csv", "upsert_timeseries_input_from_csv", "write_model"})
+OFF_GUI = frozenset({
+    "check_draft", "debug_inspect", "debug_run", "describe_block_type", "describe_distribution",
+    "evaluate_policy", "explain_kpi", "export", "find_tool", "fit_distribution", "fit_surrogate",
+    "forecast", "get_distance", "get_expression_help", "get_kpi_table", "get_model_format",
+    "get_model_json", "get_model_summary", "get_network", "get_plant_timeline", "get_record_schema",
+    "get_twin_forecast", "get_twin_monitor", "get_twin_recommendations", "input_uncertainty",
+    "investment_case", "list_block_types", "list_continuous", "list_distributions", "list_models",
+    "list_records", "optimize", "run_facts", "run_loop_dominance", "run_model", "run_reality_checks",
+    "run_scenarios", "run_to_precision", "study_accept", "study_add_input", "study_animation",
+    "study_extensions", "study_package", "study_report", "study_revert", "study_sensitivity",
+    "study_show", "study_slides", "study_start", "study_status", "study_step", "study_update",
+    "study_validate", "study_view", "study_writeup", "suggest_warmup", "validate_model",
+    "view_model", "what_if"})
+
+
+class _Stopped(BaseException):
+    """The person stopped the turn: raised from the progress sink at a long tool's next progress
+    point. A BaseException, so neither `report` (which logs a failing sink's Exception) nor a
+    tool's own `except Exception` (a scenario run's) turns it into an answer."""
+
+
+def _stop_point(should_cancel):
+    def sink(*_progress):
+        if should_cancel():
+            raise _Stopped
+    return sink
+
+
+_CANCELLED = agent_tools.ToolError(
+    "E_CANCELLED", "the person stopped the turn: this call did not finish and changed nothing",
+    "stop here and say what was done before the stop")
 
 
 def offered_tools(kind: str, extra: tuple = ()) -> list[str]:
-    """The tool names a session offers: the compact list for a local model, the curated one
-    plus a product's *extra* otherwise, limited to what is registered. A selector with the
-    same signature can replace it (`AssistantSession(select_tools=...)`)."""
-    names = COMPACT_TOOL_NAMES if kind == "local" else CURATED_TOOL_NAMES | frozenset(extra)
-    return sorted(name for name in names if name in agent_tools.TOOLS)
+    """The tool names a session offers: every engine tool but the app-only ones and those that
+    cannot work in a turn (`NOT_IN_DOCK`), plus a product's *extra*, limited to what is
+    registered, whatever the provider *kind*. A selector with the same signature can replace it
+    (`AssistantSession(select_tools=...)`); the adapter still refuses what it offers wrongly."""
+    names = {n for n, s in agent_tools.TOOLS.items() if s.origin.startswith("nagasim.")} | set(extra)
+    return sorted(n for n in names - APP_ONLY_TOOLS - NOT_IN_DOCK if n in agent_tools.TOOLS)
+
+
+def _mentions(text: str, tool: str) -> bool:
+    # "one undo entry" is plain English, not a call to the `undo` tool.
+    return re.search(r"\b%s\b(?!\s+(?:entry|step))" % re.escape(tool), text) is not None
+
+
+def _only_offered(description: str, offered: set) -> str:
+    """#1830: MCP's text may send the model to a tool the dock does not offer (`save_model`,
+    `open_model`). Cut that mention at tool_defs time, so MCP keeps the whole text: a list item
+    (", x" / " and x") goes alone, otherwise the sentence goes."""
+    for tool in sorted(set(agent_tools.TOOLS) - offered):
+        if not _mentions(description, tool):
+            continue
+        item = r"(?:,| and)\s+`?%s`?" % re.escape(tool)
+        trimmed = re.sub(item, "", description)
+        if not _mentions(trimmed, tool):
+            description = trimmed
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", description)
+        description = " ".join(s for s in sentences if not _mentions(s, tool))
+    return description
 
 
 def tool_defs(names) -> list[dict]:
     """{name, description, input_schema} per tool, with the internal "model" argument
-    stripped: the adapter always injects it."""
+    stripped (the adapter always injects it) and no mention of a tool the dock does not offer."""
     defs = []
+    offered = set(names)
     for name in names:
         spec = agent_tools.TOOLS[name]
         schema = copy.deepcopy(spec.input_schema)
         if "model" in schema.get("properties", {}):
             schema["properties"] = {k: v for k, v in schema["properties"].items() if k != "model"}
             schema["required"] = [r for r in schema.get("required", []) if r != "model"]
-        defs.append({"name": name, "description": spec.description, "input_schema": schema})
+        defs.append({"name": name, "description": _only_offered(spec.description, offered),
+                     "input_schema": schema})
     return defs
 
 
@@ -110,7 +185,8 @@ def tool_defs(names) -> list[dict]:
 # same workflow.
 _PROMPT_BODY = """\
 You build, edit, run and explain models for the ONE model currently open in the \
-editor, through the tools provided -- you never see or touch any other file.
+editor, through the tools provided: every "model" argument is that model, files you \
+write (exports, studies) stay in its folder, and the person saves it in the editor.
 
 Building a model from a description:
 1. Read what ARRIVES (and how often), what HAPPENS to it, what it COMPETES for \
@@ -190,6 +266,7 @@ class TurnResult:
     hit_round_cap: bool = False
     rounds: int = 0
     error: str | None = None
+    notices: list[str] = dataclasses.field(default_factory=list)   # e.g. a cut prompt (#1804)
 
 
 # ---------------------------------------------------------------- workspace adapter
@@ -214,14 +291,20 @@ class WorkspaceAdapter:
 
     MODEL_ID = "current"
 
-    def __init__(self, document: ModelDocument):
+    def __init__(self, document: ModelDocument, root: Path | None = None):
         self.document = document
-        root = (document.path.parent if document.path is not None
-                else Path(tempfile.mkdtemp(prefix="naga_assistant_")))
+        if root is None and document.path is not None:
+            root = document.path.parent
+        if root is None:
+            # #1808: a folder of its own goes with the adapter. A caller whose files must outlive
+            # one adapter (the dock, across turns) passes its own *root*.
+            root = Path(tempfile.mkdtemp(prefix="naga_assistant_"))
+            weakref.finalize(self, shutil.rmtree, root, ignore_errors=True)
         self.workspace = agent_tools.Workspace(root)
         self.workspace.models[self.MODEL_ID] = document
         self.offered = frozenset()
         self._cm = None
+        self._written: set[Path] = set()    # files this adapter's tools wrote (#1801)
 
     def offer(self, names) -> None:
         self.offered = frozenset(names)
@@ -242,7 +325,23 @@ class WorkspaceAdapter:
         self._cm.__exit__(type(exc), exc, exc.__traceback__)
         self._cm = None
 
-    def run_tool(self, name: str, arguments: dict | None) -> dict:
+    def snapshot(self) -> ModelDocument:
+        """A copy of the open model, for a tool that runs off the editor's GUI thread (D1261):
+        taken on the thread that owns the document, then read only by the tool's thread."""
+        live = self.document
+        out = ModelDocument(live.to_layout())
+        out.path, out.kept, out.written_by = live.path, dict(live.kept), live.written_by
+        return out
+
+    def run_tool(self, name: str, arguments: dict | None, *, document: ModelDocument | None = None,
+                 should_cancel=None) -> dict:
+        """Run one offered tool on the open model. With *document* (a `snapshot`) the call sees
+        that copy under the open model's handle instead, and a change to it is refused, not kept
+        (D1261). With *should_cancel*, a call starts only while it answers False, and a long tool
+        stops at its next progress point once it answers True: E_CANCELLED, and the workspace's
+        models and results are as they were before the call (D1262)."""
+        if arguments is not None:
+            name, arguments = agent_tools.core.resolve_alias(name, arguments)
         if name not in self.offered:
             return agent_tools.ToolError(
                 "E_TOOL_NOT_OFFERED", f"'{name}' is not a tool of this session",
@@ -251,11 +350,96 @@ class WorkspaceAdapter:
             return agent_tools.ToolError(
                 "E_BAD_ARGUMENTS", f"the arguments of '{name}' were not a JSON object",
                 "send the arguments as one JSON object matching the tool's input schema").as_dict()
+        if name == "save_model":
+            # #1794: the open model is the person's; a save in a turn would write it before they
+            # keep or revert the turn, and a path would re-point the editor at another file.
+            return agent_tools.ToolError(
+                "E_SAVE_IN_EDITOR", "the assistant does not save the model open in the editor",
+                "say the model is ready; the person saves it in the editor (File > Save), after "
+                "keeping or reverting this turn").as_dict()
+        if should_cancel is not None and should_cancel():
+            return _CANCELLED.as_dict()     # a call later in the round the person stopped
+        # The editor's process installs no other workspace (the room and `naga mcp` are their own
+        # processes), and a turn's calls run one at a time, so the global holds for the call.
         agent_tools.use_workspace(self.workspace)
-        if "model" in agent_tools.TOOLS[name].input_schema.get("properties", {}):
+        refused = self._other_model(name, arguments) or self._over_a_file(name, arguments)
+        if refused is not None:
+            return refused.as_dict()
+        if ("model" in agent_tools.TOOLS[name].input_schema.get("properties", {})
+                and arguments.get("model") is None
+                and all(arguments.get(k) is None for k in _MODEL_ALTERNATIVES.get(name, ()))):
             arguments = {**arguments, "model": self.MODEL_ID}
-        with agent_tools.python_consent_dropped():      # D186
-            return agent_tools.call(name, **arguments)
+        ws, shown = self.workspace, document if document is not None else self.document
+        copied = document.to_layout() if document is not None else None
+        before = dict(ws.models), dict(ws.results)
+        ws.models[self.MODEL_ID] = shown
+        stops = (agent_tools.core.reporting(_stop_point(should_cancel)) if should_cancel is not None
+                 else contextlib.nullcontext())
+        try:
+            # D186; a hint names only the tools offered here (#1773).
+            with agent_tools.python_consent_dropped(), agent_tools.core.offering(self.offered), stops:
+                answer = agent_tools.call(name, **arguments)
+        except _Stopped:
+            # A stopped study step has written no version; what it put in the workspace (its
+            # slot's model, a partial run's results) goes too, so a later call sees the earlier state.
+            for kept, now in zip(before, (ws.models, ws.results)):
+                now.clear()
+                now.update(kept)
+            return _CANCELLED.as_dict()
+        finally:
+            replaced = ws.models.get(self.MODEL_ID) is not shown
+            ws.models[self.MODEL_ID] = self.document
+        if copied is not None and document.to_layout() != copied:
+            return agent_tools.ToolError(
+                "E_NOT_APPLIED", f"'{name}' changed a copy of the model, so nothing changed in the editor",
+                "this tool's thread class is wrong (nagasim.assistant.ON_GUI); say the change was not "
+                "made").as_dict()
+        if (arguments.get(_WRITES.get(name, "")) is not None and isinstance(answer, dict)
+                and "error" not in answer):
+            self._written.add(self.workspace.resolve(arguments[_WRITES[name]]))
+        if replaced:
+            # #1797: a tool that opens or creates a model under this handle (open_model with
+            # name="current") would send the rest of the turn to a model the editor does not show.
+            return agent_tools.ToolError(
+                "E_LIVE_MODEL", f"'{self.MODEL_ID}' is the model open in the editor; nothing replaced it",
+                "edit the open model itself, or open the file under another name").as_dict()
+        return answer
+
+    def _other_model(self, name: str, arguments: dict):
+        """#1803: a model other than the open one is refused, never redirected to it (the person
+        sees only the open model, and a workspace model of the dock lasts one turn). A study's
+        slot ("study:<id>", its last version on disk) is a named target of its own and passes."""
+        if "model" not in agent_tools.TOOLS[name].input_schema.get("properties", {}):
+            return None
+        for key in ("model", "name") if name == "write_model" else ("model",):
+            value = arguments.get(key)
+            if value is None or value == self.MODEL_ID or (isinstance(value, str)
+                                                           and value.startswith(nextoptions.SLOT)):
+                continue
+            return agent_tools.ToolError(
+                "E_OTHER_MODEL", f"'{value}' is not the model open in the editor: in the editor the "
+                "assistant works on the open model only",
+                "leave the model argument out to work on the open model (write_model puts a whole "
+                "model into it); to work on another model the person opens it in the editor")
+        return None
+
+    def _over_a_file(self, name: str, arguments: dict):
+        """#1801: in the editor a tool that writes a path the call names writes a new file only
+        (or one it wrote itself in this adapter): never the open model's file nor another file
+        of its folder, which the turn's undo would not bring back."""
+        value = arguments.get(_WRITES.get(name, ""))
+        if value is None:
+            return None
+        try:
+            target = self.workspace.resolve(value)
+        except Exception:       # a path the tool refuses itself: it says why
+            return None
+        own = self.document.path is not None and target == Path(self.document.path).resolve()
+        if not own and (target in self._written or not target.exists()):
+            return None
+        return agent_tools.ToolError(
+            "E_FILE_EXISTS", f"'{value}' already exists: in the editor the assistant writes new "
+            "files only", "pick a name no file or folder has yet")
 
     def model_summary(self) -> dict:
         agent_tools.use_workspace(self.workspace)
@@ -333,6 +517,15 @@ def guard_lines(before: dict, after: dict, budget_s: float = 3.0) -> list[str]:
 
 
 # ---------------------------------------------------------------- session
+def _for_provider(result):
+    """A tool answer as the provider reads it: a picture's base64 data becomes a note (#1796; the
+    providers' tool results carry text only here), the rest unchanged. The call's log keeps it."""
+    if isinstance(result, dict) and isinstance(result.get("image"), dict):
+        return {**result, "image": "(a picture this conversation cannot carry; format=\"text\" "
+                                   "lists what it shows)"}
+    return result
+
+
 _STOPPED = {"length": "the model's reply was cut at its length limit",
             "refusal": "the model refused to answer"}
 
@@ -365,7 +558,7 @@ class AssistantSession:
         start = len(self.history)       # where this turn's entries begin
         self.history.append({"role": "user", "text": f"[Current model]\n"
                              f"{json.dumps(summary, separators=(',', ':'))}\n\n{user_text}"})
-        tool_calls, text_out = [], []
+        tool_calls, text_out, notices = [], [], []
         rounds, hit_cap, cancelled, error = 0, False, False, None
         # Only a caller that names the turn passes a label: another adapter (the study room's)
         # has a begin_turn() with no parameter.
@@ -381,6 +574,9 @@ class AssistantSession:
                 reply = self.provider.complete(self.system, self._tool_defs, self.history,
                                                on_text_delta)
                 self.usage.merge(reply.usage)
+                notice = getattr(reply, "notice", "")
+                if notice and notice not in notices:
+                    notices.append(notice)
                 if reply.stop in _STOPPED or not (reply.text or reply.tool_calls):
                     raise llm.LLMError(_STOPPED.get(reply.stop, "the model returned an empty reply"))
                 entry = {"role": "assistant", "text": reply.text, "tool_calls": [
@@ -403,7 +599,7 @@ class AssistantSession:
                     tool_calls.append(ToolCallLog(name=call.name, input=dict(call.arguments or {}),
                                                   result=result))
                     self.history.append({"role": "tool", "id": call.id, "name": call.name,
-                                         "content": json.dumps(result),
+                                         "content": json.dumps(_for_provider(result)),
                                          "is_error": isinstance(result, dict) and "error" in result})
         except Exception as exc:
             self.adapter.rollback_turn(exc)
@@ -417,7 +613,7 @@ class AssistantSession:
                 # history with an unanswered tool call, so the next turn would fail on it.
                 self.history.pop()
         return TurnResult(text="".join(text_out), tool_calls=tool_calls, cancelled=cancelled,
-                          hit_round_cap=hit_cap, rounds=rounds, error=error)
+                          hit_round_cap=hit_cap, rounds=rounds, error=error, notices=notices)
 
 
 # ---------------------------------------------------------------- redaction
@@ -444,7 +640,8 @@ def main(argv=None, *, provider=None, app: str = "Naga", extra_tools: tuple = ()
     parser.add_argument("prompt", help="what to ask the assistant to do")
     parser.add_argument("--provider", choices=("anthropic", "openai"), default=None,
                         help="anthropic, or openai for any OpenAI-compatible server (Ollama, "
-                             "LM Studio); default: anthropic when ANTHROPIC_API_KEY is set, "
+                             "LM Studio); default: anthropic when a key is set (ANTHROPIC_API_KEY, "
+                             "or stored for your Windows user) and no --base-url is given, "
                              "else a local Ollama")
     parser.add_argument("--base-url", default=None, help=f"default {llm.LOCAL_DEFAULT}")
     parser.add_argument("--model-id", default=None, dest="model_id",
@@ -478,6 +675,8 @@ def main(argv=None, *, provider=None, app: str = "Naga", extra_tools: tuple = ()
     result = session.run_turn(args.prompt,
                               on_text_delta=lambda t: print(redact(t, key), end="", flush=True))
     print()
+    for notice in result.notices:
+        print(redact(notice, key), file=sys.stderr)
     if result.error:
         print(redact(f"error: {result.error}", key), file=sys.stderr)
         return 1

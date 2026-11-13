@@ -9,6 +9,7 @@ paraphrased. Every verdict is computed from the study, never self-reported."""
 from __future__ import annotations
 
 import atexit
+import hashlib
 import json
 import math
 import os
@@ -36,6 +37,122 @@ PRECISION = {"quick": {"relative": 0.10, "cap": 50},
 FIRST_PASS = 10
 VERDICTS = ("passed", "partial", "failed", "not_verified")
 LEVELS = ("data", "known_answer", "expert")
+# D1234: who established a validation, recorded by the path it came in on, never by its payload:
+# the engine's own check (study_validate), the assistant's note (study_update), the person (the
+# product's own control). Only the engine and the person make "The model matches reality" pass.
+SOURCES = ("engine", "assistant", "person")
+CHECKED_BY = ("engine", "person")
+
+
+REPORTED = "reported, not checked"
+
+
+EARLIER = "checked on an earlier version"
+
+
+def _earlier(entry: dict) -> bool:
+    """D1260: a person's check made on a version whose blocks or links a later version changed
+    (`_record` sets "changed_in"). The flag lives in study.json, so every reader decides alike."""
+    return entry.get("source") == "person" and bool(entry.get("changed_in"))
+
+
+def checked(entry: dict) -> bool:
+    """A validation that counts as passed: passed, and established by the engine or the person
+    (a person's only while the model's structure is the one they checked, D1260). An assistant's
+    entry, or one recorded before D1234 with no source, is reported, not checked."""
+    return entry.get("passed") is True and entry.get("source") in CHECKED_BY and not _earlier(entry)
+
+
+def validation_result(entry: dict) -> str:
+    """One entry as every page says it: "passed" (checked), EARLIER (a person's check on an older
+    structure), REPORTED (a pass nobody but the assistant established, or one from before D1234),
+    or "failed"."""
+    if checked(entry):
+        return "passed"
+    if _earlier(entry):
+        return f"{EARLIER} ({entry.get('version', '?')})"
+    return REPORTED if entry.get("passed") else "failed"
+
+
+def validation_note(entry: dict) -> str:
+    """The entry's note as the pages show it: a person's check says who, when, what and against
+    what (D1260); any other entry its text."""
+    if entry.get("source") != "person" or not entry.get("against"):
+        return str(entry.get("text") or "")
+    when = ", ".join(str(x) for x in (entry.get("by"), str(entry.get("at") or "")[:10]) if x)
+    return f"Checked by a person ({when}): {entry.get('text', '')}, against {entry['against']}"
+
+
+def validation_state(study: dict) -> str:
+    """The study's "The model matches reality" in one word: "checked", "failed", "earlier" (only a
+    person's check on an older structure), "reported" (passes reported, none checked) or "none".
+    Pass/fail stays strict: only "checked" passes."""
+    entries = [v for v in study["validation"] if not _earlier(v)]
+    if any(checked(v) for v in entries):
+        return "checked"
+    if any(v.get("passed") is False for v in entries):
+        return "failed"
+    if len(entries) < len(study["validation"]):
+        return "earlier"
+    return "reported" if any(v.get("passed") is True for v in entries) else "none"
+
+
+def structure(layout: dict) -> str:
+    """What a person's check holds for (D1260): the model's blocks (name, type) and links
+    (source, target), hashed. A parameter, a distribution or a position is not structure."""
+    blocks = sorted([str(b.get("name")), str(b.get("type"))] for b in layout.get("blocks") or []
+                    if isinstance(b, dict))
+    links = sorted([str(k.get("source")), str(k.get("target"))] for k in layout.get("links") or []
+                   if isinstance(k, dict))
+    return hashlib.sha256(json.dumps([blocks, links]).encode("utf-8")).hexdigest()[:16]
+
+
+def _one_line(value, name: str, least: int, most: int) -> str:
+    if not isinstance(value, str):
+        raise StudyError("E_STUDY_BAD_VALUE", f"{name} must be text", f"Give {name} as text.")
+    # One line, capped: the write-up puts it in a Markdown table cell.
+    text = " ".join(value.split()).replace("|", "/")[:most]
+    if len(text) < least:
+        raise StudyError("E_STUDY_BAD_VALUE", f"{name} needs at least {least} characters",
+                         f"Say what {name} is in a few words.")
+    return text
+
+
+def confirm(folder: Path, text: str, against: str, by: str | None = None, passed: bool = True) -> dict:
+    """D1259, D1260: record a person's own check that the model matches reality, on the last
+    version. Only the person's own actions call this (the room's confirm form, `naga study
+    confirm`); it is no agent tool. The source, the time (the server's, UTC) and the version are
+    set here, never taken from the caller. Answers the stored entry."""
+    folder = Path(folder)
+    study = load(folder)
+    text = _one_line(text, "text", 10, 1000)
+    against = _one_line(against, "against", 1, 500)
+    by = _one_line(by, "by", 1, 100) if by is not None and str(by).strip() else None
+    if not isinstance(passed, bool):
+        raise StudyError("E_STUDY_BAD_VALUE", "passed must be true or false", "Say whether it matched.")
+    vid = version_id(study)         # E_STUDY_NO_VERSION without one: there is nothing to check yet
+    layout = json.loads((folder / "versions" / vid / "model.json").read_text(encoding="utf-8"))
+    entry = {"level": "data", "source": "person", "passed": passed, "text": text, "against": against,
+             **({"by": by} if by else {}), "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "version": vid, "structure": structure(layout)}
+    claim(folder)
+    study["validation"].append(entry)
+    save(folder, study)
+    return entry
+
+
+def can_revalidate(study: dict, folder: Path | None) -> bool:
+    """D1253: a reported validation the engine can check now (study_validate): the last version
+    is a queue the formula covers. Reads the version's model file; nothing else."""
+    if folder is None or not study["versions"] or validation_state(study) != "reported":
+        return False
+    from nagasim.studyformulas import queue_formula     # late: numpy
+    try:
+        layout = json.loads((Path(folder) / "versions" / study["versions"][-1]["id"] / "model.json")
+                            .read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(layout, dict) and queue_formula(layout) is not None
 CHECKLIST = (
     ("question", "The question is stated"),
     ("goals", "Goals are measurable"),
@@ -50,6 +167,17 @@ CHECKLIST = (
 )
 # What to do for the first open item; names the tool that moves it on.
 # Every study_update mention names the real call shape, changes={...} (a test holds this).
+# The next step once a validation is reported by the assistant (D1234): recording another would
+# not close the item, so the way on is the engine's check or the person.
+# D1259: how the person records their own check; no tool can.
+_RECHECK = "the person checks it again (I checked this in the live room, or naga study confirm FOLDER)"
+_REPORTED = ("The validation is reported, not checked: check it with study_validate where the queue "
+             "formula applies, or show the person what was compared so they record their own check "
+             "(I checked this in the live room, or naga study confirm FOLDER); if they take the study "
+             "as it stands, record their words with study_accept.")
+_EARLIER = (f"The person's check was made on an earlier version and the model's blocks or links "
+            f"changed since: {_RECHECK}.")
+
 _TODO = {
     "question": 'Record the question with study_update(changes={"question": "..."}).',
     "goals": 'Record measurable goals with study_update(changes={"goals": [{"id": "g1", "text": "...", '
@@ -63,13 +191,15 @@ _TODO = {
     "model": "Build the first model version with study_step.",
     "verification": "Fix the model with study_step until its model checks (laws, reproducibility, "
                     "assumptions) pass; unmet goals are findings, not model errors.",
-    "validation": 'Compare the model with reality or a known answer, then record it with '
-                  'study_update(changes={"validation": [{"level": "data|known_answer|expert", '
-                  '"passed": true, "text": "what was compared"}]}).',
+    "validation": 'Compare the model with reality or a known answer: study_validate checks a single '
+                  'queue against its formula. Otherwise compare with data or an expert; only the person '
+                  'can confirm that (I checked this in the live room, or naga study confirm FOLDER), '
+                  'and an assistant record made with study_update(changes={"validation": [...]}) '
+                  'reads "reported, not checked".',
     "experiments": 'Put the alternatives in the model as scenarios ("scenarios": [{"name": "...", "overrides": '
                    '[{"path": "resources.<name>.capacity", "value": 2}]}]) and step it with study_step: the '
-                   'scenarios run with every step and their goal results come back in the answer ("scenarios"). '
-                   'Then record the comparison with '
+                   'scenarios run with every step and their goal results come back in the answer ("scenarios"); '
+                   'those results pass this step. A note of the comparison can go in '
                    'study_update(changes={"experiments": [{"id": "e1", "text": "...", "result": "..."}]}).',
     "conclusions": "Compare the last version's KPIs with the goals and adjust the model or the goals. "
                    "When the person is satisfied, build the deliverable with study_package.",
@@ -80,6 +210,7 @@ _MAP_BLOCKS = ('Build the components with study_step, then map each to the block
 _SUBFOLDERS = ("inputs", "versions", "versions/drafts", "tests", "outputs")
 
 # Required keys and their types; the rest are optional and filled by `load`.
+_VERSION_ID = re.compile(r"v\d{3,}")    # what `_next_id` writes
 _REQUIRED = {"format": int, "question": str, "mode": str, "size": str}
 _LISTS = ("goals", "target", "assumptions", "sources", "validation", "experiments",
           "versions", "usage")
@@ -187,6 +318,13 @@ def load(folder: Path) -> dict:
     study.setdefault("requests", {})
     for key in _LISTS:
         study.setdefault(key, [])
+    # #1811: a version id names a folder the package and the pages read; one the engine did not
+    # write (`../../elsewhere`) would reach outside the study. The file never widens where we read.
+    for v in study["versions"] if isinstance(study["versions"], list) else [None]:
+        vid = v.get("id") if isinstance(v, dict) else None
+        if not isinstance(vid, str) or not _VERSION_ID.fullmatch(vid):
+            raise StudyError("E_STUDY_UNREADABLE", f"study.json has a version id that is not one: "
+                             f"{str(vid)[:40]!r} (v and three or more digits)", _restore)
     return study
 
 
@@ -351,12 +489,27 @@ def _item(study: dict, item: str, folder: Path | None) -> tuple[str, str]:
         # reality or a known answer, and a later step (a scenario, another capacity) seldom undoes
         # that. Each step re-runs the laws and assumption checks; re-validate when a step changes
         # the logic itself.
-        results = [v.get("passed") for v in study["validation"]]
-        if True in results:
-            return "passed", ""
-        return ("failed", "a validation check failed") if False in results else ("not_verified", "no validation yet")
+        state = validation_state(study)
+        if state == "checked":
+            last_check = next(v for v in reversed(study["validation"]) if checked(v))
+            return "passed", (validation_note(last_check) if last_check.get("source") == "person" else "")
+        if state == "failed":
+            return "failed", "a validation check failed"
+        if state == "earlier":
+            v = next(v for v in reversed(study["validation"]) if _earlier(v))
+            return "not_verified", (f"{EARLIER} ({v.get('version', '?')}); the model's blocks or links "
+                                    f"changed in {v['changed_in']}: {_RECHECK}")
+        if state == "reported":
+            return "not_verified", f"{REPORTED}: only the engine's check or the person's makes it pass"
+        return "not_verified", "no validation yet"
     if item == "experiments":
-        return ("passed", "") if study["experiments"] else ("not_verified", "no experiments yet")
+        # #1802: the engine's evidence, the scenario results the last step stored (what the options
+        # table shows), not a note: a note says an experiment was run, the results show it.
+        if (last or {}).get("scenarios"):
+            return "passed", ""
+        if study["experiments"]:
+            return "not_verified", "recorded, not run: the last version holds no scenario results"
+        return "not_verified", "no experiments yet"
     met = [g["status"] == "met" for g in goals_status(study)]  # conclusions
     if met and all(met):
         return "passed", ""
@@ -397,7 +550,7 @@ def sufficiency(study: dict) -> dict:
     scen = scenarios_meeting(study) if missed and not why else []
     if not scen:
         why += missed
-    passed = {v.get("level") for v in study["validation"] if v.get("passed")}
+    passed = {v.get("level") for v in study["validation"] if checked(v)}
     accepted = study.get("accepted")
     if not why:
         label = "sufficient for its goals" + (" with: " + ", ".join(scen) if scen else "")
@@ -530,6 +683,10 @@ def _next_step(study: dict, folder: Path | None = None) -> str:
     if first == "size_cap":
         return "The size cap is reached: report, or ask the person to raise the size."
     # Components already recorded: only their blocks are missing, do not ask for the target again.
+    if first == "validation" and validation_state(study) == "earlier":
+        return _EARLIER
+    if first == "validation" and any(v.get("passed") for v in study["validation"]):
+        return _REPORTED
     return _MAP_BLOCKS if first == "scope" and study["target"] else _TODO[first]
 
 
@@ -561,6 +718,20 @@ def request_key(tool: str, request_id: str | None) -> str | None:
     return None if request_id is None else f"{tool}:{request_id}"
 
 
+def _mark_earlier(study: dict, layout: dict, vid: str) -> None:
+    """D1260: a person's check holds while the newest version has the structure they checked;
+    a version with other blocks or links marks it "changed_in" that version. One whose structure
+    is the checked one again (a revert) clears the mark: the check is about that structure."""
+    now = structure(layout)
+    for v in study["validation"]:
+        if v.get("source") != "person" or not v.get("structure"):
+            continue        # an entry from before D1260 names no structure: it holds as before
+        if v["structure"] == now:
+            v.pop("changed_in", None)
+        else:
+            v.setdefault("changed_in", vid)
+
+
 def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[dict],
             kpis: dict, note: str, request_key: str | None, problems: list[dict],
             scenarios: dict | None = None, run: dict | None = None) -> dict:
@@ -587,6 +758,7 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
                                   pending=[c for c in study["target"] if not c.get("blocks")])
         write_text(target / "flowchart.svg", flowchart.to_svg(geom, f"{vid}: {note}"))
         write_text(target / "flowchart.txt", flowchart.to_text(geom))
+        _mark_earlier(study, layout, vid)
         study["versions"].append({"id": vid, "note": note, "verdict": verdict,
                                   "verification": overall([c for c in checks if c["kind"] not in ("goal", "precision")]),
                                   "kpis": kpis, "changes_count": len(lines),
@@ -607,6 +779,22 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
     return answer
 
 
+# Per resource, the two columns that show whether a model works as meant (S2-11).
+_RESOURCE_KPIS = ("Time in Queue Avg", "Usage % (snapshot)")
+
+
+def step_kpis(digest: dict | None) -> dict:
+    """The KPIs a step stores and answers (S2-11): the system KPIs, every user statistic (a RECORD
+    block's), and each resource's wait and utilisation as "<resource>/<column>", zeros left out
+    (a zero cost or truncation flag says nothing). Goal KPIs are added by the caller, zero or not."""
+    digest = digest or {}
+    rows = {**(digest.get("system") or {}), **(digest.get("user_stats") or {}),
+            **{f"{r}/{c}": cols[c] for r, cols in (digest.get("resources") or {}).items()
+               for c in _RESOURCE_KPIS if c in cols}}
+    return {k: v["mean"] for k, v in rows.items()
+            if isinstance(v, dict) and v.get("mean") is not None and v["mean"] != 0}
+
+
 def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, checks: list[dict],
                 note: str, request_id: str | None, problems: list[dict] | None = None,
                 scenarios: dict | None = None, run: dict | None = None) -> dict:
@@ -616,8 +804,7 @@ def record_step(folder: Path, study: dict, layout: dict, digest: dict | None, ch
     if key is not None and key in study["requests"]:
         return study["requests"][key]
     verdict = "failed" if digest is None else overall(checks)
-    kpis = {k: v["mean"] for k, v in ((digest or {}).get("system") or {}).items()
-            if isinstance(v, dict) and v.get("mean") is not None}
+    kpis = step_kpis(digest)
     # A goal on a user statistic or a resource column is stored too, with the value its goal check
     # used, so goals_status (the cover, the checklist) agrees with the step's goal checks.
     for goal in study["goals"]:

@@ -33,7 +33,8 @@ from nagasim.core import outputs, schema
 from nagasim.core.export import calendar_of
 from nagasim.core.calendar import date_ticks, run_horizon
 from nagasim.core.stats import ci95
-from nagasim import svgcharts
+from nagasim import pagefmt, svgcharts
+from nagasim.player import token_css
 
 __all__ = ["build_report", "has_costs", "esc", "fmt", "table", "csp", "source_hash"]     # esc, fmt, table: for `extra_sections`
 
@@ -91,11 +92,12 @@ def _kpi_cell(kpi: str) -> str:
 
 def table(headers: list[str], rows: list[list[str]], *, empty="No data") -> str:
     head = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    # D1239: each table scrolls in its own box, so a wide one never widens the page.
     if not rows:
-        return (f'<table><thead><tr>{head}</tr></thead><tbody><tr>'
-                f'<td colspan="{len(headers)}">{esc(empty)}</td></tr></tbody></table>')
+        return (f'<div class="tbl"><table><thead><tr>{head}</tr></thead><tbody><tr>'
+                f'<td colspan="{len(headers)}">{esc(empty)}</td></tr></tbody></table></div>')
     body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
-    return f'<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'
+    return f'<div class="tbl"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
 # ---------------------------------------------------------------- data extraction
@@ -106,6 +108,9 @@ def _system_rows(results: dict) -> list[tuple]:
     rows = []
     for metric in df.loc[df["Metric"] != "Run", "Metric"].drop_duplicates():
         values = pd.to_numeric(df.loc[df["Metric"] == metric, "Value"], errors="coerce")
+        # D1239: a row that describes the run (a flag, the time unit, a cost of zero) is no result.
+        if values.isna().all() or pagefmt.is_bookkeeping(metric, values.tolist()):
+            continue
         st = ci95(values)
         half = (st["ub"] - st["mean"]) if math.isfinite(st["ub"]) and math.isfinite(st["mean"]) else float("nan")
         rows.append((metric, st["mean"], half, float(values.min()), float(values.max())))
@@ -782,7 +787,16 @@ def _orders_html(results: dict) -> str:
 
 
 # ---------------------------------------------------------------- header / footer
-def _header_html(layout: dict, results: dict, title: str) -> str:
+def _header_html(layout: dict, title: str) -> str:
+    """The question (or the model's title) and its description: what the report answers (D1239)."""
+    description = layout.get("info", {}).get("description", "")
+    desc_html = f'<p class="description">{esc(description)}</p>' if description else ""
+    return f'<header><h1>{esc(title)}</h1>{desc_html}</header>'
+
+
+def _settings_html(layout: dict, results: dict, title: str) -> str:
+    """How the numbers were made: model, version, date, replications, run length, seed; and the
+    model summary. Last in the report, before the methods (D1239)."""
     sim = layout.get("simulation", {})
     sys_df = results.get("system")
     replications = int(sys_df["Run"].nunique()) if sys_df is not None and not sys_df.empty else 0
@@ -808,9 +822,34 @@ def _header_html(layout: dict, results: dict, title: str) -> str:
             window += " to " + calendar.label(run_length, "%a %d %b %Y %H:%M")
         rows.insert(4, ("Calendar", f"{esc(window)} ({esc(getattr(calendar.tz, 'key', 'UTC'))})"))
     items = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)
-    description = layout.get("info", {}).get("description", "")
-    desc_html = f'<p class="description">{esc(description)}</p>' if description else ""
-    return f'<header><h1>{esc(title)}</h1>{desc_html}<dl class="meta">{items}</dl></header>'
+    return (f'<section><h2>Settings</h2><dl class="meta">{items}</dl>'
+            f'<h3>Model summary</h3>{_model_summary_html(layout)}</section>')
+
+
+def _results_html(layout: dict, results: dict, experiment) -> str:
+    """The model's results as its dashboard names them, in the one interval wording of the pages
+    (D1236): one row each for a run; with scenarios, a scenario per row and the verdict against the
+    Baseline. "" when the model names no result."""
+    from nagasim.player import result_rows
+
+    names = list(experiment.results) if experiment is not None else [pagefmt.REFERENCE]
+    found = result_rows(layout, None if experiment is not None else results, experiment, names) or {}
+    if not found:
+        return ""
+    first = next(iter(found.values()))
+    heads = [r["label"] + (f" ({r['unit']})" if r["unit"] else "") for r in first]
+
+    def cell(r) -> str:
+        text = pagefmt.interval_text(r["yours"]["mean"], r["yours"]["lo"], r["yours"]["hi"])
+        return esc(text + (f": {r['verdict']}" if r.get("verdict") else ""))
+    if experiment is None:
+        rows = [[esc(h), cell(r), fmt(r["target"]) if r.get("target") is not None else ""]
+                for h, r in zip(heads, first)]
+        body = table(["Result", "Value (95% interval)", "Target"], rows)
+    else:
+        rows = [[esc(name)] + [cell(r) for r in found[name]] for name in names if name in found]
+        body = table(["Scenario"] + heads, rows)
+    return f"<section><h2>Results</h2>{body}</section>"
 
 
 _METHODS_NOTE = (
@@ -822,31 +861,34 @@ _METHODS_NOTE = (
     "in force (a resource off shift or down does not dilute it)."
 )
 
-_CSS = """
-:root { --ink: #1a202c; --muted: #4a5568; --line: #e2e8f0; --accent: #2b6cb0; }
+# D1240: the reader's light or dark (`player.token_css`); print stays light. A chart is a drawing in
+# fixed colours, so it sits on its own light card in either theme. D1239: one column on a phone.
+_CSS = token_css() + """
 * { box-sizing: border-box; }
-body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-       color: var(--ink); margin: 0; padding: 24px; background: #fff; line-height: 1.45; }
-header h1 { margin-bottom: 8px; }
+body { font-family: var(--font); color: var(--ink); margin: 0; padding: 24px; background: var(--panel);
+       line-height: 1.45; }
+header h1 { margin-bottom: 8px; overflow-wrap: anywhere; }
 .meta { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0 0 24px; }
 .meta dt { color: var(--muted); }
-.meta dd { margin: 0; }
+.meta dd { margin: 0; overflow-wrap: anywhere; }
 h2 { border-bottom: 2px solid var(--line); padding-bottom: 6px; margin-top: 40px; }
 h3 { color: var(--muted); margin-top: 24px; }
-table { border-collapse: collapse; width: 100%; margin: 8px 0 20px; font-size: 13px; }
+.tbl { overflow-x: auto; max-width: 100%; margin: 8px 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; }
 th:first-child, td:first-child { text-align: left; }
-thead th { background: #f7fafc; }
-.warnings { color: #9c4221; }
-.note { color: var(--muted); font-size: 13px; }
-.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 460px)); gap: 16px; }
-.chart { max-width: 460px; }
+thead th { background: var(--raised); }
+.warnings { color: var(--wait-ink); }
+.note, .description { color: var(--muted); font-size: 13px; }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 460px)); gap: 16px; }
+.chart { max-width: 460px; background: #fff; border-radius: 6px; }
 .chart svg { display: block; width: 100%; height: auto; max-width: 100%; }
 footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted);
          font-size: 12px; }
+@media (max-width: 700px) { body { padding: 12px 16px; } h2 { margin-top: 28px; } }
 @media print {
   h2 { page-break-before: always; }
-  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 """
 
@@ -885,11 +927,15 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     `results["schedule_log"]` already draws (D120).
     """
     title = title or "Naga simulation report"
+    # D1239 (S4-11): the report leads with the question it answers: the dashboard's, else the
+    # model's title, else the title given (#1745's rule, as the player).
+    from nagasim.player import page_title
+    heading = page_title(layout, title)
     sim = layout.get("simulation", {})
     warmup = float(sim.get("warmup") or 0.0)
 
-    sys_rows = [[esc(m), fmt(mean), fmt(half), fmt(mn), fmt(mx)]
-               for m, mean, half, mn, mx in _system_rows(results)]
+    sys_rows = [[esc(m), fmt(mean), f"{fmt(mean - half)} to {fmt(mean + half)}" if math.isfinite(half) else "",
+                 fmt(mn), fmt(mx)] for m, mean, half, mn, mx in _system_rows(results)]
 
     resource_rows = [[esc(name), *[fmt(v) for v in vals]]
                      for name, *vals in _pivot_means(results.get("resource_summary"),
@@ -909,29 +955,29 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     overflow_note = (f'<p class="note">Also queued: {esc(", ".join(overflow))}</p>'
                      if overflow else "")
 
+    def section(name: str, headers: list[str], rows: list) -> str:
+        # D1239: a section with nothing in it is left out, not printed as "No data".
+        return f"<section><h2>{name}</h2>{table(headers, rows)}</section>" if rows else ""
+
+    # D1239: an empty chart is left out; the rest share one grid that folds to one column.
+    charts = [c for c in [_utilization_chart(results), _wip_chart(timeseries_mean, warmup, calendar),
+                          *queue_charts, _throughput_histogram(results), _material_flow_chart(results)]
+              if ">No data</text>" not in c]
+    chart_html = ('<section><h2>Charts</h2><div class="chart-grid">'
+                  + "".join(f"<div class='chart'>{c}</div>" for c in charts) + f"</div>{overflow_note}</section>"
+                  if charts else "")
     body = [
-        _header_html(layout, results, title),
+        _header_html(layout, heading),
+        _results_html(layout, results, experiment),
+        _experiment_html(layout, experiment) if experiment is not None else "",
         _data_inputs_html(results),
-        f'<section><h2>Model summary</h2>{_model_summary_html(layout)}</section>',
         _validation_html(layout),
-        "<section><h2>System KPIs</h2>" +
-        table(["Metric", "Mean", "95% CI half-width", "Min", "Max"], sys_rows) + "</section>",
-        "<section><h2>Resources</h2>" +
-        table(["Resource"] + _RESOURCE_KPIS, resource_rows) + "</section>",
-        "<section><h2>Stores</h2>" + table(["Store"] + _STORE_KPIS, store_rows) + "</section>",
-        "<section><h2>Entities</h2>" +
-        table(["Entity type"] + _ENTITY_KPIS, entity_rows) + "</section>",
-        "<section><h2>User statistics</h2>" +
-        table(["Statistic", "Kind"] + _USER_KPIS, user_rows) + "</section>",
-        "<section><h2>Charts</h2>"
-        f'<div class="chart-grid"><div class="chart">{_utilization_chart(results)}</div>'
-        f'<div class="chart">{_wip_chart(timeseries_mean, warmup, calendar)}</div></div>'
-        '<div class="chart-grid">'
-        + "".join(f"<div class='chart'>{c}</div>" for c in queue_charts) + "</div>"
-        f"{overflow_note}"
-        f'<div class="chart-grid"><div class="chart">{_throughput_histogram(results)}</div>'
-        f'<div class="chart">{_material_flow_chart(results)}</div></div>'
-        "</section>",
+        section("System KPIs", ["Metric", "Mean", "95% interval", "Min", "Max"], sys_rows),
+        section("Resources", ["Resource"] + _RESOURCE_KPIS, resource_rows),
+        section("Stores", ["Store"] + _STORE_KPIS, store_rows),
+        section("Entities", ["Entity type"] + _ENTITY_KPIS, entity_rows),
+        section("User statistics", ["Statistic", "Kind"] + _USER_KPIS, user_rows),
+        chart_html,
     ]
     body.append(_orders_html(results))          # "" unless the model has orders/due dates
     body.append(_bottleneck_html(results))       # "" unless outputs.bottleneck was set
@@ -940,8 +986,6 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
         body.append(_plan_risk_html(plan_risk))
     if has_costs(results):
         body.append(_costs_html(results, sim.get("currency", "EUR")))
-    if experiment is not None:
-        body.append(_experiment_html(layout, experiment))
     if design is not None:
         body.append(_design_html(design))
     if surrogate is not None and design is not None:
@@ -953,12 +997,13 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     if forecast is not None:
         body.append(_forecast_html(forecast))
     body += extra_sections
+    body.append(_settings_html(layout, results, title))
     body.append(f"<footer><h2>Methods</h2><p>{esc(_METHODS_NOTE)}</p></footer>")
 
     # #1740: no script, and the one style block pinned by hash (the study pages use the same policy)
     head = (f'<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="{csp(_CSS)}">'
             f'<meta name="viewport" content="width=device-width, '
-            f'initial-scale=1"><title>{esc(title)}</title><style>{_CSS}</style>')
+            f'initial-scale=1"><title>{esc(heading)}</title><style>{_CSS}</style>')
     doc = f"<!doctype html><html lang=\"en\"><head>{head}</head><body>{''.join(body)}</body></html>"
 
     if path is not None:

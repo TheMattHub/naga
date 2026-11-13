@@ -9,6 +9,9 @@ from nagasim import agent_tools as T
 import nagasim.agent_tools.study_sensitivity  # noqa: F401  registers the tool
 from nagasim import studysensitivity
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 KPI = "Avg Throughput Time"
 

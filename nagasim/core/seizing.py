@@ -237,6 +237,7 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
         entity._deadline = block.env.now + patience if until is None else until
     scope = block.expression_scope(entity) if getattr(target, "needs_scope", True) else None
     since = entity._since           # None but for a warm-started entity's first wait
+    asked = block.env.now
     if since is not None:
         entity._since = None
     if block.ctx.bus.has_subscribers:   # D383: when it asked, for a state (not when it arrived:
@@ -261,6 +262,9 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
             granted = True
         else:
             granted = yield from _wait(block, target, requests, patience, until)
+    if block.ctx.entity_waits:      # D1232: a granted or a given-up wait is queue time alike
+        entity._total_wait = (getattr(entity, "_total_wait", 0.0) + block.env.now
+                              - (asked if since is None else since))
     if not granted:
         if gates is not None:
             gates.started(entity)

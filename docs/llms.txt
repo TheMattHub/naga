@@ -289,7 +289,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 ## Problem codes
 
-- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 473 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 478 codes that a check of a model can report, from nagasim/core/problems.py.
 - [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
 - [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
 - [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.
@@ -302,7 +302,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 ## Reference
 
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 98 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 95 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 

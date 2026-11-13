@@ -263,6 +263,10 @@ class SimulationContext:
     # unaffected: they come from the time-weighted collectors and the streaming
     # per-type accumulators, never from these logs.
     record_logs: bool = True
+    # D1232 (`simulation.entity_waits`): each entity sums its queue time over every seize into
+    # `_total_wait`, and the entity log gains a "Total Wait" column. Off by default, so a run
+    # that does not ask keeps its frames (and digests) exactly as they were.
+    entity_waits: bool = False
     # Deterministic run mode (PHASE6 W4 P1, ARCHITECTURE D119): every
     # distribution draw becomes its mean (`core/distributions.py`'s `mean()`),
     # DECIDE-by-chance becomes a largest-remainder allocation

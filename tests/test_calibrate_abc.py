@@ -13,6 +13,9 @@ import nagasim
 from nagasim import api, calibrate as cal, experiments
 from nagasim.optimize import Factor
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 KPI = "system/Avg Throughput Time"
 TRUE_X = 3.0
 X = Factor("simulation.time_limit", "continuous", 0.0, 10.0, name="x")

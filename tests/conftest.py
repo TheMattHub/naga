@@ -26,7 +26,48 @@ if hasattr(sys.stderr, "reconfigure"):
 import pytest
 
 from nagasim.core.schema import validate_model_structured
+
+
+def pytest_sessionstart(session):
+    """A run in a linked worktree that imports the main checkout's packages (the editable install)
+    tests old code; stop at once and say how to fix it (S7-14)."""
+    import nagasim
+    try:
+        from tools.repo_status import foreign_imports
+    except ImportError:                                  # the public engine clone ships no repo_status
+        return
+    modules = [nagasim]
+    try:
+        import product
+        modules.append(product)
+    except ImportError:                                  # the public engine clone has no product
+        pass
+    foreign = foreign_imports(Path(__file__).resolve().parents[1], modules)
+    if foreign:
+        pytest.exit("this worktree's tests import " + "; ".join(foreign)
+                    + ": set PYTHONPATH to the worktree root", returncode=4)
 from nagasim.core.sim_runner import initialize_sim_env, prepare_model, setup_run, step_until
+
+
+@pytest.fixture
+def answers_match_schemas(monkeypatch):
+    """D1244: every successful tool answer of the test is checked against the tool's declared
+    output schema (a module opts in with `pytestmark = pytest.mark.usefixtures(...)`)."""
+    import dataclasses
+    import functools
+    jsonschema = pytest.importorskip("jsonschema")   # comes with the mcp extra
+    from nagasim import agent_tools
+
+    def checking(spec):
+        @functools.wraps(spec.fn)       # an MCP server built in the test reads the signature off it
+        def fn(**kwargs):
+            answer = spec.fn(**kwargs)
+            if isinstance(answer, dict) and "error" not in answer:
+                jsonschema.validate(answer, spec.output_schema or {"not": {}})
+            return answer
+        return fn
+    for name, spec in list(agent_tools.TOOLS.items()):
+        monkeypatch.setitem(agent_tools.TOOLS, name, dataclasses.replace(spec, fn=checking(spec)))
 
 
 @pytest.fixture
@@ -320,8 +361,10 @@ def worker_pool():
 @pytest.fixture(scope="session")
 def qapp():
     """Shared offscreen QApplication for every Qt UI test (test_ui_shell.py,
-    test_ui_forms.py, ...). Skips the whole test if PySide6 is not installed."""
+    test_ui_forms.py, ...). Skips the whole test if PySide6 is not installed, or the product
+    (the public engine clone ships none: its app font and GC guard live there)."""
     pytest.importorskip("PySide6")
+    pytest.importorskip("product")
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
@@ -605,3 +648,33 @@ def rest_plant(plant_net, tls_files):
     for server in servers:
         server.shutdown()
         server.server_close()
+
+
+@pytest.fixture
+def nurse_study(tmp_path):
+    """A study shaped like the review's blood-test case (S4-01, S2-08), recorded without a run:
+    the base model misses its goal (27.6% wait over 15 min, at most 10% wanted), the scenario
+    "Fourth nurse" meets it (5.4%), "Kiosk" does not. Returns (folder, study)."""
+    return make_nurse_study(tmp_path / "s")
+
+
+def make_nurse_study(folder):
+    """`nurse_study`'s study, written into *folder* (for a module-scoped fixture)."""
+    from nagasim import study
+
+    st = study.create(folder, "Does a fourth nurse keep waits over 15 min under 10%?")
+    st["goals"] = [{"id": "g1", "text": "Share waiting over 15 min", "kpi": "Nurse/Time in Queue",
+                    "share_above": 15, "high": 0.10}]
+    st["validation"] = [{"level": "known_answer", "passed": True, "text": "queueing formula", "source": "person"}]
+    st["decision"] = "Add a fourth nurse 07-10 (28% today, 6% with the nurse)"
+    share = "Nurse/Share waiting over 15"
+    scenarios = {"Fourth nurse": {"kpis": {share: {"mean": 0.054, "ci_half_width": 0.012}}, "goals": {"g1": "met"}},
+                 "Kiosk": {"kpis": {share: {"mean": 0.258, "ci_half_width": 0.03}}, "goals": {"g1": "not_met"}}}
+    ok = [{"name": "c", "verdict": "passed", "why": "", "kind": "law"}]
+    study.record_step(folder, st, {"blocks": [{"name": "a", "type": "Delay"}], "links": []},
+                      {"system": {"Avg WIP": {"mean": 3.0}, "Entity Log Truncated": {"mean": 0.0},
+                                  "Avg WIP (Little)": {"mean": 3.0}},
+                       "tails": {share: {"mean": 0.276, "ci_half_width": 0.036}}},
+                      ok, "fourth nurse and kiosk", None, scenarios=scenarios,
+                      run={"replications": 20, "precision": {share: {"half_width": 0.036, "target": 0.02}}})
+    return folder, st

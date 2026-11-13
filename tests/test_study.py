@@ -123,7 +123,7 @@ def test_not_verified_never_counts_as_passed():
 
 
 def test_sufficient_needs_tests_validation_and_goals():
-    s = _good(validation=[{"level": "known_answer", "passed": True}])
+    s = _good(validation=[{"level": "known_answer", "passed": True, "source": "engine"}])
     sf = study.sufficiency(s)
     assert sf["sufficient"] is True and sf["label"] == "sufficient for its goals"
     assert sf["validation_level"] == "known_answer"
@@ -134,7 +134,7 @@ def test_sufficient_needs_tests_validation_and_goals():
 
 
 def test_person_acceptance_is_labelled():
-    s = _good(validation=[{"level": "data", "passed": True}], accepted={"reason": "pilot only", "by": "person"})
+    s = _good(validation=[{"level": "data", "passed": True, "source": "person"}], accepted={"reason": "pilot only", "by": "person"})
     s["versions"][0]["verdict"] = "failed"
     sf = study.sufficiency(s)
     assert sf["sufficient"] is False and "accepted with open issues: pilot only" in sf["label"]
@@ -165,7 +165,7 @@ def test_experiments_step_says_scenarios_run_with_every_step():
 
 
 def test_next_step_reports_when_sufficient_and_at_the_cap():
-    s = _good(validation=[{"level": "data", "passed": True}], plan_approved=True)
+    s = _good(validation=[{"level": "data", "passed": True, "source": "person"}], plan_approved=True)
     assert study.next_step(s).startswith("Report the result")
     capped = _fresh(size="quick", plan_approved=True, versions=[{"id": f"v{i}"} for i in range(3)])
     assert "size cap is reached" in study.next_step(capped)
@@ -203,7 +203,7 @@ def test_next_step_is_not_held_up_by_missing_data():
 
 
 def test_plan_card_comes_before_the_sufficient_report():
-    s = _good(validation=[{"level": "data", "passed": True}])
+    s = _good(validation=[{"level": "data", "passed": True, "source": "person"}])
     assert "plan card" in study.next_step(s)
 
 
@@ -458,7 +458,7 @@ def _scen(met):
 
 
 def test_a_scenario_meeting_every_goal_makes_the_study_sufficient_with_it():
-    s = _good(validation=[{"level": "data", "passed": True}])
+    s = _good(validation=[{"level": "data", "passed": True, "source": "person"}])
     s["goals"][0]["id"] = "g1"
     s["versions"][0]["kpis"]["Avg Throughput Time"] = 4.0     # the base model misses
     s["versions"][0]["scenarios"] = {"two cranes": _scen(True), "three cranes": _scen(True), "one": _scen(False)}
@@ -475,7 +475,7 @@ def test_a_scenario_meeting_every_goal_makes_the_study_sufficient_with_it():
 def test_the_cap_hint_has_a_ready_call():
     from nagasim.studychecks import step_checks  # noqa: F401
     status = {"K": {"half_width": 1.2, "target": 0.5, "met": False, "mean": 10.0}}
-    s = _good(validation=[{"level": "data", "passed": True}], plan_approved=True)
+    s = _good(validation=[{"level": "data", "passed": True, "source": "person"}], plan_approved=True)
     s["versions"][0].update(verification="passed", precision=status, replications=200)
     assert '"relative": 0.12' in study.next_step(s) and "deep size" in study.next_step(s)
     assert "0.12" in study.precision_sentence(200, status, 200)

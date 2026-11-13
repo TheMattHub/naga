@@ -7,12 +7,13 @@ import itertools
 import json
 from pathlib import Path
 
-from nagasim.core import queuerow, sd, sections, submodels
+from nagasim.core import queuerow, sd, submodels
 from nagasim.core.orders import ORDERS_MODE
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.graph import long_name_problem, validate_graph_structured
 from nagasim.core.schema.layout import validate_layout_structured
 from nagasim.core.schema.migrate import migrate
+from nagasim.core.schema.shape import shape_problems, type_problems_unsaid
 from nagasim.core.schema.submodels import _library_clashes, validate_submodels_structured
 
 
@@ -42,23 +43,21 @@ def _prepare_structured(layout: dict) -> tuple[dict, list[Problem]]:
 
     The queue-row checks (D1089) read the placed instances as saved, before
     flattening removes them, and never touch the layout that runs."""
+    # The override grammar imports this package, so it is imported when a model is checked.
+    from nagasim.core.overrides import override_problems
     flat, problems = _prepare_flat(layout)
-    return flat, problems + queuerow.problems(layout) + _top_level_problems(layout)
+    # Scenario paths on the layout as saved, like the queue rows: a submodel definition's
+    # path resolves only before flattening (D1222).
+    problems += queuerow.problems(layout) + override_problems(layout)
+    return flat, problems + type_problems_unsaid(_top_level_problems(layout), problems)
 
 
 def _top_level_problems(layout: dict) -> list[Problem]:
-    """D1193: a top-level key this build does not know is kept by the document, so it is a
-    warning with its nearest name, not an error; a file a newer nagasim saved is named."""
+    """D1193, D1220: a key this build does not know, at any level, is kept by the document,
+    so it is a warning with its nearest name, not an error; a file a newer nagasim saved is
+    named."""
     from nagasim import __version__
-    from nagasim.core.suggest import did_you_mean
-    known = [s.name for s in sections.SECTIONS] + ["schema_version", "$schema"]
-    found = []
-    for key in layout:
-        if key not in known:
-            said = did_you_mean(key, known)
-            found.append(problem("W_UNKNOWN_KEY", f"unknown top-level key '{key}': this build "
-                                 "does not use it and keeps it as it is", f"/{key}",
-                                 hint=said or "a section of a newer version, or a misspelt one"))
+    found = shape_problems(layout)
     info = layout.get("info")
     writer = info.get("written_by") if isinstance(info, dict) else None
     if isinstance(writer, str) and _version(writer) > _version(__version__):

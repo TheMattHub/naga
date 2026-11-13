@@ -90,7 +90,6 @@ Case 3 (rerank=true with FIFO): the exact case-1 layout and timings, but
 service order must be plain request-time order: E1(100), E2(50), E3(0),
 regardless of score/slope.
 """
-import pytest
 
 from nagasim.core import agents as A
 from nagasim.core.base_process import Block
@@ -99,6 +98,7 @@ from nagasim.core.sim_classes import Entity
 from nagasim.core.sim_runner import initialize_sim_env, run_single_simulation
 
 from conftest import chain, dispose, problem_codes, run_env
+from helpers import model as _model
 
 
 # =========================================================== case 1 & 3
@@ -208,10 +208,6 @@ def _release(name, resource):
 def _send(name, message, to):
     return {"name": name, "description": name, "type": "SEND", "position": [0, 0],
             "params": {"message": message, "to": to}}
-
-
-def _model(*records, time_limit):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
 
 
 def _run(layout, seed, run_len):

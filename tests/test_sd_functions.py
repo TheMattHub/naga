@@ -14,13 +14,10 @@ from nagasim.core import sd
 from nagasim.core.expressions import ExpressionScope, compile_expression
 
 from conftest import problem_codes, run_env
+from helpers import codes as _codes
 
 _DUMMY_LEVEL = {"name": "_dummy", "initial": 0.0}
 _DUMMY_FLOW = {"name": "_noop", "from": "_dummy", "rate": "0"}
-
-
-def _codes(layout):
-    return problem_codes(layout, severity=None)
 
 
 def _run(layout, run_len, seed=0):
@@ -64,7 +61,7 @@ def test_zidz_and_xidz_fall_back_when_dividing_by_zero_else_the_quotient():
         {"za": 0.0, "zb": 2.5, "xa": -1.0, "xb": 2.5, "xc": 0.0})
 
 
-# MODULO's sign rule is test_regressions.py::test_168_... and the sdx `rounding` model.
+# MODULO's sign rule is tests/regressions/ test_168_... and the sdx `rounding` model.
 
 
 # ============================================================ TABLE_EXTRAPOLATE
@@ -111,7 +108,7 @@ def test_prod_vmin_vmax_one_argument_form_left_unexpanded_is_e_subscript_aggrega
 
 
 # ============================================================ INITIAL
-# The held t0 value is test_regressions.py::test_161_...; ACTIVE_INITIAL is
+# The held t0 value is tests/regressions/ test_161_...; ACTIVE_INITIAL is
 # test_160_..., SAMPLE_IF_TRUE test_158_..., NPV test_159_...
 def test_initial_outside_a_level_flow_aux_or_delay_field_is_e_sd_function_context():
     layout = {"blocks": [{"name": "a", "type": "ASSIGN", "position": [0, 0],

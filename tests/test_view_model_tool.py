@@ -15,6 +15,9 @@ import pytest
 from nagasim import agent_tools as T
 from nagasim import assistant, flowchart, mcp_server
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 EXAMPLES = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 PNG = b"\x89PNG\r\n\x1a\n"
 
@@ -59,9 +62,9 @@ def test_a_bad_format_or_an_unknown_model_is_a_structured_error(ws):
     assert T.call("view_model", model="nope")["error"]["code"] == "E_UNKNOWN_MODEL"
 
 
-def test_it_is_read_only_and_offered_on_the_mcp_servers_only():
+def test_it_is_read_only_and_the_dock_offers_it_too():
     assert T.TOOLS["view_model"].read_only
-    assert "view_model" not in assistant.CURATED_TOOL_NAMES | assistant.COMPACT_TOOL_NAMES
+    assert "view_model" in assistant.offered_tools("local")      # D1245; its picture reaches the model as a note (#1796)
 
 
 @needs_sdk
@@ -73,7 +76,9 @@ def test_the_picture_reaches_a_client_as_image_content(ws):
         await server.call_tool("open_model", {"path": "single_server.json", "name": "again"})
         return await server.call_tool("view_model", {"model": "again"})
 
-    image, text = asyncio.run(go()).content
+    result = asyncio.run(go())
+    image, text = result.content
     assert (image.type, image.model_dump(by_alias=True)["mimeType"]) == ("image", "image/png")   # the attribute name differs per SDK line
     assert base64.b64decode(image.data).startswith(PNG)
-    assert "image" not in json.loads(text.text) and json.loads(text.text)["model"] == "again"
+    answer = result.structured_content     # D1244: the answer once, as structured content
+    assert "image" not in answer and answer["model"] == "again" and text.text.count(chr(10)) == 0

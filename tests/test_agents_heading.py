@@ -12,10 +12,11 @@ import pytest
 
 from nagasim.core import agents as A
 from conftest import agent_rng, problem_codes, run_env
+from functools import partial
+from helpers import model
 
 
-def _model(*records, time_limit=5):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=5)
 
 
 def _run(layout, seed=1):

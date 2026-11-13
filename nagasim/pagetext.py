@@ -105,13 +105,15 @@ def _coded(words: dict, code: str, where: str) -> str | None:
 
 def explain(exc: BaseException, language: str | None = None) -> str:
     """Why a run was refused, in *language*, cut to 500 characters. English: the engine's
-    own text. Another language: the problems it holds worded from the table, any the table
-    lacks as the engine wrote them with their code."""
+    own text, but a lever's refusal from the table, by the lever's label. Another language: the
+    problems it holds worded from the table, any the table lacks as the engine wrote them with their code."""
     text = str(exc)[:500]
-    if (language or DEFAULT) == DEFAULT:
-        return text
     words = table(language)
     reason = getattr(exc, "reason", "")
+    # A lever's refusal is worded from the table in every language, English too: it names the
+    # lever by its label, not by the model path the engine's text holds (S4-06).
+    if (language or DEFAULT) == DEFAULT and not (reason and f"lever.{reason}" in words):
+        return text
     if reason and f"lever.{reason}" in words:
         # A number with the language's sign; a whole float (a bound of 1e6) without ".0".
         shown = {k: number(str(int(v) if isinstance(v, float) and v.is_integer() else v), words)

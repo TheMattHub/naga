@@ -8,6 +8,8 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
+from nagasim.results import Results
+
 __all__ = ['Model', 'Level', 'Block', 'Distribution', 'export_python', 'main']
 
 SIMULATION: tuple[str, ...]
@@ -1232,6 +1234,7 @@ class Model(Level):
         energy_price: float | str = ...,
         entity_log_limit: int | None = ...,
         record_logs: bool = ...,
+        entity_waits: bool = ...,
         timeseries_points: int | None = ...,
         timeseries_interval: float | None = ...,
         timeseries_counts: list[Any] = ...,
@@ -1266,6 +1269,7 @@ class Model(Level):
         energy_price: Money per kWh, a number or an expression, evaluated once at run start. Prices every resource/fleet's "power".
         entity_log_limit: Cap on retained entity-log rows.
         record_logs: Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants.
+        entity_waits: Sum each entity's queue time over every seize into a "Total Wait" column of the entity log (what a tail goal on Total Wait reads). Off: no column.
         timeseries_points: How many samples the time-series OUTPUT sampler takes over a time-limited run (default 200).
         timeseries_interval: Fixed sampling interval for a draining run, which has no horizon to divide.
         timeseries_counts: Blocks whose departures the sampler counts, as the series block/<name>/out (flattened names). What a twin compares a plant counter with; none by default.
@@ -2020,7 +2024,30 @@ class Model(Level):
     def definition(self, name: str, **fields: Any) -> Level: ...
     def to_dict(self) -> dict[str, Any]: ...
     def save(self, path: str | PathLike[str]) -> Path: ...
-    def run(self, **options: Any) -> Any: ...
+    def run(
+        self,
+        *,
+        replications: int | None = ...,
+        seed: int = ...,
+        warmup: float | None = ...,
+        run_length: float | None = ...,
+        workers: int | str = ...,
+        on_progress: Any = ...,
+        trace: Any = ...,
+        bind_data: Any = ...,
+        base_dir: Any = ...,
+        network: Any = ...,
+        confine_to: Any = ...,
+        feed: Any = ...,
+        controllers: Any = ...,
+        pool: Any = ...,
+        logic: Any = ...,
+        record_logs: Any = ...,
+        deterministic: Any = ...,
+        pace: Any = ...,
+    ) -> Results:
+        """Run the model; `nagasim.api.run_model` with its options by name.
+        """
 
 
 def export_python(layout: str | PathLike[str] | dict[str, Any]) -> str: ...

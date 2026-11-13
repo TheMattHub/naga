@@ -28,7 +28,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import pagetext, player
+from nagasim import pagefmt, pagetext, player
 from nagasim.core import tape
 from nagasim.core.playback import Timeline
 from nagasim.core.timeunits import UNITS
@@ -175,9 +175,10 @@ def _scores(doc: dict, unit: str, words: dict = _EN) -> dict:
         value = _number(row.get("coverage"))
         return "" if value is None else f"{value:.0%}" + (" *" if row.get("whole") is True else "")
     return {"lines": lines, "more": max(len(rows) - _SCORES, 0),
-            "rows": [[_text(r.get("series")), _number(r.get("lead")), _number(r.get("points")),
+            "rows": [[pagefmt.kpi_label(_text(r.get("series"))), _number(r.get("lead")), _number(r.get("points")),
                       _number(r.get("missed")), _number(r.get("lost")), share(r),
-                      _number(r.get("bias")), _number(r.get("error")), _number(r.get("pinball"))]
+                      _number(r.get("bias")), _number(r.get("error")), _number(r.get("pinball")),
+                      _text(r.get("series"))]
                      for r in rows[:_SCORES]]}
 
 
@@ -452,12 +453,16 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
         "recommend": _recommend(doc, setpoints),
         "forecast": {
             "status": status, "lines": lines,
-            "kpis": [[_text(k.get("kpi")), _number(k.get("mean")), _number(k.get("q05")),
-                      _number(k.get("q95"))] for k in _rows(forecast.get("kpis"))[:_KPIS]]
+            # S4-09: a row reads by its label (`pagefmt.kpi_label`), its key the cell's title; the
+            # bookkeeping rows (the state the run started from, a cost of zero) are left out.
+            "kpis": [[pagefmt.kpi_label(_text(k.get("kpi"))), _number(k.get("mean")), _number(k.get("q05")),
+                      _number(k.get("q95")), _text(k.get("kpi"))] for k in _rows(forecast.get("kpis"))
+                     if not pagefmt.is_bookkeeping(_text(k.get("kpi")),
+                                                   [k.get(q) for q in ("mean", "q05", "q95")])][:_KPIS]
             if record else [],
-            "points": [[_text(p.get("series")), _number(p.get("at")), _number(p.get("mean")),
+            "points": [[pagefmt.kpi_label(_text(p.get("series"))), _number(p.get("at")), _number(p.get("mean")),
                         _number(p.get("q05")), _number(p.get("q95")), _number(p.get("observed")),
-                        inside(p)] for p in points[:_POINTS]],
+                        inside(p), _text(p.get("series"))] for p in points[:_POINTS]],
             "more": max(len(points) - _POINTS, 0)}}
 
 
@@ -576,7 +581,10 @@ class Log:
 # goes through `textContent`.
 # Its own rules, after the player's in the one style sheet the policy pins.
 _STYLE = """
-.stale { color: var(--down); font-weight: bold; }
+/* Text, so 4.5:1: in light a darker step of --down (5.5:1 on the page, dataviz contrast()); dark passes (5.3). */
+.stale { color: color-mix(in srgb, var(--down) 85%, black); font-weight: bold; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .stale { color: var(--down); } }
+:root[data-theme=dark] .stale { color: var(--down); }
 .warn { color: var(--down); }
 /* A cell wraps between words only (bug 1761): a word is never split. */
 table.text th, table.text td { text-align: left; overflow-wrap: normal; hyphens: manual; }
@@ -622,7 +630,10 @@ function monitor(m, el, add, clear) {
     head.forEach(function (name) { add("th", line, name); });
     list.forEach(function (item) {
       line = add("tr", table);
-      cells(item).forEach(function (cell) { add("td", line, cell); });
+      /* A cell [text, title] reads as its label with the key in its title (S4-09). */
+      cells(item).forEach(function (cell) {
+        if (Array.isArray(cell)) { add("td", line, cell[0]).title = cell[1]; } else { add("td", line, cell); }
+      });
     });
   }
   /* A fold the reader set stays set across the page's own reloads; else it is open only when
@@ -667,7 +678,7 @@ function monitor(m, el, add, clear) {
   clear(el("m-kpis"));
   if (f.kpis.length) {
     rows("m-kpis", [tr("monitor.col_kpi_end"), tr("monitor.col_mean"), "5%", "95%"], f.kpis, "", function (r) {
-      return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3])];
+      return [[r[0], r[4]], fmt(r[1]), fmt(r[2]), fmt(r[3])];
     });
   }
   clear(el("m-points"));
@@ -675,7 +686,7 @@ function monitor(m, el, add, clear) {
     rows("m-points", [tr("monitor.col_series"), tr("monitor.col_at"), tr("monitor.col_forecast_mean"),
                       "5%", "95%", tr("monitor.col_observed"), tr("monitor.col_inside")],
          f.points, "", function (r) {
-      return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5] === null ? "" : fmt(r[5]),
+      return [[r[0], r[7]], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5] === null ? "" : fmt(r[5]),
               r[6] ? tr("monitor.inside_" + r[6]) : ""];
     });
   }
@@ -720,7 +731,7 @@ function monitor(m, el, add, clear) {
     rows("m-score-rows", [tr("monitor.col_series"), tr("monitor.col_lead"), tr("monitor.col_readings"),
                           tr("monitor.col_missed"), tr("monitor.col_not_compared"), tr("monitor.col_coverage"),
                           "Bias", tr("monitor.col_abs_error"), "Pinball loss"], s.scores.rows, "", function (r) {
-      return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5], fmt(r[6]), fmt(r[7]), fmt(r[8])];
+      return [[r[0], r[9]], fmt(r[1]), fmt(r[2]), fmt(r[3]), fmt(r[4]), r[5], fmt(r[6]), fmt(r[7]), fmt(r[8])];
     });
   }
   el("m-counted-box").style.display = s.counters.length ? "" : "none";

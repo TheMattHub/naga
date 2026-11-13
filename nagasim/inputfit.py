@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import io
+import inspect
 import json as _json
 import logging
 import math
@@ -184,8 +185,11 @@ def _anderson_stat(name: str, values) -> float:
     key = _ANDERSON_SUPPORTED.get(name)
     if key is None:
         return float("nan")
+    # SciPy 1.17 warns unless a p-value method is chosen (#1764). Only the statistic is used here, so
+    # 'interpolate' (the old table lookup, no resampling) costs nothing; older SciPy has no such parameter.
+    extra = {"method": "interpolate"} if "method" in inspect.signature(sstats.anderson).parameters else {}
     try:
-        return float(sstats.anderson(values, dist=key).statistic)
+        return float(sstats.anderson(values, dist=key, **extra).statistic)
     except Exception:  # pragma: no cover - scipy version without this dist
         return float("nan")
 

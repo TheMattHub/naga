@@ -4,7 +4,8 @@
 //   node viewer_drive.cjs BROWSER.exe PAGE.html PROFILE_DIR 'STEPS as JSON'
 //
 // A step is {"wait": "a regular expression the status line must match", "limit": ms} or
-// {"eval": "an expression"} or {"width": px} (the viewport, for a layout check); the answers are printed as one JSON object with the
+// {"eval": "an expression"} or {"width": px} (the viewport, for a layout check) or {"dark": true|false}
+// (prefers-color-scheme) or {"shot": "file.png"} (the whole page as a picture); the answers are printed as one JSON object with the
 // addresses asked for (anything but file:, data: and blob:) by the page, its frames and
 // EVERY worker: each worker is attached before it runs a line (Target.setAutoAttach,
 // held at start), and a WebSocket counts as an address asked. What the protocol does not
@@ -67,11 +68,23 @@ const LOCAL = /^(file|data|blob|about|edge|chrome|devtools):/;
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
     await send("Page.navigate", { url: "file:///" + path.resolve(page).replace(/\\/g, "/") });
     // The page's own markup is there before the first step (its 40 MB of data follow it).
-    for (let i = 0; i < 300 && (await value("!!(document.body && (document.getElementById('status') || document.getElementById('view')))")) !== true; i += 1) {
+    for (let i = 0; i < 300 && (await value("!!(document.body && (document.getElementById('status') || document.getElementById('view') || document.readyState === 'complete'))")) !== true; i += 1) {
       await new Promise(r => setTimeout(r, 100));
     }
     for (const step of JSON.parse(steps)) {
       if (step.eval) { out.answers.push(await value(step.eval)); continue; }
+      if (step.dark !== undefined) {
+        await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: step.dark ? "dark" : "light" }] });
+        await new Promise(r => setTimeout(r, 300));
+        continue;
+      }
+      if (step.shot) {
+        const box = await value("[document.documentElement.scrollWidth, document.documentElement.scrollHeight]");
+        const got = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true,
+          clip: { x: 0, y: 0, width: box[0], height: Math.min(box[1], 16000), scale: 1 } });
+        fs.writeFileSync(step.shot, Buffer.from(got.data, "base64"));
+        continue;
+      }
       if (step.width) {
         await send("Emulation.setDeviceMetricsOverride", { width: step.width, height: 900, deviceScaleFactor: 1, mobile: false });
         await new Promise(r => setTimeout(r, 300));

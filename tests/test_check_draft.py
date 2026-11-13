@@ -6,6 +6,9 @@ import pytest
 from nagasim import agent_tools as T
 from nagasim import discover
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 
 @pytest.fixture
 def ws(tmp_path):

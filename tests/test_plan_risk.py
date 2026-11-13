@@ -2,7 +2,7 @@
 
 The hand-derived numbers (constant and exponential service, two FIFO orders,
 the frame's columns) live in tests/test_plan_risk_oracle.py; DEVLOG #208 (no due
-date) in test_regressions.py. This file keeps the edges: no orders, workers.
+date) in tests/regressions/. This file keeps the edges: no orders, workers.
 """
 from conftest import chain, create, dispose, layout, process
 

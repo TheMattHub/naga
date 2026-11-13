@@ -21,15 +21,25 @@ imported lazily inside `.plot()`, never a hard dependency.
 from __future__ import annotations
 
 import logging
+import math
+from typing import NamedTuple
 
 import pandas as pd
 
 from nagasim.core.stats import ci95
 from nagasim.runchecks import RunChecks
 
-__all__ = ["Results"]
+__all__ = ["Interval", "Results"]
 
 log = logging.getLogger(__name__)
+
+
+class Interval(NamedTuple):
+    """One KPI over the replications: the mean, the 95% half-width (NaN with one replication)
+    and the number of finite replication values behind them."""
+    mean: float
+    half_width: float
+    n: int
 
 
 class Results(dict):
@@ -245,6 +255,63 @@ class Results(dict):
         if hit.empty:
             raise KeyError(f"{key!r} is not a KPI key in these results; see results.kpis()")
         return float(hit.iloc[0])
+
+    def interval(self, key: str) -> Interval:
+        """Return one KPI's mean with its 95% interval over runs.
+
+        Parameters
+        ----------
+        key : str
+            The KPI's "family/name" key, as in `Results.kpi`.
+
+        Returns
+        -------
+        Interval
+            ``(mean, half_width, n)``; the half-width is NaN with one replication. It is the
+            ``ci95`` of `Results.kpis` and of ``naga run --json``.
+
+        Raises
+        ------
+        KeyError
+            If *key* is not a KPI of these results (the message names it).
+
+        See Also
+        --------
+        Results.kpi : The mean alone.
+        Results.kpis : Every KPI, with its interval.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), replications=3, run_length=200, seed=0)
+        >>> results.interval("system/Total Entities Completed").n
+        3
+        """
+        from nagasim.experiments import flatten_kpis     # late: experiments imports this module
+
+        flat = flatten_kpis(self)
+        values = flat.loc[flat["KPI"] == key, "Value"]
+        if values.empty:
+            raise KeyError(f"{key!r} is not a KPI key in these results; see results.kpis()")
+        st = ci95(values)
+        return Interval(float(st["mean"]), float(st["ub"] - st["mean"]),
+                        int(values.map(math.isfinite).sum()))
+
+    def __repr__(self) -> str:
+        """The frame names and the first KPIs, not the dict of 30 frames (about 10,000 characters
+        at a prompt); `results["system"]` and the other frames are unchanged."""
+        if not self:
+            return "Results()"
+        table = self.kpis()
+        sys_df = self.get("system")
+        n = int(sys_df["Run"].nunique()) if sys_df is not None and not sys_df.empty else 0
+        more = len(table) - 10
+        return (f"Results({n} replication{'s' if n != 1 else ''}; frames: {', '.join(self)})\n"
+                + table.head(10).to_string(index=False, float_format=lambda v: f"{v:.4g}")
+                + (f"\n... {more} more KPIs: results.kpis()" if more > 0 else ""))
 
     def _repr_html_(self) -> str:
         """Jupyter notebook display: the partial law checks (D907), then the

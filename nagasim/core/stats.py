@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 import numpy as np
-from scipy import stats as _sp_stats
+# scipy.stats is imported where it is used: it costs about 1.5 s and most commands never need it (D1228).
 
 from nagasim.core.sim_classes import EntityRecord
 
@@ -393,6 +393,7 @@ def _t_quantile(confidence: float, dof: int) -> float:
     sample time), every one of them with the replication count as n -- and
     scipy's generic `ppf` costs about 70 us each time. Same float, one call.
     """
+    from scipy import stats as _sp_stats
     return float(_sp_stats.t.ppf(0.5 + confidence / 2.0, dof))
 
 
@@ -464,6 +465,40 @@ def paired_diff_ci(a, b, confidence: float = 0.95) -> dict[str, float]:
             "df": float(d.size - 1)}
 
 
+def pitman_morgan(a, b) -> dict:
+    """Pitman-Morgan test of equal variances for PAIRED samples a[i], b[i] (D1265).
+
+    Common random numbers make the two samples correlated, which the plain F-test assumes they
+    are not. With d = a - b and s = a + b, cov(d, s) = var(a) - var(b), so the variances are
+    equal exactly when d and s are uncorrelated: r = corr(d, s), t = r sqrt(n-2) / sqrt(1-r^2)
+    on n - 2 degrees of freedom. r < 0 means a varies less than b.
+
+    Pairs are truncated to the shorter sample and a pair with a non-finite value is dropped.
+    Returns {n, r, t, df, p} with p two-sided, or {n, p: None, why} when the test cannot run:
+    fewer than 3 pairs, equal runs (d constant), or |r| = 1 (one sample constant)."""
+    a = np.asarray(a, dtype=float).ravel()
+    b = np.asarray(b, dtype=float).ravel()
+    m = min(a.size, b.size)
+    a, b = a[:m], b[:m]
+    keep = np.isfinite(a) & np.isfinite(b)
+    a, b = a[keep], b[keep]
+    n = int(a.size)
+    if n < 3:
+        return {"n": n, "p": None, "why": "fewer than 3 paired replications"}
+    d, s = a - b, a + b
+    if np.ptp(d) == 0:
+        return {"n": n, "p": None, "why": "equal runs: the two differ by a constant"}
+    if np.ptp(s) == 0:
+        return {"n": n, "p": None, "why": "the sum of the two is constant"}
+    r = float(np.corrcoef(d, s)[0, 1])
+    if not np.isfinite(r) or abs(r) >= 1.0 - 1e-12:
+        return {"n": n, "p": None, "why": "one sample is constant (|r| = 1)"}
+    t = r * float(np.sqrt(n - 2)) / float(np.sqrt(1.0 - r * r))
+    from scipy import stats as _sp_stats
+    p = float(2.0 * _sp_stats.t.sf(abs(t), n - 2))
+    return {"n": n, "r": r, "t": t, "df": n - 2, "p": p}
+
+
 def welch_diff_ci(a, b, confidence: float = 0.95) -> dict[str, float]:
     """Welch's interval on mean(a) - mean(b) for two INDEPENDENT samples.
 
@@ -487,6 +522,7 @@ def welch_diff_ci(a, b, confidence: float = 0.95) -> dict[str, float]:
     if sem == 0:
         return {"mean": mean, "sem": 0.0, "lb": mean, "ub": mean, "df": float(na + nb - 2)}
     df = (sa + sb) ** 2 / (sa ** 2 / (na - 1) + sb ** 2 / (nb - 1))
+    from scipy import stats as _sp_stats
     half = float(_sp_stats.t.ppf(0.5 + confidence / 2.0, df)) * sem
     return {"mean": mean, "sem": sem, "lb": mean - half, "ub": mean + half, "df": float(df)}
 
@@ -508,6 +544,7 @@ def wilson_interval(successes: int, n: int, confidence: float = 0.95) -> dict[st
     if n <= 0:
         return {"p": float("nan"), "lb": 0.0, "ub": 1.0, "n": 0}
     p = successes / n
+    from scipy import stats as _sp_stats
     z = float(_sp_stats.norm.ppf(0.5 + confidence / 2.0))
     denom = 1.0 + z * z / n
     centre = (p + z * z / (2 * n)) / denom

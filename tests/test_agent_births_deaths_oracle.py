@@ -46,18 +46,13 @@ GUESS notes (wire format only, to be reconciled once C5's actual grammar is know
   that never reaches the wrong/recycled occupant) as a pass; only "the message silently reaches
   the impostor" fails it.
 """
-import numpy as np
 import pytest
 
-from conftest import agent_rng, layout as make_layout, delay, dispose, run_env
+from conftest import agent_rng, layout as make_layout, delay, dispose
+from helpers import run as _run
 
 
 # --------------------------------------------------------------- run helpers
-def _run(layout, run_len, seed=0):
-    env, _model = run_env(layout, run_len, seed=seed)
-    return env
-
-
 def _pop(env, name):
     return next(p for p in env.ctx.agent_system.populations if p.name == name)
 

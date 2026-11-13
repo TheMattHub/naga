@@ -44,15 +44,11 @@ working tree.
 import numpy as np
 import pytest
 
-from conftest import layout as make_layout, run_env
+from conftest import layout as make_layout
+from helpers import run as _run
 
 
 # --------------------------------------------------------------- run helpers
-def _run(layout, run_len, seed=0):
-    env, _model = run_env(layout, run_len, seed=seed)
-    return env
-
-
 def _pop(env, name):
     return next(p for p in env.ctx.agent_system.populations if p.name == name)
 

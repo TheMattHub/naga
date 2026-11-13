@@ -27,7 +27,7 @@ import os
 import re
 import time
 
-from nagasim import dashboard, experiments, pagetext
+from nagasim import dashboard, experiments, pagefmt, pagetext
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.sections_validation import DASHBOARD_LIMITS
 from nagasim.core.timeunits import units_of
@@ -345,14 +345,14 @@ def answer(row: dict | None, replications: int, needed: float | None = None,
     else:
         return None
     unit = f" {row['unit']}" if row.get("unit") else ""
-    detail = f"{row['label']} {g(mean)}{unit}"
-    if sure:
-        detail += pagetext.say(words, "answer.interval", lo=g(low), hi=g(high))
+    # D1236: the one wording of a value with its interval, decimals as the interval supports.
+    shown = pagefmt.interval_text(mean, low, high, row.get("unit") or "", language)
+    detail = f"{row['label']} {shown}"
     if row.get("delta_pct") is not None:
         detail += pagetext.say(words, "answer.delta", pct=pagetext.number(f"{row['delta_pct']:+.1f}", words),
                                verdict=words["verdict." + row["verdict"]])
     return {"word": word, "headline": pagetext.say(words, "answer.headline", word=words["answer." + word],
-                                                   value=g(mean) + unit),
+                                                   value=shown.partition(" (")[0] if sure else g(mean) + unit),
             "detail": detail + said + ".",
             "needed": int(needed) if word == "unclear" and needed is not None else None}
 
@@ -1002,7 +1002,11 @@ function boot() {
       status(tr("viewer.ready", {time: seconds((performance.now() - state.since) / 1000)}));
       if (state.pending) { go = state.pending; state.pending = null; go(); }
     } else if (kind === "progress") {
-      el("progress").textContent = tr("viewer.progress", {done: message[1], total: message[2]});
+      /* A run is yours and the version it is compared with (the Baseline, or a saved scenario),
+         the same replications each: say so, or "3 of 60" reads as twice the box (S4-06). */
+      el("progress").textContent = message[2] % 2 === 0
+        ? tr("viewer.progress_both", {done: message[1], total: message[2], n: message[2] / 2})
+        : tr("viewer.progress", {done: message[1], total: message[2]});
     } else if (kind === "status") {
       state.said = message[1];
       status(message[1] + "...");

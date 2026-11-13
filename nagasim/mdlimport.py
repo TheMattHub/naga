@@ -37,7 +37,7 @@ spreadsheet/external-data reference) -- refused on sight, by regex, on raw
 undecoded-argument text; this module never opens the file GET names, never even
 inspects the argument as a path. `import_mdl` takes TEXT OR BYTES only and never
 touches the filesystem or network; `load_mdl(path)` reads exactly the path it is
-given. The agent tool `import_mdl` (`agent_tools/core.py`) resolves its path through
+given. The agent tool `import_sd_model` (`agent_tools/core.py`) resolves its path through
 `Workspace.resolve` first, the same rule as `import_xmile` (no permission argument,
 CLAUDE.md's netguard rule) -- there is no widening here.
 

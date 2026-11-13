@@ -7,7 +7,28 @@ on:
     types: [published]
 
 jobs:
+  # The fast set on the tagged commit, on the Python the publish job builds with: a release is not
+  # published from a red commit (this workflow ran no tests before; 0.20.1 was published in 31 s). The full
+  # matrix runs on main; this job is the gate on the one commit that ships.
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: pip install -e . pytest pytest-xdist hypothesis pyyaml jsonschema
+      - name: Run the fast set
+        run: pytest -q -n auto
+
   pypi:
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

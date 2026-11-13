@@ -9,6 +9,9 @@ import nagasim.agent_tools.study_extensions  # noqa: F401  (registers the tool)
 from nagasim import agent_tools as T
 from nagasim import studyextensions as ext
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 EXAMPLES = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 GOAL = {"id": "g1", "text": "wait under 5", "kpi": "Avg Throughput Time", "high": 5}
 

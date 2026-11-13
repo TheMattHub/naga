@@ -549,9 +549,14 @@ def test_validate_layout_flags_unknown_time_units_everywhere():
                      "downtime": {"distribution": "Constant", "time_unit": "fortnights"}}],
         "simulation": {"time_unit": "fortnights"},
     }
-    problems = [p.message for p in validate_layout_structured(layout)]
+    def said(layout):
+        return sum("unknown time_unit 'fortnights'" in p.message for p in validate_layout_structured(layout))
 
-    assert sum("unknown time_unit 'fortnights'" in p for p in problems) >= 5
+    # P01b (S1-14): a field equal to the wrong model unit may be one that inherited it (load
+    # fills "base" with the model's unit), so a wrong model unit is said once, at its own place.
+    assert said(layout) == 1
+    layout["simulation"]["time_unit"] = "minutes"
+    assert said(layout) == 5        # with a valid model unit, every field's own is named
 
 
 def test_validate_layout_accepts_base_and_every_known_unit():

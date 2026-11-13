@@ -1,7 +1,7 @@
 """Phase 15 M10: all-or-nothing multi-unit seizes (D856-D860), written from the
 design spec only (docs/superpowers/specs/2026-10-26-phase15-limits-design.md,
 "M10 set all-or-nothing"), independently of the builder's regressions in
-test_regressions.py.
+tests/regressions/.
 
 Every expected value below was derived by hand from the timelines in the
 docstrings. A "job" is CREATE (max 1 arrival at `start`) -> PROCESS -> DISPOSE;

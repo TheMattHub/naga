@@ -1130,7 +1130,8 @@ def _summary(doc: dict) -> list[str]:
               + (f", coverage {coverage}, bias {bias:+.3g}, abs. error {error:.3g}, pinball "
                  f"{pinball:.3g}" if points else "") + (f", {missed:g} missed" if missed else "")
               + (f", {lost:g} not compared" if lost else "")
-              for series, lead, points, missed, lost, coverage, bias, error, pinball
+              for _label, lead, points, missed, lost, coverage, bias, error, pinball, series
+              # the command line is the modeller's: it keeps the series key, the page shows the label (S4-09)
               in shown["scores"]["rows"] if None not in (lead, points, missed, lost)]
     if len(shown["scores"]["lines"]) > 1:
         lines += [_show(line, 1000) for line in shown["scores"]["lines"][1:]]

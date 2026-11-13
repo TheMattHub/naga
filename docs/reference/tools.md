@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 95 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -11,14 +11,13 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `new_model` |  | Create an empty model in the workspace under *name*. |
 | `open_model` |  | Load a model file from the workspace root into the workspace. |
-| `import_xmile` |  | Translate an XMILE (Stella/iThink) system-dynamics file into a new model. |
-| `import_mdl` |  | Translate a Vensim system-dynamics file into a new model. |
-| `import_event_log` |  | Draft a model from an event log: what happened to each case, activity by activity. |
+| `import_sd_model` |  | Translate a system-dynamics file into a new model: Stella/iThink XMILE (.xmile, .stmx) or Vensim (.mdl), by the file's extension. |
+| `import_event_log` |  | Draft a model from an event log (a CSV or .xlsx of timestamps per case): what happened to each case, activity by activity. |
 | `save_model` |  | Write a model in the workspace to disk as JSON. |
 | `list_models` | yes | List the models currently open in the workspace, and the model files available under the workspace root. |
 | `get_model_summary` | yes | A compact picture of a model: its blocks with their key parameters, its links in branch order, its resources, and how many problems it has. |
 | `get_model_json` | yes | The complete model layout as the JSON that would be saved to disk. |
-| `undo` |  | Undo the last edit to a model. |
+| `undo` |  | Undo the last edit to a model: take back what was just added, changed or removed. |
 | `redo` |  | Redo the edit that `undo` reversed. |
 
 ## model
@@ -44,7 +43,7 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `get_record_schema` | yes | The JSON Schema of one record of *section*: what `upsert_record` expects. |
 | `list_records` | yes | List every record of one section of the model, as stored. |
-| `upsert_record` |  | Add a record to a section, or REPLACE the one with the same key. |
+| `upsert_record` |  | Add one record to a section (a resource, schedule, failure, table, ...), or REPLACE the one with the same key. |
 | `remove_record` |  | Delete one record. |
 | `upsert_table_from_csv` |  | Read a CSV under the workspace root into a lookup table. |
 | `list_continuous` | yes | List the model's time-series inputs, levels and flows in one answer. |
@@ -55,8 +54,6 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `upsert_segment` |  | Add a drivable segment between two nodes, or replace the one already joining that ordered pair. |
 | `remove_segment` |  | Delete one segment. |
 | `get_distance` | yes | Shortest path between two places on the model's network. |
-| `list_sequences` | yes | List the model's routing sequences and the stations they visit. |
-| `list_orders` | yes | List the model's orders: released jobs with a due date. |
 | `upsert_orders_from_csv` |  | REPLACE (or extend) the model's orders from a CSV release list. |
 | `upsert_scenario` |  | Add or update a named scenario: a set of parameter overrides applied to the base model before a run. |
 
@@ -66,17 +63,17 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `check_model_opens` | yes | The open-and-run gate: does the model open in the editor with NO errors, using the plugins this person enabled, and run one replication? Call it before you say a model you built or edited is done; a model that fails it is not done. |
 | `propose_plugin_folder` |  | Propose a plugin folder for the person to trust. |
-| `run_model` |  | Run a model and return a COMPACT KPI digest -- never the raw frames. |
+| `run_model` |  | Run (simulate) a model over its replications and return a COMPACT KPI digest -- never the raw frames. |
 | `get_kpi_table` | yes | Page through one results frame of the last `run_model` for this model. |
-| `run_scenarios` |  | Run the model's scenarios and compare them against the baseline with confidence intervals and a significance verdict. |
+| `run_scenarios` |  | Run the model's scenarios (the options) and compare them against the baseline with confidence intervals and a significance verdict: which option is better, and whether the difference is significant. |
 | `what_if` |  | Ask "what if I change this?" without editing the model: run the baseline and the changed model on paired seeds, doubling replications (start, 2x, . |
 | `explain_kpi` |  | What makes up a KPI, in one call: its contributors, ranked, each a measured number with its 95% interval, plus one suggested what_if test of the top one (never run). |
-| `investment_case` |  | Run the model's scenarios and price each against the baseline: extra capex, saving per year, payback, NPV and ROI over the `investment` section's horizon, with confidence intervals from several replications. |
-| `run_to_precision` |  | Keep adding replications until one KPI's confidence interval is narrow enough, then report how many it took. |
+| `investment_case` |  | Run the model's scenarios and price each against the baseline (is an option worth the money?): extra capex, saving per year, payback, NPV and ROI over the `investment` section's horizon, with confidence intervals from several replications. |
+| `run_to_precision` |  | Keep adding replications until one KPI's confidence interval is narrow enough (how sure the answer is), then report how many it took. |
 | `run_reality_checks` |  | Run the model's Vensim-style reality checks: an input imposed on the model (e.g. |
 | `run_loop_dominance` |  | Which feedback loop drives an SD model's behaviour, and when (Loops That Matter, as in Stella). |
 | `suggest_warmup` |  | Estimate how much of the run to discard as warm-up, using MSER-5 on the throughput-time series. |
-| `optimize` |  | Search model parameters for the best value of one KPI within a replication budget, then confirm the winner statistically. |
+| `optimize` |  | Search model parameters for the setting that minimises or maximises one KPI within a replication budget, then confirm the winner statistically. |
 | `calibrate` |  | Tune model parameters until the model reproduces measured KPIs. |
 | `forecast` |  | Forecast a short horizon from the model's CURRENT state, with uncertainty bands and event probabilities. |
 | `export` |  | Write the last run's results to a file: an Excel workbook, CSV folder, a self-contained HTML report, or JSON. |
@@ -94,7 +91,7 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `get_plant_timeline` | yes | Check a plant mapping against a model and, given a recorded plant log, say what the plant looked like at the log's last instant. |
 | `get_twin_monitor` | yes | What the plant looks like now, as the running twin last wrote it. |
 | `get_twin_forecast` | yes | The running twin's latest forecast, and how its earlier ones compare with what the plant then did. |
-| `get_twin_recommendations` | yes | What the running twin recommends now, and what became of what it recommended before. |
+| `get_twin_recommendations` | yes | What the running twin recommends now (what we should do), and what became of its earlier advice. |
 
 ## reference
 
@@ -105,13 +102,13 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `list_distributions` | yes | List the distribution names available for a duration or a random draw. |
 | `describe_distribution` | yes | Describe one distribution: when to use it and what each parameter means. |
 | `get_expression_help` | yes | Explain the expression language used by ASSIGN, DECIDE/HOLD conditions, RECORD, ranking expressions and expression-valued distribution parameters. |
-| `validate_model` | yes | Validate a model and return every problem with a stable code, a JSON-pointer path, and a hint saying how to fix it. |
+| `validate_model` | yes | Validate a model file (is it valid?) and return every problem with a stable code, a JSON-pointer path, and a hint saying how to fix it. |
 
 ## wholemodel
 
 | Tool | Reads | What it does |
 |---|---|---|
-| `get_model_format` | yes | What a model file holds, compactly: call it ONCE before write_model. |
+| `get_model_format` | yes | What a model file holds, compactly: call it ONCE before writing the first model file. |
 | `write_model` |  | Write a WHOLE model in one call: the complete model file as one JSON object. |
 
 ## debug
@@ -120,22 +117,22 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 |---|---|---|
 | `debug_run` |  | Run one replication of a model under a debugger: start it, or continue it, until a stop, one step, a model time, a pending decision or the end. |
 | `debug_inspect` | yes | Read the state of a model's debug run where it stands, without moving it. |
-| `run_facts` | yes | Run one replication of a model and list what happened in it that no KPI reports, as facts with numbers: blocks no entity entered, resources never seized, resources with a unit doing no work (free, or held by an entity waiting elsewhere) while entities waited for them, and entities still in the model at the end. |
+| `run_facts` | yes | Run a model once, on one seed, and list what happened in it that no KPI reports, as facts with numbers: blocks no entity entered, resources never seized (never used), resources with a unit doing no work (free, or held by an entity waiting elsewhere) while entities waited for them, and entities still in the model at the end. |
 
 ## study
 
 | Tool | Reads | What it does |
 |---|---|---|
-| `study_start` |  | Start a simulation study: make its folder and say what to do first. |
+| `study_start` |  | Start a simulation study: make its folder, say what to do first and which KPI names a goal can use. |
 | `study_status` | yes | Where a study stands, on one screen: sufficiency, goals, the ten-step checklist, the last version's KPIs with how confident they are (precision of the confidence intervals) and the next step. |
-| `study_update` |  | Record what the study has learned or the person decided (fewer or more replications: set precision): set any of question, decision, mode, size, plan_approved, precision, goals, target, assumptions, sources, validation, experiments, skipped, inside `changes` or (all but decision) as parameters of the same name (a key sent both ways is refused; decision is changes={"decision": ...} only). |
+| `study_update` |  | Record what the study has learned or the person decided (a goal such as at most 5% of people waiting more than 20 minutes; fewer or more replications: set precision): set any of question, decision, mode, size, plan_approved, precision, goals, target, assumptions, sources, validation, experiments, skipped, inside `changes` or (all but decision) as parameters of the same name (a key sent both ways is refused; decision is changes={"decision": ...} only). |
 | `study_add_input` |  | Keep a source of the study in its inputs/ folder: copy a workspace file, or store text (a call transcript, notes). |
 | `study_step` |  | Test one model step: write the whole model, run it, check it, and store it as a new version (or as a draft when it fails). |
 | `study_validate` |  | Check the last model version against a textbook answer and record the validation. |
 | `study_accept` |  | Record that the person accepts the study as it stands. |
 | `study_revert` |  | Go back to an earlier version: it is recorded again as a new version, so no history is lost. |
 | `study_report` |  | Write a version's full HTML report (KPIs with intervals, resources, charts) on request. |
-| `study_package` |  | Build the study's deliverable, the final files to hand over, in its package/ folder: the control room page, an Excel workbook (goals, versions with KPIs, checklist, assumptions), the current model and RO-Crate metadata. |
+| `study_package` |  | Build the study's deliverable, the final files to hand over, in its package/ folder: the client page, the control room page, any current write-up and slides, an Excel workbook (goals, versions with KPIs, checklist, assumptions), the current model and RO-Crate metadata. |
 | `study_view` | yes | See a version's flowchart: built blocks, what this step changed and what of the agreed target is not built yet. |
 | `study_show` | yes | Show the study's control room, its dashboard. |
 | `study_page_html` | yes | The control room page as one HTML string. |
@@ -163,7 +160,7 @@ The 98 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | Tool | Reads | What it does |
 |---|---|---|
 | `study_writeup` |  | Write a paper-style report of the study on request (STRESS-aligned sections: abstract, objective, model logic, data and assumptions, experimentation, verification and validation, results, limitations, discussion, references), built from the study folder. |
-| `study_slides` |  | Make a slide deck of the study on request: one HTML file, 16:9 slides (title and question, the answer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was run, next steps). |
+| `study_slides` |  | Make a slide deck of the study on request, to show a director or a board: one HTML file, 16:9 slides (title and question, the answer, options compared, goals, model, assumptions, validation and precision, sensitivity when it was run, next steps). |
 
 ## view
 

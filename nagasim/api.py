@@ -21,6 +21,7 @@ from contextlib import ExitStack, contextmanager, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
+from typing import Any, Callable, overload
 
 from nagasim import __version__
 from nagasim._cli import add_controllers_argument, add_model_argument, load_controllers, setup_cli
@@ -393,6 +394,53 @@ def _logic_module(logic, workers):
     return logic, name
 
 
+# The loggers whose records every replication repeats word for word: a model's load-time
+# warnings and a block's first negative sample (S1-14). The pool says them once already.
+_REPEATED_LOGGERS = ("nagasim.core.graph_model", "nagasim.core.base_process")
+
+
+@contextmanager
+def _said_once():
+    """While a run's inline replications run, a record already logged is not logged again."""
+    seen = set()
+
+    def first(record) -> bool:
+        key = (record.name, record.levelno, record.getMessage())
+        if key in seen:
+            return False
+        seen.add(key)
+        return True
+
+    loggers = [logging.getLogger(name) for name in _REPEATED_LOGGERS]
+    for logger in loggers:
+        logger.addFilter(first)
+    try:
+        yield
+    finally:
+        for logger in loggers:
+            logger.removeFilter(first)
+
+
+# Without `should_stop` the answer is never None, so a type checker lets `.kpis()` follow the call
+# (review S1-08); the same options as the definition below, which is the one that runs.
+@overload
+def run_model(
+    path: str | os.PathLike[str] | dict[str, Any], *, replications: int | None = None,
+    seed: int = 0, warmup: float | None = None, run_length: float | None = None,
+    workers: int | str = 1, on_progress: Any = None, should_stop: None = None, trace: Any = None,
+    bind_data: bool = False, base_dir: Any = None, network: Any = None, confine_to: Any = None,
+    feed: Any = None, controllers: dict | None = None, pool: Any = None,
+    logic: str | ModuleType | None = None, record_logs: bool | None = None,
+    deterministic: bool | None = None, pace: float | None = None) -> Results: ...
+@overload
+def run_model(
+    path: str | os.PathLike[str] | dict[str, Any], *, replications: int | None = None,
+    seed: int = 0, warmup: float | None = None, run_length: float | None = None,
+    workers: int | str = 1, on_progress: Any = None, should_stop: Callable[[], bool], trace: Any = None,
+    bind_data: bool = False, base_dir: Any = None, network: Any = None, confine_to: Any = None,
+    feed: Any = None, controllers: dict | None = None, pool: Any = None,
+    logic: str | ModuleType | None = None, record_logs: bool | None = None,
+    deterministic: bool | None = None, pace: float | None = None) -> Results | None: ...
 def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: float | None = None,
               run_length: float | None = None, workers: int | str = 1, on_progress=None,
               should_stop=None, trace=None, bind_data: bool = False, base_dir=None,
@@ -407,7 +455,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     Parameters
     ----------
     path : str or dict
-        A model file path or an already-loaded layout dict (nothing is written to
+        A model file path, the name of a bundled model (``"single_server"``; a file at that
+        path wins), or an already-loaded layout dict (nothing is written to
         disk for a dict).
     replications, warmup, run_length : optional
         Fall back to the model's own ``simulation`` section when left None; an
@@ -506,6 +555,10 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     # the first time in this process.
     load_plugins()
 
+    if isinstance(path, str):       # a bundled model's name, as every command takes it (S1-15)
+        from nagasim import examples
+        path = examples.model_path(path)
+
     pacer = None
     if pace is not None:
         if workers != 1:
@@ -541,53 +594,54 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
 
     replications, warmup, run_length = run_settings(path, replications, warmup, run_length)
 
-    seeds = [seed + i for i in range(replications)]
-    collected: list[tuple[int, dict]] = []
+    with _said_once():      # S1-14: what every replication logs alike is said once
+        seeds = [seed + i for i in range(replications)]
+        collected: list[tuple[int, dict]] = []
 
-    if workers == "auto":
-        if should_stop is not None and should_stop():
-            return None
-        subscribers = (trace,) if trace is not None else ()
-        t0 = time.perf_counter()
-        kpi0 = run_single_simulation(path, seed=seeds[0], run_len=run_length, warmup=warmup,
-                                     should_stop=should_stop, subscribers=subscribers,
-                                     controllers=controllers, logic_module=logic_module)
-        elapsed = time.perf_counter() - t0
-        if kpi0 is None:
-            return None
-        collected.append((seeds[0], kpi0))
-        if on_progress is not None:
-            on_progress(1, replications)
-        seeds = seeds[1:]
-        workers = auto_workers(elapsed, len(seeds))
+        if workers == "auto":
+            if should_stop is not None and should_stop():
+                return None
+            subscribers = (trace,) if trace is not None else ()
+            t0 = time.perf_counter()
+            kpi0 = run_single_simulation(path, seed=seeds[0], run_len=run_length, warmup=warmup,
+                                         should_stop=should_stop, subscribers=subscribers,
+                                         controllers=controllers, logic_module=logic_module)
+            elapsed = time.perf_counter() - t0
+            if kpi0 is None:
+                return None
+            collected.append((seeds[0], kpi0))
+            if on_progress is not None:
+                on_progress(1, replications)
+            seeds = seeds[1:]
+            workers = auto_workers(elapsed, len(seeds))
 
-    if workers <= 1:
-        inline = seeds
-    else:
-        inline = seeds[:1] if trace is not None else []
-    pooled = [s for s in seeds if s not in set(inline)]
+        if workers <= 1:
+            inline = seeds
+        else:
+            inline = seeds[:1] if trace is not None else []
+        pooled = [s for s in seeds if s not in set(inline)]
 
-    stopped = False
-    for s in inline:
-        if should_stop is not None and should_stop():
-            stopped = True
-            break
-        subscribers = (trace,) if trace is not None and s == seed else ()
-        kpi = run_single_simulation(path, seed=s, run_len=run_length,
-                                     warmup=warmup, should_stop=should_stop, subscribers=subscribers,
-                                     controllers=controllers, pacer=pacer,
-                                     logic_module=logic_module)
-        if kpi is None:  # cut short mid-replication
-            stopped = True
-            break
-        collected.append((s, kpi))
-        if on_progress is not None:
-            on_progress(len(collected), replications)
+        stopped = False
+        for s in inline:
+            if should_stop is not None and should_stop():
+                stopped = True
+                break
+            subscribers = (trace,) if trace is not None and s == seed else ()
+            kpi = run_single_simulation(path, seed=s, run_len=run_length,
+                                         warmup=warmup, should_stop=should_stop, subscribers=subscribers,
+                                         controllers=controllers, pacer=pacer,
+                                         logic_module=logic_module)
+            if kpi is None:  # cut short mid-replication
+                stopped = True
+                break
+            collected.append((s, kpi))
+            if on_progress is not None:
+                on_progress(len(collected), replications)
 
-    if pooled and not stopped:
-        collected.extend(_run_pool(path, pooled, run_length, warmup, workers,
-                                   on_progress, should_stop, replications, len(collected),
-                                   controllers=controllers, pool=pool, logic=logic_name))
+        if pooled and not stopped:
+            collected.extend(_run_pool(path, pooled, run_length, warmup, workers,
+                                       on_progress, should_stop, replications, len(collected),
+                                       controllers=controllers, pool=pool, logic=logic_name))
 
     collected.sort(key=lambda pair: pair[0])   # pool order is arrival order, not seed order
     if not collected:
@@ -609,15 +663,18 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
 
 
 def summary_rows(results, *, hide_zero: bool = False) -> list[dict]:
-    """One row per system KPI: ``metric``, ``mean``, ``half_width`` (95%) and ``n``.
+    """One row per system KPI: ``metric``, ``key`` (``system/<metric>``), ``mean``, ``half_width``
+    and ``ci95`` (the same 95% half-width under two names; ``half_width`` goes at the next minor
+    release) and ``n``.
 
-    *hide_zero* skips the rows `outputs.hidden_when_zero` names when every value is 0
-    (the printed summary; ``--json`` keeps them all).
+    *hide_zero* skips the rows `outputs.hidden_row` hides (D1251: the run's own facts, and a
+    truncation flag or cost that is 0 in every replication; the printed summary; ``--json``
+    keeps them all).
 
     ``n`` is the number of finite replication values behind the mean;
     ``half_width`` is NaN when that is below 2.
     """
-    from nagasim.core.outputs import hidden_when_zero
+    from nagasim.core.outputs import hidden_row
     from nagasim.core.stats import ci95
     from nagasim.experiments import flatten_kpis     # late: experiments imports this module
 
@@ -626,11 +683,13 @@ def summary_rows(results, *, hide_zero: bool = False) -> list[dict]:
     rows = []
     for kpi, grp in flat.groupby("KPI", sort=False):
         metric = kpi[len("system/"):]
-        if hide_zero and hidden_when_zero(metric) and not (grp["Value"].fillna(0) != 0).any():
+        if hide_zero and hidden_row(metric, grp["Value"].tolist()):
             continue
         st = ci95(grp["Value"])
-        rows.append({"metric": metric, "mean": st["mean"],
-                     "half_width": st["ub"] - st["mean"],
+        # `key` and `ci95` are the names Python uses (D1226); `metric` and `half_width` stay until
+        # the next minor release.
+        rows.append({"metric": metric, "key": kpi, "mean": st["mean"],
+                     "half_width": st["ub"] - st["mean"], "ci95": st["ub"] - st["mean"],
                      "n": int(grp["Value"].map(math.isfinite).sum())})
     return rows
 
@@ -770,6 +829,10 @@ def main(argv=None) -> int:
     exports = [*([f"xlsx:{args.out}"] if args.out else []),
                *([f"html:{args.report}"] if args.report else []), *args.export,
                *([f"player:{args.player}"] if args.player else [])]
+    unknown = _unknown_exports(exports)         # before the run: a mistyped format costs no run (S7-11)
+    if unknown:
+        print(unknown)
+        return 2
     asked = None
     if args.asked:
         if not any(spec.startswith("player:") for spec in exports):
@@ -781,7 +844,6 @@ def main(argv=None) -> int:
             print(f"--asked: {exc.code}: {exc.message}")
             return 2
     # D201: an exporter drawn from the run's trace needs the first replication recorded.
-    # (`python -m nagasim.api` loads no plugins before this: a plugin's needs_trace is not seen)
     recorder = TraceRecorder() if _needs_trace(exports) else None
     try:
         results = run_model(model, replications=args.replications, seed=args.seed,
@@ -813,6 +875,11 @@ def main(argv=None) -> int:
                 indent=2, default=str))
         else:
             print("\n".join(_summary_text(rows)))
+            # A fact of the run, not a result row (D1251): said once, in words, when the run has it.
+            system = results["system"]
+            started = system.loc[system["Metric"] == "Started From State At", "Value"]
+            if len(started):
+                print(f"started from the state taken at {started.iloc[0]:g}")
             for line in found.lines():
                 print(f"WARN {line}")
             if target is not None:
@@ -860,6 +927,20 @@ def _with_calendar(args):
     if args.until:
         sim["time_limit"] = None       # the end date is the horizon now
     return layout
+
+
+def _unknown_exports(specs) -> str:
+    """The message for the first `--export` entry that is not FORMAT:PATH for a known exporter, or ""."""
+    from nagasim.exporters import EXPORTER_REGISTRY
+    from nagasim.plugins import load_plugins
+
+    load_plugins()      # `python -m nagasim.api` has loaded none yet; a plugin's exporter is a format too
+    for spec in specs:
+        fmt, _, out_path = spec.partition(":")
+        if fmt not in EXPORTER_REGISTRY or not out_path:
+            return (f"--export: '{spec}' is not FORMAT:PATH for a known exporter "
+                    f"({', '.join(sorted(EXPORTER_REGISTRY))})")
+    return ""
 
 
 def _needs_trace(specs) -> bool:

@@ -127,9 +127,31 @@ def test_the_held_out_tables_keep_their_top_three(capsys):
         assert top3 >= floor, [q for q, _, r in ranks if r is None]
 
 
+def test_each_overlap_ask_finds_its_own_tool_before_the_others_of_its_group():
+    """S2-15 overlap audit (P09b, docs/history/tool-overlap-2026-11-12.md): the frozen asks, committed
+    before any ranking. Blind: 68 of 76 unambiguous in their group; the merges and the description
+    changes the misses asked for took it to 76, so this is now a regression guard, tuned like EVAL.
+    Moving the answer keys into the output schema (D1244) cost one: "simulate it with 20
+    replications" goes to run_facts, whose "at most 20 of each" matches the number. A merged-away
+    name counts as the tool that replaced it."""
+    import json
+    from pathlib import Path
+    from nagasim.agent_tools.core import resolve_alias
+    data = json.loads((Path(__file__).parent / "data" / "tool_overlap_asks.json").read_text(encoding="utf-8"))
+    idx = catalogue_index()
+    misses = []
+    for ask, want, group in data["asks"]:
+        want = resolve_alias(want, {})[0]
+        members = {resolve_alias(t, {})[0] for t in data["groups"][group]}
+        ranked = [h["name"] for h in toolsearch.search(idx, ask, limit=len(agent_tools.TOOLS)) if h["name"] in members]
+        if ranked[:1] != [want]:
+            misses.append((ask, want, ranked[:2]))
+    assert len(data["asks"]) == 76 and len(misses) <= 1, misses
+
+
 def test_a_result_names_the_summary_and_required_arguments():
     hit = toolsearch.search(catalogue_index(), "run the model", limit=1)[0]
-    assert hit["name"] == "run_model" and hit["summary"].startswith("Run a model")
+    assert hit["name"] == "run_model" and hit["summary"].startswith("Run (simulate) a model")
     assert hit["args"] == agent_tools.TOOLS["run_model"].input_schema["required"]
 
 

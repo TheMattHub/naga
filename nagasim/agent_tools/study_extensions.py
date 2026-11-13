@@ -11,7 +11,9 @@ _document_args("study_extensions", study=_ID,
                params="Optional parameters of the module, e.g. {\"mtbf\": 200}.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "candidates": list, "page_url": str, "module": str, "layout": dict, "next_step": str,
+    "room_url": str})
 @_linked
 def study_extensions(study: str, apply: str | None = None, params: dict | None = None) -> dict:
     """Candidate extension modules for the study's model: shifts with a break, resource failures
@@ -21,8 +23,7 @@ def study_extensions(study: str, apply: str | None = None, params: dict | None =
     study_step; this tool never steps the study.
     Example: study_extensions(study="naga-studies/cranes", apply="failures", params={"mtbf": 200}).
 
-    Returns {"candidates": [{"name", "label", "purpose", "effort", "indicative"}]} or
-    {"module", "layout", "next_step"}.
+    With `apply`, the answer is the module instead: "module", "layout", "next_step".
     """
     folder, s = _open(study)
     if not s["versions"]:

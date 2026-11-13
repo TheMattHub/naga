@@ -9,6 +9,9 @@ import pytest
 from nagasim import api, experiments
 from nagasim.core.schema import ModelValidationError
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 MODEL = Path(experiments.__file__).parent / "models" / "single_server.json"
 TIME = "system/Avg Throughput Time"
 

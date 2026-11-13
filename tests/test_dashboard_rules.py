@@ -124,10 +124,9 @@ def test_ed_game_keeps_its_widgets_and_controls():
     generated = dashboard.default_dashboard(doc)
     assert generated["widgets"] == doc["dashboard"]["widgets"]
     assert generated["controls"] == doc["dashboard"]["controls"]
-    # A capacity slider stays a control: lowering the capacity would invalidate it.
-    assert [(e["path"], e["label"], e["min"], e["max"]) for e in generated["inputs"]] == [
-        ("variables.diverting.initial", "diverting", 0, 10),
-        ("variables.diverted_count.initial", "diverted_count", 0, 10)]
+    # A capacity slider stays a control: lowering the capacity would invalidate it. Both variables
+    # are written by the model's own blocks (a switch and a counter), so neither is a lever (S4-20).
+    assert generated["inputs"] == []
     play = generated["pages"][-1]
     assert play["activity"] == "play" and play["items"][:2] == [
         {"kind": "view", "mode": "schematic"}, {"kind": "decisions"}]

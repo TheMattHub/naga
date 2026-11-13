@@ -11,8 +11,8 @@ from nagasim.core.schema import ModelValidationError
 from nagasim.core.utils import sha256_file
 
 from .core import (
-    MAX_PROBLEMS, MAX_ROWS, ToolError, _budget, _document_args, _edit_result, _finite, _open,
-    note_asked, tool, workspace,
+    EDIT, MAX_PROBLEMS, MAX_ROWS, ToolError, _budget, _document_args, _edit_result, _finite, _open,
+    note_asked, override_hint, tool, workspace,
 )
 
 _document_args("resolve_data_bindings", model="Workspace name of the model to resolve.",
@@ -20,7 +20,9 @@ _document_args("resolve_data_bindings", model="Workspace name of the model to re
                      "reports what the bindings WOULD read.")
 
 
-@tool()
+@tool(returns={
+    "model": str, "applied": bool, "bindings": list, "problems": float, "ok": bool,
+    "introduced": list, "fixed": list, "errors": int, "warnings": int})
 def resolve_data_bindings(model: str, apply: bool = False) -> dict:
     """Read the model's data bindings and report what each one produced.
 
@@ -45,10 +47,6 @@ def resolve_data_bindings(model: str, apply: bool = False) -> dict:
     to 200 rows and 200 characters a text, and `value_cut` then says how much
     was left out ({"rows", "characters"}; null when nothing was). `apply=true`
     still writes the whole value.
-
-    Returns {"model", "applied", "bindings": [{"name", "source", "kind",
-    "location", "column", "transform", "target", "value", "value_cut", "rows",
-    "source_time", "problem"}], "problems": n}.
     """
     doc, before = _open(model)
     from nagasim import databind
@@ -141,8 +139,8 @@ _document_args("set_initial_state", model="Workspace name of the model to edit."
                     "the clock).")
 
 
-@tool()
-def set_initial_state(model: str, entities: list | None = None, variables: dict | None = None,
+@tool(returns={**EDIT, "entities": float})
+def set_initial_state(model: str, entities: list[dict] | None = None, variables: dict | None = None,
                       resources: dict | None = None, time: float = 0.0) -> dict:
     """Give the model a WARM START: work already in the system at t=0.
 
@@ -156,8 +154,6 @@ def set_initial_state(model: str, entities: list | None = None, variables: dict 
 
     A warm-started model needs no warm-up, and `run_model` defaults it to 0.
     Pass no arguments to clear the initial state.
-
-    Returns the usual edit answer plus {"entities": total injected}.
     """
     doc, before = _open(model)
     state: dict = {}
@@ -182,9 +178,9 @@ _document_args("fit_distribution",
                top="How many ranked fits to return.")
 
 
-@tool(read_only=True)
-def fit_distribution(path: str | None = None, values: list | None = None,
-                     column: str | None = None, candidates: list | None = None,
+@tool(read_only=True, returns={"n": int, "dropped": float, "summary": dict, "fits": list})
+def fit_distribution(path: str | None = None, values: list[float] | None = None,
+                     column: str | None = None, candidates: list[str] | None = None,
                      top: int = 5) -> dict:
     """Fit candidate distributions to observed data and rank them, so a block's
     duration comes from measurements instead of a guess.
@@ -193,9 +189,6 @@ def fit_distribution(path: str | None = None, values: list | None = None,
     numbers. The ranking is by AIC (lower is better) with KS/AD statistics
     alongside. Apply the winner by setting the block's `distribution` and
     `dist_params` to the returned `spec`.
-
-    Returns {"n", "dropped", "summary", "fits": [{"name", "params", "aic", "ks",
-    "ad", "warnings", "spec"}]}.
     """
     if (path is None) == (values is None):
         raise ToolError("E_BAD_INPUT", "give exactly one of `path` or `values`",
@@ -241,11 +234,14 @@ _document_args("input_uncertainty", model="Workspace name of the model.",
                          "runs); nothing is saved to the model.")
 
 
-@tool()
-def input_uncertainty(model: str, inputs: list, kpis: list | None = None, resamples: int = 20,
+@tool(returns={
+    "model": str, "completed": bool, "measure": str, "overrides": list | None, "resamples": int,
+    "resamples_used": int, "failed": dict, "replications": int, "runs": int, "seed": int,
+    "inputs": list, "kpis": list, "notes": list})
+def input_uncertainty(model: str, inputs: list[dict], kpis: list[str] | None = None, resamples: int = 20,
                       replications: int = 5, run_length: float | None = None,
                       warmup: float | None = None, seed: int = 0,
-                      max_seconds: float | None = None, overrides: list | None = None) -> dict:
+                      max_seconds: float | None = None, overrides: list[dict] | None = None) -> dict:
     """How much of each KPI's spread comes from the data its inputs were fitted to.
 
     Each input's data is resampled with replacement and refitted in the family of its
@@ -266,10 +262,6 @@ def input_uncertainty(model: str, inputs: list, kpis: list | None = None, resamp
     instead ("measure": "difference"): the baseline and the changed model run per resample on
     the same seeds, so the interval is the difference's, not a level's. A later what_if on this
     model quotes the latest answer in its "input_note".
-
-    Returns {"model", "completed", "measure", "overrides", "resamples", "resamples_used", "failed", "replications",
-    "runs", "seed", "inputs": [{"path", "kind", "n", "point"}], "kpis": [{"kpi", "mean",
-    "run_ci", "input_interval", "input_share", "resamples_used"}], "notes"}.
     """
     specs, read = [], {}
     for entry in inputs or []:
@@ -293,7 +285,7 @@ def input_uncertainty(model: str, inputs: list, kpis: list | None = None, resamp
             overrides=overrides or None)
     except ModelValidationError as exc:
         raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
-                        "check the input and override paths (list_override_paths shows the valid ones)")
+                        "check the input paths; " + override_hint(exc))
     except ValueError as exc:
         raise ToolError("E_BAD_INPUT", str(exc), "fix the inputs or the counts") from None
     rows = [{k: _finite(v) if isinstance(v, float) else v for k, v in row.items()}
@@ -317,7 +309,10 @@ _document_args("get_plant_timeline", model="Workspace name of the model the mapp
                    "mapping.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "signals": float, "problems": list, "observations": int, "events": int,
+    "truncated": bool, "now": float, "stamp": str, "entities": float, "counts": dict,
+    "blocks": dict, "resources": list})
 def get_plant_timeline(model: str, mapping: str, log: str = "") -> dict:
     """Check a plant mapping against a model and, given a recorded plant log,
     say what the plant looked like at the log's last instant.
@@ -335,9 +330,7 @@ def get_plant_timeline(model: str, mapping: str, log: str = "") -> dict:
     carries the mapping's errors (then nothing is replayed) and the replay's
     warnings.
 
-    Returns {"model", "signals", "problems"} and, with a log, {"observations",
-    "events", "truncated", "now", "stamp", "entities", "counts", "blocks":
-    {block: items}, "resources": [{"name", "state", "busy", "capacity"}]}.
+    With a log, the answer adds the plant's state at the log's last instant.
     """
     from nagasim import plant
     from nagasim.core.playback import Timeline, resource_rows
@@ -394,8 +387,8 @@ def _twin_result() -> dict:
     if directory is None:
         raise ToolError(
             "E_NO_TWIN", "this server was given no twin to read",
-            "the person running the server starts a twin (`naga twin run ... --out DIR`) and "
-            "this server with `naga mcp --twin DIR`; no tool argument can choose one")
+            "the person running the server starts a twin, then this server with the twin's result "
+            "folder; no tool argument can choose one")
     doc, problems = twin.read_result(directory)
     if doc is None:
         raise ToolError(problems[0].code, problems[0].message, problems[0].hint)
@@ -406,7 +399,10 @@ def _listed(value, limit: int = MAX_ROWS) -> list:
     return value[:limit] if isinstance(value, list) else []
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "cycle": int, "written": str | None, "started": str | None, "cadence": dict | None,
+    "model": dict, "at": float, "stamp": str | None, "sources": list, "view": dict,
+    "mapped": dict | None, "problems": list})
 def get_twin_monitor() -> dict:
     """What the plant looks like now, as the running twin last wrote it.
 
@@ -423,12 +419,6 @@ def get_twin_monitor() -> dict:
     that runs writes every `cadence.every` seconds (null: it is run one step
     at a time by a scheduler). `at` is model time, in `model.time_unit` from
     `model.epoch` (null where the source has no epoch).
-
-    Returns {"cycle", "written", "started", "cadence": {"every",
-    "forecast_every"}, "model": {"name", "hash", "time_unit", "epoch"}, "at", "stamp",
-    "sources": [{"name", "state", "age", "lost", "gaps"}], "view": {"approximate",
-    "wip", "blocks", "in_service", "resources", "levels", "counters"}, "mapped", "problems":
-    [{"code", "severity", "message", "path", "hint"}]}.
     """
     doc = _twin_result()
     return {**{key: doc.get(key) for key in ("cycle", "written", "started", "cadence", "model",
@@ -437,7 +427,9 @@ def get_twin_monitor() -> dict:
             "problems": _listed(doc.get("problems"), MAX_PROBLEMS)}
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "cycle": int, "written": str | None, "model": dict, "forecast": dict, "comparison": list,
+    "scores": dict})
 def get_twin_forecast() -> dict:
     """The running twin's latest forecast, and how its earlier ones compare
     with what the plant then did.
@@ -470,16 +462,6 @@ def get_twin_forecast() -> dict:
     person took through the twin's outbox are in the plant (`assumes` says so
     in words; `get_twin_recommendations` lists them under `standing`): say so
     whenever you quote such a forecast.
-
-    Returns {"cycle", "written", "model", "forecast": {"status", "reason",
-    "state", "model", "seed", "from", "stamp", "horizon", "replications",
-    "approximate", "finished", "took", "kpis": [...], "points": [...]},
-    "comparison": [{"state",
-    "series", "at", "mean", "q05", "q95", "observed", "observed_at", "inside"}],
-    "scores": {"nominal", "basis": {"forecasts", "same_seed", "points", "missed",
-    "lost", "since", "first", "last"}, "reason", "rows": [{"series", "lead",
-    "points", "missed", "lost", "whole", "coverage", "bias", "error",
-    "pinball"}]}}.
     """
     doc = _twin_result()
     forecast = doc.get("forecast") if isinstance(doc.get("forecast"), dict) else {}
@@ -496,10 +478,10 @@ def get_twin_forecast() -> dict:
             "scores": {**scores, "rows": _listed(scores.get("rows"), 300)}}
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={"cycle": int, "written": str, "model": dict, "recommend": dict | None})
 def get_twin_recommendations() -> dict:
-    """What the running twin recommends now, and what became of what it
-    recommended before. Read-only: this tool cannot deliver, approve, reject
+    """What the running twin recommends now (what we should do), and what became of
+    its earlier advice. Read-only: this tool cannot deliver, approve, reject
     or address a recommendation, and no tool can.
 
     The person who started the twin gave it candidate actions and one KPI
@@ -527,14 +509,7 @@ def get_twin_recommendations() -> dict:
     queue or in the editor; if asked to approve or send one, say that you
     cannot.
 
-    Returns {"cycle", "written", "model", "recommend": {"kpi", "better",
-    "level", "crn", "measurable", "status", "reason", "state", "seed",
-    "replications", "from", "stamp", "took", "reproducible", "items": [...],
-    "standing": [{"id", "action", "since"}], "ended": [{"id", "action",
-    "since", "ended"}], "effects": [{"id", "action",
-    "status", "observed", "inside_interval", "from", "until", "q05", "q95"}],
-    "outbox": {"sink", "state", "why", "records", "replies"}}}; `recommend` is
-    null for a twin that was given no candidates.
+    `recommend` is null for a twin that was given no candidates.
     """
     doc = _twin_result()
     said = doc.get("recommend") if isinstance(doc.get("recommend"), dict) else None

@@ -4,16 +4,16 @@ inits) must be bit-identical to the per-agent loop they replace: every
 comparison below is exact equality of whole columns and summaries."""
 import time
 
-import numpy as np
 import pytest
 
 from nagasim.core import agents as A
 from nagasim.core.expressions import ExpressionError, ExpressionScope, compile_expression
 from conftest import problem_codes, run_env
+from functools import partial
+from helpers import model
 
 
-def _model(*records, time_limit=100):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=100)
 
 
 def _run(layout, seed=1):

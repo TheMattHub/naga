@@ -223,3 +223,34 @@ def test_each_function_is_declared_once_per_variant():
     for html in (studyapp.HTML, studyapp.room_html()):
         names = Counter(re.findall(r"\bfunction (\w+)\s*\(", html))
         assert not [n for n, k in names.items() if k > 1], names
+
+
+# D1244: the host gives a tool's answer as structuredContent beside a one-line summary. The harness
+# plays the host on the page's own window (parent is the window when not framed) and answers the
+# page's study_page_html call in that shape; the inserted page proves the answer was read.
+_HOST_HARNESS = r"""<script>
+window.addEventListener("message", function (ev) {
+  var m = ev.data;
+  if (!m || m.jsonrpc !== "2.0" || m.method === undefined || m.id === undefined) { return; }
+  var result = m.method === "tools/call"
+    ? {content: [{type: "text", text: "study_page_html: done; full answer in structuredContent"}],
+       structuredContent: {html: "<main><p id='shape'>structured answer read</p></main>"}}
+    : {};
+  window.postMessage({jsonrpc: "2.0", id: m.id, result: result}, "*");
+  if (m.method === "ui/initialize") {
+    window.postMessage({jsonrpc: "2.0", method: "ui/notifications/tool-input",
+                        params: {arguments: {study: "s"}}}, "*");
+  }
+});
+</script>"""
+
+
+@pytest.mark.skipif(BROWSER is None, reason="neither Chrome nor Edge is installed")
+def test_the_host_page_reads_a_tools_structured_answer(tmp_path):
+    page = tmp_path / "host.html"
+    page.write_text(studyapp.HTML.replace("<head>", "<head>" + _HOST_HARNESS, 1), encoding="utf-8")
+    done = subprocess.run(
+        [BROWSER, "--headless=new", "--disable-gpu", "--no-first-run", "--dump-dom",
+         f"--user-data-dir={tmp_path / 'profile'}", "--virtual-time-budget=4000", page.as_uri()],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert "structured answer read" in done.stdout, done.stdout[-2000:]

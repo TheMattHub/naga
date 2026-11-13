@@ -62,8 +62,11 @@ class Index:
             schema = spec.get("input_schema") or {}
             desc = spec.get("description") or ""
             head = _summary(desc)
+            # The answer's keys count with the body: they were the docstring's "Returns" line until
+            # the output schema took them over (D1244).
+            answer = " ".join((spec.get("output_schema") or {}).get("properties") or ())
             fields = {"name": tokens(spec["name"]), "head": tokens(head),
-                      "body": tokens(desc[len(head):]), "args": tokens(" ".join(f"{k} {v.get('description', '')}" for k, v in (schema.get("properties") or {}).items()))}
+                      "body": tokens(desc[len(head):] + " " + answer), "args": tokens(" ".join(f"{k} {v.get('description', '')}" for k, v in (schema.get("properties") or {}).items()))}
             weighted = Counter()
             for field, toks in fields.items():
                 for t in toks:

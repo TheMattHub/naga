@@ -204,6 +204,18 @@ img.naga-flow{display:block;max-width:100%;margin:6px 0}
       li.appendChild(mk);
       if (path) { li.appendChild(button("Open", function () { openFile(path); })); }
     });
+    // D1253: a reported validation the engine can check now gets its check, one click (one
+    // button: the first mark is the header's open line when validation is the open item).
+    var rvAt = pageEl.querySelector("[data-revalidate]");
+    if (rvAt) {
+      var rv = button("Re-validate", function () {
+        act(rv, function () { return callTool("study_validate", { study: study }); });
+      });
+      rvAt.appendChild(rv);
+    }
+    // D1259: the person's own "I checked this", in the room only (the route is the room's).
+    var cfAt = pageEl.querySelector("[data-confirm]");
+    if (cfAt && typeof confirmCheck === "function") { checkForm(cfAt); }
     var sens = pageEl.querySelector("#sensitivity[data-empty] .scroll");
     if (sens) {
       var rs = button("Run sensitivity", function () { act(rs, MAKERS.sensitivity); });
@@ -225,17 +237,16 @@ _HOST = r"""  // Host transport: JSON-RPC over postMessage with the MCP Apps hos
       send({ id: id, method: method, params: params });
     });
   }
-  // The answer of one of our tools: structuredContent.result, else the first text item as JSON.
+  // The answer of one of our tools: its structured content, sent once beside a one-line text
+  // summary (D1244); else the text, as JSON.
   function callTool(name, args) {
     return request("tools/call", { name: name, arguments: args }).then(function (r) {
       var out, text = "";
       var sc = r.structuredContent;
-      if (sc && sc.result !== undefined) { out = sc.result; }
-      else {
-        var first = (r.content || []).filter(function (c) { return c.type === "text"; })[0];
-        text = first ? first.text : "";
-        try { out = JSON.parse(text); } catch (e) { out = null; }
-      }
+      var first = (r.content || []).filter(function (c) { return c.type === "text"; })[0];
+      text = first ? first.text : "";
+      if (sc && typeof sc === "object") { out = sc; }
+      else { try { out = JSON.parse(text); } catch (e) { out = null; } }
       if (out && out.error) { throw new Error(out.error.message || "The tool refused."); }
       if (r.isError) { throw new Error(text || "The tool failed."); }
       return out;
@@ -374,6 +385,54 @@ _ROOM = r"""  // Room transport: fetch to the loopback server that served this p
     return getJson("./api/page").then(function (r) { rev = r.rev; return showPage(r.html); });
   }
   function askAssistant(text) { return chatSend(text); }
+  // D1259: the person's check goes to its own route, never through a tool (no assistant reaches
+  // it). Fields, a box and a button posting JSON: no <form>, the policy allows no form action.
+  function confirmCheck(body) {
+    return post("./api/confirm", body).then(function (out) {
+      if (out && out.error) { throw new Error(out.error.message || "The room refused."); }
+      return out;
+    });
+  }
+  function checkForm(at) {
+    var box = document.createElement("div");
+    box.hidden = true;
+    var open = button("I checked this", function () { box.hidden = !box.hidden; });
+    function field(label, tag, hint) {
+      var l = document.createElement("label"), el = document.createElement(tag);
+      l.textContent = label;
+      l.style.display = "block";
+      l.style.marginTop = "6px";
+      el.placeholder = hint;
+      el.style.display = "block";
+      el.style.width = "100%";
+      el.style.boxSizing = "border-box";
+      el.style.maxWidth = "40em";
+      l.appendChild(el);
+      box.appendChild(l);
+      return el;
+    }
+    var what = field("What did you compare?", "textarea", "e.g. the mean wait at the nurse with last March's log");
+    var against = field("Against what data or reference?", "input", "a file, a report, a measurement");
+    var by = field("Your name (optional)", "input", "");
+    var miss = document.createElement("label"), missBox = document.createElement("input");
+    missBox.type = "checkbox";
+    miss.style.display = "block";
+    miss.style.margin = "6px 0";
+    miss.appendChild(missBox);
+    miss.appendChild(document.createTextNode(" It did not match"));
+    box.appendChild(miss);
+    var save = button("Record my check", function () {
+      if (what.value.trim().length < 10) { what.focus(); note(save, "Say what you compared (10 characters or more)."); return; }
+      if (!against.value.trim()) { against.focus(); note(save, "Say what you compared it against."); return; }
+      act(save, function () {
+        return confirmCheck({ text: what.value, against: against.value, by: by.value.trim() || null,
+                              passed: !missBox.checked });
+      });
+    });
+    box.appendChild(save);
+    at.appendChild(open);
+    at.appendChild(box);
+  }
   function openFile(path) {
     window.open("./files/" + path.split("/").map(encodeURIComponent).join("/"), "_blank", "noopener");
   }

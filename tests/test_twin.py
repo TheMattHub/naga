@@ -23,6 +23,9 @@ from nagasim.optimize import Factor
 
 from conftest import chain, create, delay, dispose, layout as make_layout, process
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 SERVICE = [2.0, 4.0, 4.0, 6.0, 9.0]          # the tiny sample every transform test uses
 TIMES = [0.0, 10.0, 20.0, 30.0, 40.0]        # arrival timestamps, in base (minute) units
 

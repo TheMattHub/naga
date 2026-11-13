@@ -42,6 +42,11 @@ decision, ask only what you cannot find out, and report honestly.
 7. Run the scenarios the decision needs, then give the answer with the control room (`study_show`) and,
    when the person is satisfied, the package (`study_package`).
 
+## Ask the person first
+
+Before building, ask what only the person can decide (the decision and its options, what counts as
+enough, the scope), each with your recommended answer; record what you choose as an assumption.
+
 ## Records (`study_update(study, changes={...})`)
 
 A list key replaces the whole list, so send every entry each time. Near-miss shapes are accepted and
@@ -50,8 +55,8 @@ answered under `normalised` with the canonical form; use that form next time.
 - goal: `{"id": "g1", "text": "orders wait under 15 min", "kpi": "Packer/Time in Queue Avg", "high": 15}`
   (`low` and/or `high`; a goal without them stays text and is never met);
 - tail goal: `{"id": "g2", "text": "at most 5% wait over 15 min", "kpi": "Packer/Time in Queue",
-  "share_above": 15, "high": 0.05}` (the engine computes the share and reports it as the KPI
-  `Packer/Share waiting over 15`);
+  "share_above": 15, "high": 0.05}` (KPI `Packer/Share waiting over 15`); `"kpi": "Total Wait"`
+  sums all queues;
 - `"precision": {"relative": 0.05}` to change the study's target (half-width at 95%);
 - `"target"`: a list of components, `[{"name": "Packing", "purpose": "...", "blocks": ["pack"]}]`
   (blocks once built);

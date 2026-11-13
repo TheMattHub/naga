@@ -8,12 +8,16 @@ schema'd, answers small enough to fit a context window, paths confined to the
 workspace root, undo/redo through the tools.
 """
 import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
 
 from nagasim import agent_tools as T
+
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "nagasim" / "models"
@@ -253,7 +257,8 @@ def test_tool_names_are_snake_case_verbs():
              "explain",         # explain_kpi
              "input",           # input_uncertainty: the name the spec uses
              "view",            # view_model, view_3d: a picture of the model
-             "render", "build",   # render_video, build_film: the product's film tools
+             "render", "build", "preview",   # render_video, build_film, preview_frame: the product's film tools
+             "pick",             # pick_seed: the seed a storyboard scene shows
              "search", "show", "fetch",   # search_/show_/fetch_simready: the product's asset-source tools
              "propose")         # propose_plugin_folder: the person enables it, never the tool
     for name in T.TOOLS:
@@ -478,9 +483,9 @@ def test_an_agent_builds_a_routing_and_reads_back_its_stations(ws):
     ok(upsert(model, "sequences", name="Widget",
               steps=[{"station": "Mill", "values": {"process_time": 3}},
                      {"station": "Drill"}]))
-    listed = ok(T.call("list_sequences", model=model))
+    listed = ok(T.call("list_records", model=model, section="sequences"))
     assert listed["stations"] == ["Drill", "Mill"]
-    assert listed["sequences"] == [{"name": "Widget", "steps": [
+    assert listed["records"] == [{"name": "Widget", "steps": [
         {"station": "Mill", "values": {"process_time": 3}}, {"station": "Drill"}]}]
 
     # a CREATE naming a sequence the model does not declare comes back coded
@@ -489,7 +494,8 @@ def test_an_agent_builds_a_routing_and_reads_back_its_stations(ws):
     assert {p["code"] for p in result["introduced"]} == {"E_SEQUENCE_UNKNOWN"}
 
     ok(remove(model, "sequences", "Widget"))
-    assert ok(T.call("list_sequences", model=model))["sequences"] == []
+    # S2-15: the merged-away name still answers, as list_records of its section
+    assert ok(T.call("list_sequences", model=model))["records"] == []
 
 
 # -- lump-sum and fixed costs (PHASE4 D5) ------------------------------------
@@ -524,7 +530,7 @@ def test_an_agent_releases_orders_and_imports_an_order_book_from_csv(ws, tmp_pat
     ok(T.call("update_block", model=model, name="arrive", params={"arrival_mode": "Orders"}))
     listed = ok(T.call("list_orders", model=model))
     assert listed["releases"] == ["arrive"]
-    assert listed["orders"] == [{"id": "WO-1", "release": 0.0, "quantity": 2, "due": 480.0}]
+    assert listed["records"] == [{"id": "WO-1", "release": 0.0, "quantity": 2, "due": 480.0}]
 
     csv_path = tmp_path / "book.csv"
     csv_path.write_text("id,release,due,quantity,customer\nWO-7,0,100,1,ACME\n",
@@ -534,11 +540,11 @@ def test_an_agent_releases_orders_and_imports_an_order_book_from_csv(ws, tmp_pat
     assert ws.models[model].orders[0]["attributes"] == {"customer": "ACME"}
 
     ok(remove(model, "orders", "WO-7"))
-    assert ok(T.call("list_orders", model=model))["orders"] == []
+    assert ok(T.call("list_records", model=model, section="orders"))["records"] == []
 
 
 # -- tools with no other test coverage (O8 smoke) ----------------------------
-# Every other tool is exercised somewhere above or in test_regressions.py /
+# Every other tool is exercised somewhere above or in tests/regressions/ /
 # test_network.py; these ~17 were not. One cheap call each, through the same
 # T.call path an agent uses, checking the "ok" result and the document change
 # it made (either in the result itself or read back through the tool surface).
@@ -743,9 +749,9 @@ def test_fit_surrogate_fits_a_response_surface_over_a_tiny_design(ws):
     assert {c["term"] for c in result["coefficients"]} >= {"resources.Server.capacity"}
 
 
-def test_import_xmile_reads_the_workspace_fixture_into_a_new_model(ws, tmp_path):
+def test_import_sd_model_reads_the_workspace_fixture_into_a_new_model(ws, tmp_path):
     shutil.copy(ROOT / "tests" / "data" / "sd_logistic.xmile", tmp_path / "sd_logistic.xmile")
-    result = ok(T.call("import_xmile", path="sd_logistic.xmile"))
+    result = ok(T.call("import_sd_model", path="sd_logistic.xmile"))
     assert result["model"] == "sd_logistic"
     assert result["import_problems"] == []
     assert result["errors"] == 0
@@ -756,8 +762,10 @@ def test_import_xmile_reads_the_workspace_fixture_into_a_new_model(ws, tmp_path)
 def test_import_xmile_refuses_a_path_outside_the_workspace(ws, tmp_path):
     outside = tmp_path.parent / "outside.xmile"
     outside.write_text("<xmile><model><variables/></model></xmile>", encoding="utf-8")
-    result = T.call("import_xmile", path="../outside.xmile")
+    result = T.call("import_xmile", path="../outside.xmile")     # S2-15: the merged-away name still answers
     assert "error" in result
+
+
 
 
 def test_every_agent_tool_name_is_quoted_in_some_test():
@@ -765,7 +773,7 @@ def test_every_agent_tool_name_is_quoted_in_some_test():
     every name is a distinct dict key, so a plain substring search for its
     quoted form is cheap and not brittle -- it is exactly how every T.call
     site above names its tool."""
-    text = "\n".join(p.read_text(encoding="utf-8") for p in Path(__file__).parent.glob("test_*.py"))
+    text = "\n".join(p.read_text(encoding="utf-8") for p in Path(__file__).parent.rglob("test_*.py"))
     untested = sorted(name for name in T.TOOLS if f'"{name}"' not in text)
     assert not untested
 
@@ -825,7 +833,7 @@ def test_run_tools_refuse_a_python_model_with_a_code_addressed_to_the_person(ws,
                         ("debug_run", {})):
         out = T.call(name, model="py", **extra)
         assert out["error"]["code"] == "E_AGENT_PYTHON_REFUSED", name
-        assert "naga run" in out["error"]["hint"]
+        assert "the person to run it themselves" in out["error"]["hint"]     # no command (S2-17)
     assert "py" not in ws.debug             # a refused start starts nothing
     assert T.call("validate_model", model="py")["model"] == "py"   # checked, not run
     ok(T.call("set_simulation_settings", model="py", run_length=4))   # editing stays allowed
@@ -1047,9 +1055,11 @@ def test_debug_tools_refuse_with_a_code_and_keep_what_was_armed(ws):
     assert T.call("debug_inspect", model=model)["error"]["code"] == "E_NO_DEBUG_RUN"
     assert T.call("debug_run", model="nope")["error"]["code"] == "E_UNKNOWN_MODEL"
     for stops in ([{"block": "nope"}], [{"expr": "RAND() > 0.5"}], [{"expr": "1 +"}],
-                  ["process_1"], [{"python": "import os"}]):
+                  [{"python": "import os"}]):
         error = T.call("debug_run", model=model, stops=stops)["error"]
         assert error["code"] == "E_BAD_STOP" and "process_1" in error["hint"], stops
+    error = T.call("debug_run", model=model, stops=["process_1"])["error"]     # D1219: the schema's item shape
+    assert error["code"] == "E_BAD_ARGUMENT" and "`stops` item 0" in error["message"]
     assert model not in ws.debug                    # a refused start starts nothing
     ok(T.call("debug_run", model=model, to=5, stops=[{"block": "dispose_1"}]))
     refused = T.call("debug_run", model=model, stops=[{"block": "nope"}])
@@ -1385,3 +1395,209 @@ def test_tools_report_replications(ws):
     with reporting(lambda done, total, message: rec.append((done, total))):
         ok(T.call("run_model", model=model, replications=4))
     assert [d for d, _ in rec] == sorted(d for d, _ in rec) and rec[-1] == (4, 4)
+
+
+# -- P09 (review 2026-11-11) ---------------------------------------------------
+
+def _dummy(prop):
+    """A value of the right shape for a required argument the test does not probe."""
+    kinds = prop.get("type", "string")
+    kind = kinds if isinstance(kinds, str) else kinds[0]
+    if prop.get("enum"):
+        return prop["enum"][0]
+    return {"string": "x", "integer": 1, "number": 1.0, "boolean": False,
+            "array": [], "object": {}}.get(kind, "x")
+
+
+def test_1768_wrongly_shaped_argument_is_e_bad_argument(ws):
+    """C-01: a dictionary, a string or a number where a tool wants a list (or an object) answers
+    E_BAD_ARGUMENT naming the argument, before the tool body runs, and never raises."""
+    model = ok(T.call("open_model", path="single_server.json"))["model"]
+    by_path = {"resources.Server.capacity": 2}
+    for name, args in (("what_if", {"overrides": by_path}), ("what_if", {"overrides": [1]}),
+                       ("upsert_scenario", {"name": "typo", "overrides": by_path}),
+                       ("upsert_scenario", {"name": "typo", "overrides": [1]})):
+        err = T.call(name, model=model, **args)["error"]
+        assert err["code"] == "E_BAD_ARGUMENT" and "`overrides`" in err["message"], (name, err)
+    for spec in T.TOOLS.values():
+        props = spec.input_schema["properties"]
+        for key, prop in props.items():
+            kinds = prop.get("type") or []
+            kinds = [kinds] if isinstance(kinds, str) else kinds
+            wrong = ({"a": 1}, 3, "x") if "array" in kinds else ([1], 3, "x") if "object" in kinds else ()
+            for value in wrong:
+                args = {k: _dummy(props[k]) for k in spec.input_schema["required"]}
+                args[key] = value
+                err = T.call(spec.name, **args).get("error") or {}
+                assert err.get("code") == "E_BAD_ARGUMENT" and f"`{key}`" in err.get("message", ""), \
+                    (spec.name, key, value, err)
+
+
+def test_one_kpi_name_and_one_model_name_work_across_tools(ws):
+    """S2-13: explain_kpi takes a KPI in a study goal's forms; write_model takes `name` like new_model."""
+    model = ok(T.call("open_model", path="single_server.json"))["model"]
+    for asked, key in (("Server/Time in Queue Avg", "resource/Server/Time in Queue Avg"),
+                       ("Avg Throughput Time", "system/Avg Throughput Time")):
+        assert ok(T.call("explain_kpi", model=model, kpi=asked, replications=2))["kpi"] == key
+    layout = ok(T.call("get_model_json", model=model))["layout"]
+    assert ok(T.call("write_model", name="copy", layout=layout))["model"] == "copy"
+    assert T.call("write_model", name="a", model="b", layout=layout)["error"]["code"] == "E_BAD_ARGUMENT"
+
+
+# S2-14: the review's seven business-phrased queries (frozen; `reqs/find.json`), each with the tools
+# that answer it. find_tool must put one of them in its top three.
+BUSINESS_QUERIES = (
+    ("something I can show my director", {"study_slides", "study_report", "study_package", "study_writeup"}),
+    ("compare two options and say which is better", {"run_scenarios", "what_if"}),
+    ("how many people wait more than 20 minutes", {"study_update", "study_step"}),
+    ("which KPI names can a goal use", {"study_start", "study_update", "study_step"}),
+    ("is the difference between two scenarios significant", {"run_scenarios", "what_if"}),
+    ("build a model from a spreadsheet of timestamps", {"import_event_log"}),
+    ("how sure are you about the answer", {"run_to_precision", "study_sensitivity", "input_uncertainty"}),
+)
+
+
+def test_find_tool_answers_business_questions():
+    from nagasim import toolsearch
+    # The engine's tools only: a product import elsewhere in this process must not move the ranks.
+    index = toolsearch.index([{"name": t.name, "description": t.description, "input_schema": t.input_schema}
+                              for t in T.TOOLS.values() if t.origin.startswith("nagasim.")])
+    misses = {q: [h["name"] for h in toolsearch.search(index, q, limit=3)]
+              for q, wanted in BUSINESS_QUERIES
+              if not wanted & {h["name"] for h in toolsearch.search(index, q, limit=3)}}
+    assert not misses, misses
+
+
+_COMMAND = re.compile(r"\bnaga [a-z]|(?<![\w-])--[a-z]|\binputfit\.")
+
+
+def _tool_error_texts():
+    """The message and hint text of every ToolError the agent tools raise (string parts of f-strings
+    too), read from the source: a refusal is what an assistant acts on next."""
+    import ast
+    for path in sorted((ROOT / "nagasim" / "agent_tools").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "ToolError":
+                for arg in node.args[1:]:
+                    for part in ast.walk(arg):
+                        if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                            yield f"{path.name}:{node.lineno}", part.value
+
+
+def test_tool_answers_name_tools_not_commands(tmp_path):
+    """S2-17: what a tool answers sends the assistant to a tool, never to a terminal its user may not
+    have (no `naga ...`, no --flag, no Python name), and the validate hint comes only when
+    validation has something to say."""
+    bad = [(where, text) for where, text in _tool_error_texts() if _COMMAND.search(text)]
+    assert not bad, bad
+    T.use_workspace(T.Workspace(tmp_path))
+    rows = ["case,activity,timestamp"] + [f"c{i},{a},{10 * i + k}" for i in range(40)
+                                          for k, a in enumerate(("Cut", "Pack", "Ship"))]
+    (tmp_path / "log.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    draft = ok(T.call("import_event_log", path="log.csv"))
+    said = json.dumps([draft["next_steps"], draft["check"], draft["path_checks"], draft["assumptions"]])
+    assert not _COMMAND.search(said), _COMMAND.findall(said)
+    (tmp_path / "nocase.csv").write_text("who,what,when\na,b,1\n", encoding="utf-8")
+    error = T.call("import_event_log", path="nocase.csv")["error"]
+    assert not _COMMAND.search(error["message"] + error["hint"]), error
+    shutil.copy(EXAMPLES / "single_server.json", tmp_path / "m.json")
+    model = ok(T.call("open_model", path="m.json"))["model"]
+    ok(T.call("upsert_scenario", model=model, name="typo",
+              overrides=[{"path": "resources.Server.capacity", "value": -3}]))
+    refused = T.call("run_scenarios", model=model, replications=2)["error"]
+    assert ok(T.call("validate_model", model=model))["errors"] == 0
+    assert "validate_model" not in (refused.get("hint") or ""), refused
+
+
+def test_export_creates_its_folder_inside_the_root_only(ws):
+    """S2-17: export writes into a new folder under the workspace root (the folder is made, as a
+    person saving a file expects), and a path outside the root makes nothing (netguard)."""
+    model = ok(T.call("open_model", path="single_server.json"))["model"]
+    ok(T.call("run_model", model=model, replications=2))
+    out = ok(T.call("export", model=model, format="json", path="exports/deep/run.json"))
+    assert Path(out["path"]).is_file() and Path(out["path"]).parent == ws.root / "exports" / "deep"
+    outside = ws.root.parent / "escaped_exports"
+    refused = T.call("export", model=model, format="json", path="../escaped_exports/run.json")
+    assert refused["error"]["code"] == "E_PATH_OUTSIDE_ROOT" and not outside.exists()
+    unknown = T.call("export", model=model, format="nope", path="never/run.json")
+    assert "error" in unknown and not (ws.root / "never").exists()
+
+
+
+def test_1769_logic_class_is_checked_at_validate(ws, tmp_path, monkeypatch):
+    """S2-20: a LOGIC block naming a class the logic module does not define is a problem when the
+    model is written and validated, not a failed run; the name is looked up, never imported."""
+    import sys
+    # A module that imports if anything tries: `os` is always loaded, so it alone proves nothing.
+    (tmp_path / "naga_never_imported_1769.py").write_text("class Logic:\n    pass\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    model = ok(T.call("open_model", path="single_server.json"))["model"]
+    layout = ok(T.call("get_model_json", model=model))["layout"]
+    for name in ("os.system", "naga_never_imported_1769.Logic", "__class__", "NoSuchLogic"):
+        broken = json.loads(json.dumps(layout))
+        broken["blocks"].insert(1, {"name": "route", "type": "LOGIC", "params": {"logic_class": name}})
+        before = set(sys.modules)
+        written = ok(T.call("write_model", model="logic", layout=broken))
+        codes = {p["code"] for p in written["problems"]}
+        assert "E_LOGIC_CLASS_UNKNOWN" in codes and not written["ok"], (name, written)
+        checked = ok(T.call("validate_model", model="logic"))
+        assert any(p["code"] == "E_LOGIC_CLASS_UNKNOWN" and p["block"] == "route" for p in checked["problems"])
+        assert set(sys.modules) - before <= {"nagasim.core.custom_logic"}      # nothing the file names
+        assert "naga_never_imported_1769" not in sys.modules, name
+    fine = json.loads(json.dumps(layout))
+    fine["blocks"].insert(1, {"name": "route", "type": "LOGIC", "params": {"logic_class": "SampleLogic"}})
+    assert "E_LOGIC_CLASS_UNKNOWN" not in {p["code"] for p in ok(T.call("write_model", model="ok", layout=fine))["problems"]}
+
+
+def test_1769_a_run_names_the_binding_it_could_not_resolve(ws):
+    """S2-20: run_model(bind_data=true) on a binding the server may not fetch still runs on the file's
+    values, and its answer says so instead of leaving it to the server log."""
+    model = _build_ts_delay_model()
+    doc = ws.models[model]
+    doc.set_data_sources([{"name": "remote", "kind": "json_url", "location": "https://example.invalid/live.json"}])
+    doc.set_data_bindings([{"name": "lead", "source": "remote", "column": "kw", "transform": "series:hour",
+                            "target": "timeseries_inputs.lead.values", "enabled": True}])
+    bound = ok(T.call("run_model", model=model, bind_data=True))
+    assert bound["bindings"]["problems"] == 1 and bound["bindings"]["first"].startswith("lead:"), bound.get("bindings")
+    assert "bindings" not in ok(T.call("run_model", model=model))
+
+
+# Words a hint or description puts where a tool name could stand, which are not tools: answer
+# keys, model fields and argument values. Anything else there must be a registered tool (#1773).
+# `refers_to` is the product's (list_assets), seen when its tools are registered in the process.
+_NOT_TOOLS = frozenset({"with_action", "import_problems", "one_go", "queue_formula", "share_above", "balk_if",
+                        "refers_to"})
+_TOOL_SLOT = re.compile(
+    r"\b(?:call|calling|use|try|run|then|via|see|with)\s+`?([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`?"
+    r"|`?([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`?\s*(?:\(|shows|lists|gives|returns|answers|reports|has|names|first)")
+
+
+def test_1773_hints_and_descriptions_name_only_registered_tools():
+    """#1773: hints named `list_override_paths`, a function the assistant cannot call. Every
+    tool-like name in a tool description or in a string of an agent tool module (docstrings of
+    helpers aside) is a registered tool, one of a tool's arguments, or a listed non-tool word."""
+    import ast
+    args = {key for spec in T.TOOLS.values() for key in spec.input_schema.get("properties", {})}
+    texts = [(f"{spec.name} (description)", spec.description) for spec in T.TOOLS.values()]
+    for path in sorted((Path(T.__file__).parent).glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docs = {id(node.body[0].value) for node in ast.walk(tree)
+                if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and node.body
+                and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+        texts += [(f"{path.name}:{node.lineno}", node.value) for node in ast.walk(tree)
+                  if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs]
+    unknown = sorted({f"{where}: {word}" for where, text in texts for found in _TOOL_SLOT.finditer(text)
+                      for word in [found[1] or found[2]]
+                      if word not in T.TOOLS and word not in args and word not in _NOT_TOOLS})
+    assert not unknown, unknown
+
+
+def test_the_wrapper_refuses_a_bad_shape_before_the_body(ws):
+    """Review (tier Next): run_scenarios had its own check that `scenarios` holds strings, which the
+    wrapper's shape check (D1219) always answered first; write_model keeps its own for a null layout,
+    which the shape check leaves to the tool."""
+    model = ok(T.call("open_model", path="single_server.json"))["model"]
+    for bad in ([1], ["Baseline", None], '["Baseline", 2]'):
+        error = T.call("run_scenarios", model=model, scenarios=bad, replications=2)["error"]
+        assert error["code"] == "E_BAD_ARGUMENT" and error["message"].startswith("`scenarios` item"), error
+    assert T.call("write_model", model="m", layout=None)["error"]["message"] == "`layout` must be a JSON object"

@@ -18,6 +18,9 @@ from nagasim import agent_tools as T
 from nagasim import mdlimport, sdimport
 from nagasim.api import run_model
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "tests" / "data"
 
@@ -171,9 +174,9 @@ def ws(tmp_path):
     return T.use_workspace(T.Workspace(tmp_path))
 
 
-def test_import_mdl_reads_the_workspace_fixture_into_a_new_model(ws, tmp_path):
+def test_import_sd_model_reads_a_vensim_file_by_its_extension(ws, tmp_path):
     shutil.copy(DATA / "sd_vensim.mdl", tmp_path / "sd_vensim.mdl")
-    result = T.call("import_mdl", path="sd_vensim.mdl")
+    result = T.call("import_sd_model", path="sd_vensim.mdl")
     assert "error" not in result, result.get("error")
     assert result["model"] == "sd_vensim"
     assert result["import_problems"] == []

@@ -8,6 +8,9 @@ import pytest
 from nagasim import agent_tools as T
 from nagasim import mcp_server
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 EXAMPLES = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 GOAL = {"id": "g1", "text": "wait under 5", "kpi": "Avg Throughput Time", "high": 5}
 
@@ -240,7 +243,7 @@ def test_view_unknown_version_or_format(ws):
     sid = _one_version(ws)
     for bad in ("v009", "../x", "d001"):
         assert T.call("study_view", study=sid, version=bad)["error"]["code"] == "E_STUDY_NO_VERSION"
-    assert T.call("study_view", study=sid, format="gif")["error"]["code"] == "E_STUDY_BAD_VALUE"
+    assert T.call("study_view", study=sid, format="gif")["error"]["code"] == "E_BAD_ARGUMENT"     # an enum (D1219)
     assert T.call("study_view", study=start(ws, study="naga-studies/empty"))["error"]["code"] == "E_STUDY_NO_VERSION"
 
 
@@ -279,7 +282,7 @@ def test_package_tool_returns_files(ws):
     T.call("study_step", study=sid, layout=layout(ws), note="first model")
     r = T.call("study_package", study=sid)
     assert "error" not in r, r
-    assert len(r["files"]) == 4 and all((ws.root / f).is_file() for f in r["files"])
+    assert len(r["files"]) == 5 and all((ws.root / f).is_file() for f in r["files"])
     assert r["files"][0].startswith(sid + "/package/")
 
 
@@ -330,7 +333,8 @@ def test_validation_without_a_boolean_passed_is_refused_with_the_shape(ws):
     r = T.call("study_step", study=sid, layout=layout(ws), note="first model")
     assert r["replications"] == 10        # no goal KPI: the first pass, whatever the model says
     item = [c for c in T.call("study_status", study=sid)["checklist"] if c["item"] == "validation"]
-    assert item[0]["verdict"] == "passed"   # validation holds across versions
+    # held across versions, and read: the assistant's own entry is reported, not checked (D1234)
+    assert item[0]["verdict"] == "not_verified" and "reported" in item[0]["why"]
 
 
 def test_scenarios_of_a_step_run_on_the_study_slot(ws):
@@ -692,3 +696,160 @@ def test_every_kpi_key_a_study_tool_accepts_is_a_results_kpi():
         assert entry is not None and key is not None, name
         if entry["mean"] is not None:
             assert math.isclose(entry["mean"], table[key], rel_tol=1e-9, abs_tol=1e-12), name
+
+
+def test_study_step_takes_a_workspace_model_and_a_patch(ws):
+    """S2-18: a model open in the workspace steps into a study by name, and a one-line fix is a
+    patch on the last version, not the whole file again."""
+    sid = start(ws)
+    model = T.call("open_model", path="single_server.json")["model"]
+    first = T.call("study_step", study=sid, model=model, note="the workspace model")
+    assert first["kind"] == "version", first
+    assert json.loads((ws.root / sid / "versions" / "v001" / "model.json").read_text(encoding="utf-8")) \
+        == T.call("get_model_json", model=model)["layout"]
+    second = T.call("study_step", study=sid, note="two servers",
+                    patch=[{"path": "resources.Server.capacity", "value": 2}])
+    assert second["kind"] == "version" and second["changes"], second
+    stored = json.loads((ws.root / sid / "versions" / "v002" / "model.json").read_text(encoding="utf-8"))
+    assert stored["resources"][0]["capacity"] == 2
+    two = T.call("study_step", study=sid, note="x", model=model, patch=[])["error"]
+    assert two["code"] == "E_BAD_ARGUMENT"      # one of layout, model and patch
+    bad = T.call("study_step", study=sid, note="x", patch=[{"path": "resources.Nope.capacity", "value": 2}])
+    assert bad["error"]["code"] == "E_BAD_ARGUMENT" and "Nope" in bad["error"]["message"]
+
+
+def test_study_start_returns_the_guide(ws):
+    """S2-06, D1218: the cold path gets what a KPI name is, the scenario shape and what to ask the
+    person, once, in study_start's answer (a prompt is the user's to pick, never the model's)."""
+    guide = T.call("study_start", question="Is one server enough?")["guide"]
+    assert "KPI names" in guide and "Packer/Time in Queue Avg" in guide
+    assert '"scenarios": [{"name"' in guide and '"overrides"' in guide
+    assert "Ask the person" in guide
+    assert len(guide.encode("utf-8")) <= 2560
+    assert "guide" not in T.call("study_status", study="naga-studies/is-one-server-enough")
+
+
+def test_study_step_kpis_show_user_statistics_and_resource_waits(ws):
+    """S2-11: a step's KPIs are what an assistant needs to check its model -- every RECORD
+    statistic, each resource's wait and utilisation -- without the zero rows; study_view's text
+    names each block's key parameters and the schedules."""
+    shutil.copy(EXAMPLES / "call_centre_day.json", ws.root / "call_centre_day.json")
+    model = json.loads((ws.root / "call_centre_day.json").read_text(encoding="utf-8"))
+    model["simulation"]["time_limit"] = 1440        # one day of the week: the KPIs' names, not their values
+    sid = start(ws)
+    r = T.call("study_step", study=sid, layout=model, note="the call centre")
+    stat = next(b["params"]["stat_name"] for b in model["blocks"] if b["type"] == "RECORD")
+    res = model["resources"][0]["name"]
+    assert stat in r["kpis"], sorted(r["kpis"])
+    assert {f"{res}/Time in Queue Avg", f"{res}/Usage % (snapshot)"} <= set(r["kpis"]), sorted(r["kpis"])
+    assert "Total Cost" not in r["kpis"] and all(v != 0 for v in r["kpis"].values())
+    text = T.call("study_view", study=sid, format="text")["text"]
+    assert any(line.startswith("- process_1:") and res in line for line in text.splitlines()), text
+    assert all(s["name"] in text for s in model["schedules"])
+
+
+def _two_queues(s1=0.6, s2=0.7, length=400):
+    """D1232's case: exponential arrivals through two single servers with constant service times,
+    so each entity's total wait is its time in the system minus s1 + s2 -- the share is known from
+    the entity log of the same run, not from a formula."""
+    block = lambda name, x, **p: {"name": name, "type": "PROCESS", "position": [x, 0.0],
+                                  "params": {"distribution": "Constant", **p}}
+    return {"schema_version": 30,
+            "blocks": [{"name": "arrive", "type": "CREATE", "position": [0.0, 0.0],
+                        "params": {"distribution": "Exponential", "dist_params": {"rate": 1.0}}},
+                       block("desk", 200.0, dist_params={"value": s1}, resource_name="Desk"),
+                       block("nurse", 400.0, dist_params={"value": s2}, resource_name="Nurse"),
+                       {"name": "leave", "type": "DISPOSE", "position": [600.0, 0.0]}],
+            "links": [{"source": "arrive", "target": "desk"}, {"source": "desk", "target": "nurse"},
+                      {"source": "nurse", "target": "leave"}],
+            "resources": [{"name": "Desk", "capacity": 1}, {"name": "Nurse", "capacity": 1}],
+            "simulation": {"time_limit": length, "warmup": length / 10}}
+
+
+def test_default_entity_log_columns_unchanged():
+    """D1232: a default run's entity log has exactly the engine's columns; Total Wait comes only
+    when the run asks (simulation.entity_waits), and then equals time in system minus service."""
+    from nagasim.api import run_model
+    from nagasim.core.outputs import _ENTITY_LOG_COLS
+    plain = run_model(_two_queues(), replications=1, seed=3)["entity_log"]
+    assert [c for c in plain.columns if c != "Run"] == _ENTITY_LOG_COLS
+    asked = _two_queues()
+    asked["simulation"]["entity_waits"] = True
+    log = run_model(asked, replications=1, seed=3)["entity_log"]
+    assert set(log.columns) - set(plain.columns) == {"Total Wait"}
+    done = log[log["Throughput Time"].notna()]
+    assert len(done) > 300
+    assert (done["Total Wait"] - (done["Throughput Time"] - 1.3)).abs().max() < 1e-9
+    assert (done["Total Wait"] > 0).mean() > 0.2          # waits at both queues, not a zero column
+
+
+@pytest.mark.slow
+def test_total_wait_share_goal(ws):
+    """S2-07, D1232: a tail goal on "Total Wait" gives the share of entities whose wait over the
+    whole visit (both queues) exceeds x, per replication with its interval, judged like any KPI."""
+    from nagasim.api import run_model
+    sid = start(ws)
+    goal = {"id": "g1", "text": "few wait over 2 in total", "kpi": "Total Wait", "share_above": 2, "high": 0.5}
+    # A loose precision keeps the step short; the share is the point here, not its interval.
+    T.call("study_update", study=sid, changes={"plan_approved": True, "goals": [goal],
+                                               "precision": {"relative": 0.3}})
+    r = T.call("study_step", study=sid, layout=_two_queues(length=200), note="two queues")
+    assert r["kind"] == "version" and "tail_note" not in r, r
+    name = "Share with total wait over 2"
+    mean = r["kpis"][name]
+    asked = _two_queues(length=200)
+    asked["simulation"]["entity_waits"] = True
+    log = run_model(asked, replications=r["replications"], seed=0)["entity_log"]
+    done = log[log["Throughput Time"].notna()]
+    expected = ((done["Throughput Time"] - 1.3) > 2).groupby(done["Run"]).mean().mean()
+    assert mean == pytest.approx(expected, abs=1e-4)          # the answer rounds to 4 places
+    assert 0.05 < mean < 0.95 and r["precision"][name]["half_width"] > 0
+    assert any("entity_waits" in n for n in r["normalised"])
+
+
+def _validation_item(sid):
+    st = T.call("study_status", study=sid)
+    return next(c for c in st["checklist"] if c["item"] == "validation"), st
+
+
+def test_1788_assistant_validation_is_reported_not_checked(ws):
+    """DEVLOG #1788 (review S2-19): the assistant's own arithmetic, sent with "passed": true through
+    study_update, turned "The model matches reality" to passed; a director could not tell it from
+    the engine's check. D1234: who established it is recorded by the path it came in on (never the
+    payload), and only the engine's or the person's entry counts as passed."""
+    sid = start(ws)
+    mine = {"level": "known_answer", "passed": True, "text": "my hand arithmetic"}
+    forged = {"level": "data", "passed": True, "text": "matches last week", "source": "engine"}
+    assert "error" not in T.call("study_update", study=sid, validation=[mine, forged])
+    stored = json.loads((ws.root / sid / "study.json").read_text(encoding="utf-8"))["validation"]
+    assert [v["source"] for v in stored] == ["assistant", "assistant"]
+    item, st = _validation_item(sid)
+    assert item["verdict"] != "passed" and "reported, not checked" in item["why"]
+    assert 'changes={"validation"' not in st["next_step"]     # recording another would not close it
+    claimed = T.call("study_start", question="Another?", changes={"validation": [forged]})["study"]
+    assert [v["source"] for v in json.loads((ws.root / claimed / "study.json").read_text(
+        encoding="utf-8"))["validation"]] == ["assistant"]          # study_start's changes too
+
+
+@pytest.mark.slow
+def test_engine_validation_keeps_its_source_when_resent(ws):
+    """D1234: study_validate's entry is the engine's and passes the item; the assistant resending
+    the whole list (a list key replaces it) keeps that source for an unchanged entry, while an
+    edited one, or a new one, is the assistant's."""
+    sid = start(ws)
+    short = layout(ws)
+    short["simulation"]["time_limit"] = 200      # study_validate runs 100x this, 10 seeded replications
+    T.call("study_step", study=sid, layout=short, note="first model")
+    assert "study_validate" in T.call("study_status", study=sid)["validate"]
+    assert T.call("study_validate", study=sid)["passed"] is True
+    path = ws.root / sid / "study.json"
+    engine = json.loads(path.read_text(encoding="utf-8"))["validation"]
+    assert [v["source"] for v in engine] == ["engine"]
+    assert _validation_item(sid)[0]["verdict"] == "passed"
+    plain = {k: engine[0][k] for k in ("level", "passed", "text")}
+    note = {"level": "expert", "passed": True, "text": "the nurse lead agrees"}
+    T.call("study_update", study=sid, validation=[plain, note])
+    assert [v["source"] for v in json.loads(path.read_text(encoding="utf-8"))["validation"]] == ["engine", "assistant"]
+    T.call("study_update", study=sid, validation=[{**plain, "text": plain["text"] + " (rounded)"}])
+    assert [v["source"] for v in json.loads(path.read_text(encoding="utf-8"))["validation"]] == ["assistant"]
+    assert _validation_item(sid)[0]["verdict"] == "not_verified"

@@ -80,7 +80,8 @@ def test_a_writer_that_needs_a_trace_says_so_without_one(seam, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_an_unknown_format_is_named_and_records_nothing(seam, tmp_path, capsys):
-    assert api.main([MODEL, *RUN, "--export", f"nope:{tmp_path / 'x'}"]) == 0
-    assert seam["runs"] == [None]
+def test_an_unknown_format_is_named_and_refused_before_the_run(seam, tmp_path, capsys):
+    """S7-11: a mistyped format costs no run, and the exit code says so (it was found after the run, with exit 0)."""
+    assert api.main([MODEL, *RUN, "--export", f"nope:{tmp_path / 'x'}"]) == 2
+    assert seam["runs"] == []
     assert "'nope:" in capsys.readouterr().out and list(tmp_path.iterdir()) == []

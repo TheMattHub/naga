@@ -192,8 +192,17 @@ summary h2 { display: inline; }
 .r-arrow.worse { color: var(--down); }
 .trust td { border: 0; padding: 3px 0; }
 .trust td:last-child { font-weight: 600; overflow-wrap: anywhere; }
-.mark-ok { color: var(--run); }
-.mark-warn { color: var(--blocked); }
+/* S4-18: the marks are text, so 4.5:1 on the card: in light a darker step of --run and
+   --blocked (5.3 and 5.3:1 on white, 4.7 and 4.6 on raised, dataviz contrast()); the dark
+   tokens pass as they are (5.2, 6.3 on the dark panel). */
+.mark-ok { color: color-mix(in srgb, var(--run) 88%, black); }
+.mark-warn { color: color-mix(in srgb, var(--blocked) 69%, black); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .mark-ok { color: var(--run); }
+  :root:not([data-theme=light]) .mark-warn { color: var(--blocked); } }
+:root[data-theme=dark] .mark-ok { color: var(--run); }
+:root[data-theme=dark] .mark-warn { color: var(--blocked); }
+.why summary { font-weight: 400; color: var(--muted); }
+.why ul { margin: 4px 0; padding-left: 18px; font-weight: 400; }
 .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 12px;
           background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 .ident { flex: 1 1 200px; min-width: 0; }
@@ -205,10 +214,45 @@ summary h2 { display: inline; }
 .tab.base::before { background: var(--base); }
 .toggle { color: var(--muted); font-size: 12px; cursor: pointer; }
 @media (max-width: 900px) { .console, .console.levers { grid-template-columns: minmax(0, 1fr); } }
+/* S4-16: one column is the phone's layout: every control at least 40 px tall to touch. */
+@media (max-width: 900px) {
+  button, select, input:not([type=checkbox]) { min-height: 40px; }
+  summary { min-height: 40px; padding-block: 10px; }      /* padding, not flex: flex drops the fold's triangle */
+  .toggle { display: inline-flex; align-items: center; min-height: 40px; }
+}
 """
+
+
+# D1240: the pages without a script (the deck, the control room, the report) wear the same two
+# token sets, chosen by the reader's browser alone (no switch: no script); print stays light
+# ("screen and"). The status pairs are theirs: a banner's tint and ink, the badges' fills
+# (white text on each at 4.5:1 or more, dataviz contrast(): partial 5.6, met 5.1, not met 5.6,
+# not verified 4.6), and a link colour that keeps 4.5:1 on the dark panel (7.6).
+_STATIC = {"light": {"ok-bg": "#d9f2e0", "ok-ink": "#14532d", "wait-bg": "#fdecc8", "wait-ink": "#7a4b00",
+                     "open-bg": "#e3e5e8", "open-ink": "#333333", "link": "#2f6fe0"},
+           "dark": {"ok-bg": "#17352a", "ok-ink": "#bfe8cc", "wait-bg": "#3a2e14", "wait-ink": "#f5d9a0",
+                    "open-bg": "#2a3242", "open-ink": "#e6ebf3", "link": "#8fb4ff"}}
+STATUS_FILLS = {"met": "#2e7d32", "passed": "#2e7d32", "partial": "#9a5800", "failed": "#c62828",
+                "not_met": "#c62828", "not_verified": "#6b7588"}
+
+
+def token_css() -> str:
+    """The CSS variables of a page with no script (D1240): `DEFAULT_TOKENS` light on :root,
+    dark on screen when the browser prefers it, plus the status pairs; print stays light."""
+    def names(mode):
+        merged = {**DEFAULT_TOKENS[mode], **_STATIC[mode]}
+        return "".join(f" --{key.replace('_', '-')}: {value}{'px' if key == 'radius' else ''};"
+                       for key, value in merged.items() if key != "font") + f" color-scheme: {mode};"
+    badges = "".join(f".badge.{state}{{background:{fill}}}" for state, fill in STATUS_FILLS.items())
+    return (f":root {{{names('light')} --font: {DEFAULT_TOKENS['light']['font']}; }}\n"
+            f"@media screen and (prefers-color-scheme: dark) {{ :root {{{names('dark')} }} }}\n"
+            ".badge{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;background:#6b7588}"
+            f"{badges}\na{{color:var(--link)}}\n")
+
 
 CSS = """.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 #clock { display: inline-block; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cut { margin-left: 8px; font-weight: 600; }
 #play { min-width: 5.5em; }
 #seek { display: block; width: 100%; margin: 8px 0 12px; accent-color: var(--accent); }
 #view { display: block; width: 100%; height: 40vh; }
@@ -277,6 +321,17 @@ function num(text) {
 function scenarioName(name) {
   return name === "Baseline" ? tr("name.baseline") : name === "Yours" ? tr("name.yours") : name;
 }
+/* A number with as many decimals as its 95% interval supports (the half-width at two
+   significant digits), as `nagasim.pagefmt` writes it on every page (D1236); without a
+   usable interval, the page's own fmt. */
+function precise(value, lo, hi) {
+  var half, places;
+  if (typeof value !== "number" || typeof lo !== "number" || typeof hi !== "number" ||
+      !isFinite(lo) || !isFinite(hi) || !((hi - lo) / 2 > 0)) { return fmt(value); }
+  half = (hi - lo) / 2;
+  places = Math.min(9, Math.max(0, 1 - Math.floor(Math.log(half) / Math.LN10)));
+  return num(value.toFixed(places));
+}
 /* A percentage with one decimal and its sign. */
 function percent(value) { return (value > 0 ? "+" : "") + num(Math.round(value * 10) / 10) + "%"; }
 
@@ -314,11 +369,12 @@ function resultsPanel(rows, parent, add) {
     mark(row.yours, "yours");
     if (has(row.target)) { add("div", track, undefined, "r-target").style.left = at(row.target); seen.target = true; }
     if (row.base && has(row.base.mean)) { seen.base = true; }
-    track.title = tr("result.tip_yours", {value: fmt(row.yours.mean)}) +
-      (has(row.yours.lo) ? tr("result.tip_range", {range: tr("range", {lo: fmt(row.yours.lo), hi: fmt(row.yours.hi)})}) : "") +
+    var y = row.yours, shown = function (v) { return precise(v, y.lo, y.hi); };
+    track.title = tr("result.tip_yours", {value: shown(y.mean)}) +
+      (has(y.lo) ? tr("result.tip_range", {range: tr("range", {lo: shown(y.lo), hi: shown(y.hi)})}) : "") +
       (row.base ? tr("result.tip_base", {value: fmt(row.base.mean)}) : "") +
       (has(row.target) ? tr("result.tip_target", {value: fmt(row.target)}) : "");
-    add("span", num, fmt(row.yours.mean), "r-value");
+    add("span", num, shown(row.yours.mean), "r-value");
     delta = add("span", num, undefined, "r-delta");     /* its line kept when empty: no shift */
     if (row.verdict) {
       change = row.base && has(row.base.mean) ? row.yours.mean - row.base.mean : 0;
@@ -340,7 +396,8 @@ function trustPanel(trust, parent, add, unit) {
   [[tr("trust.laws"), laws],
    [tr("trust.warmup"), ["", trust.warmup > 0 ? fmt(trust.warmup) + " " + unit : tr("trust.none"), ""]],
    [tr("trust.precision"), ["", trust.replications + (trust.half_width_pct !== null && trust.half_width_pct !== undefined ?
-     ", " + SIGN.plusMinus + num(Math.round(trust.half_width_pct * 10) / 10) + "%" : ""), ""]],
+     ", " + SIGN.plusMinus + num(Math.round(trust.half_width_pct * 10) / 10) + "%" : "") +
+     (trust.rough ? " (" + tr("trust.rough") + ")" : ""), trust.rough ? "mark-warn" : ""]],
    /* Three uncertainties, three rows with their own basis; never summed (D739). Old data
       without the texts reads as not measured. */
    [tr("trust.input"), ["", quoted(trust.input_text), ""]],
@@ -349,7 +406,16 @@ function trustPanel(trust, parent, add, unit) {
     add("td", line, pair[0]);
     cell = add("td", line);
     if (pair[1][0]) { add("span", cell, pair[1][0], pair[1][2]); }
-    add("span", cell, pair[1][1]);
+    add("span", cell, pair[1][1], pair[1][0] ? "" : pair[1][2]);
+    /* S4-07: the warnings themselves, folded under their row, in plain words. */
+    if (pair[0] === tr("trust.laws") && (trust.laws_why || []).length) {
+      var fold = add("details", cell, undefined, "why"), list;
+      add("summary", fold, tr("trust.why"));
+      list = add("ul", fold);
+      trust.laws_why.forEach(function (why) {
+        add("li", list, tr("trust.why." + why.law, {name: why.name}));
+      });
+    }
   });
 }
 
@@ -1466,8 +1532,12 @@ function boot() {
     el("trust-box").hidden = !el("trust").children.length;
     /* The bottleneck of this recorded run, when anything waited. */
     clear(el("neck"));
-    el("neck").hidden = !neck;
+    el("neck").hidden = false;
     state.queues = [];
+    /* S4-15: a recording cut at its event limit says so beside the clock, not only in a fold. */
+    el("cut").hidden = !current.truncated;
+    el("cut").textContent = current.truncated ? tr("player.cut", {t: fmt(duration())}) : "";
+    if (!neck) { add("span", el("neck"), tr("player.no_neck")); }
     if (neck) {
       add("span", el("neck"), tr("player.neck", {name: scene.blocks[neck.block].label}), "callout-head");
       text = tr("player.neck_wait", {n: num(Math.round(neck.wait * 10) / 10)});
@@ -1503,13 +1573,15 @@ function boot() {
         if (row[1] !== state.name) { return; }
         line = add("tr", el("all"));
         cell = add("td", line);
-        String(row[0]).split("/").forEach(function (part, index, parts) {
+        /* S4-09: the label a reader knows; the KPI's key in the cell's title. */
+        cell.title = String(row[0]);
+        String(row[6] || row[0]).split("/").forEach(function (part, index, parts) {
           add("span", cell, part + (index < parts.length - 1 ? "/" : ""));
           if (index < parts.length - 1) { add("wbr", cell); }
         });
-        add("td", line, fmt(row[2]));
-        add("td", line, tr("range", {lo: fmt(row[3]), hi: fmt(row[4])}));
-        add("td", line, fmt(row[5]));
+        add("td", line, precise(row[2], row[3], row[4]));
+        add("td", line, tr("range", {lo: precise(row[3], row[3], row[4]), hi: precise(row[4], row[3], row[4])}));
+        add("td", line, precise(row[5], row[3], row[4]));
       });
     }
     text = times.length > 1 ? tr("player.sampled", {dt: fmt(times[1] - times[0]), unit: unit, n: times.length - 1}) :
@@ -1670,7 +1742,7 @@ __HEAD__</head>
 <button id="back" type="button" aria-label="{{player.back}}">&lt;|</button>
 <button id="step" type="button" aria-label="{{player.step}}">|&gt;</button>
 <select id="speed" aria-label="{{player.speed}}"></select>
-<span id="clock"></span>
+<span id="clock"></span><span id="cut" class="cut" hidden></span>
 </div>
 <button id="theme" type="button" aria-label="{{theme.aria}}">{{theme_auto}}</button>
 </header>
@@ -1954,13 +2026,18 @@ def with_building(layout: dict, pictures: dict | None) -> dict | None:
     return {**(pictures or {}), "background": floor}
 
 
-def _replications(results, experiment, names) -> tuple[dict, list | None]:
+def _replications(results, experiment, names, layout=None) -> tuple[dict, list | None]:
     """({scenario: (seed of the recorded replication, replications)}, the KPI rows).
 
-    A row is [KPI, scenario, mean, lower, upper, the recorded replication's value]
+    A row is [KPI, scenario, mean, lower, upper, the recorded replication's value, label]
     for the `system/` and `user/` KPIs: the mean and 95% interval over all
     replications (`ci95`, the numbers of `ExperimentResult.comparison`) beside the
-    one the tape shows. No rows for a scenario with a single replication."""
+    one the tape shows; the label is the one the reader sees (`pagefmt.kpi_label`, the
+    key kept for the cell's title, S4-09). Bookkeeping rows (a truncation flag, a cost
+    that is zero in every replication) are left out. No rows for a scenario with a
+    single replication."""
+    from nagasim import pagefmt
+    from nagasim.dashboard import resolve_dashboard
     from nagasim.core.stats import ci95
     from nagasim.experiments import flatten_kpis
 
@@ -1973,6 +2050,7 @@ def _replications(results, experiment, names) -> tuple[dict, list | None]:
     else:
         return {}, None
     seeds = {name: (int(found[0]), len(found)) for name, found in runs.items() if found}
+    board = resolve_dashboard(layout) if layout else None
     rows = []
     for name, (seed, count) in seeds.items():
         if count < 2 or name not in frames:
@@ -1980,10 +2058,13 @@ def _replications(results, experiment, names) -> tuple[dict, list | None]:
         flat = flatten_kpis(frames[name])
         flat = flat[flat["KPI"].str.startswith(("system/", "user/"))]
         for kpi, group in flat.groupby("KPI", sort=True):
-            interval = ci95(group.sort_values("Run")["Value"].to_numpy(dtype=float))
+            values = group.sort_values("Run")["Value"].to_numpy(dtype=float)
+            if pagefmt.is_bookkeeping(kpi, values):
+                continue
+            interval = ci95(values)
             own = group.loc[group["Run"] == seed, "Value"]
             rows.append([kpi, name, interval["mean"], interval["lb"], interval["ub"],
-                         float(own.iloc[0]) if len(own) else None])
+                         float(own.iloc[0]) if len(own) else None, pagefmt.kpi_label(kpi, board)])
     return seeds, rows or None
 
 
@@ -2088,11 +2169,22 @@ def trust_card(layout, results, experiment, names, overrides, rows, seeds, asked
         used = (getattr(experiment, "warmups", {}).get(name) if experiment is not None
                 else vars(frames[name]).get("_warmup") if hasattr(frames[name], "__dict__") else None)
         warmup = model_warmup if used is None else float(used)
-        out[name] = {"laws_pass": found["passed"], "laws_warn": len(found["partial"]),
+        # S4-07: each warning as a plain sentence the page words by its law (no law names, no
+        # numbers a reader cannot place), and a word for a precision too poor to use.
+        why = [{"law": re.sub(r"[^a-z]+", "_", str(c.get("law", ""))).strip("_"),
+                "name": str(c.get("name", "")).partition(": ")[2][:60]} for c in found["partial"]]
+        out[name] = {"laws_pass": found["passed"], "laws_warn": len(found["partial"]), "laws_why": why,
                      "warmup": warmup, "replications": seeds.get(name, (None, 1))[1],
-                     "half_width_pct": half, "input_text": texts["input"], "params_text": texts["params"]}
+                     "half_width_pct": half, "rough": bool(half is not None and half > ROUGH_PCT),
+                     "input_text": texts["input"], "params_text": texts["params"]}
     return out or None
 
+
+# The least mean number waiting that makes a bottleneck: the callout rounds to one decimal (#1785).
+NECK_MIN = 0.05
+
+# A 95% half-width past this share of the mean is too rough to decide on: the trust card says so (S4-07).
+ROUGH_PCT = 10.0
 
 # A lamp that says the block serves something (the script's KIND "run").
 _SERVING = ("busy", "loaded", "handling", "held")
@@ -2124,7 +2216,8 @@ def _neck(run: dict, layout: dict | None = None) -> dict | None:
             blocked += area if lamp == "blocked" else 0.0
         if serves and wait > 0 and (best is None or wait > best[0]):
             best = (wait, index, down, blocked)
-    if best is None:
+    # #1785: under NECK_MIN waiting on average the page would print "0.0 waiting": nothing to name.
+    if best is None or best[0] / times[-1] < NECK_MIN:
         return None
     wait, index, down, blocked = best
     out = {"block": index, "wait": wait / times[-1], "down": down / wait, "blocked": blocked / wait}
@@ -2188,7 +2281,7 @@ def build_player(layout: dict, recordings: dict, *, results=None, experiment=Non
         pagetext._html(name), pagetext._html(shown.get(name, name))) for name in names)
     overrides = {scenario.get("name"): scenario.get("overrides") or []
                  for scenario in scenarios_of(layout)}
-    seeds, rows = _replications(results, experiment, names)
+    seeds, rows = _replications(results, experiment, names, layout)
     rows_by_scenario = result_rows(layout, results, experiment, names)
     trust = trust_card(layout, results, experiment, names, overrides, rows_by_scenario, seeds, asked, language)
     images, art = _art(with_building(layout, pictures))

@@ -41,16 +41,16 @@ RESOLVED AMBIGUITIES (GUESS):
     agent transition's condition, per test_agents.py), but that is a
     different validation context, so the code is not asserted. # GUESS
 """
-import pytest
 
 from nagasim.core import agents as A
 from nagasim.core.sim_runner import initialize_sim_env, prepare_model, run_single_simulation, step_until
 
 from conftest import chain, create, delay, dispose, problem_codes
+from functools import partial
+from helpers import model
 
 
-def _model(*records, time_limit=10):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=10)
 
 
 def _dispose(name="out", remove_agent=None):

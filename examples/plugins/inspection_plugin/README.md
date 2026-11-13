@@ -19,9 +19,13 @@ no other configuration.
 ## Install path 2: no install, NAGASIM_PLUGIN_PATH
 
 ```
-set NAGASIM_PLUGIN_PATH=C:\path\to\examples\plugins\inspection_plugin
-product
+$env:NAGASIM_PLUGIN_PATH = "C:\path\to\examples\plugins\inspection_plugin"   # PowerShell
+set NAGASIM_PLUGIN_PATH=C:\path\to\examples\plugins\inspection_plugin         # cmd.exe
+naga plugins
+naga run inspect_line.json
 ```
+
+`naga plugins` lists what loaded. `inspect_line.json` (in this folder) uses the `INSPECT` block.
 
 Every `*.py` file directly inside a directory listed in `NAGASIM_PLUGIN_PATH`
 (`os.pathsep`-separated, several directories allowed) is imported; Naga

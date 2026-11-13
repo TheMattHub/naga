@@ -12,6 +12,7 @@ Python reference for `nagasim.results.Results`.
       show_root_toc_entry: false
       members:
         - kpi
+        - interval
         - kpis
         - checks
         - frame

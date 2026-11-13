@@ -115,3 +115,21 @@ def test_no_dashboard_gives_empty_frame_and_unchanged_kpis():
     # frame is untouched by a widget's presence (D132).
     assert r1["system"].equals(r2["system"])
     assert r1["timeseries"].equals(r2["timeseries"])
+
+
+def test_assigned_variables_are_not_levers():
+    """S4-20: a variable a block assigns (a counter) is the model's state, not a lever; one no block
+    writes stays, labelled by its description when it has one."""
+    import json
+    from pathlib import Path
+
+    from nagasim import dashboard as dash
+
+    layout = json.loads((Path(dash.__file__).parent / "models" / "ed_bedside_scan.json").read_text("utf-8"))
+    paths = {entry["path"] for entry in dash.default_dashboard(layout)["inputs"]}
+    for counter in ("in_ed", "decisions", "decision_sum", "ct_scans"):
+        assert f"variables.{counter}.initial" not in paths, counter
+    assert "variables.scan_first.initial" in paths
+    layout["variables"][0]["description"] = "Scan before the visit (1 = yes)"
+    labels = {entry["path"]: entry["label"] for entry in dash.default_dashboard(layout)["inputs"]}
+    assert labels["variables.scan_first.initial"] == "Scan before the visit (1 = yes)"

@@ -28,16 +28,30 @@ same entry:
 ```
 
 Any other MCP client that starts a stdio server works the same way. Restart the client after
-editing its configuration. To help the assistant pick the right tool, add `--tool-picker gte` (a
+editing its configuration.
+
+On Windows, `where.exe naga` in PowerShell prints the full path of the command; a client that does
+not see your PATH needs that path, with forward slashes in the JSON (`"command":
+"C:/Users/you/AppData/Local/Programs/Python/Python312/Scripts/naga.exe"`). Claude Code adds the same
+entry from a terminal, and Claude Desktop reads `%APPDATA%\Claude\claude_desktop_config.json`:
+
+```text
+claude mcp add naga -- naga mcp --root C:/Users/you/models
+```
+
+`--root` is a folder you choose, not one that ships with the package: the examples the server reads
+are `naga://examples/<name>`, and a model of your own goes in the folder you name. To help the assistant pick the right tool, add `--tool-picker gte` (a
 small local model) or `--tool-picker haiku` (hosted Claude Haiku, needs `ANTHROPIC_API_KEY`); both
 are optional and off by default (see [Pick tools with a small model](tool-picker.md)).
 
 Besides the tools the server publishes:
 
 - resources: `naga://reference/blocks`, `naga://reference/distributions`,
-  `naga://reference/expressions`, `naga://reference/schema`, and `naga://examples/<name>` for
-  each bundled model;
-- two prompts: `build_model_from_description` and `analyse_results`.
+  `naga://reference/expressions`, `naga://reference/schema`, `naga://guide/study` (the study guide,
+  see [Run a study with an assistant](ai-study.md)) and `naga://examples/<name>` for each bundled
+  model;
+- four prompts: `build_model_from_description` and `analyse_results` for a model and its numbers,
+  and `run_simulation_study` and `study_interview` for a study.
 
 ## Publish fewer tools
 
@@ -49,14 +63,26 @@ profile; no tool argument can change it.
 
 | Profile | Tools | For |
 |---|---|---|
-| `compact` | 8 | Write a whole model file, run it, save it. |
-| `build` | 38 | Make and change a model: blocks and links, records, reference, validation, a picture. |
-| `run` | 21 | Run a finished model: scenarios, what-if, precision, reality checks, the run debugger. |
-| `study` | 31 | A decision study (`study_*`) and the searches behind it: `optimize`, `calibrate`, `evaluate_policy`. |
-| `twin` | 13 | A live twin: data bindings, initial state, forecast, plant timeline, recommendations. |
+| `compact` | 10 | Write a whole model file, run it, save it. |
+| `build` | 39 | Make and change a model: blocks and links, records, reference, validation, a picture. |
+| `run` | 22 | Run a finished model: scenarios, what-if, precision, reality checks, the run debugger. |
+| `study` | 33 | A decision study (`study_*`) and the searches behind it: `optimize`, `calibrate`, `evaluate_policy`. |
+| `twin` | 14 | A live twin: data bindings, initial state, forecast, plant timeline, recommendations. |
 
 Pick the profile that matches the session, or `all` when the work moves between situations.
 A product built on the engine may add its own tools to a profile.
+
+## The flags, all the person's
+
+Every flag of `naga mcp` is set by the person who starts the server; no tool argument can set one.
+
+- `--root`: the one folder the server reads and writes (default: the current directory).
+- `--allow-network`, `--allow-private-network`, `--allow-host HOST`: network access for a `sql` or `json_url` data source.
+- `--connections FILE`: the connections a live source may name.
+- `--tools PROFILE`: the profile above.
+- `--tool-picker gte|haiku`, `--tool-picker-backup PATH`: the optional tool picker (see [Pick tools with a small model](tool-picker.md)).
+- `--room`: also serve the studies' live control room on `127.0.0.1`, at a random port with a token.
+- `--twin DIR`: the result directory of a twin you started, read by three read-only tools.
 
 ## How the tools behave
 

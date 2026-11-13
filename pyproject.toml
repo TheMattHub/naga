@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77: the SPDX `license` string and `license-files` (PEP 639).
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,13 +10,13 @@ description = "A simulation engine on SimPy for discrete-event, system-dynamics 
 readme = "README.md"
 keywords = ["simulation", "discrete-event", "system dynamics", "agent-based", "simpy", "digital twin", "mcp"]
 requires-python = ">=3.11"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "CITATION.cff"]
 authors = [{name = "Matteo Brunetti"}]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Manufacturing",
-    "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -36,6 +37,8 @@ dependencies = [
 Homepage = "https://github.com/TheMattHub/naga"
 Documentation = "https://thematthub.github.io/naga/"
 Source = "https://github.com/TheMattHub/naga"
+Changelog = "https://github.com/TheMattHub/naga/blob/main/CHANGELOG.md"
+Issues = "https://github.com/TheMattHub/naga/issues"
 
 [project.optional-dependencies]
 # The engine's own lazy, optional imports, each behind a

@@ -408,7 +408,7 @@ def test_the_commands_take_check_and_start_from_a_state(tmp_path, capsys):
     assert "E_STATE_MODEL" in capsys.readouterr().out
 
     assert api.main([str(model), "--state", str(out)]) == 0
-    assert "Started From State At" in capsys.readouterr().out
+    assert "started from the state taken at 8.5" in capsys.readouterr().out     # D1251: a line, not a row
     assert api.main([str(other), "--state", str(out)]) == 1
     assert "E_STATE_MODEL" in capsys.readouterr().out
 

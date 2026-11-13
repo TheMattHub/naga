@@ -18,8 +18,8 @@ pass its own server name, instructions and twin session to `build_server` /
 Published surface:
 
 * TOOLS      -- every entry of `agent_tools.TOOLS`, under its own name.
-* RESOURCES  -- naga://reference/{blocks,distributions,expressions,schema}
-                and naga://examples/{name} for each bundled example model.
+* RESOURCES  -- naga://reference/{blocks,distributions,expressions,schema},
+                naga://guide/study and naga://examples/{name} for each bundled example model.
 * PROMPTS    -- build_model_from_description, analyse_results.
 
 Both the mcp 1.x `FastMCP` class and the mcp 2.x `MCPServer` it was renamed to
@@ -41,7 +41,7 @@ from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 
 __all__ = ["build_server", "add_arguments", "serve", "main", "MCPUnavailable", "INSTALL_HINT",
-           "INSTRUCTIONS", "COMPACT_TOOLS", "PROFILES"]
+           "INSTRUCTIONS", "instructions_for", "COMPACT_TOOLS", "PROFILES"]
 
 INSTALL_HINT = (
     "The Model Context Protocol SDK is not installed. It is an optional extra:\n"
@@ -49,16 +49,33 @@ INSTALL_HINT = (
     "Everything the server exposes is also callable directly from "
     "nagasim.agent_tools without it."
 )
-INSTRUCTIONS = (
-    "For a decision question or a simulation study, call study_start (or study_status on an "
-    "existing study folder) and follow its next_step. "
-    "Build, validate, run and analyse discrete-event simulation models. To build one: "
-    "get_model_format once, write_model with the whole model file, fix what its answer lists "
-    "with one more write_model, run_model, check_model_opens (it must pass before the model is "
-    "done), save_model. run_model returns a compact KPI digest "
-    "with confidence intervals; get_kpi_table pages the raw frames. The block-by-block tools "
-    "(add_block, connect, upsert_record, ...) edit an open model."
+# The server instructions, one sentence per entry with the tools it names (D1217): a profile is
+# told only what it publishes, so `--tools compact` is not sent to study_start or add_block.
+_INSTRUCTION_SENTENCES = (
+    ({"study_start", "study_status"},
+     "For a decision question or a simulation study, call study_start (or study_status on an "
+     "existing study folder) and follow its next_step; the whole study guide is the "
+     "naga://guide/study resource (the run_simulation_study prompt)."),
+    (set(), "Build, validate, run and analyse discrete-event simulation models."),
+    ({"get_model_format", "write_model", "run_model", "save_model"},
+     "To build one: get_model_format once, write_model with the whole model file, fix what its "
+     "answer lists with one more write_model, run_model, save_model."),
+    ({"check_model_opens"}, "check_model_opens must pass before a model is done."),
+    ({"run_model", "get_kpi_table"},
+     "run_model returns a compact KPI digest with confidence intervals; get_kpi_table pages the "
+     "raw frames."),
+    ({"add_block", "connect", "upsert_record"},
+     "The block-by-block tools (add_block, connect, upsert_record, ...) edit an open model."),
 )
+
+
+def instructions_for(tools=None) -> str:
+    """The server instructions for the published *tools* (None: every tool): the sentences whose
+    tools are all published (D1217)."""
+    return " ".join(text for needs, text in _INSTRUCTION_SENTENCES if tools is None or needs <= tools)
+
+
+INSTRUCTIONS = instructions_for()
 # `naga mcp --tools compact` (D397): what building and running a model needs, and the file
 # tools around it. Every tool's description is part of each turn an agent pays for, so a
 # client that only builds models is better served by eight tools than by every one.
@@ -127,27 +144,93 @@ def _progress_sink(ctx):
     return send
 
 
-def _suggesting(server_class):
+def _hidden_tool_error(name, exposed, profiles, profile):
+    """E_UNKNOWN_TOOL for *name*; for a registered tool this profile does not publish, the message
+    says so and names the profiles that have it, which the person picks when starting the server
+    (D1217). Suggestions stay among the published tools."""
+    error = agent_tools.core.unknown_tool_error(name, exposed)
+    if name in agent_tools.TOOLS:
+        having = [p for p, tools in (profiles or {}).items() if name in tools] + ["all"]
+        error.message = (f"'{name}' is not in this server's {profile or 'chosen'} tool profile; the "
+                         f"profiles that have it: {', '.join(having)}. The person picks the profile "
+                         f"when starting the server")
+    return error
+
+
+def _suggesting(server_class, profiles=None, profile=None):
     """The SDK class with `call_tool` (public, documented) answering an unknown tool name
-    as the engine does, with "did you mean", instead of the SDK's bare "Unknown tool"."""
+    as the engine does, with "did you mean", instead of the SDK's bare "Unknown tool", and
+    `list_tools` publishing each tool's typed output schema from the registry (D1244)."""
     class SuggestingServer(server_class):
+        async def list_tools(self):
+            listed = await super().list_tools()
+            if not listed:
+                return listed
+            fields = type(listed[0]).model_fields
+            out_field, in_field = (("output_schema", "input_schema") if "output_schema" in fields
+                                   else ("outputSchema", "inputSchema"))
+            # D1244: the registry's typed answer, and the SDK's input schema without its titles
+            # (pydantic's "Model"/"add_blockArguments" restate the names: 10 KB that carry nothing).
+            return [t.model_copy(update={out_field: agent_tools.TOOLS[t.name].output_schema,
+                                         in_field: _untitled(getattr(t, in_field))})
+                    if t.name in agent_tools.TOOLS else t for t in listed]
+
         async def call_tool(self, name, arguments, *args, **kwargs):
+            name, arguments = agent_tools.core.resolve_alias(name, arguments)
             exposed = {t.name for t in await self.list_tools()}
             if name not in exposed:
                 # Built here, never through agent_tools.call: a registered tool this server does
                 # not expose (--tools compact) must not run, and only exposed names are suggested.
-                answer = agent_tools.core.unknown_tool_error(name, exposed).as_dict()
-            elif not set(arguments or {}) <= set(agent_tools.TOOLS[name].input_schema["properties"]):
-                # The SDK validates before our wrapper and would blame a missing field; the
-                # engine's refusal names the typo, and nothing runs (it precedes the tool body).
-                with _TOOL_LOCK:
-                    answer = agent_tools.call(name, **arguments)
+                answer = _hidden_tool_error(name, exposed, profiles, profile).as_dict()
+            elif (refused := agent_tools.core.argument_error(name, arguments)) is not None:
+                # The SDK validates before our wrapper and would blame a missing field or a shape
+                # in its own words; the engine's refusal names the argument (a typo, a dictionary
+                # where a list goes, a value outside a closed set), and nothing runs.
+                answer = refused.as_dict()
             else:
                 return await super().call_tool(name, arguments, *args, **kwargs)
-            from mcp.types import CallToolResult, TextContent
-            return CallToolResult(content=[TextContent(type="text", text=json.dumps(answer, indent=2))],
-                                  structuredContent={"result": answer})
+            return _result(name, answer)
     return SuggestingServer
+
+
+def _untitled(schema):
+    """A JSON Schema without its "title" keywords; a property named "title" stays."""
+    if isinstance(schema, list):
+        return [_untitled(x) for x in schema]
+    if not isinstance(schema, dict):
+        return schema
+    return {k: ({name: _untitled(sub) for name, sub in v.items()} if k in ("properties", "$defs") else _untitled(v))
+            for k, v in schema.items() if not (k == "title" and isinstance(v, str))}
+
+
+def _summary(name: str, answer: dict) -> str:
+    """The one line of text sent beside the structured answer (D1244): a refusal's code and
+    message, else the answer's short scalar fields. The answer itself is the structured content,
+    sent once; a client that reads only text gets this line."""
+    if isinstance(answer.get("error"), dict):
+        error = answer["error"]
+        line = f"{name} refused: {error.get('code')}: {error.get('message')}"
+    else:
+        short = [f"{k}={v}" for k, v in answer.items()
+                 if isinstance(v, (bool, int, float)) or (isinstance(v, str) and len(v) <= 60)][:4]
+        line = f"{name}: {', '.join(short) or 'done'}; full answer in structuredContent"
+    return " ".join(line.split())[:300]
+
+
+def _result(name: str, answer):
+    """One tool answer as the MCP result (D1244): the answer once, as structured content, with
+    a one-line text summary; a refusal ({"error": ...}) is flagged isError, so a client does not
+    check it against the tool's output schema. An "image" key ({"mime_type", "data" base64})
+    becomes image content beside the summary, so the assistant sees the picture, and is left out
+    of the structured part. A finished CallToolResult, which the SDK passes through as it is."""
+    from mcp.types import CallToolResult, ImageContent, TextContent
+    image = answer.get("image") if isinstance(answer, dict) else None
+    if isinstance(image, dict):
+        answer = {k: v for k, v in answer.items() if k != "image"}
+    content = [ImageContent(type="image", data=image["data"], mimeType=image["mime_type"])] if isinstance(image, dict) else []
+    content.append(TextContent(type="text", text=_summary(name, answer)))
+    return CallToolResult(content=content, structuredContent=answer,
+                          isError=isinstance(answer.get("error"), dict))
 
 
 # MCP Apps: the study control room renders inline in clients that support it. The tools stay
@@ -175,37 +258,40 @@ def _study_apps(tools):
     return apps
 
 
-def _with_image(answer):
-    """An answer with an "image" key ({"mime_type", "data" base64}) becomes MCP image content
-    plus the rest of the answer as JSON text, so the assistant sees the picture. Any other
-    answer is returned untouched. A finished CallToolResult, not a bare list of blocks: the SDK
-    checks a bare return against the tool's `dict` output schema and would reject the list,
-    while it passes a CallToolResult through (the rest of the answer is its structured part,
-    wrapped as {"result": ...} like every other tool's). mcp 1.19 is the first SDK that passes it
-    through, hence the extra's floor."""
-    if not (isinstance(answer, dict) and isinstance(answer.get("image"), dict)):
-        return answer
-    from mcp.types import CallToolResult, ImageContent, TextContent
-    image = answer["image"]
-    rest = {k: v for k, v in answer.items() if k != "image"}
-    return CallToolResult(
-        content=[ImageContent(type="image", data=image["data"], mimeType=image["mime_type"]),
-                 TextContent(type="text", text=json.dumps(rest, indent=2))],
-        structuredContent={"result": rest})   # the shape the SDK gives a bare `dict` tool
+def _names_tool(text: str, names) -> bool:
+    """Whether *text* names one of *names*: a snake_case name anywhere, a one-word name (undo,
+    export) only as `name` or name( -- as a plain word it is English."""
+    return any(re.search(rf"\b{n}\b" if "_" in n else rf"`{n}`|\b{n}\(", text) for n in names)
 
 
-def _described(spec: agent_tools.ToolSpec) -> str:
+def _published_only(text: str, hidden) -> str:
+    """*text* without the sentences that name a tool in *hidden* (D1217): a profile's descriptions
+    point only to tools it publishes. A paragraph naming none is kept byte for byte."""
+    kept = []
+    for para in text.split("\n\n"):
+        if _names_tool(para, hidden):
+            para = " ".join(x for x in re.split(r"(?<=[.!?])\s+", " ".join(para.split()))
+                            if not _names_tool(x, hidden))
+        if para:
+            kept.append(para)
+    return "\n\n".join(kept)
+
+
+def _described(spec: agent_tools.ToolSpec, hidden=()) -> str:
     """The docstring plus the per-argument one-liners. The SDK derives the
     input schema from the signature and so cannot see `agent_tools._ARG_DOCS`;
     folding them into the description is what keeps that guidance in front of
-    the model."""
-    described = [(name, prop["description"])
+    the model. *hidden*: registered tools this server does not publish, which no
+    sentence may name."""
+    described = [(name, _published_only(prop["description"], hidden) if hidden else prop["description"])
                  for name, prop in spec.input_schema["properties"].items()
                  if prop.get("description")]
+    described = [(name, text) for name, text in described if text]
+    text = _published_only(spec.description, hidden) if hidden else spec.description
     if not described:
-        return spec.description
-    lines = "\n".join(f"- {name}: {text}" for name, text in described)
-    return f"{spec.description}\n\nArguments:\n{lines}"
+        return text
+    lines = "\n".join(f"- {name}: {line}" for name, line in described)
+    return f"{text}\n\nArguments:\n{lines}"
 
 
 def _annotations(spec: agent_tools.ToolSpec):
@@ -216,9 +302,10 @@ def _annotations(spec: agent_tools.ToolSpec):
         return None
     return ToolAnnotations(
         title=spec.name.replace("_", " ").title(),
-        readOnlyHint=spec.read_only,
+        # A hint at its protocol default (false for these two) is left out: bytes every session pays.
+        readOnlyHint=spec.read_only or None,
         destructiveHint=False,          # every edit is one undo step away
-        idempotentHint=spec.read_only,
+        idempotentHint=spec.read_only or None,
         # The workspace root only -- and the network solely when the human
         # starting the server allowed it.
         openWorldHint=agent_tools.workspace().network.allow_network
@@ -331,8 +418,8 @@ The question to answer: {question}
 
 # ---------------------------------------------------------------- server
 def build_server(root: str | Path | None = None, network=None, twin=None, *,
-                 twin_dir=None, name: str = "naga", instructions: str = INSTRUCTIONS,
-                 tools=None, room: bool = False):
+                 twin_dir=None, name: str = "naga", instructions=instructions_for,
+                 tools=None, room: bool = False, profiles=None):
     """Build the MCP server with every tool, resource and prompt registered.
 
     *network* is the `netguard.NetworkPolicy` the human passed at start-up; with
@@ -340,8 +427,10 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     *twin* is the twin session they configured, on the same rule: with none,
     every twin tool refuses; *twin_dir* is the result directory of a twin they
     started, which two tools read. *name* and *instructions* are what the server
-    tells a client about itself. *tools* limits the published tools to those names
-    (COMPACT_TOOLS for `--tools compact`); None publishes every one. *room* starts the live control
+    tells a client about itself; *instructions* may also be a function of the published tools
+    (default `instructions_for`, D1217). *tools* limits the published tools to those names
+    (COMPACT_TOOLS for `--tools compact`); None publishes every one. *profiles* is the mapping
+    the person chose *tools* from (default PROFILES), named when a hidden tool is refused. *room* starts the live control
     room (`nagasim.studyroom`) in a thread of this process, sharing the tool lock, so every study
     answer carries its address; like the network, it is the caller's flag, never a tool argument.
 
@@ -362,7 +451,11 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     discover.exposed = None if tools is None else frozenset(tools)    # find_tool must not name a hidden tool
     apps = _study_apps(tools)
     extra = {"extensions": [apps]} if apps else {}
-    server = _suggesting(server_class)(name, version=__version__, instructions=instructions, **extra)
+    profiles = PROFILES if profiles is None else profiles
+    profile = next((p for p, t in profiles.items() if tools is not None and t == frozenset(tools)), None)
+    text = instructions(None if tools is None else frozenset(tools)) if callable(instructions) else instructions
+    server = _suggesting(server_class, profiles, profile)(name, version=__version__, instructions=text, **extra)
+    hidden = () if tools is None else set(agent_tools.TOOLS) - set(tools)
 
     # The SDK runs a sync tool on a worker thread and serves requests concurrently, while
     # the workspace is one mutable object (a debug run is a live engine session): calls are
@@ -372,7 +465,7 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
         def locked(*args, ctx=None, **kwargs):
             # `ctx` is the SDK's request context, injected by annotation (below); it is not a tool argument.
             with _TOOL_LOCK, agent_tools.core.reporting(_progress_sink(ctx) if ctx else None):
-                return _with_image(fn(*args, **kwargs))
+                return _result(fn.__name__, fn(*args, **kwargs))
         # The SDK finds the context parameter by its annotation; a new dict, so fn's own are untouched.
         locked.__annotations__ = {**fn.__annotations__, "ctx": Context}
         return locked
@@ -381,8 +474,11 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
         if tools is not None and spec.name not in tools:
             continue
         meta = {"ui": _STUDY_UI[spec.name]} if apps and spec.name in _STUDY_UI else None
-        server.add_tool(serialised(spec.fn), name=spec.name, description=_described(spec),
-                        annotations=_annotations(spec), **({"meta": meta} if meta else {}))
+        # structured_output=False: the SDK derives no schema of its own (mcp 1.x would publish a
+        # generic one and send each answer twice); list_tools publishes the registry's (D1244).
+        server.add_tool(serialised(spec.fn), name=spec.name, description=_described(spec, hidden),
+                        annotations=_annotations(spec), structured_output=False,
+                        **({"meta": meta} if meta else {}))
 
     @server.resource("naga://reference/blocks", mime_type="text/markdown",
                      description="Every block type with its parameters.")
@@ -410,6 +506,12 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
                                  "(e.g. single_server, job_shop_jackson).")
     def example_resource(name: str) -> str:
         return examples.path(Path(name).stem).read_text(encoding="utf-8")
+
+    @server.resource("naga://guide/study", mime_type="text/markdown",
+                     description="The simulation study guide: protocol, record shapes, KPI names, "
+                                 "scenarios, the tools (the run_simulation_study prompt's text).")
+    def study_guide_resource() -> str:
+        return re.sub(r"\A---\n.*?\n---\n", "", study.skill_text(), count=1, flags=re.S)
 
     @server.prompt(name="build_model_from_description",
                    description="Turn a plain-English process description into a validated model.")
@@ -463,11 +565,11 @@ def add_arguments(parser, profiles=None) -> None:
                              "answer (no network, timeout, API error, or no key at startup)")
     parser.add_argument("--twin", dest="twin_dir", default=None, metavar="DIR",
                         help="the result directory of a twin you started (naga twin run "
-                             "--out DIR): two read-only tools then answer from it. No tool "
+                             "--out DIR): three read-only tools then answer from it. No tool "
                              "can start a twin or choose this directory")
 
 
-def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIONS,
+def serve(args, *, twin=None, name: str = "naga", instructions=instructions_for,
           profiles=None) -> int:
     agent_tools.drop_python_consent()       # D186: before anything can run, in this process and its workers
     from nagasim import toolpicker
@@ -489,7 +591,7 @@ def serve(args, *, twin=None, name: str = "naga", instructions: str = INSTRUCTIO
                               twin_dir=getattr(args, "twin_dir", None),
                               name=name, instructions=instructions,
                               tools=(profiles or PROFILES).get(getattr(args, "tools", "all")),
-                              room=getattr(args, "room", False))
+                              room=getattr(args, "room", False), profiles=profiles or PROFILES)
     except MCPUnavailable as exc:
         print(str(exc))     # stdout is the transport only once the server runs
         return 1

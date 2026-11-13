@@ -15,7 +15,9 @@ _document_args("study_sensitivity", study=_ID,
                delta="Relative change, 0.2 = +-20%; capacities change by +-1.")
 
 
-@tool()
+@tool(returns={
+    "file": str, "ranked": list, "changes_answer": list, "not_varied": list, "notes": list,
+    "page_url": str, "room_url": str})
 @_linked
 def study_sensitivity(study: str, version: str | None = None, factors: list[str] | None = None,
                       delta: float = 0.2) -> dict:

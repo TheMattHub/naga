@@ -51,6 +51,12 @@ def _text(result) -> str:
     return "".join(out)
 
 
+def _answer(result) -> dict:
+    """A tool's answer: the structured content, sent once beside a one-line summary (D1244)."""
+    answer = getattr(result, "structured_content", None)
+    return answer if answer is not None else result.structuredContent
+
+
 # -- adapter shape -----------------------------------------------------------
 
 def test_the_server_publishes_every_tool_resource_and_prompt(tmp_path):
@@ -68,7 +74,7 @@ def test_the_server_publishes_every_tool_resource_and_prompt(tmp_path):
 
     uris = {str(r.uri) for r in resources} - {"ui://naga/study.html"}   # the MCP Apps template
     assert uris == {"naga://reference/blocks", "naga://reference/distributions",
-                    "naga://reference/expressions", "naga://reference/schema"}
+                    "naga://reference/expressions", "naga://reference/schema", "naga://guide/study"}
     assert [getattr(t, "uriTemplate", getattr(t, "uri_template", None)) for t in templates] \
         == ["naga://examples/{name}"]
     assert {p.name for p in prompts} == {"build_model_from_description", "analyse_results",
@@ -174,7 +180,7 @@ def test_naga_mcp_is_a_command_of_the_engine_cli(capsys):
 
 @pytest.mark.slow
 def test_the_engine_server_runs_without_the_product(tmp_path):
-    """`naga mcp` in a fresh interpreter: 98 tools, resources under naga://, no product import."""
+    """`naga mcp` in a fresh interpreter: 95 tools (S2-15 merged three), resources under naga://, no product import."""
     code = (
         "import asyncio, sys\n"
         "from nagasim import mcp_server\n"
@@ -187,7 +193,7 @@ def test_the_engine_server_runs_without_the_product(tmp_path):
                          text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     count, first = out.stdout.split()
-    assert count == "98" and first.startswith("naga://reference/")
+    assert count == "95" and first.startswith(("naga://guide/", "naga://reference/"))  # P09 added the study guide
 
 
 def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkeypatch):
@@ -211,11 +217,11 @@ def test_tool_calls_batched_by_a_client_run_one_after_the_other(tmp_path, monkey
 
     async def batch():
         opened = await server.call_tool("open_model", {"path": "single_server.json"})
-        model = json.loads(_text(opened))["model"]
+        model = _answer(opened)["model"]
         return await asyncio.gather(*(server.call_tool("debug_run", {"model": model, "to": 10})
                                       for _ in range(2)))
 
-    answers = [json.loads(_text(result)) for result in asyncio.run(batch())]
+    answers = [_answer(result) for result in asyncio.run(batch())]
     assert len(built) == 1, f"{len(built)} sessions built: the calls ran at once"
     assert [(a["state"], a["t"]) for a in answers] == [("time", 10.0)] * 2, answers
 
@@ -269,7 +275,7 @@ def test_a_client_drives_the_stdio_server_end_to_end(tmp_path):
                 names = {t.name for t in tools.tools}
 
                 async def call(tool, **arguments):
-                    payload = json.loads(_text(await client.call_tool(tool, arguments)))
+                    payload = _answer(await client.call_tool(tool, arguments))
                     assert "error" not in payload, payload
                     return payload
 
@@ -325,7 +331,7 @@ def test_the_stdio_server_refuses_a_python_model_even_when_started_with_consent(
                 await client.initialize()
 
                 async def call(tool, **arguments):
-                    return json.loads(_text(await client.call_tool(tool, arguments)))
+                    return _answer(await client.call_tool(tool, arguments))
 
                 opened = await call("open_model", path="py.json", name="py")
                 return opened, await call("run_model", model="py")
@@ -337,12 +343,13 @@ def test_the_stdio_server_refuses_a_python_model_even_when_started_with_consent(
 
 def test_image_answers_become_image_content(tmp_path):
     answer = {"version": "v001", "image": {"mime_type": "image/png", "data": "iVBORw0KGgo="}}
-    image, text = mcp_server._with_image(answer).content
+    result = mcp_server._result("study_view", answer)
+    image, text = result.content
     assert image.model_dump(by_alias=True)["mimeType"] == "image/png"    # attribute name differs per SDK line
     assert (image.type, image.data) == ("image", "iVBORw0KGgo=")
-    assert json.loads(text.text) == {"version": "v001"}
-    plain = {"ok": True}
-    assert mcp_server._with_image(plain) is plain
+    assert _answer(result) == {"version": "v001"} and text.text.startswith("study_view: version=v001")
+    plain = mcp_server._result("save_model", {"ok": True})
+    assert [c.type for c in plain.content] == ["text"] and _answer(plain) == {"ok": True}
 
 
 def test_study_view_reaches_the_client_as_an_image(tmp_path):
@@ -352,7 +359,7 @@ def test_study_view_reaches_the_client_as_an_image(tmp_path):
     layout = json.loads((tmp_path / "single_server.json").read_text(encoding="utf-8"))
 
     async def go():
-        start = json.loads(_text(await server.call_tool("study_start", {"question": "q?"})))
+        start = _answer(await server.call_tool("study_start", {"question": "q?"}))
         await server.call_tool("study_step", {"study": start["study"], "layout": layout, "note": "n"})
         return await server.call_tool("study_view", {"study": start["study"]})
 
@@ -411,14 +418,14 @@ def test_initialize_advertises_the_apps_extension(tmp_path):
 def test_mcp_unknown_tool_suggests(tmp_path):
     server = mcp_server.build_server(tmp_path)
     result = asyncio.run(server.call_tool("validate_modle", {}))
-    error = json.loads(_text(result))["error"]
+    error = _answer(result)["error"]
     assert error["code"] == "E_UNKNOWN_TOOL" and "validate_model" in error["did_you_mean"]
 
 
 def test_mcp_unknown_argument_suggests(tmp_path):
     server = mcp_server.build_server(tmp_path)
     result = asyncio.run(server.call_tool("open_model", {"pth": "single_server.json"}))
-    error = json.loads(_text(result))["error"]
+    error = _answer(result)["error"]
     assert error["code"] == "E_BAD_ARGUMENT" and "path" in error["did_you_mean"]
 
 
@@ -427,7 +434,7 @@ def test_a_tool_the_server_hides_cannot_be_called_by_name(tmp_path):
     suggestions name only tools this server exposes."""
     server = mcp_server.build_server(tmp_path, tools=mcp_server.COMPACT_TOOLS)
     hidden = next(n for n in sorted(mcp_server.agent_tools.TOOLS) if n not in mcp_server.COMPACT_TOOLS)
-    error = json.loads(_text(asyncio.run(server.call_tool(hidden, {}))))["error"]
+    error = _answer(asyncio.run(server.call_tool(hidden, {})))["error"]
     assert error["code"] == "E_UNKNOWN_TOOL"
     assert set(error.get("did_you_mean") or []) <= mcp_server.COMPACT_TOOLS
 
@@ -446,10 +453,55 @@ def test_1334_a_long_tool_sends_progress_notifications(tmp_path):
     async def go():
         async with Client(server) as client:
             opened = await client.call_tool("open_model", {"path": "single_server.json"})
-            model = json.loads(_text(opened))["model"]
+            model = _answer(opened)["model"]
             return await client.call_tool(
                 "run_scenarios", {"model": model, "replications": 3}, progress_callback=progress)
 
     result = asyncio.run(go())
-    assert "error" not in json.loads(_text(result))
+    assert "error" not in _answer(result)
     assert seen and seen[-1][0] == seen[-1][1]
+
+
+# -- D1244: a typed output schema per tool, each answer sent once ------------------
+
+def test_every_listed_tool_has_its_own_output_schema(tmp_path):
+    """S2-09: no generic `{"result": object}` schema; each tool's answer keys, typed, from the registry."""
+    for tool in asyncio.run(mcp_server.build_server(tmp_path).list_tools()):
+        schema = tool.output_schema if hasattr(tool, "output_schema") else tool.outputSchema
+        assert schema == mcp_server.agent_tools.TOOLS[tool.name].output_schema, tool.name
+        assert schema["type"] == "object" and schema["properties"], tool.name
+        assert set(schema["properties"]) != {"result"}, tool.name
+
+
+def test_a_call_per_tool_family_validates_and_is_sent_once(tmp_path):
+    """S2-09 on the wire: the SDK's own client checks each answer against the listed schema (it raises
+    on a mismatch); the answer is the structured content and the text is one summary line, not the
+    answer again. A refusal is flagged isError and named in its line."""
+    from mcp import Client
+
+    shutil.copy(EXAMPLES / "single_server.json", tmp_path / "single_server.json")
+    server = mcp_server.build_server(tmp_path)
+    calls = [("open_model", {"path": "single_server.json", "name": "m"}),       # workspace
+             ("get_model_summary", {"model": "m"}),                             # read
+             ("update_block", {"model": "m", "name": "create_1", "description": "arrivals"}),   # edit
+             ("list_orders", {"model": "m"}),                                   # a merged-away name
+             ("validate_model", {"model": "m"}),                                # reference
+             ("run_model", {"model": "m", "replications": 2, "run_length": 500, "warmup": 0}),     # runs
+             ("find_tool", {"query": "make slides"}),                           # discover
+             ("study_start", {"question": "How many servers?"})]                # study
+
+    async def go():
+        async with Client(server) as client:
+            out = [(name, await client.call_tool(name, args)) for name, args in calls]
+            return out, await client.call_tool("open_model", {"pth": "x.json"})
+
+    answers, refused = asyncio.run(go())
+    for name, result in answers:
+        answer = _answer(result)
+        assert "error" not in answer and not result.is_error, (name, answer)
+        [line] = [c.text for c in result.content if c.type == "text"]
+        assert "\n" not in line and len(line) <= 300 and line.startswith(name.replace("list_orders", "list_records"))
+        assert json.dumps(answer) not in line and "{" not in line, name
+    assert _answer(answers[3][1])["section"] == "orders"
+    assert refused.is_error and "E_BAD_ARGUMENT" in refused.content[0].text
+    assert _answer(refused)["error"]["code"] == "E_BAD_ARGUMENT"

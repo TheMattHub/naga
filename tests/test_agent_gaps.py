@@ -11,10 +11,11 @@ from nagasim.core import agents as A
 from nagasim.core.expressions import compile_expression, ExpressionScope
 from nagasim.core.sim_runner import initialize_sim_env, prepare_model, step_until
 from conftest import agent_rng, problem_codes
+from functools import partial
+from helpers import model
 
 
-def _model(*records, time_limit=1.5):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=1.5)
 
 
 def _start(layout, seed=1):

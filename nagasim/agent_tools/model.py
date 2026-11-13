@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from nagasim.core import layout_tools
 
-from .core import ToolError, _document_args, _duration, _edit_result, _open, tool
+from .core import EDIT, ToolError, _document_args, _duration, _edit_result, _open, tool
 
 _document_args("add_block",
                model="Workspace name of the model to edit.",
@@ -19,9 +19,9 @@ _document_args("add_block",
                position="[x, y] canvas centre in scene units; auto-placed in a row when omitted.")
 
 
-@tool()
+@tool(returns={**EDIT, "block": str})
 def add_block(model: str, type: str, name: str | None = None, params: dict | None = None,
-              position: list | None = None) -> dict:
+              position: list[float] | None = None) -> dict:
     """Add one block to a model and optionally set its parameters in the same
     step (one undo entry).
 
@@ -29,8 +29,7 @@ def add_block(model: str, type: str, name: str | None = None, params: dict | Non
     DISPOSE, then `connect` them. Position is cosmetic -- call `auto_layout`
     once at the end instead of placing blocks by hand.
 
-    Returns the usual edit answer plus {"block": <the name it got>}. A wrong
-    param name or type comes back in "introduced" with code E_PARAM_UNKNOWN /
+    A wrong param name or type comes back in "introduced" with code E_PARAM_UNKNOWN /
     E_PARAM_TYPE and a hint listing the params this type takes.
     """
     doc, before = _open(model)
@@ -53,17 +52,15 @@ _document_args("update_block",
                new_name="Rename the block to this; every link follows the rename.")
 
 
-@tool()
+@tool(returns={**EDIT, "block": str})
 def update_block(model: str, name: str, params: dict | None = None,
-                 description: str | None = None, position: list | None = None,
+                 description: str | None = None, position: list[float] | None = None,
                  new_name: str | None = None) -> dict:
     """Change an existing block: merge parameters, rename it, move it, or
     relabel it -- all as one undo entry.
 
     `params` MERGES rather than replaces, so you can set one value without
     restating the rest. Renaming rewires every link automatically.
-
-    Returns the usual edit answer plus {"block": <name after the edit>}.
     """
     doc, before = _open(model)
     if name not in doc.blocks:
@@ -88,15 +85,13 @@ _document_args("remove_blocks",
                names="Block names to delete; their links go with them.")
 
 
-@tool()
-def remove_blocks(model: str, names: list) -> dict:
+@tool(returns={**EDIT, "removed": list})
+def remove_blocks(model: str, names: list[str]) -> dict:
     """Delete blocks and every link touching them, as one undo entry.
 
     Unknown names are ignored rather than refused, so removing an already-gone
     block is not an error. Expect new problems if you cut the flow in half --
     the answer says which.
-
-    Returns the usual edit answer plus {"removed": [names actually deleted]}.
     """
     doc, before = _open(model)
     removed = [n for n in names if n in doc.blocks]
@@ -114,7 +109,7 @@ _document_args("connect",
                      "\"dist_params\": {\"value\": 2}}.")
 
 
-@tool()
+@tool(returns={**EDIT, "link": str, "index": float})
 def connect(model: str, source: str, target: str, source_port: str | None = None,
             target_port: str | None = None, delay: dict | None = None) -> dict:
     """Link two blocks so entities flow from *source* to *target*, optionally
@@ -128,8 +123,6 @@ def connect(model: str, source: str, target: str, source_port: str | None = None
     A branching block may send TWO branches to the same target (a DECIDE where
     two cases end the same way): the second call returns `index` 1, which
     `disconnect` takes to tell them apart.
-
-    Returns the usual edit answer plus {"link": "source -> target", "index": n}.
     """
     doc, before = _open(model)
     with doc.transaction():
@@ -146,7 +139,7 @@ _document_args("disconnect", model="Workspace name of the model to edit.",
                      "only needed when there is more than one.")
 
 
-@tool()
+@tool(returns={**EDIT, })
 def disconnect(model: str, source: str, target: str, index: int | None = None) -> dict:
     """Remove one link. A link that does not exist is a no-op, not an error.
 
@@ -155,8 +148,6 @@ def disconnect(model: str, source: str, target: str, index: int | None = None) -
 
     When several parallel links join the pair, name which one with *index*
     (0 is the first); leaving it out is then an error listing the candidates.
-
-    Returns the usual edit answer.
     """
     doc, before = _open(model)
     count = doc.link_count(source, target)
@@ -174,16 +165,14 @@ _document_args("reorder_branches", model="Workspace name of the model to edit.",
                order="Its target block names in the branch order you want, branch 0 first.")
 
 
-@tool()
-def reorder_branches(model: str, source: str, order: list) -> dict:
+@tool(returns={**EDIT, "order": list})
+def reorder_branches(model: str, source: str, order: list[str]) -> dict:
     """Set the branch order of a block's outgoing links.
 
     Branch order is what binds a DECIDE's `probs[n]` / `conditions[n]` to a
     target, so getting it wrong sends entities down the wrong path without any
     validation error. *order* must list exactly the current targets of *source*,
     permuted.
-
-    Returns the usual edit answer plus {"order": [...]}.
     """
     doc, before = _open(model)
     current = doc.out_links(source)
@@ -205,16 +194,13 @@ _document_args("set_resources", model="Workspace name of the model to edit.",
                          "\"discipline\", cost fields...}.")
 
 
-@tool()
-def set_resources(model: str, resources: list) -> dict:
+@tool(returns={**EDIT, "resources": list})
+def set_resources(model: str, resources: list[dict]) -> dict:
     """REPLACE the model's whole resource table.
 
-    Use `upsert_record` (section "resources") for a single change; this one is
-    for setting several resources at once, or for deleting one by leaving it
-    out. A block's `resource_name` may name a resource or a resource set --
+    For one resource, `upsert_record`; this one sets several at once, or
+    deletes one by leaving it out. A block's `resource_name` may name a resource or a resource set --
     they share one namespace.
-
-    Returns the usual edit answer plus {"resources": [names]}.
     """
     doc, before = _open(model)
     doc.set_resources(list(resources))
@@ -230,7 +216,7 @@ _document_args("set_calendar", model="Workspace name of the model to edit.",
                end="Optional ISO instant the run ends at, instead of a run-length number.")
 
 
-@tool()
+@tool(returns={**EDIT, "calendar": dict | None})
 def set_calendar(model: str, start: str | None = None, timezone: str = "UTC",
                  end: str | None = None) -> dict:
     """Give the model REAL DATES, or remove them.
@@ -242,8 +228,6 @@ def set_calendar(model: str, start: str | None = None, timezone: str = "UTC",
     "Wednesday 10:00". Once set, schedules may be authored as weekday grids,
     time series and orders may carry ISO timestamps, and results, charts,
     playback and exports all show wall-clock time.
-
-    Returns the usual edit answer plus {"calendar": {...} or null}.
     """
     doc, before = _open(model)
     if not start:
@@ -261,15 +245,13 @@ _document_args("set_entity_types", model="Workspace name of the model to edit.",
                         "\"holding_cost\"?}.")
 
 
-@tool()
-def set_entity_types(model: str, entities: list) -> dict:
+@tool(returns={**EDIT, "entities": list})
+def set_entity_types(model: str, entities: list[dict]) -> dict:
     """REPLACE the model's entity-type table.
 
     Entity types name the things flowing through the model (CREATE's `e_type`)
     and carry the per-type WIP `holding_cost` used by the cost KPIs. A model
     with no declared types still runs: everything is "DEFAULT".
-
-    Returns the usual edit answer plus {"entities": [names]}.
     """
     doc, before = _open(model)
     doc.set_entities(list(entities))
@@ -285,7 +267,7 @@ _document_args("set_simulation_settings", model="Workspace name of the model to 
                currency="Cost label only; never enters the arithmetic.")
 
 
-@tool()
+@tool(returns={**EDIT, "simulation": dict})
 def set_simulation_settings(model: str, run_length: float | None = None,
                             warmup: float | None = None, replications: int | None = None,
                             time_unit: str | None = None, currency: str | None = None) -> dict:
@@ -294,8 +276,6 @@ def set_simulation_settings(model: str, run_length: float | None = None,
     ALWAYS set a run length for a model that cannot drain on its own -- one with
     an endless CREATE (max_arrivals 0), a failure, or a repeating capacity
     schedule. Without it a run raises rather than hanging.
-
-    Returns the usual edit answer plus {"simulation": {...}}.
     """
     doc, before = _open(model)
     changes = {}
@@ -321,7 +301,7 @@ _document_args("set_sd_settings", model="Workspace name of the model to edit.",
                time_unit="Unit dt is in: base (the model's own) or seconds/minutes/hours/days.")
 
 
-@tool()
+@tool(returns={**EDIT, "sd": dict | None})
 def set_sd_settings(model: str, dt: float | None, method: str = "euler",
                     time_unit: str = "base") -> dict:
     """Turn on the system-dynamics step grid, change it, or remove it (dt null).
@@ -331,8 +311,6 @@ def set_sd_settings(model: str, dt: float | None, method: str = "euler",
     -- dL/dt = -k*L, logistic growth, an SIR model -- needs the grid: it is
     re-integrated every dt with Euler or RK4, the way Stella and Vensim do.
     Static rates are untouched, and events inside a step stay exact.
-
-    Returns the usual edit answer plus {"sd": {...} or null}.
     """
     doc, before = _open(model)
     spec = None
@@ -346,7 +324,7 @@ def set_sd_settings(model: str, dt: float | None, method: str = "euler",
     return _edit_result(doc, before, {"sd": doc.simulation.get("sd")})
 
 
-@tool()
+@tool(returns={**EDIT, "moved": int})
 def auto_layout(model: str) -> dict:
     """Lay the model's blocks out left to right in a deterministic layered
     arrangement, one undo entry.
@@ -354,8 +332,6 @@ def auto_layout(model: str) -> dict:
     Purely cosmetic -- it changes no behaviour and no KPI. Call it once after
     building a model so a human opening it in the editor sees a readable
     diagram instead of a pile of blocks.
-
-    Returns the usual edit answer plus {"moved": <block count>}.
     """
     doc, before = _open(model)
     positions = layout_tools.auto_layout(doc)

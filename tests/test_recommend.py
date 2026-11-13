@@ -17,6 +17,9 @@ from conftest import chain, create, dispose, layout, process
 from test_score import Clock, busy_line, cycle_on, left, playing, slow_line
 from nagasim import plant, twin
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 
 # ---------------------------------------------------------------- a twin started again
 def test_a_twin_started_again_is_refused_by_name_until_it_knows_who_is_in_service(tmp_path):

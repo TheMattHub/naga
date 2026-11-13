@@ -18,6 +18,7 @@ from nagasim.core.schema import CURRENT_VERSION, migrate, validate_model_structu
 from nagasim.core.sim_runner import initialize_sim_env, prepare_model, step_until
 
 from conftest import problem_codes, run_env
+from helpers import codes as _codes
 
 
 def _model(rate='0.1*LEVEL("L")', method="euler", dt=0.25, T=10.0, **extra):
@@ -32,10 +33,6 @@ def _model(rate='0.1*LEVEL("L")', method="euler", dt=0.25, T=10.0, **extra):
 def _run(layout, run_len):
     env, _ = run_env(layout, run_len, seed=0)
     return env
-
-
-def _codes(layout):
-    return problem_codes(layout, severity=None)
 
 
 def _final(layout, level="L"):

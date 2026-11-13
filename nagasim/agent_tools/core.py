@@ -22,6 +22,7 @@ import threading
 import time
 import types
 import typing
+from typing import Any, Literal
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,46 @@ class ToolError(Exception):
         if self.did_you_mean:
             error["did_you_mean"] = self.did_you_mean
         return {"error": error}
+
+
+# The tools the running session offers (#1773): an MCP profile (`naga mcp --tools`, which also
+# sets `discover.exposed`) or the assistant's list. None = every registered tool. A ContextVar,
+# like `_PROGRESS`: the list belongs to the call, and calls run on worker threads.
+_OFFERED = contextvars.ContextVar("nagasim_agent_offered", default=None)
+
+
+@contextmanager
+def offering(names):
+    """Inside the block, `published` answers for the tools *names* (None = every one)."""
+    token = _OFFERED.set(None if names is None else frozenset(names))
+    try:
+        yield
+    finally:
+        _OFFERED.reset(token)
+
+
+def published(name: str) -> bool:
+    """Whether this session can call tool *name*: a hint names a tool only then (#1773)."""
+    offered = _OFFERED.get()
+    if offered is None:
+        from . import discover      # lazy: discover imports this module
+        offered = discover.exposed
+    return name in TOOLS and (offered is None or name in offered)
+
+
+def override_hint(exc) -> str:
+    """The fix for a refused override: the check's own hint (its did-you-mean, P01b), else the
+    shape of a path. No tool lists the override paths, so none is named (#1773)."""
+    said = exc.structured[0].hint if getattr(exc, "structured", None) else ""
+    return said or "fix the override path: a record, then its field, as in resources.Server.capacity"
+
+
+def invalid_model_hint(problems, then: str = "") -> str:
+    """The fix for an invalid model: the first problem's own hint, validate_model only when the
+    session offers it (the compact profile and the local assistant do not, #1773), then *then*."""
+    first = next((p.hint for p in problems if getattr(p, "hint", None)), "")
+    every = "call validate_model for every problem" if published("validate_model") else ""
+    return "; ".join(part for part in (first, every, then) if part) or "fix the problems the message names"
 
 
 def _close(word, choices) -> list[str]:
@@ -112,6 +153,9 @@ class Workspace:
         self.debug: dict[str, dict] = {}    # model name -> its debug run (`debug.py`, D194)
         # model name -> what this session ran on it (D727): the facts `nextoptions.for_model` reads.
         self.asked: dict[str, list[dict]] = {}
+        # model name -> how import_event_log read its log ({path, columns, sheet}, D1233), so
+        # check_draft re-reads that file the same way.
+        self.log_reads: dict[str, dict] = {}
 
     def resolve(self, path: str | Path, *, must_exist: bool = False) -> Path:
         try:
@@ -242,9 +286,25 @@ class ToolSpec:
     input_schema: dict        # JSON Schema derived from the signature
     read_only: bool
     origin: str = ""          # the module that defined the tool; never part of tool_schemas()
+    output_schema: dict | None = None   # JSON Schema of a successful answer, from `@tool(returns=...)`
 
 
 TOOLS: dict[str, ToolSpec] = {}
+# Names merged into another tool by the S2-15 overlap audit (P09b, docs/history/tool-overlap-2026-11-12.md):
+# still answered, never listed. Name -> (the tool, the arguments the old name fixed).
+ALIASES: dict[str, tuple[str, dict]] = {
+    "import_xmile": ("import_sd_model", {}), "import_mdl": ("import_sd_model", {}),
+    "list_sequences": ("list_records", {"section": "sequences"}),
+    "list_orders": ("list_records", {"section": "orders"})}
+
+
+def resolve_alias(name: str, arguments):
+    """(tool name, arguments) with a merged-away *name* turned into the tool that replaced it."""
+    if name not in ALIASES or name in TOOLS:
+        return name, arguments
+    target, fixed = ALIASES[name]
+    return target, {**(arguments or {}), **fixed}
+
 
 _JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean",
                list: "array", dict: "object"}
@@ -260,9 +320,16 @@ def _type_schema(annotation) -> dict:
             return {}
         inner = _type_schema(args[0])
         kind = inner.get("type")
+        if "enum" in inner:     # null stays a valid value of an optional closed set
+            inner = {**inner, "enum": [*inner["enum"], None]}
         return {**inner, "type": [kind, "null"]} if isinstance(kind, str) else inner
+    if origin is typing.Literal:    # a closed set (D1219): the values are in the schema, not in prose
+        values = list(typing.get_args(annotation))
+        return {**_type_schema(type(values[0])), "enum": values}
     if origin in (list, tuple):
-        return {"type": "array"}
+        item = typing.get_args(annotation)
+        items = _type_schema(item[0]) if len(item) == 1 else {}
+        return {"type": "array", **({"items": items} if items else {})}
     if origin is dict:
         return {"type": "object"}
     return {"type": _JSON_TYPES[annotation]} if annotation in _JSON_TYPES else {}
@@ -283,6 +350,22 @@ def _input_schema(fn) -> dict:
         properties[pname] = prop
     return {"type": "object", "properties": properties, "required": required,
             "additionalProperties": False}
+
+
+# The keys every mutating tool answers (`_edit_result`); a tool adds its own: returns={**EDIT, ...}.
+EDIT = {"ok": bool, "introduced": list, "fixed": list, "errors": int, "warnings": int}
+
+
+def _output_schema(returns: dict) -> dict:
+    """D1244: a tool's typed answer, from its `returns` declaration {key: annotation, or
+    (annotation, one-line note)}. No key is required and the object stays open: many keys are
+    present only in some answers, and a refusal ({"error": ...}) is sent with isError, which a
+    client does not check against this schema."""
+    properties = {}
+    for key, kind in returns.items():
+        kind, note = kind if isinstance(kind, tuple) else (kind, "")
+        properties[key] = {**_type_schema(kind), **({"description": note} if note else {})}
+    return {"type": "object", "properties": properties}
 
 
 # Per-argument one-liners, kept beside the tools rather than parsed out of the
@@ -339,9 +422,60 @@ def _require_arguments(schema: dict, kwargs: dict) -> None:
                         if inside else "see this tool's input schema")
 
 
-def tool(read_only: bool = False):
+_ITEM_KINDS = {**_JSON_KINDS, "string": str}
+
+
+def _kind_of(value) -> str:
+    return ("null" if value is None else "a boolean" if isinstance(value, bool)
+            else "a number" if isinstance(value, (int, float)) else "a string" if isinstance(value, str)
+            else "an object" if isinstance(value, dict) else "an array" if isinstance(value, list)
+            else type(value).__name__)
+
+
+def check_shapes(schema: dict, kwargs: dict) -> None:
+    """D1219: an array or object argument of the wrong kind, a list item of the wrong kind, or a
+    value outside a closed set is refused as E_BAD_ARGUMENT naming the argument, before the tool
+    body runs (#1768: a dictionary for `overrides` raised AttributeError out of the tool). Scalars
+    are left to the tools, which coerce them (`int(...)`); None is every optional argument's own."""
+    for key, value in kwargs.items():
+        prop = schema["properties"].get(key) or {}
+        if value is None:
+            continue
+        kinds = prop.get("type", [])
+        kind = next((k for k in ([kinds] if isinstance(kinds, str) else kinds) if k in _JSON_KINDS), None)
+        hint = f"`{key}`: {prop['description']}" if prop.get("description") else "see this tool's input schema"
+        if kind and not isinstance(value, _JSON_KINDS[kind]):
+            raise ToolError("E_BAD_ARGUMENT", f"`{key}` must be an {kind}, not {_kind_of(value)}", hint)
+        item = (prop.get("items") or {}).get("type")
+        if kind == "array" and item in _ITEM_KINDS:
+            bad = next((i for i, v in enumerate(value) if not isinstance(v, _ITEM_KINDS[item])), None)
+            if bad is not None:
+                raise ToolError("E_BAD_ARGUMENT", f"`{key}` item {bad} must be {'an' if item[0] in 'ao' else 'a'} "
+                                f"{item}, not {_kind_of(value[bad])}", hint)
+        if "enum" in prop and value not in prop["enum"]:
+            allowed = [v for v in prop["enum"] if v is not None]
+            raise ToolError("E_BAD_ARGUMENT", f"`{key}` must be one of {', '.join(map(str, allowed))}",
+                            hint, _close(value, map(str, allowed)))
+
+
+def argument_error(tool_name: str, kwargs: dict) -> ToolError | None:
+    """The refusal the tool's wrapper would give *kwargs* before its body runs, or None. The MCP
+    server asks first, since the SDK validates before the wrapper and would answer in its own words."""
+    schema = TOOLS[tool_name].input_schema
+    args = dict(kwargs or {})
+    try:
+        _parse_json_arguments(schema, args)
+        _require_arguments(schema, args)
+        check_shapes(schema, args)
+    except ToolError as exc:
+        return exc
+    return None
+
+
+def tool(read_only: bool = False, returns: dict | None = None):
     """Register a function as a tool: wrap it so it never raises, derive its
-    input schema from the signature, keep the docstring as the description."""
+    input schema from the signature, keep the docstring as the description and
+    *returns* ({key: type}, the keys a successful answer may carry) as its output schema."""
 
     def decorate(fn):
         schema = _input_schema(fn)
@@ -350,6 +484,7 @@ def tool(read_only: bool = False):
             try:
                 _parse_json_arguments(schema, kwargs)
                 _require_arguments(schema, kwargs)
+                check_shapes(schema, kwargs)
                 return fn(**kwargs)
             except ToolError as exc:
                 return exc.as_dict()
@@ -357,23 +492,30 @@ def tool(read_only: bool = False):
                 return ToolError(
                     "E_AGENT_PYTHON_REFUSED",
                     "this model carries Python behaviour, which agent tools never run",
-                    "ask the person to run it themselves with `naga run`; you can still edit "
-                    "and validate the model").as_dict()
+                    "ask the person to run it themselves, outside this assistant; you can still "
+                    "edit and validate the model").as_dict()
             except schema_mod.ModelValidationError as exc:
+                # validate_model checks the model, not its scenarios: send a scenario's problem to
+                # its overrides, where validate_model would answer ok (S2-17).
+                scenario = all(p.startswith("scenario '") for p in exc.problems)
                 return ToolError("E_INVALID_MODEL", "; ".join(exc.problems),
-                                 "call validate_model for the structured problems").as_dict()
+                                 "fix the scenario's overrides: " + override_hint(exc)
+                                 if scenario else invalid_model_hint(exc.structured)).as_dict()
             except (ValueError, KeyError, TypeError, OSError) as exc:
                 return ToolError(f"E_{type(exc).__name__.upper()}", str(exc),
                                  "check the arguments against this tool's input schema").as_dict()
 
         safe.__name__ = fn.__name__
         safe.__doc__ = fn.__doc__
-        safe.__signature__ = inspect.signature(fn)
-        safe.__annotations__ = dict(getattr(fn, "__annotations__", {}))
+        safe.__signature__ = inspect.signature(fn, eval_str=True)
+        # Resolved, not the strings `from __future__ import annotations` leaves: the MCP SDK reads
+        # them off the server's wrapper, whose module cannot see a tool module's Literal aliases.
+        safe.__annotations__ = typing.get_type_hints(fn)
         TOOLS[fn.__name__] = ToolSpec(name=fn.__name__, fn=safe,
                                       description=inspect.getdoc(fn) or "",
                                       input_schema=schema, read_only=read_only,
-                                      origin=fn.__module__)
+                                      origin=fn.__module__,
+                                      output_schema=None if returns is None else _output_schema(returns))
         return safe
 
     return decorate
@@ -383,6 +525,7 @@ def call(tool_name, /, **kwargs) -> dict:
     """Invoke a tool by name; unknown names answer with a structured error.
     Positional-only first argument, so a tool taking its own `name` argument
     (new_model, ...) is not shadowed."""
+    tool_name, kwargs = resolve_alias(tool_name, kwargs)
     spec = TOOLS.get(tool_name)
     if spec is None:
         return unknown_tool_error(tool_name).as_dict()
@@ -390,15 +533,41 @@ def call(tool_name, /, **kwargs) -> dict:
 
 
 def tool_schemas() -> list[dict]:
-    """Every tool as {name, description, input_schema, read_only} -- what a
+    """Every tool as {name, description, input_schema, output_schema, read_only} -- what a
     non-MCP caller needs to build its own tool definitions."""
     return [{"name": s.name, "description": s.description, "input_schema": s.input_schema,
-             "read_only": s.read_only} for s in TOOLS.values()]
+             "output_schema": s.output_schema, "read_only": s.read_only} for s in TOOLS.values()]
 
 
 # ---------------------------------------------------------------- helpers
+def logic_problems(layout: dict) -> list[schema_mod.Problem]:
+    """E_LOGIC_CLASS_UNKNOWN for each LOGIC block whose logic_class the logic module does not define
+    (#1769: it passed validation and failed the run). An agent's run has no caller module
+    (`run_model(logic=...)` is a Python caller's, D914), so the class must be in
+    nagasim.core.custom_logic, the trusted module the run itself loads. The name is looked up as a
+    plain identifier among that module's classes with `execute`; it is never imported, so a value
+    such as "os.system" or "__class__" names nothing."""
+    blocks = [(i, b) for i, b in enumerate(layout.get("blocks") or [])
+              if isinstance(b, dict) and b.get("type") == "LOGIC"]
+    if not blocks:
+        return []
+    from nagasim.core import logic_authoring
+    module = logic_authoring.load_custom_logic_module()
+    classes = sorted(n for n, c in vars(module).items()
+                     if inspect.isclass(c) and hasattr(c, "execute") and not n.startswith("_"))
+    out = []
+    for i, block in blocks:
+        name = (block.get("params") or {}).get("logic_class", "SampleLogic")
+        if name not in classes:
+            out.append(schema_mod.problem(
+                "E_LOGIC_CLASS_UNKNOWN", f"LOGIC block '{block.get('name')}': no logic class {str(name)[:100]!r} "
+                f"in {logic_authoring.DEFAULT_MODULE}", f"/blocks/{i}/params/logic_class",
+                block=block.get("name"), hint=f"use one of: {', '.join(classes) or '(none defined)'}"))
+    return out
+
+
 def _problems(doc: ModelDocument) -> list[schema_mod.Problem]:
-    return doc.problems()
+    return doc.problems() + logic_problems(doc.to_layout())
 
 
 def _open(model: str) -> tuple[ModelDocument, list]:
@@ -445,17 +614,17 @@ def _edit_result(doc: ModelDocument, before: list, extra: dict | None = None) ->
     return out
 
 
-def _runnable_layout(doc: ModelDocument, model: str,
-                     hint: str = "call validate_model and fix the errors before running") -> dict:
+def _runnable_layout(doc: ModelDocument, model: str, then: str = "fix the errors before running") -> dict:
     """The document's layout, or E_INVALID_MODEL when it has validation errors: the
     first check of `run_model`, `run_reality_checks`, `run_loop_dominance` and
-    `debug_run`."""
+    `debug_run`. *then* ends the hint."""
     layout = doc.to_layout()
-    errors = [p for p in schema_mod.validate_model_structured(layout) if p.severity == "error"]
+    errors = [p for p in schema_mod.validate_model_structured(layout) + logic_problems(layout)
+              if p.severity == "error"]
     if errors:
         raise ToolError("E_INVALID_MODEL",
                         f"model '{model}' has {len(errors)} validation error(s); "
-                        f"first: {errors[0].message}", hint)
+                        f"first: {errors[0].message}", invalid_model_hint(errors, then))
     return layout
 
 
@@ -558,7 +727,7 @@ def _duration(spec: dict | None, what: str) -> dict:
 _document_args("new_model", name="Workspace name for the new model (your handle for it later).")
 
 
-@tool()
+@tool(returns={**EDIT, "model": str})
 def new_model(name: str) -> dict:
     """Create an empty model in the workspace under *name*.
 
@@ -566,9 +735,6 @@ def new_model(name: str) -> dict:
     it, add blocks, connect them, then validate. Nothing is written to disk
     until you call `save_model`. An empty model validates and runs, and
     answers nothing: the first problems appear with the first block.
-
-    Returns the usual edit answer: {"ok", "introduced", "fixed", "errors",
-    "warnings", "model"}.
     """
     if name in _WORKSPACE.models:
         raise ToolError("E_MODEL_EXISTS", f"a model named '{name}' is already open",
@@ -583,15 +749,15 @@ _document_args("open_model",
                name="Workspace name to load it under; defaults to the file stem.")
 
 
-@tool()
+@tool(returns={
+    "ok": bool, "model": str, "path": str, "blocks": float, "errors": int, "warnings": int,
+    "problems": list})
 def open_model(path: str, name: str | None = None) -> dict:
     """Load a model file from the workspace root into the workspace.
 
     Use it to inspect, modify or run an existing model, including the bundled
     examples once they have been copied into the root. Older schema versions
     migrate on load, so what you get back is always the current format.
-
-    Returns {"ok", "model", "path", "blocks", "errors", "warnings", "problems"}.
     """
     full = _WORKSPACE.resolve(path, must_exist=True)
     doc = ModelDocument.load(full)
@@ -604,84 +770,40 @@ def open_model(path: str, name: str | None = None) -> dict:
             "problems": _problem_dicts(problems)}
 
 
-_document_args("import_xmile",
-               path="XMILE (.xmile/.stmx) file, relative to the workspace root.",
+_document_args("import_sd_model",
+               path="Stella/iThink XMILE (.xmile/.stmx) or Vensim (.mdl) file, relative to the "
+                    "workspace root.",
                name="Workspace name to load it under; defaults to the file stem.")
 
 
-@tool()
-def import_xmile(path: str, name: str | None = None) -> dict:
-    """Translate an XMILE (Stella/iThink) system-dynamics file into a new model.
+@tool(returns={
+    "ok": bool, "model": str, "path": str, "import_problems": list, "errors": int, "warnings": int,
+    "problems": list})
+def import_sd_model(path: str, name: str | None = None) -> dict:
+    """Translate a system-dynamics file into a new model: Stella/iThink XMILE (.xmile, .stmx) or
+    Vensim (.mdl), by the file's extension.
 
-    Reads stocks, flows, auxiliaries, graphical functions (as lookup tables)
-    and dimensions (as subscripts) with a small expression translator, into
-    the workspace under *name*, exactly like `open_model` does for a model
-    JSON file. The file must be under the workspace root -- a path that
-    escapes it is refused, and there is no argument that widens that.
+    Reads stocks, flows, auxiliaries, lookups (as lookup tables) and dimensions or subscript
+    ranges (as subscripts) with a small stdlib reader (no `pysd`), into the workspace under
+    *name*, exactly like `open_model` does for a model JSON file. The file must be under the
+    workspace root -- a path that escapes it is refused, and there is no argument that widens that.
 
-    A construct this cannot translate (a module, a macro, a conveyor/queue
-    stock, a dimension mapping, an unknown function or name) is reported in
-    `import_problems` (code `E_SDIMPORT_UNSUPPORTED`) and left out of the model rather than guessed at; an approximation (a bare
-    DELAY, a non-euler/rk4 method, ...) is `W_SDIMPORT_APPROX`. Vensim `.mdl`
-    is not supported.
-
-    Returns {"ok", "model", "path", "import_problems": [{"code", "severity",
-    "message", "path", "hint"}], "errors", "warnings", "problems"} -- the last
-    three are the usual model-validation answer, over what DID translate.
+    A construct this cannot translate (a module or macro, external data, a conveyor/queue
+    stock, a dimension mapping or subscript equivalence, an unknown function or name) is
+    reported in `import_problems` (code `E_SDIMPORT_UNSUPPORTED`) and left out of the model
+    rather than guessed at; an approximation (a bare DELAY, a non-euler/rk4 method, ...) is
+    `W_SDIMPORT_APPROX`. "errors", "warnings" and "problems" are the usual model-validation
+    answer, over what DID translate.
     """
     full = _WORKSPACE.resolve(path, must_exist=True)
+    # S2-15 (P09b): one tool for the two SD formats, which had the same arguments and answer.
+    vensim = full.suffix.lower() == ".mdl"
     try:
-        layout, import_problems = sdimport.load_xmile(full)
-    except sdimport.XMILEError as exc:
+        layout, import_problems = (mdlimport.load_mdl if vensim else sdimport.load_xmile)(full)
+    except (mdlimport.MDLError, sdimport.XMILEError) as exc:
         raise ToolError(exc.code, str(exc),
-                        "an XMILE file with a DOCTYPE/ENTITY or over 20 MB is refused outright; "
-                        "fix the file and try again") from None
-    handle = name or full.stem
-    if handle in _WORKSPACE.models:
-        raise ToolError("E_MODEL_EXISTS", f"a model named '{handle}' is already open",
-                        "pick another name, or edit the existing one")
-    doc = ModelDocument(layout)
-    _WORKSPACE.models[handle] = doc
-    problems = _problems(doc)
-    return {"ok": True, "model": handle, "path": str(full),
-            "import_problems": _problem_dicts(import_problems),
-            "errors": sum(1 for p in problems if p.severity == "error"),
-            "warnings": sum(1 for p in problems if p.severity == "warning"),
-            "problems": _problem_dicts(problems)}
-
-
-_document_args("import_mdl",
-               path="Vensim (.mdl) file, relative to the workspace root.",
-               name="Workspace name to load it under; defaults to the file stem.")
-
-
-@tool()
-def import_mdl(path: str, name: str | None = None) -> dict:
-    """Translate a Vensim system-dynamics file into a new model.
-
-    Reads equations, INTEG stocks, an inline `WITH LOOKUP` (as a lookup table) and
-    subscript ranges with a small stdlib reader (no `pysd`), into the workspace under
-    *name*, exactly like `open_model` does for a model JSON file. The file must be
-    under the workspace root -- a path that escapes it is refused, and there is no
-    argument that widens that.
-
-    A construct this cannot translate (a `:MACRO:`, `GET XLS/DIRECT ...` external
-    data, a variable name with a space, an unknown function or name, an INTEG rate
-    that is not a plain flow name or sum/difference of flow names, a subscript
-    equivalence `<->`) is reported in `import_problems` (code `E_SDIMPORT_UNSUPPORTED`) and
-    left out of the model rather than guessed at.
-
-    Returns {"ok", "model", "path", "import_problems": [{"code", "severity",
-    "message", "path", "hint"}], "errors", "warnings", "problems"} -- the last
-    three are the usual model-validation answer, over what DID translate.
-    """
-    full = _WORKSPACE.resolve(path, must_exist=True)
-    try:
-        layout, import_problems = mdlimport.load_mdl(full)
-    except mdlimport.MDLError as exc:
-        raise ToolError(exc.code, str(exc),
-                        "a .mdl file that is not decodable text or over 20 MB is refused "
-                        "outright; fix the file and try again") from None
+                        "a .mdl file that is not decodable text, an XMILE file with a DOCTYPE/ENTITY, "
+                        "or a file over 20 MB is refused outright; fix the file and try again") from None
     handle = name or full.stem
     if handle in _WORKSPACE.models:
         raise ToolError("E_MODEL_EXISTS", f"a model named '{handle}' is already open",
@@ -697,45 +819,44 @@ def import_mdl(path: str, name: str | None = None) -> dict:
 
 
 _document_args("import_event_log",
-               path="Event log (CSV, or .xes), relative to the workspace root.",
-               name="Workspace name to open the draft under; defaults to the file stem.",
+               path="Event log (CSV, .xlsx or .xes), relative to the workspace root.",
+               name="Name for the draft; default the file stem.",
+               columns="Headers by role, e.g. {\"case\": \"Patient\", \"start\": \"Start time\"}; "
+                       "roles: case, activity, timestamp, lifecycle, resource, start, complete; "
+                       "the rest by usual names.",
+               sheet="An .xlsx log's sheet; default the first.",
                routing="\"auto\" (a test on the log picks), \"markov\" (chances to the next "
                        "activity) or \"variants\" (one routing per observed sequence).",
                time_unit="The draft's time unit: seconds, minutes, hours or days. A numeric "
                          "timestamp is taken as already in it.",
-               idle_waits="true: each activity that waits long at mostly idle resources gets "
-                          "a DELAY before it, fitted to its waits (a modelled wait, not a "
-                          "queue); false (default): no such delay.")
+               idle_waits="true: an activity that waits long at mostly idle resources gets a "
+                          "DELAY fitted to its waits (a modelled wait, not a queue).")
 
 
-@tool()
-def import_event_log(path: str, name: str | None = None, routing: str = "auto",
-                   time_unit: str = "minutes", idle_waits: bool = False) -> dict:
-    """Draft a model from an event log: what happened to each case, activity by activity.
+@tool(returns={
+    "ok": bool, "model": str, "columns": dict, "routing": dict, "activities": list,
+    "resources": list, "activities_total": int, "resources_total": int, "assumptions": list,
+    "dropped": dict, "check": dict, "next_steps": dict, "path_checks": dict, "observed": dict,
+    "errors": int, "warnings": int, "problems": list, "idle_waits": list})
+def import_event_log(path: str, name: str | None = None, routing: Literal["auto", "markov", "variants"] = "auto",
+                   time_unit: Literal["seconds", "minutes", "hours", "days"] = "minutes", idle_waits: bool = False,
+                   columns: dict[str, str] | None = None, sheet: str | None = None) -> dict:
+    """Draft a model from an event log (a CSV or .xlsx of timestamps per case): what happened
+    to each case, activity by activity.
 
-    The log needs a case id, an activity and a timestamp per row (CSV), or XES traces;
-    lifecycle (schedule/start/complete) and resource columns make the draft better. The
-    draft has one CREATE fitted to the case arrivals, one block per activity with its fitted
+    The log needs a case id, an activity and a timestamp (or start and end) per row, or XES
+    traces; lifecycle and resource columns make the draft better. An .xlsx gives cell values,
+    never formulas; another format is refused. The draft has one CREATE fitted to the case arrivals, one block per activity with its fitted
     time, routing from the observed transitions and resources from the resource column,
     and opens in the workspace under *name* like `open_model`. Nothing is written to disk.
 
-    It is a first draft: read `assumptions` (what the log could not tell, such as shifts or
-    the wait before a case's first activity) and `dropped` before trusting its numbers.
-    The file must be under the workspace root; a log over a size ceiling, or an XES file
-    with a DOCTYPE, is refused outright, and there is no argument that changes either.
+    It is a first draft: read `assumptions` (what the log could not tell) and `dropped`
+    before trusting its numbers.
+    The file must be under the workspace root; a log over a size ceiling or with a DOCTYPE
+    is refused outright, and no argument changes either.
 
-    Returns {"ok", "model", "routing", "activities": [{"block", "original", "count",
-    "lifecycle", "distribution", "mean", "mean_wait", "resource"}], "resources",
-    "activities_total", "resources_total", "assumptions", "dropped", "check": {"verdict",
-    "findings": [{"level", "what", "means"}]} (is the log good enough, and what each gap
-    means for the draft), "next_steps": {"check", "never"} (what to check in the draft, and
-    what this log cannot tell), "path_checks": {"rules", "left_out", "from"} (route rules from
-    the log written into the draft's path_checks: `naga check` runs them on one seed, and a
-    failed one is a route the log kept that the draft breaks), "observed", "errors",
-    "warnings", "problems"}, and with
-    *idle_waits* "idle_waits": [{"block", "delay"}] (the activities that got a modelled wait).
-    The two lists are cut to fit one reply; the totals say how many there are, and the open
-    model has them all.
+    With *idle_waits*, "idle_waits" lists the activities that got a modelled wait. The two lists
+    are cut to fit one reply; the totals count them all.
     """
     from nagasim import discover
 
@@ -746,12 +867,15 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
                         "pick another name, or edit the existing one")
     try:
         layout, report = discover.discover(full, routing=routing, time_unit=time_unit,
-                                           idle_waits=bool(idle_waits))
+                                           idle_waits=bool(idle_waits), columns=columns or None,
+                                           sheet=sheet)
     except discover.LogError as exc:
-        raise ToolError("E_DISCOVER_LOG", str(exc),
-                        "fix the log (or name its columns) and try again") from None
+        raise ToolError("E_DISCOVER_LOG", discover.for_tools(str(exc)),
+                        "name the log's headers in columns={role: header} (roles: "
+                        f"{', '.join(discover.COLUMN_NAMES)}), or fix the log, and call again") from None
     doc = ModelDocument(layout)
     _WORKSPACE.models[handle] = doc
+    _WORKSPACE.log_reads[handle] = {"path": full, "columns": columns or None, "sheet": sheet}
     problems = _problems(doc)
     activities = []
     for a in report["activities"]:
@@ -760,7 +884,7 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
                            "count": a["count"], "lifecycle": a["lifecycle"],
                            "distribution": fit["distribution"], "mean": _finite(fit["mean"]),
                            "mean_wait": _finite(a["mean_wait"]), "resource": a["resource"]})
-    reply = {"ok": True, "model": handle,
+    reply = {"ok": True, "model": handle, "columns": report["check"]["columns"],
              "routing": {"mode": report["routing"]["mode"],
                          "reason": report["routing"]["reason"]},
              "activities": activities,
@@ -771,7 +895,7 @@ def import_event_log(path: str, name: str | None = None, routing: str = "auto",
              "check": {"verdict": report["check"]["verdict"],
                        "findings": [{k: f[k] for k in ("level", "what", "means")}
                                     for f in report["check"]["findings"]]},
-             "next_steps": report["next_steps"],
+             "next_steps": {k: [discover.for_tools(t) for t in v] for k, v in report["next_steps"].items()},
              "path_checks": report["path_checks"],
              **({"idle_waits": [{k: w[k] for k in ("block", "delay")}
                                 for w in report["idle_waits"][:MAX_ROWS]]}
@@ -794,14 +918,12 @@ _document_args("save_model",
                path="Destination path under the workspace root; defaults to where it was opened.")
 
 
-@tool()
+@tool(returns={"ok": bool, "path": str, "errors": int, "warnings": int})
 def save_model(model: str, path: str | None = None) -> dict:
     """Write a model in the workspace to disk as JSON.
 
     Call it once the model validates. A model created with `new_model` has no
     path of its own, so the first save needs one.
-
-    Returns {"ok", "path", "errors", "warnings"}.
     """
     doc = _WORKSPACE.document(model)
     target = _WORKSPACE.resolve(path) if path else doc.path
@@ -815,16 +937,13 @@ def save_model(model: str, path: str | None = None) -> dict:
             "warnings": sum(1 for p in problems if p.severity == "warning")}
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={"open": list, "files": list, "root": str})
 def list_models() -> dict:
     """List the models currently open in the workspace, and the model files
     available under the workspace root.
 
     Use it to find out what you can `open_model` and which handles `get_model_summary`
     and `run_model` accept.
-
-    Returns {"open": [{"name", "path", "blocks", "dirty", "has_results"}],
-    "files": [relative paths]}.
     """
     files = sorted(str(p.relative_to(_WORKSPACE.root))
                    for p in _WORKSPACE.root.rglob("*.json"))[:MAX_ROWS]
@@ -838,7 +957,11 @@ def list_models() -> dict:
     }
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "blocks": list, "links": list, "resources": list, "resource_sets": list,
+    "variables": list, "tables": list, "timeseries_inputs": list, "levels": list, "flows": list,
+    "auxiliaries": list, "delays": list, "schedules": list, "failures": list, "scenarios": list,
+    "simulation": dict, "errors": int, "warnings": int, "next_options": list, "submodels": list})
 def get_model_summary(model: str) -> dict:
     """A compact picture of a model: its blocks with their key parameters, its
     links in branch order, its resources, and how many problems it has.
@@ -848,15 +971,11 @@ def get_model_summary(model: str) -> dict:
     much smaller than `get_model_json`; reach for that only when you need every
     field.
 
-    Returns {"model", "blocks", "links", "resources", "resource_sets",
-    "variables", "tables", "timeseries_inputs", "levels", "flows", "auxiliaries",
-    "delays", "schedules",
-    "failures", "scenarios", "simulation",
-    "errors", "warnings", "next_options"}. Each link is "source -> target"; the ORDER of a block's
-    outgoing links is its branch order (branch 0 first). "next_options" is what could be done
-    next, at most 3, ranked, each {"kind", "title", "why", "tool", "arguments", "cost"} (plus
-    "needs": arguments still to fill in), from the last run's law warnings and what this session
-    has run: offer them, never run one unasked.
+    Each link is "source -> target"; the ORDER of a block's outgoing links is its branch order
+    (branch 0 first). "next_options" is what could be done next, at most 3, ranked, each
+    {"kind", "title", "why", "tool", "arguments", "cost"} (plus "needs": arguments still to
+    fill in), from the last run's law warnings and what this session has run: offer them, never
+    run one unasked.
     """
     doc = _WORKSPACE.document(model)
     layout = doc.to_layout()
@@ -894,15 +1013,13 @@ def get_model_summary(model: str) -> dict:
     }
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={"model": str, "layout": dict})
 def get_model_json(model: str) -> dict:
     """The complete model layout as the JSON that would be saved to disk.
 
     Use it only when `get_model_summary` is not enough -- a full layout is
     large. It is also what you would hand to another tool that speaks the model
     file format (see the `naga://reference/schema` resource).
-
-    Returns {"model", "layout"}.
     """
     return {"model": model, "layout": _WORKSPACE.document(model).to_layout()}
 
@@ -911,18 +1028,16 @@ def get_model_json(model: str) -> dict:
 _document_args("undo", model="Workspace name of the model.")
 
 
-@tool()
+@tool(returns={**EDIT, "can_undo": bool, "can_redo": bool, "label": str})
 def undo(model: str) -> dict:
-    """Undo the last edit to a model.
+    """Undo the last edit to a model: take back what was just added, changed or removed.
 
     Every tool that changes a model pushes exactly one undo entry, so one
     `undo` reverses one tool call. Use it to back out an edit whose returned
     problems show it was wrong.
-
-    Returns the usual edit answer plus {"can_undo", "can_redo", "label": the
-    undone edit's short name (e.g. "Add block"), or "Edit" for one with none}.
     """
     doc, before = _open(model)
+    _not_in_turn(doc)
     if not doc.can_undo:
         raise ToolError("E_NOTHING_TO_UNDO", f"model '{model}' has no edit to undo",
                         "there is nothing before the current state")
@@ -931,20 +1046,27 @@ def undo(model: str) -> dict:
                         {"can_undo": doc.can_undo, "can_redo": doc.can_redo, "label": label})
 
 
+def _not_in_turn(doc) -> None:
+    """#1795: undo and redo move nothing while a transaction is open (#753), as for the whole of
+    an assistant turn: say so, rather than that there is no history."""
+    if doc.in_transaction:
+        raise ToolError("E_UNDO_IN_TURN", "undo and redo wait for this turn to end",
+                        "the whole turn is one step the person keeps or reverts after it; to take "
+                        "back an edit now, make the opposite edit")
+
+
 _document_args("redo", model="Workspace name of the model.")
 
 
-@tool()
+@tool(returns={**EDIT, "can_undo": bool, "can_redo": bool, "label": str})
 def redo(model: str) -> dict:
     """Redo the edit that `undo` reversed.
 
     Only available while nothing new has been edited since the undo: any fresh
     mutation clears the redo stack, exactly like the editor.
-
-    Returns the usual edit answer plus {"can_undo", "can_redo", "label": the
-    redone edit's short name}.
     """
     doc, before = _open(model)
+    _not_in_turn(doc)
     if not doc.can_redo:
         raise ToolError("E_NOTHING_TO_REDO", f"model '{model}' has nothing to redo",
                         "a new edit clears the redo stack")

@@ -133,6 +133,26 @@ def _templates(layout: dict) -> dict[str, set]:
     return found
 
 
+def _assigned(layout: dict) -> set[str]:
+    """The model variables some block writes (an ASSIGN's `{"target": name, ...}`, wherever a block
+    holds one): the model's own state, such as a counter, and no lever for a reader (S4-20)."""
+    found: set[str] = set()
+
+    def walk(value) -> None:
+        if isinstance(value, dict):
+            target = value.get("target")
+            if isinstance(target, str) and "." not in target:      # "entity.x" is an attribute
+                found.add(target)
+            for inner in value.values():
+                walk(inner)
+        elif isinstance(value, list):
+            for inner in value:
+                walk(inner)
+
+    walk(layout.get("blocks") or [])
+    return found
+
+
 def _generated_inputs(layout: dict, controls: list) -> list[dict]:
     """In file order: the declared variable and constant sliders (their range
     and title win), then every variable with a number or true/false initial
@@ -170,14 +190,18 @@ def _generated_inputs(layout: dict, controls: list) -> list[dict]:
             if path in found:
                 found[path].update(min=control["min"], max=control["max"],
                                    step=control.get("step", 1))
+    assigned = _assigned(layout)
     for section, field, capacity in (("variables", "initial", False),
                                      ("resources", "capacity", True),
                                      ("auxiliaries", "expr", False)):
         for record in layout.get(section) or []:
             name = record.get("name")
+            if section == "variables" and name in assigned:
+                continue        # S4-20: a counter's start value answers no question a client has
+            label = record.get("description") if section == "variables" else None
             if isinstance(name, str) and name and name not in templates.get(section, ()) \
                     and not (capacity and name in capped):
-                add(f"{section}.{name}.{field}", name, record.get(field), capacity)
+                add(f"{section}.{name}.{field}", str(label or name), record.get(field), capacity)
     for block in layout.get("blocks") or []:
         arguments = (block.get("params") or {}).get("arguments")
         if block.get("type") == "SUBMODEL" and isinstance(arguments, dict):
@@ -350,7 +374,8 @@ def _checked(entry: dict, leaf, value):
     never passed on as it came: a number is rebuilt in the leaf's own type."""
     shown = repr(value)[:40]
     kind = entry["kind"]
-    seen = {"path": entry["path"], "shown": shown}      # what a page words the refusal from
+    # What a page words the refusal from: the lever by the label its reader knows (S4-06).
+    seen = {"path": str(entry.get("label") or entry["path"])[:60], "shown": shown}
     if kind == "switch":
         if not isinstance(value, bool):
             raise Refusal(f"input '{entry['path']}': {shown} is not true or false", "switch", seen)

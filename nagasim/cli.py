@@ -31,6 +31,7 @@ from nagasim.core.errors import ModelRunError
 # commands in; it is not meaningful otherwise.
 COMMANDS = {
     "examples": ("examples", "main", "list the models that ship in the package"),
+    "plugins": ("plugins", "main", "list the plugins loaded, failed and scanned (read-only)"),
     "run": ("api", "main", "run a model headless"),
     "facts": ("factscli", "main",
               "run once and list what happened that nothing else reports, as facts"),
@@ -77,7 +78,7 @@ COMMANDS = {
     "forecast": ("forecast", "main", "short-horizon forecast with prediction bands"),
     "plan": ("planning", "main", "deterministic plan, optional CP-SAT proposal and risk"),
     "loops": ("loopdominance", "main", "loop dominance (Loops That Matter) of an SD model"),
-    "study": ("studyrerun", "main", "check a study folder: rerun its versions (its reproduce steps with --steps), check its numbers"),
+    "study": ("studyrerun", "main", "check a study folder: rerun its versions (its reproduce steps with --steps), check its numbers, record your own validation"),
     "room": ("studyroom", "main", "the live control room of a study in your browser"),
     "skill": ("skillcli", "main", "show or copy the simulation-study guide for an assistant"),
     "mcp": ("mcp_server", "main", "Model Context Protocol server over stdio"),
@@ -115,9 +116,27 @@ def _dispatch(entry, argv: list, prog: str, name: str) -> int:
                 # The line `naga validate` prints (modelschema.main_validate).
                 sys.stderr.write(f"{p.severity.upper()} {p.code} {p.path or '/'}: {p.message}\n"
                                  + (f"    hint: {p.hint}\n" if p.hint else ""))
+        elif getattr(exc, "code", None) == "E_RUN_BLOCK":     # named by its block (#1766)
+            sys.stderr.write(f"{prog} {name}: {exc.code} {exc}\n")
         else:
-            sys.stderr.write(f"{prog} {name}: {exc}\n")
+            sys.stderr.write(f"{prog} {name}: {exc}{_bundled_hint(exc)}\n")
         return 2
+    except ArithmeticError as exc:      # a block's division by zero is the model's (#1766)
+        if os.environ.get("NAGASIM_CLI_DEBUG") or getattr(exc, "code", None) != "E_RUN_BLOCK":
+            raise
+        sys.stderr.write(f"{prog} {name}: {exc.code} {exc}\n")
+        return 2
+
+
+def _bundled_hint(exc) -> str:
+    """A missing file whose name is close to a bundled model's: say which (review S1-10)."""
+    import difflib
+
+    from nagasim import examples
+    if not isinstance(exc, FileNotFoundError) or not exc.filename:
+        return ""
+    near = difflib.get_close_matches(str(exc.filename), examples.names(), n=1)
+    return f" (did you mean the bundled model '{near[0]}'? `naga examples` lists them)" if near else ""
 
 
 def _print_help(prog: str = "naga") -> None:
@@ -154,6 +173,11 @@ def main(argv=None, prog: str = "naga") -> int:
         _print_help(prog)
         return 0
 
+    if args[0] in ("--version", "-V"):
+        from nagasim import __version__
+        print(f"nagasim {__version__}")
+        return 0
+
     # Plugin blocks/distributions/exporters (ROADMAP 2.4 B): registered once
     # here, before any subcommand runs, so they show up in --export alike.
     from nagasim.plugins import load_plugins
@@ -182,8 +206,12 @@ def main(argv=None, prog: str = "naga") -> int:
                          "built on Naga; this engine does not have it.\n")
         return 2
 
-    _print_help(prog)
-    return 0 if name is None else 2
+    import difflib
+    near = difflib.get_close_matches(name, COMMANDS, n=1)
+    sys.stderr.write(f"{prog}: '{name}' is not a command"
+                     + (f"; did you mean '{near[0]}'?" if near else "")
+                     + f" `{prog} --help` lists them.\n")
+    return 2
 
 
 if __name__ == "__main__":

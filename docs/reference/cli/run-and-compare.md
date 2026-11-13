@@ -18,6 +18,18 @@ options:
   --path      print the folder they are in instead
 ```
 
+## naga plugins
+
+```text
+usage: naga plugins [-h]
+
+List the plugins this process loaded, failed to load and scanned. Read-only;
+--no-plugins before the command turns them all off.
+
+options:
+  -h, --help  show this help message and exit
+```
+
 ## naga run
 
 ```text
@@ -105,8 +117,9 @@ options:
 usage: naga scenarios [-h] [--scenario SCENARIOS]
                       [--replications REPLICATIONS] [--run-length RUN_LENGTH]
                       [--warmup WARMUP] [--seed SEED] [--workers WORKERS]
-                      [--no-crn] [--out OUT] [--report REPORT] [--player PATH]
-                      [--asked FILE] [--lang {en,it}]
+                      [--no-crn] [--kpi KEY] [--all] [--out OUT]
+                      [--report REPORT] [--player PATH] [--asked FILE]
+                      [--lang {en,it}]
                       model
 
 Run named scenarios headless and compare them.
@@ -128,7 +141,13 @@ options:
                         (default: 1)
   --no-crn              disjoint seeds per scenario (Welch's interval) instead
                         of paired CRN
-  --out OUT             write the comparison table here (.xlsx or .csv)
+  --kpi KEY             show this KPI (a key such as system/Avg Throughput
+                        Time or cost/Robot/Amount); may repeat. Default: the
+                        system KPIs `naga run` prints
+  --all                 show every KPI of every family (the table --out
+                        writes)
+  --out OUT             write the comparison table here (.xlsx or .csv);
+                        always every KPI
   --report REPORT       write an HTML report here
   --player PATH         write a shareable HTML player here: the first
                         replication of every scenario, run again with its seed

@@ -808,3 +808,21 @@ def test_generated_tables_write_no_html_tags():
 def test_stability_says_the_problem_list_may_change_before_one_point_zero():
     text = (DOCS / "stability.md").read_text(encoding="utf-8")
     assert "problem codes and their wording may change before 1.0" in text
+
+
+# -- P13: pages whose blocks could run do not excuse them ----------------------
+
+def test_s1_02_the_simpy_script_page_runs_its_script_and_commands():
+    """The page's script and commands run in a scratch folder (the runner above), so none is excused."""
+    text = (DOCS / "simpy-script.md").read_text(encoding="utf-8")
+    assert not [number for _l, _t, _b, excused, number in fences(text) if excused]
+    assert "from nagasim.simpylog import EventLog" in text
+
+
+def test_s1_15_quickstart_notebook_uses_the_builder():
+    import json
+    cells = json.loads((ROOT / "docs" / "notebooks" / "quickstart.ipynb").read_text(encoding="utf-8"))["cells"]
+    text = "\n".join("".join(cell["source"]) for cell in cells)
+    assert "ModelDocument" not in text and "Qt editor" not in text and "Naga" + " Studio" not in text      # the export rewrites the literal
+    assert "nagasim import build" in text and "examples.path" in text
+    assert "Path(nagasim.__file__)" not in text

@@ -193,3 +193,42 @@ def test_results_kpi_is_the_mean_of_kpis():
     assert r.kpi(key) == table.loc[key, "mean"]
     with pytest.raises(KeyError, match="nope"):
         r.kpi("system/nope")
+
+
+def _returns(node: ast.FunctionDef) -> str:
+    return ast.unparse(node.returns)
+
+
+def test_builder_run_is_typed():
+    """`Model.run` returns Results and names its options, so an editor completes after the dot and
+    a checker flags a misspelt one; `run_model` is `Results` unless a `should_stop` can end it."""
+    stub = ast.parse((ROOT / "nagasim" / "build.pyi").read_text(encoding="utf-8"))
+    model = next(n for n in stub.body if isinstance(n, ast.ClassDef) and n.name == "Model")
+    run = next(n for n in model.body if isinstance(n, ast.FunctionDef) and n.name == "run")
+    assert _returns(run) == "Results" and run.args.kwarg is None
+    assert {a.arg for a in run.args.kwonlyargs} >= {"replications", "seed", "warmup",
+                                                    "run_length", "workers"}
+    api = ast.parse((ROOT / "nagasim" / "api.py").read_text(encoding="utf-8"))
+    overloads = [n for n in api.body if isinstance(n, ast.FunctionDef) and n.name == "run_model"
+                 and any(ast.unparse(d) == "overload" for d in n.decorator_list)]
+    assert sorted(_returns(n) for n in overloads) == ["Results", "Results | None"]
+
+
+@pytest.mark.slow
+def test_builder_mypy_fixture(tmp_path):
+    """The README's claim, checked by a type checker: a misspelt run option is the one error."""
+    import subprocess
+    pytest.importorskip("mypy")
+    source = tmp_path / "typo.py"
+    source.write_text(
+        "from nagasim import build as nb\n"
+        "from nagasim.api import run_model\n"
+        "m = nb.Model()\n"
+        "m.run(replications=2).kpis()\n"
+        "run_model('single_server', replications=2).kpis()\n"
+        "m.run(replication=3)\n", encoding="utf-8")
+    done = subprocess.run([sys.executable, "-m", "mypy", "--follow-imports=silent",
+                           "--no-incremental", str(source)],
+                          cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
+    errors = [line for line in done.stdout.splitlines() if ": error:" in line]
+    assert len(errors) == 1 and errors[0].split("typo.py:")[1].startswith("6:"), done.stdout

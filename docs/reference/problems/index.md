@@ -3,7 +3,7 @@
 
 # Problem codes
 
-The 473 codes that a check of a model can report, from `nagasim/core/problems.py`. Each problem a check finds carries a `code`, a `severity`, a `message`, a `path` into the file, the `block` when there is one, and a `hint`: `naga validate --json` and the `validate_model` agent tool return them. A code starting `E_` is an error that stops a run; one starting `W_` is a warning that does not. Before 1.0 new codes are added and a message may be reworded, so match on the code and not on the text (see [Stability](../../stability.md)).
+The 478 codes that a check of a model can report, from `nagasim/core/problems.py`. Each problem a check finds carries a `code`, a `severity`, a `message`, a `path` into the file, the `block` when there is one, and a `hint`: `naga validate --json` and the `validate_model` agent tool return them. A code starting `E_` is an error that stops a run; one starting `W_` is a warning that does not. Before 1.0 new codes are added and a message may be reworded, so match on the code and not on the text (see [Stability](../../stability.md)).
 
 | Area | Codes | What they cover |
 |---|---|---|
@@ -13,5 +13,5 @@ The 473 codes that a check of a model can report, from `nagasim/core/problems.py
 | [Networks, fleets and automation](network-and-automation.md) | 48 | Path networks, fleets, workers, motion, batteries and chargers, the investment case and the dispatch plan. |
 | [Expressions, stocks and flows](expressions-and-dynamics.md) | 102 | Expressions and variables, tables and time series, levels, flows, conversions, conveyors, delays, subscripts and units. |
 | [Resources and time](resources-and-time.md) | 32 | Resources and sets, schedules, failures, calendars and arrivals. |
-| [Scenarios, checks and the editor](scenarios-and-checks.md) | 31 | Scenarios, assertions, path checks, dashboards, annotations, cranes and piles drawn in playback, and the file version. |
-| [Blocks, links and routing](blocks-and-flow.md) | 73 | Blocks and their parameters, distributions, links, decisions, queues, routings and orders. |
+| [Scenarios, checks and the editor](scenarios-and-checks.md) | 32 | Scenarios, assertions, path checks, dashboards, annotations, cranes and piles drawn in playback, and the file version. |
+| [Blocks, links and routing](blocks-and-flow.md) | 77 | Blocks and their parameters, distributions, links, decisions, queues, routings and orders. |

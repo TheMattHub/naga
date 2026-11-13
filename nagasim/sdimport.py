@@ -18,7 +18,7 @@ This module never touches the filesystem or the network on
 its own: `import_xmile` takes TEXT OR BYTES only, and `load_xmile(path)` reads
 exactly the one path it is given. Every caller is already confined the way
 every other file-reading tool in this codebase is -- the CLI path is typed by
-a human, and `agent_tools.core.import_xmile` resolves its `path` argument through
+a human, and `agent_tools.core.import_sd_model` resolves its `path` argument through
 `Workspace.resolve` (netguard's `confine_path`) before calling this module, the
 same rule every other file-reading agent tool follows: no permission argument
 here or there (`netguard.py`, CLAUDE.md security rule).

@@ -1,6 +1,5 @@
 import math
 import numpy as np
-from scipy import stats
 import logging
 
 from nagasim.core.distribution_spec import DistParam, DistributionSpec, ScaleParam
@@ -36,6 +35,13 @@ _MAX_BOUNDED_ATTEMPTS = 100   # BoundedNormal rejection-sampling cap
 # distribution, next to its registry entry below -- rather than methods, so a
 # plugin can hand in the exact same shape (DEVLOG #25: every sampler still
 # takes the caller's rng on every call, no global random state).
+
+def _stats():
+    """scipy.stats, imported at the first use: it costs about 1.5 s and most runs use none of the
+    families that need it (D1228)."""
+    from scipy import stats
+    return stats
+
 
 def _sample_constant(rng, p, **_):
     return p.get("value", 1)
@@ -93,7 +99,7 @@ def _mean_bounded_normal(p):
     if sd <= 0:
         return float(min(max(mean, lo), hi))
     a, b = (lo - mean) / sd, (hi - mean) / sd
-    m = stats.truncnorm.mean(a, b, loc=mean, scale=sd)
+    m = _stats().truncnorm.mean(a, b, loc=mean, scale=sd)
     return float(m) if np.isfinite(m) else None
 
 
@@ -166,7 +172,7 @@ def _mean_erlang(p):
 
 
 def _sample_cauchy(rng, p, **_):
-    return float(stats.cauchy.rvs(loc=p.get("x0", 0), scale=p.get("gamma", 1), random_state=rng))
+    return float(_stats().cauchy.rvs(loc=p.get("x0", 0), scale=p.get("gamma", 1), random_state=rng))
 
 
 def _mean_cauchy(p):
@@ -177,7 +183,7 @@ def _sample_inverse_gaussian(rng, p, **_):
     # Standard IG(mu, lambda): mean mu, shape lambda. SciPy's invgauss(m, scale=s)
     # has mean m*s and shape s, so IG(mu, lambda) is invgauss(mu/lambda, scale=lambda) (#1395).
     lam = p.get("lambda", 1)
-    return float(stats.invgauss.rvs(mu=p.get("mu", 1) / lam, scale=lam, random_state=rng))
+    return float(_stats().invgauss.rvs(mu=p.get("mu", 1) / lam, scale=lam, random_state=rng))
 
 
 def _mean_inverse_gaussian(p):
@@ -206,22 +212,22 @@ def _mean_chi_square(p):
 
 
 def _sample_loglogistic(rng, p, **_):
-    return float(stats.fisk.rvs(c=p.get("c", 1), scale=p.get("scale", 1), random_state=rng))  # fisk is log-logistic
+    return float(_stats().fisk.rvs(c=p.get("c", 1), scale=p.get("scale", 1), random_state=rng))  # fisk is log-logistic
 
 
 def _mean_loglogistic(p):
     # fisk's mean is infinite for shape c <= 1 -- scipy returns inf, not finite.
-    m = stats.fisk.mean(c=p.get("c", 1), scale=p.get("scale", 1))
+    m = _stats().fisk.mean(c=p.get("c", 1), scale=p.get("scale", 1))
     return float(m) if np.isfinite(m) else None
 
 
 def _sample_johnson_su(rng, p, **_):
-    return float(stats.johnsonsu.rvs(a=p.get("a", 0), b=p.get("b", 1), loc=p.get("loc", 0),
+    return float(_stats().johnsonsu.rvs(a=p.get("a", 0), b=p.get("b", 1), loc=p.get("loc", 0),
                                      scale=p.get("scale", 1), random_state=rng))
 
 
 def _mean_johnson_su(p):
-    m = stats.johnsonsu.mean(a=p.get("a", 0), b=p.get("b", 1), loc=p.get("loc", 0), scale=p.get("scale", 1))
+    m = _stats().johnsonsu.mean(a=p.get("a", 0), b=p.get("b", 1), loc=p.get("loc", 0), scale=p.get("scale", 1))
     return float(m) if np.isfinite(m) else None
 
 
@@ -248,16 +254,16 @@ def _mean_johnson_sb(p):
     lo, hi = p.get("min", 0), p.get("max", 1)
     if a2 == 0:
         return None
-    m = stats.johnsonsb.mean(a1, a2)
+    m = _stats().johnsonsb.mean(a1, a2)
     return float(hi - (hi - lo) * m) if np.isfinite(m) else None
 
 
 def _sample_pearson_v(rng, p, **_):
-    return float(stats.invgamma.rvs(a=p.get("a", 1), scale=p.get("scale", 1), random_state=rng))
+    return float(_stats().invgamma.rvs(a=p.get("a", 1), scale=p.get("scale", 1), random_state=rng))
 
 
 def _mean_pearson_v(p):
-    m = stats.invgamma.mean(a=p.get("a", 1), scale=p.get("scale", 1))
+    m = _stats().invgamma.mean(a=p.get("a", 1), scale=p.get("scale", 1))
     return float(m) if np.isfinite(m) else None
 
 
@@ -268,7 +274,7 @@ def _sample_pearson_vi(rng, p, **_):
 
 def _mean_pearson_vi(p):
     # Y/(1-Y) for Y ~ Beta(a, b) is exactly scipy's "beta prime" variable.
-    m = stats.betaprime.mean(p.get("a", 1), p.get("b", 1), scale=p.get("scale", 1))
+    m = _stats().betaprime.mean(p.get("a", 1), p.get("b", 1), scale=p.get("scale", 1))
     return float(m) if np.isfinite(m) else None
 
 
@@ -470,15 +476,24 @@ DISTRIBUTION_REGISTRY: dict[str, DistributionSpec] = {}
 
 
 def _add(name, params, sampler, category, use_case, *, arrival=False, delay=False,
-        support_lower=None, fit=None, mean=None, scale_params=None):
+        support_lower=None, fit=None, mean=None, scale_params=None, order=()):
     DISTRIBUTION_REGISTRY[name] = DistributionSpec(
         name=name, params=tuple(params), sampler=sampler, category=category, use_case=use_case,
         arrival=arrival, delay=delay, support_lower=support_lower, fit=fit, mean=mean,
-        scale_params=tuple(scale_params) if scale_params else None)
+        scale_params=tuple(scale_params) if scale_params else None, order=tuple(order))
 
 
-def _p(name, default, kind="number", hint=""):
-    return DistParam(name, default, hint=hint, kind=kind)
+def _p(name, default, kind="number", hint="", *, min=None, max=None, min_exclusive=False):
+    return DistParam(name, default, hint=hint, kind=kind, min=min, max=max,
+                     min_exclusive=min_exclusive)
+
+
+# D1221: the bounds below are what each sampler refuses (a library ValueError, a division by
+# zero), plus the order of a range and a probability's [0, 1]. A spread of 0 is allowed: it
+# draws the centre every time, which the samplers accept.
+_POS = {"min": 0.0, "min_exclusive": True}      # > 0
+_NONNEG = {"min": 0.0}                          # >= 0
+_PROB = {"min": 0.0, "max": 1.0}                # in [0, 1]
 
 
 _add("Constant", [_p("value", 1.0, hint="fixed duration, >= 0")], _sample_constant, "continuous",
@@ -491,27 +506,27 @@ _add("Uniform", [_p("low", 0.0, hint="minimum, <= high"), _p("high", 1.0, hint="
     _sample_uniform, "continuous",
     "Any value between a minimum and a maximum is equally likely; use it when only the min and max are known.\n"
     "Params: low (min) =< high (max), both real numbers.",
-    arrival=True, delay=True, support_lower=0.0, fit="Uniform", mean=_mean_uniform,
+    arrival=True, delay=True, support_lower=0.0, fit="Uniform", mean=_mean_uniform, order=(("low", "high"),),
     scale_params=[ScaleParam("low"), ScaleParam("high")])
 
-_add("Exponential", [_p("rate", 1.0, hint="event rate (lambda), > 0")], _sample_exponential, "continuous",
+_add("Exponential", [_p("rate", 1.0, hint="event rate (lambda), > 0", **_POS)], _sample_exponential, "continuous",
     "Time between random independent arrivals, or time to a random breakdown, when past events do not change the next one.\nParam: rate (lambda, event rate) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Exponential", mean=_mean_exponential,
     scale_params=[ScaleParam("rate", "inverse")])
 
-_add("Normal", [_p("mean", 0.0, hint="central value"), _p("stddev", 1.0, hint="standard deviation, > 0")],
+_add("Normal", [_p("mean", 0.0, hint="central value"), _p("stddev", 1.0, hint="standard deviation, > 0", **_NONNEG)],
     _sample_normal, "special",
     "Symmetric variation around an average, such as a cycle time that is rarely far from the mean; it can go negative unless the mean is much larger than the spread.\nParams: mean (central value), stddev (standard deviation) > 0.",
     support_lower=None, fit="Normal", mean=_mean_normal,
     scale_params=[ScaleParam("mean"), ScaleParam("stddev")])
 
-_add("BoundedNormal", [_p("mean", 0.0, hint="central value"), _p("stddev", 1.0, hint="standard deviation, > 0"),
+_add("BoundedNormal", [_p("mean", 0.0, hint="central value"), _p("stddev", 1.0, hint="standard deviation, > 0", **_NONNEG),
     _p("min", 0.0, hint="lower bound, < max"), _p("max", 1.0, hint="upper bound, > min")],
     _sample_bounded_normal, "special",
     "Bell-shaped variation around an average, cut off at a minimum and a maximum so a time cannot go negative or beyond a physical limit.\nParams: mean (central value), stddev (standard deviation) > 0; min < max.",
     delay=True, support_lower=0.0, mean=_mean_bounded_normal)
 
-_add("Lognormal", [_p("mu", 0.0, hint="log-mean"), _p("sigma", 1.0, hint="log-stddev, > 0")],
+_add("Lognormal", [_p("mu", 0.0, hint="log-mean"), _p("sigma", 1.0, hint="log-stddev, > 0", **_NONNEG)],
     _sample_lognormal, "continuous",
     "Right-skewed times that cannot go below zero, such as manual handling, picking or repair durations with an occasional long one.\nParams: mu (log-mean), sigma (log-stddev) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Lognormal", mean=_mean_lognormal,
@@ -523,25 +538,25 @@ _add("Lognormal", [_p("mu", 0.0, hint="log-mean"), _p("sigma", 1.0, hint="log-st
 _add("Triangular", [_p("low", 0.0, hint="minimum, <= mode"), _p("high", 1.0, hint="maximum, >= mode"),
     _p("mode", 0.5, hint="most likely value, between low and high")], _sample_triangular, "continuous",
     "Min, most likely and max are known, usually from expert estimates when there is no data.\nParams: low =< mode =< high.",
-    arrival=True, delay=True, support_lower=0.0, fit="Triangular", mean=_mean_triangular,
+    arrival=True, delay=True, support_lower=0.0, fit="Triangular", mean=_mean_triangular, order=(("low", "mode"), ("mode", "high")),
     scale_params=[ScaleParam("low"), ScaleParam("high"), ScaleParam("mode")])
 
-_add("Gamma", [_p("alpha", 1.0, hint="shape, > 0"), _p("beta", 1.0, hint="scale, > 0")], _sample_gamma, "continuous",
+_add("Gamma", [_p("alpha", 1.0, hint="shape, > 0", **_NONNEG), _p("beta", 1.0, hint="scale, > 0", **_NONNEG)], _sample_gamma, "continuous",
     "Right-skewed service or processing times that cannot go below zero, from very regular to very variable.\nParams: alpha (shape) > 0, beta (scale) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Gamma", mean=_mean_gamma,
     scale_params=[ScaleParam("beta")])   # alpha is shape, left literal
 
-_add("Weibull", [_p("scale", 1.0, hint="lambda, > 0"), _p("shape", 1.0, hint="k, > 0")], _sample_weibull, "continuous",
+_add("Weibull", [_p("scale", 1.0, hint="lambda, > 0"), _p("shape", 1.0, hint="k, > 0", **_NONNEG)], _sample_weibull, "continuous",
     "Equipment lifetimes and time to failure, where the breakdown rate can rise with age (wear-out) or fall (early failures).\nParams: scale (lambda) > 0, shape (k) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Weibull", mean=_mean_weibull,
     scale_params=[ScaleParam("scale")])   # shape is shape, left literal
 
 _add("Beta", [_p("min", 0.0, hint="lower bound, < max"), _p("max", 1.0, hint="upper bound, > min"),
-    _p("alpha", 1.0, hint="shape, > 0"), _p("beta", 1.0, hint="shape, > 0")], _sample_beta, "continuous",
+    _p("alpha", 1.0, hint="shape, > 0", **_POS), _p("beta", 1.0, hint="shape, > 0", **_POS)], _sample_beta, "continuous",
     "A value between a minimum and a maximum with a flexible shape, such as a fraction, a proportion or a bounded time.\nParams: alpha, beta > 0; min < max.",
     arrival=True, delay=True, support_lower=0.0, fit="Beta", mean=_mean_beta)
 
-_add("Erlang", [_p("k", 1.0, hint="number of exponential stages, >= 1"), _p("rate", 1.0, hint="lambda, > 0")],
+_add("Erlang", [_p("k", 1.0, hint="number of exponential stages, >= 1", **_NONNEG), _p("rate", 1.0, hint="lambda, > 0", **_POS)],
     _sample_erlang, "continuous",
     "Time to finish k exponential steps in a row, giving a service time less variable than exponential but still random.\nParams: k (stages) >= 1, rate (lambda) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Erlang", mean=_mean_erlang,
@@ -561,33 +576,33 @@ _add("Erlang", [_p("k", 1.0, hint="number of exponential stages, >= 1"), _p("rat
 # refuses a per-product `process_time` override at a station using any of
 # these, naming the station/product/distribution.
 
-_add("Cauchy", [_p("x0", 0.0, hint="location"), _p("gamma", 1.0, hint="scale, > 0")], _sample_cauchy, "special",
+_add("Cauchy", [_p("x0", 0.0, hint="location"), _p("gamma", 1.0, hint="scale, > 0", **_NONNEG)], _sample_cauchy, "special",
     "Very heavy-tailed values with frequent extreme outliers in both directions; rarely right for times, and it often returns negative values.\n"
     "Params: x0 (location), gamma (scale) > 0.",
     support_lower=None, mean=_mean_cauchy)
 
-_add("InverseGaussian", [_p("mu", 1.0, hint="mean, > 0"), _p("lambda", 1.0, hint="shape, > 0")],
+_add("InverseGaussian", [_p("mu", 1.0, hint="mean, > 0", **_POS), _p("lambda", 1.0, hint="shape, > 0", **_POS)],
     _sample_inverse_gaussian, "continuous",
     "Right-skewed positive times such as a reaction or decision delay, or the time for a drifting quantity to reach a level.\nParams: mu (mean) > 0, lambda (shape) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="InverseGaussian", mean=_mean_inverse_gaussian)
 
-_add("Rayleigh", [_p("sigma", 1.0, hint="scale, > 0")], _sample_rayleigh, "continuous",
+_add("Rayleigh", [_p("sigma", 1.0, hint="scale, > 0", **_NONNEG)], _sample_rayleigh, "continuous",
     "A positive magnitude such as movement noise or a positioning error, with a single scale parameter.\nParam: sigma (scale) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Rayleigh", mean=_mean_rayleigh,
     scale_params=[ScaleParam("sigma")])   # a genuine one-parameter scale family
 
-_add("ChiSquare", [_p("df", 1.0, hint="degrees of freedom, >= 1")], _sample_chi_square, "special",
+_add("ChiSquare", [_p("df", 1.0, hint="degrees of freedom, >= 1", **_POS)], _sample_chi_square, "special",
     "Statistical diagnostics and sums of squared normal variations; rarely used for simulation times.\nParam: df (degrees of freedom) >= 1.",
     support_lower=0.0, mean=_mean_chi_square)
 
-_add("LogLogistic", [_p("c", 1.0, hint="shape, > 0"), _p("scale", 1.0, hint="scale, > 0")],
+_add("LogLogistic", [_p("c", 1.0, hint="shape, > 0", **_POS), _p("scale", 1.0, hint="scale, > 0", **_NONNEG)],
     _sample_loglogistic, "continuous",
     "Right-skewed durations with a heavier tail than lognormal, such as repair or lifetime data that cannot go below zero.\nParams: c (shape) > 0, scale > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="LogLogistic", mean=_mean_loglogistic,
     scale_params=[ScaleParam("scale")])   # c is shape, left literal
 
-_add("JohnsonSU", [_p("a", 0.0, hint="shape"), _p("b", 1.0, hint="shape"), _p("loc", 0.0, hint="center"),
-    _p("scale", 1.0, hint="scale, > 0")], _sample_johnson_su, "special",
+_add("JohnsonSU", [_p("a", 0.0, hint="shape"), _p("b", 1.0, hint="shape", **_POS), _p("loc", 0.0, hint="center"),
+    _p("scale", 1.0, hint="scale, > 0", **_NONNEG)], _sample_johnson_su, "special",
     "A flexible fit for skewed, heavy-tailed data when no simple distribution matches; it can return negative values.\n"
     "Params: a, b (shape), loc (center), scale > 0.",
     support_lower=None, mean=_mean_johnson_su,
@@ -598,13 +613,13 @@ _add("JohnsonSB", [_p("a1", 0.0, hint="shape"), _p("a2", 1.0, hint="shape"), _p(
     "A skewed value that stays between a minimum and a maximum, such as a yield or fill percentage.\nParams: a1, a2 (shape), min < max.",
     support_lower=0.0, mean=_mean_johnson_sb)
 
-_add("PearsonTypeV", [_p("a", 1.0, hint="shape, > 0"), _p("scale", 1.0, hint="scale, > 0")], _sample_pearson_v,
+_add("PearsonTypeV", [_p("a", 1.0, hint="shape, > 0", **_POS), _p("scale", 1.0, hint="scale, > 0", **_NONNEG)], _sample_pearson_v,
     "continuous",
     "Right-skewed positive delays or times to failure with a long tail, an alternative to lognormal.\nParams: a (shape) > 0, scale > 0.",
     delay=True, support_lower=0.0, mean=_mean_pearson_v,
     scale_params=[ScaleParam("scale")])   # a is shape, left literal
 
-_add("PearsonTypeVI", [_p("a", 1.0, hint="shape, > 0"), _p("b", 1.0, hint="shape, > 0"), _p("scale", 1.0, hint="scale, > 0")],
+_add("PearsonTypeVI", [_p("a", 1.0, hint="shape, > 0", **_POS), _p("b", 1.0, hint="shape, > 0", **_POS), _p("scale", 1.0, hint="scale, > 0")],
     _sample_pearson_vi, "continuous",
     "A ratio of two gamma variables, such as cost per service, that is always positive; it can model times when the parameters suit.\nParams: a, b > 0, scale > 0.",
     delay=True, support_lower=0.0, mean=_mean_pearson_vi,
@@ -616,24 +631,24 @@ _add("PearsonTypeVI", [_p("a", 1.0, hint="shape, > 0"), _p("b", 1.0, hint="shape
 # stay inside the family the way it does for a continuous scale family --
 # there is no `p`/`lambda`/`r` to move that leaves "Bernoulli"/"Poisson"/etc.
 # true and just rescales the mean.
-_add("Bernoulli", [_p("p", 0.5, hint="success probability, in [0, 1]")], _sample_bernoulli, "special",
+_add("Bernoulli", [_p("p", 0.5, hint="success probability, in [0, 1]", **_PROB)], _sample_bernoulli, "special",
     "A single yes/no outcome with a given probability, such as accept or reject, pass or fail, or rework or not.\nParam: p (success probability) in [0, 1].",
     support_lower=0.0, mean=_mean_bernoulli)
 
-_add("Binomial", [_p("n", 1.0, hint="number of trials, >= 0"), _p("p", 0.5, hint="success probability, in [0, 1]")],
+_add("Binomial", [_p("n", 1.0, hint="number of trials, >= 0", **_NONNEG), _p("p", 0.5, hint="success probability, in [0, 1]", **_PROB)],
     _sample_binomial, "special",
     "Count of successes (for example defective parts) in a fixed number of independent trials.\nParams: n (trials) >= 0, p in [0, 1].",
     support_lower=0.0, fit="Binomial", mean=_mean_binomial)
 
-_add("Geometric", [_p("p", 0.5, hint="success probability, in (0, 1]")], _sample_geometric, "special",
+_add("Geometric", [_p("p", 0.5, hint="success probability, in (0, 1]", **_PROB, min_exclusive=True)], _sample_geometric, "special",
     "Number of attempts until the first success, such as tries before a part passes inspection.\nParam: p in (0, 1].",
     support_lower=0.0, fit="Geometric", mean=_mean_geometric)
 
-_add("Poisson", [_p("lambda", 1.0, hint="average rate, > 0")], _sample_poisson, "discrete",
+_add("Poisson", [_p("lambda", 1.0, hint="average rate, > 0", **_NONNEG)], _sample_poisson, "discrete",
     "Counts per period, such as the number of arrivals or events in a fixed time window.\nParam: lambda (average rate) > 0.",
     arrival=True, delay=True, support_lower=0.0, fit="Poisson", mean=_mean_poisson)
 
-_add("NegativeBinomial", [_p("r", 1.0, hint="target number of successes, >= 1"), _p("p", 0.5, hint="success probability, in (0, 1]")],
+_add("NegativeBinomial", [_p("r", 1.0, hint="target number of successes, >= 1", **_POS), _p("p", 0.5, hint="success probability, in (0, 1]", **_PROB, min_exclusive=True)],
     _sample_negative_binomial, "special",
     "Number of failures before a set number of successes, each try with the same chance of success, such as rejected parts before r good ones.\nParams: r (target successes) >= 1, p in (0, 1].",
     support_lower=0.0, mean=_mean_negative_binomial)
@@ -641,12 +656,12 @@ _add("NegativeBinomial", [_p("r", 1.0, hint="target number of successes, >= 1"),
 _add("DiscreteUniform", [_p("low", 0.0, hint="minimum integer, <= high"), _p("high", 1.0, hint="maximum integer, >= low")],
     _sample_discrete_uniform, "special",
     "A whole number between a minimum and a maximum, each equally likely, such as a random lot size from 1 to 6.\nParams: low (min) <= high (max), integers.",
-    delay=True, support_lower=0.0, fit="DiscreteUniform", mean=_mean_discrete_uniform)
+    delay=True, support_lower=0.0, fit="DiscreteUniform", mean=_mean_discrete_uniform, order=(("low", "high"),))
 
-_add("Hypergeometric", [_p("N", 10.0, hint="population size"), _p("K", 5.0, hint="number of success states in the population"),
-    _p("n", 3.0, hint="sample size")], _sample_hypergeometric, "special",
+_add("Hypergeometric", [_p("N", 10.0, hint="population size", **_NONNEG), _p("K", 5.0, hint="number of success states in the population", **_NONNEG),
+    _p("n", 3.0, hint="sample size", **_NONNEG)], _sample_hypergeometric, "special",
     "Successes in a sample drawn without replacement from a finite lot, such as defectives found when inspecting a sample.\nParams: N (population) >= K (success states) >= n (sample) >= 0.",
-    support_lower=0.0, mean=_mean_hypergeometric)
+    support_lower=0.0, mean=_mean_hypergeometric, order=(("K", "N"), ("n", "N")))
 
 _add("EmpiricalContinuous", [_p("values", [0.0, 1.0], "list", hint="bin edges, length = len(probs) + 1"),
     _p("probs", [1.0], "list", hint="bin weights, summing to 1")],

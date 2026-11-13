@@ -265,3 +265,37 @@ def _register_many(objs, group: str, source: str, report: PluginReport) -> list[
         if group == "nagasim.blocks":
             PLUGIN_BLOCK_TYPES.add(key)
     return added
+
+
+def main(argv=None) -> int:
+    """`naga plugins`: what this process loaded and from where. Read-only: it takes no option that
+    loads or trusts anything (a flag grants nothing, and `--no-plugins` before the command turns them all off).
+    A folder named by NAGASIM_PLUGIN_PATH that is not a folder, or holds no plugin file, is said so here,
+    because the loader skips both without a word (S7-11)."""
+    import argparse
+
+    from nagasim._cli import setup_cli
+
+    setup_cli()
+    argparse.ArgumentParser(
+        prog="naga plugins",
+        description="List the plugins this process loaded, failed to load and scanned. Read-only; "
+                    "--no-plugins before the command turns them all off.").parse_args(argv)
+    if os.environ.get(NO_PLUGINS_ENV) == "1":
+        print("plugins: off (--no-plugins): only the shipped blocks, distributions and exporters")
+        return 0
+    report = load_plugins()
+    print(f"loaded ({len(report.loaded)}): {', '.join(report.loaded) or 'nothing'}")
+    for source, error in report.failed:
+        print(f"failed: {source}: {error}")
+    for path in report.changed:
+        print(f"changed since trusted, nothing loaded: {path}")
+    for folder, provided in report.folders.items():
+        print(f"scanned: {folder}: " + (f"{', '.join(provided)}" if provided else "no plugin file registered anything"))
+    scanned = {_key(folder) for folder in report.folders}
+    for entry in filter(None, os.environ.get(_ENV_VAR, "").split(os.pathsep)):
+        if not Path(entry).is_dir():
+            print(f"{_ENV_VAR}: {entry}: not a folder")
+        elif _key(entry) not in scanned:
+            print(f"{_ENV_VAR}: {entry}: not scanned")
+    return 0

@@ -97,6 +97,24 @@ class Reply:
     usage: Usage
     blocks: list | None = None  # the provider's own content blocks, JSON-ready, replayed verbatim
                                 # by the same provider; None when the provider has none
+    notice: str = ""            # something the person should know about this reply (#1804)
+
+
+# #1804: a local server at its default context cuts a long prompt with no error (Ollama) or refuses
+# it (LM Studio). The request's bytes / 4 is a low estimate of its tokens (JSON runs nearer 3 bytes
+# a token), so a reported count under 60% of it means the server dropped part of the prompt; a
+# request under _CONTEXT_FLOOR tokens fits every default and is not checked.
+_CUT_RATIO = 0.6
+_CONTEXT_FLOOR = 2048
+
+
+def context_advice(needed: int, held: int | None = None) -> str:
+    """The sentence that says a local server's context is too small, and how to raise it."""
+    cut = (f"The local server cut the prompt (it holds about {held} tokens; this request is about "
+           f"{needed})" if held else f"The local server cannot hold the prompt (this request is about "
+                                     f"{needed} tokens)")
+    return (f"{cut}. Raise the context to 64k: OLLAMA_CONTEXT_LENGTH=65536, or the context length "
+            "in LM Studio's load settings.")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -227,7 +245,8 @@ def resolve_config(*, provider=None, base_url=None, model=None, api_key=None, re
     *anthropic_key* is a key an application keeps for Anthropic (its credential store): it is
     the Anthropic provider's alone, ranked just after *api_key* and before `ANTHROPIC_API_KEY`,
     and no other provider ever receives it. It also makes Anthropic the default provider, as the
-    environment variable does."""
+    environment variable does. An explicit *base_url* (or NAGASIM_LLM_BASE_URL) makes it the
+    OpenAI-compatible provider unless *provider* says otherwise."""
     env = os.environ if environ is None else environ
 
     def pick(flag, name):
@@ -236,7 +255,10 @@ def resolve_config(*, provider=None, base_url=None, model=None, api_key=None, re
     held_anthropic = (anthropic_key or env.get("ANTHROPIC_API_KEY")
                       or (_stored_user_key() if environ is None else "") or "")
     generic_key = env.get("NAGASIM_LLM_API_KEY") or ""
-    chosen = pick(provider, "PROVIDER") or ("anthropic" if held_anthropic else "openai")
+    # An address names a server (D1229, #1787): without --provider it means the OpenAI-compatible one,
+    # even when a key for Anthropic is held; the key is never sent there.
+    chosen = pick(provider, "PROVIDER") or ("anthropic" if held_anthropic and not pick(base_url, "BASE_URL")
+                                            else "openai")
     if chosen not in ("anthropic", "openai"):
         raise LLMError(f"unknown provider '{chosen}': use anthropic or openai")
     if chosen == "anthropic":
@@ -307,9 +329,10 @@ class _OpenAICompat:
             headers["Authorization"] = f"Bearer {self.cfg.api_key}"
         timeout = LOCAL_TIMEOUT_S if self.kind == "local" else HOSTED_TIMEOUT_S
         where = self.cfg.base_url
+        data = json.dumps(body).encode("utf-8")
+        needed = len(data) // 4
         try:
-            request = urllib.request.Request(where + "/chat/completions",
-                                             json.dumps(body).encode("utf-8"), headers)
+            request = urllib.request.Request(where + "/chat/completions", data, headers)
             with self._opener.open(request, timeout=timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
@@ -324,6 +347,8 @@ class _OpenAICompat:
             problem = f"{where} answered HTTP {exc.code}{hint}" + (f": {detail}" if detail else "")
             if exc.code == 400 and "reasoning_effort" in body:
                 problem += " (if the server rejects reasoning_effort, set NAGASIM_LLM_REASONING=omit)"
+            if exc.code == 400 and any(w in detail.lower() for w in ("context", "overflow")):
+                problem = f"{context_advice(needed)} ({problem})"
             raise LLMError(problem) from None
         except http.client.HTTPException as exc:    # before OSError: RemoteDisconnected is both
             raise LLMError(f"{where} closed the connection or sent a broken answer "
@@ -343,6 +368,11 @@ class _OpenAICompat:
             # The rest: JSON of the wrong shape at some depth.
             raise LLMError(f"{where} did not answer with a chat completion: "
                            f"{raw.decode('utf-8', 'replace')[:300]}") from None
+        held = reply.usage.input_tokens
+        if needed >= _CONTEXT_FLOOR and 0 < held < _CUT_RATIO * needed:
+            # Not an error: the reply came, and a server that counts only uncached tokens on a
+            # later round would otherwise end a sound turn.
+            reply = dataclasses.replace(reply, notice=context_advice(needed, held))
         if on_text is not None and reply.text:
             on_text(reply.text)
         return reply

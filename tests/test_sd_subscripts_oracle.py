@@ -14,7 +14,7 @@ from nagasim.core import sd
 from nagasim.core.schema import migrate
 from nagasim.core.sim_runner import initialize_sim_env, prepare_model, step_until
 
-from conftest import problem_codes
+from helpers import codes as _codes
 
 REGIONS = ["north", "south"]
 SIR_VARIABLES = [{"name": "beta", "initial": 0.3}, {"name": "gamma", "initial": 0.1},
@@ -63,10 +63,6 @@ def _sir_by_hand(method):
                   + each(lambda r: {"name": f"rec[{r}]", "from": f"I[{r}]", "to": f"R[{r}]",
                                     "rate": f'gamma * LEVEL("I[{r}]") + 0 * AUX("mean_I")'})),
         "simulation": {"time_limit": 60.0, "sd": {"dt": 0.25, "method": method}}}
-
-
-def _codes(layout):
-    return problem_codes(layout, severity=None)
 
 
 # ================================================================ the oracle

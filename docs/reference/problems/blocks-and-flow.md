@@ -21,13 +21,16 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="e_dispose_has_output"></span>`E_DISPOSE_HAS_OUTPUT` | error | A DISPOSE block has an outgoing link. | [DISPOSE](../blocks/dispose.md) |
 | <span id="e_distribution_missing"></span>`E_DISTRIBUTION_MISSING` | error | A duration spec (link delay, failure uptime/downtime) names no distribution. | -- |
 | <span id="e_dist_param_unknown"></span>`E_DIST_PARAM_UNKNOWN` | error | A dist_params key the distribution does not take (it would be ignored). | -- |
-| <span id="e_dist_param_value"></span>`E_DIST_PARAM_VALUE` | error | A dist_params value the distribution cannot use: a choice outside its list, or a jitter that is negative or not a number. | -- |
+| <span id="e_dist_param_value"></span>`E_DIST_PARAM_VALUE` | error | A dist_params value the distribution cannot use: a choice outside its list, a jitter that is negative or not a number, an empty value, or one outside the bounds its registry entry states (rate &gt; 0, low &lt;= high). | -- |
 | <span id="e_duplicate_block"></span>`E_DUPLICATE_BLOCK` | error | Two blocks share a name. | [DUPLICATE](../blocks/duplicate.md) |
 | <span id="e_duplicate_station"></span>`E_DUPLICATE_STATION` | error | Two STATION blocks answer to the same station name. | [DUPLICATE](../blocks/duplicate.md), [STATION](../blocks/station.md) |
 | <span id="e_field_range"></span>`E_FIELD_RANGE` | error | A numeric field of a section (a fleet, a charger, a level, a series, ...) is outside the bounds the field table and the published schema state. | -- |
+| <span id="e_field_type"></span>`E_FIELD_TYPE` | error | A field of `simulation` or of a section's record holds a value of a JSON type its schema does not allow (text where a number goes); the run would stop on it. | -- |
 | <span id="e_hold_space_target"></span>`E_HOLD_SPACE_TARGET` | error | hold_until_space is set but the block it reserves in (space_of, or the first link's target) is not a BUFFER with capacity &gt; 0 or a SEIZE/PROCESS with queue_capacity &gt; 0. | [BUFFER](../blocks/buffer.md), [HOLD](../blocks/hold.md), [PROCESS](../blocks/process.md), [SEIZE](../blocks/seize.md) |
 | <span id="e_link_unknown_block"></span>`E_LINK_UNKNOWN_BLOCK` | error | A link names a block that does not exist. | -- |
+| <span id="e_logic_class_unknown"></span>`E_LOGIC_CLASS_UNKNOWN` | error | A LOGIC block names a class the logic module (nagasim.core.custom_logic) does not define, so a run from an agent tool would fail on it. | [LOGIC](../blocks/logic.md) |
 | <span id="e_match_attribute"></span>`E_MATCH_ATTRIBUTE` | error | A MATCH match_on is not an attribute name (an identifier, optionally written entity.&lt;name&gt;). | [MATCH](../blocks/match.md) |
+| <span id="e_model_json"></span>`E_MODEL_JSON` | error | The model file is not valid JSON, or not one JSON object (`naga validate`). | -- |
 | <span id="e_no_create"></span>`E_NO_CREATE` | error | The model has no CREATE block, so nothing ever arrives. | [CREATE](../blocks/create.md) |
 | <span id="e_no_dispose"></span>`E_NO_DISPOSE` | error | The model has no DISPOSE block, so nothing ever leaves. | [DISPOSE](../blocks/dispose.md) |
 | <span id="e_on_preempt"></span>`E_ON_PREEMPT` | error | on_preempt is neither "resume" nor "restart". | -- |
@@ -47,6 +50,7 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="e_record_kind_conflict"></span>`E_RECORD_KIND_CONFLICT` | error | Two RECORD blocks give the same statistic different kinds. | [RECORD](../blocks/record.md) |
 | <span id="e_record_stat_name"></span>`E_RECORD_STAT_NAME` | error | A RECORD block has an empty stat_name. | [RECORD](../blocks/record.md) |
 | <span id="e_route_no_sequences"></span>`E_ROUTE_NO_SEQUENCES` | error | A ROUTE block exists but the model declares no stations or sequences. | [ROUTE](../blocks/route.md) |
+| <span id="e_run_block"></span>`E_RUN_BLOCK` | error | A block stopped the run: a value it computed or drew could not be used (an attribute no block assigned, a negative scale), or no branch took an entity. Raised as ModelRunError with the block's name; fix that block's parameters. | -- |
 | <span id="e_separate_carrier"></span>`E_SEPARATE_CARRIER` | error | A SEPARATE's carrier is not "dispose" or "keep". | [SEPARATE](../blocks/separate.md) |
 | <span id="e_separate_carrier_link"></span>`E_SEPARATE_CARRIER_LINK` | error | A SEPARATE that keeps the carrier does not have exactly two outgoing links (0 = the members, 1 = the carrier). | [SEPARATE](../blocks/separate.md) |
 | <span id="e_separate_member_time"></span>`E_SEPARATE_MEMBER_TIME` | error | A SEPARATE has a member_time but disposes of the carrier. | [SEPARATE](../blocks/separate.md) |
@@ -76,7 +80,7 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="w_queue_row_crossing"></span>`W_QUEUE_ROW_CROSSING` | warning | A placed asset's drawn queue row (up to its queue capacity, at most ten places 0.8 m apart) runs through another placed asset on the floor plan; turn the row (queue_row) so the picture reads right. | -- |
 | <span id="w_station_unused"></span>`W_STATION_UNUSED` | warning | A STATION block is named by no sequence step. | [STATION](../blocks/station.md) |
 | <span id="w_unbounded_duration"></span>`W_UNBOUNDED_DURATION` | warning | A duration uses a distribution that can sample below 0; samples truncate to 0. | -- |
-| <span id="w_unknown_key"></span>`W_UNKNOWN_KEY` | warning | A key the model file format does not have. At the top level it is kept through load and save; inside a section the document drops it. | -- |
+| <span id="w_unknown_key"></span>`W_UNKNOWN_KEY` | warning | A key the model file format does not have, at any level the schema closes; the hint names the nearest valid key. The document keeps it through load and save. | -- |
 | <span id="w_unreachable"></span>`W_UNREACHABLE` | warning | A block cannot be reached from any CREATE. | [CREATE](../blocks/create.md) |
 | <span id="w_wall_crossing"></span>`W_WALL_CROSSING` | warning | A path-network segment crosses a building wall where it has no opening; walls never change routing, so movers would walk through it. | -- |
 | <span id="w_written_by_newer"></span>`W_WRITTEN_BY_NEWER` | warning | The file was last saved by a newer nagasim than this one; sections this build does not know are kept, but it may read others differently. | -- |

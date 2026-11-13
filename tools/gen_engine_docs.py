@@ -1171,7 +1171,7 @@ def _capture_help(args, main) -> str:
 CLI_GROUPS = (
     ("run-and-compare", "Run and compare",
      "Run a model, compare scenarios and search for the best settings.",
-     ("examples", "run", "scenarios", "explain", "invest", "fit", "uncertainty", "doe", "optimize", "policy-eval")),
+     ("examples", "plugins", "run", "scenarios", "explain", "invest", "fit", "uncertainty", "doe", "optimize", "policy-eval")),
     ("model-files", "Check and edit model files",
      "Validate, format, diff, merge and test model files, and export them as code.",
      ("schema", "validate", "fmt", "export", "diff", "merge", "check", "verify", "facts", "ci-template")),
@@ -1720,7 +1720,7 @@ API = ("nagasim.api.run_model", "nagasim.experiments.run_scenarios",
 # `link` is Level's, which Model inherits. The `add_*` and block methods are made at run time
 # from the registries, so they have no source to read; `_builders` writes them instead.
 API_MEMBERS = {"nagasim.build.Model": ("run", "to_dict", "save", "definition", "link"),
-               "nagasim.results.Results": ("kpi", "kpis", "checks", "frame", "plot", "to_excel"),
+               "nagasim.results.Results": ("kpi", "interval", "kpis", "checks", "frame", "plot", "to_excel"),
                "nagasim.core.session.SimSession": ("advance", "pending", "snapshot", "set_variable",
                                                    "set_constant", "set_capacity", "set_probs", "decide",
                                                    "apply_control", "finish"),
@@ -2946,6 +2946,20 @@ def _units_of(params) -> dict[str, str]:
     return {p.unit_field: p.quantity for p in params if p.unit_field}
 
 
+def _run_stub() -> list[str]:
+    """`Model.run`: the options of `api.run_model` by name (a misspelt one is an error in an editor)
+    and `Results` back. `should_stop` is left out: it is the one option that can make the answer
+    None, and `Model.run` is for the ordinary call."""
+    from nagasim import api
+
+    typed = {"replications": "int | None", "seed": "int", "warmup": "float | None",
+             "run_length": "float | None", "workers": "int | str"}
+    options = [f"{name}: {typed.get(name, 'Any')} = ..." for name in inspect.signature(api.run_model).parameters
+               if name not in ("path", "should_stop")]
+    return _signature("run", ["*"] + options, "Results",
+                      ["Run the model; `nagasim.api.run_model` with its options by name."])
+
+
 def build_stub() -> str:
     import keyword
 
@@ -2964,6 +2978,7 @@ def build_stub() -> str:
            "from os import PathLike",
            "from pathlib import Path",
            "from typing import Any, Literal, TypeVar", "",
+           "from nagasim.results import Results", "",
            f"__all__ = {nb.__all__!r}", "",
            "SIMULATION: tuple[str, ...]",
            '_End = TypeVar("_End", "Block", str)', "",
@@ -3044,7 +3059,7 @@ def build_stub() -> str:
             "    def definition(self, name: str, **fields: Any) -> Level: ...",
             "    def to_dict(self) -> dict[str, Any]: ...",
             "    def save(self, path: str | PathLike[str]) -> Path: ...",
-            "    def run(self, **options: Any) -> Any: ...", "", "",
+            *_run_stub(), "", "",
             "def export_python(layout: str | PathLike[str] | dict[str, Any]) -> str: ...",
             "def main(argv: list[str] | None = None) -> int: ..."]
     return "\n".join(out) + "\n"

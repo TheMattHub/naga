@@ -32,7 +32,7 @@ from nagasim.core.timeunits import convert, units_of
 
 log = logging.getLogger(__name__)
 
-__all__ = ["ModelDocument", "BlockData", "LinkData", "DefinitionView"]
+__all__ = ["ModelDocument", "EditLocked", "BlockData", "LinkData", "DefinitionView"]
 
 _MAX_UNDO_DEPTH = 100
 # Every simulation default `schema.migrate` sets, so a new model saves what a
@@ -43,6 +43,8 @@ _DEFAULT_SIMULATION = {"time_limit": None, "warmup": 0, "replications": 1, "time
 # Definition fields kept verbatim, omitted when unused: `extends` (core/submodels.py
 # item 13) and the repeat groups (item 14, Phase 15 M7).
 _INHERIT_KEYS = ("extends", "remove", "repeat")
+# The top-level keys a document holds itself; any other is kept verbatim (`kept`, D1193).
+_TOP_KEYS = frozenset({s.name for s in sections.SECTIONS} | {"schema_version"})
 
 
 class _Part(NamedTuple):
@@ -129,6 +131,16 @@ class BlockData:
     # key alone, over the asset graphic's `queue_anchor` / `queue_direction`. None (the usual case)
     # draws the asset's own row. Kept as written; `core.queuerow` checks and reads it.
     queue_row: dict | None = None
+    # Keys of the block this build does not know (D1220), kept verbatim through load and
+    # save and warned about (W_UNKNOWN_KEY); None when there are none.
+    extra: dict | None = None
+
+
+# The block keys a BlockData holds; any other is kept in `extra`.
+_BLOCK_KEYS = frozenset({"name", "type", "description", "position", "layout_position",
+                         "layout_rotation", "label_offset", "counter_offsets", "queue_row",
+                         "params"})
+_LINK_KEYS = frozenset({"source", "target", "delay", "source_port", "target_port"})
 
 
 @dataclasses.dataclass
@@ -145,6 +157,7 @@ class LinkData:
     # ROADMAP 2.3 part B: {"source_port"/"target_port"} when an endpoint is a
     # SUBMODEL instance; empty otherwise.
     ports: dict = dataclasses.field(default_factory=dict)
+    extra: dict | None = None       # unknown keys, kept verbatim (D1220)
 
 
 def _link_key(key) -> tuple[str, str, int]:
@@ -159,6 +172,8 @@ def _link_entry(link: LinkData) -> dict:
     if link.delay:
         entry["delay"] = copy.deepcopy(link.delay)
     entry.update(copy.deepcopy(link.ports))
+    if link.extra:
+        entry.update(copy.deepcopy(link.extra))
     return entry
 
 
@@ -172,6 +187,10 @@ class _Level:
         self.blocks: dict[str, BlockData] = {}
         self.links: list[LinkData] = []
         self.annotations: list[dict] = []
+
+
+class EditLocked(RuntimeError):
+    """An edit was refused because the document is locked (`ModelDocument.edit_lock`)."""
 
 
 class ModelDocument:
@@ -221,12 +240,19 @@ class ModelDocument:
         self._undo_labels: list[str] = []
         self._redo_labels: list[str] = []
         self._tx_depth = 0            # >0 while inside transaction()
+        # D1267: a message while an owner (the assistant's turn) holds the model; every mutator
+        # starts with `_push_undo`, so one check there refuses a person's edit meanwhile.
+        self.edit_lock: str | None = None
         self._tx_pre_state: dict | None = None
         self._tx_label: str | None = None
         self._tx_events: list[tuple[str, dict]] = []
         # A new model is an empty layout: _reset_from_layout's defaults ARE
         # the new-model values.
         self._reset_from_layout({} if layout is None else layout)
+        # D1193, D1220: a top-level key this build does not know is kept for the save, from a
+        # file (`load`) or a layout an agent wrote whole (`write_model`) alike.
+        self.kept = {key: copy.deepcopy(value) for key, value in (layout or {}).items()
+                     if key not in _TOP_KEYS}
 
     # -- persistence ----------------------------------------------------
     @classmethod
@@ -234,15 +260,14 @@ class ModelDocument:
         # #1722: a JSON file with none of a model's sections (a settings file, a results
         # export) is refused, so a later Save cannot replace it with an empty model.
         raw = schema.read_layout(path)
-        known = {s.name for s in sections.SECTIONS} | {"schema_version"}
-        if not isinstance(raw, dict) or not known & raw.keys():
+        if not isinstance(raw, dict) or not _TOP_KEYS & raw.keys():
             raise schema.ModelValidationError(
                 [f"{Path(path).name} is not a Naga model: it has no blocks, levels, agent types "
                  f"or other model section"])
         doc = cls(schema.load_layout(path))   # utf-8 (#253), migrated
         # D1193: what this build does not know (a newer version's section, the editor's
         # `$schema` pointer) goes back into the file on save, as it was.
-        doc.kept = {key: value for key, value in raw.items() if key not in known}
+        doc.kept = {key: value for key, value in raw.items() if key not in _TOP_KEYS}
         # The writer's version is the file's, not the model's: kept off the document, so a
         # load and save round trip is the same model, and written again by `save`.
         doc.written_by = doc.info.pop("written_by", None)
@@ -324,7 +349,8 @@ class ModelDocument:
                     if b.counter_offsets else {}),
                  # Same rule for a turned queue row (D1089).
                  **({"queue_row": copy.deepcopy(b.queue_row)} if b.queue_row else {}),
-                 "params": copy.deepcopy(b.params)}
+                 "params": copy.deepcopy(b.params),
+                 **copy.deepcopy(b.extra or {})}
                 for b in self._level(scope).blocks.values()]
 
     def _links_layout(self, scope: str) -> list[dict]:
@@ -392,13 +418,16 @@ class ModelDocument:
                                   for k, v in b["counter_offsets"].items()} or None
                                  if b.get("counter_offsets") else None),
                 queue_row=copy.deepcopy(b["queue_row"]) if b.get("queue_row") else None,
+                extra={k: copy.deepcopy(v) for k, v in b.items() if k not in _BLOCK_KEYS} or None,
             )
         for link in section.get("links", []):
             if isinstance(link, dict):
                 level.links.append(LinkData(
                     source=link.get("source"), target=link.get("target"),
                     delay=copy.deepcopy(link["delay"]) if link.get("delay") else None,
-                    ports={k: link[k] for k in ("source_port", "target_port") if link.get(k)}))
+                    ports={k: link[k] for k in ("source_port", "target_port") if link.get(k)},
+                    extra={k: copy.deepcopy(v) for k, v in link.items()
+                           if k not in _LINK_KEYS} or None))
             else:       # the pre-v8 `[src, tgt]` pair, kept readable here
                 level.links.append(LinkData(source=link[0], target=link[1]))
         level.annotations = copy.deepcopy(section.get("annotations", []))
@@ -567,6 +596,8 @@ class ModelDocument:
         self._redo_labels.clear()
 
     def _push_undo(self, label: str | None = None) -> None:
+        if self.edit_lock:
+            raise EditLocked(self.edit_lock)
         if self._tx_depth > 0:
             return  # the transaction already snapshotted the pre-transaction state
         self._commit_undo(self.to_layout(), label)
@@ -629,6 +660,10 @@ class ModelDocument:
         a step it saw is still the newest (the assistant dock's Revert). Read it, never
         change it."""
         return self._undo_stack[-1] if self._undo_stack else None
+
+    @property
+    def in_transaction(self) -> bool:
+        return self._tx_depth > 0
 
     @property
     def can_undo(self) -> bool:

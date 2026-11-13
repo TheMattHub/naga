@@ -28,9 +28,11 @@ _document_args("check_draft", model="Workspace name of the generated model.",
                max_seconds="Wall-clock budget for the draft's runs (at least 3 are made).")
 
 
-def _log_source(path, unit: str) -> tuple[dict, int]:
-    """{kpi: source value} of an event log, and its number of cases."""
-    kpis = discover.log_kpis(discover.read_log(path, time_unit=unit))
+def _log_source(path, unit: str, read: dict | None = None) -> tuple[dict, int]:
+    """{kpi: source value} of an event log, and its number of cases; *read* is how the import
+    read it ({columns, sheet}), so the same headers and sheet are used."""
+    kpis = discover.log_kpis(discover.read_log(path, time_unit=unit, columns=(read or {}).get("columns"),
+                                               sheet=(read or {}).get("sheet")))
     want = {"cycle_time": kpis["cycle_time"], "throughput": kpis["throughput"]}
     for name, a in kpis["activities"].items():
         if a["service"] is not None:
@@ -80,7 +82,8 @@ def _draft_values(layout: dict, deadline: float) -> tuple[dict, dict, int]:
     return seen, first, seeds
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "verdict": str, "compared": list, "laws": dict, "sample": dict, "note": str})
 def check_draft(model: str, source: str | None = None, max_seconds: float = 20) -> dict:
     """Check a generated model against the data it came from, without claiming it is valid.
 
@@ -90,10 +93,9 @@ def check_draft(model: str, source: str | None = None, max_seconds: float = 20) 
     operational-law checks of `run_model`. A source with fewer than 30 cases cannot tell a right
     draft from a wrong one, so the verdict is at best "partial" and `note` says so.
 
-    Returns {"verdict": "passed"|"partial"|"failed", "compared": [{kpi, source, draft, within}],
-    "laws": {passed, partial}, "sample": {"source_cases", "draft_replications"}, "note"}.
-    "failed" means a compared number is off by more than its tolerance (twice the draft's
-    confidence half-width, at least 10%); "partial" means a law warns or the source is short.
+    "verdict" is "passed", "partial" or "failed": "failed" means a compared number is off by more
+    than its tolerance (twice the draft's confidence half-width, at least 10%); "partial" means a
+    law warns or the source is short.
     """
     ws = workspace()
     layout = _runnable_layout(ws.document(model), model)
@@ -101,17 +103,20 @@ def check_draft(model: str, source: str | None = None, max_seconds: float = 20) 
         raise ToolError("E_NO_SOURCE", "check_draft needs the file the model was generated from",
                         "pass source: the log, tables folder or .xlsx")
     path = ws.resolve(source, must_exist=True)
+    unit = (layout.get("simulation") or {}).get("time_unit") or "minutes"
+    read = ws.log_reads.get(model)
+    read = read if read is not None and read["path"] == path else None
     try:
-        if path.is_dir() or path.suffix.lower() == ".xlsx":
+        if read is None and (path.is_dir() or path.suffix.lower() == ".xlsx"):
             want, cases = _table_source(path)
-        else:
-            want, cases = _log_source(path, (layout.get("simulation") or {}).get("time_unit") or "minutes")
+        else:       # an event log; an .xlsx one only when this draft was imported from it
+            want, cases = _log_source(path, unit, read)
     except (discover.LogError, ValueError) as exc:
-        raise ToolError("E_BAD_SOURCE", str(exc), "fix the source and try again") from None
+        raise ToolError("E_BAD_SOURCE", discover.for_tools(str(exc)), "fix the source and try again") from None
     try:
         seen, first, seeds = _draft_values(layout, time.monotonic() + float(max_seconds))
     except RuntimeError as exc:
-        raise ToolError("E_RUN_FAILED", str(exc), "call validate_model and fix the model") from exc
+        raise ToolError("E_RUN_FAILED", str(exc), "it validated but failed while running: fix what the message names and run again") from exc
     if first is None:
         raise ToolError("E_RUN_FAILED", f"no replication finished within {max_seconds:g} s",
                         "raise max_seconds or shorten the model's run length")

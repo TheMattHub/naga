@@ -113,8 +113,9 @@ def test_a_summary_says_the_forecast_against_what_was_observed_and_how_to_read_i
     assert shown["head"] == "Plant time 720 minutes (2026-10-10T12:00:00+00:00); cycle 12"
     assert shown["notes"] == [] and shown["sources"] == [["plc", "live", 1.5, 0, 0]]
     forecast = shown["forecast"]
-    assert forecast["points"] == [["system/WIP", 710.0, 4.0, 2.0, 6.0, 7.0, "no"],
-                                  ["system/WIP", 730.0, 4.0, 2.0, 6.0, None, ""]]
+    # S4-09: labels, the key last (the page puts it in the cell's title).
+    assert forecast["points"] == [["WIP", 710.0, 4.0, 2.0, 6.0, 7.0, "no", "system/WIP"],
+                                  ["WIP", 730.0, 4.0, 2.0, 6.0, None, "", "system/WIP"]]
     assert forecast["lines"][0] == "Status: ok"
     assert forecast["lines"][1].startswith("From t = 700 minutes") and "seed 7" in forecast["lines"][1]
     assert "1 compared points over the stored forecasts, 0 inside" in forecast["lines"][2]
@@ -392,7 +393,8 @@ def test_the_script_shows_the_summary_the_events_and_says_when_the_twin_is_stale
     assert "plc|live|1.5|0|0" in fresh["m-sources"] and HOSTILE in fresh["m-problems"]
     assert monitor.IN_DISTRIBUTION in fresh["m-forecast"]
     assert fresh["m-forecast"].startswith("Status: ok|")
-    assert "system/WIP|710|4|2|6|7|no" in fresh["m-points"] and "system/WIP|4|2|6" in fresh["m-kpis"]
+    assert "|WIP|710|4|2|6|7|no" in fresh["m-points"] and "|WIP|4|2|6" in fresh["m-kpis"]
+    assert "system/" not in fresh["m-points"] + fresh["m-kpis"]
     assert "700|2026-10-10T11:40:00+00:00|Server down" in fresh["m-events"]
     assert fresh["now-t"] == "700"
     old = run_panel(text, written + 11.0)
@@ -493,9 +495,9 @@ def test_a_summary_never_shows_a_score_without_its_basis_nor_none_without_its_re
         "2026-10-10T08:00:00+00:00 (plant time 100 to 715 minutes).", monitor.SCORED,
         monitor.MISSED]
     # A row of whole numbers is marked once, where its coverage is read.
-    assert shown["rows"] == [["system/WIP", 10.0, 12, 0, 0, "75% *", -0.5, 1.25, 0.2],
-                             ["level/Tank", 10.0, 12, 0, 0, "75%", -0.5, 1.25, 0.2],
-                             ["block/Drill/out", 60.0, 0, 3, 2, "", None, None, None]]
+    assert shown["rows"] == [["WIP", 10.0, 12, 0, 0, "75% *", -0.5, 1.25, 0.2, "system/WIP"],
+                             ["level/Tank", 10.0, 12, 0, 0, "75%", -0.5, 1.25, 0.2, "level/Tank"],
+                             ["block/Drill/out", 60.0, 0, 3, 2, "", None, None, None, "block/Drill/out"]]
     assert "a counter lost count" in monitor.MISSED and "source was not ready" in monitor.MISSED
     clean = {**SCORES, "basis": {**SCORES["basis"], "missed": 0, "lost": 0}}
     assert monitor.MISSED not in monitor.summary(result(scores=clean))["scores"]["lines"]
@@ -539,7 +541,7 @@ def test_the_script_shows_the_scores_and_the_counters(tmp_path):
     shown = run_panel(page.build(doc, []), live.stamp(doc["written"]) + 1.0)
     assert shown["m-scores"].startswith("12 forecasts, 40 readings scored, 3 missed, 2 not compared")
     assert monitor.SCORED in shown["m-scores"]
-    assert "system/WIP|10|12|0|0|75% *|-0.5|1.25|0.2" in shown["m-score-rows"]
+    assert "|WIP|10|12|0|0|75% *|-0.5|1.25|0.2" in shown["m-score-rows"]
     assert "block/Drill/out|60|0|3|2||-|-|-" in shown["m-score-rows"]
     assert "Not compared|Coverage" in shown["m-score-rows"]
     assert shown["m-counted"] == monitor.COUNTED and "Drill|41|12.5|1" in shown["m-counters"]

@@ -9,6 +9,9 @@ from nagasim import agent_tools as T
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 
 @pytest.fixture
 def ws(tmp_path):

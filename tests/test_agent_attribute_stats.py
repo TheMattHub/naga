@@ -13,6 +13,8 @@ from nagasim import api
 from nagasim.core import agents as A
 from nagasim.core.sim_runner import run_single_simulation
 from nagasim.experiments import flatten_kpis
+from functools import partial
+from helpers import model
 
 MODELS_DIR = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 
@@ -21,8 +23,7 @@ XWORKER = A.AgentType(
     transitions=[A.Transition("A", "B", "timeout", "5", actions=[A.Action.set("self.x", "10")])])
 
 
-def _model(*records, time_limit=20):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=20)
 
 
 def test_agent_attributes_exact_end_and_time_avg():

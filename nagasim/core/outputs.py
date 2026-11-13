@@ -27,14 +27,37 @@ import logging
 log = logging.getLogger(__name__)
 
 
-_ZERO_HIDDEN_COSTS = frozenset({"Total Resource Cost", "Total Entity Holding Cost", "Total Cost",
-                                "Cost per Completed Entity"})
+# D1251: the one rule every display (CLI summary, editor, player, report, monitor, client pages)
+# hides result rows by. Display only: the frames keep every row. Rows that describe the run, not
+# the system, are never shown.
+RUN_FACTS = frozenset({"Time Unit", "Started From State At", "Run", "Replication"})
 
 
 def hidden_when_zero(metric: str) -> bool:
-    """A summary row that is news only when some replication is non-zero: a truncation
-    flag, or a cost of a model that declares none. The one rule the CLI and the editor share."""
-    return metric.endswith("Log Truncated") or metric in _ZERO_HIDDEN_COSTS
+    """A row that is news only when some replication is non-zero: a truncation flag, or a cost
+    (zero in a model that declares none). Matched on the key's last segment, so a resource
+    named "Cost centre" is not a cost."""
+    name = str(metric).rsplit("/", 1)[-1]
+    return name.endswith("Log Truncated") or "Cost" in name
+
+
+def hidden_row(metric: str, values=None) -> bool:
+    """True for a result row a display leaves out: a fact about the run (`RUN_FACTS`), or a
+    `hidden_when_zero` row whose *values* (one per replication; NaN and text skipped) are all
+    zero. Without *values* only the run facts are hidden: a flag or cost may be news."""
+    name = str(metric).rsplit("/", 1)[-1]
+    if name in RUN_FACTS:
+        return True
+    if values is None or not hidden_when_zero(name):
+        return False
+    for v in values:
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            continue
+        if isfinite(x) and x != 0:
+            return False
+    return True
 
 
 @lru_cache(maxsize=None)
@@ -376,6 +399,7 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
                                      "costs": [], "holding_sum": 0.0, "assigned_sum": 0.0})
 
     records = []
+    waits = ctx.entity_waits        # D1232: the Total Wait column only when the run asked
     for e in ctx.all_entities:
         is_completed = e.deletion_time is not None and e.deletion_time >= warmup
         is_created = created_in_window(e, warmup) and getattr(e, "in_batch", None) is None
@@ -403,6 +427,8 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
             # (AGENT()/ALIVE() at report time), not this column's job.
             f"{ref[0]}:{ref[1]}" if (ref := getattr(e, "agent", None)) is not None else "",
         ))
+        if waits:
+            records[-1] += (getattr(e, "_total_wait", 0.0),)
 
     summary_rows = []
     # Sorted by type here rather than with sort_values afterwards (D690): the
@@ -432,7 +458,7 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
 
     summary_df = _frame(summary_rows, _ENTITY_SUMMARY_COLS)
 
-    log_df = _frame(records, _ENTITY_LOG_COLS, run_id)
+    log_df = _frame(records, [*_ENTITY_LOG_COLS, "Total Wait"] if waits else _ENTITY_LOG_COLS, run_id)
     # DEVLOG #99: "In Batch" is a batch NAME or None, so a replication in which
     # nothing was still batched at report time infers float64 (all-NaN) while
     # its neighbours infer object -- and concatenating the replications raised

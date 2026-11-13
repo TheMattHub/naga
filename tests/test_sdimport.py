@@ -230,7 +230,7 @@ def test_malformed_xml_is_refused():
 
 
 # --------------------------------------------------------------- dimensions -> subscripts
-# A named dimension -> subscript is test_regressions.py::test_127_...
+# A named dimension -> subscript is tests/regressions/ test_127_...
 def test_size_only_dimension_gets_numbered_elements():
     xml = _doc("", dimensions='<dimensions><dim name="Line" size="3"/></dimensions>')
     layout, _ = sdimport.import_xmile(xml)

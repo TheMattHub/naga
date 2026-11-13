@@ -71,6 +71,8 @@ def explain_name(goal: dict) -> str | None:
     kpi = goal.get("kpi")
     if not isinstance(kpi, str) or not kpi:
         return None
+    if kpi == "Total Wait":     # D1232: its parts are the waits per resource of the time in system
+        return explain.TIME_KPI
     if goal.get("share_above") is not None:
         return f"resource/{kpi.partition('/')[0]}/{explain.WAIT}"
     system = (explain.TIME_KPI, *explain.WIP_KPIS, explain.THROUGHPUT)
@@ -154,8 +156,7 @@ def _draft_reason(step: dict) -> str:
     return "it did not run"
 
 
-_UPDATE_KEY = {"question": "question", "goals": "goals", "scope": "target", "assumptions": "assumptions",
-               "validation": "validation", "experiments": "experiments"}
+_UPDATE_KEY = {"question": "question", "goals": "goals", "scope": "target", "assumptions": "assumptions"}
 
 
 def _checklist_options(study: dict, folder: Path, facts: dict, step_cost: str) -> list[dict]:
@@ -188,10 +189,17 @@ def _checklist_options(study: dict, folder: Path, facts: dict, step_cost: str) -
         elif item == "inputs":
             out.append(option(kind, "Store and name the input files", why, "study_add_input", {},
                               needs=["name", "path or text"], gap=gap))
+        elif item == "experiments":      # the step's scenario results pass it, not a note (#1802)
+            out.append(option(kind, c["title"], why + " Put the alternatives in the model as scenarios.",
+                              "study_step", {}, step_cost, needs=["layout", "note"], gap=gap))
         elif item == "validation" and facts["layout"] and _queue(facts["layout"]):
             out.append(option(kind, "Check the model against the queue formula", why, "study_validate",
                               {"kind": "queue_formula"}, "10 replications at 100 times the run length",
                               gap=gap))
+        elif item == "validation":      # D1234: an assistant's record does not pass it (#1805)
+            out.append(option(kind, c["title"], why + " The assistant's own record reads \"reported, not "
+                              "checked\"; the person must confirm it.", "study_update", {},
+                              needs=["validation"], gap=gap))
         else:
             key = _UPDATE_KEY.get(item, item)
             out.append(option(kind, c["title"], why, "study_update", {}, needs=[key], gap=gap))
@@ -278,9 +286,9 @@ def _improve_options(study: dict, folder: Path, facts: dict, step_cost: str, dat
     if tab and not _asked(facts, "input_uncertainty"):
         out += _uncertainty_options(tab, facts, data_prefix, n)
     out += spread_options(facts["asked"])
-    levels = {v.get("level") for v in study["validation"] if v.get("passed")}
+    levels = {v.get("level") for v in study["validation"] if study_mod.checked(v)}
     if levels == {"known_answer"}:
-        k = sum(1 for v in study["validation"] if v.get("passed"))
+        k = sum(1 for v in study["validation"] if study_mod.checked(v))
         out.append(option("improve", "Validate against data or an expert",
                           f"{k} validation(s) passed, all against a formula; none against data or an expert.",
                           "study_update", {}, needs=["validation"]))

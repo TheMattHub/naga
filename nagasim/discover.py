@@ -179,29 +179,67 @@ def _read_bytes(path) -> bytes:
     return path.read_bytes()
 
 
+def _squash(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
 def _role_columns(header: list[str], columns: dict | None) -> dict[str, int]:
-    """{role: column index}, by the flags first, then by the usual names (D546)."""
+    """{role: column index}, by the flags first, then by the usual names (D546), then by the
+    usual names with spaces and punctuation ignored ("Start time" is start_time, D1233)."""
     lowered = [h.strip().lower() for h in header]
+    squashed = [_squash(h) for h in header]
+    shown = [h[:40] for h in header[:30]]
     found = {}
-    for role, names in COLUMN_NAMES.items():
-        wanted = (columns or {}).get(role)
+    for role, wanted in (columns or {}).items():
         if wanted:
             if wanted.strip().lower() not in lowered:
-                raise LogError(f"no column '{wanted}' for the {role}; the columns are "
-                               f"{[h[:40] for h in header[:30]]}")
+                raise LogError(f"no column '{wanted}' for the {role}; the columns are {shown}")
             found[role] = lowered.index(wanted.strip().lower())
+    # A guess never takes a column already named or guessed: one column, one role.
+    for role, names in COLUMN_NAMES.items():
+        if role in found:
             continue
         index = next((lowered.index(n) for n in names if n in lowered), None)
-        if index is not None:
+        if index is None:
+            index = next((squashed.index(_squash(n)) for n in names if _squash(n) in squashed), None)
+        if index is not None and index not in found.values():
             found[role] = index
     for role in ("case", "activity"):
         if role not in found:
             raise LogError(f"no {role} column (looked for {', '.join(COLUMN_NAMES[role][:4])}; "
-                           f"name it with --{role})")
+                           f"the columns are {shown}; name it with --{role})")
     if "timestamp" not in found and not ("start" in found or "complete" in found):
-        raise LogError("no timestamp column, and no start/complete columns "
-                       "(name one with --timestamp)")
+        raise LogError(f"no timestamp column, and no start/complete columns (the columns are "
+                       f"{shown}; name one with --timestamp)")
     return found
+
+
+def _read_rows(header: list[str], rows, columns, reader: _Reader) -> None:
+    """The rows under *header* (CSV or a sheet, cells as text) into *reader*."""
+    roles = _role_columns(header, columns)
+    reader.columns = {role: header[i].strip()[:40] for role, i in roles.items()}
+
+    def cell(row, role):
+        i = roles.get(role)
+        return row[i] if i is not None and i < len(row) else None
+
+    # Disco's shape (start and complete columns on one row) when there is no
+    # timestamp column: one row is one activity instance, two events.
+    per_instance = "timestamp" not in roles
+    for row in rows:
+        if not any(c.strip() for c in row):
+            continue
+        case, activity, resource = cell(row, "case"), cell(row, "activity"), cell(row, "resource")
+        if per_instance:
+            start, end = cell(row, "start"), cell(row, "complete")
+            if start and start.strip():
+                reader.add(case, activity, start, "start", resource)
+            if end and end.strip():
+                reader.add(case, activity, end, "complete", resource)
+            elif not (start and start.strip()):
+                reader.add(case, activity, "", "complete", resource)  # counted as unreadable
+        else:
+            reader.add(case, activity, cell(row, "timestamp"), cell(row, "lifecycle"), resource)
 
 
 def _read_csv(data: bytes, columns, reader: _Reader) -> None:
@@ -222,34 +260,80 @@ def _read_csv(data: bytes, columns, reader: _Reader) -> None:
         header = next(rows, None)
         if not header:
             raise LogError("the CSV is empty")
-        roles = _role_columns(header, columns)
-        reader.columns = {role: header[i].strip()[:40] for role, i in roles.items()}
-
-        def cell(row, role):
-            i = roles.get(role)
-            return row[i] if i is not None and i < len(row) else None
-
-        # Disco's shape (start and complete columns on one row) when there is no
-        # timestamp column: one row is one activity instance, two events.
-        per_instance = "timestamp" not in roles
-        for row in rows:
-            if not any(c.strip() for c in row):
-                continue
-            case, activity, resource = cell(row, "case"), cell(row, "activity"), cell(row, "resource")
-            if per_instance:
-                start, end = cell(row, "start"), cell(row, "complete")
-                if start and start.strip():
-                    reader.add(case, activity, start, "start", resource)
-                if end and end.strip():
-                    reader.add(case, activity, end, "complete", resource)
-                elif not (start and start.strip()):
-                    reader.add(case, activity, "", "complete", resource)  # counted as unreadable
-            else:
-                reader.add(case, activity, cell(row, "timestamp"), cell(row, "lifecycle"), resource)
+        _read_rows(header, rows, columns, reader)
     except csv.Error as exc:
         raise LogError(f"malformed CSV: {exc}") from None
     finally:
         csv.field_size_limit(limit)
+
+
+def _text(value) -> str:
+    """A worksheet cell as the CSV reader would see it: a date in ISO form, a whole number
+    without its ".0" (a case id typed as 1001 stays "1001")."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _read_xlsx(data: bytes, columns, reader: _Reader, sheet: str | None, name: str = "the workbook") -> None:
+    """A workbook's first sheet (or *sheet*) as a table under its first row (D1233): read-only,
+    cached values, never formulas. The file is a zip, so before openpyxl opens it the parts'
+    unpacked size is held to twice the CSV's ceiling (MAX_EVENTS rows of a few cells take about
+    50 MB of sheet XML, and openpyxl holds the shared strings whole), and every part is
+    scanned whole for a DOCTYPE, refused as in XES (D547): the ceilings stay memory ceilings."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            if sum(i.file_size for i in zf.infolist()) > 2 * MAX_BYTES:
+                raise LogError(f"the workbook unpacks to over {2 * MAX_BYTES} bytes, the ceiling")
+            for info in zf.infolist():
+                with zf.open(info) as part:
+                    tail, first = b"", True
+                    while chunk := part.read(1 << 20):
+                        # The scan reads bytes as text; a UTF-16 part would hide a DOCTYPE from it.
+                        if first and chunk[:2] in (b"\xff\xfe", b"\xfe\xff"):
+                            raise LogError("a UTF-16 part in a workbook is refused (re-save it from Excel)")
+                        first = False
+                        # the overlap keeps a declaration split across two chunks
+                        if _DOCTYPE_RE.search((tail + chunk).decode("latin-1")):
+                            _refuse()
+                        tail = chunk[-64:]
+    except zipfile.BadZipFile:
+        raise LogError(f"'{name}' is not a workbook (not a zip archive)") from None
+    except LogError:
+        raise
+    except Exception as exc:    # #1807: a damaged part (zlib.error), an encrypted or deflate64 member
+        why = ("it is password-protected" if "encrypt" in str(exc)
+               else "a part is damaged or packed in a way that is not read (re-save it from Excel)")
+        raise LogError(f"'{name}' cannot be read: {why} ({type(exc).__name__})") from None
+    import openpyxl
+    try:
+        book = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception as exc:   # openpyxl raises many kinds on a damaged part
+        raise LogError(f"'{name}' cannot be read as a workbook: {type(exc).__name__}") from None
+    try:
+        if sheet is not None and sheet not in book.sheetnames:
+            raise LogError(f"no sheet '{sheet[:40]}'; the sheets are {book.sheetnames[:30]}")
+        rows = ([_text(v) for v in row]
+                for row in book[sheet or book.sheetnames[0]].iter_rows(values_only=True))
+        header = next(rows, None)
+        if not header or not any(h.strip() for h in header):
+            raise LogError(f"the sheet '{(sheet or book.sheetnames[0])[:40]}' is empty")
+        _read_rows(header, rows, columns, reader)
+    except LogError:
+        raise
+    except Exception as exc:   # read-only sheets parse as they are read: a damaged part fails here
+        raise LogError(f"'{name}' cannot be read as a workbook: {type(exc).__name__}") from None
+    finally:
+        book.close()
+
+
+# The formats a log is read in, by suffix; any other suffix is refused by name (D1233).
+_FORMATS = {".xes": "xes", ".xlsx": "xlsx", ".csv": "csv", ".tsv": "csv", ".txt": "csv", "": "csv"}
 
 
 def _refuse(*_args):
@@ -324,25 +408,37 @@ def _check_time_unit(time_unit: str) -> None:
 
 
 def read_log(path, *, time_unit: str = "minutes", columns: dict | None = None,
-             fmt: str | None = None, info: dict | None = None) -> list[Event]:
-    """The events of the log at *path* (CSV, or XES by its suffix or `fmt="xes"`), times in
-    *time_unit* since the log's first instant (a numeric timestamp is taken as already in
-    that unit). *columns* names a column per role (`{"case": "Order"}`); the rest are found
-    by their usual names. *info*, when given, is filled with the format, rows and drops."""
+             fmt: str | None = None, info: dict | None = None,
+             sheet: str | None = None) -> list[Event]:
+    """The events of the log at *path* (CSV, XES or an .xlsx workbook, by its suffix or *fmt*),
+    times in *time_unit* since the log's first instant (a numeric timestamp is taken as
+    already in that unit). *columns* names a column per role (`{"case": "Order"}`); the rest
+    are found by their usual names. *sheet* picks a workbook's sheet (default: the first).
+    *info*, when given, is filled with the format, rows and drops."""
     _check_time_unit(time_unit)
     unknown = sorted(set(columns or {}) - set(COLUMN_NAMES))
     if unknown:
         raise LogError(f"no column role {', '.join(unknown)[:200]}; the roles are "
                        f"{', '.join(COLUMN_NAMES)}")
+    if any(not isinstance(v, str) for v in (columns or {}).values()):
+        raise LogError("each column is named by its header text, as {\"case\": \"Patient\"}")
+    suffix =Path(str(path)).suffix.lower()
+    if fmt is None and suffix not in _FORMATS:
+        raise LogError(f"a '{suffix[:20]}' file is not read as a log: save it as CSV or .xlsx "
+                       "(or give XES)")
+    fmt = fmt or _FORMATS[suffix]
+    if sheet is not None and fmt != "xlsx":
+        raise LogError("a sheet is named only for an .xlsx log")
     data = _read_bytes(path)
-    fmt = fmt or ("xes" if str(path).lower().endswith(".xes") else "csv")
     reader = _Reader()
     if fmt == "xes":
         _read_xes(data, reader)
     elif fmt == "csv":
         _read_csv(data, columns, reader)
+    elif fmt == "xlsx":
+        _read_xlsx(data, columns, reader, sheet, Path(str(path)).name)
     else:
-        raise LogError(f"unknown log format '{fmt}' (csv or xes)")
+        raise LogError(f"unknown log format '{fmt}' (csv, xes or xlsx)")
     events = reader.events(time_unit)
     if info is not None:
         info.update({"format": fmt, "rows": reader.rows, "events": len(events),
@@ -1209,6 +1305,28 @@ _IDLE_MODELLED = ("check the idle_wait_* DELAYs against what causes the waits (a
                   "load, as a queue would")
 
 
+# What the command line says, and what an agent tool says instead (S2-17): the tool's answer names
+# a tool or an argument, never a command its user may not have. Kept beside the texts they rewrite.
+_TOOL_WORDS = (
+    ("run the draft (naga run)", "run the draft (run_model, then check_draft)"),
+    ("run naga check: the draft carries", "the person's model check runs the draft's"),
+    ("route with --routing markov", 'import it again with routing="markov"'),
+    ("chosen with --routing", "chosen with routing"),
+    ("(inputfit.arrival_rates fits one)", "(a data binding with arrival_schedule: fits one)"),
+    ("(inputfit.arrival_rates)", "(a data binding with arrival_schedule:)"),
+)
+
+
+def for_tools(text: str) -> str:
+    """*text* (a next step, a log error) in an agent tool's words: tools and arguments, no commands
+    or flags. A column named with --case (--activity, --timestamp) becomes the tool's `columns`
+    argument (D1233)."""
+    for cli, tool in _TOOL_WORDS:
+        text = text.replace(cli, tool)
+    return re.sub(r"; name (it|one) with --(\w+)\)",
+                  r'; name \1 with columns={"\2": "<header>"})', text)
+
+
 def _next_steps(check, mode, idle_delays: bool = False, rules: int = 0) -> dict:
     """What to check in the draft, and what a log never tells, tailored to this log (D591)."""
     codes = {f["code"] for f in check["findings"]}
@@ -1246,21 +1364,22 @@ def _next_steps(check, mode, idle_delays: bool = False, rules: int = 0) -> dict:
     return {"check": steps, "never": never}
 
 
-def _load(source, time_unit, columns, fmt) -> tuple[list, dict]:
+def _load(source, time_unit, columns, fmt, sheet=None) -> tuple[list, dict]:
     if isinstance(source, (str, Path)):
         info: dict = {}
-        return read_log(source, time_unit=time_unit, columns=columns, fmt=fmt, info=info), info
+        return read_log(source, time_unit=time_unit, columns=columns, fmt=fmt, info=info,
+                        sheet=sheet), info
     events = list(source)
     return events, {"format": "events", "rows": len(events), "events": len(events),
                     "dropped": {}}
 
 
 def check_log(source, *, time_unit: str = "minutes", columns: dict | None = None,
-              fmt: str | None = None) -> dict:
+              fmt: str | None = None, sheet: str | None = None) -> dict:
     """Is the log good enough? What `discover` would draft from, without drafting: columns
     found, lifecycle coverage, cases, span, censoring, and per finding what it means."""
     _check_time_unit(time_unit)
-    events, info = _load(source, time_unit, columns, fmt)
+    events, info = _load(source, time_unit, columns, fmt, sheet)
     cases, dropped = _cases(events)
     if not cases:
         raise LogError("no completed activity instance in the log")
@@ -1272,7 +1391,8 @@ def check_log(source, *, time_unit: str = "minutes", columns: dict | None = None
 
 def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
              columns: dict | None = None, fmt: str | None = None,
-             title: str | None = None, idle_waits: bool = False) -> tuple[dict, dict]:
+             title: str | None = None, idle_waits: bool = False,
+             sheet: str | None = None) -> tuple[dict, dict]:
     """A draft model and its report from an event log: *source* is a log's path or a list
     of `Event`s (`log_from_trace`). With *idle_waits*, each activity the check flags as
     waiting long at mostly idle resources gets a DELAY before it, fitted to its waits
@@ -1286,7 +1406,7 @@ def discover(source, *, time_unit: str = "minutes", routing: str = "auto",
     _check_time_unit(time_unit)
     if routing not in _ROUTINGS:
         raise LogError("routing must be auto, markov or variants")
-    events, info = _load(source, time_unit, columns, fmt)
+    events, info = _load(source, time_unit, columns, fmt, sheet)
     if isinstance(source, (str, Path)):
         title = title or f"Draft from {_label(Path(source).name)}"
     cases, dropped = _cases(events)
@@ -1491,18 +1611,19 @@ def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="naga discover",
-        description="Draft a model from an event log (CSV, or XES): arrivals, activity times, "
+        description="Draft a model from an event log (CSV, .xlsx or XES): arrivals, activity times, "
                     "routing and resources as the log shows them, with a report of what was "
                     "inferred, assumed and dropped.")
-    parser.add_argument("log", help="the event log: a CSV file, an .xes file, or the name of "
+    parser.add_argument("log", help="the event log: a CSV file, an .xlsx or .xes file, or the name of "
                                     "a bundled sample (job_shop_log)")
     parser.add_argument("--check", action="store_true",
                         help="only check the log: what it holds and what that means for a "
                              "draft; no model is written")
     parser.add_argument("-o", "--output", help="write the draft model here (default: stdout)")
     parser.add_argument("--report", help="write the report as JSON here")
-    parser.add_argument("--format", choices=("csv", "xes"),
+    parser.add_argument("--format", choices=("csv", "xes", "xlsx"),
                         help="the log's format (default: by the file's suffix)")
+    parser.add_argument("--sheet", help="the sheet of an .xlsx log (default: the first)")
     parser.add_argument("--time-unit", default="minutes", choices=_TIME_UNITS,
                         help="the draft's time unit; a numeric timestamp is taken as in it")
     parser.add_argument("--routing", default="auto", choices=("auto", "markov", "variants"),
@@ -1513,19 +1634,21 @@ def main(argv=None) -> int:
                              "DELAY before it, fitted to its waits (off: no such delay)")
     for role in COLUMN_NAMES:
         parser.add_argument(f"--{role}", metavar="COLUMN",
-                            help=f"the CSV column holding the {role} (default: found by name)")
+                            help=f"the column holding the {role} (default: found by name)")
     args = parser.parse_args(argv)
     setup_cli()
     columns = {role: getattr(args, role) for role in COLUMN_NAMES if getattr(args, role)}
     log = sample_path(args.log)
     if args.check:
-        check = check_log(log, time_unit=args.time_unit, columns=columns, fmt=args.format)
+        check = check_log(log, time_unit=args.time_unit, columns=columns, fmt=args.format,
+                          sheet=args.sheet)
         if args.report:
             Path(args.report).write_text(json.dumps(check, indent=2), encoding="utf-8")
         sys.stdout.write(check_text(check, args.time_unit) + "\n")
         return 0
     layout, report = discover(log, time_unit=args.time_unit, routing=args.routing,
-                              columns=columns, fmt=args.format, idle_waits=args.idle_waits)
+                              columns=columns, fmt=args.format, idle_waits=args.idle_waits,
+                              sheet=args.sheet)
     text = dumps(layout)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8", newline="\n")

@@ -61,6 +61,7 @@ from nagasim.core import agents as A
 from nagasim.core.stats import ci95
 
 from conftest import chain, dispose, problem_codes, run_env
+from helpers import model as _model
 
 RESOURCE = [{"name": "Server", "capacity": 1, "type": "Resource"}]
 COUNTERS = [{"name": "n_total_starts", "initial": 0}, {"name": "n_service_starts", "initial": 0},
@@ -105,10 +106,6 @@ def _delay_dist(name, distribution, dist_params):
 def _release(name):
     return {"name": name, "description": name, "type": "RELEASE", "position": [0, 0],
             "params": {"distribution": "Constant", "dist_params": {"value": 0.0}, "resource_name": "Server"}}
-
-
-def _model(*records, time_limit):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
 
 
 def _run(layout, seed, run_len):

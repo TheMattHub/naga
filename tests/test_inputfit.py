@@ -354,3 +354,24 @@ def test_arrival_rate_bands_need_cycles():
     with pytest.raises(ValueError, match="2 cycles"):
         inputfit.bootstrap_arrival_rates([0.5, 1.0, 3.0], bin_width=5.0, cycle=10.0, resamples=5,
                                          rng=inputfit.bootstrap_rng(0))
+
+
+def test_1764_fit_prints_no_scipy_future_warning(monkeypatch):
+    """SciPy 1.17 warns (FutureWarning) when `anderson` gets no `method`; the statistic is the same."""
+    import warnings
+    from types import SimpleNamespace
+
+    def anderson(x, dist="norm", *, method=None):       # the 1.17 signature
+        if method is None:
+            warnings.warn("As of SciPy 1.17, users must choose a p-value calculation method", FutureWarning)
+        return SimpleNamespace(statistic=1.25)
+    monkeypatch.setattr(sstats, "anderson", anderson)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert inputfit._anderson_stat("Normal", np.arange(10.0)) == 1.25
+
+
+def test_anderson_stat_still_works_on_a_scipy_without_the_method_parameter(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(sstats, "anderson", lambda x, dist="norm": SimpleNamespace(statistic=0.5))
+    assert inputfit._anderson_stat("Normal", np.arange(10.0)) == 0.5

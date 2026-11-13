@@ -21,8 +21,11 @@ def _mean(entry) -> float | None:
 
 def goal_kpi(spec: dict) -> str | None:
     """The KPI name a goal is judged on: its `kpi`, or for a tail goal (`share_above` x on
-    "<resource>/Time in Queue") the share name the study step stores, "<resource>/Share waiting over x"."""
+    "<resource>/Time in Queue") the share name the study step stores, "<resource>/Share waiting over x";
+    on "Total Wait", "Share with total wait over x"."""
     kpi, x = spec.get("kpi"), spec.get("share_above")
+    if kpi == "Total Wait" and x is not None:       # D1232: the wait over the whole visit
+        return f"Share with total wait over {x:g}"
     if kpi and x is not None:
         return f"{kpi.partition('/')[0]}/Share waiting over {x:g}"
     return kpi

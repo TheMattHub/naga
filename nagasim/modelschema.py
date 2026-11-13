@@ -17,7 +17,7 @@ than one under `core/` because it is a contract for outside consumers -- the
 MCP server, an editor's autocomplete, a CI check -- not something the engine
 reads. `core/schema/` stays the runtime validator; this file only describes
 the file format. The field table follows what the validators accept (#697), and
-`test_697` in tests/test_regressions.py compares it with the built schema.
+`test_697` in tests/regressions/ compares it with the built schema.
 
 Deliberately structural: the schema checks shapes, names and enumerations, not
 cross-references (a link naming a block that exists, a resource set's members).
@@ -328,10 +328,16 @@ def _defs() -> dict:
                 "target": {"type": "string", "description": "Name of the target block."},
                 "delay": {"anyOf": [{"$ref": "#/$defs/duration"}, {"type": "null"}],
                           "description": "Optional transfer delay on this link."},
-                "source_port": {"type": ["string", "null"],
-                                "description": "Out port, only when the source is a SUBMODEL instance."},
-                "target_port": {"type": ["string", "null"],
-                                "description": "In port, only when the target is a SUBMODEL instance."},
+                # A number too (#1771): a plugin block's builder call may name its exit by
+                # index (`source_port=1`); only a SUBMODEL instance's port is resolved.
+                "source_port": {"type": ["string", "integer", "null"],
+                                "description": "Out port: a SUBMODEL instance's port name (or a "
+                                               "whole number, matched as its text); other blocks "
+                                               "branch by link order and ignore it."},
+                "target_port": {"type": ["string", "integer", "null"],
+                                "description": "In port: a SUBMODEL instance's port name (or a "
+                                               "whole number, matched as its text); other blocks "
+                                               "ignore it."},
             },
             "required": ["source", "target"],
             "additionalProperties": False,
@@ -2864,6 +2870,11 @@ def _defs() -> dict:
                                                ". False returns the three flat log "
                                                "frames empty and leaves every summary statistic "
                                                "exact -- what a big study wants."},
+                "entity_waits": {"type": "boolean", "default": False,
+                                 "description": "Sum each entity's queue time over every "
+                                                "seize into a \"Total Wait\" column of the "
+                                                "entity log (what a tail goal on Total Wait "
+                                                "reads). Off: no column."},
                 "timeseries_points": {"type": ["integer", "null"],
                                       "description": "How many samples the time-series OUTPUT "
                                                      "sampler takes over a time-limited run "
@@ -3362,18 +3373,30 @@ def main_validate(argv=None) -> int:
                         help="emit the problems as a JSON array instead of one line each")
     args = parser.parse_args(argv)
 
-    raw = json.loads(Path(args.model).read_text(encoding="utf-8"))
     try:
-        layout = schema_mod.migrate(raw)
-    except schema_mod.ModelValidationError as exc:
-        problems = [schema_mod.problem("E_SCHEMA_VERSION", message, "/schema_version",
-                                       hint="save the file from this build, or upgrade Naga")
-                    for message in exc.problems]
+        raw = json.loads(Path(args.model).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:     # P01b gate: a file that is not JSON gets a code too
+        raw = None
+        problems = [schema_mod.problem(
+            "E_MODEL_JSON", f"not valid JSON: {exc.msg} at line {exc.lineno} column {exc.colno}",
+            "/", hint="fix the JSON text there (a trailing comma, a missing quote or bracket)")]
+    if raw is None:
+        pass
+    elif not isinstance(raw, dict):
+        problems = [schema_mod.problem("E_MODEL_JSON", "a model file is one JSON object", "/",
+                                       hint="wrap the sections in { ... }")]
     else:
-        # Against the RAW file as well: migrate() strips a data source's
-        # "allow_network", and the point of the warning is to say it did nothing.
-        problems = (schema_mod.consent_problems(raw)
-                    + schema_mod.validate_model_structured(layout))
+        try:
+            layout = schema_mod.migrate(raw)
+        except schema_mod.ModelValidationError as exc:
+            problems = [schema_mod.problem("E_SCHEMA_VERSION", message, "/schema_version",
+                                           hint="save the file from this build, or upgrade Naga")
+                        for message in exc.problems]
+        else:
+            # Against the RAW file as well: migrate() strips a data source's
+            # "allow_network", and the point of the warning is to say it did nothing.
+            problems = (schema_mod.consent_problems(raw)
+                        + schema_mod.validate_model_structured(layout))
 
     if args.as_json:
         print(json.dumps([p.as_dict() for p in problems], indent=2))

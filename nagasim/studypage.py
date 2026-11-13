@@ -11,42 +11,47 @@ import math
 import time
 from pathlib import Path
 
-from nagasim import flowchart, study as study_mod
+from nagasim import flowchart, pagefmt, player, study as study_mod
 from nagasim.report import csp, esc
 from nagasim.studychecks import goal_kpi
 
 
-_CSS = """
-body{font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#222;
- background:#f6f7f9;margin:0}
+# D1240: the reader's light or dark (the player's tokens, `player.token_css`); print stays light.
+# A flowchart is a drawing in fixed colours, so it sits on its own light card in either theme.
+_CSS = player.token_css() + """
+body{font:14px/1.4 var(--font);color:var(--ink);background:var(--page);margin:0}
 main{max-width:1100px;margin:0 auto;padding:0 16px 16px}
-header{position:sticky;top:0;z-index:2;background:#f6f7f9;max-height:40vh;overflow:auto;
- padding:8px 0;border-bottom:1px solid #dde1e6}
+header{position:sticky;top:0;z-index:2;background:var(--page);max-height:40vh;overflow:auto;
+ padding:8px 0;border-bottom:1px solid var(--line)}
 header p{margin:2px 0}
-.panel{background:#fff;border:1px solid #dde1e6;border-radius:8px;margin:8px 0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:8px 0}
 .panel>summary{padding:6px 14px;font-weight:600;cursor:pointer}
 .scroll{padding:0 14px 8px;overflow-x:auto}
 h1{font-size:18px;margin:2px 0}h3{font-size:14px;margin:0}
+.lead{font-size:15px;font-weight:600;margin:6px 0}.panel>h2{font-size:15px;margin:0;padding:6px 14px}
 .banner{padding:4px 10px;border-radius:6px;font-weight:600;margin:4px 0}
-.b-ok{background:#d9f2e0;color:#14532d}.b-wait{background:#fdecc8;color:#7a4b00}
-.b-open{background:#e3e5e8;color:#333}
+.b-ok{background:var(--ok-bg);color:var(--ok-ink)}.b-wait{background:var(--wait-bg);color:var(--wait-ink)}
+.b-open{background:var(--open-bg);color:var(--open-ink)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}
-.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid #999;border-radius:14px;
- padding:1px 10px;background:#fff}
-.chip.met{border-color:#2e7d32}.chip.not_met{border-color:#c62828}
-.spark{vertical-align:middle}
+.chip{display:inline-flex;align-items:center;gap:6px;border:2px solid var(--dim);border-radius:14px;
+ padding:1px 10px;background:var(--panel)}
+.chip.met{border-color:var(--run)}.chip.not_met{border-color:var(--down)}
+.spark{vertical-align:middle}.spark polyline{stroke:var(--ink)}.spark circle{fill:var(--ink)}
 table{border-collapse:collapse;width:100%;margin:6px 0}
-th,td{text-align:left;padding:3px 8px;border-bottom:1px solid #eee;vertical-align:top}
-.badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;color:#fff;background:#777}
-.badge.passed,.badge.met{background:#2e7d32}.badge.partial{background:#c77700}
-.badge.failed,.badge.not_met{background:#c62828}.badge.not_verified{background:#777}
-.muted{color:#666;font-size:13px}.flow{overflow-x:auto}.flow svg{max-width:100%;height:auto;max-height:200px}
+th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.badge{font-size:12px}
+.muted{color:var(--muted);font-size:13px}.flow{overflow-x:auto;background:#fff;border-radius:6px}
+.flow svg{max-width:100%;height:auto;max-height:200px}
 summary{cursor:pointer}
 .naga-bar{padding:4px 0}.naga-bar button{margin-right:6px}
-.naga-err{color:#7a1f1f;font-weight:600;margin-left:8px}
+.naga-err{color:var(--down);font-weight:600;margin-left:8px}
 #actions input{width:40%;padding:4px 8px;margin:0 8px}
-button{cursor:pointer;padding:3px 10px;margin:2px 4px 2px 0}button:disabled{cursor:default}
-img.naga-flow{display:block;max-width:100%;margin:6px 0}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;padding:3px 10px;margin:2px 4px 2px 0;background:var(--raised);border:1px solid var(--line);
+ border-radius:6px}button:disabled{cursor:default}
+img.naga-flow{display:block;max-width:100%;margin:6px 0;background:#fff}
+@media (max-width:700px){button,input,summary{min-height:40px}summary{padding-block:10px}
+ header{position:static;max-height:none}}
 @media print{body{background:#fff}header{position:static;max-height:none;overflow:visible}
  details{display:block}
  details>*:not(summary){display:block!important;content-visibility:visible!important}
@@ -123,6 +128,73 @@ def _num(v, kpi=None) -> str:
     return _n(v, kpi)
 
 
+def _real(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _value_text(mean, half_width=None, kpi=None, lang: str | None = None) -> str:
+    """A mean with its 95% interval in the one wording of every page (D1236); "" without a mean."""
+    if not _real(mean):
+        return ""
+    lo, hi = (mean - half_width, mean + half_width) if _real(half_width) else (None, None)
+    share = _is_share(kpi) and 0 <= mean <= 1
+    if share and lo is not None:
+        # A share cannot leave [0, 1]; the t-interval around a mean near 0 can (0.02% +- 0.03 points).
+        lo, hi = max(lo, 0.0), min(hi, 1.0)
+    return pagefmt.interval_text(mean, lo, hi, share=share, lang=lang)
+
+
+def diff_text(diff, kpi=None) -> str:
+    """D1264: an option's paired difference from the Baseline (`diff_vs_baseline`), "a difference
+    of +22.2 points (95% interval +18.0 to +26.4)", or "no clear difference: ..." when the
+    interval holds zero; "" for a record without one (the caller keeps D1237's wording)."""
+    if not isinstance(diff, dict) or not all(_real(diff.get(k)) for k in ("mean", "lo", "hi")):
+        return ""
+    scale, unit = (100.0, "points") if _is_share(kpi) else (1.0, "")
+    text = pagefmt.interval_text(diff["mean"] * scale, diff["lo"] * scale, diff["hi"] * scale, unit, signed=True)
+    return f"no clear difference: {text}" if diff["lo"] <= 0 <= diff["hi"] else f"a difference of {text}"
+
+
+# D1265: the paired test's level, and the share of the Baseline's replications at or under which
+# the option's steadiness is worth a line.
+STEADIER_P = 0.05
+STEADIER_SHARE = 0.5
+
+
+def steadier_text(goal: str, option: str, kpi, spread) -> str:
+    """D1265: one modest line when an option made a goal KPI markedly steadier, else "". Both must
+    hold: the Pitman-Morgan test (valid for common-random-number pairs) finds the option's
+    variance lower at 5%, and the option reaches the same half-width with at most half the
+    Baseline's replications, n ~ sd^2 under the precision rule with the target held fixed.
+    When the coefficient of variation did not fall, the spread fell with the mean, and it says so."""
+    if not isinstance(spread, dict) or not all(_real(spread.get(k)) for k in ("p", "sd", "base_sd")):
+        return ""
+    sd, base = spread["sd"], spread["base_sd"]
+    if not (spread["p"] < STEADIER_P and 0 <= sd < base):
+        return ""
+    share = (sd / base) ** 2
+    if share > STEADIER_SHARE:
+        return ""
+    mean, base_mean = spread.get("mean"), spread.get("base_mean")
+    scaled = _real(mean) and _real(base_mean) and mean != 0 and base_mean != 0
+    with_mean = scaled and sd / abs(mean) >= base / abs(base_mean)
+    return (f"Run-to-run variation of {goal} was lower with {option}"
+            + (", in proportion to its lower mean" if with_mean else "")
+            + f" (standard deviation {_hw(sd, kpi)} against {_hw(base, kpi)} in the {pagefmt.REFERENCE}): "
+            f"it would reach the same precision with about {max(1, round(100 * share))}% of the replications. "
+            "A statistical observation, not a measured cause.")
+
+
+def _goal_words(spec: dict, kpi=None) -> str:
+    """A goal's range as a person says it: "at most 10%", "at least 5", "2 to 3" (never "-inf")."""
+    lo, hi = (spec.get(k) if _real(spec.get(k)) else None for k in ("low", "high"))
+    if lo is None and hi is None:
+        return ""
+    if lo is None:
+        return f"at most {_n(hi, kpi)}"
+    return f"at least {_n(lo, kpi)}" if hi is None else f"{_n(lo, kpi)} to {_n(hi, kpi)}"
+
+
 def _range(spec: dict) -> str:
     lo, hi = spec.get("low"), spec.get("high")
     return "" if lo is None and hi is None else f"{_num(lo) or '-inf'} to {_num(hi) or 'inf'}"
@@ -136,8 +208,36 @@ def _read(path: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+# One rule for every page (D1234, D1253): the engine's, under the names the pages import.
+REPORTED = study_mod.REPORTED
+validation_result = study_mod.validation_result
+
+
+def revalidate_note(study: dict, folder: Path | None, study_id: str | None) -> str:
+    """D1253: the call that re-checks a reported validation, when the engine can check it now
+    (`study.can_revalidate`); "" otherwise. Plain text; the room adds its button beside it."""
+    if not study_mod.can_revalidate(study, folder):
+        return ""
+    if study_id:
+        return f'Re-validate: study_validate(study="{study_id}")'
+    # The id is workspace-relative and unknown here: name the tool and the room, not a guess.
+    return f"Re-validate: study_validate on this study, or in the live room (naga room {Path(folder).name})"
+
+
+def _check_why(c: dict, study: dict, folder: Path | None, study_id: str | None) -> str:
+    """A checklist row's reason as HTML, with the re-validate call on the validation row."""
+    note = revalidate_note(study, folder, study_id) if c["item"] == "validation" else ""
+    return esc(c["why"]) + (f' <span class="muted" data-revalidate>{esc(note)}</span>' if note else "")
+
+
+def _reported(study: dict) -> str:
+    """", or "; N reported, not checked" when some validation is the assistant's word alone."""
+    n = sum(validation_result(v) == REPORTED for v in study["validation"])
+    return f"; {n} {REPORTED}" if n else ""
+
+
 def _validation_level(study: dict) -> str:
-    passed = {v.get("level") for v in study["validation"] if v.get("passed")}
+    passed = {v.get("level") for v in study["validation"] if study_mod.checked(v)}
     # The strongest level wins: study_mod.LEVELS is ordered weakest first.
     return next((lv for lv in reversed(study_mod.LEVELS) if lv in passed), "none recorded").replace("_", " ")
 
@@ -175,7 +275,10 @@ def _spark(vals: list[float]) -> str:
             f'{shape}<circle cx="{x:.1f}" cy="{y:.1f}" r="2" fill="#345"/></svg>')
 
 
-def _chip(study: dict, g: dict, spec: dict, steps: dict) -> str:
+def _chip(study: dict, g: dict, spec: dict, steps: dict, option: dict | None = None) -> str:
+    """A goal's chip: its value and verdict across versions, or (D1252) with a recommended
+    *option* (`studywriteup.facts`' goal entry), the option's value and verdict and the
+    Baseline's as the comparison."""
     kpi = goal_kpi(spec)
     vals = [v["kpis"][kpi] for v in study["versions"]
             if kpi and isinstance((v.get("kpis") or {}).get(kpi), (int, float))]
@@ -183,9 +286,23 @@ def _chip(study: dict, g: dict, spec: dict, steps: dict) -> str:
     if vals:
         v = study["versions"][-1]
         hw = (_prec(v, steps[v["id"]]).get(kpi) or {}).get("half_width")
-        val = f' {_num(vals[-1])}' + (f" +- {_num(hw)}" if hw is not None else "")
+        val = f" {esc(_value_text(vals[-1], hw, kpi))}"
+    if option:
+        status = option["status"].replace("_", " ")
+        mean = f" {_value_text(vals[-1], None, kpi)}" if vals else ""     # a chip holds one interval
+        base = f"{pagefmt.REFERENCE}{mean}: {g['status'].replace('_', ' ')}"
+        return (f'<span class="chip {esc(option["status"])}" title="{esc(status)} with {esc(option["name"])}">'
+                f'<b>{esc(g["text"])}</b> {esc(option["interval"])} with {esc(option["name"])}'
+                f' <span class="muted">({esc(base)})</span></span>')
     return (f'<span class="chip {esc(g["status"])}" title="{esc(g["status"].replace("_", " "))}">'
             f'<b>{esc(g["text"])}</b>{val} {_spark(vals)}</span>')
+
+
+def _noise_parts(prec: dict) -> list[str]:
+    """Run noise per KPI in the pages' one wording (D1236): the KPI's plain name, a share's
+    half-width and target in percentage points. Plain text; the caller escapes for HTML."""
+    return [f"{pagefmt.kpi_label(k)} {_hw(p.get('half_width'), k)} (target {_hw(p.get('target'), k)})"
+            for k, p in prec.items() if isinstance(p, dict)]
 
 
 def _precision_line(study: dict, steps: dict) -> str:
@@ -193,8 +310,7 @@ def _precision_line(study: dict, steps: dict) -> str:
         return ""
     v = study["versions"][-1]
     n, prec = _reps(v, steps[v["id"]]), _prec(v, steps[v["id"]])
-    parts = [f"{esc(k)} {_num(p.get('half_width'))} (target {_num(p.get('target'))})"
-             for k, p in prec.items() if isinstance(p, dict)]
+    parts = [esc(part) for part in _noise_parts(prec)]
     if not n and not parts:
         return ""
     return (f'<p class="muted">{esc(n) + " replications" if n else ""}'
@@ -202,7 +318,7 @@ def _precision_line(study: dict, steps: dict) -> str:
 
 
 def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id: str | None,
-            room_url: str | None = None, in_room: bool = False) -> str:
+            room_url: str | None = None, in_room: bool = False, lead: dict | None = None) -> str:
     suff = study_mod.sufficiency(study)
     cls = "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait"
     if study["versions"]:
@@ -216,21 +332,38 @@ def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id:
     room = ('' if in_room else  # the room's own page needs no address, and the url holds the token
             f'<p class="muted">Live room: <a href="{esc(room_url)}">{esc(room_url)}</a></p>' if room_url
             else f'<p class="muted">For the live room run: naga room {esc(folder.name)}</p>')
-    chips = "".join(_chip(study, g, spec, steps) for g, spec in zip(goals, study["goals"]))
+    options = [o["option"] for o in lead["goals"]] if lead else [None] * len(goals)
+    chips = "".join(_chip(study, g, spec, steps, o) for g, spec, o in zip(goals, study["goals"], options))
+    headline = _headline(lead)
     return (f'<header id="cover"{mark}><h1>{esc(study["question"])}</h1>'
             + (f'<p class="muted">Decision: {esc(study["decision"])}</p>' if study["decision"] else "")
             + f'<div class="banner {cls}">{esc(suff["label"])}</div>'
+            + (f'<p class="lead">{esc(headline)}</p>' if headline else "")
             + (f'<div class="chips">{chips}</div>' if chips else "")
             + _precision_line(study, steps)
-            + f'<p class="muted">{_open_item(study, folder)}{latest}.</p>{room}</header>')
+            + f'<p class="muted">{_open_item(study, folder, study_id)}{latest}.</p>{room}</header>')
 
 
-def _open_item(study: dict, folder: Path) -> str:
+def _lead(folder: Path, study: dict) -> dict | None:
+    """D1237, D1252: the deck's facts when an option is recommended (it leads the header, the
+    chips and the Goals table, the Baseline its comparison); None without one."""
+    from nagasim import studywriteup      # it builds on this module's helpers
+    if not study["versions"] or not study_mod.scenarios_meeting(study):
+        return None
+    return studywriteup.facts(folder, study)
+
+
+def _headline(facts: dict | None) -> str:
+    from nagasim import studywriteup
+    return studywriteup._headline(facts) if facts else ""
+
+
+def _open_item(study: dict, folder: Path, study_id: str | None = None) -> str:
     """The first checklist item still open, for the person (next_step is worded for the assistant)."""
     item = next((c for c in study_mod.checklist(study, folder) if c["verdict"] != "passed"), None)
     if item is None:
         return ""
-    why = f" ({esc(item['why'])})" if item["why"] else ""
+    why = f" ({_check_why(item, study, folder, study_id)})" if item["why"] else ""
     return f"<b>Open:</b> {esc(item['title'])}{why}. "
 
 
@@ -244,18 +377,43 @@ def _tally(items: list[str]) -> str:
                      for k in ("passed", "partial", "failed", "not_verified") if k in items)
 
 
-def _goals_panel(study: dict, goals: list[dict], folder: Path) -> str:
+def _steadier_line(g: dict) -> str:
+    """D1265: the muted steadier-KPI line under a goal (`studywriteup.facts`' goal entry), or ""."""
+    note = (g.get("option") or {}).get("steadier")
+    return f'<div class="muted">{esc(note)}</div>' if note else ""
+
+
+def _goals_panel(study: dict, goals: list[dict], folder: Path, study_id: str | None = None,
+                 lead: dict | None = None) -> str:
     last = (study["versions"][-1].get("kpis") or {}) if study["versions"] else {}
-    rows = [[esc(g["text"]), esc(goal_kpi(spec) or ""), esc(_range(spec)), _num(last.get(goal_kpi(spec))),
-             _badge(g["status"])] for spec, g in zip(study["goals"], goals)]
+    head = ["Goal", "KPI", "Target", "Last value", "Status"]
+    rows = [[esc(g["text"]), esc(goal_kpi(spec) or ""), esc(_goal_words(spec, goal_kpi(spec))),
+             _num(last.get(goal_kpi(spec)), goal_kpi(spec)), _badge(g["status"])]
+            for spec, g in zip(study["goals"], goals)]
+    if lead and any(g["option"] for g in lead["goals"]):
+        # D1252: the recommended option's value and verdict lead, the Baseline's is the comparison.
+        head = ["Goal", "KPI", "Target", f"{lead['best'][0]} value", "Status", f"{pagefmt.REFERENCE} value"]
+        rows = [[esc(g["text"]) + _steadier_line(f), esc(f["kpi"]), esc(f["limit"]),
+                 esc(f["option"]["interval"]) if f["option"] else "-",
+                 _badge(f["option"]["status"] if f["option"] else "not_verified"),
+                 esc(f"{f['interval'] or f['value']}: {g['status'].replace('_', ' ')}")]
+                for g, f in zip(goals, lead["goals"])]
     cl = study_mod.checklist(study, folder)
-    checks = [[esc(c["title"]), _badge(c["verdict"]), esc(c["why"])] for c in cl]
+    checks = [[esc(c["title"]), _badge(c["verdict"]), _check_why(c, study, folder, study_id)] for c in cl]
     verdicts = [c["verdict"] for c in cl]
     met = sum(g["status"] == "met" for g in goals)
-    summary = (f"Goals: {met} of {len(goals)} met. Checklist: {esc(_tally(verdicts))}. "
-               f"Validation: {esc(_validation_level(study))}")
-    return _panel("goals", summary, _table(["Goal", "KPI", "Range", "Last value", "Status"], rows)
-                  + _table(["Checklist", "Verdict", "Reason"], checks),
+    best = lead["best"][0] if lead else ""
+    with_best = sum((g["option"] or {}).get("status") == "met" for g in lead["goals"]) if lead else 0
+    summary = (f"Goals: {met} of {len(goals)} met"
+               + (f" in the {pagefmt.REFERENCE}, {with_best} with {esc(best)}" if lead else "")
+               + f". Checklist: {esc(_tally(verdicts))}. "
+               f"Validation: {esc(_validation_level(study) + _reported(study))}")
+    # D1259: where the room draws the person's "I checked this" form, below the table so it has the
+    # panel's width on a phone (the static page and the chat shell ignore the mark).
+    form = study["versions"] and any(c["item"] == "validation" and c["verdict"] != "passed" for c in cl)
+    return _panel("goals", summary, _table(head, rows)
+                  + _table(["Checklist", "Verdict", "Reason"], checks)
+                  + ('<div data-confirm></div>' if form else ""),
                   "failed" in verdicts)    # partial items are common; the chips already show the goals
 
 
@@ -284,9 +442,9 @@ def _scenarios(study: dict, sc: dict) -> str:
         cells = [esc(name)]
         for g in study["goals"]:
             e = (r.get("kpis") or {}).get(goal_kpi(g)) or {}
-            ci = f" +- {_num(e['ci_half_width'])}" if e.get("ci_half_width") is not None else ""
             v = (r.get("goals") or {}).get(g.get("id"), "not_verified")
-            cells.append(f"{_num(e.get('mean'))}{ci} {_badge(v)}" if e else _badge(v))
+            cells.append(f"{esc(_value_text(e.get('mean'), e.get('ci_half_width'), goal_kpi(g)))} {_badge(v)}"
+                         if e else _badge(v))
         rows.append(cells)
     return _table(["Scenario"] + [goal_kpi(g) or g.get("id", "") for g in study["goals"]], rows)
 
@@ -345,8 +503,7 @@ def trust_rows(folder: Path, study: dict, steps: dict) -> list[list[str]]:
     v = study["versions"][-1]
     step = steps.get(v["id"]) or {}
     n, prec = _reps(v, step), _prec(v, step)
-    parts = [f"{k} {_num(p.get('half_width'))} (target {_num(p.get('target'))})"
-             for k, p in prec.items() if isinstance(p, dict)]
+    parts = _noise_parts(prec)
     noise = ", ".join(([f"{n} replications"] if n else []) + (["95% half-width: " + "; ".join(parts)] if parts else []))
     try:        # a list, unlike `_read`'s objects; unreadable reads as nothing asked
         asked = json.loads((folder / "versions" / v["id"] / "asked.json").read_text(encoding="utf-8"))
@@ -381,12 +538,17 @@ def _sensitivity_panel(folder: Path, study: dict) -> str:
     """Ranked factors of the last version's sensitivity.json, redrawn from its numbers (stored SVG is never embedded)."""
     if not study["versions"]:
         return ""
-    data = _read(folder / "versions" / study["versions"][-1]["id"] / "sensitivity.json")
+    latest = study["versions"][-1]["id"]
+    data = _read(folder / "versions" / latest / "sensitivity.json")
     rows = [(f, k, e) for f in (data or {}).get("factors") or [] for k, e in (f.get("kpis") or {}).items()]
     if not rows:
-        return ('<details id="sensitivity" class="panel" data-empty><summary>Sensitivity: not run yet</summary>'
-                '<div class="scroll"><p class="muted">Which assumptions change the answer: '
-                'not run yet.</p></div></details>')
+        # #1789: an older version's run is named, so the page never says "not run" beside it.
+        older = _made(folder, study, ["versions/{v}/sensitivity.json"])
+        said = (f"not run for {latest}; last run for {older.parent.name}" if older is not None
+                else "not run yet")
+        return (f'<details id="sensitivity" class="panel" data-empty><summary>Sensitivity: {esc(said)}</summary>'
+                f'<div class="scroll"><p class="muted">Which assumptions change the answer: '
+                f'{esc(said)}.</p></div></details>')
     rows.sort(key=lambda r: -(r[2].get("swing") or 0))
     table = _table(["Assumption", "KPI", "Low", "High", "Swing", "Changes the answer"],
                    [[esc(f.get("label") or f.get("path") or ""), esc(k), _num(f.get("low")), _num(f.get("high")),
@@ -416,13 +578,20 @@ def _made(folder: Path, study: dict, patterns: list[str]) -> Path | None:
     return next((p for p in paths if p.is_file()), None)
 
 
-def _deliverables_panel(folder: Path, study: dict) -> str:
+def _deliverables_panel(folder: Path, study: dict, packaged: bool = False) -> str:
     items, made = [], 0
     for kind, label, patterns in _DELIVERABLES:
         path = _made(folder, study, patterns)
+        if kind == "package" and packaged:
+            # #1789: this page is written into the package, before the package is complete.
+            made += 1
+            items.append(f'<li data-deliverable="{kind}" data-path="package/control-room.html">'
+                         f'{esc(label)}: this package</li>')
+            continue
         if path is not None:
             made += 1
-            when = time.strftime("%H:%M", time.localtime(path.stat().st_mtime))
+            # #1789: UTC, as every other time on the page.
+            when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(path.stat().st_mtime))
             rel = path.relative_to(folder).as_posix()
             old = rel.split("/")[1] if rel.startswith("versions/") else None
             latest = study["versions"][-1]["id"]
@@ -434,23 +603,106 @@ def _deliverables_panel(folder: Path, study: dict) -> str:
 
 
 def render(folder: Path, study: dict | None = None, study_id: str | None = None,
-           room_url: str | None = None, in_room: bool = False) -> str:
+           room_url: str | None = None, in_room: bool = False, packaged: bool = False) -> str:
     """The page as one string; loads the study when none is given. `room_url` is the live room's
-    address while one runs (the header links it); `in_room` is the room's own view, which omits the line."""
+    address while one runs (the header links it); `in_room` is the room's own view, which omits the line;
+    `packaged` is the copy written into the package (it lists the package as this one)."""
     folder = Path(folder)
     study = study_mod.load(folder) if study is None else study
     steps = {v["id"]: _read(folder / "versions" / v["id"] / "step.json") or {} for v in study["versions"]}
     goals = study_mod.goals_status(study)
+    lead = _lead(folder, study)
     # `<` as < keeps a note holding "</script>" from closing the data block.
     data = json.dumps(study, ensure_ascii=True).replace("<", "\\u003c")
     page = ("<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
             f'<meta http-equiv="Content-Security-Policy" content="{csp(_CSS)}">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
-            + _header(study, goals, steps, folder, study_id, room_url, in_room) + '<div id="actions"></div>'
-            + _goals_panel(study, goals, folder) + _model_panel(folder, study, steps)
+            + _header(study, goals, steps, folder, study_id, room_url, in_room or packaged, lead) + '<div id="actions"></div>'
+            + _goals_panel(study, goals, folder, study_id, lead) + _model_panel(folder, study, steps)
             + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps) + _sensitivity_panel(folder, study) + _trust_panel(folder, study, steps)
-            + _assumptions_panel(study) + _deliverables_panel(folder, study)
+            + _assumptions_panel(study) + _deliverables_panel(folder, study, packaged)
             + f'<script type="application/json" id="study-json">{data}</script></main></body></html>\n')
     # Non-ASCII text becomes a character reference: the page stays ASCII and renders the same.
     return page.encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+
+# --- the client variant (D1238, S4-03 ruling (b)) ------------------------------------------------
+# The page the person who asked the question reads: what was found, how far to trust it, what the
+# package holds. No commands, paths, internal KPI names, bookkeeping numbers, model diffs or
+# assistant instructions; every number in the one wording of the pages (D1236).
+
+_PLAIN_VERDICT = {"passed": "done", "partial": "in part", "failed": "failed", "not_verified": "not checked"}
+_PLAIN_LEVEL = {"data": "compared with measured data", "known_answer": "checked against a known result",
+                "expert": "reviewed by an expert"}
+
+
+def _plain_badge(verdict: str) -> str:
+    return f'<span class="badge {esc(verdict)}">{esc(_PLAIN_VERDICT.get(verdict, verdict.replace("_", " ")))}</span>'
+
+
+def _section(title: str, body: str) -> str:
+    return f'<section class="panel"><h2>{esc(title)}</h2><div class="scroll">{body}</div></section>'
+
+
+def _client_trust(f: dict) -> list[list[str]]:
+    """Run noise per goal in words, then input data and parameters as the trust card says them."""
+    names = {g["kpi"]: g["text"] for g in f["goals"]}
+    noise = "; ".join(f"{names.get(k, k)}: the 95% interval reaches {w} either side (wanted {t})"
+                      for k, w, t in f["precision"] if k in names)
+    runs = f"{f['replications']} replications" if f["replications"] else ""
+    rows = [["Run noise", ", ".join(x for x in (runs, noise) if x) or "not measured"]]
+    rows += [row for row in f["uncertainties"] if row[0] != "Run noise"]
+    return rows
+
+
+def render_client(folder: Path, study: dict, files: list[str]) -> str:
+    """The client page of the package; *files* are the names the package holds, listed as written."""
+    from nagasim import studywriteup      # its facts are the deck's: one reading of the folder
+    folder = Path(folder)
+    f = studywriteup.facts(folder, study)
+    lead = studywriteup._headline(f)
+    heads = [g["text"] for g in f["goals"]]
+    options = [[f"{pagefmt.REFERENCE}"] + [f"{g['interval'] or g['value']}: {g['status'].replace('_', ' ')}"
+                                           for g in f["goals"]]] + f["scenarios"]
+    goals = [[esc(g["text"]), esc(g["limit"]), esc(g["interval"] or g["value"]), _badge(g["status"])]
+             for g in f["goals"]]
+    goal_head = ["Goal", "Target", f"{pagefmt.REFERENCE} value", "Status"]
+    if f["best"] and any(g["option"] for g in f["goals"]):
+        # D1252: the recommended option's value and verdict, the Baseline's as the comparison.
+        goal_head = ["Goal", "Target", f"{f['best'][0]} value", "Status", f"{pagefmt.REFERENCE} value"]
+        goals = [[esc(g["text"]) + _steadier_line(g), esc(g["limit"]),
+                  esc(g["option"]["interval"]) if g["option"] else "-",
+                  _badge(g["option"]["status"] if g["option"] else "not_verified"),
+                  esc(f"{g['interval'] or g['value']}: {g['status'].replace('_', ' ')}")]
+                 for g in f["goals"]]
+    validation = [[esc(_PLAIN_LEVEL.get(v.get("level", ""), str(v.get("level", "")).replace("_", " "))),
+                   esc(validation_result(v)), esc(study_mod.validation_note(v))]
+                  for v in study["validation"]]
+    sens = f["sensitivity"]
+    if sens and sens.get("factors"):
+        sens_body = (f"<p>Each assumption moved {esc(_n(sens.get('delta', 0) * 100))}% either way, one at a time.</p>"
+                     + _table(["Assumption", "Changes the answer"],
+                              [[esc(r.get("label") or ""), "yes" if r.get("changes_answer") else "no"]
+                               for r in sens["factors"]]))
+    else:
+        sens_body = "<p>No sensitivity analysis was run for these results.</p>"
+    steps = [[esc(c[0]), _plain_badge(c[1].replace(" ", "_")), esc(c[2])] for c in f["checks"]]
+    when = next((s.get("at") for s in [_read(folder / "versions" / f["version"] / "step.json") or {}]), None)
+    body = (f'<header id="cover"><h1>{esc(f["question"])}</h1>'
+            + (f'<p class="muted">Decision: {esc(f["decision"])}</p>' if f["decision"] else "")
+            + f'<div class="banner {f["banner"]}">The study is {esc(f["label"])}.</div>'
+            + (f'<p class="lead">{esc(lead)}</p>' if lead else "") + "</header>"
+            + _section("Options compared", _table(["Option"] + heads, [[esc(c) for c in r] for r in options]))
+            + _section("Goals", _table(goal_head, goals))
+            + _section("How far to trust it", _table(["Check", "Result", "Note"], validation)
+                       + _table(["Uncertainty", "Basis"], [[esc(a), esc(b)] for a, b in _client_trust(f)]))
+            + _section("Assumptions", _table(["Assumption", "Value or range", "Source"],
+                                             [[esc(c) for c in r] for r in f["assumptions"]])
+                       if f["assumptions"] else "<p>No assumptions were recorded.</p>")
+            + _section("Which assumptions change the answer", sens_body)
+            + _section("Steps of the study", _table(["Step", "State", "Note"], steps))
+            + _section("In this package", "<ul>" + "".join(f"<li>{esc(n)}</li>" for n in files) + "</ul>")
+            + f'<p class="muted">Results of version {esc(f["version"])}'
+            + (f", {esc(str(when)[:10])}" if when else "") + ".</p>")
+    return _page(f["question"], _CSS, f"<main>{body}</main>")

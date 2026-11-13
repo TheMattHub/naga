@@ -367,7 +367,7 @@ def _pin_override_units(layout: dict, units: ModelUnits) -> None:
     model-unit change; write the unit it means now, as for a field (D159). Only
     a path that addresses a unit key of a block param or a top-level section."""
     from nagasim.core.block_registry import BLOCK_REGISTRY
-    from nagasim.experiments import override_targets        # experiments imports core
+    from nagasim.core.overrides import override_targets     # it imports the schema package
 
     overrides = [o for s in layout.get("scenarios") or [] if isinstance(s, dict)
                  for o in s.get("overrides") or [] if isinstance(o, dict)
@@ -396,6 +396,10 @@ def check_units(layout: dict, problems: list) -> None:
     `simulation.sd` keeps its own E_SD_SETTINGS check. A unit key shared by
     several fields (cost_busy/cost_idle) is reported once."""
     from nagasim.core.block_registry import BLOCK_REGISTRY
+    # S1-14: a field left "base" is filled with the model's own unit on load, so a wrong
+    # model unit is said once, at simulation.time_unit, not again per field inheriting it.
+    model_unit = (layout.get("simulation") or {}).get("time_unit")
+    inherited = None if is_unit("time", model_unit) else model_unit
 
     def check(record, fields, context, at, block=None):
         seen = set()
@@ -407,9 +411,10 @@ def check_units(layout: dict, problems: list) -> None:
             holder, _, leaf = key.rpartition(".")
             source = record.get(holder) if holder else record
             unit = source.get(leaf) if isinstance(source, dict) else None
-            if is_unit(spec.quantity, unit):
-                continue
             timed = spec.quantity in ("time", "rate")
+            if is_unit(spec.quantity, unit) or (timed and inherited is not None
+                                                and unit == inherited):
+                continue
             problems.append(problem(
                 "E_TIME_UNIT" if timed else "E_UNIT",
                 f"{context}: unknown {leaf} '{unit}'",

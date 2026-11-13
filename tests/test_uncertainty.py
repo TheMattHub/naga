@@ -12,6 +12,9 @@ import pytest
 from nagasim import agent_tools as T
 from nagasim import api, inputfit, uncertainty
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 TT = "system/Avg Throughput Time"
 SERVICE = "blocks.process_1.params.distribution"

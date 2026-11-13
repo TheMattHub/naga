@@ -34,10 +34,11 @@ Scenarios, assertions, path checks, dashboards, annotations, cranes and piles dr
 | <span id="e_path_check_rule"></span>`E_PATH_CHECK_RULE` | error | A path check is not an object with one of the rules order, never, at_most or always, its "e_type" is not a name, or it carries a key its rule does not take. | [`path_checks`](../model-file/path_checks.md) |
 | <span id="e_scenario_goal"></span>`E_SCENARIO_GOAL` | error | A scenario's goal is not text, or is longer than 500 characters. | [`scenarios`](../model-file/scenarios.md) |
 | <span id="e_scenario_name"></span>`E_SCENARIO_NAME` | error | A scenario has an empty name. | [`scenarios`](../model-file/scenarios.md) |
-| <span id="e_scenario_override"></span>`E_SCENARIO_OVERRIDE` | error | A scenario override is missing its path or its value. | [`scenarios`](../model-file/scenarios.md) |
+| <span id="e_scenario_override"></span>`E_SCENARIO_OVERRIDE` | error | A scenario override is missing its path or its value, or (when the scenario is applied) its path addresses nothing in the model. | [`scenarios`](../model-file/scenarios.md) |
 | <span id="e_schema_version"></span>`E_SCHEMA_VERSION` | error | The file's schema_version is newer than this build supports. | -- |
 | <span id="e_stockpile"></span>`E_STOCKPILE` | error | The stockpiles section is malformed (an area without a block or piles, a pile rect out of order, keys without a source, an unknown field). | [`stockpiles`](../model-file/stockpiles.md) |
 | <span id="w_background_missing"></span>`W_BACKGROUND_MISSING` | warning | The background image's path does not exist on disk (F3: this used to be a plain string ModelDocument.problems() appended itself, not a schema check; same text, now a coded Problem). | [`background`](../model-file/background.md) |
+| <span id="w_scenario_path"></span>`W_SCENARIO_PATH` | warning | A scenario override's path addresses nothing in the model (the hint names the nearest name): the base model runs, that scenario cannot. | [`scenarios`](../model-file/scenarios.md) |
 
 ## How to fix
 

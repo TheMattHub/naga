@@ -10,6 +10,9 @@ import pytest
 from nagasim import agent_tools as T
 from nagasim import experiments, explain, verify
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT / "nagasim" / "models"
 TT = "system/Avg Throughput Time"

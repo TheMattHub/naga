@@ -372,7 +372,7 @@ def test_the_side_shows_the_results_with_words_the_trust_card_and_the_bottleneck
     data["runs"]["Faster"].pop("neck", None)
     label = data["runs"][BASELINE]["scene"]["blocks"][1]["label"]
     base = run_panels(data)
-    assert base["results"] == [[["", "r-track", "r-num"], [["Queue", "parts"], ["", ""], ["2.5", ""]]]]  # the delta line kept (#841)
+    assert base["results"] == [[["", "r-track", "r-num"], [["Queue", "parts"], ["", ""], ["2.50", ""]]]]  # the delta line kept (#841); decimals from the interval (D1236)
     assert base["tracks"] == [["r-range yours", "r-dot yours"]]          # no baseline, no target
     assert base["trust"] == [["Flow and Little's law checks", [chr(0x2713) + " ", "pass"]],
                              ["Warm-up removed", ["none"]], ["Replications, precision", ["1"]],
@@ -394,7 +394,8 @@ def test_the_side_shows_the_results_with_words_the_trust_card_and_the_bottleneck
     assert faster["trust"][1:] == [["Warm-up removed", ["60 minutes"]],
                                    ["Replications, precision", [f"10, {chr(0xb1)}2.1%"]],
                                    ["Input data", ["not measured"]], ["Parameters", ["not measured"]]]
-    assert faster["neck"] == [True, ""] and faster["hidden"] == [False, False]
+    assert faster["neck"] == [False, ["No bottleneck: nothing waited at a station."]]  # said, not hidden (#1785)
+    assert faster["hidden"] == [False, False]
     # No results and no trust (a recording alone): both panels hidden, nothing empty shown.
     data["results"] = data["trust"] = None
     assert run_panels(data)["hidden"] == [True, True]

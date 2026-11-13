@@ -30,8 +30,8 @@ A scenario can override a block parameter with the path `blocks.<name>.params.<p
 | `source` | string | yes |  |  | Name of the source block. |
 | `target` | string | yes |  |  | Name of the target block. |
 | `delay` | duration or null |  |  | time (`delay.time_unit`) | Optional transfer delay on this link. |
-| `source_port` | string or null |  |  |  | Out port, only when the source is a SUBMODEL instance. |
-| `target_port` | string or null |  |  |  | In port, only when the target is a SUBMODEL instance. |
+| `source_port` | string or integer or null |  |  |  | Out port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks branch by link order and ignore it. |
+| `target_port` | string or integer or null |  |  |  | In port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks ignore it. |
 
 A field of a nested object is described in the JSON Schema (`naga schema`).
 

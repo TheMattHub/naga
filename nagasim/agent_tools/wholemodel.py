@@ -98,7 +98,21 @@ def _section_line(full: dict, section: str, detail: bool) -> str:
         return f"{section}: see the JSON Schema (resource naga://reference/schema)"
     shape = "[{" + _fields(full, definition, detail) + "}]" if node.get("type") == "array" \
         else "{" + _fields(full, definition, detail) + "}"
-    return f"{section}: {shape}"
+    return f"{section}: {shape}" + (_SCENARIO_EXAMPLE if section == "scenarios" and detail else "")
+
+
+# Review S2-05 (D1222): the study's agent took two whole-model steps to give a resource a
+# schedule in one scenario only, so the detail shows the one override that does it.
+_SCENARIO_EXAMPLE = (
+    "\n  Example: a resource staffed by a schedule in one scenario only, though the base model "
+    "gives it none (an override may set any field of its record): {\"name\": \"Two shifts\", "
+    "\"overrides\": [{\"path\": \"resources.Nurse.capacity\", \"value\": 2}, "
+    "{\"path\": \"resources.Nurse.capacity_schedule\", \"value\": \"shifts\"}]} "
+    "with schedules: [{\"name\": \"shifts\", \"kind\": \"capacity\", \"repeat\": true, "
+    "\"points\": [[480, 2], [960, 1]]}] (each point holds [duration, value]; the capacity "
+    "is at least the schedule's highest value). A path names a "
+    "record by its name, then the field: \"blocks.<block>.params.<param>\", "
+    "\"resources.<name>.capacity\", \"simulation.replications\".")
 
 
 def _block_line(name: str, detail: bool) -> str:
@@ -175,17 +189,15 @@ _document_args("get_model_format",
                         "[\"levels\", \"schedules\"]; omit for the overview.")
 
 
-@tool(read_only=True)
-def get_model_format(blocks: list | None = None, sections: list | None = None) -> dict:
-    """What a model file holds, compactly: call it ONCE before write_model.
+@tool(read_only=True, returns={"format": str})
+def get_model_format(blocks: list[str] | None = None, sections: list[str] | None = None) -> dict:
+    """What a model file holds, compactly: call it ONCE before writing the first model file.
 
     With no argument: a minimal example file, the top-level sections with their fields,
     every block type with its parameters and defaults, every distribution with its
     parameter names and every expression function with what it reads. With `blocks` or
     `sections`: those in full, each field with its meaning. Generated from the registries
     and the JSON Schema (resource naga://reference/schema), so it is never out of date.
-
-    Returns {"format": text}.
     """
     if not blocks and not sections:
         return {"format": _overview()}
@@ -201,56 +213,30 @@ def get_model_format(blocks: list | None = None, sections: list | None = None) -
 
 
 # ---------------------------------------------------------------- write_model
-def _unknown_keys(raw: dict) -> list:
-    """W_UNKNOWN_KEY for every key the JSON Schema does not know, at the top level, in a
-    section's records and in the objects inside them one level down (`simulation.sd`).
-    The document keeps only what it knows, so a misspelt key would vanish without a word
-    (`"run_length"` for `simulation.time_limit`, `"resource"` for `"resources"`). Block
-    params are left to the validator, which reports them as E_PARAM_UNKNOWN."""
-    full = _schema()
-    found = []
-
-    def check(value, node, at, depth):
-        if node and "oneOf" in node and isinstance(value, dict):     # a block: by its type
-            node = next((v for v in node["oneOf"] if v.get("title") == str(value.get("type", "")).upper()), None)
-        if not node or not isinstance(value, dict) or "properties" not in node:
-            return
-        known = node["properties"]
-        for key, inner in value.items():
-            if key not in known:
-                if node.get("additionalProperties") is False:
-                    found.append(schema_mod.problem(
-                        "W_UNKNOWN_KEY", f"{at or '/'}: unknown key '{key}' is ignored",
-                        f"{at}/{key}", hint="keys here: " + ", ".join(known)))
-            elif depth < 2 and key != "params":
-                sub = _def_of(full, known[key]) if "$ref" in known[key] or "items" in known[key] \
-                    else known[key]
-                items = inner if isinstance(inner, list) and known[key].get("type") == "array" else None
-                for index, item in enumerate(items if items is not None else [inner]):
-                    check(item, sub, f"{at}/{key}" + (f"/{index}" if items is not None else ""), depth + 1)
-
-    check(raw, full, "", 0)
-    return found
-
-
 _document_args("write_model",
                model="Workspace name for the model: a new one is created, an open one replaced.",
                layout="The complete model file as one JSON object (get_model_format shows its "
-                      "shape): blocks, links, resources, simulation, ...")
+                      "shape): blocks, links, resources, simulation, ...",
+               name="The same as model; give one of the two.")
 
 
-@tool()
-def write_model(model: str, layout: dict) -> dict:
+@tool(returns={
+    "ok": bool, "model": str, "blocks": float, "errors": int, "warnings": int,
+    "requires_run_length": bool, "problems": list})
+def write_model(layout: dict, model: str | None = None, name: str | None = None) -> dict:
     """Write a WHOLE model in one call: the complete model file as one JSON object.
 
     The fast way to build a model: call get_model_format once, write the file, fix what the
     answer lists with one more write_model, then run_model and save_model. The layout is
     read and validated exactly as a model file on disk is; it replaces an open model of the
     same name as one undo step. Blocks given no position are laid out automatically.
-
-    Returns {"ok": true when nothing is an error, "model", "blocks", "errors", "warnings",
-    "requires_run_length", "problems": [{"code", "path", "message", "hint"}]}.
     """
+    if model is not None and name is not None and model != name:
+        raise ToolError("E_BAD_ARGUMENT", f"`model` ({model!r}) and `name` ({name!r}) differ",
+                        "give the workspace name once, as model or as name")
+    model = model if model is not None else name
+    if model is None:
+        raise ToolError("E_BAD_ARGUMENT", "`model` is required", "give the workspace name as model (or name)")
     if not isinstance(layout, dict):
         raise ToolError("E_BAD_ARGUMENT", "`layout` must be a JSON object",
                         "send the whole model file as one object")
@@ -262,7 +248,8 @@ def write_model(model: str, layout: dict) -> dict:
         fresh = ModelDocument(migrated)
         if not any(isinstance(b, dict) and b.get("position") for b in raw.get("blocks") or ()):
             fresh.move_blocks(layout_tools.auto_layout(fresh))
-        problems = (schema_mod.consent_problems(raw) + _unknown_keys(raw) + _problems(fresh))
+        # Unknown keys at every level come from the document's own check (D1220).
+        problems = schema_mod.consent_problems(raw) + _problems(fresh)
     except schema_mod.ModelValidationError:
         raise
     except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
@@ -276,6 +263,7 @@ def write_model(model: str, layout: dict) -> dict:
         doc.dirty = True
     else:
         doc.replace_layout(fresh.to_layout(), "Write model")
+        doc.kept = fresh.kept
     ws.results.pop(model, None)
     ws.asked.pop(model, None)       # what was asked of the old model says nothing of the new one
     errors = sum(1 for p in problems if p.severity == "error")

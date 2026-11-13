@@ -12,6 +12,9 @@ from nagasim.core import runfacts, trace
 from nagasim.core.runfacts import Fact, facts
 from nagasim.factscli import run
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 
 def _two_resources():
     """Arrivals at t=0..5; each seizes Op (2 units), then Machine (1 unit), works 5."""

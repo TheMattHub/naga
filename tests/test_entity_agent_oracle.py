@@ -43,6 +43,8 @@ import pytest
 from nagasim.core import agents as A
 
 from conftest import chain, delay, dispose, problem_codes, run_env
+from functools import partial
+from helpers import model
 
 
 def _block(name, btype, **params):
@@ -50,8 +52,7 @@ def _block(name, btype, **params):
             "params": params}
 
 
-def _model(*records, time_limit=10):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=10)
 
 
 def _run(layout, seed=1):

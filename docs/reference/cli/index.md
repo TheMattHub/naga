@@ -12,6 +12,7 @@ Run a model, compare scenarios and search for the best settings.
 | Command | What it does |
 |---|---|
 | [`naga examples`](run-and-compare.md#naga-examples) | list the models that ship in the package |
+| [`naga plugins`](run-and-compare.md#naga-plugins) | list the plugins loaded, failed and scanned (read-only) |
 | [`naga run`](run-and-compare.md#naga-run) | run a model headless |
 | [`naga scenarios`](run-and-compare.md#naga-scenarios) | run named scenarios headless and compare them |
 | [`naga explain`](run-and-compare.md#naga-explain) | rank the measured contributors to a KPI and suggest one test of the top one |
@@ -83,5 +84,5 @@ Serve the model operations to an assistant.
 | [`naga mcp`](agents.md#naga-mcp) | Model Context Protocol server over stdio |
 | [`naga assist`](agents.md#naga-assist) | one headless assistant turn |
 | [`naga skill`](agents.md#naga-skill) | show or copy the simulation-study guide for an assistant |
-| [`naga study`](agents.md#naga-study) | check a study folder: rerun its versions (its reproduce steps with --steps), check its numbers |
+| [`naga study`](agents.md#naga-study) | check a study folder: rerun its versions (its reproduce steps with --steps), check its numbers, record your own validation |
 | [`naga room`](agents.md#naga-room) | the live control room of a study in your browser |

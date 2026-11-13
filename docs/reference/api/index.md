@@ -7,7 +7,7 @@ The functions and classes a script calls most. Each page is its docstring: param
 
 | Entry point | What it does |
 |---|---|
-| [`nagasim.api.run_model`](run_model.md) | Run replications of a model and return its KPI frames. |
+| [`nagasim.api.run_model`](run_model.md) |  |
 | [`nagasim.experiments.run_scenarios`](run_scenarios.md) | Run every named scenario (all of them by default) and return the results. |
 | [`nagasim.experiments.run_until_precision`](run_until_precision.md) | Keep adding replications until the confidence interval on a KPI is tight enough. |
 | [`nagasim.experiments.suggest_warmup`](suggest_warmup.md) | Suggest a warm-up length from a run's entity log with MSER-5. |

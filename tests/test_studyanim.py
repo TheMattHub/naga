@@ -10,6 +10,9 @@ import pytest
 from nagasim import agent_tools as T
 import nagasim.agent_tools.study_anim  # noqa: F401  (registers study_animation)
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 EXAMPLES = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 GOAL = {"id": "g1", "text": "wait under 5", "kpi": "Avg Throughput Time", "high": 5}
 

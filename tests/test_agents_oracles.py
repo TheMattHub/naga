@@ -55,19 +55,13 @@ RESOLVED AMBIGUITIES (plan text vs. the landed interface):
    state in a population's initial placement (that case is `E_AGENT_STATE`)
    -- test 7's case for it was fixed accordingly.
 """
-import numpy as np
 import pytest
 
-from conftest import (agent_rng, chain, create, delay, dispose, layout as make_layout,
-                      problem_codes, run_env)
+from conftest import agent_rng, chain, create, delay, dispose, layout as make_layout, problem_codes
+from helpers import run as _run
 
 
 # --------------------------------------------------------------- run helpers
-def _run(layout, run_len, seed=0):
-    env, _model = run_env(layout, run_len, seed=seed)
-    return env
-
-
 def _pop(env, name):
     return next(p for p in env.ctx.agent_system.populations if p.name == name)
 

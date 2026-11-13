@@ -574,3 +574,16 @@ def test_the_anthropic_model_list_has_a_short_timeout():
     client = SimpleNamespace(models=SimpleNamespace(list=lister))
     llm.build_provider(llm.Config("anthropic", "", "m", "k", "omit"), client=client).list_models()
     assert seen["timeout"] == llm.MODELS_TIMEOUT_S
+
+
+def test_1787_base_url_implies_the_openai_provider():
+    """An address is a choice of server (D1229): a stored Anthropic key must not override it."""
+    env = {"ANTHROPIC_API_KEY": "stored"}
+    cfg = llm.resolve_config(base_url="http://127.0.0.1:9/v1", model="m", environ=env)
+    assert (cfg.provider, cfg.base_url, cfg.api_key) == ("openai", "http://127.0.0.1:9/v1", None)
+    cfg = llm.resolve_config(model="m", environ={**env, "NAGASIM_LLM_BASE_URL": "http://127.0.0.1:9/v1"})
+    assert cfg.provider == "openai"
+    # --provider says otherwise: the person's explicit choice wins
+    assert llm.resolve_config(provider="anthropic", base_url="http://127.0.0.1:9/v1",
+                              environ=env).provider == "anthropic"
+    assert llm.resolve_config(environ=env).provider == "anthropic"      # no address: unchanged

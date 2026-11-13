@@ -16,6 +16,9 @@ from nagasim.core import playback
 from nagasim.core.playback import Timeline
 from nagasim.core.trace import TraceEvent, TraceRecorder
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 MODELS = Path(nagasim.__file__).resolve().parent / "models"
 SERVER = [{"name": "Server", "capacity": 1}]
 EPOCH = "1970-01-01T00:00:00+00:00"

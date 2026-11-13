@@ -9,6 +9,9 @@ import pytest
 from nagasim import cli as launcher
 from nagasim import loopdominance
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 
 

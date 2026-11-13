@@ -10,6 +10,9 @@ import pytest
 from nagasim import agent_tools as T
 from nagasim import studydeck, studyrerun
 
+# D1244: every successful tool answer here is checked against its tool's output schema.
+pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+
 EXAMPLES = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 
 

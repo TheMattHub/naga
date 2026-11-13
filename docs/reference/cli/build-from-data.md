@@ -28,7 +28,7 @@ options:
 
 ```text
 usage: naga discover [-h] [--check] [-o OUTPUT] [--report REPORT]
-                     [--format {csv,xes}]
+                     [--format {csv,xes,xlsx}] [--sheet SHEET]
                      [--time-unit {seconds,minutes,hours,days}]
                      [--routing {auto,markov,variants}] [--idle-waits]
                      [--case COLUMN] [--activity COLUMN] [--timestamp COLUMN]
@@ -36,13 +36,13 @@ usage: naga discover [-h] [--check] [-o OUTPUT] [--report REPORT]
                      [--complete COLUMN]
                      log
 
-Draft a model from an event log (CSV, or XES): arrivals, activity times,
+Draft a model from an event log (CSV, .xlsx or XES): arrivals, activity times,
 routing and resources as the log shows them, with a report of what was
 inferred, assumed and dropped.
 
 positional arguments:
-  log                   the event log: a CSV file, an .xes file, or the name
-                        of a bundled sample (job_shop_log)
+  log                   the event log: a CSV file, an .xlsx or .xes file, or
+                        the name of a bundled sample (job_shop_log)
 
 options:
   -h, --help            show this help message and exit
@@ -51,7 +51,9 @@ options:
   -o OUTPUT, --output OUTPUT
                         write the draft model here (default: stdout)
   --report REPORT       write the report as JSON here
-  --format {csv,xes}    the log's format (default: by the file's suffix)
+  --format {csv,xes,xlsx}
+                        the log's format (default: by the file's suffix)
+  --sheet SHEET         the sheet of an .xlsx log (default: the first)
   --time-unit {seconds,minutes,hours,days}
                         the draft's time unit; a numeric timestamp is taken as
                         in it
@@ -62,19 +64,17 @@ options:
   --idle-waits          give each activity that waits long at mostly idle
                         resources a DELAY before it, fitted to its waits (off:
                         no such delay)
-  --case COLUMN         the CSV column holding the case (default: found by
+  --case COLUMN         the column holding the case (default: found by name)
+  --activity COLUMN     the column holding the activity (default: found by
                         name)
-  --activity COLUMN     the CSV column holding the activity (default: found by
+  --timestamp COLUMN    the column holding the timestamp (default: found by
                         name)
-  --timestamp COLUMN    the CSV column holding the timestamp (default: found
-                        by name)
-  --lifecycle COLUMN    the CSV column holding the lifecycle (default: found
-                        by name)
-  --resource COLUMN     the CSV column holding the resource (default: found by
+  --lifecycle COLUMN    the column holding the lifecycle (default: found by
                         name)
-  --start COLUMN        the CSV column holding the start (default: found by
+  --resource COLUMN     the column holding the resource (default: found by
                         name)
-  --complete COLUMN     the CSV column holding the complete (default: found by
+  --start COLUMN        the column holding the start (default: found by name)
+  --complete COLUMN     the column holding the complete (default: found by
                         name)
 ```
 

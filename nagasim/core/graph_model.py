@@ -88,10 +88,10 @@ class GraphModel:
             # legitimately grow); everything else fails the load loudly.
             layout, structured = prepare(path)
             fatal = fatal_problems(structured)     # by severity, not the message text (#247)
+            if fatal:       # the error carries every problem; a log line would say it twice (S1-14)
+                raise ModelValidationError(format_problems(fatal), structured=fatal)
             for message in format_problems(structured):
                 log.warning(message)
-            if fatal:
-                raise ModelValidationError(format_problems(fatal), structured=fatal)
 
         self._raw_layout = layout #copy for batch runs
 
@@ -132,6 +132,7 @@ class GraphModel:
         # never from these logs, so what is lost is the three flat frames and
         # nothing else.
         env.ctx.record_logs = bool(sim_settings.get("record_logs", True))
+        env.ctx.entity_waits = bool(sim_settings.get("entity_waits", False))    # D1232
 
         # Deterministic run mode (PHASE6 W4 P1, ARCHITECTURE D119): read once
         # here, same pattern as record_logs above. `core/base_process.py`'s

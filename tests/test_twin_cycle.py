@@ -875,7 +875,7 @@ def test_an_agent_reads_the_twin_the_person_started_and_can_choose_nothing(tmp_p
     T.use_workspace(T.Workspace(tmp_path))
     for name in TWIN_TOOLS:
         error = T.call(name)["error"]
-        assert error["code"] == "E_NO_TWIN" and "naga mcp --twin" in error["hint"]
+        assert error["code"] == "E_NO_TWIN" and "the person running the server starts a twin" in error["hint"]
 
     # The directory comes from the server's start flag and from nowhere else.
     parser = argparse.ArgumentParser()

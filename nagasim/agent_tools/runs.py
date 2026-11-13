@@ -7,6 +7,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 import numpy as np
+from typing import Literal
 
 from nagasim import api, experiments, explain, investment, laws, loopdominance, modelcheck, uncertainty
 from nagasim import optimize as optimize_mod
@@ -16,8 +17,12 @@ from nagasim.settings import trusted
 
 from .core import (
     MAX_ROWS, ToolError, _budget, _document_args, report as _progress, _edit_result, _finite, _digest, _open,
-    _records, _results_of, _rows, _runnable_layout, _upsert, note_asked, recorded, tool, workspace,
+    _records, _results_of, _rows, _runnable_layout, _upsert, note_asked, override_hint, recorded, tool,
+    workspace,
 )
+
+# Closed sets are Literals (D1219): the values are in the schema a client reads, not only in prose.
+Goal = Literal["min", "max"]
 
 _document_args("run_model", model="Workspace name of the model to run.",
                replications="Independent replications; defaults to the model's own setting.",
@@ -35,17 +40,17 @@ _document_args("check_model_opens", model="Workspace name of the model to check.
                            "neither a pass nor a fail.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={"model": str, "passed": bool, "status": str, "message": str})
 def check_model_opens(model: str, max_seconds: float | None = None) -> dict:
     """The open-and-run gate: does the model open in the editor with NO errors, using the
     plugins this person enabled, and run one replication? Call it before you say a model you
     built or edited is done; a model that fails it is not done.
 
-    Returns {"model", "passed", "status" ("pass", "fail" or "stopped": the budget ran out, so it
-    opens with no errors but the run was not finished), "message"}: the message says what failed first (an error in the
-    Problems panel, with its fix, or the exception of the run). A block type that "comes from a
-    plugin that is not loaded" needs the person to trust its folder in Settings > Plugins;
-    `propose_plugin_folder` can only suggest one.
+    "status" is "pass", "fail" or "stopped" (the budget ran out: it opens with no errors but the
+    run was not finished); the message says what failed first (an error in the Problems panel,
+    with its fix, or the exception of the run). A block type that "comes from a plugin that is not
+    loaded" needs the person to trust its folder in Settings > Plugins; `propose_plugin_folder` can
+    only suggest one.
     """
     doc = workspace().document(model)
     gate = modelcheck.open_and_run(doc.to_layout(), max_seconds=max_seconds)
@@ -58,15 +63,15 @@ _document_args("propose_plugin_folder", model="Workspace name of the model that 
                       "under it).")
 
 
-@tool()
+@tool(returns={"model": str, "folder": str, "state": str, "enabled": bool})
 def propose_plugin_folder(model: str, folder: str) -> dict:
     """Propose a plugin folder for the person to trust. It is added to their Settings > Plugins
     list SWITCHED OFF and marked "added by assistant": nothing in it runs until the person ticks
     it there. Only a folder inside this workspace can be proposed; a folder already listed is
     left exactly as it is. Tell the person to open Settings > Plugins and enable it.
 
-    Returns {"model", "folder", "state"}: "proposed" (added, off), or "listed" (already there,
-    with "enabled" saying whether the person turned it on).
+    "state" is "proposed" (added, off), or "listed" (already there, with "enabled" saying
+    whether the person turned it on).
     """
     workspace().document(model)
     path = workspace().resolve(folder, must_exist=True)
@@ -87,35 +92,36 @@ def propose_plugin_folder(model: str, folder: str) -> dict:
     return {"model": model, "folder": str(path), "state": "proposed", "enabled": False}
 
 
-@tool()
+@tool(returns={
+    "model": str, "replications": int, "system": dict, "resources": dict, "user_stats": dict,
+    "frames": list, "laws": dict, "entities": dict, "levels": dict, "queues": dict,
+    "bindings": dict, "agents": dict})
 def run_model(model: str, replications: int | None = None, run_length: float | None = None,
               warmup: float | None = None, seed: int = 0, bind_data: bool = False,
               max_seconds: float | None = None) -> dict:
-    """Run a model and return a COMPACT KPI digest -- never the raw frames.
+    """Run (simulate) a model over its replications and return a COMPACT KPI digest -- never
+    the raw frames.
 
     Validate first: a model with errors will not run. Every KPI comes back as a
     mean with the half-width of its 95% confidence interval over replications;
-    a half-width near the mean means you need more replications (see
-    `run_to_precision`). One replication gives no interval at all (null).
+    a half-width near the mean means you need more replications; `run_to_precision`
+    finds how many. One replication gives no interval at all (null).
 
     `bind_data=true` resolves the model's `series:` (time-series input) and
     `orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,
     within this workspace's own network permission and file confinement --
-    there is no permission argument here, only whether to use it. Use
+    there is no permission argument here, only whether to use it; a binding it
+    could not resolve is counted in "bindings" ({"problems", "first"}). Use
     `resolve_data_bindings` first to preview what a binding would read.
 
     The full frames stay in the workspace: page them out with `get_kpi_table`.
 
-    Returns {"model", "replications", "system": {KPI: {mean, ci_half_width}},
-    "resources": {name: {metric: {...}}}, "user_stats": {...},
-    "frames": [names available to get_kpi_table], "laws": {"passed": n, "partial": [{name,
-    verdict, why, law}]}}: the operational-law checks and guardrails (utilisation, offered load,
-    Little, flow conservation, censoring, initial bias) -- warnings, never failures; a partial
-    one names why its numbers cannot be read at face value. Plus, only when the model has them,
-    "entities" (per entity type, when there are several: Avg Time, Total Completed),
-    "levels" (Average, Final, Time Empty %, Time Full %), "queues" (per block: Balked,
-    Reneged) and "agents" (per population/state: Avg Count), in the same {mean,
-    ci_half_width} form.
+    "laws" are the operational-law checks and guardrails (utilisation, offered load, Little, flow
+    conservation, censoring, initial bias) -- warnings, never failures; a partial one names why
+    its numbers cannot be read at face value. Only when the model has them: "entities" (per
+    entity type, when there are several: Avg Time, Total Completed), "levels" (Average, Final,
+    Time Empty %, Time Full %), "queues" (per block: Balked, Reneged) and "agents" (per
+    population/state: Avg Count), in the same {mean, ci_half_width} form.
     """
     ws = workspace()
     doc = ws.document(model)
@@ -129,16 +135,31 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     except RuntimeError as exc:
         # DEVLOG #411: a model error found only while running (the blocks raise
         # RuntimeError) must reach the agent as an answer, not undo its turn.
-        raise ToolError("E_RUN_FAILED", str(exc), "call validate_model and fix the model") from exc
+        raise ToolError("E_RUN_FAILED", str(exc), "it validated but failed while running: fix what the message names and run again") from exc
     if results is None:
         raise ToolError("E_NO_RESULTS", "the run produced no completed replication",
                         "raise max_seconds, or lower replications/run_length")
     ws.results[model] = results
     digest = _digest(results)
     digest.update({"model": model, "frames": sorted(results), "laws": _run_laws(layout, results, warmup)})
+    if bind_data and (bound := _binding_problems(results)):
+        digest["bindings"] = bound
     note_asked(model, {"tool": "run_model", "warnings": [{"name": c["name"], "why": c["why"]}
                                                          for c in digest["laws"]["partial"]]})
     return digest
+
+
+def _binding_problems(results) -> dict | None:
+    """{"problems", "first"} for the data bindings a bind_data run could not resolve (#1769): the run
+    went on with the file's own values, and the answer says so instead of only the server log."""
+    frame = results.get("data_inputs") if hasattr(results, "get") else None
+    if frame is None or "Problem" not in frame:
+        return None
+    bad = frame[frame["Problem"].astype(str) != ""]
+    if bad.empty:
+        return None
+    first = bad.iloc[0]
+    return {"problems": int(len(bad)), "first": f"{first['Binding']}: {first['Problem']}"[:300]}
 
 
 def _run_laws(layout: dict, results, warmup: float | None = None) -> dict:
@@ -162,16 +183,15 @@ _document_args("get_kpi_table", model="Workspace name of a model that has been r
                limit="Rows to return (at most 200).")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "frame": str, "total": int, "offset": int, "count": int, "rows": list,
+    "has_more": bool, "next_offset": int | None})
 def get_kpi_table(model: str, frame: str, offset: int = 0, limit: int = 50) -> dict:
     """Page through one results frame of the last `run_model` for this model.
 
     Use it when the digest is not enough -- to see per-resource detail, the
     per-entity log, or a time series. Ask for the smallest window you need:
     `entity_log` and `timeseries` have thousands of rows.
-
-    Returns {"model", "frame", "total", "offset", "count", "rows", "has_more",
-    "next_offset"}.
     """
     results = _results_of(model)
     data = results.get(frame)
@@ -179,6 +199,16 @@ def get_kpi_table(model: str, frame: str, offset: int = 0, limit: int = 50) -> d
         raise ToolError("E_UNKNOWN_FRAME", f"no results frame named '{frame}'",
                         f"use one of: {', '.join(sorted(results))}")
     return {"model": model, "frame": frame, **_rows(data, offset, limit)}
+
+
+def _explain_key(kpi: str) -> str:
+    """A KPI in the study goal's forms ("Avg Throughput Time", "Server/Time in Queue Avg") as the
+    results key explain_kpi reads ("system/...", "resource/Server/..."), so one name works in a goal,
+    what_if and here (S2-13); any other key is passed on for explain to judge."""
+    frame, _, rest = kpi.partition("/")
+    if not rest:
+        return f"system/{kpi}"
+    return kpi if frame in experiments._BARE_FRAMES else f"resource/{kpi}"
 
 
 @contextmanager
@@ -205,27 +235,21 @@ _document_args("run_scenarios", model="Workspace name of the model to run.",
                max_seconds="Wall-clock budget for the whole sweep.")
 
 
-@tool()
-def run_scenarios(model: str, scenarios: list | None = None, kpis: list | None = None,
+@tool(returns={"model": str, "scenarios": list, "crn": bool, "comparison": list, "completed": bool})
+def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str] | None = None,
                   replications: int | None = None, run_length: float | None = None,
                   warmup: float | None = None, seed: int = 0, crn: bool = True,
                   max_seconds: float | None = None) -> dict:
-    """Run the model's scenarios and compare them against the baseline with
-    confidence intervals and a significance verdict.
+    """Run the model's scenarios (the options) and compare them against the baseline with
+    confidence intervals and a significance verdict: which option is better, and whether the
+    difference is significant.
 
     This is the consultancy answer: for each KPI and scenario you get the
     scenario's own mean with its CI, the DIFFERENCE against the baseline with
     its own CI, and whether that difference interval excludes zero
     ("significant"). A non-significant difference means "not distinguishable at
     this replication count", not "no difference".
-
-    Returns {"model", "scenarios", "crn", "comparison": [{"kpi", "scenario",
-    "mean", "lb", "ub", "diff", "diff_lb", "diff_ub", "significant"}]}.
     """
-    if scenarios is not None and not all(isinstance(s, str) for s in scenarios):
-        raise ToolError("E_BAD_ARGUMENT", "scenarios must be a list of scenario names (strings)",
-                        "pass scenario name strings, e.g. [\"Second server\"], or omit the "
-                        "argument for all of them plus Baseline")
     doc = workspace().document(model)
     stop = _budget(max_seconds)
     with _kpi_errors():
@@ -259,8 +283,9 @@ _document_args("what_if", model="Workspace name of the model.",
                seed="Base seed.", max_seconds="Wall-clock budget.")
 
 
-@tool()
-def what_if(model: str, overrides: list, kpis: list | None = None, goals: dict | None = None,
+@tool(returns={
+    "model": str, "n": int, "met": bool, "completed": bool, "kpis": list, "input_note": dict})
+def what_if(model: str, overrides: list[dict], kpis: list[str] | None = None, goals: dict | None = None,
             start: int = 5, cap: int = 50, run_length: float | None = None,
             warmup: float | None = None, seed: int = 0, max_seconds: float | None = None) -> dict:
     """Ask "what if I change this?" without editing the model: run the baseline
@@ -277,10 +302,6 @@ def what_if(model: str, overrides: list, kpis: list | None = None, goals: dict |
     verdict, never merged with it: the change's difference measured for these same
     overrides, else the level's spread, labelled "level" (a level's spread is not the
     difference's). No note when nothing was measured.
-
-    Returns {"model", "n", "met", "completed", "kpis": [{"kpi", "baseline",
-    "scenario", "diff", "diff_lb", "diff_ub", "verdict"}], "input_note" (when recorded):
-    {"measure", "resamples", "replications", "kpis", "text"}}.
     """
     try:
         with _kpi_errors():
@@ -290,7 +311,7 @@ def what_if(model: str, overrides: list, kpis: list | None = None, goals: dict |
                                       should_stop=_budget(max_seconds))
     except ModelValidationError as exc:
         raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
-                        "fix the override paths (list_override_paths shows the valid ones)")
+                        override_hint(exc))
     note = uncertainty.what_if_note(recorded(model), overrides,
                                     [r["kpi"] for r in out["kpis"]])
     note_asked(model, {"tool": "what_if", "overrides": overrides,
@@ -315,8 +336,11 @@ _document_args("explain_kpi", model="Workspace name of the model.",
                            "changes_answer paths join the factors for optimize.")
 
 
-@tool()
-def explain_kpi(model: str, kpi: str, overrides: list | None = None, replications: int = 5,
+@tool(returns={
+    "model": str, "kpi": str, "mode": str, "n": int, "completed": bool, "unit": str | None,
+    "value": dict, "rows": list, "coverage": float | None, "summary": str, "notes": list,
+    "suggested_test": dict | None, "factors": list, "factors_from": list})
+def explain_kpi(model: str, kpi: str, overrides: list[dict] | None = None, replications: int = 5,
                 cap: int = 50, run_length: float | None = None, warmup: float | None = None,
                 seed: int = 0, max_seconds: float | None = None,
                 sensitivity: dict | None = None) -> dict:
@@ -339,13 +363,9 @@ def explain_kpi(model: str, kpi: str, overrides: list | None = None, replication
     rows that hold 95% of the rows (integer, from one below to two above the current value),
     then the sensitivity paths that change the answer, at most 4; pass it to optimize as
     `factors` unchanged. "factors_from" says where each one came from.
-
-    Returns {"model", "kpi", "mode": "level" | "change", "n", "completed", "unit", "value",
-    "rows": [{"row", "label", "resource", ...}], "coverage" (time and WIP), "summary",
-    "notes", "suggested_test": {"label", "tool", "arguments", "text"} or null,
-    "factors": [{"path", "kind", "low", "high"}], "factors_from": [text]}.
     """
     layout = workspace().document(model).to_layout()
+    kpi = _explain_key(kpi)
     try:
         out = explain.explain_kpi(layout, kpi, overrides,
                                   replications=max(2, min(int(replications), 200)), cap=max(2, min(int(cap), 200)),
@@ -353,7 +373,7 @@ def explain_kpi(model: str, kpi: str, overrides: list | None = None, replication
                                   should_stop=_budget(max_seconds))
     except ModelValidationError as exc:
         raise ToolError("E_BAD_OVERRIDE", "; ".join(exc.problems),
-                        "fix the override paths (list_override_paths shows the valid ones)")
+                        override_hint(exc))
     except api.WarmupPastEndError as exc:
         raise ToolError(exc.code, str(exc), "shorten the warm-up or lengthen the run") from None
     except ValueError as exc:
@@ -375,15 +395,13 @@ _document_args("investment_case", model="Workspace name of the model to run; it 
                seed="First replication's seed; replication r uses seed + r.")
 
 
-@tool()
+@tool(returns={"model": str, "settings": dict, "table": list})
 def investment_case(model: str, replications: int | None = None, seed: int = 0) -> dict:
-    """Run the model's scenarios and price each against the baseline: extra
-    capex, saving per year, payback, NPV and ROI over the `investment`
+    """Run the model's scenarios and price each against the baseline (is an option worth the
+    money?): extra capex, saving per year, payback, NPV and ROI over the `investment`
     section's horizon, with confidence intervals from several replications.
 
-    Returns {"model", "settings", "table": [one record per scenario, baseline
-    first, with the engine's column names; blanks are null]}. A model without
-    an `investment` section answers E_NO_INVESTMENT.
+    A model without an `investment` section answers E_NO_INVESTMENT.
     """
     layout = workspace().document(model).to_layout()
     if layout.get("investment") is None:
@@ -415,21 +433,20 @@ _document_args("run_to_precision", model="Workspace name of the model to run.",
                max_seconds="Wall-clock budget.")
 
 
-@tool()
+@tool(returns={
+    "model": str, "kpi": str, "replications": int, "mean": float, "half_width": float,
+    "target": float, "met": bool, "confidence": float})
 def run_to_precision(model: str, kpi: str, relative: float = 0.05,
                      absolute: float | None = None, max_replications: int = 200,
                      run_length: float | None = None, warmup: float | None = None,
                      seed: int = 0, max_seconds: float | None = None) -> dict:
     """Keep adding replications until one KPI's confidence interval is narrow
-    enough, then report how many it took.
+    enough (how sure the answer is), then report how many it took.
 
     Use it instead of guessing a replication count: "how many runs do I need to
     call this number to within 5%". If `met` comes back false, the cap or the
     time budget was hit first and the reported half-width is what you actually
     have.
-
-    Returns {"model", "kpi", "replications", "mean", "half_width", "target",
-    "met"}.
     """
     ws = workspace()
     doc = ws.document(model)
@@ -450,7 +467,7 @@ _document_args("run_reality_checks", model="Workspace name of the model to run."
                max_seconds="Wall-clock budget for the whole set of checks.")
 
 
-@tool()
+@tool(returns={"model": str, "checks": list})
 def run_reality_checks(model: str, run_length: float | None = None, warmup: float | None = None,
                        seed: int = 0, max_seconds: float | None = None) -> dict:
     """Run the model's Vensim-style reality checks: an input imposed on the
@@ -458,10 +475,9 @@ def run_reality_checks(model: str, run_length: float | None = None, warmup: floa
     given it (e.g. "then production = 0"). Each check is one deterministic
     replication; a check with no violation passes.
 
-    Returns {"model", "checks": [{"check", "passed", "violation_time",
-    "snapshot", "note"}]} -- "violation_time" and "snapshot" (the LEVEL/AUX/FLOW values
-    at that instant) are null for a check that passed; "note" is "" or a word on the
-    outcome, such as an "eventually" check that held from the start of its window.
+    "violation_time" and "snapshot" (the LEVEL/AUX/FLOW values at that instant) are null for a
+    check that passed; "note" is "" or a word on the outcome, such as an "eventually" check
+    that held from the start of its window.
     """
     doc = workspace().document(model)
     layout = _runnable_layout(doc, model)
@@ -490,7 +506,9 @@ _document_args("run_loop_dominance", model="Workspace name of an SD model (needs
 _MAX_INTERVALS = 20
 
 
-@tool()
+@tool(returns={
+    "model": str, "step": float, "truncated": bool, "loop_count": int, "loops": list,
+    "warnings": list})
 def run_loop_dominance(model: str, run_length: float | None = None, seed: int = 0,
                        top: int = 10) -> dict:
     """Which feedback loop drives an SD model's behaviour, and when (Loops That
@@ -499,11 +517,8 @@ def run_loop_dominance(model: str, run_length: float | None = None, seed: int = 
     its stocks, signed (+ reinforcing, - balancing); the dominant loops at a
     step are the fewest that explain at least half of it.
 
-    Returns {"model", "step", "truncated", "loop_count", "loops": [{"loop",
-    "kind" (R/B from the run, U if its sign flips, D if never active),
-    "partition", "length", "nodes", "total" (mean relative score), "dominant":
-    [[start, end], ...] (at most 20 intervals)}], "warnings"} -- the *top*
-    loops by |total|. Refused with E_LOOP_GRID without simulation.sd.
+    The *top* loops by |total|; a loop's "kind" is R/B from the run, U if its sign flips, D if
+    never active. Refused with E_LOOP_GRID without simulation.sd.
     """
     doc = workspace().document(model)
     layout = _runnable_layout(doc, model)
@@ -535,7 +550,7 @@ _document_args("suggest_warmup", model="Workspace name of the model.",
                max_seconds="Wall-clock budget.")
 
 
-@tool()
+@tool(returns={"model": str, "warmup": float, "reliable": bool, "observations": int})
 def suggest_warmup(model: str, replications: int = 5, run_length: float | None = None,
                    max_seconds: float | None = None) -> dict:
     """Estimate how much of the run to discard as warm-up, using MSER-5 on the
@@ -544,8 +559,6 @@ def suggest_warmup(model: str, replications: int = 5, run_length: float | None =
     A steady-state model starts empty, which biases early observations low; the
     warm-up is the time to reset statistics at. If `reliable` is false the run
     was too short to tell -- lengthen it rather than trusting the number.
-
-    Returns {"model", "warmup", "reliable", "observations"}.
     """
     doc = workspace().document(model)
     results = api.run_model(doc.to_layout(), replications=replications, run_length=run_length,
@@ -577,13 +590,16 @@ _document_args("optimize", model="Workspace name of the model.",
                max_seconds="Wall-clock budget.")
 
 
-@tool()
-def optimize(model: str, factors: list, response: str, goal: str = "min",
-             constraints: list | None = None, budget: int = 120,
+@tool(returns={
+    "model": str, "best": dict, "best_mean": float, "converged": bool, "budget_used": int,
+    "feasible": bool, "history": list, "confirmed": dict | None, "pareto": list, "sampler": str,
+    "laws": dict, "response": str, "goal": str})
+def optimize(model: str, factors: list[dict], response: str, goal: Goal = "min",
+             constraints: list[list] | None = None, budget: int = 120,
              replications_per_point: int = 5, run_length: float | None = None,
-             seed: int = 0, max_seconds: float | None = None, method: str = "auto",
-             objectives: list | None = None, confirm_top: int = 3) -> dict:
-    """Search model parameters for the best value of one KPI within a
+             seed: int = 0, max_seconds: float | None = None, method: Literal["auto", "optuna", "optuna-gp", "optuna-nsga2"] = "auto",
+             objectives: list[list] | None = None, confirm_top: int = 3) -> dict:
+    """Search model parameters for the setting that minimises or maximises one KPI within a
     replication budget, then confirm the winner statistically.
 
     Every factor is an override path plus a range, exactly like a scenario
@@ -595,15 +611,10 @@ def optimize(model: str, factors: list, response: str, goal: str = "min",
     `method="optuna-nsga2"` with `objectives` returns the non-dominated set
     under `pareto` instead of `confirmed`.
 
-    Returns {"model", "best", "best_mean", "converged", "budget_used",
-    "feasible", "history": [{"point", "mean", "feasibility"}] (last 20),
-    "confirmed": {"best", "confidence", "guaranteed", "candidates"} or null,
-    "pareto": [{"point", "objectives"}] (nsga2 only), "sampler", "laws": {"passed",
-    "partial", "replications", "seed", "note"}}: the law checks of the best point, from an
-    extra batch of `replications_per_point` replications on the search's own seeds (not in
-    `budget_used`). A law warning annotates the winner (censored, over-utilised, biased by the
-    empty start); it never changes `best` or `confirmed`, which are about means. Say the
-    warning beside the answer.
+    "laws" are the law checks of the best point, from an extra batch of `replications_per_point`
+    replications on the search's own seeds (not in `budget_used`). A law warning annotates the
+    winner (censored, over-utilised, biased by the empty start); it never changes `best` or
+    `confirmed`, which are about means. Say the warning beside the answer.
     """
     doc = workspace().document(model)
     try:
@@ -650,10 +661,13 @@ _document_args("calibrate", model="Workspace name of the model to calibrate.",
                max_seconds="Wall-clock budget.")
 
 
-@tool()
-def calibrate(model: str, targets: list, factors: list, budget: int = 120,
+@tool(returns={
+    "model": str, "best": dict, "objective": float, "passed": bool, "budget_used": int,
+    "converged": bool, "overrides": list, "targets": list, "laws": dict, "method": str,
+    "samples": int, "accepted": int, "abc_tolerance": float, "posterior": list, "notes": list})
+def calibrate(model: str, targets: list[dict], factors: list[dict], budget: int = 120,
               replications_per_point: int = 5, seed: int = 0, apply: bool = False,
-              method: str = "optimize", accept: float = 0.05,
+              method: Literal["optimize", "abc"] = "optimize", accept: float = 0.05,
               max_seconds: float | None = None) -> dict:
     """Tune model parameters until the model reproduces measured KPIs.
 
@@ -669,13 +683,9 @@ def calibrate(model: str, targets: list, factors: list, budget: int = 120,
     by the same objective. Say the tolerance and the accepted count with the
     ranges: they describe single runs near the data, not a mean.
 
-    Returns {"model", "best", "objective", "passed", "budget_used", "converged",
-    "overrides", "targets": [{"kpi", "observed", "simulated", "lb", "ub",
-    "error", "tolerance", "pass"}]}; with abc also "method", "samples",
-    "accepted", "abc_tolerance", "posterior": [{"factor", "median", "p5",
-    "p95"}] and "notes". "laws" are the best point's law checks, as `optimize` gives them (an
-    extra batch of `replications_per_point`, not in `budget_used`): a warning annotates the
-    fit, it never changes it.
+    "laws" are the best point's law checks, as `optimize` gives them (an extra batch of
+    `replications_per_point`, not in `budget_used`): a warning annotates the fit, it never
+    changes it.
     """
     doc, before = _open(model)
     from nagasim import calibrate as calibrate_mod
@@ -731,9 +741,11 @@ _document_args("forecast", model="Workspace name of the model to forecast.",
                max_seconds="Wall-clock budget.")
 
 
-@tool()
-def forecast(model: str, horizon: float, replications: int = 100, events: list | None = None,
-             kpis: list | None = None, bind_data: bool = True, seed: int = 0,
+@tool(returns={
+    "model": str, "horizon": float, "replications": int, "kpis": list, "events": list,
+    "series": list, "laws": dict})
+def forecast(model: str, horizon: float, replications: int = 100, events: list[dict] | None = None,
+             kpis: list[str] | None = None, bind_data: bool = True, seed: int = 0,
              max_seconds: float | None = None) -> dict:
     """Forecast a short horizon from the model's CURRENT state, with
     uncertainty bands and event probabilities.
@@ -748,11 +760,8 @@ def forecast(model: str, horizon: float, replications: int = 100, events: list |
     `timeseries/<series>/max`, which is how you ask "was the queue EVER above
     8" rather than "was it on average".
 
-    Returns {"model", "horizon", "replications", "kpis": [{"kpi", "mean", "lb",
-    "ub", "q05", "q95", "min", "max"}], "events": [{"event", "kpi", "condition",
-    "probability", "wilson_lb", "wilson_ub"}], "series": [names], "laws": {"passed",
-    "partial", "replications": 0, "seed", "note"}}: the law checks of the forecast's own runs
-    (no extra run); a warning says why a KPI cannot be read at face value.
+    "laws" are the law checks of the forecast's own runs (no extra run); a warning says why a KPI
+    cannot be read at face value.
     """
     from nagasim import forecast as forecast_mod
 
@@ -790,15 +799,13 @@ _document_args("export", model="Workspace name of a model that has been run.",
                path="Destination under the workspace root (a directory for csv).")
 
 
-@tool()
+@tool(returns={"ok": bool, "format": str, "path": str})
 def export(model: str, format: str, path: str) -> dict:
     """Write the last run's results to a file: an Excel workbook, CSV folder,
     a self-contained HTML report, or JSON.
 
     Use `html` for the client-facing deliverable (it embeds the charts) and
     `json` when another program will read the numbers. Run the model first.
-
-    Returns {"ok", "format", "path"}.
     """
     exporter = EXPORTER_REGISTRY.get(format)
     # D201: a format drawn from a run's recorded trace is not this tool's to write: it
@@ -812,6 +819,10 @@ def export(model: str, format: str, path: str) -> dict:
     doc = ws.document(model)
     results = _results_of(model)
     target = ws.resolve(path)
+    # S2-17: a new folder for the file, as a person saving one expects. Only after the path is
+    # confined to the root (netguard) and the format and results are checked, so a refused call
+    # makes nothing; every folder made is under the root (resolve follows `..` and symlinks).
+    target.parent.mkdir(parents=True, exist_ok=True)
     exporter.write(results, str(target), layout=doc.to_layout(), title=model)
     return {"ok": True, "format": format, "path": str(target)}
 
@@ -827,7 +838,9 @@ _document_args("evaluate_policy", model="Workspace name of the model.",
                seed="Base seed.")
 
 
-@tool()
+@tool(returns={
+    "model": str, "policy": str, "controller": str, "reward": str, "mean": float, "lb": float,
+    "ub": float, "episodes": int, "returns": list})
 def evaluate_policy(model: str, policy: str, controller: str, episodes: int = 20,
                     horizon: float = 500.0, reward: str = "neg_wip", seed: int = 0) -> dict:
     """Evaluate a built-in controller against a Policy-mode DECIDE.
@@ -836,9 +849,6 @@ def evaluate_policy(model: str, policy: str, controller: str, episodes: int = 20
     decision at the named `policy` with `controller`. Use this to compare
     "shortest" against "random" (or "roundrobin") before ever training
     anything, or to sanity-check a model's Policy-mode DECIDE wiring.
-
-    Returns {"model", "policy", "controller", "reward", "mean", "lb", "ub",
-    "episodes", "returns": [per-episode return] (capped)}.
     """
     from nagasim import rl
 
@@ -870,11 +880,14 @@ _document_args("fit_surrogate", model="Workspace name of the model.",
                     "confirmation look for (with confirm_top).")
 
 
-@tool()
-def fit_surrogate(model: str, factors: list, response: str, design: str = "full:2",
+@tool(returns={
+    "model": str, "response": str, "kind": str, "n_points": int, "r2": float, "r2_adj": float,
+    "cv_rmse": float | None, "lack_of_fit": bool, "coefficients": list, "confirmed": dict | None,
+    "confirm_refused": str | None, "laws": dict | None})
+def fit_surrogate(model: str, factors: list[dict], response: str, design: str = "full:2",
                   kind: str = "quadratic", replications: int = 5, run_length: float | None = None,
                   seed: int = 0, max_seconds: float | None = None, confirm_top: int = 0,
-                  goal: str = "min") -> dict:
+                  goal: Goal = "min") -> dict:
     """Run a design of experiments and fit a response-surface surrogate over it
     -- a fast stand-in for the simulation, for optimisation or
     what-if exploration without spending more replications.
@@ -891,11 +904,7 @@ def fit_surrogate(model: str, factors: list, response: str, design: str = "full:
     refused when `lack_of_fit` is true ("confirm_refused" says why), since that surface's
     ranking is not worth runs. The confirmed winner carries its "laws", as optimize's does.
 
-    Returns {"model", "response", "kind", "n_points", "r2", "r2_adj",
-    "cv_rmse", "lack_of_fit", "coefficients": [{"term", "coefficient",
-    "std_error"}] (empty for gp/forest)}; with confirm_top also "confirmed": {"best",
-    "overrides", "confidence", "guaranteed", "candidates": [{"point", "mean", "lb", "ub",
-    "n"}], "runs"} or null, "confirm_refused" (text or null) and "laws".
+    With confirm_top, "confirmed" (or null) and "confirm_refused" (text or null) are added.
     """
     from nagasim import surrogate as surrogate_mod
     from nagasim.optimize import build_design

@@ -58,6 +58,7 @@ def _single(value, logic, seed=0, reps=2):
 FACTOR = Factor("blocks.process_1.params.dist_params.value", "continuous", 2.0, 6.0)
 
 
+@pytest.mark.loadsensitive     # #1861: under -n 4 load the process pool's spawned child hung before reading its job
 @pytest.mark.parametrize("workers", [1, 2])
 def test_doe_matches_single_runs_with_the_logic(on_path, workers):
     design = full_factorial([FACTOR], levels=2)

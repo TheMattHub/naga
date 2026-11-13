@@ -4,7 +4,7 @@
 <a href="https://github.com/TheMattHub/naga/actions/workflows/tests.yml"><img src="https://github.com/TheMattHub/naga/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
 <a href="https://pypi.org/project/nagasim/"><img src="https://img.shields.io/pypi/v/nagasim" alt="PyPI"></a>
 <a href="https://pypi.org/project/nagasim/"><img src="https://img.shields.io/pypi/pyversions/nagasim" alt="Python versions"></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache--2.0-blue" alt="Apache-2.0"></a>
+<a href="https://github.com/TheMattHub/naga/blob/main/LICENSE"><img src="https://img.shields.io/badge/licence-Apache--2.0-blue" alt="Apache-2.0"></a>
 </p>
 
 # Naga
@@ -67,7 +67,7 @@ same file gives the same answer from the command line, Python or an agent.
   `naga export --python` to turn any model into that code.
 - **Outputs**: pandas frames, Excel, CSV, JSON, a self-contained HTML report, a recorded run to
   replay, and a viewer in which the engine itself runs in a browser.
-- **Agent tools**: 98 tools over MCP to build, validate, run, debug and analyse a model.
+- **Agent tools**: 95 tools over MCP to build, validate, run, debug and analyse a model.
 
 ## Quick start
 
@@ -88,10 +88,11 @@ From Python:
 from nagasim import api, examples
 
 results = api.run_model(examples.path("single_server"), replications=5, seed=0)
-print(results["system"])
+print(results.kpis().head(10))
 ```
 
-`results` is a dictionary of pandas frames (system, resources, queues, entities, costs and more).
+`results` is a dictionary of pandas frames (`results["system"]`, resources, queues, entities, costs and
+more); `results.kpis()` is the summary of them: each KPI with its mean and 95% interval.
 
 ## Write a model
 
@@ -161,7 +162,7 @@ again. They are what you hand to the people who asked the question.
 | <img src="https://raw.githubusercontent.com/TheMattHub/naga/main/docs/img/shots/charts.png" alt="Charts from the HTML report" width="420"> | <img src="https://raw.githubusercontent.com/TheMattHub/naga/main/docs/img/shots/player.png" alt="A recorded run in the HTML player" width="420"> |
 | **A report.** `naga run MODEL --report report.html`: KPIs with intervals, resources, costs and charts. | **A recorded run.** `naga run MODEL --player run.html`: the run replayed on the model's layout, with its KPIs. |
 | <img src="https://raw.githubusercontent.com/TheMattHub/naga/main/docs/img/shots/monitor.png" alt="The twin's monitor page" width="420"> | <img src="https://raw.githubusercontent.com/TheMattHub/naga/main/docs/img/shots/viewer.png" alt="The viewer: the engine in a browser" width="420"> |
-| **A twin's monitor.** `naga twin run ... --monitor`: the plant now, the forecast against what happened, problems with their hints. The page reloads itself. | **A viewer.** `naga viewer MODEL -o viewer.html`: the engine runs in the reader's browser; they change the inputs you exposed and run it again. |
+| **A twin's monitor.** `naga twin run ... --monitor`: the plant now, the forecast against what happened, problems with their hints. The page reloads itself. | **A viewer.** `naga viewer MODEL -o viewer.html`: the engine runs in the reader's browser; they change the inputs you exposed and run it again. Once, before the first: `naga viewer --fetch` (29 MB; the file is about 35 MB). |
 
 ## Example models
 
@@ -179,7 +180,7 @@ runs the submodels, the product's artwork is not included here.
 
 ## Use with an agent
 
-The engine ships 98 tools an agent can call to build, validate, run, debug and analyse a model, and two
+The engine ships 95 tools an agent can call to build, validate, run, debug and analyse a model, and two
 ways to offer them:
 
 <!-- no-run: a server that waits for its client, and a request to a language model -->
@@ -278,9 +279,9 @@ Before 1.0:
 - Agent tool names and problem codes are permanent.
 - The Python API may change between minor versions; every such change has a changelog line.
 
-See the [changelog](CHANGELOG.md).
+See the [changelog](https://github.com/TheMattHub/naga/blob/main/CHANGELOG.md).
 
 ## Licence and citation
 
-Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). If you use Naga in published
-work, please cite it: see [CITATION.cff](CITATION.cff).
+Apache License 2.0, see [LICENSE](https://github.com/TheMattHub/naga/blob/main/LICENSE) and [NOTICE](https://github.com/TheMattHub/naga/blob/main/NOTICE). If you use Naga in published
+work, please cite it: see [CITATION.cff](https://github.com/TheMattHub/naga/blob/main/CITATION.cff).

@@ -7,6 +7,7 @@ import ast
 import math
 
 from nagasim.core import agents, sd
+from nagasim.core.distribution_spec import value_problems
 from nagasim.core.distributions import (DISTRIBUTION_REGISTRY, distribution_mean,
                                         distribution_needs_finite_mean,
                                         get_available_distributions)
@@ -76,6 +77,15 @@ def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: 
             continue
         problems.append(problem("E_DIST_PARAM_VALUE", f"{label}: {dist} {param.name}: {bad}",
                                 f"{path}/{param.name}", block=block, hint=param.hint))
+    # #1766 (D1221): the registry's bounds, the same the Properties field reads; a negative
+    # or zero rate, or a field left empty, died at run time with a bare library message.
+    hints = {p.name: p.hint for p in spec.params}
+    said = {p.path for p in problems}
+    for name, bad in value_problems(spec, dist_params):
+        if f"{path}/{name}" in said:
+            continue        # the choice/jitter check above has named it
+        problems.append(problem("E_DIST_PARAM_VALUE", f"{label}: {dist} {name} {bad}",
+                                f"{path}/{name}", block=block, hint=hints.get(name)))
 
 
 def _check_deterministic_mean(problems: list, deterministic: bool, dist, dist_params: dict,

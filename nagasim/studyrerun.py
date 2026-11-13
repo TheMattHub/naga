@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import math
 import subprocess
 import sys
@@ -225,8 +226,51 @@ def _print_steps(folder: Path, manifest: dict, only: list[str] | None) -> int:
     return 0 if steps_ok(results) else 1
 
 
+def _package(folder: Path, out: str | None) -> int:
+    """`naga study package` (D1238): the same `study_package` the agent tool calls. Where it writes is
+    the person's choice on the command line, never the study file's: --out names a folder, and the
+    package writes only its own fixed file names inside it (the agent tool has no such parameter)."""
+    from .studypackage import package
+    target = Path(out) if out else None
+    if target is not None and target.exists() and not target.is_dir():
+        sys.stderr.write(f"naga study package: --out {target} is a file, not a folder\n")
+        return 2
+    try:
+        files = package(folder, study_mod.load(folder), target)
+    except (study_mod.StudyError, OSError) as exc:
+        sys.stderr.write(f"naga study package: {exc}\n")
+        return 2
+    print("Package written: give the client client.html (print it to PDF if needed) and study.xlsx; "
+          "control-room.html is the modeller's page.")
+    for name in files:
+        print(f"  {name}")
+    return 0
+
+
+def _confirm(folder: Path, args) -> int:
+    """`naga study confirm` (D1259): the person's own check, run by the person. A study held by a
+    running room or chat is refused (E_STUDY_BUSY): use its I checked this form instead."""
+    from .studypage import render
+    from .twin import write_text
+    try:
+        entry = study_mod.confirm(folder, args.text, args.against, args.by, not args.failed)
+        study = study_mod.load(folder)
+    except (study_mod.StudyError, OSError) as exc:
+        hint = getattr(exc, "hint", "")
+        sys.stderr.write(f"naga study confirm: {exc} {hint}".rstrip() + "\n")
+        return 2
+    try:
+        write_text(folder / "control-room.html", render(folder, study))
+    except Exception:       # the check is stored; a page that does not render must not hide that
+        logging.getLogger(__name__).warning("control room page not written", exc_info=True)
+    said = study_mod.validation_note(entry).encode("ascii", "replace").decode("ascii")
+    print(f"Recorded on {entry['version']} ({'matches' if entry['passed'] else 'does not match'}): {said}")
+    return 0
+
+
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="naga study", description="Checks on a study folder, and its slides as a PDF.")
+    p = argparse.ArgumentParser(prog="naga study", description="Checks on a study folder, its slides as a PDF, "
+                                                              "and its hand-over package.")
     sub = p.add_subparsers(dest="action", required=True)
     r = sub.add_parser("rerun", help="re-run every version and compare the stored KPIs; with --steps, then run "
                                      "the reproduce.json steps and compare their outputs")
@@ -241,8 +285,24 @@ def main(argv=None) -> int:
     d = sub.add_parser("deck", help="the slides as a PDF, printed by this machine's Chrome or Edge")
     d.add_argument("folder", help="the study folder (holds study.json)")
     d.add_argument("--browser", help="the browser to print with (default: the first Chrome, Edge or Chromium found)")
+    k = sub.add_parser("package", help="write the hand-over package: the client page, the modeller's control "
+                                       "room, the workbook, the model and its metadata")
+    k.add_argument("folder", help="the study folder (holds study.json)")
+    k.add_argument("--out", metavar="DIR", help="the folder to write into (default: the study's package folder); "
+                                                 "only files of the package are written there")
+    c = sub.add_parser("confirm", help="record your own check that the model matches reality, on the last "
+                                       "version (only you can: no assistant tool records it)")
+    c.add_argument("folder", help="the study folder (holds study.json)")
+    c.add_argument("--text", required=True, help="what you compared (at least 10 characters)")
+    c.add_argument("--against", required=True, help="the data or reference you compared it with")
+    c.add_argument("--by", metavar="NAME", help="your name (optional)")
+    c.add_argument("--failed", action="store_true", help="the model did not match")
     args = p.parse_args(argv)
     folder = Path(args.folder)
+    if args.action == "confirm":
+        return _confirm(folder, args)
+    if args.action == "package":
+        return _package(folder, args.out)
     if args.action == "deck":
         from .studydeck import run
         return run(folder, args.browser)

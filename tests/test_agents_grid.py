@@ -9,12 +9,13 @@ import pytest
 
 from nagasim.core import agents as A
 from conftest import AgentStream, problem_codes, run_env
+from functools import partial
+from helpers import model
 
 MOORE = ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1))
 
 
-def _model(*records, time_limit=1.5):
-    return A.add({"blocks": [], "links": [], "simulation": {"time_limit": time_limit}}, *records)
+_model = partial(model, time_limit=1.5)
 
 
 def _run(layout, seed=1):

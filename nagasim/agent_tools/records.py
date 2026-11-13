@@ -5,6 +5,7 @@ network graph and the CSV readers that feed records).
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 from nagasim.core import network as network_mod
 from nagasim.core import orders as orders_mod
@@ -12,7 +13,12 @@ from nagasim.core import sections
 from nagasim.core import tables as tables_mod
 from nagasim.core import timeseries_inputs as series_mod
 
-from .core import ToolError, _document_args, _edit_result, _open, _upsert, tool, workspace
+from .core import EDIT, ToolError, _document_args, _edit_result, _open, _upsert, tool, workspace
+
+from nagasim.core.tables import LOOKUP_MODES
+from nagasim.core.timeseries_inputs import BEYOND_MODES, INTERPOLATIONS
+
+LookupMode = Literal[LOOKUP_MODES]     # a closed set as an enum in the schema (D1219)
 
 # -- generic record tools (D147) ---------------------------------------------
 # One list/upsert/remove over every keyed record section replaced ~40 typed
@@ -37,15 +43,14 @@ def _record_section(section: str) -> str:
 _document_args("get_record_schema", section=_RECORD_DOC["section"])
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "section": str, "key": str, "def": str, "schema": dict, "$defs": dict})
 def get_record_schema(section: str) -> dict:
     """The JSON Schema of one record of *section*: what `upsert_record` expects.
 
     The same `$defs/<item>` the model-file schema uses (MCP resource
     naga://reference/schema), with the `$defs` it references. Read it once
     before writing the first record of a section.
-
-    Returns {"section", "key", "def", "schema", "$defs"}.
     """
     key = _record_section(section)
     from nagasim.modelschema import build_json_schema
@@ -76,7 +81,8 @@ def _refs(node):
 _document_args("list_records", **_RECORD_DOC)
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "section": str, "key": str, "records": list, "stations": list, "releases": list})
 def list_records(model: str, section: str) -> dict:
     """List every record of one section of the model, as stored.
 
@@ -87,12 +93,24 @@ def list_records(model: str, section: str) -> dict:
     (keyed by "id"; every other section by "name"). Record shape: schema
     $defs/<item>, see get_record_schema.
 
-    Returns {"model", "section", "key", "records": [...]}.
+    Sequences are the routings: the operation order a product follows through the
+    stations (a ROUTE block sends an entity whose `sequence` attribute names one to
+    each step's STATION); the answer adds "stations", the model's STATION blocks.
+    Orders are released jobs with a due date ("make `quantity` of `entity_type` on
+    routing `sequence`, released at `release`, due at `due`", base time unit); the
+    answer adds "releases", the CREATE blocks in Orders mode. Read them before
+    writing a sequence or an order name anywhere else.
     """
     key = _record_section(section)
     doc = workspace().document(model)
-    return {"model": model, "section": section, "key": key,
-            "records": [dict(r) for r in getattr(doc, section)]}
+    answer = {"model": model, "section": section, "key": key,
+              "records": [dict(r) for r in getattr(doc, section)]}
+    # S2-15 (P09b): list_sequences and list_orders were this tool plus one cross-reference each.
+    if section == "sequences":
+        answer["stations"] = sorted(b.name for b in doc.blocks.values() if b.type == "STATION")
+    elif section == "orders":
+        answer["releases"] = orders_mod.orders_mode_creates(doc.to_layout())
+    return answer
 
 
 _document_args("upsert_record", **_RECORD_DOC,
@@ -100,9 +118,10 @@ _document_args("upsert_record", **_RECORD_DOC,
                       "field (\"name\", or \"id\" for orders) picks the record to replace.")
 
 
-@tool()
+@tool(returns={**EDIT, "section": str, "record": str})
 def upsert_record(model: str, section: str, record: dict) -> dict:
-    """Add a record to a section, or REPLACE the one with the same key.
+    """Add one record to a section (a resource, schedule, failure, table, ...), or REPLACE the
+    one with the same key.
 
     The record is stored as given (record shape: schema $defs/<item>, see
     get_record_schema) and the answer reports the validation problems the edit
@@ -114,8 +133,6 @@ def upsert_record(model: str, section: str, record: dict) -> dict:
     expression reads it; a "tables" entry for TABLE("name", k); a "levels" and
     a "flows" entry for continuous quantities. An agent type's `python` cannot
     be written here: code needs the human's consent.
-
-    Returns the usual edit answer plus {"section", "record": <key value>}.
     """
     key = _record_section(section)
     if not isinstance(record, dict) or not isinstance(record.get(key), str) or not record[key]:
@@ -139,13 +156,11 @@ _document_args("remove_record", **_RECORD_DOC,
                key="The record's key: its \"name\" (its \"id\" for orders).")
 
 
-@tool()
+@tool(returns={**EDIT, "section": str, "removed": str})
 def remove_record(model: str, section: str, key: str) -> dict:
     """Delete one record. References to it elsewhere (TABLE("name"), a flow's
     "from", a block's resource_name, ...) come back as problems in the answer,
     so fix them in the same batch.
-
-    Returns the usual edit answer plus {"section", "removed": key}.
     """
     field = _record_section(section)
     doc, before = _open(model)
@@ -165,17 +180,15 @@ _document_args("upsert_table_from_csv", model="Workspace name of the model to ed
                default="Value for a missing exact key.")
 
 
-@tool()
-def upsert_table_from_csv(model: str, name: str, path: str, key_mode: str = "exact",
-                          column_mode: str = "exact", default: float | None = None) -> dict:
+@tool(returns={**EDIT, "table": str, "rows": int, "columns": list})
+def upsert_table_from_csv(model: str, name: str, path: str, key_mode: LookupMode = "exact",
+                          column_mode: LookupMode = "exact", default: float | None = None) -> dict:
     """Read a CSV under the workspace root into a lookup table.
 
     Two shapes: a 1-D table is `key,value` under a `key,value` header; a 2-D
     table is a header row of column keys whose first cell is EMPTY, then one
     row per key. The file must be under the workspace root -- a path that
     escapes it is refused, and there is no argument that widens that.
-
-    Returns the usual edit answer plus {"table": name, "rows", "columns"}.
     """
     doc, before = _open(model)
     full = workspace().resolve(path, must_exist=True)
@@ -196,7 +209,9 @@ def upsert_table_from_csv(model: str, name: str, path: str, key_mode: str = "exa
 _document_args("list_continuous", model="Workspace name of the model to inspect.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "timeseries_inputs": list, "levels": list, "flows": list, "auxiliaries": list,
+    "delays": list, "subscripts": list, "sd": dict | None})
 def list_continuous(model: str) -> dict:
     """List the model's time-series inputs, levels and flows in one answer.
 
@@ -211,10 +226,6 @@ def list_continuous(model: str) -> dict:
 
     Subscripts are the dimensions records run over. Edit any of these with
     upsert_record / remove_record.
-
-    Returns {"model", "timeseries_inputs": [{"name", "points", "interpolation",
-    "beyond"}], "levels": [...], "flows": [...], "auxiliaries": [...],
-    "delays": [...], "subscripts": [...], "sd": {...} or null}.
     """
     doc = workspace().document(model)
     return {
@@ -240,16 +251,14 @@ _document_args("upsert_timeseries_input_from_csv", model="Workspace name of the 
                time_unit="Unit the time column is in.")
 
 
-@tool()
+@tool(returns={**EDIT, "series": str, "points": int})
 def upsert_timeseries_input_from_csv(model: str, name: str, path: str,
-                                     interpolation: str = "step", beyond: str = "hold",
+                                     interpolation: Literal[INTERPOLATIONS] = "step", beyond: Literal[BEYOND_MODES] = "hold",
                                      time_unit: str = "base") -> dict:
     """Read a `time,value` CSV under the workspace root into a time-series input.
 
     The header row is optional. The file must be under the workspace root -- a
     path that escapes it is refused, and there is no argument that widens that.
-
-    Returns the usual edit answer plus {"series": name, "points": n}.
     """
     doc, before = _open(model)
     full = workspace().resolve(path, must_exist=True)
@@ -268,7 +277,9 @@ def upsert_timeseries_input_from_csv(model: str, name: str, path: str,
 _document_args("get_network", model="Workspace name of the model to inspect.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "length_factor": float, "nodes": list, "segments": list, "places": dict,
+    "unreachable": list})
 def get_network(model: str) -> dict:
     """The model's path network: the nodes assets sit on and the segments
     vehicles and walkers drive along, with the shortest-path distance between
@@ -278,9 +289,6 @@ def get_network(model: str) -> dict:
     image declares a scale. Travel time anywhere in the model is
     `distance / speed` along this graph, so this is what to read before
     reasoning about how long anything takes to move.
-
-    Returns {"model", "length_factor", "nodes": [...], "segments": [...],
-    "places": {name: node}, "unreachable": [[a, b], ...]}.
     """
     doc = workspace().document(model)
     layout = doc.to_layout()
@@ -304,15 +312,13 @@ _document_args("upsert_node", model="Workspace name of the model to edit.",
                y="Layout y coordinate.")
 
 
-@tool()
+@tool(returns={**EDIT, "node": str})
 def upsert_node(model: str, name: str, x: float, y: float) -> dict:
     """Add a network node, or move the one with this name.
 
     A node is a PLACE: a dock door, an aisle junction, a pick face. Attach a
     block to it with the STATION `node` param and travel to and from that
     station becomes the shortest path along the segments.
-
-    Returns the usual edit answer plus {"node": name}.
     """
     doc, before = _open(model)
     doc.upsert_node({"name": name, "x": float(x), "y": float(y)})
@@ -323,13 +329,11 @@ _document_args("remove_node", model="Workspace name of the model to edit.",
                name="Node to delete; every segment touching it goes with it.")
 
 
-@tool()
+@tool(returns={**EDIT, "removed": str})
 def remove_node(model: str, name: str) -> dict:
     """Delete a network node AND the segments that used it (a segment with a
     dangling end is not a thing a model can mean). Blocks whose `node` still
     names it come back as E_NETWORK_NODE_UNKNOWN problems.
-
-    Returns the usual edit answer plus {"removed": name}.
     """
     doc, before = _open(model)
     doc.remove_node(name)
@@ -348,14 +352,12 @@ _document_args("upsert_segment", model="Workspace name of the model to edit.",
                         "for unlimited. Two-way with capacity 1 can deadlock head-on.")
 
 
-@tool()
+@tool(returns={**EDIT, "segment": str})
 def upsert_segment(model: str, source: str, target: str, length: float | None = None,
                    two_way: bool = True, speed: float | None = None,
                    capacity: int | None = None) -> dict:
     """Add a drivable segment between two nodes, or replace the one already
     joining that ordered pair.
-
-    Returns the usual edit answer plus {"segment": "source->target"}.
     """
     doc, before = _open(model)
     entry = {"from": source, "to": target, "two_way": bool(two_way)}
@@ -370,12 +372,10 @@ _document_args("remove_segment", model="Workspace name of the model to edit.",
                source="Node the segment starts at.", target="Node it ends at.")
 
 
-@tool()
+@tool(returns={**EDIT, "removed": str})
 def remove_segment(model: str, source: str, target: str) -> dict:
     """Delete one segment. Check `get_network`'s "unreachable" afterwards: a
     removal that strands a routing is an E_NETWORK_UNREACHABLE error.
-
-    Returns the usual edit answer plus {"removed": "source->target"}.
     """
     doc, before = _open(model)
     doc.remove_segment(source, target)
@@ -387,7 +387,8 @@ _document_args("get_distance", model="Workspace name of the model to inspect.",
                target="Where the trip ends, named the same way.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "from": str, "to": str, "distance": float | None, "path": list, "reachable": bool})
 def get_distance(model: str, source: str, target: str) -> dict:
     """Shortest path between two places on the model's network.
 
@@ -395,8 +396,7 @@ def get_distance(model: str, source: str, target: str) -> dict:
     use it to sanity-check a travel time before writing one: a trip at speed v
     takes `distance / v`.
 
-    Returns {"model", "from", "to", "distance", "path": [node, ...],
-    "reachable"}. `distance` is null when no path joins them.
+    `distance` is null when no path joins them.
     """
     doc = workspace().document(model)
     layout = doc.to_layout()
@@ -414,55 +414,12 @@ def get_distance(model: str, source: str, target: str) -> dict:
             "path": net.path(a, b), "reachable": reachable}
 
 
-_document_args("list_sequences", model="Workspace name of the model to inspect.")
-
-
-@tool(read_only=True)
-def list_sequences(model: str) -> dict:
-    """List the model's routing sequences and the stations they visit.
-
-    A sequence is the operation order a product follows through shared
-    stations: a ROUTE block sends an entity whose `sequence`
-    attribute names one to each step's STATION block in turn. Call this
-    before writing a CREATE `sequence` or an ASSIGN to entity.sequence, so
-    the name and the stations are ones the model actually has.
-
-    Returns {"model", "sequences": [{"name", "steps": [{"station", "values"}]}],
-    "stations": [names of the model's STATION blocks]}.
-    """
-    doc = workspace().document(model)
-    return {"model": model,
-            "sequences": [{"name": s.get("name"), "steps": s.get("steps", [])}
-                          for s in doc.sequences],
-            "stations": sorted(b.name for b in doc.blocks.values() if b.type == "STATION")}
-
-
-_document_args("list_orders", model="Workspace name of the model to inspect.")
-
-
-@tool(read_only=True)
-def list_orders(model: str) -> dict:
-    """List the model's orders: released jobs with a due date.
-
-    An order is "make `quantity` of `entity_type` on routing `sequence`,
-    released at `release`, due at `due`", both times in the model's BASE time
-    unit. A CREATE block in arrival mode "Orders" releases them; the run then
-    reports per-order lateness and tardiness and a model-wide service level.
-
-    Returns {"model", "orders": [...], "releases": [names of the CREATE blocks
-    in Orders mode]}.
-    """
-    doc = workspace().document(model)
-    return {"model": model, "orders": [dict(o) for o in doc.orders],
-            "releases": orders_mod.orders_mode_creates(doc.to_layout())}
-
-
 _document_args("upsert_orders_from_csv", model="Workspace name of the model to edit.",
                path="CSV file to read, inside the workspace root.",
                replace="True (default) replaces the whole order book; False merges by id.")
 
 
-@tool()
+@tool(returns={**EDIT, "orders": float})
 def upsert_orders_from_csv(model: str, path: str, replace: bool = True) -> dict:
     """REPLACE (or extend) the model's orders from a CSV release list.
 
@@ -474,8 +431,6 @@ def upsert_orders_from_csv(model: str, path: str, replace: bool = True) -> dict:
     The file is read through the same root confinement as every other file
     tool: a path that escapes it is refused, and there is no argument that
     widens that.
-
-    Returns the usual edit answer plus {"orders": <count>}.
     """
     doc, before = _open(model)
     full = workspace().resolve(path, must_exist=True)
@@ -501,8 +456,8 @@ _document_args("upsert_scenario", model="Workspace name of the model to edit.",
                goal="The question this scenario answers, one sentence (max 500 characters).")
 
 
-@tool()
-def upsert_scenario(model: str, name: str, overrides: list, description: str | None = None,
+@tool(returns={**EDIT, "scenario": str})
+def upsert_scenario(model: str, name: str, overrides: list[dict], description: str | None = None,
                     goal: str | None = None) -> dict:
     """Add or update a named scenario: a set of parameter overrides applied to
     the base model before a run.
@@ -511,8 +466,6 @@ def upsert_scenario(model: str, name: str, overrides: list, description: str | N
     "resources.Server.capacity", "blocks.process_1.params.dist_params.rate" or
     "simulation.replications". Scenarios are how you answer "A vs B, how sure
     are we"; run them with `run_scenarios`.
-
-    Returns the usual edit answer plus {"scenario": name}.
     """
     doc, before = _open(model)
     entry = {"name": name, "overrides": [dict(o) for o in overrides]}

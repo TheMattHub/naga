@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+Changed:
+
+- `naga plugins` lists the plugin folders that load (and honours `--no-plugins`); an unknown `--export` format is refused before the run with exit 2.
+- Every command on the hand-written documentation pages runs in the release check; the SimPy page's example and the quickstart notebook run as written.
+- MCP and agent tools: each profile's instructions name only the tools it publishes, `find_tool` is in every profile, closed sets are enums and list arguments declare their items, `study_start` returns the study guide's key sections (whole guide at `naga://guide/study`), and `study_step` accepts `model=` or `patch=`.
+- Validation walks the whole model: a misspelt key at any level is `W_UNKNOWN_KEY` with the nearest name and is kept on save; scenario override paths are checked (`W_SCENARIO_PATH`); new codes `E_FIELD_TYPE`, `E_RUN_BLOCK`, `E_MODEL_JSON`.
+
+Fixed:
+
+- A zero, negative or empty distribution value is `E_DIST_PARAM_VALUE` before the run, and a run error names its block on one line. Now refused where they ran before: a Triangular out of order, a Bernoulli p outside [0, 1], an explicit null number.
+- A wrongly shaped tool argument answers E_BAD_ARGUMENT naming it, not a raw Python error; an unknown `logic_class` is `E_LOGIC_CLASS_UNKNOWN`.
+- `naga fit` no longer prints a SciPy FutureWarning on SciPy 1.17 and later.
+- The PyPI page links the changelog and issues, its README links work, and the wheel ships `CITATION.cff`.
+
 ## 0.20.1 (2026-11-11)
 
 0.20.1 fixes the defects a review of 0.20.0 confirmed. Models that ran when they should have been refused, wrong study numbers, a resumed run that differed from the whole one, and trusted code that could change unasked are each fixed and kept fixed by a test. Bundled models give the same results as 0.20.0.

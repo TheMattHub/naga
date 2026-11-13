@@ -139,9 +139,11 @@ _document_args("debug_run", model="Workspace name of the model to debug.",
                            "the end.")
 
 
-@tool()
-def debug_run(model: str, stops: list | None = None, watches: list | None = None,
-              to: float | None = None, step: bool = False, decisions: list | None = None,
+@tool(returns={
+    "model": str, "t": float, "state": str, "hits": list, "watches": dict, "pending": list,
+    "model_edited": bool, "hits_total": int, "pending_total": int})
+def debug_run(model: str, stops: list[dict] | None = None, watches: list[str] | None = None,
+              to: float | None = None, step: bool = False, decisions: list[dict] | None = None,
               restart: bool = False, seed: int = 0, max_seconds: float = 10.0,
               back: bool = False, scope: str | None = None) -> dict:
     """Run one replication of a model under a debugger: start it, or continue it,
@@ -175,14 +177,6 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
     stops and watches as they were, but the decisions listed before the refused one
     stay applied. A start or `restart` is not undone by a later error in the same
     call.
-
-    Returns {"model", "t", "state", "hits": [{"stop": index, "block", "entity_id",
-    "entity_type"} (an entity stop's "block" is the block entered) or {"stop": index,
-    "expr"}] (the first 50) and "hits_total": how
-    many fired, "watches": {text: value or "error: ..."} for the watches and the
-    stop expressions, "pending": [{"id", "policy", "block", "t", "entity_id",
-    "options"}] (the first 50) and "pending_total": how many wait, "model_edited":
-    true when the model changed since this run began}.
     """
     _check_arguments(stops, watches, to)
     if back and (to is not None or step or decisions or restart or scope is not None):
@@ -202,8 +196,8 @@ def debug_run(model: str, stops: list | None = None, watches: list | None = None
     changed = continuing and stops is not None and stops != run["stop_specs"]
     new_stops = _arm(run["session"], stops) if changed else None
     if not continuing:
-        layout = _runnable_layout(doc, model, "call validate_model and fix the errors; a debug "
-                                              "run already started is kept as it was")
+        layout = _runnable_layout(doc, model, "fix the errors; a debug run already started is kept "
+                                              "as it was")
         recorder = TraceRecorder(max_events=float("inf"))   # drained after every advance
         session = SimSession(layout, seed=seed, trace=recorder)
         # None keeps: a restart arms the previous run's stops and watches again.
@@ -342,7 +336,9 @@ _document_args("debug_inspect", model="Workspace name of a model with a debug ru
                entity="Id of an entity to read (from a hit, a queue or `pending`).")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "t": float, "pending": list, "pending_total": int, "counts": dict,
+    "resources": dict, "levels": dict, "model_edited": bool, "block": dict, "entity": dict | None})
 def debug_inspect(model: str, block: str | None = None, entity: int | None = None) -> dict:
     """Read the state of a model's debug run where it stands, without moving it.
 
@@ -355,14 +351,9 @@ def debug_inspect(model: str, block: str | None = None, entity: int | None = Non
     counted with its instance, and `block` then answers for the instance (see the
     "name" it returns).
 
-    Returns {"model", "t", "pending" (the first 50), "pending_total", "counts":
-    {block: entities}, "resources": {name: {"state", "busy", "capacity"}},
-    "levels": {name: value}, "model_edited": true when the model changed since the
-    run began, in which case the run still answers for the model it was built
-    from}; with `block`: "block": {"name", "count", "in_service", "queue": [entity
-    ids waiting, oldest first], "entities": [ids]} (50 ids at most each); with
-    `entity`: "entity": {"id", "type", "created", "attributes"}, or null once it
-    is disposed or inside a batch.
+    With `block`: "block": {"name", "count", "in_service", "queue": [entity ids waiting, oldest
+    first], "entities": [ids]} (50 ids at most each); with `entity`: "entity": {"id", "type",
+    "created", "attributes"}, or null once it is disposed or inside a batch.
     """
     run = _debug_run_of(model)
     session = run["session"]
@@ -391,10 +382,11 @@ _document_args("run_facts", model="Workspace name of the model to run.",
                run_length="Model time to run to; omit for the model's own run length.")
 
 
-@tool(read_only=True)
+@tool(read_only=True, returns={
+    "model": str, "seed": int, "end_time": float, "truncated": bool, "facts": list})
 def run_facts(model: str, seed: int = 0, run_length: float | None = None) -> dict:
-    """Run one replication of a model and list what happened in it that no KPI reports,
-    as facts with numbers: blocks no entity entered, resources never seized, resources
+    """Run a model once, on one seed, and list what happened in it that no KPI reports,
+    as facts with numbers: blocks no entity entered, resources never seized (never used), resources
     with a unit doing no work (free, or held by an entity waiting elsewhere) while
     entities waited for them, and entities still in the model at the end. Use it after
     building or changing a model to find mistakes a run does not fail on, such as a
@@ -405,16 +397,14 @@ def run_facts(model: str, seed: int = 0, run_length: float | None = None) -> dic
     wrong: some facts are what the model intends. The run is the one `run_model` makes
     with one replication and the same seed; nothing is kept.
 
-    Returns {"model", "seed", "end_time", "truncated", "facts": [{"kind", "text",
-    "block", "resource", "t", "count", "duration"}]}. Kinds come in this order:
-    never_entered, never_seized, idle_while_waiting, left_waiting and truncated (the
-    trace hit its cap, so the facts cover the run only up to `t`); at most 20 of each,
-    then one fact saying how many more there are.
+    Kinds come in this order: never_entered, never_seized, idle_while_waiting, left_waiting and
+    truncated (the trace hit its cap, so the facts cover the run only up to `t`); at most 20 of
+    each, then one fact saying how many more there are.
     """
     layout = _runnable_layout(workspace().document(model), model)
     try:
         answer = record_facts(layout, seed=seed, run_length=run_length)
     except RuntimeError as exc:
         # As run_model (#411): a model error found only while running is an answer.
-        raise ToolError("E_RUN_FAILED", str(exc), "call validate_model and fix the model") from exc
+        raise ToolError("E_RUN_FAILED", str(exc), "it validated but failed while running: fix what the message names and run again") from exc
     return _json_safe({"model": model, **answer})
