@@ -15,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-__all__ = ["DIR", "names", "path", "model_path", "main"]
+__all__ = ["DIR", "names", "path", "model_path", "bundled_hint", "main"]
 
 DIR = Path(__file__).resolve().parent / "models"
 _NAME = re.compile(r"[A-Za-z0-9_-]+")
@@ -39,6 +39,17 @@ def model_path(value: str) -> str:
     if not Path(value).exists() and _NAME.fullmatch(value) and (DIR / f"{value}.json").is_file():
         return str(DIR / f"{value}.json")
     return value
+
+
+def bundled_hint(value: str) -> str:
+    """For a model path where nothing is, the bundled model its name is close to (review S1-10,
+    #1899): `" (did you mean the bundled model 'x'? ...)"`, or `""`."""
+    from nagasim.core.suggest import close
+
+    if not value or Path(value).exists():
+        return ""
+    near = close(str(value), names(), n=1)
+    return f" (did you mean the bundled model '{near[0]}'? `naga examples` lists them)" if near else ""
 
 
 def main(argv=None) -> int:

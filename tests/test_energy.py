@@ -64,8 +64,7 @@ def test_energy_price_with_no_power_costs_nothing():
                    simulation={"time_limit": 10.0, "warmup": 0, "replications": 1,
                               "energy_price": 0.99})
     results = api.run_model(model, seed=0)
-    assert results["energy_summary"].empty
-    assert not (results["cost_summary"]["Kind"] == "energy").any()
+    assert "energy_summary" not in results and "cost_summary" not in results   # no rows (D1321)
     assert metric_value(results, "Total Cost") == pytest.approx(0.0)
 
 

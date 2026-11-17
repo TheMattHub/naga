@@ -699,7 +699,7 @@ def _metric(results, name):
 
 
 def test_a_model_with_no_network_pays_nothing_and_reports_empty_frames(simple_model_path):
-    results = api.run_model(simple_model_path, replications=1, run_length=20)
+    results = api.run_model(simple_model_path, replications=1, run_length=20, keep_empty=True)  # the frame shape: keep_empty (D1321)
     for key in ("fleet_summary", "segment_summary", "conveyor_summary"):
         assert results[key].empty
         assert list(results[key].columns)[0] == "Run"

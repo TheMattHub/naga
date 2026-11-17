@@ -125,3 +125,37 @@ def test_naga_check_reuses_an_assertion_run_for_the_laws(tmp_path, capsys, monke
     assert len(calls) == 2
     assert [l for l in capsys.readouterr().out.splitlines() if "law" in l] == \
         [l for l in reused.splitlines() if "law" in l]
+
+
+# D1316: censoring and initial bias only say a run's KPIs may be biased low.
+_CENSORED = {"name": "censoring", "verdict": "partial", "law": "censoring",
+             "why": "6% of created entities are still inside at the end: time-based KPIs are biased low"}
+_BIAS = {"name": "initial bias", "verdict": "partial", "law": "initial bias",
+         "why": "the run starts empty with no warm-up: its first 60 time units move the mean by 9%"}
+_LOAD = {"name": "offered load: Nurse", "verdict": "partial", "law": "offered load", "why": "offered load 1.2 >= 1"}
+
+
+def test_d1316_split_keeps_the_laws_that_make_a_run_not_valid():
+    assert laws.split([_CENSORED, _LOAD, _BIAS]) == ([_LOAD], [_CENSORED, _BIAS])
+    assert laws.split(None) == ([], [])
+    # a study step's copy has no "law" key: its name's head says which
+    step = [{"name": "utilisation: Desk", "verdict": "partial", "why": "x", "kind": "law"},
+            {"name": "censoring", "verdict": "partial", "why": "y", "kind": "law"}]
+    assert [len(part) for part in laws.split(step)] == [1, 1]
+
+
+def test_d1316_caveat_says_what_may_bias_the_numbers_low():
+    assert laws.caveat([_CENSORED, _BIAS]) == ("may be biased low: 6% of created entities are still inside at the "
+                                               "end; the run starts empty with no warm-up")
+    assert laws.caveat([]) == ""
+
+
+def test_d1316_a_verdict_a_low_bias_cannot_reverse_stands():
+    from nagasim.study import judge
+    high, low, both = {"high": 0.1}, {"low": 50}, {"low": 1, "high": 2}
+    assert judge(high, 0.3, biased_low=True) == "not_met"          # already over its limit
+    assert judge(high, 0.05, biased_low=True) == "not_verified"    # a higher true value may cross it
+    assert judge(low, 60, biased_low=True) == "met"                # a lower limit already reached
+    assert judge(low, 40, biased_low=True) == "not_verified"
+    assert judge(both, 1.5, biased_low=True) == "not_verified" and judge(both, 3, biased_low=True) == "not_met"
+    assert judge(high, 0.05) == "met" and judge(high, None, biased_low=True) == "not_verified"

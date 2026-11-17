@@ -339,7 +339,7 @@ def test_capacity_zero_is_no_battery(capacity):
     assert results["fleet_summary"].iloc[0].to_dict() == NO_BATTERY_ROW
     energy = results["energy_summary"]
     assert energy[energy["Resource"] == "AMR"].iloc[0].to_dict() == NO_BATTERY_ENERGY
-    assert results["battery_summary"].empty and results["charging_summary"].empty
+    assert "battery_summary" not in results and "charging_summary" not in results   # no rows (D1321)
 
 
 # -- Task 4: the frames ------------------------------------------------------------
@@ -351,7 +351,8 @@ BATTERY_COLS = ["Run", "Fleet", "Capacity kWh", "Charging %", "Charge Trips", "M
 
 
 def test_both_frames_are_empty_with_fixed_columns_without_batteries():
-    results = api.run_model(model(dict(NO_BATTERY), [], jobs=1, run=5.0), replications=1)
+    results = api.run_model(model(dict(NO_BATTERY), [], jobs=1, run=5.0), replications=1,
+                            keep_empty=True)  # the frame shape: keep_empty (D1321)
     for key, cols in (("charging_summary", CHARGING_COLS), ("battery_summary", BATTERY_COLS)):
         assert results[key].empty and list(results[key].columns) == cols
 

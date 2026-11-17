@@ -4,13 +4,14 @@ the HTML renderers escape every string and the pages carry no script, like the c
 The sensitivity chart is redrawn from the stored numbers, never read from the stored SVG."""
 from __future__ import annotations
 
+import html as html_lib
 import math
 import re
 from pathlib import Path
 
 from nagasim import player, study as study_mod, studyextensions, studypage, svgcharts
 from nagasim.report import esc
-from nagasim.studychecks import goal_kpi
+from nagasim.studychecks import goal_kpi, judge
 from nagasim.pagefmt import REFERENCE, kpi_label
 from nagasim.studypage import (_first, _goal_words, _hw, _is_share, _n, _page, _ascii, _prec, _read, _reps,
                                _validation_level, _value_text, _when)
@@ -42,6 +43,59 @@ def _references() -> list[str]:
     return items
 
 
+def _within(spec: dict, mean, hw, biased_low: bool) -> str:
+    """met / not_met when the whole 95% interval lies on one side of the goal's limit, else
+    not_verified: an interval across the limit does not answer the question yet (#1881). With
+    *biased_low* (D1316) `judge` keeps only the verdicts a higher true value cannot reverse."""
+    if _finite(mean) is None:
+        return "not_verified"
+    h = _finite(hw) or 0.0
+    seen = {judge(spec, x, biased_low) for x in (mean - h, mean, mean + h)}
+    return seen.pop() if len(seen) == 1 else "not_verified"
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _settled(statuses: list[str]) -> str:
+    """yes when every goal is met, no when one is clearly missed, else unclear."""
+    if statuses and all(s == "met" for s in statuses):
+        return "yes"
+    return "no" if "not_met" in statuses else "unclear"
+
+
+def _verdict(study: dict, last: dict, prec: dict, sc: dict, best: list, base_bad: str, base_cav: str) -> str:
+    """D1309, #1881: the question answered in plain words, yes, no or not clear yet, from each
+    interval against its goal. With options the answer is about them (D1237: an option leads,
+    the Baseline is its comparison); without, about the Baseline. A run that is not valid has no
+    verdict (D1310)."""
+    goals = [g for g in study["goals"] if goal_kpi(g) and (g.get("low") is not None or g.get("high") is not None)]
+    if not goals:
+        return "Not clear yet: no goal with a limit is recorded to judge the answer against."
+    noun = "goal" if len(goals) == 1 else "goals"
+    if sc:
+        said = {}
+        for name, r in sc.items():
+            kpis, cav = r.get("kpis") or {}, bool(studypage.option_caveat(r))
+            said[name] = _settled([] if studypage.option_invalid(r) else [
+                _within(g, (kpis.get(goal_kpi(g)) or {}).get("mean"), (kpis.get(goal_kpi(g)) or {}).get("ci_half_width"),
+                        cav) for g in goals])
+        yes = [n for n in best if said.get(n) == "yes"] + [n for n, s in said.items() if s == "yes"]
+        if yes:
+            # Names what meets the goal, so it reads right for "can we ...?" and for "which ...?" alike;
+            # never the others, whose lines must carry their own validity (#1880).
+            meets = list(dict.fromkeys(yes))
+            return f"Yes: {_and(meets)} {'meets' if len(meets) == 1 else 'meet'} the {noun}."
+        if all(s == "no" for s in said.values()):
+            return f"No: none of the options meets the {noun}."
+        return f"Not clear yet: no option is clearly within the {noun}."
+    said = _settled([] if base_bad else [
+        _within(g, (last.get("kpis") or {}).get(goal_kpi(g)), (prec.get(goal_kpi(g)) or {}).get("half_width"),
+                bool(base_cav)) for g in goals])
+    return {"yes": "Yes.", "no": "No."}.get(said, f"Not clear yet: the result is not clearly within the {noun}.")
+
+
 def facts(folder: Path, study: dict) -> dict:
     """Everything both documents say, as plain (unescaped) data, from the study folder alone."""
     folder = Path(folder)
@@ -55,33 +109,56 @@ def facts(folder: Path, study: dict) -> dict:
     prec = _prec(last, step)
     sc = _first(last.get("scenarios"), step.get("scenarios")) or {}
     best = study_mod.scenarios_meeting(study)
+    # #1880: a Baseline whose law checks warned is written as not valid, with why, never as a number.
+    base_bad = studypage.base_invalid(step)
+    # D1316: a Baseline that only censoring or initial bias warned keeps its numbers, with the caveat.
+    base_cav = studypage.base_caveat(step)
+    opt_cav = studypage.option_caveat(sc.get(best[0]) or {}) if best else ""
     goals = []
     for spec, g in zip(study["goals"], study_mod.goals_status(study)):
         kpi = goal_kpi(spec)
         hw = (prec.get(kpi) or {}).get("half_width")
-        num = (last.get("kpis") or {}).get(kpi) if kpi else None
-        entry = {"text": g["text"], "kpi": kpi or "", "range": _span(spec, kpi), "status": g["status"],
-                 "limit": _goal_words(spec, kpi), "interval": _value_text(num, hw, kpi),
-                 "value": _n(num, kpi) if kpi else "", "half_width": _hw(hw, kpi), "num": num, "option": None}
+        num = None if base_bad else (last.get("kpis") or {}).get(kpi) if kpi else None
+        status = ("not_verified" if base_bad else study_mod.judge(spec, num, biased_low=True)
+                  if base_cav and kpi else g["status"])
+        with_cav = f" ({base_cav})" if base_cav and kpi else ""
+        entry = {"text": g["text"], "kpi": kpi or "", "range": _span(spec, kpi), "status": status,
+                 "limit": _goal_words(spec, kpi), "interval": base_bad or _value_text(num, hw, kpi) + with_cav,
+                 "value": base_bad or ((_n(num, kpi) + with_cav) if kpi else ""),
+                 "half_width": "" if base_bad else _hw(hw, kpi), "num": num, "option": None}
         # D1237: the recommended option leads; the Baseline is its comparison, never the headline.
         mine = ((sc.get(best[0]) or {}).get("kpis") or {}).get(kpi) if best and kpi else None
         if mine and _finite(mine.get("mean")) is not None:
+            diff = studypage.diff_text(mine.get("diff_vs_baseline"), kpi)
+            # D1316: a low bias on either side could reverse a comparison: not verified, the numbers kept.
+            cav = "; ".join(x for x in (opt_cav and f"{best[0]} {opt_cav}",
+                                        base_cav and f"the {REFERENCE} {base_cav}") if x)
             entry["option"] = {"name": best[0], "num": mine["mean"],
-                               "interval": _value_text(mine["mean"], mine.get("ci_half_width"), kpi),
+                               "interval": _value_text(mine["mean"], mine.get("ci_half_width"), kpi)
+                               + (f" ({opt_cav})" if opt_cav else ""),
                                "status": ((sc[best[0]].get("goals") or {}).get(spec.get("id")) or "not_verified"),
                                # D1264, D1265: "" for a record from before them
-                               "diff": studypage.diff_text(mine.get("diff_vs_baseline"), kpi),
-                               "steadier": studypage.steadier_text(g["text"], best[0], kpi, mine.get("spread"))}
+                               "diff": f"not verified, {cav}: {diff}" if diff and cav else diff,
+                               "steadier": "" if cav else
+                               studypage.steadier_text(g["text"], best[0], kpi, mine.get("spread"))}
         goals.append(entry)
     scen_rows = []
     options: dict = {}
     for name, r in sc.items():
+        if why := studypage.option_invalid(r):
+            # #1880: an option whose run is not valid has no result: why, in place of its numbers.
+            scen_rows.append([name] + ([why] + ["-"] * (len(study["goals"]) - 1) if study["goals"] else []))
+            continue
         cells = [name]
         for spec in study["goals"]:
             e = (r.get("kpis") or {}).get(goal_kpi(spec)) or {}
             k = goal_kpi(spec)
             v = (r.get("goals") or {}).get(spec.get("id"), "not_verified").replace("_", " ")
             cells.append(f"{_value_text(e.get('mean'), e.get('ci_half_width'), k)}: {v}" if e else v)
+        if (cav := studypage.option_caveat(r)) and len(cells) > 1:
+            # D1316: the numbers stand, with what may bias them low; the name stays plain (the
+            # slides' bars are keyed by it)
+            cells[-1] += f" ({cav})"
         scen_rows.append(cells)
         for spec in study["goals"]:
             k = goal_kpi(spec)
@@ -90,11 +167,15 @@ def facts(folder: Path, study: dict) -> dict:
                 options.setdefault(k, []).append((name, mean))
     model = _read(folder / "versions" / last["id"] / "model.json") or {}
     checks = study_mod.checklist(study, folder)
+    for c in checks:
+        if c["item"] == "verification" and c["verdict"] != "passed" and not c["why"]:
+            c["why"] = base_bad or base_cav     # the checklist names no reason of its own here (#1880)
     return {
         "banner": "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait",
         "options": options,
         "question": study["question"], "decision": study["decision"], "label": suff["label"],
-        "best": best,
+        "best": best, "base_invalid": base_bad,
+        "verdict": _verdict(study, last, prec, sc, best, base_bad, base_cav),
         "version": last["id"], "replications": _reps(last, step), "seed": step.get("seed"),
         "precision": [(k, _hw(p.get("half_width"), k), _hw(p.get("target"), k)) for k, p in prec.items()
                       if isinstance(p, dict)],
@@ -118,7 +199,7 @@ def facts(folder: Path, study: dict) -> dict:
         "checks": [[c["title"], c["verdict"].replace("_", " "),
                     " ".join(x for x in (c["why"], studypage.revalidate_note(study, folder, None)
                                          if c["item"] == "validation" else "") if x)] for c in checks],
-        "open": [c for c in checks if c["verdict"] != "passed"],
+        "open": [c for c in checks if c["verdict"] != "passed" and c["item"] not in study_mod.MODELLER_ITEMS],
         "sensitivity": _read(folder / "versions" / last["id"] / "sensitivity.json"),
         "extensions": [f"{m['label']}: {m['purpose']}" for m in studyextensions.MODULES.values()],
         "references": _references(),
@@ -128,9 +209,43 @@ def facts(folder: Path, study: dict) -> dict:
 # --- blocks (plain text; the renderers escape): ["p", text], ["ul", items], ["table", head, rows],
 # ["fig", kind, caption] with kind "flow" or a KPI name for its sensitivity (swing) chart. -----------
 
-def _answer(f: dict) -> str:
-    best = f" Best option: {', '.join(f['best'])}." if f["best"] else ""
-    return f"The study is {f['label']}.{best} Validation: {f['level']}."
+# #1882, D1309: the words a reader who does not model may not know, each explained once under
+# "Words used" when the write-up uses it. Upper case: block types, matched as written.
+WORDS = (
+    ("replication", "one repeat run of the model with fresh random numbers; the spread of the repeats "
+                    "gives the 95% interval"),
+    ("seed", "the starting point of the random numbers, so the same runs can be made again exactly"),
+    ("run length", "the time each run covers"),
+    ("warm-up", "the opening time left out of the results while the model fills up"),
+    ("half-width", "half the width of the 95% interval: the plus or minus around the average"),
+    ("KPI", "a measured result, such as an average time or a share of busy time"),
+    ("throughput", "the flow through the process; throughput time is the time from arriving to leaving"),
+    ("interarrival", "the time between one arrival and the next"),
+    ("stationary", "the same over the whole period: one arrival rate, no busy or quiet hours"),
+    ("sufficient", "every model check passed, the model was checked against reality and every goal is "
+                   "met, by the Baseline or an option"),
+    ("verification", "checking that the model does what was intended, by the checks run on every step"),
+    ("validation", "checking the model against reality: measured data, a known answer or an expert"),
+    ("CREATE", "a block where items arrive"),
+    ("PROCESS", "a block where items wait for a resource, such as a clerk, use it for a time and free it"),
+    ("DISPOSE", "a block where items leave"),
+    ("DELAY", "a block where items spend a time without using a resource"),
+    ("DECIDE", "a block that sends items down one of several paths"),
+    ("SEIZE", "a block where items wait for a resource and take it"),
+    ("RELEASE", "a block where items free a resource taken earlier"),
+)
+
+
+def glossary(text: str, short: bool = False) -> list[str]:
+    """"term (meaning)" for each of WORDS that `text` uses, in WORDS order; `short` cuts each meaning at
+    its first ";" or ":" (D1327: the deck's one Words used slide has no room for the long form)."""
+    return [f"{term} ({re.split('[;:]', meaning)[0] if short else meaning})" for term, meaning in WORDS
+            if re.search(r"\b" + re.escape(term) + r"\w*", text, 0 if term.isupper() else re.I)]
+
+
+def _status(f: dict) -> str:
+    """Where the study stands, under the answer and its numbers (#1881)."""
+    return f"The study is {f['label']}. Validation: {f['level']}."
 
 
 def _headline(f: dict) -> str:
@@ -139,7 +254,9 @@ def _headline(f: dict) -> str:
     lines = []
     for g in f["goals"]:
         o = g["option"]
-        if o and g["interval"]:
+        if o and f.get("base_invalid"):     # no difference against a Baseline that is not valid
+            lines.append(f"{g['text']}: {o['interval']} with {o['name']}; the {REFERENCE} is {g['interval']}")
+        elif o and g["interval"]:
             gap = _hw(abs(o["num"] - g["num"]), g["kpi"]) if isinstance(g["num"], (int, float)) else ""
             said = (f": {o['diff']}" if o.get("diff") else f" (a difference of the means of {gap})" if gap else "")
             lines.append(f"{g['text']}: {o['interval']} with {o['name']}, against {g['interval']} in the "
@@ -205,9 +322,10 @@ def _writeup_sections(f: dict, discussion: str | None) -> list:
     goals = "; ".join(f"{g['text']}: {g['interval'] or g['value'] or 'n/a'}"
                       + f" ({g['status'].replace('_', ' ')})" for g in f["goals"])
     lead = _headline(f)
-    return [
-        ("Abstract", [["p", f"Question: {f['question']}"], ["p", _answer(f)]] + ([["p", lead]] if lead else [])
-         + [["p", f"{REFERENCE}: {goals}"]]),
+    sections = [
+        # D1309, #1881: the answer in plain words, its numbers, then where the study stands
+        ("Abstract", [["p", f"Question: {f['question']}"], ["p", f["verdict"]]] + ([["p", lead]] if lead else [])
+         + [["p", f"{REFERENCE}: {goals}"], ["p", _status(f)]]),
         ("1 Objective", [["p", f"Question: {f['question']}"],
                          ["p", f"Decision: {f['decision'] or 'not recorded'}"], _goal_table(f)]),
         ("2 Model logic", [["p", scope], ["fig", "flow", caption(f"flowchart of {f['version']}")]] + pending
@@ -229,8 +347,10 @@ def _writeup_sections(f: dict, discussion: str | None) -> list:
          + [["p", "Candidate extension modules the study can add (none is part of these results):"],
             ["ul", f["extensions"]]]),
         ("8 Discussion", [["p", discussion or "No discussion provided."]]),
-        ("References", [["refs", f["references"]]]),
     ]
+    # #1882: every word of WORDS the text above uses, explained once before the references
+    used = glossary(" ".join([f["question"]] + [h + " " + " ".join(map(_md_block, blocks)) for h, blocks in sections]))
+    return sections + ([("Words used", [["ul", used]])] if used else []) + [("References", [["refs", f["references"]]])]
 
 
 # --- renderers --------------------------------------------------------------------------------------
@@ -241,6 +361,8 @@ def _html_block(b: list, f: dict, folder: Path, study: dict) -> str:
         return f"<p>{esc(b[1])}</p>"
     if kind == "ul":
         return "<ul>" + "".join(f"<li>{esc(i)}</li>" for i in b[1]) + "</ul>"
+    if kind == "words":     # two columns on a slide (CSS), D1327
+        return '<ul class="words">' + "".join(f"<li>{esc(i)}</li>" for i in b[1]) + "</ul>"
     if kind == "refs":      # method.md marks titles *like this*; escape first, then emphasise
         return "<ul>" + "".join("<li>" + re.sub(r"\*([^*]+)\*", r"<em>\1</em>", esc(i)) + "</li>"
                                 for i in b[1]) + "</ul>"
@@ -316,7 +438,7 @@ th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--line);vertic
 figure{margin:12px 0}figcaption{font-size:13px;color:var(--muted)}.flow{overflow-x:auto;background:#fff;border-radius:6px}
 .flow svg{max-width:100%;height:auto}
 @media print{h2{break-after:avoid}figure,table{break-inside:avoid}body{background:#fff}}
-"""
+""" + studypage.STACK_CSS
 
 
 def _stamp(out: Path, key: str, study: dict) -> None:
@@ -366,6 +488,7 @@ main{padding:24px 16px}
  overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);font-size:2cqw;line-height:1.35}
 .slide h1{font-size:3.7cqw;margin:6cqw 0 2cqw}.slide h2{font-size:3.7cqw;margin:0 0 1.6cqw}
 .slide p{margin:.6cqw 0}
+.slide .words{columns:2;column-gap:3cqw;font-size:1.5cqw;margin:0;padding-left:2cqw}.words li{break-inside:avoid;margin-bottom:.5cqw}
 .slide table{font-size:1.5cqw;border-collapse:collapse;width:100%}
 .slide th,.slide td{text-align:left;padding:.4cqw .8cqw;border-bottom:1px solid var(--line)}
 .slide figure{margin:0}.slide .flow svg{width:100%;height:auto;max-height:34cqw}
@@ -384,6 +507,7 @@ main{padding:24px 16px}
 .foot span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media screen and (max-width:700px){html{scroll-snap-type:none}main{padding:12px}
  .slide{container-type:normal;aspect-ratio:auto;padding:16px;font-size:15px;overflow-x:auto;margin-bottom:12px}
+ .slide .words{columns:1;font-size:13px;padding-left:20px}
  .slide h1,.slide h2{font-size:20px;margin:0 0 10px}.slide p{margin:6px 0}
  .slide table{font-size:13px}.slide th,.slide td{padding:4px 6px}
  .slide .flow svg,.charts svg{max-height:none}.slide figcaption{font-size:13px}
@@ -391,7 +515,7 @@ main{padding:24px 16px}
  .tile{flex-basis:100%;padding:10px 12px;border-radius:6px}.big{font-size:26px}.pm{font-size:14px}
  .badge{font-size:12px}.charts{flex-direction:column;gap:8px}
  .foot{position:static;margin-top:12px;font-size:12px;gap:8px}}
-@page{size:16in 9in;margin:0}
+""" + studypage.STACK_CSS + """@page{size:16in 9in;margin:0}
 @media print{html{scroll-snap-type:none}body{background:#fff}main{padding:0}
  .slide{width:16in;height:9in;max-width:none;margin:0;box-shadow:none;break-after:page;page-break-after:always}}
 """
@@ -414,22 +538,27 @@ def _slide_list(f: dict) -> list:
     base = [f"{REFERENCE} ({f['version']})"] + [f"{g['interval'] or g['value']}: {g['status'].replace('_', ' ')}"
                                                 for g in f["goals"]]
     charts = []
+    # A run that is not valid has no bar (#1880): an option's bar takes its row's number in the
+    # table, and a Baseline that is not valid leaves the options' bars alone.
+    order = {r[0]: str(i) for i, r in enumerate(f["scenarios"], 1)}
     for g in f["goals"]:
         rows = f["options"].get(g["kpi"])
-        if rows and isinstance(g["num"], (int, float)):
+        base_bar = [(REFERENCE, g["num"])] if isinstance(g["num"], (int, float)) else []
+        if rows and (base_bar or f["base_invalid"]):
             sh = _is_share(g["kpi"])
             # the bars are labelled "base", "1", "2" ...: names do not fit under six or more bars; the
             # table beside them carries the same numbers
             charts.append((g["kpi"], [(n, v * 100 if sh and 0 <= v <= 1 else v)
-                                      for n, v in zip([REFERENCE] + [str(i) for i in range(1, len(rows) + 1)],
-                                                      [g["num"]] + [v for _, v in rows])], sh))
+                                      for n, v in base_bar + [(order[name], v) for name, v in rows]], sh))
     lead = _headline(f)
     # A decision is free text recorded once; its numbers may be older than the last version (S2-08).
     dated = ([["p", f"Numbers written in the decision are as recorded then; the results of {f['version']} "
                     "follow."]] if re.search(r"\d", f["decision"] or "") else [])
-    slides = [(f["question"], [["p", f"Decision: {f['decision'] or 'not recorded'}"]] + dated),
-              ("The answer", [["banner", f["banner"], f"The study is {f['label']}."
-                               + (f" Best option: {', '.join(f['best'])}." if f["best"] else "")],
+    # D1324: the deck opens with the write-up's answer line and status line (`_verdict`, `_status`).
+    slides = [(f["question"], [["p", f"Decision: {f['decision'] or 'not recorded'}"]] + dated
+               + [["p", f["verdict"]], ["p", _status(f)]]),
+              # D1327: the plain answer is stated once, on slide 1; this slide keeps the numbers
+              ("The answer", [["banner", f["banner"], f"The study is {f['label']}."],
                               ["tiles", f["goals"]]] + ([["p", lead]] if lead else [])
                + [["p", f"Validation: {f['level']}."]]),
               *_options_slides(f, charts, base),
@@ -451,6 +580,13 @@ def slides(folder: Path, study: dict) -> Path:
     folder = Path(folder)
     f = facts(folder, study)
     items = _slide_list(f)
+    # D1324, D1327, #1882: each word of WORDS the slides use, explained once on one last slide in short
+    # form. Read from the slides as drawn, tiles and charts included.
+    shown = " ".join(re.sub(r"<[^>]+>", " ", title + " " + "".join(_html_block(b, f, folder, study) for b in blocks))
+                     for title, blocks in items)
+    used = glossary(html_lib.unescape(shown), short=True)
+    if used:
+        items.append(("Words used", [["words", used]]))
     short = f["question"] if len(f["question"]) <= 70 else f["question"][:67] + "..."
     parts = [f'<section class="slide"><{"h1" if i == 0 else "h2"}>{esc(title)}</{"h1" if i == 0 else "h2"}>'
              + "".join(_html_block(b, f, folder, study) for b in blocks)

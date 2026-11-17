@@ -1089,7 +1089,9 @@ def gen_kpis(out: Path, product: bool = False) -> None:
     from nagasim.api import run_model
 
     model_path = ROOT / "nagasim" / "models" / "job_shop_jackson.json"
-    results = run_model(str(model_path), replications=1, seed=0, warmup=0, run_length=300)
+    # keep_empty: the reference lists every frame's columns, the empty ones included (D1321).
+    results = run_model(str(model_path), replications=1, seed=0, warmup=0, run_length=300,
+                        keep_empty=True)
 
     missing: list[str] = []
     frame_columns: dict[str, list[str]] = {}
@@ -1114,7 +1116,10 @@ def gen_kpis(out: Path, product: bool = False) -> None:
     lines = ["# KPI reference", "",
              "Every result frame `nagasim.api.run_model` / `nagasim.experiments.run_scenarios` return, "
              "and every column each one carries -- probed against `nagasim/models/job_shop_jackson.json` "
-             "so a new KPI column fails this generation until it has a definition here.", ""]
+             "so a new KPI column fails this generation until it has a definition here. `run_model` "
+             "returns only the frames that have rows (`system` always); test for an optional one with "
+             "`\"store_summary\" in results` or `results.get(\"store_summary\")`, or pass "
+             "`keep_empty=True` for all of them.", ""]
     for frame_name in KPI_FRAMES:
         cols = frame_columns.get(frame_name, [])
         lines += [f"## {frame_name}", ""]
@@ -1180,7 +1185,7 @@ CLI_GROUPS = (
      ("generate", "discover", "sdimport")),
     ("twin", "Digital twin",
      "Read a plant, start a run from its state, calibrate and forecast.",
-     ("bind", "watch", "state", "plant", "twin", "plc-write", "calibrate", "forecast")),
+     ("bind", "watch", "state", "plant", "twin", "approve", "plc-write", "calibrate", "forecast")),
     ("plan-and-share", "Plan, inspect and share",
      "Plan with a solver, find the loops that drive a system dynamics model, and share a model in a browser.",
      ("plan", "loops", "viewer")),
@@ -1286,11 +1291,12 @@ def _first_sentence(text: str) -> str:
 
 
 def product_tools() -> list:
-    """The agent tools the product registers on top of the engine's, in registration order."""
+    """The agent tools the product's core registers on top of the engine's, in registration order: never the 3D
+    rendering plugin's (D1308), so the page is the same whether the plugin is installed or not."""
     from nagasim import agent_tools
     import product.agent_tools  # noqa: F401  registers the product's tools
 
-    return [spec for spec in agent_tools.TOOLS.values() if not spec.origin.startswith("nagasim.")]
+    return [spec for spec in agent_tools.TOOLS.values() if spec.origin.startswith("product.")]
 
 
 def gen_tools(out: Path, product: bool = False) -> None:
@@ -1712,7 +1718,8 @@ API = ("nagasim.api.run_model", "nagasim.experiments.run_scenarios",
        "nagasim.build.export_python", "nagasim.modelfmt.minimal",
        "nagasim.core.document.ModelDocument", "nagasim.core.session.SimSession", "nagasim.rl.SimEnv",
        "nagasim.laws.checks", "nagasim.state.take", "nagasim.state.start",
-       "nagasim.uncertainty.input_uncertainty", "nagasim.twin.forecast_from_state",
+       "nagasim.uncertainty.input_uncertainty", "nagasim.uncertainty.input_uncertainty_frame",
+       "nagasim.twin.forecast_from_state",
        "nagasim.twin.read_result", "nagasim.investment.investment_case")
 
 

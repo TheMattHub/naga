@@ -78,6 +78,35 @@ def test_overall_unmet_goal_is_partial_not_failed():
     assert overall([g]) == "partial" and overall([g, a]) == "failed"
 
 
+def test_1880_an_option_that_is_not_valid_makes_the_step_partial_not_its_verification(tmp_path):
+    """#1880: an option whose law checks warned is a partial "scenario" check (the step does not
+    answer passed), but like an unmet goal it is no fault of the model: verification stays passed."""
+    from nagasim import study
+    from nagasim.studychecks import scenario_checks
+    load = {"name": "offered load: Server", "verdict": "partial", "why": "offered load 1.2 >= 1", "law": "offered load"}
+    scenarios = {"Double": {"kpis": {}, "goals": {"g1": "not_verified"}, "laws": {"passed": 1, "partial": [load]}},
+                 "More": {"kpis": {}, "goals": {"g1": "met"}}}
+    found = scenario_checks(scenarios)
+    assert found == [{"name": "scenario Double", "verdict": "partial", "why": "not valid: offered load 1.2 >= 1",
+                      "kind": "scenario"}]
+    ok = [{"name": "laws", "verdict": "passed", "why": "", "kind": "law"}]
+    st = study.create(tmp_path / "s", "q")
+    answer = study.record_step(tmp_path / "s", st, {"blocks": [], "links": []}, {"system": {}}, ok + found, "n", None,
+                               scenarios=scenarios)
+    assert answer["verdict"] == "partial" and st["versions"][-1]["verification"] == "passed"
+    assert study.scenarios_meeting(st) == ["More"]
+
+
+def test_d1316_an_option_that_may_be_biased_low_is_partial_with_the_caveat():
+    """D1316: censoring alone keeps the option's result, and the step's partial check says what may
+    bias it low; the reason is written, never a silent pass (D1309)."""
+    from nagasim.studychecks import scenario_checks
+    censored = {"name": "censoring", "verdict": "partial", "why": "30% still inside", "law": "censoring"}
+    found = scenario_checks({"Day": {"kpis": {}, "goals": {"g1": "not_met"}, "laws": {"passed": 2, "partial": [censored]}}})
+    assert found == [{"name": "scenario Day", "verdict": "partial", "kind": "scenario",
+                      "why": "may be biased low: 30% still inside; a goal verdict that could reverse is not verified"}]
+
+
 def test_precision_check_never_fails_and_is_partial_when_unmet():
     from nagasim.studychecks import precision_check
     met = {"k": {"half_width": 0.4, "target": 0.5, "met": True}}

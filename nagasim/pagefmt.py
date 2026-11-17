@@ -14,11 +14,12 @@ to the browser with the rest of the engine.
 from __future__ import annotations
 
 import math
+import re
 
 from nagasim import pagetext
 
-__all__ = ["REFERENCE", "number", "interval_text", "interval_numbers", "kpi_label", "kpi_parts", "reference_name",
-           "is_bookkeeping"]
+__all__ = ["REFERENCE", "number", "interval_text", "interval_numbers", "kpi_label", "kpi_parts", "law_reasons",
+           "reference_name", "is_bookkeeping"]
 
 # The engine's name for the reference case (`experiments.BASELINE`); Open 2 of the journeys tier
 # rules it is the one word every page uses for it ("Baseline", never "base model" or "today").
@@ -137,6 +138,20 @@ def kpi_label(key: str, dashboard=None) -> str:
     family prefix (never "system/..."), with its unit in brackets when the dashboard gives one."""
     label, unit = kpi_parts(key, dashboard)
     return f"{label} ({unit})" if unit else label
+
+
+def law_reasons(checks, lang: str | None = None) -> list[str]:
+    """Each law warning in *checks* (`nagasim.laws` checks, or a study step's copies, which keep
+    the name and the why) as the plain sentence the player's trust card says for its law
+    ("trust.why.<law>", the object named), duplicates once; a law the table has no sentence for
+    as the check says it. The law is the name's head: "offered load: Clerk"."""
+    words = pagetext.table(lang)
+    out = []
+    for check in checks or ():
+        law, _, name = str(check.get("name", "")).partition(": ")
+        key = "trust.why." + re.sub(r"[^a-z]+", "_", law).strip("_")
+        out.append(pagetext.say(words, key, name=name[:60]) if key in words else str(check.get("why", "")))
+    return list(dict.fromkeys(out))
 
 
 def reference_name(lang: str | None = None) -> str:

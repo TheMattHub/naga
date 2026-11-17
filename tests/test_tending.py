@@ -375,7 +375,8 @@ from nagasim.experiments import flatten_kpis                       # noqa: E402
 
 
 def test_a_model_without_tending_gets_an_empty_frame_with_its_columns():
-    frame = api.run_model(model(tend={}), replications=1)["tending_summary"]
+    frame = api.run_model(model(tend={}), replications=1,
+                          keep_empty=True)["tending_summary"]      # the frame shape (D1321)
     assert frame.empty and list(frame.columns) == _TENDING_SUMMARY_COLS == [
         "Run", "Station", "Fleet", "Picks", "Places", "Exchanges", "Avg Pick Time",
         "Avg Place Time", "Avg Loaded Wait", "Avg Blocked For Pick", "Avg Stay"]

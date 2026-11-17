@@ -8,13 +8,24 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from pathlib import Path
 
-from nagasim import flowchart, pagefmt, player, study as study_mod
+from nagasim import flowchart, laws, pagefmt, player, study as study_mod
 from nagasim.report import csp, esc
 from nagasim.studychecks import goal_kpi
 
+
+# #1883: at phone width a table is a stack of rows, each cell headed by its column's name (the
+# `data-label` `_table` writes), so no word is split and nothing is wider than its box. The header
+# row is kept (clipped to no height) for a screen reader instead of being display:none.
+STACK_CSS = (
+    "@media (max-width:700px){table,tbody,tr,th,td{display:block;width:auto!important}"
+    "tr.h{height:0;overflow:hidden;padding:0;border:0}"
+    "tr+tr{border-bottom:1px solid var(--line);padding:4px 0}"
+    "td,th{border-bottom:0!important;padding:2px 6px!important}"
+    "td[data-label]:before{content:attr(data-label);display:block;font-size:12px;color:var(--muted)}}")
 
 # D1240: the reader's light or dark (the player's tokens, `player.token_css`); print stays light.
 # A flowchart is a drawing in fixed colours, so it sits on its own light card in either theme.
@@ -56,7 +67,7 @@ img.naga-flow{display:block;max-width:100%;margin:6px 0;background:#fff}
  details{display:block}
  details>*:not(summary){display:block!important;content-visibility:visible!important}
  .version{break-inside:avoid}}
-"""
+""" + STACK_CSS
 # The study page's one style block. The room shell frames the page with srcdoc, which inherits the shell's
 # policy as well as the page's own, so the shell admits this hash too (#1757). The naga-* and button rules
 # style the controls the shell adds into the framed page: no other sheet reaches them there.
@@ -83,8 +94,9 @@ def _page(title: str, css: str, body: str) -> str:
 def _table(head: list[str], rows: list[list[str]]) -> str:
     """Rows hold ready-made (already escaped) cells."""
     th = "".join(f"<th>{esc(h)}</th>" for h in head)
-    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
-    return f"<table><tr>{th}</tr>{body}</table>"
+    body = "".join("<tr>" + "".join(f'<td data-label="{esc(h)}">{c}</td>' for h, c in zip(head, r)) + "</tr>"
+                   for r in rows)
+    return f'<table><tr class="h">{th}</tr>{body}</table>'
 
 
 def _sig(x: float, digits: int) -> str:
@@ -317,8 +329,44 @@ def _precision_line(study: dict, steps: dict) -> str:
             + (", " if n and parts else "") + ("95% half-width: " + "; ".join(parts) if parts else "") + "</p>")
 
 
+def gloss_terms(html: str) -> str:
+    """D1324: the first use of each word of `studywriteup.WORDS` in the page's text gets a hover
+    title with its meaning (`term (meaning)`, as the write-up's Words used reads); tags, attributes,
+    scripts and styles are left alone; inside a drawing the gloss is an SVG <title> on a <tspan>, since
+    an <abbr> inside an SVG's text is not drawn (#1950)."""
+    from nagasim import studywriteup
+    seen, out, skip, svg = set(), [], False, 0
+    for part in re.split(r"(<[^>]*>)", html):
+        if part.startswith("<"):
+            tag = re.match(r"<(/?)(script|style|title|svg)\b", part, re.I)
+            if tag and tag.group(2).lower() == "svg":
+                svg += -1 if tag.group(1) else (0 if part.rstrip().endswith("/>") else 1)
+            elif tag:
+                skip = not tag.group(1)
+            out.append(part)
+            continue
+        found = []
+        for term, meaning in ([] if skip else studywriteup.WORDS):
+            m = None if term in seen else re.search(r"\b" + re.escape(term) + r"\w*", part,
+                                                    0 if term.isupper() else re.I)
+            if m:
+                found.append((m.start(), m.end(), term, meaning))
+        at = 0
+        for start, end, term, meaning in sorted(found):
+            if start < at:          # overlaps a word already glossed here: its turn comes later
+                continue
+            seen.add(term)
+            tip = esc(f"{term} ({meaning})")
+            out += [part[at:start], f'<tspan>{part[start:end]}<title>{tip}</title></tspan>' if svg > 0
+                    else f'<abbr title="{tip}">{part[start:end]}</abbr>']
+            at = end
+        out.append(part[at:])
+    return "".join(out)
+
+
 def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id: str | None,
-            room_url: str | None = None, in_room: bool = False, lead: dict | None = None) -> str:
+            room_url: str | None = None, in_room: bool = False, lead: dict | None = None,
+            answer: str = "") -> str:
     suff = study_mod.sufficiency(study)
     cls = "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait"
     if study["versions"]:
@@ -337,6 +385,7 @@ def _header(study: dict, goals: list[dict], steps: dict, folder: Path, study_id:
     headline = _headline(lead)
     return (f'<header id="cover"{mark}><h1>{esc(study["question"])}</h1>'
             + (f'<p class="muted">Decision: {esc(study["decision"])}</p>' if study["decision"] else "")
+            + (f'<p class="lead" id="answer">{esc(answer)}</p>' if answer else "")
             + f'<div class="banner {cls}">{esc(suff["label"])}</div>'
             + (f'<p class="lead">{esc(headline)}</p>' if headline else "")
             + (f'<div class="chips">{chips}</div>' if chips else "")
@@ -353,14 +402,25 @@ def _lead(folder: Path, study: dict) -> dict | None:
     return studywriteup.facts(folder, study)
 
 
+def _answer_line(folder: Path, study: dict, lead: dict | None) -> str:
+    """D1324: the write-up's plain answer line (`studywriteup.facts`' verdict), the same on the page, the
+    write-up and the deck; "" before the first version."""
+    from nagasim import studywriteup
+    if lead is not None:
+        return lead["verdict"]
+    return studywriteup.facts(folder, study)["verdict"] if study["versions"] else ""
+
+
 def _headline(facts: dict | None) -> str:
     from nagasim import studywriteup
     return studywriteup._headline(facts) if facts else ""
 
 
 def _open_item(study: dict, folder: Path, study_id: str | None = None) -> str:
-    """The first checklist item still open, for the person (next_step is worded for the assistant)."""
-    item = next((c for c in study_mod.checklist(study, folder) if c["verdict"] != "passed"), None)
+    """The first checklist item still open, for the person (next_step is worded for the assistant),
+    in the order next_step takes them, the modeller's bookkeeping left out (#1884)."""
+    item = next((i["check"] for i in study_mod.open_items(study, folder)
+                 if "check" in i and i["item"] not in study_mod.MODELLER_ITEMS), None)
     if item is None:
         return ""
     why = f" ({_check_why(item, study, folder, study_id)})" if item["why"] else ""
@@ -396,7 +456,7 @@ def _goals_panel(study: dict, goals: list[dict], folder: Path, study_id: str | N
         rows = [[esc(g["text"]) + _steadier_line(f), esc(f["kpi"]), esc(f["limit"]),
                  esc(f["option"]["interval"]) if f["option"] else "-",
                  _badge(f["option"]["status"] if f["option"] else "not_verified"),
-                 esc(f"{f['interval'] or f['value']}: {g['status'].replace('_', ' ')}")]
+                 esc(f"{f['interval'] or f['value']}: {f['status'].replace('_', ' ')}")]
                 for g, f in zip(goals, lead["goals"])]
     cl = study_mod.checklist(study, folder)
     checks = [[esc(c["title"]), _badge(c["verdict"]), _check_why(c, study, folder, study_id)] for c in cl]
@@ -435,11 +495,63 @@ def _model_panel(folder: Path, study: dict, steps: dict) -> str:
     return _panel("model", summary, _flow(folder, study, v, steps[v["id"]]), True)
 
 
+def invalid_text(partial) -> str:
+    """What a page writes in place of a run's numbers when a law warned (#1880): "not valid: " and
+    why, in the trust card's plain sentences; "" when none did (censoring and initial bias alone
+    leave the numbers, with `caveat_text`, D1316)."""
+    invalid, _ = laws.split(partial)
+    return ("not valid: " + " ".join(pagefmt.law_reasons(invalid))) if invalid else ""
+
+
+def caveat_text(partial) -> str:
+    """What a page writes beside a run's numbers when only censoring or initial bias warned (D1316),
+    "may be biased low: ..."; "" otherwise (a run that is not valid shows no numbers)."""
+    invalid, low = laws.split(partial)
+    return "" if invalid else laws.caveat(low)
+
+
+def _option_partial(r: dict) -> list:
+    """The warnings of one stored scenario ({"kpis", "goals", "laws"?}): the study step stores
+    "laws" only for an option whose law checks warned."""
+    return (r.get("laws") or {}).get("partial") or []
+
+
+def _base_partial(step: dict) -> list:
+    """The warnings of a step's own run: its law checks that did not pass."""
+    return [c for c in step.get("checks") or [] if c.get("kind") == "law" and c.get("verdict") != "passed"]
+
+
+def option_invalid(r: dict) -> str:
+    """`invalid_text` of one stored scenario."""
+    return invalid_text(_option_partial(r))
+
+
+def option_caveat(r: dict) -> str:
+    """`caveat_text` of one stored scenario."""
+    return caveat_text(_option_partial(r))
+
+
+def base_invalid(step: dict) -> str:
+    """`invalid_text` of a step's own run."""
+    return invalid_text(_base_partial(step))
+
+
+def base_caveat(step: dict) -> str:
+    """`caveat_text` of a step's own run."""
+    return caveat_text(_base_partial(step))
+
+
 def _scenarios(study: dict, sc: dict) -> str:
-    """Scenario x goal KPI table: mean +- CI and whether the goal is met."""
+    """Scenario x goal KPI table: mean +- CI and whether the goal is met; an option whose run is
+    not valid says so in place of its numbers (#1880), one that may be biased low says so under
+    its name (D1316)."""
     rows = []
     for name, r in sc.items():
-        cells = [esc(name)]
+        if why := option_invalid(r):
+            rows.append([esc(name)] + ([esc(why)] + ["-"] * (len(study["goals"]) - 1) if study["goals"] else []))
+            continue
+        cav = option_caveat(r)
+        cells = [esc(name) + (f'<div class="muted">{esc(cav)}</div>' if cav else "")]
         for g in study["goals"]:
             e = (r.get("kpis") or {}).get(goal_kpi(g)) or {}
             v = (r.get("goals") or {}).get(g.get("id"), "not_verified")
@@ -459,7 +571,9 @@ def _scenarios_panel(study: dict, steps: dict) -> str:
     parts = []
     for name, r in sc.items():
         verdicts = list((r.get("goals") or {}).values())
-        parts.append(f"{esc(name)} meets {verdicts.count('met')} of {len(verdicts)}")
+        parts.append(f"{esc(name)} is not valid" if option_invalid(r)
+                     else f"{esc(name)} meets {verdicts.count('met')} of {len(verdicts)}"
+                     + (" (may be biased low)" if option_caveat(r) else ""))
     return _panel("scenarios", "Scenarios: " + "; ".join(parts), _scenarios(study, sc), True)
 
 
@@ -484,13 +598,13 @@ def _versions_panel(folder: Path, study: dict, steps: dict) -> str:
         vals = [_num((v.get("kpis") or {}).get(k)) for k in kpis]
         cells = ([esc(v["id"]), esc(v.get("note", "")), _badge(v.get("verdict", "not_verified"))] + vals
                  + [esc(_reps(v, step) or ""), esc(_when(step.get("at")))])
-        rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>"
+        rows.append("<tr>" + "".join(f'<td data-label="{esc(h)}">{c}</td>' for h, c in zip(head, cells)) + "</tr>"
                     f'<tr><td colspan="{len(head)}"><details>'
                     f"<summary>{esc(v['id'])}: changes, all KPIs, flowchart</summary>"
                     f"{_version_detail(folder, study, v, step)}</details></td></tr>")
     n = len(study["versions"])
     summary = f"Versions: {n}, latest {esc(study['versions'][-1]['id'])}" if n else "Versions: none yet"
-    return _panel("versions", summary, f"<table><tr>{th}</tr>{''.join(rows)}</table>", True)
+    return _panel("versions", summary, f'<table><tr class="h">{th}</tr>{"".join(rows)}</table>', True)
 
 
 def trust_rows(folder: Path, study: dict, steps: dict) -> list[list[str]]:
@@ -612,17 +726,19 @@ def render(folder: Path, study: dict | None = None, study_id: str | None = None,
     steps = {v["id"]: _read(folder / "versions" / v["id"] / "step.json") or {} for v in study["versions"]}
     goals = study_mod.goals_status(study)
     lead = _lead(folder, study)
+    answer = _answer_line(folder, study, lead)
     # `<` as < keeps a note holding "</script>" from closing the data block.
     data = json.dumps(study, ensure_ascii=True).replace("<", "\\u003c")
     page = ("<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
             f'<meta http-equiv="Content-Security-Policy" content="{csp(_CSS)}">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{esc(study['question'][:80])}</title><style>{_CSS}</style></head><body><main>"
-            + _header(study, goals, steps, folder, study_id, room_url, in_room or packaged, lead) + '<div id="actions"></div>'
+            + _header(study, goals, steps, folder, study_id, room_url, in_room or packaged, lead, answer) + '<div id="actions"></div>'
             + _goals_panel(study, goals, folder, study_id, lead) + _model_panel(folder, study, steps)
             + _versions_panel(folder, study, steps) + _scenarios_panel(study, steps) + _sensitivity_panel(folder, study) + _trust_panel(folder, study, steps)
             + _assumptions_panel(study) + _deliverables_panel(folder, study, packaged)
             + f'<script type="application/json" id="study-json">{data}</script></main></body></html>\n')
+    page = gloss_terms(page)
     # Non-ASCII text becomes a character reference: the page stays ASCII and renders the same.
     return page.encode("ascii", "xmlcharrefreplace").decode("ascii")
 

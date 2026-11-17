@@ -106,7 +106,7 @@ law-check warnings, web pages to share (a replay and a viewer) and forecasts.
 Whichever way you use, the model is the same JSON file, so what one person builds in Python an
 agent can check and a colleague can open.
 
-## What's new in 0.20
+## What's new in 0.21
 
 --8<-- "docs/whats-new.md:latest"
 

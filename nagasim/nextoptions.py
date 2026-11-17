@@ -134,18 +134,6 @@ def _facts(study: dict, folder: Path) -> dict:
     return f
 
 
-def _newest_draft(folder: Path, after: str | None) -> tuple[str, dict] | None:
-    """The newest draft when it was stored after the last version (its step failed), else None."""
-    drafts = sorted((p for p in (folder / "versions" / "drafts").glob("d[0-9]*") if p.is_dir()),
-                    key=lambda p: int(p.name[1:]) if p.name[1:].isdigit() else -1)
-    if not drafts:
-        return None
-    step = _read(drafts[-1] / "step.json") or {}
-    if after is not None and str(step.get("at", "")) <= after:
-        return None
-    return drafts[-1].name, step
-
-
 def _draft_reason(step: dict) -> str:
     for p in step.get("problems") or []:
         if isinstance(p, dict) and p.get("message"):
@@ -157,6 +145,8 @@ def _draft_reason(step: dict) -> str:
 
 
 _UPDATE_KEY = {"question": "question", "goals": "goals", "scope": "target", "assumptions": "assumptions"}
+# Checklist items that wait on a first model version.
+_NEEDS_A_MODEL = ("verification", "validation", "experiments", "conclusions")
 
 
 def _checklist_options(study: dict, folder: Path, facts: dict, step_cost: str) -> list[dict]:
@@ -178,11 +168,13 @@ def _checklist_options(study: dict, folder: Path, facts: dict, step_cost: str) -
                               {"size": bigger} if bigger else {},
                               needs=() if bigger else ["the person's decision"]))
             continue
+        if not study["versions"] and item in _NEEDS_A_MODEL:
+            continue        # not a choice yet: the model's own option comes first (#1891)
         i, c = open_item["index"], open_item["check"]
         why = f"Checklist step {i} of {len(study_mod.CHECKLIST)} ({c['title'].lower()}) is {c['verdict']}" + (
             f": {c['why']}." if c["why"] else ".")
         kind = "fix" if c["verdict"] == "failed" else "missing"
-        gap = 11 - i
+        gap = 10 - study_mod.NEXT_ORDER.index(item)     # #1891: ranked as next_step ranks them
         if item in ("model", "verification", "conclusions"):
             out.append(option(kind, c["title"] if item != "conclusions" else "Change the model or the goals",
                               why, "study_step", {}, step_cost, needs=["layout", "note"], gap=gap))
@@ -293,9 +285,8 @@ def _improve_options(study: dict, folder: Path, facts: dict, step_cost: str, dat
                           f"{k} validation(s) passed, all against a formula; none against data or an expert.",
                           "study_update", {}, needs=["validation"]))
     explained = {a.get("kpi") for a in _asked(facts, "explain_kpi")}
-    main = next((g for g in sorted(goals, key=lambda g: study_mod.judge(g, (facts["last"].get("kpis") or {})
-                                                                      .get(goal_kpi(g))) == "met")
-                 if explain_name(g)), None)
+    met = {g["id"] for g in study_mod.goals_status(study) if g["status"] == "met"}    # #1935: one rule
+    main = next((g for g in sorted(goals, key=lambda g: g.get("id") in met) if explain_name(g)), None)
     if main is not None and explain_name(main) not in explained:
         name, value = explain_name(main), (facts["last"].get("kpis") or {}).get(goal_kpi(main))
         out.append(option("improve", f"Explain what makes up {goal_kpi(main)}",
@@ -481,7 +472,7 @@ def for_study(study: dict, folder: Path, study_id: str | None = None, limit: int
     cap = study_mod.PRECISION[study["size"]]["cap"]
     step_cost = f"one study_step: {study_mod.FIRST_PASS} replications, up to {cap}"
     out = []
-    draft = _newest_draft(folder, str(facts["step"].get("at", "")) if facts["last"] else None)
+    draft = study_mod.newest_draft(folder, study)
     if draft is not None:
         out.append(option("fix", f"Fix the model: step {draft[0]} was stored as a draft",
                           f"The last step {draft[0]} did not become a version: {_draft_reason(draft[1])}.",

@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.21.0 (2026-11-17)
+
+0.21.0 makes answers readable and results lean. A study's write-up, control room and slides open with Yes, No or Not clear yet, judged from each goal's 95% interval, explain the terms they use, and write "not valid" with the reason in place of a number a law check refuses. A person can record their own check that the model matches reality, and validation checks the whole model, naming the nearest valid key. Breaking: `run_model` and `run_scenarios` return only the result frames that have rows, and MCP tools answer with typed structured content.
 
 Added:
 
+- `uncertainty.input_uncertainty_frame(...)` gives input uncertainty as a table, one row per KPI (run counts and notes in `.attrs`), and `naga uncertainty --out FILE` writes it as CSV or Excel; `input_uncertainty` still returns its dict.
 - `api.new_pool(workers)`: a process pool to pass as `pool=` whose workers report they are up, so a worker that never starts ends the run with an error instead of hanging it. A plain `ProcessPoolExecutor` still works, without that check.
 - Studies: a person can record their own check that the model matches reality, with the live room's "I checked this" form or `naga study confirm FOLDER --text ... --against ... [--by NAME] [--failed]`. Only the engine (`study_validate`) or the person makes the validation item pass; an assistant's note reads "reported, not checked", and a check reopens when the model's blocks or links change.
 - Studies: each option's difference from the Baseline comes with its paired 95% interval (`diff_vs_baseline`, common seeds), a modest note when a goal KPI is markedly steadier, and goal tables that lead with the recommended option.
@@ -12,6 +15,7 @@ Added:
 
 Changed:
 
+- Breaking: `run_model` (and `Model.run`) returns only the result frames that have rows, plus `system` always; a single server now gets 7 frames instead of 33. Code that indexed an empty frame such as `results["store_summary"]` now gets a KeyError naming the change: use `results.get("store_summary")` or `"store_summary" in results`, or `run_model(..., keep_empty=True)` for every frame. `record_logs=False` therefore leaves the empty log frames out. `run_scenarios` follows the same rule for each scenario's results, with the same `keep_empty=True` opt-in.
 - MCP: every tool declares a typed output schema and each answer is sent once as structured content with a one-line summary (breaking for clients that parsed the text answer).
 - `naga run --json` rows carry `key` and `ci95`; the old field names are deprecated.
 - Long tools (`study_step`, `study_validate`, `optimize`) report progress and can be stopped between replications.

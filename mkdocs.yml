@@ -344,6 +344,7 @@ nav:
           - state.take: reference/api/take.md
           - state.start: reference/api/start.md
           - input_uncertainty: reference/api/input_uncertainty.md
+          - input_uncertainty_frame: reference/api/input_uncertainty_frame.md
           - forecast_from_state: reference/api/forecast_from_state.md
           - read_result: reference/api/read_result.md
           - investment_case: reference/api/investment_case.md

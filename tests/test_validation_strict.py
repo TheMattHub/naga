@@ -302,6 +302,15 @@ def test_each_wrong_file_is_a_coded_problem_with_a_json_pointer(name, change, co
         (p.code, p.path) for p in found.values())
 
 
+def test_a_near_miss_names_the_one_meant_and_a_far_miss_lists_them_all():
+    """#1893: PROCES names PROCESS alone, not all the block types; Sever names Server."""
+    assert _found(_with(_set("/blocks/1/type", "PROCES")))["/blocks/1/type"].hint == "did you mean 'PROCESS'?"
+    far = _found(_with(_set("/blocks/1/type", "ZZZZ")))["/blocks/1/type"].hint
+    assert far.startswith("use one of: ") and "PROCESS" in far
+    hint = _found(_with(_set("/blocks/1/params/resource_name", "Sever")))["/blocks/1/params/resource_name"].hint
+    assert hint.startswith("did you mean 'Server'? declare it"), hint
+
+
 def test_a_file_that_is_not_json_is_a_coded_problem(tmp_path, capsys):
     from nagasim.modelschema import main_validate
     path = tmp_path / "broken.json"

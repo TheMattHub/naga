@@ -142,7 +142,7 @@ def test_battery_off_is_unchanged_for_workers_and_gantries(make):
     for frame in ("fleet_summary", "energy_summary", "entity_summary", "resource_summary"):
         if frame in none:
             assert off[frame].equals(none[frame]), frame
-    assert off["battery_summary"].empty and none["battery_summary"].empty
+    assert "battery_summary" not in off and "battery_summary" not in none   # no rows (D1321)
 
 
 def test_power_of_a_battery_worker_fleet_is_zero_and_its_charger_carries_the_energy():

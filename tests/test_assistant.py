@@ -372,7 +372,7 @@ READ_PATHS = {("fit_distribution", "path"), ("import_event_log", "path"), ("impo
 
 def test_every_path_an_offered_tool_takes_is_guarded_refused_or_read():
     from nagasim import agent_tools
-    guarded = set(asst._WRITES.items()) | {("save_model", "path")}
+    guarded = set(asst.WRITES.items()) | {("save_model", "path")}
     found = {(name, key) for name in asst.offered_tools("hosted")
              for key in agent_tools.TOOLS[name].input_schema.get("properties", {})
              if "path" in key or "folder" in key}

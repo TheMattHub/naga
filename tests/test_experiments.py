@@ -112,6 +112,15 @@ def test_unknown_override_path_is_refused_and_names_the_path(mm1):
         assert path in str(excinfo.value) or "empty path" in str(excinfo.value), path
 
 
+def test_a_misspelt_override_field_names_the_fields_there_and_hints_the_one_meant(mm1):
+    """#1899: str(exc) is all a Python caller reads, so the message names the fields the record
+    has; the did-you-mean stays the hint, said once."""
+    with pytest.raises(ModelValidationError) as excinfo:
+        experiments.apply_overrides(mm1, [{"path": "blocks.process_1.params.dist_params.rat", "value": 2}])
+    assert str(excinfo.value).endswith("no such field 'rat'; the fields there: 'rate'")
+    assert excinfo.value.structured[0].hint == "did you mean 'rate'?"
+
+
 def test_a_scenario_whose_result_is_invalid_names_the_scenario(mm1):
     mm1["scenarios"] = [{"name": "Impossible",
                          "overrides": [{"path": "blocks.process_1.params.distribution",
@@ -249,6 +258,22 @@ def test_crn_keeps_arrivals_identical_across_scenarios(mm1):
         n = min(a.size, b.size)
         assert n > 0
         assert np.allclose(a[:n], b[:n])
+
+
+def test_each_scenario_carries_the_law_checks_of_its_own_run(mm1):
+    """#1880, #1886: the comparison carries every scenario's law checks, the very `RunChecks` a
+    single run of that scenario has; an overloaded one warns, the Baseline does not."""
+    slower = [{"path": "blocks.process_1.params.dist_params.rate", "value": 0.5}]
+    layout = {**mm1, "scenarios": [{"name": "Slower", "overrides": slower}]}
+    result = experiments.run_scenarios(layout, replications=3, run_length=300, warmup=0, seed=0)
+    checks = result.checks()
+    assert list(checks) == ["Baseline", "Slower"]
+    assert any(c["law"] == "offered load" for c in checks["Slower"].partial), checks["Slower"].lines()
+    assert not checks["Baseline"].partial and checks["Baseline"].passed > 0
+    single = api.run_model(experiments.apply_overrides(mm1, slower), replications=3, run_length=300, warmup=0, seed=0)
+    assert checks["Slower"].found == single.checks().found
+    # Frames put in by hand have no layout to judge: a note, never an exception.
+    assert experiments.ExperimentResult(results={"Baseline": {}}).checks()["Baseline"].note == "no layout"
 
 
 def test_crn_disabled_gives_each_scenario_its_own_seed_block(mm1):
@@ -786,3 +811,17 @@ def test_cli_player_writes_one_file_with_every_scenario(tmp_path, capsys):
     assert [path.name for path in tmp_path.iterdir()] == ["scenarios.html"]
     page = out.read_text(encoding="ascii")
     assert page.startswith("<!doctype html>") and "//" not in re.sub(r"'sha256-[A-Za-z0-9+/=]+'", "", page)
+
+
+def test_repr_of_a_study_is_short_and_an_empty_one_still_prints():
+    """#1898: the scenarios and the first KPI differences, a compact html table; no frames dumped."""
+    empty = experiments.ExperimentResult()
+    assert repr(empty).startswith("ExperimentResult(0 scenarios") and "<p>" in empty._repr_html_()
+    layout = json.loads(SINGLE_SERVER.read_text(encoding="utf-8"))
+    layout["simulation"].update(time_limit=100, warmup=10)
+    layout["scenarios"] = [{"name": "Faster", "overrides": [
+        {"path": "blocks.process_1.params.dist_params.rate", "value": 2.0}]}]
+    study = experiments.run_scenarios(layout, replications=2)
+    text = repr(study)
+    assert "Baseline, Faster" in text and "Diff vs baseline" in text and len(text.splitlines()) <= 13
+    assert "<table" in study._repr_html_()

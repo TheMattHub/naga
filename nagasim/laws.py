@@ -279,6 +279,31 @@ def checks(layout: dict, results: dict, *, warmup: float | None = None) -> list[
     return out
 
 
+# D1316: the guardrails that only say a run's KPIs may be biased low. A result such a bias could not
+# reverse stands, with the caveat; a partial law (utilisation, offered load, Little, flow) still makes
+# the run not valid, since its numbers then describe a different system.
+LOW_BIAS = ("censoring", "initial bias")
+
+
+def split(partial) -> tuple[list[dict], list[dict]]:
+    """(not valid, biased low): a run's partial checks split by their law (D1316). The first make
+    the run not valid; the second (censoring, initial bias) only say its KPIs may be biased low. A
+    copy without the "law" key (a study step's) is read by its name's head, "utilisation: Clerk"."""
+    invalid, low = [], []
+    for c in partial or ():
+        law = c.get("law") or str(c.get("name", "")).partition(": ")[0]
+        (low if law in LOW_BIAS else invalid).append(c)
+    return invalid, low
+
+
+def caveat(low) -> str:
+    """The words shown with numbers a low bias may move (D1316): "may be biased low: " and what each
+    guardrail found, its why up to the first colon ("8% of created entities are still inside at the
+    end"); "" for none."""
+    found = dict.fromkeys(str(c.get("why", "")).partition(":")[0] for c in low or ())
+    return "may be biased low: " + "; ".join(found) if found else ""
+
+
 def summary(found: list[dict]) -> dict:
     """What the run digest carries: the count of passed checks and the warnings in full."""
     return {"passed": sum(c["verdict"] == "passed" for c in found),

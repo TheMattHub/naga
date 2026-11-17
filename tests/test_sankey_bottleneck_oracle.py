@@ -144,7 +144,7 @@ def test_flow_summary_empty_with_fixed_columns_when_nothing_moves():
                    chain(create_blk, delay_blk, dispose_blk),
                    simulation={"time_limit": 5, "warmup": 0, "replications": 1})
 
-    results = api.run_model(model, replications=1)
+    results = api.run_model(model, replications=1, keep_empty=True)  # the frame shape: keep_empty (D1321)
     flow = results[FLOW_FRAME]
     assert set(flow.columns) == FLOW_COLS
     assert len(flow) == 0
@@ -257,7 +257,7 @@ def test_bottleneck_summary_empty_without_outputs_flag(simple_model_path):
     never collected (spec: "memory grows with the event count"), so
     bottleneck_summary must be an EMPTY frame with its fixed columns even
     though the model has plenty of entity flow."""
-    results = api.run_model(simple_model_path, replications=1)
+    results = api.run_model(simple_model_path, replications=1, keep_empty=True)  # keep_empty (D1321)
     bn = results[BOTTLENECK_FRAME]
     assert set(bn.columns) == BOTTLENECK_COLS
     assert len(bn) == 0

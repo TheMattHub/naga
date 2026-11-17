@@ -628,7 +628,7 @@ def test_naga_viewer_writes_the_file_says_what_it_holds_and_never_downloads(
                         "--runtime", str(folder)]) == 0
     said = capsys.readouterr().out
     assert "whole model and the engine's source" in said and "--player" in said and " MB; " in said
-    assert json.loads(_blocks(out.read_text("ascii"))["data"])["title"] == "single_server"
+    assert json.loads(_blocks(out.read_text("ascii"))["data"])["title"] == "Single server (M/M/1)"   # #1903: the model's title, not the file name
     monkeypatch.setenv(vr.ENV_VAR, str(tmp_path / "none"))
     with pytest.raises(ValueError, match="naga viewer --fetch"):
         viewer.main([str(MODELS / "single_server.json"), "-o", str(out)])
@@ -762,7 +762,9 @@ def test_exit_check_a_changed_input_run_in_the_page_gives_the_desktops_numbers(t
         _text("results-body"), _text("same"), _text("made"), _text("results"),
         # D697: your run, recorded in the page, is drawn beside the baseline's; open it.
         {"eval": 'document.getElementById("watch").open = true;'
-                 ' document.getElementById("player").srcdoc.indexOf(\'"scenarios":["Baseline","Yours"]\') > 0'},
+                 # the new picture loads in the hidden frame first (#1947)
+                 ' ["player", "player-next"].some(function (id) {'
+                 ' return document.getElementById(id).srcdoc.indexOf(\'"scenarios":["Baseline","Yours"]\') > 0; })'},
         {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 1500); })"}])
     (shown_first, ready, _value, _clicked, ran, record, shown, same, made_from, cards, both,
      _waited) = out["answers"]
@@ -841,12 +843,12 @@ def test_the_levers_tabs_footer_and_a_page_without_the_new_fields(tmp_path, monk
     assert again ==["Baseline*,Two servers,Yours,Saved 1", "2",
                                 "Saved for this visit only: this browser keeps nothing for this page.",
                                 "Baseline,Two servers,Yours,Saved 1,Saved 2*"]
-    # No question, no target, no note: the title on top and no answer card.
+    # No question, no target, no note: the title on top; the answer card only keeps its room (#1901).
     viewer.build_viewer(model(), tmp_path / "plain.html", runtime=folder, title="Plain")
     plain = _drive(BROWSERS[0], tmp_path / "plain.html", tmp_path / "p", [
-        _title_then('document.getElementById("answer-box").hidden'),
+        _title_then('document.getElementById("answer-box").className'),
         _TABS, _text("results")])
-    assert plain["answers"][:2] == ["Plain|true", "Baseline*,Yours"] and "Avg Throughput Time" in plain["answers"][2]
+    assert plain["answers"][:2] == ["Plain|panel answer idle", "Baseline*,Yours"] and "Avg Throughput Time" in plain["answers"][2]
 
 
 @pytest.mark.slow          # two pages in a browser, one of 35 MB

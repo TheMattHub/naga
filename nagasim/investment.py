@@ -100,7 +100,10 @@ def _yearly(frames: dict, flat: pd.DataFrame, capex_names: set, settings: dict,
     def kpi(key):
         return _per_run(flat[flat["KPI"] == key], runs)
 
-    costs = frames["cost_summary"]
+    # D1321, D1328: a scenario with no costs has no cost table; it has no capex either.
+    costs = frames.get("cost_summary")
+    if costs is None:
+        costs = pd.DataFrame(columns=["Run", "Kind", "Item", "Amount"])
     costs = costs[(costs["Kind"] == "fixed") & costs["Item"].isin(capex_names)]
     capex = _per_run(costs.rename(columns={"Amount": "Value"}), runs)
     unit = system.loc[system["Metric"] == "Time Unit", "Value"].iloc[0]

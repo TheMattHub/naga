@@ -47,8 +47,9 @@ def test_log_derived_columns_are_exactly_the_ones_that_change_without_logs():
     seen: dict[str, set] = {}
     for model in PROOF_MODELS:
         path = str(MODELS / f"{model}.json")
-        on = api.run_model(path, seed=0, replications=1)
-        off = api.run_model(path, seed=0, replications=1, record_logs=False)
+        # keep_empty: the logs-off run's log frames have no rows (D1321); compare them all.
+        on = api.run_model(path, seed=0, replications=1, keep_empty=True)
+        off = api.run_model(path, seed=0, replications=1, record_logs=False, keep_empty=True)
         for frame, cols in _differing_columns(on, off).items():
             assert cols <= LOG_DERIVED_COLUMNS.get(frame, frozenset()), (model, frame, cols)
             seen.setdefault(frame, set()).update(cols)

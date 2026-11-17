@@ -71,7 +71,7 @@ def test_no_orders_leaves_both_frames_empty_with_their_columns(simple_model_path
     or golden hash move."""
     from nagasim.core.outputs import _DUE_DATE_SUMMARY_COLS, _ORDER_SUMMARY_COLS
 
-    results = run_model(simple_model_path, replications=1, run_length=20)
+    results = run_model(simple_model_path, replications=1, run_length=20, keep_empty=True)  # the frame shape: keep_empty (D1321)
     assert results["order_summary"].empty and results["due_date_summary"].empty
     assert list(results["order_summary"].columns) == _ORDER_SUMMARY_COLS
     assert list(results["due_date_summary"].columns) == _DUE_DATE_SUMMARY_COLS
@@ -92,7 +92,7 @@ def test_an_assign_gives_a_make_to_stock_model_the_same_due_date_kpis(tmp_path):
     model = layout(blocks, chain(*blocks))
     results = run_model(model, replications=1)
 
-    assert results["order_summary"].empty          # no orders declared
+    assert "order_summary" not in results          # no orders declared, so no rows (D1321)
     due = results["due_date_summary"].set_index("Entity Type")
     assert due.loc["(all)", "Completed"] == 3
     assert due.loc["(all)", "Service Level"] == 0.0
@@ -278,6 +278,19 @@ def test_an_order_that_never_finishes_inside_the_horizon_is_reported_late():
     row = result.orders.set_index("Order").loc["WO-1"]
     assert row["P(late)"] == 1.0 and row["Completed Reps"] == 0
     assert np.isnan(row["Median Completion"])
+
+
+def test_an_order_due_after_the_horizon_is_judged_only_when_it_finished_in_every_replication():
+    """#1930: due after the horizon, finished in every replication it was on time in each (0);
+    unfinished in any, it is not judged (NaN, `forecast.NOT_JUDGED` on a page)."""
+    blocks = [create(name="release", arrival_mode="Orders", max_arrivals=0),
+              process(resource="Machine", distribution="Exponential", value=0.2), dispose()]
+    model = layout(blocks, chain(*blocks), resources=[{"name": "Machine", "capacity": 1}],
+                   orders=[{"id": "WO-1", "release": 0, "due": 60, "quantity": 1}])
+    rows = {h: forecast_mod.forecast(model, horizon=h, replications=20, seed=0).orders.set_index("Order").loc["WO-1"]
+            for h in (50.0, 2.0)}       # mean 5: all finish within 50, some not within 2
+    assert rows[50.0]["P(late)"] == 0.0 and rows[50.0]["Completed Reps"] == 20
+    assert 0 < rows[2.0]["Completed Reps"] < 20 and np.isnan(rows[2.0]["P(late)"])
 
 
 # ---------------------------------------------------------------- real dates (PHASE4 T10)

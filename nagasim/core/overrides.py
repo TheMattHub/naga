@@ -108,7 +108,10 @@ def _descend(container, fields: list[str], path: str, schema=None,
         if last and write and isinstance(container, dict) and key in allowed:
             return container, key
         options = list(container) if isinstance(container, dict) else []
-        _fail(path, f"no such field '{key}'",
+        # #1899: the message names the fields the record has (the evidence), the hint the one
+        # meant; the message alone is what a Python caller reads in str(exc).
+        there = f"; the fields there: {', '.join(repr(o) for o in options)}" if options else ""
+        _fail(path, f"no such field '{key}'{there}",
               did_you_mean(key, options + [a for a in allowed if a not in options]))
     return container, fields[-1]        # not reached: the loop returns or fails
 

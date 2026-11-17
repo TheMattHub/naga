@@ -59,7 +59,9 @@ _INSTRUCTION_SENTENCES = (
     (set(), "Build, validate, run and analyse discrete-event simulation models."),
     ({"get_model_format", "write_model", "run_model", "save_model"},
      "To build one: get_model_format once, write_model with the whole model file, fix what its "
-     "answer lists with one more write_model, run_model, save_model."),
+     "answer lists with one more write_model, run_model, save_model.",
+     # One first step (#1890): where study_start is published it is the only story told.
+     {"study_start"}),
     ({"check_model_opens"}, "check_model_opens must pass before a model is done."),
     ({"run_model", "get_kpi_table"},
      "run_model returns a compact KPI digest with confidence intervals; get_kpi_table pages the "
@@ -71,8 +73,11 @@ _INSTRUCTION_SENTENCES = (
 
 def instructions_for(tools=None) -> str:
     """The server instructions for the published *tools* (None: every tool): the sentences whose
-    tools are all published (D1217)."""
-    return " ".join(text for needs, text in _INSTRUCTION_SENTENCES if tools is None or needs <= tools)
+    tools are all published (D1217), and the build story only where study_start is not (#1890)."""
+    published = None if tools is None else set(tools)
+    return " ".join(text for needs, text, *unless in _INSTRUCTION_SENTENCES
+                    if published is None and not unless
+                    or published is not None and needs <= published and not (unless and unless[0] & published))
 
 
 INSTRUCTIONS = instructions_for()
@@ -454,7 +459,10 @@ def build_server(root: str | Path | None = None, network=None, twin=None, *,
     profiles = PROFILES if profiles is None else profiles
     profile = next((p for p, t in profiles.items() if tools is not None and t == frozenset(tools)), None)
     text = instructions(None if tools is None else frozenset(tools)) if callable(instructions) else instructions
-    server = _suggesting(server_class, profiles, profile)(name, version=__version__, instructions=text, **extra)
+    server = _suggesting(server_class, profiles, profile)(name, version=__version__, instructions=text,
+                                                      # The CLI logs warnings and above (#1894); the SDK's default INFO
+                                                      # wrote 80 stderr lines for one 10-replication step.
+                                                      log_level="WARNING", **extra)
     hidden = () if tools is None else set(agent_tools.TOOLS) - set(tools)
 
     # The SDK runs a sync tool on a worker thread and serves requests concurrently, while

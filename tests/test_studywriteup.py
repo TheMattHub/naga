@@ -126,14 +126,14 @@ def test_slides(built, sid):
     r = T.call("study_slides", study=sid)
     assert "error" not in r, r
     html = (ws.root / r["path"]).read_text(encoding="utf-8")
-    assert html.count('<section class="slide"') == 9           # sensitivity slide included
+    assert html.count('<section class="slide"') == 10          # 9 with the sensitivity slide, and one Words used slide (D1327)
     assert "scroll-snap-type" in html and "@page" in html and "16in 9in" in html
     assert "break-after:page" in html.replace(" ", "")
     assert "<script" not in html and "default-src 'none'" in html
     assert EVIL not in html and "&lt;script&gt;" in html
     assert "<svg" in html and "two servers" in html
     assert "aspect-ratio:16/9" in html and "box-shadow" in html
-    assert "1 / 9</span>" in html and "9 / 9</span>" in html
+    assert "1 / 10</span>" in html and "10 / 10</span>" in html
     ans = html.split("The answer</h2>")[1].split("</section>")[0]
     assert 'class="banner b-' in ans and ans.count('class="tile"') == 2 and 'class="badge' in ans
     assert 'class="charts"' in html                        # options slide bar charts
@@ -147,7 +147,7 @@ def test_slides_skip_sensitivity_when_absent(ws):
     layout["simulation"]["warmup"] = 0  # #1720
     T.call("study_step", study=sid, layout=layout, note="n")
     html = (ws.root / T.call("study_slides", study=sid)["path"]).read_text(encoding="utf-8")
-    assert html.count('<section class="slide"') == 8
+    assert html.count('<section class="slide"') == 9           # 8, and one Words used slide (D1327)
 
 
 @pytest.mark.slow
@@ -272,6 +272,80 @@ def test_old_validation_is_reported_with_a_revalidate_offer(nurse_study):
     assert studypage.validation_result is study_mod.validation_result      # one rule, not a copy
 
 
+CENSORED = {"name": "censoring", "verdict": "partial", "law": "censoring",
+            "why": "30% of created entities are still inside at the end: time-based KPIs are biased low"}
+OVERLOADED = {"name": "offered load: Nurse", "verdict": "partial", "law": "offered load",
+              "why": "offered load 1.20 >= 1 on Nurse: unstable by design, the queue grows for the whole run"}
+CAVEAT = "may be biased low: 30% of created entities are still inside at the end"
+
+
+def test_1880_an_option_that_is_not_valid_is_written_as_not_valid_with_why(nurse_study):
+    """#1880: an option whose law checks warned (study_step stores its "laws" and not_verified
+    goals) reads "not valid" and why on every page built from the scenario rows, never its number;
+    the valid options read as before."""
+    from nagasim import studypage
+    folder, st = nurse_study
+    kiosk = st["versions"][-1]["scenarios"]["Kiosk"]
+    kiosk.update(laws={"passed": 1, "partial": [OVERLOADED]}, goals={"g1": "not_verified"})
+    _html, md = studywriteup.writeup(folder, st)
+    lines = [line for line in md.read_text(encoding="utf-8").splitlines() if "Kiosk" in line]
+    assert lines and all("not valid: Nurse gets more work than it can do" in line and "25.8" not in line
+                         for line in lines), lines
+    assert "| Fourth nurse | 5.4%" in md.read_text(encoding="utf-8")
+    deck = studywriteup.slides(folder, st).read_text(encoding="utf-8")
+    assert "not valid" in deck and "25.8" not in deck
+    room = studypage.render(folder, st, study_id="s")
+    assert "Kiosk is not valid" in room and "25.8" not in room
+
+
+def test_d1316_an_option_that_may_be_biased_low_keeps_its_numbers_with_the_caveat(nurse_study):
+    """D1316: censoring alone does not hide an option's result: every page built from the scenario
+    rows shows its number with the caveat in plain words, and its verdict as the step judged it."""
+    from nagasim import studypage
+    folder, st = nurse_study
+    kiosk = st["versions"][-1]["scenarios"]["Kiosk"]
+    kiosk.update(laws={"passed": 1, "partial": [CENSORED]}, goals={"g1": "not_met"})
+    _html, md = studywriteup.writeup(folder, st)
+    lines = [line for line in md.read_text(encoding="utf-8").splitlines() if "| Kiosk" in line]
+    assert lines and all("25.8" in line and CAVEAT in line and "not valid" not in line for line in lines), lines
+    deck = studywriteup.slides(folder, st).read_text(encoding="utf-8")
+    assert CAVEAT in deck and "not valid" not in deck
+    room = studypage.render(folder, st, study_id="s")
+    assert "Kiosk meets 0 of 1 (may be biased low)" in room and CAVEAT in room and "25.8" in room
+
+
+def test_d1316_a_baseline_that_may_be_biased_low_keeps_its_number_and_a_verdict_it_cannot_reverse(nurse_study):
+    """D1316: the Baseline's censoring alone leaves its number beside the caveat; its goal, already
+    over its upper limit, stays not met."""
+    folder, st = nurse_study
+    step_file = folder / "versions" / st["versions"][-1]["id"] / "step.json"
+    step = json.loads(step_file.read_text(encoding="utf-8"))
+    step["checks"].append({**{k: CENSORED[k] for k in ("name", "verdict", "why")}, "kind": "law"})
+    step_file.write_text(json.dumps(step), encoding="utf-8")
+    facts = studywriteup.facts(folder, st)
+    assert not facts["base_invalid"]
+    g = facts["goals"][0]
+    assert g["num"] is not None and CAVEAT in g["interval"] and g["status"] == "not_met"
+
+
+def test_1880_a_baseline_that_is_not_valid_is_written_as_not_valid_with_why(nurse_study):
+    """#1880: the Baseline's own law warnings (the step's partial law checks) replace its number
+    in the write-up, and the checklist's verification row names them instead of an empty reason."""
+    folder, st = nurse_study
+    step_file = folder / "versions" / st["versions"][-1]["id"] / "step.json"
+    step = json.loads(step_file.read_text(encoding="utf-8"))
+    step["checks"].append({"name": "offered load: Nurse", "verdict": "partial", "why": "offered load 1.2 >= 1",
+                           "kind": "law"})
+    step_file.write_text(json.dumps(step), encoding="utf-8")
+    st["versions"][-1]["verification"] = "partial"
+    _html, md = studywriteup.writeup(folder, st)
+    text = md.read_text(encoding="utf-8")
+    why = "not valid: Nurse gets more work than it can do"
+    abstract = text[text.index("## Abstract"):text.index("## 1 ")]
+    assert why in abstract and "27.6" not in abstract, abstract
+    assert re.search(r"^\| The model does what was intended \| partial \| " + why, text, re.M), text
+
+
 def test_goals_lead_with_the_recommended_option(nurse_study):
     """D1252 (journeys item 14): the room's goal chips and the client page's Goals table show the
     recommended option's value and verdict, the Baseline's as the comparison; with no option
@@ -293,3 +367,47 @@ def test_goals_lead_with_the_recommended_option(nurse_study):
     st["versions"][-1]["scenarios"] = {}                                    # no option recommended
     plain = studypage.render(folder, st, study_id="s")
     assert "with Fourth nurse" not in plain and 'class="chip not_met"' in plain
+
+
+_GOAL = {"id": "g1", "text": "wait under 20", "kpi": "Wait", "high": 20}
+
+
+def _said(sc=None, base=None, base_bad="", base_cav="", goals=(_GOAL,)):
+    """The write-up's plain answer for one goal, from options `sc` or the Baseline (mean, half-width)."""
+    mean, hw = base or (None, None)
+    return studywriteup._verdict({"goals": list(goals)}, {"kpis": {"Wait": mean}}, {"Wait": {"half_width": hw}},
+                                 sc or {}, [n for n in sc or {}], base_bad, base_cav)
+
+
+def _option(mean, hw, partial=()):
+    return {"kpis": {"Wait": {"mean": mean, "ci_half_width": hw}}, **({"laws": {"partial": list(partial)}} if partial else {})}
+
+
+def test_the_answer_says_yes_no_or_not_clear_yet_from_the_interval():
+    """#1881, D1309: the whole interval inside the goal is yes, wholly outside no, across it not
+    clear yet; with options the answer is about them, else about the Baseline."""
+    assert _said({"More": _option(15, 1)}) == "Yes: More meets the goal."
+    # Reads right for "which ...?" too: what meets the goal, and what does not.
+    assert _said({"Nurse": _option(5, 1), "Kiosk": _option(28, 2)}) == "Yes: Nurse meets the goal."
+    assert _said({"More": _option(25, 1), "Double": _option(40, 2)}) == "No: none of the options meets the goal."
+    assert _said({"More": _option(19.5, 1)}) == "Not clear yet: no option is clearly within the goal."
+    assert _said({"Slow": _option(5, 1, [{"law": "offered load", "why": "x"}])}).startswith("Not clear yet")
+    assert _said(base=(10, 1)) == "Yes." and _said(base=(30, 1)) == "No."
+    assert _said(base=(10, 1), base_bad="not valid: x").startswith("Not clear yet")
+    assert _said(base=(10, 1), goals=[{"id": "g1", "text": "t", "kpi": "Wait"}]).startswith("Not clear yet: no goal")
+
+
+def test_a_low_bias_keeps_only_the_answer_it_cannot_reverse():
+    """D1316: censoring may only bias low, so a value over the limit stays no; one under it is
+    not clear yet."""
+    low = [{"law": "censoring", "why": "30% still inside: x"}]
+    assert _said({"Double": _option(40, 2, low)}) == "No: none of the options meets the goal."
+    assert _said({"Double": _option(10, 2, low)}).startswith("Not clear yet")
+    assert _said(base=(10, 1), base_cav="may be biased low: x").startswith("Not clear yet")
+
+
+def test_the_glossary_explains_each_word_the_text_uses():
+    """#1882: a term the text uses gets "term (meaning)"; one it does not use is left out."""
+    used = studywriteup.glossary("10 replications, seed 0. | arrivals | CREATE |")
+    assert [u.split(" (")[0] for u in used] == ["replication", "seed", "CREATE"]
+    assert studywriteup.glossary("a created entity") == []        # block types match as written

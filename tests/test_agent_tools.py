@@ -167,6 +167,19 @@ def test_an_agent_compares_two_scenarios_with_significance(ws):
     assert rows["Second server"]["significant"] is True
 
 
+def test_run_scenarios_says_which_scenario_is_not_valid(ws):
+    """#1880, #1886: the reply carries each scenario's law checks, as run_model's digest does for
+    one run; an overloaded option says why its numbers are no result, the Baseline passes."""
+    model = build_mm1(service_rate=1.25)
+    ok(T.call("set_simulation_settings", model=model, run_length=300, warmup=0, replications=3))
+    ok(T.call("upsert_scenario", model=model, name="Slower server",
+              overrides=[{"path": "blocks.serve.params.dist_params.rate", "value": 0.5}]))
+    laws = ok(T.call("run_scenarios", model=model))["laws"]
+    assert set(laws) == {"Baseline", "Slower server"}
+    assert any(c["law"] == "offered load" for c in laws["Slower server"]["partial"]), laws
+    assert not laws["Baseline"]["partial"] and laws["Baseline"]["passed"] > 0
+
+
 @pytest.mark.slow
 def test_the_analysis_tools_plumb_through_to_experiments_and_optimize(ws):
     """run_to_precision / suggest_warmup / optimize are thin wrappers, but the
@@ -260,7 +273,8 @@ def test_tool_names_are_snake_case_verbs():
              "render", "build", "preview",   # render_video, build_film, preview_frame: the product's film tools
              "pick",             # pick_seed: the seed a storyboard scene shows
              "search", "show", "fetch",   # search_/show_/fetch_simready: the product's asset-source tools
-             "propose")         # propose_plugin_folder: the person enables it, never the tool
+             "propose",          # propose_plugin_folder: the person enables it, never the tool
+             "replay")          # the product's planning tool (D1313)
     for name in T.TOOLS:
         assert name == name.lower() and " " not in name
         assert name.split("_")[0] in verbs, name

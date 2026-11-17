@@ -175,7 +175,7 @@ def test_model_with_no_power_gives_empty_energy_summary():
               dispose()]
     model = layout(blocks, chain(*blocks), resources=[{"name": "Server", "capacity": 1}],
                    simulation={"time_limit": 10.0, "warmup": 0, "replications": 1})
-    results = api.run_model(model, seed=0)
+    results = api.run_model(model, seed=0, keep_empty=True)  # the frame shape: keep_empty (D1321)
 
     energy = results[ENERGY_FRAME]
     assert energy.empty

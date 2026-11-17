@@ -91,6 +91,8 @@ def test_blood_test_case_within_its_call_budget(tmp_path):
     name = "Share with total wait over 20"
     assert step["kpis"][name] > 0.1                                  # today misses the goal
     assert step["scenarios"]["Fourth nurse"]["goals"]["g1"] == "met"
+    # #1934, D1316: the Kiosk's day ends with patients inside (censoring), which only biases its waits
+    # low; a goal already missed stays missed, and the step's check says what may bias it
     assert step["scenarios"]["Kiosk"]["goals"]["g1"] == "not_met"
     assert status["goals"][0]["status"] == "not_met"
     item = next(c for c in status["checklist"] if c["item"] == "validation")

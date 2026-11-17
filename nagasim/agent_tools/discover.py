@@ -17,13 +17,17 @@ _INDEX: tuple[int, toolsearch.Index] | None = None
 picker = None
 
 
+def tool_index(tools) -> toolsearch.Index:
+    """The search index over these registered tools (`core.ToolSpec`s)."""
+    return toolsearch.index([{"name": t.name, "description": t.description, "input_schema": t.input_schema,
+                              "output_schema": t.output_schema} for t in tools])
+
+
 def catalogue_index() -> toolsearch.Index:
     """The index over every registered tool, rebuilt when the registry's size changes (a product adds tools)."""
     global _INDEX
     if _INDEX is None or _INDEX[0] != len(TOOLS):
-        specs = [{"name": t.name, "description": t.description, "input_schema": t.input_schema,
-                  "output_schema": t.output_schema} for t in TOOLS.values()]
-        _INDEX = (len(TOOLS), toolsearch.index(specs))
+        _INDEX = (len(TOOLS), tool_index(TOOLS.values()))
     return _INDEX[1]
 
 

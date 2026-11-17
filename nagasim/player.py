@@ -162,6 +162,8 @@ summary h2 { display: inline; }
 .panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
               gap: 4px 12px; margin-bottom: 8px; }
 .legend { display: flex; flex-wrap: wrap; gap: 2px 10px; color: var(--muted); font-size: 12px; }
+/* A key that is not in use keeps its room, so the legend does not wrap when it shows (bug 1901). */
+.legend .key[hidden] { display: inline; visibility: hidden; }
 .key::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 4px;
                border-radius: 50%; background: var(--idle); }
 .key.run::before { background: var(--run); }
@@ -184,7 +186,9 @@ summary h2 { display: inline; }
 .r-range.base { top: 14px; background: var(--base); }
 .r-dot.base { top: 12px; background: var(--base); }
 .r-target { position: absolute; top: 0; bottom: 0; border-left: 2px dotted var(--ink); }
-.r-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The delta's room is kept from the first draw (bug 1901): its text arrives with a run and would
+   otherwise squeeze the label into a second line and push the tiles. */
+.r-num { text-align: right; font-variant-numeric: tabular-nums; min-width: 18ch; }
 .r-value { display: block; font-weight: 600; font-size: 15px; }
 .r-delta { display: block; height: 1.3em; line-height: 1.3em; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .r-arrow { font-weight: 700; }
@@ -1715,6 +1719,10 @@ function boot() {
     if (height !== state.told) { state.told = height; window.parent.postMessage(["height", height], "*"); }
   }
   chosen();
+  /* The viewer's capture or test waits for this: its frame is empty until the page has drawn (#1938). */
+  if (framed && window.parent !== window) {
+    requestAnimationFrame(function () { window.parent.postMessage(["drawn"], "*"); });
+  }
   /* A page with one sample, the present, and a panel of its own (the twin's monitor). */
   if (data.monitor) { state.t = duration(); monitor(data.monitor, el, add, clear); }
   wake();

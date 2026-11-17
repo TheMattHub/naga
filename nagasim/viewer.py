@@ -524,7 +524,8 @@ _CSS = """#status { margin: 8px 0; padding: 6px 10px; background: var(--panel); 
 .actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .actions button { width: 100%; padding: 8px; }
 #progress { display: block; min-height: 1.4em; font-variant-numeric: tabular-nums; }
-.answer { border-left: 4px solid var(--idle); }
+.answer { border-left: 4px solid var(--idle); min-height: 11em; margin: 8px 0; }
+.answer.idle #answer-head { color: var(--muted); font-weight: 400; font-size: 14px; }
 .answer.yes { border-left-color: var(--run); }
 .answer.no { border-left-color: var(--down); }
 .answer.unclear { border-left-color: var(--blocked); }
@@ -532,9 +533,16 @@ _CSS = """#status { margin: 8px 0; padding: 6px 10px; background: var(--panel); 
 #answer-head { margin: 0 0 4px; font-size: 18px; font-weight: 700; min-height: 1.4em; }
 #answer-detail { line-height: 1.4; min-height: 4.2em; }
 .stale #results, .stale #answer-box, .stale #results-table { opacity: 0.45; }
-#player { display: block; width: 100%; height: 62vh; min-height: 420px; border: 0; }
+/* Two frames in one grid cell (#1947, D1323): a new picture loads in the hidden one and swaps in once it
+   has drawn, the old one dimmed meanwhile, so the panel is never empty and the box never moves. */
+#player-stack { display: grid; }
+#player, #player-next { grid-area: 1 / 1; display: block; width: 100%; height: 62vh; min-height: 420px; border: 0; }
+/* Transparent, not visibility:hidden: a browser stops the animation frames of a frame it does not paint,
+   and the picture says it has drawn from one. */
+#player-next { opacity: 0; pointer-events: none; }
+#player[data-stale] { opacity: 0.45; }
 /* One column: the frame's own panels stack too, so it needs the height of all of them. */
-@media (max-width: 900px) { #player { height: 820px; } }
+@media (max-width: 900px) { #player, #player-next { height: 820px; } }
 /* A model with a floor plan (D968): the plan takes the page's width under the levers and the
    results, and its frame is as tall as the plan wants (the player says, `heights`). */
 @media (min-width: 901px) {
@@ -941,8 +949,16 @@ function boot() {
     clear(el("trust"));
     if (trust) { trustPanel(trust, el("trust"), add, D.unit); }
     el("trust-box").hidden = !trust;
-    el("answer-box").hidden = !found;
-    if (found) {
+    /* #1901, #1902: the card sits on top and keeps its room, so the answer shows where the
+       eye is and nothing already drawn moves; a page with levers always has it (a Run compares against the baseline). */
+    el("answer-box").hidden = !found && !D.inputs.length;
+    if (!found) {
+      el("answer-box").className = "panel answer idle";
+      el("answer-kicker").textContent = "";
+      el("answer-head").textContent = tr("viewer.answer_idle");
+      el("answer-detail").textContent = "";
+      el("answer-note").hidden = true;
+    } else {
       el("answer-box").className = "panel answer " + found.word;
       el("answer-kicker").textContent = !answer.names ? tr("viewer.kicker_author") :
         tr("viewer.kicker", {name: names[0] === "Yours" ? tr("viewer.your_version") : names[0]});
@@ -973,11 +989,27 @@ function boot() {
   /* The player, in a frame of its own origin, showing only the line and the lanes, in
      the page's theme. */
   function frame(text) {
-    var theme = document.documentElement.dataset.theme;
+    var theme = document.documentElement.dataset.theme, first = !state.player, shown = el("player");
     state.player = text;
-    el("player").srcdoc = text.replace(/<html lang="([a-z]+)">/, function (all, lang) {
+    /* The new document loads (1 MB and more) after this call. The first one has nothing to show meanwhile;
+       a later one loads in the hidden frame and the old picture stays, dimmed, until the new one says it
+       has drawn (#1947); a capture or a test waits for the mark on the shown frame (#1938). */
+    delete shown.dataset.drawn;
+    if (!first) { shown.dataset.stale = "1"; }
+    (first ? shown : el("player-next")).srcdoc = text.replace(/<html lang="([a-z]+)">/, function (all, lang) {
       return '<html lang="' + lang + '" class="framed"' + (theme === "light" || theme === "dark" ? ' data-theme="' + theme + '"' : "") + ">";
     });
+  }
+
+  /* The hidden frame has drawn: it takes the shown frame's id (and with it the place and the sight), the old
+     one is emptied and waits, transparent, for the next picture. */
+  function swapFrames() {
+    var shown = el("player"), next = el("player-next");
+    shown.id = "player-next"; next.id = "player";
+    shown.setAttribute("aria-hidden", "true"); next.removeAttribute("aria-hidden");
+    delete shown.dataset.stale;
+    shown.removeAttribute("srcdoc"); shown.style.height = "";
+    next.dataset.drawn = "1";
   }
 
   /* -- the engine -- */
@@ -1171,8 +1203,10 @@ function boot() {
   /* The theme switch (D703); the frame is told, so its replay goes on. Its origin is
      opaque (sandboxed), so the message goes to "*": it carries a theme word only. */
   themeSwitch(el("theme"), function () {
-    var win = el("player").contentWindow;
-    if (win) { win.postMessage(["theme", document.documentElement.dataset.theme || "auto"], "*"); }
+    ["player", "player-next"].forEach(function (id) {
+      var win = el(id).contentWindow;
+      if (win) { win.postMessage(["theme", document.documentElement.dataset.theme || "auto"], "*"); }
+    });
   });
 
   document.title = D.title;
@@ -1181,9 +1215,14 @@ function boot() {
      only, taken from that frame alone and within sense. */
   window.addEventListener("message", function (event) {
     var data = event && event.data, height = Array.isArray(data) ? Number(data[1]) : NaN;
-    if (!event || event.source !== el("player").contentWindow || !Array.isArray(data) || data[0] !== "height" ||
+    var sender = !event ? null : event.source === el("player").contentWindow ? el("player") :
+      event.source === el("player-next").contentWindow ? el("player-next") : null;
+    if (sender && Array.isArray(data) && data[0] === "drawn") {
+      if (sender.id === "player") { sender.dataset.drawn = "1"; } else { swapFrames(); }
+    }
+    if (!sender || !Array.isArray(data) || data[0] !== "height" ||
         !(height >= 200 && height <= 5000)) { return; }
-    el("player").style.height = Math.round(height) + "px";
+    sender.style.height = Math.round(height) + "px";
   });
   el("title").textContent = D.question || D.title;
   el("subtitle").textContent = D.question ? D.title : tr("viewer.subtitle");
@@ -1257,6 +1296,12 @@ _PAGE = """<!doctype html>
 <button id="theme" type="button" aria-label="{{theme.aria}}">{{theme_auto}}</button>
 </header>
 <p id="status">{{viewer.needs_js}}</p>
+<div class="panel answer" id="answer-box" hidden>
+<p class="kicker" id="answer-kicker"></p>
+<p id="answer-head"></p>
+<p class="note" id="answer-detail"></p>
+<p class="note" id="answer-note" hidden></p>
+</div>
 <main class="console levers">
 <section class="panel" aria-labelledby="levers-h">
 <div class="panel-head"><h2 id="levers-h">{{viewer.levers}}</h2><span id="changed"></span></div>
@@ -1273,17 +1318,11 @@ _PAGE = """<!doctype html>
 <section class="centre">
 <div class="panel" id="watch">
 <div class="panel-head"><h2 id="watch-title">{{viewer.watch}}</h2></div>
-<iframe id="player" sandbox="allow-scripts" title="{{viewer.frame}}"></iframe>
+<div id="player-stack"><iframe id="player" sandbox="allow-scripts" title="{{viewer.frame}}"></iframe><iframe id="player-next" sandbox="allow-scripts" title="{{viewer.frame}}" aria-hidden="true"></iframe></div>
 <p class="note" id="watch-note"></p>
 </div>
 </section>
 <aside class="side" id="side">
-<div class="panel answer" id="answer-box" hidden>
-<p class="kicker" id="answer-kicker"></p>
-<p id="answer-head"></p>
-<p class="note" id="answer-detail"></p>
-<p class="note" id="answer-note" hidden></p>
-</div>
 <div class="panel" id="results-box">
 <div class="panel-head"><h2 id="results-title">{{viewer.results_author}}</h2><span class="legend"><span class="key yours" id="key-yours">{{viewer.key_yours}}</span><span class="key base" id="key-base">{{player.key_baseline}}</span><span class="key target" id="key-target">{{player.key_target}}</span></span></div>
 <p class="gone" id="stale">{{viewer.stale}}</p>
@@ -1712,7 +1751,7 @@ def build_viewer(layout, path, *, runtime=None, title: str | None = None,
     if cdn and not re.fullmatch(r"https?://[A-Za-z0-9.:-]+/[A-Za-z0-9._/-]*/", viewer_runtime.WHEEL_URL):
         raise AssertionError("the runtime's address must be a plain folder address")
     data = {
-        "title": str(title or (model.get("info") or {}).get("name") or "Model")[:80],
+        "title": str(title or player.page_title(model, (model.get("info") or {}).get("name") or "Model"))[:80],
         "inputs": definition["inputs"], "limits": limits, "estimate": estimate,
         "values": {entry["path"]: experiments.value_at(model, entry["path"])
                    for entry in definition["inputs"]},
@@ -1834,7 +1873,8 @@ def main(argv=None) -> int:
             "written into the copy, which names no source\n")
     from nagasim.api import load_layout
     made = build_viewer(layout, args.output, runtime=args.runtime,
-                        title=args.title or Path(args.model).stem, frozen=frozen, asked=asked,
+                        title=args.title or player.page_title(load_layout(args.model), Path(args.model).stem),
+                        frozen=frozen, asked=asked,
                         language=args.lang, pyodide=args.pyodide,
                         pictures=player.disk_pictures(load_layout(args.model), args.model))  # D1052
     for warning in made["warnings"]:

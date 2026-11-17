@@ -734,6 +734,27 @@ def test_a_recorded_log_plays_at_its_own_pace_with_its_holes():
     assert len(whole.changes("a").events) == 2 and len(whole.changes("b").events) == 1
 
 
+def test_1906_a_log_that_ends_in_a_break_is_down_from_the_break():
+    """#1906: a recording whose last word of a source is a break replayed as live, age 0. Down
+    from the break, the age growing with the playback; a word after the break is live again;
+    a count of lost events alone is not a break."""
+    def ob(value, t):
+        return {"source": "a", "key": "k", "value": value, "source_time": t, "received": t}
+    lines = [ob(1, 100.0), {"source": "a", "gap": True}, {"source": "a", "lost": 2},
+             {"source": "b", "key": "k", "value": 9, "source_time": 106.0, "received": 106.0}]
+    clock = Clock()
+    feed = twin.LogFeed(lines, speed=1.0, monotonic=lambda: clock.mono)
+    clock.mono += 4.0
+    said = feed.changes("a")
+    assert (said.state, said.age, said.gap, said.lost) == ("down", 4.0, True, 2)
+    assert feed.changes("a", said.cursor).state == "down"      # a later pull still says so
+    assert feed.changes("b").state == "live"
+    healed = twin.LogFeed(lines[:3] + [ob(2, 103.0)])
+    assert (healed.changes("a").state, healed.changes("a").age) == ("live", 0.0)
+    counted = twin.LogFeed([ob(1, 100.0), {"source": "a", "lost": 5}])
+    assert counted.changes("a").state == "live"
+
+
 # ================================================================ naga twin
 def on_disk(tmp_path, model):
     """A model, its starter mapping and the log of its own run: the demo with no plant."""

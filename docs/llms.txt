@@ -289,7 +289,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 ## Problem codes
 
-- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 478 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 482 codes that a check of a model can report, from nagasim/core/problems.py.
 - [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
 - [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
 - [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.
@@ -329,6 +329,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [state.take](https://thematthub.github.io/naga/reference/api/take.html): Python reference for nagasim.state.take.
 - [state.start](https://thematthub.github.io/naga/reference/api/start.html): Python reference for nagasim.state.start.
 - [input_uncertainty](https://thematthub.github.io/naga/reference/api/input_uncertainty.html): Python reference for nagasim.uncertainty.input_uncertainty.
+- [input_uncertainty_frame](https://thematthub.github.io/naga/reference/api/input_uncertainty_frame.html): Python reference for nagasim.uncertainty.input_uncertainty_frame.
 - [forecast_from_state](https://thematthub.github.io/naga/reference/api/forecast_from_state.html): Python reference for nagasim.twin.forecast_from_state.
 - [read_result](https://thematthub.github.io/naga/reference/api/read_result.html): Python reference for nagasim.twin.read_result.
 - [investment_case](https://thematthub.github.io/naga/reference/api/investment_case.html): Python reference for nagasim.investment.investment_case.

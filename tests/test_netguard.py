@@ -571,3 +571,18 @@ def test_the_few_sql_url_parameters_that_cannot_redirect_or_weaken_are_allowed()
         with pytest.raises(netguard.NetworkRefused) as caught:
             netguard.check_sql_url(url, ON)
         assert caught.value.code == code, url
+
+
+def test_naga_bind_prints_which_permission_is_missing_and_who_grants_it(tmp_path, capsys):
+    """#1910: `naga bind` printed a refusal's code and message only; the hint is the fix."""
+    from nagasim import api, databind
+    from nagasim.examples import path as bundled
+    model = api.load_layout(str(bundled("single_server")))
+    model["data_sources"] = [{"name": "mes", "kind": "json_url", "location": "https://public.example.com/d.json"}]
+    model["data_bindings"] = [{"name": "servers", "source": "mes", "column": "value", "transform": "last",
+                               "target": "resources.Server.capacity", "enabled": True}]
+    (tmp_path / "m.json").write_text(json.dumps(model), encoding="utf-8")
+    assert databind.main([str(tmp_path / "m.json")]) == 1
+    out = capsys.readouterr().out
+    assert "E_DATA_NETWORK_REFUSED: binding 'servers': network access is off" in out
+    assert f"    hint: {netguard._HUMAN_HINT}" in out

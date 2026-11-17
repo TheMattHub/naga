@@ -195,6 +195,9 @@ def get_kpi_table(model: str, frame: str, offset: int = 0, limit: int = 50) -> d
     """
     results = _results_of(model)
     data = results.get(frame)
+    if data is None and frame in getattr(results, "_dropped", ()):
+        import pandas as pd             # D1321: a frame with no rows is left out of the results
+        data = pd.DataFrame()
     if data is None:
         raise ToolError("E_UNKNOWN_FRAME", f"no results frame named '{frame}'",
                         f"use one of: {', '.join(sorted(results))}")
@@ -235,7 +238,8 @@ _document_args("run_scenarios", model="Workspace name of the model to run.",
                max_seconds="Wall-clock budget for the whole sweep.")
 
 
-@tool(returns={"model": str, "scenarios": list, "crn": bool, "comparison": list, "completed": bool})
+@tool(returns={"model": str, "scenarios": list, "crn": bool, "comparison": list, "completed": bool,
+               "laws": dict})
 def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str] | None = None,
                   replications: int | None = None, run_length: float | None = None,
                   warmup: float | None = None, seed: int = 0, crn: bool = True,
@@ -249,6 +253,10 @@ def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str
     its own CI, and whether that difference interval excludes zero
     ("significant"). A non-significant difference means "not distinguishable at
     this replication count", not "no difference".
+
+    "laws" are each scenario's law checks, {scenario: {"passed", "partial"}}, as run_model gives
+    them for one run: a partial law makes it not valid, no result to compare; censoring or
+    initial bias alone may bias it low, so a difference is not verified.
     """
     doc = workspace().document(model)
     stop = _budget(max_seconds)
@@ -268,8 +276,9 @@ def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str
         "diff_ub": ("Diff UB", _finite), "significant": ("Significant", bool),
         "replications_needed": ("Replications Needed", _finite), "crn_ratio": ("CRN Ratio", _finite),
     })
+    laws_of = {name: {"passed": c.passed, "partial": list(c.partial)} for name, c in result.checks().items()}
     return {"model": model, "scenarios": result.scenarios, "crn": result.crn,
-            "completed": result.completed, "comparison": rows}
+            "completed": result.completed, "comparison": rows, "laws": laws_of}
 
 
 _document_args("what_if", model="Workspace name of the model.",

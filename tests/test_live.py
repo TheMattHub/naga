@@ -278,6 +278,10 @@ def test_a_poller_that_fails_is_down_keeps_its_rows_and_backs_off(scripted):
     assert (down.state, down.events, down.gap) == ("down", (), False)
     assert [p.code for p in down.problems] == ["E_DATA_READ"]
     assert "RuntimeError" in down.problems[0].message and "Canary" not in down.problems[0].message
+    # #1910: the status names the refusal's code and fix with its message, as `naga watch` prints them
+    status = feed.status("mes")
+    assert (status["code"], status["hint"]) == ("E_DATA_READ", "check the connection and the source")
+    assert "Canary" not in str(status)
     assert feed.rows("mes")[0] == [{"id": "WO-1", "state": "run"}]      # the last good rows
     scripted.failure = None
     scripted.clock.now += 0.5

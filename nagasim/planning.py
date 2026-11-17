@@ -95,13 +95,13 @@ def plan_risk(layout, replications: int, *, seed: int = 0, workers: int | str = 
     from nagasim import api
 
     plan = api.run_model(layout, replications=1, seed=seed, deterministic=True)
-    plan_orders = plan["order_summary"] if plan is not None else pd.DataFrame()
+    plan_orders = plan.get("order_summary", pd.DataFrame()) if plan is not None else pd.DataFrame()
     if plan_orders.empty:
         return pd.DataFrame(columns=ORDER_RISK_COLS)
 
     stochastic = api.run_model(layout, replications=replications, seed=seed,
                                 workers=workers, deterministic=False)
-    runs = stochastic["order_summary"] if stochastic is not None else pd.DataFrame()
+    runs = stochastic.get("order_summary", pd.DataFrame()) if stochastic is not None else pd.DataFrame()
 
     rows = []
     for _, plan_row in plan_orders.iterrows():
@@ -128,25 +128,16 @@ def plan_risk(layout, replications: int, *, seed: int = 0, workers: int | str = 
     return pd.DataFrame(rows, columns=ORDER_RISK_COLS)
 
 
-def main(argv=None) -> int:
-    """`naga plan model.json [--orders orders.csv] [--propose OBJECTIVE]
-    [--risk N] [--export plan.csv] [--report out.html]` (PHASE6 W4 P5,
-    ARCHITECTURE D123): answers a planner's three questions in one command --
-    the deterministic plan (D119/D120), optionally a CP-SAT proposal to
-    replace it (D122), optionally the proposal's (or the as-is plan's) risk
-    (D121) -- then exports the plan and/or writes an HTML report with the
-    Gantt and the risk table. Dispatched from `nagasim.cli` without
-    importing Qt. All paths are the caller's own arguments, never read from
-    the model file (ARCHITECTURE 7.6)."""
-    setup_cli(level=None)
-
+def build_parser(prog: str = "naga plan", model_nargs: str | None = None) -> argparse.ArgumentParser:
+    """The arguments of `naga plan`. *model_nargs* "?" makes the model optional, for a caller
+    that adds a mode of its own that needs none and checks the model itself."""
     from nagasim import cpsat  # noqa: F401 -- import fails only inside .propose() itself (D122)
 
     parser = argparse.ArgumentParser(
-        prog="naga plan",
+        prog=prog,
         description="What is the plan, is there a better one, and how risky is it -- the "
                     "deterministic schedule, an optional CP-SAT proposal, and optional risk.")
-    add_model_argument(parser)
+    add_model_argument(parser, **({"nargs": model_nargs} if model_nargs else {}))
     parser.add_argument("--orders", help="CSV replacing the model's \"orders\" section")
     parser.add_argument("--propose", choices=cpsat.OBJECTIVES, default=None,
                         help="propose a plan with CP-SAT instead of the as-is layout "
@@ -159,9 +150,26 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--export", help="write the plan here: .csv or .json by extension")
     parser.add_argument("--report", help="write an HTML report (Gantt + risk table) here")
-    args = parser.parse_args(argv)
+    return parser
 
-    from nagasim import api
+
+def main(argv=None) -> int:
+    """`naga plan model.json [--orders orders.csv] [--propose OBJECTIVE]
+    [--risk N] [--export plan.csv] [--report out.html]` (PHASE6 W4 P5,
+    ARCHITECTURE D123): answers a planner's three questions in one command --
+    the deterministic plan (D119/D120), optionally a CP-SAT proposal to
+    replace it (D122), optionally the proposal's (or the as-is plan's) risk
+    (D121) -- then exports the plan and/or writes an HTML report with the
+    Gantt and the risk table. Dispatched from `nagasim.cli` without
+    importing Qt. All paths are the caller's own arguments, never read from
+    the model file (ARCHITECTURE 7.6)."""
+    setup_cli(level=None)
+    return run(build_parser().parse_args(argv))
+
+
+def run(args) -> int:
+    """`naga plan` on parsed arguments (`build_parser`)."""
+    from nagasim import api, cpsat
     from nagasim.core.orders import orders_from_csv
 
     path = Path(args.model)
@@ -170,7 +178,8 @@ def main(argv=None) -> int:
         layout["orders"] = orders_from_csv(Path(args.orders).read_text(encoding="utf-8"))
 
     results = api.run_model(layout, replications=1, seed=args.seed, deterministic=True)
-    print((results["schedule_log"] if results is not None else pd.DataFrame()).to_string(index=False))
+    print((results.get("schedule_log", pd.DataFrame()) if results is not None else pd.DataFrame())
+          .to_string(index=False))
 
     if args.propose:
         try:
@@ -186,7 +195,7 @@ def main(argv=None) -> int:
         layout = proposal.layout
         results = api.run_model(layout, replications=1, seed=args.seed, deterministic=True)
         print()
-        print(results["schedule_log"].to_string(index=False))
+        print(results.get("schedule_log", pd.DataFrame()).to_string(index=False))
 
     risk = None
     if args.risk:
@@ -195,7 +204,7 @@ def main(argv=None) -> int:
         print(risk.to_string(index=False))
 
     if args.export:
-        out = plan_export(results["schedule_log"], args.export)
+        out = plan_export(results.get("schedule_log", pd.DataFrame()), args.export)
         print(f"\nPlan written to {out}")
 
     if args.report:

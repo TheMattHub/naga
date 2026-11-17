@@ -33,7 +33,10 @@ print(f"{wait.mean:.2f} +- {wait.half_width:.2f} over {wait.n} replications")
 ```
 
 `repr(results)` is short: the number of replications, the frame names and the first KPIs, so a
-notebook or a console shows what a run holds without printing every frame. `Model.run()` returns
+notebook or a console shows what a run holds without printing every frame. Only the frames that
+have rows come back (`system` always), so a single server gets 7 of them; test for an optional
+one with `"store_summary" in results` or `results.get("store_summary")`, or pass
+`keep_empty=True` to get every frame. `Model.run()` returns
 the same `Results`, and both are typed, so an editor completes their methods.
 
 `results.checks()` holds the run against the laws of queues (utilisation, offered load,
@@ -145,7 +148,7 @@ The strings still work (`distribution="Exponential", dist_params={"rate": 1.25}`
 `simulation={"time_limit": 1000}`); a value given both ways is an error. The package ships
 type hints for the builder (`build.pyi`), so an editor completes block parameters, records,
 run settings and distribution parameters and flags a misspelt one before the model runs; a
-plugin's blocks and distributions are there at run time only. A value is in the model's
+plugin's blocks and distributions are there at run time only. A misspelt keyword in a call such as `run_model(replication=5)` is named by Python itself from 3.13 ("did you mean 'replications'?"); older versions are not wrapped. A value is in the model's
 time unit (`nb.Model(time_unit="hours")`) unless its own unit keyword says otherwise
 (`setup=90, setup_unit="seconds"`; a block's distribution: `time_unit="hours"`); the
 hints list the units each keyword accepts, so nothing needs converting by hand. `help(m.process)` lists a

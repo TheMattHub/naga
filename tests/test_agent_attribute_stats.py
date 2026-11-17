@@ -75,7 +75,7 @@ def test_agent_attributes_frame_empty_without_agent_attributes():
     """Absent-in-spirit: fixed, empty columns for a model with no populations,
     and for a population whose type declares no attributes."""
     results = api.run_model(str(MODELS_DIR / "single_server.json"), replications=1, seed=0,
-                            warmup=0, run_length=50)
+                            warmup=0, run_length=50, keep_empty=True)  # the frame shape: keep_empty (D1321)
     assert results["agent_attributes"].empty
     assert results["agent_attribute_log"].empty
     assert list(results["agent_attributes"].columns) == [

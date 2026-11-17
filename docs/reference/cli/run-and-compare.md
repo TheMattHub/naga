@@ -235,7 +235,7 @@ options:
 usage: naga uncertainty [-h] --data PATH=FILE[:COLUMN] [--kpi KPI]
                         [--resamples RESAMPLES] [--replications REPLICATIONS]
                         [--seed SEED] [--run-length RUN_LENGTH]
-                        [--warmup WARMUP] [--bin-width BIN_WIDTH]
+                        [--warmup WARMUP] [--out OUT] [--bin-width BIN_WIDTH]
                         [--cycle CYCLE]
                         model
 
@@ -264,6 +264,8 @@ options:
   --seed SEED
   --run-length RUN_LENGTH
   --warmup WARMUP
+  --out OUT             write the KPI table (one row per KPI) here (.xlsx or
+                        .csv)
   --bin-width BIN_WIDTH
                         an arrival table's bin width, in base time units
   --cycle CYCLE         an arrival table's cycle (e.g. one day), in base time

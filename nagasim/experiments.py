@@ -37,6 +37,8 @@ from nagasim.core.export import concat_runs
 from nagasim.core.outputs import LOG_DERIVED_COLUMNS
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95, paired_diff_ci, welch_diff_ci
+from nagasim.results import Results
+from nagasim.runchecks import RunChecks
 
 __all__ = ["BASELINE", "apply_overrides", "value_at", "list_override_paths", "override_targets",
            "scenarios_of", "flatten_kpis", "needs_event_logs", "KPI_PREFIXES", "ExperimentResult",
@@ -339,6 +341,53 @@ class ExperimentResult:
     def scenarios(self) -> list[str]:
         return list(self.results)
 
+    _REPR_ROWS = 8      # KPI rows of the short repr: a study has dozens of KPIs and eight frames per scenario
+
+    def _summary(self) -> tuple[str, pd.DataFrame, int]:
+        """(header, the first KPI rows of `comparison()`, rows left out) for `repr` and the
+        notebook table (#1898): each non-baseline scenario against the baseline, the system KPIs
+        first. A hand-built study with no baseline compares against its first scenario."""
+        names = self.scenarios
+        base = BASELINE if BASELINE in self.results else (names[0] if names else None)
+        reps = len(self.seeds.get(base) or [])
+        header = (f"ExperimentResult({len(names)} scenario{'s' if len(names) != 1 else ''}: "
+                  f"{', '.join(names)}; {reps} replication{'s' if reps != 1 else ''}; "
+                  f"{'common random numbers' if self.crn else 'independent runs'}"
+                  + ("" if self.completed else "; stopped early") + ")")
+        if base is None or len(names) < 2:
+            return header, pd.DataFrame(), 0
+        table = self.comparison(baseline=base)
+        table = table[table["Scenario"] != base]
+        system = table["KPI"].str.startswith("system/")
+        table = table[system] if system.any() else table
+        columns = ["KPI", "Scenario", "Mean", "Diff vs baseline", "Diff LB", "Diff UB", "Significant"]
+        return header, table[columns].head(self._REPR_ROWS), max(0, len(table) - self._REPR_ROWS)
+
+    def __repr__(self) -> str:
+        """The scenarios and the first KPI differences, not the eight frames of every scenario
+        (19 kB for two); `study.results`, `study.comparison()` and `study.kpis()` are unchanged."""
+        header, shown, more = self._summary()
+        if shown.empty:
+            return header
+        return (header + "\n" + shown.to_string(index=False, float_format=lambda v: f"{v:.4g}")
+                + (f"\n... {more} more rows: study.comparison()" if more else ""))
+
+    def _repr_html_(self) -> str:
+        """Jupyter display: the same header and table as `repr`."""
+        import html
+        header, shown, more = self._summary()
+        table = "" if shown.empty else shown.to_html(index=False, float_format=lambda v: f"{v:,.4g}",
+                                                     na_rep="-")
+        return (f"<p>{html.escape(header)}</p>\n{table}"
+                + (f"\n<p>... {more} more rows: study.comparison()</p>" if more else ""))
+
+    def checks(self) -> dict[str, RunChecks]:
+        """{scenario: RunChecks}: each scenario's law checks, the same object a single run's
+        `Results.checks()` gives (#1880, #1886), computed on first ask. Results put here by hand
+        (a plain dict of frames) have no layout to judge: an empty `RunChecks` with a note."""
+        return {name: res.checks() if isinstance(res, Results) else RunChecks((), note="no layout")
+                for name, res in self.results.items()}
+
     def kpis(self) -> pd.DataFrame:
         """Every scenario's flattened KPIs in one frame, with a Scenario column."""
         frames = [flatten_kpis(res).assign(Scenario=name) for name, res in self.results.items()]
@@ -448,7 +497,7 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
                   run_length: float | None = None, warmup: float | None = None, crn: bool = True,
                   workers: int | str = 1, on_progress=None, should_stop=None,
                   pool=None, baseline: bool = True, logic=None,
-                  controllers: dict | None = None) -> ExperimentResult:
+                  controllers: dict | None = None, keep_empty: bool = False) -> ExperimentResult:
     """Run every named scenario (all of them by default) and return the results.
 
     Parameters
@@ -490,6 +539,9 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         ``{decision point: controller}`` for the Policy-mode DECIDE blocks of every
         scenario, as `nagasim.api.run_model` takes it; with *workers* not 1 each
         controller must pickle.
+    keep_empty : bool, default False
+        Also keep each scenario's frames with no rows, as `nagasim.api.run_model` (D1328):
+        by default only frames with rows are kept, plus ``"system"`` always.
 
     Returns
     -------
@@ -581,7 +633,10 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         if len(pairs) < replications or not pairs:
             result.completed = False        # stopped, or nothing to report
             break
-        result.results[name] = concat_runs([kpi for _, kpi in pairs])
+        frames = api.frames_with_rows(concat_runs([kpi for _, kpi in pairs]), keep_empty)   # D1328
+        # D906: what `checks()` judges the scenario by, as `api.run_model` sets them for a run.
+        frames._layout, frames._warmup = layouts[name], float(windows[name][1] or 0)
+        result.results[name] = frames
         result.seeds[name] = [s for s, _ in pairs]
         result.warmups[name] = float(windows[name][1] or 0)
     return result
@@ -1033,7 +1088,7 @@ def _throughput_series(source) -> tuple[np.ndarray, np.ndarray]:
     Replications are truncated to the shortest one so every averaged point has
     the same number of contributors.
     """
-    log_df = source["entity_log"] if isinstance(source, dict) else source
+    log_df = source.get("entity_log") if isinstance(source, dict) else source   # absent when empty (D1321)
     if log_df is None or len(log_df) == 0:
         return np.array([]), np.array([])
     df = log_df.dropna(subset=["Exited At", "Throughput Time"])

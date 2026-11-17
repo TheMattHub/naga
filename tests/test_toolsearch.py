@@ -3,7 +3,15 @@ plus the unit contracts (deterministic order, choices filter, rerank hook, empty
 import pytest
 
 from nagasim import agent_tools, toolsearch
-from nagasim.agent_tools.discover import catalogue_index
+from nagasim.agent_tools.discover import catalogue_index, tool_index
+
+
+def _engine_index():
+    """The ranking the tables below measure: over the engine's own tools only (#1932). The registry is
+    per process, so it also holds whatever the product, render3d or a plugin registered once any test in
+    the same worker imported them; their tools then compete for the top three and shift every word's
+    weight, and the floors would hold or not by test order. The product's catalogue is not measured here."""
+    return tool_index(t for t in agent_tools.TOOLS.values() if t.origin.startswith("nagasim."))
 
 # (query, acceptable tools: any of them in the top 3 counts)
 EVAL = [
@@ -101,7 +109,7 @@ HELD_OUT_2_FLOOR = 0.50   # 14 of 25 when written; Phase 8 tools (what_if, check
 
 
 def _ranks(table=EVAL):
-    idx = catalogue_index()
+    idx = _engine_index()
     for query, wanted in table:
         names = [h["name"] for h in toolsearch.search(idx, query, limit=3)]
         yield query, wanted, next((i for i, n in enumerate(names) if n in wanted), None)
@@ -118,7 +126,7 @@ def test_the_eval_table_finds_the_right_tool_in_the_top_three(capsys):
 
 
 def test_the_held_out_tables_keep_their_top_three(capsys):
-    # HELD_OUT is tuned now, a regression guard: 0.9, as the product's nine extra tools cost it one query.
+    # HELD_OUT is tuned now, a regression guard: 0.9 over the engine's tools (19 of 19 today).
     for name, table, floor in (("HELD_OUT", HELD_OUT, 0.9), ("HELD_OUT_2", HELD_OUT_2, HELD_OUT_2_FLOOR)):
         ranks = list(_ranks(table))
         top3 = sum(r is not None for _, _, r in ranks) / len(ranks)
@@ -138,19 +146,19 @@ def test_each_overlap_ask_finds_its_own_tool_before_the_others_of_its_group():
     from pathlib import Path
     from nagasim.agent_tools.core import resolve_alias
     data = json.loads((Path(__file__).parent / "data" / "tool_overlap_asks.json").read_text(encoding="utf-8"))
-    idx = catalogue_index()
+    idx = _engine_index()
     misses = []
     for ask, want, group in data["asks"]:
         want = resolve_alias(want, {})[0]
         members = {resolve_alias(t, {})[0] for t in data["groups"][group]}
-        ranked = [h["name"] for h in toolsearch.search(idx, ask, limit=len(agent_tools.TOOLS)) if h["name"] in members]
+        ranked = [h["name"] for h in toolsearch.search(idx, ask, limit=len(idx.docs)) if h["name"] in members]
         if ranked[:1] != [want]:
             misses.append((ask, want, ranked[:2]))
     assert len(data["asks"]) == 76 and len(misses) <= 1, misses
 
 
 def test_a_result_names_the_summary_and_required_arguments():
-    hit = toolsearch.search(catalogue_index(), "run the model", limit=1)[0]
+    hit = toolsearch.search(_engine_index(), "run the model", limit=1)[0]
     assert hit["name"] == "run_model" and hit["summary"].startswith("Run (simulate) a model")
     assert hit["args"] == agent_tools.TOOLS["run_model"].input_schema["required"]
 

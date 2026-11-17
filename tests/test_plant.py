@@ -566,6 +566,25 @@ def test_a_live_feed_in_chunks_is_the_recording_at_every_pull():
     assert watch.mapper.report()["holes"] == [(held[73].t, 2, True)]
 
 
+def test_1907_a_break_said_by_a_source_that_is_down_is_dated_at_its_last_word():
+    """#1907: the break of an answer that says the source is down follows every event of that
+    answer; it was dated before them, at the previous pull's last instant (t = 0 on a log read
+    at once)."""
+    model = api.load_layout(MODELS / "machine_with_breakdowns.json")
+    _simulated, mapping, log = _plant_log(model)
+
+    class Cut(FakeFeed):
+        def changes(self, source, cursor=None, limit=1000):
+            got = super().changes(source, cursor, limit)
+            if int(got.cursor) < 74:
+                return got
+            return live.Changes(got.events, got.cursor, 0, int(cursor or 0) < 74, "down", 5.0, ())
+
+    watch = plant.Watch(mapping, model, Cut(log[:74], 37), sources=["plant"])
+    held = watch.step() + watch.step()
+    assert watch.mapper.report()["holes"] == [(held[-1].t, 0, True)] and held[-1].t > 0
+
+
 def test_a_watch_reads_every_live_source_of_the_model_and_orders_one_pull_by_time():
     model = _line(levels=[{"name": "A", "initial": 0.0}, {"name": "B", "initial": 0.0}],
                   data_sources=[{"name": "north", "kind": "mqtt", "connection": "broker"},

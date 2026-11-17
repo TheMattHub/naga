@@ -108,7 +108,7 @@ The 95 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 
 | Tool | Reads | What it does |
 |---|---|---|
-| `get_model_format` | yes | What a model file holds, compactly: call it ONCE before writing the first model file. |
+| `get_model_format` | yes | What a model file holds: call it ONCE before writing the first model file. |
 | `write_model` |  | Write a WHOLE model in one call: the complete model file as one JSON object. |
 
 ## debug

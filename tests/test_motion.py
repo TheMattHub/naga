@@ -288,7 +288,8 @@ def test_motion_stats_reset_at_warmup_and_use_means_when_deterministic():
 
 def test_a_model_without_motion_gets_an_empty_frame_with_its_columns():
     blocks = [create(max_arrivals=1), dispose()]
-    results = api.run_model(layout(blocks, chain(*blocks)), replications=1, run_length=5)
+    results = api.run_model(layout(blocks, chain(*blocks)), replications=1, run_length=5,
+                            keep_empty=True)  # the frame shape: keep_empty (D1321)
     assert results["motion_summary"].empty
     assert "Collaborative %" in results["motion_summary"].columns
 

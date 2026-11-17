@@ -4,9 +4,39 @@ This page gives the major changes of each minor release, newest first: what you 
 that you could not before, and what changes when you upgrade. Small fixes and details are left
 out on purpose. Every change, fixes included, is in the [release notes](changelog.md).
 
-## 0.20: yards, plugin results and checked studies
+## 0.21: plain answers and lean results
 
 <!-- --8<-- [start:latest] -->
+- **Answers that say yes or no.** A study's write-up, control room and slides open with Yes, No
+  or Not clear yet, judged from each goal's 95% interval, and explain the terms they use. A run
+  whose law checks fail reads "not valid" with the reason; a run that may be biased low (people
+  still inside at the end, a cold start) keeps its numbers with that caveat.
+- **Studies a person checks.** `naga study confirm` records a person's own check that the model
+  matches reality, and each option's difference from the Baseline comes with its paired 95%
+  interval.
+- **The whole model is validated.** A misspelt key at any level is named with the nearest valid
+  one, scenario override paths are checked, and a zero, negative or empty distribution value is
+  refused before the run.
+- **Lean results.** `run_model` and `run_scenarios` return only the result frames that have rows,
+  as in the snippet below; `keep_empty=True` gives every frame.
+  `uncertainty.input_uncertainty_frame` gives input uncertainty as a table, and
+  `naga uncertainty --out` writes it.
+- **Before you upgrade.** `results["store_summary"]` on a frame with no rows now raises a KeyError
+  that names the change: use `results.get(...)`, `in`, or `keep_empty=True`. MCP clients read the
+  structured answer instead of the text. Models with a zero or negative distribution value are
+  refused. Bundled models give the same results as 0.20.1 (62 of 62, on two seed sets).
+
+```python
+from nagasim import api
+
+results = api.run_model("single_server", replications=2, seed=0)
+print(sorted(results))                # only the frames that have rows
+print(results.get("store_summary"))   # None: this model has no store
+```
+<!-- --8<-- [end:latest] -->
+
+## 0.20: yards, plugin results and checked studies
+
 - **Cranes, piles and full rows.** Layout-only `cranes` and `stockpiles` sections draw each lift
   and a slab per stored entity in the player, and a block's `queue_row` may give `slots`. A run
   counts the arrivals that find the row full in a `slot_summary` frame, which a study can rank.
@@ -27,7 +57,6 @@ out on purpose. Every change, fixes included, is in the [release notes](changelo
 ```console
 naga study numbers my_study
 ```
-<!-- --8<-- [end:latest] -->
 
 ## 0.19: the building around the model
 

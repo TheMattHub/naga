@@ -29,6 +29,7 @@ The functions and classes a script calls most. Each page is its docstring: param
 | [`nagasim.state.take`](take.md) | The state document of *layout* at model time *at* of the run with *seed*. |
 | [`nagasim.state.start`](start.md) | The model with a state document's state as its `initial_state`. |
 | [`nagasim.uncertainty.input_uncertainty`](input_uncertainty.md) | Each KPI's run-to-run interval, its interval with the inputs' uncertainty, and the inputs' share of the spread. |
+| [`nagasim.uncertainty.input_uncertainty_frame`](input_uncertainty_frame.md) | Each KPI's run-to-run interval, its interval with the inputs' uncertainty, and the inputs' share of the spread, as a DataFrame with one row per KPI. |
 | [`nagasim.twin.forecast_from_state`](forecast_from_state.md) | The default runner: *horizon* from the clock the model's state starts at. |
 | [`nagasim.twin.read_result`](read_result.md) | The latest result a twin wrote into *directory*. |
 | [`nagasim.investment.investment_case`](investment_case.md) | One row per scenario of *result*, the baseline first (COLUMNS). |

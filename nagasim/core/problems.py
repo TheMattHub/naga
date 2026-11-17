@@ -892,6 +892,15 @@ PROBLEM_CODES: dict[str, str] = {
     "W_MES_NAIVE_TIME": "An MES timestamp carries no UTC offset and was read as UTC.",
     "W_MES_TABLE_MISSING": "A REST MES source answered 404 for a table, which was read as empty.",
     "W_LAW": "A law check of the last run did not pass (nagasim.laws): a warning, never an error; it clears when the model changes.",
+    # -- the product's schedule files (the product; codes live in this one table) --
+    "E_REPLAY_FILE": "A schedule or due-date file cannot be read: a missing file, a format other than "
+                     "CSV or Excel, no rows, or times that mix numbers and dates.",
+    "E_REPLAY_COLUMN": "A column the replay needs (order, resource, start, end) is not found, or a "
+                       "column mapping names a field or a column that does not exist.",
+    "E_REPLAY_INPUT": "A replay setting is out of range: the spread, the replications, or a breakdown "
+                      "that names an unknown resource or a non-positive time.",
+    "W_REPLAY_ROW": "A schedule or due-date row cannot be read (a blank order or resource, a time that "
+                    "is not a time, an end before its start) and was left out; its order is marked.",
     # -- file level -----------------------------------------------------------
     "E_SCHEMA_VERSION": "The file's schema_version is newer than this build supports.",
 }

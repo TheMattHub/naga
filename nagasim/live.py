@@ -434,7 +434,10 @@ class Feed:
                     "state": src.state, "age": self._age(src), "seq": src.seq,
                     "buffered": len(src.events), "keys": len(src.latest),
                     "lost": src.evicted, "gaps": src.gaps, "dropped": dict(src.dropped),
-                    "skew": src.skew, "problem": src.error.message if src.error else None}
+                    "skew": src.skew, "problem": src.error.message if src.error else None,
+                    # #1910: read with the message, so a summary names the refusal and its fix
+                    "code": src.error.code if src.error else None,
+                    "hint": src.error.hint if src.error else None}
 
     def close(self) -> None:
         self._stop.set()
@@ -529,6 +532,8 @@ def main(argv=None) -> int:
                         got = feed.changes(name, cursors[name])
                     except (ReadError, netguard.GuardError) as exc:
                         print(f"{name}: {exc.code}: {exc.message}")
+                        if exc.hint:        # #1910: which permission is missing and who grants it
+                            print(f"    hint: {exc.hint}")
                         failed = True
                         continue
                     cursors[name] = got.cursor
@@ -555,7 +560,9 @@ def main(argv=None) -> int:
                     continue
                 print(f"{name}: {status['state']}, {totals[name]} events, {status['lost']} lost, "
                       f"{status['gaps']} gaps, channel {status['channel']}"
-                      + (f"; {status['problem']}" if status["problem"] else ""))
+                      + (f"; {status['code']}: {status['problem']}" if status["problem"] else ""))
+                if status["hint"]:
+                    print(f"    hint: {status['hint']}")
                 failed = failed or status["state"] != "live"
     except KeyboardInterrupt:
         pass

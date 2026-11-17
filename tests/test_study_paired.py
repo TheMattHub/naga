@@ -199,7 +199,7 @@ def test_writeup_and_room_goal_tables_lead_with_the_option(nurse_study):
     assert f"| Goal | KPI | Target | Fourth nurse value | Status | {REFERENCE} value |" in md
     room = studypage.render(folder, st, study_id="s", in_room=True)
     panel = room[room.index('id="goals"'):room.index('id="model"')]
-    heads = re.findall(r"<th>(.*?)</th>", panel)
+    heads = re.findall(r"<th>(.*?)</th>", re.sub(r"</?abbr[^>]*>", "", panel))     # without the hover glosses (D1324)
     assert heads[:6] == ["Goal", "KPI", "Target", "Fourth nurse value", "Status", f"{REFERENCE} value"], heads
     assert panel.index("5.4%") < panel.index("27.6%")
     # With no option recommended the tables show the Baseline as before.

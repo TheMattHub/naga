@@ -180,7 +180,10 @@ def test_the_script_puts_text_on_the_page_only_as_text():
     # The one message out (D968): a plan's frame tells the viewer its height, a number and nothing else.
     one = 'window.parent.postMessage(["height", height], "*");'
     assert player.SCRIPT.count(one) == 1
-    script = player.SCRIPT.replace(one, "")
+    # And a constant one (#1938): the frame has drawn, which carries nothing at all.
+    drawn = 'window.parent.postMessage(["drawn"], "*");'
+    assert player.SCRIPT.count(drawn) == 1
+    script = player.SCRIPT.replace(one, "").replace(drawn, "")
     banned = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval",
               "Function", "fetch", "XMLHttpRequest", "WebSocket", "EventSource", "import",
               "setAttribute", "srcdoc", "location", "cookie", "sessionStorage",

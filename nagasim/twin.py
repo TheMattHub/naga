@@ -899,12 +899,26 @@ class LogFeed:
 
     def changes(self, source: str, cursor: str | None = None, limit: int = 1000) -> Changes:
         since = int(cursor) if isinstance(cursor, str) and cursor.isdigit() else 0
-        until = bisect.bisect_right(self._times, self.clock())
+        now = self.clock()
+        until = bisect.bisect_right(self._times, now)
         mine = [line for line in self._lines[since:until] if line.get("source") == source]
         events = tuple(line for line in mine if "key" in line)
         holes = [line for line in mine if "key" not in line]
         lost = sum(int(h["lost"]) for h in holes if _num(h.get("lost")) is not None)
-        return Changes(events, str(until), lost, any(h.get("gap") for h in holes), "live", 0.0, ())
+        gap = any(h.get("gap") for h in holes)
+        # #1906: a break with no word of the source after it (up to the playback, whatever this
+        # pull's cursor) is a connection that was lost there: down from that instant, as a live
+        # feed's is, never a quiet plant. A count of lost events alone is not a break.
+        for index in range(until - 1, -1, -1):
+            line = self._lines[index]
+            if line.get("source") != source or not ("key" in line or line.get("gap")):
+                continue
+            if "key" not in line:
+                broke = self._times[index]
+                return Changes(events, str(until), lost, gap, "down",
+                               now - broke if broke > -math.inf else None, ())
+            break
+        return Changes(events, str(until), lost, gap, "live", 0.0, ())
 
     def close(self) -> None:
         pass

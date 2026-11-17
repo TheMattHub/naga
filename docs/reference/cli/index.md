@@ -60,8 +60,9 @@ Read a plant, start a run from its state, calibrate and forecast.
 | [`naga watch`](twin.md#naga-watch) | print what a model's live data sources send, as it arrives |
 | [`naga state`](twin.md#naga-state) | take a model's state from a run, and check one before a start |
 | [`naga plant`](twin.md#naga-plant) | map what a plant sends into an observed timeline: check, replay a log, watch |
-| [`naga twin`](twin.md#naga-twin) | an operational twin: monitor a plant, forecast from its state, compare, report |
-| [`naga plc-write`](twin.md#naga-plc-write) | write the setpoints a person approved in a twin's outbox to a soft PLC on this machine (dry-run unless --write) |
+| [`naga twin`](twin.md#naga-twin) | an operational twin: monitor, forecast, compare, report |
+| [`naga approve`](twin.md#naga-approve) | approve a twin's recommendation (asks first) |
+| [`naga plc-write`](twin.md#naga-plc-write) | write approved setpoints to a soft PLC on this machine (dry-run unless --write) |
 | [`naga calibrate`](twin.md#naga-calibrate) | fit model parameters to observed KPIs |
 | [`naga forecast`](twin.md#naga-forecast) | short-horizon forecast with prediction bands |
 

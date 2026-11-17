@@ -31,24 +31,59 @@ def test_examples_exist():
 
 
 @pytest.mark.slow
-def test_run_model_returns_all_frames_per_replication(curated_results):
+def test_run_model_returns_the_frames_with_rows_per_replication(curated_results):
     # One loop over every bundled example rather than one test each, over the
     # session-wide `curated_results` runs (conftest) rather than its own: the
     # runs are what cost, and the loop reports the first example that breaks.
+    # D1321: only the frames with rows come back ("system" always); the rest of
+    # KEYS are named in `_dropped`, so nothing is lost without a trace.
+    extra = {"conveyor_stops", "conveyor_diverts", "conveyor_merges"}   # a belt with points
     for path, results in curated_results.items():
-        # A belt with points adds its point frames (only then: belt_points.json).
-        assert set(results) - {"conveyor_stops", "conveyor_diverts", "conveyor_merges"} == KEYS, path.stem
+        assert "system" in results, path.stem
+        empty = sorted(name for name, frame in results.items() if frame.empty and name != "system")
+        assert not empty, (path.stem, empty)
+        assert set(results) | set(results._dropped) | extra >= KEYS, path.stem
+        assert set(results) - extra <= KEYS and not set(results) & set(results._dropped), path.stem
         assert set(results["system"]["Run"]) == {0, 1}, path.stem
         # A purely continuous example has no entities at all (PHASE4 D1); its
         # own statistics are checked by the test below.
-        if not results["flow_summary"].empty:
+        if "flow_summary" in results:
             continue
         # An agent-based example (6D1 U3 templates) creates no entities
         # either (PHASE5 AB-1) -- check an agent KPI instead.
-        if not results["agent_summary"].empty:
+        if "agent_summary" in results:
             assert results["agent_summary"]["Max"].max() > 0, path.stem
             continue
         assert metric_value(results, "Total Entities Created") > 0, path.stem
+
+
+def test_keep_empty_returns_every_frame_and_the_default_names_the_dropped_ones():
+    """D1321: a single server gets the frames with rows (7, not 33); keep_empty=True gives all."""
+    args = dict(replications=2, run_length=200, warmup=20, seed=0)
+    lean = api.run_model("single_server", **args)
+    full = api.run_model("single_server", keep_empty=True, **args)
+    assert set(full) == KEYS and full._dropped == ()
+    assert set(lean) == {name for name, frame in full.items() if len(frame)} | {"system"}
+    assert set(lean._dropped) == KEYS - set(lean) and len(lean) == 7
+    with pytest.raises(KeyError, match="no rows in this run"):
+        lean["store_summary"]
+    assert lean.get("store_summary") is None and "store_summary" not in lean
+
+
+def test_run_scenarios_follows_the_same_rule():
+    """D1328: each scenario keeps only the frames with rows (`system` always); keep_empty=True keeps all."""
+    from nagasim import experiments
+    layout = json.loads((Path(api.__file__).parent / "models" / "single_server.json").read_text(encoding="utf-8"))
+    layout["scenarios"] = [{"name": "Faster", "overrides": [
+        {"path": "blocks.process_1.params.dist_params.rate", "value": 1.6}]}]
+    args = dict(replications=2, run_length=200, warmup=20, seed=0)
+    lean = experiments.run_scenarios(layout, **args)
+    full = experiments.run_scenarios(layout, keep_empty=True, **args)
+    for name, frames in lean.results.items():
+        assert len(frames) == 7 and "system" in frames and set(full.results[name]) == KEYS
+        assert set(frames) == {k for k, f in full.results[name].items() if len(f)} | {"system"}
+        assert frames.get("store_summary") is None
+    assert lean.comparison() is not None
 
 
 @pytest.mark.parametrize("path", MODELS, ids=lambda p: p.stem)
@@ -155,7 +190,7 @@ _SNAPSHOT_ONLY = {"Queue Length Mode", "Queue Length Mode %", "Queue Len P95", "
 
 def test_record_logs_off_keeps_every_collector_statistic_and_empties_the_logs():
     """PHASE4 T7. `record_logs=False` stops the per-event logs being built; the
-    three log frames come back with their columns and no disposed rows, and
+    two empty log frames are left out (D1321), the entity log keeps no disposed rows, and
     every statistic that comes from a collector is bit-identical."""
     from nagasim import experiments
 
@@ -164,8 +199,7 @@ def test_record_logs_off_keeps_every_collector_statistic_and_empties_the_logs():
     off = api.run_model(model, replications=1, seed=0, record_logs=False)
 
     for key in ("resource_log", "store_log"):
-        assert list(off[key].columns) == list(on[key].columns)
-        assert off[key].empty and not on[key].empty
+        assert key not in off and not on[key].empty     # no rows, so left out (D1321)
     assert len(off["entity_log"]) < len(on["entity_log"])      # only live entities remain
 
     def kpis(frames):
@@ -392,3 +426,35 @@ def test_run_model_takes_a_bundled_name(tmp_path, monkeypatch):
     with pytest.raises(Exception) as err:
         api.run_model("single_server", replications=1)
     assert "bundled" not in str(err.value)
+
+
+def test_a_wrong_call_says_what_is_wrong_and_names_the_nearest(capsys):
+    """#1899: replications under 1 are refused (they returned None), a misspelt bundled name or
+    KPI key names the nearest, and the CLI says the bundled name once."""
+    from nagasim import cli
+    for bad in (0, -3, 2.5):
+        with pytest.raises(ValueError, match=f"replications must be a whole number of at least 1, not {bad!r}"):
+            api.run_model("single_server", replications=bad)
+    with pytest.raises(FileNotFoundError, match="did you mean the bundled model 'single_server'"):
+        api.run_model("single_sever", replications=1)
+    assert cli.main(["run", "single_sever"]) == 2
+    assert capsys.readouterr().err.count("single_server") == 1
+    results = api.run_model("single_server", replications=2, run_length=200)
+    with pytest.raises(KeyError, match="did you mean 'system/Avg Queue Length'"):
+        results.kpi("system/Avg Queue Lenght")
+    with pytest.raises(KeyError, match=r"see results\.kpis\(\)"):
+        results.interval("zzz")
+
+
+def test_the_first_pages_modules_load_on_first_use_and_import_stays_light():
+    """#1897: after a bare `import nagasim`, dir() lists api, experiments and optimize and
+    attribute access imports them; the import itself loads none of them."""
+    import subprocess
+    import sys
+    code = ("import sys, nagasim\n"
+            "assert not any(m in sys.modules for m in ('nagasim.api', 'nagasim.experiments', 'nagasim.optimize'))\n"
+            "assert {'api', 'experiments', 'optimize'} <= set(dir(nagasim))\n"
+            "assert callable(nagasim.experiments.run_scenarios) and callable(nagasim.api.run_model)\n"
+            "assert callable(nagasim.optimize.tornado)\n")
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr

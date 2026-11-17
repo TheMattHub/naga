@@ -18,9 +18,9 @@ from importlib import resources
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import flowchart
+from nagasim import flowchart, laws
 from nagasim.modeldiff import diff
-from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, overall
+from nagasim.studychecks import goal_kpi, judge, kpi_entry, kpi_mean, overall
 from nagasim.twin import write_json, write_text
 
 FORMAT = 1
@@ -204,6 +204,16 @@ _TODO = {
     "conclusions": "Compare the last version's KPIs with the goals and adjust the model or the goals. "
                    "When the person is satisfied, build the deliverable with study_package.",
 }
+# The order next_step and What next take the open checklist items in (#1891): the requirements
+# first (question, goals, data, assumptions: settled before the model is built, docs/USERS.md),
+# then what moves the answer on (a model, its checks, its validation, the options, the goals), and
+# last the scope's mapping to blocks, which is the modeller's bookkeeping and answers nothing.
+# CHECKLIST keeps the order the pages show.
+# #1884, D1309: open items that are the modeller's bookkeeping (which blocks make up the scope).
+# The assistant closes them; the person's pages (write-up, slides, control room) leave them out.
+MODELLER_ITEMS = ("scope",)
+NEXT_ORDER = ("question", "goals", "inputs", "assumptions", "model", "verification", "validation",
+              "experiments", "conclusions", "scope")
 _MAP_BLOCKS = ('Build the components with study_step, then map each to the blocks that model it with '
                'study_update(changes={"target": [{"name": "...", "blocks": ["<block name>"]}]}), sending the '
                'full list (a list key is replaced whole).')
@@ -411,25 +421,21 @@ def _all_or_some(flags: list[bool]) -> str:
     return "passed" if flags and all(flags) else "partial" if any(flags) else "not_verified"
 
 
-def judge(goal: dict, mean: float | None) -> str:
-    """met / not_met / not_verified for one goal against one KPI mean."""
-    if mean is None:
-        return "not_verified"
-    ok = (goal.get("low") is None or mean >= goal["low"]) and (goal.get("high") is None or mean <= goal["high"])
-    return "met" if ok else "not_met"
-
-
 def goals_status(study: dict) -> list[dict]:
     """Each goal met / not_met / not_verified on the last version's KPI means. A goal without
-    a KPI (text only) or without a version to look at stays not_verified."""
+    a KPI (text only) or without a version to look at stays not_verified. The Baseline's own law
+    warnings decide as they do for an option (#1935): a run they make not valid has no verdict
+    (D1310), one only censoring or initial bias warned keeps a verdict a low bias cannot reverse
+    (D1316). A version recorded before #1935 carries no warnings and is judged on its means alone."""
     last = _last(study)
+    invalid, low = laws.split({"name": n} for n in (last or {}).get("law_warnings") or ())
     out = []
     for i, goal in enumerate(study["goals"]):
         kpi, mean = goal_kpi(goal), None
-        if last is not None and kpi is not None:
+        if last is not None and kpi is not None and not invalid:
             mean = (last.get("kpis") or {}).get(kpi)
         out.append({"id": goal.get("id", f"g{i + 1}"), "text": goal.get("text") or kpi or "",
-                    "status": judge(goal, mean)})
+                    "status": judge(goal, mean, biased_low=bool(low))})
     return out
 
 
@@ -640,7 +646,43 @@ def next_options(study: dict, folder: Path, study_id: str | None = None, limit: 
     return nextoptions.for_study(study, folder, study_id, limit)
 
 
+def _step_json(path: Path) -> dict:
+    try:
+        step = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return step if isinstance(step, dict) else {}
+
+
+def newest_draft(folder: Path, study: dict) -> tuple[str, dict] | None:
+    """(id, step.json) of the newest draft when it was stored after the last version (its step
+    failed), else None."""
+    drafts = sorted((p for p in (Path(folder) / "versions" / "drafts").glob("d[0-9]*") if p.is_dir()),
+                    key=lambda p: int(p.name[1:]) if p.name[1:].isdigit() else -1)
+    if not drafts:
+        return None
+    step = _step_json(drafts[-1] / "step.json")
+    last = _last(study)
+    if last is not None:
+        try:
+            after = str(_step_json(Path(folder) / "versions" / version_id(study) / "step.json").get("at", ""))
+        except StudyError:
+            after = ""
+        if str(step.get("at", "")) <= after:
+            return None
+    return drafts[-1].name, step
+
+
+def _draft_fix(vid: str, step: dict) -> str:
+    """#1892: a step that failed names its own fix, not the checklist's next item."""
+    n = sum(isinstance(p, dict) for p in step.get("problems") or ())
+    what = f"the {n} problem(s) its answer listed" if n else "what its failed checks name"
+    return f"Step {vid} failed and was kept as a draft: fix {what}, then call study_step again."
+
+
 def next_step(study: dict, folder: Path | None = None) -> str:
+    if folder is not None and (draft := newest_draft(folder, study)):
+        return _draft_fix(*draft)
     text = _next_step(study, folder)
     last = _last(study)
     if last and last.get("scenario_error"):     # a scenario of the decision did not run (#1729)
@@ -654,20 +696,22 @@ def next_step(study: dict, folder: Path | None = None) -> str:
 def open_items(study: dict, folder: Path | None = None) -> list[dict]:
     """What still holds the study up, in order: {"item": "plan_approval"} (a one-go plan not yet
     approved), {"item": "size_cap"} (the size's versions used and not sufficient), then each open
-    checklist step as {"item", "index" (1-based), "check"}, leaving out skipped steps and inputs
-    when the study has no sources (data is optional). `next_step` reads the first, the What next
-    options (`nagasim.nextoptions`) all of them, so the two never disagree on a gate."""
+    checklist step as {"item", "index" (1-based, in CHECKLIST), "check"} in NEXT_ORDER, leaving out
+    skipped steps and inputs when the study has no sources (data is optional). `next_step` reads
+    the first, the What next options (`nagasim.nextoptions`) all of them, so the two never
+    disagree on a gate."""
     out = []
     if study["mode"] == "one_go" and not study["plan_approved"]:
         out.append({"item": "plan_approval"})
     if len(study["versions"]) >= SIZES[study["size"]]["increments"] and not sufficiency(study)["sufficient"]:
         out.append({"item": "size_cap"})
     skipped = study.get("skipped", [])
+    steps = []
     for i, c in enumerate(checklist(study, folder), 1):
         if c["verdict"] == "passed" or c["item"] in skipped or (c["item"] == "inputs" and not study["sources"]):
             continue
-        out.append({"item": c["item"], "index": i, "check": c})
-    return out
+        steps.append({"item": c["item"], "index": i, "check": c})
+    return out + sorted(steps, key=lambda s: NEXT_ORDER.index(s["item"]))
 
 
 def _next_step(study: dict, folder: Path | None = None) -> str:
@@ -760,8 +804,14 @@ def _record(folder: Path, study: dict, layout: dict, verdict: str, checks: list[
         write_text(target / "flowchart.txt", flowchart.to_text(geom))
         _mark_earlier(study, layout, vid)
         study["versions"].append({"id": vid, "note": note, "verdict": verdict,
-                                  "verification": overall([c for c in checks if c["kind"] not in ("goal", "precision")]),
+                                  "verification": overall([c for c in checks
+                                                           if c["kind"] not in ("goal", "precision", "scenario")]),
                                   "kpis": kpis, "changes_count": len(lines),
+                                  # #1935: the names of the run's law warnings, so goals_status judges
+                                  # the Baseline as the write-up does (step.json keeps them in full)
+                                  **({"law_warnings": warned} if (warned := [
+                                      c["name"] for c in checks
+                                      if c["kind"] == "law" and c["verdict"] != "passed"]) else {}),
                                   **({"scenarios": scenarios} if scenarios else {}),
                                   **{k: run[k] for k in ("replications", "precision") if run},
                                   **{k: run[k] for k in ("scenario_error",) if run and k in run}})

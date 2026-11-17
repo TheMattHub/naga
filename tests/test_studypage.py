@@ -7,6 +7,11 @@ import pytest
 
 from nagasim import study, studypage
 
+
+def _plain(page: str) -> str:
+    """The page without the hover glosses (<abbr>) that mark a term's first use (D1324)."""
+    return re.sub(r"</?abbr[^>]*>", "", page)
+
 _OK = [{"name": "c", "verdict": "passed", "why": "", "kind": "law"}]
 
 
@@ -41,7 +46,7 @@ def test_page_shows_verdict_goals_and_versions(tmp_path):
     folder, st = _new(tmp_path, goals=goals, target=[{"name": "crane"}])
     study.record_step(folder, st, _layout("a"), _digest(), _OK, "first", None)
     study.record_step(folder, st, _layout("a", "b"), _digest(Throughput=8.0), _OK, "second", None)
-    page = studypage.render(folder)
+    page = _plain(studypage.render(folder))
     assert f'class="banner b-wait">{study.sufficiency(st)["label"]}' in page
     assert 'id="v001"' in page and 'id="v002"' in page and "revert to v001" in page
     assert _timeline(page).count("<svg") >= 2     # a flowchart per version
@@ -53,7 +58,7 @@ def test_validation_level_is_the_strongest_passed(tmp_path):
     val = [{"level": "data", "passed": True, "source": "engine"}, {"level": "expert", "passed": True, "source": "person"},
            {"level": "known_answer", "passed": False}]
     folder, st = _new(tmp_path, validation=val)
-    assert "Validation: expert" in studypage.render(folder, st)
+    assert "Validation: expert" in _plain(studypage.render(folder, st))
 
 
 def test_strings_are_escaped(tmp_path):
@@ -133,7 +138,7 @@ def test_header_has_chips_and_precision(tmp_path):
     folder, st = _two_versions(tmp_path)
     st["versions"][-1]["replications"] = 25
     st["versions"][-1]["precision"] = {"Throughput": {"half_width": 0.3, "target": 0.4, "met": True}}
-    page = studypage.render(folder, st, study_id="s")
+    page = _plain(studypage.render(folder, st, study_id="s"))
     head = page.split("<header")[1].split("</header>")[0]
     assert 'class="chip met"' in head and "8.00 (95% interval 7.70 to 8.30)" in head and "<svg" in head
     assert "25 replications" in head and "target 0.4" in head and "Latest version: v002" in head

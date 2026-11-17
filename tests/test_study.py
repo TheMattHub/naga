@@ -153,10 +153,42 @@ def test_next_step_asks_for_goals_before_showing_an_empty_plan_card():
     assert "plan card" not in study.next_step(_fresh()) and '"goals"' in study.next_step(_fresh())
 
 
+# Everything but the scope settled, so the scope is the first open item (#1891 puts it last).
+_ONLY_SCOPE = ["assumptions", "model", "verification", "validation", "experiments", "conclusions"]
+
+
 def test_next_step_maps_blocks_when_components_exist_without_them():
-    nxt = study.next_step(_fresh(goals=_G, plan_approved=True, target=[{"name": "Packer", "purpose": "x"}]))
+    nxt = study.next_step(_fresh(goals=_G, plan_approved=True, skipped=_ONLY_SCOPE,
+                                 target=[{"name": "Packer", "purpose": "x"}]))
     assert "Record the target" not in nxt and '"blocks"' in nxt and "full list" in nxt
-    assert "Record the target" in study.next_step(_fresh(goals=_G, plan_approved=True))
+    assert "Record the target" in study.next_step(_fresh(goals=_G, plan_approved=True, skipped=_ONLY_SCOPE))
+
+
+def test_next_step_builds_and_validates_before_the_scope():
+    """#1891: after the requirements, the model and its validation move the answer on; mapping
+    the scope to blocks is bookkeeping and comes last."""
+    s = _fresh(goals=_G, plan_approved=True, assumptions=[{"id": "a1", "text": "x", "source": "y"}])
+    assert study.next_step(s) == study._TODO["model"]
+    s["versions"] = [{"id": "v001", "verdict": "passed", "verification": "passed", "kpis": {"K": 1}}]
+    assert study.next_step(s) == study._TODO["validation"]
+    assert [i["item"] for i in study.open_items(s)][-1] == "scope"
+
+
+def test_a_failed_step_names_its_fix_before_the_checklist(tmp_path):
+    """#1892: a draft newer than the last version: fix it and step again; once a version is
+    stored after it, the checklist leads again."""
+    def stored(where, at, **step):
+        (tmp_path / "versions" / where).mkdir(parents=True)
+        (tmp_path / "versions" / where / "step.json").write_text(json.dumps({"at": at, **step}), encoding="utf-8")
+
+    stored("drafts/d001", "2026-01-01T00:00:01+00:00", problems=[{"code": "E_X", "message": "m"}, {"code": "W"}])
+    s = _fresh()
+    assert study.next_step(s, tmp_path) == ("Step d001 failed and was kept as a draft: fix the 2 problem(s) "
+                                            "its answer listed, then call study_step again.")
+    assert study.next_step(s) == study._TODO["goals"]          # no folder: the checklist alone
+    stored("v001", "2026-01-01T00:00:02+00:00")
+    s["versions"] = [{"id": "v001", "verdict": "passed", "kpis": {}}]
+    assert "draft" not in study.next_step(s, tmp_path)
 
 
 def test_experiments_step_says_scenarios_run_with_every_step():

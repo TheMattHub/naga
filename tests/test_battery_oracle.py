@@ -339,7 +339,7 @@ def test_models_without_batteries_get_empty_fixed_column_frames():
     """Plan Task 4: both frames exist, are empty and keep their fixed columns."""
     doc = model(None, [])
     del doc["fleets"][0]["battery"], doc["chargers"]
-    results, _ = run(doc)
+    results = api.run_model(doc, replications=1, keep_empty=True)  # the frame shape: keep_empty (D1321)
     assert results["charging_summary"].empty and results["battery_summary"].empty
     assert {"Charger", "Kind", "Points", "Sessions", "Utilization %", "Avg Wait", "Avg Queue",
             "Grid kWh", "Peak kW", "Energy Cost"} <= set(results["charging_summary"].columns)

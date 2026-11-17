@@ -308,7 +308,8 @@ def test_arm_cycle_time_follows_payload_derating_and_collaborative_speed(
 def test_a_model_without_tending_has_an_empty_summary_with_the_plan_columns():
     """Case 8. No arm and no tending: `tending_summary` exists, is empty, and has exactly
     the plan's columns in the plan's order."""
-    results, _ = run(model(arm=False, tending=False))
+    results = api.run_model(model(arm=False, tending=False), replications=1,
+                            keep_empty=True)                     # the frame shape (D1321)
     frame = results["tending_summary"]
     assert frame.empty
     assert list(frame.columns) == ["Run", "Station", "Fleet", "Picks", "Places", "Exchanges",

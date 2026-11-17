@@ -367,6 +367,9 @@ _DYNAMIC_IMPORTS_REVIEWED = {
                                                  "plc-write` is a person's command, as naga's",
     ("product/callerpolicy.py", "name"): "the stem of the .py file a person picked in a dialog "
                                             "(D1123); never a model, storyboard or tool argument",
+    ("product/plugin3d.py", 'f"{NAME}.{name}"'): "a module of the 3D rendering plugin, named by core code "
+                                                     "(D1308); never a model, storyboard or tool argument",
+    ("product/plugin3d.py", "NAME"): "the 3D rendering plugin's fixed package name (D1308)",
     ("product/film.py", "logic"): "the caller's --logic / make(logic=) module, already imported "
                                      "by run_model; hashed for the cache key (D1124)",
 }
@@ -467,3 +470,66 @@ def test_naga_plc_write_and_the_twin_flag_refuse_a_bad_setpoints_file(tmp_path, 
     model = Path(__import__("nagasim").__file__).parent / "models" / "line_with_buffers.json"
     assert twin.main(["reproduce", str(tmp_path), str(model), "--setpoints", str(bad)]) == 1
     assert "E_PLC_SETPOINTS" in capsys.readouterr().out
+
+
+# ---- naga approve (#1909): the terminal's Approve, asking first, no JSON written by hand
+def _approve(tmp_path, wanted, answer, **more):
+    said, asked = [], []
+    code = plcwrite.approve(f"file:{tmp_path / 'q.jsonl'}", wanted, by="Matteo", out=said.append,
+                            ask=lambda text: asked.append(text) or answer, **more)
+    return code, said, asked
+
+
+def _replies(tmp_path):
+    path = tmp_path / "q.jsonl.replies"
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()] if path.exists() else []
+
+
+def test_approve_writes_one_taken_reply_after_a_yes_that_plc_write_accepts(tmp_path):
+    record = proposal(2.5)
+    queued(tmp_path, record, decision=None)
+    code, said, asked = _approve(tmp_path, record["id"][:8], "y")
+    assert code == 0 and len(asked) == 1, said
+    reply = _replies(tmp_path)
+    assert [(r["id"], r["decision"], r["by"]) for r in reply] == [(record["id"], "taken", "Matteo")]
+    sink = outbox.open_sink(f"file:{tmp_path / 'q.jsonl'}")
+    _records, decided, _ended = plcwrite._proposals(sink)
+    assert decided[record["id"]]["decision"] == "taken" and decided[record["id"]]["by"] == "Matteo"
+
+
+def test_approve_without_an_id_takes_the_one_record_waiting(tmp_path):
+    record = proposal(2.5)
+    queued(tmp_path, record, decision=None)
+    assert _approve(tmp_path, None, "yes")[0] == 0
+    assert len(_replies(tmp_path)) == 1
+
+
+@pytest.mark.parametrize("answer", ["", "n", "no", "maybe"])
+def test_approve_writes_nothing_without_a_yes(tmp_path, answer):
+    queued(tmp_path, proposal(2.5), decision=None)
+    code, said, _ = _approve(tmp_path, None, answer)
+    assert code == 1 and said[-1] == "not approved" and _replies(tmp_path) == []
+
+
+def test_approve_refuses_what_is_answered_expired_unknown_or_ambiguous(tmp_path):
+    answered, expired, other = proposal(2.5), proposal(2.75, expires=1.0, created=time.time() - 60), \
+        proposal(3.0)
+    queued(tmp_path, answered, decision="rejected")
+    queued(tmp_path, expired, other, proposal(3.25), decision=None)
+    before = len(_replies(tmp_path))
+    assert "E_APPROVE_ANSWERED" in _approve(tmp_path, answered["id"], "y")[1][0]
+    assert "E_APPROVE_EXPIRED" in _approve(tmp_path, expired["id"], "y")[1][0]
+    assert "E_APPROVE_RECORD" in _approve(tmp_path, "ffffffff", "y")[1][0]
+    code, said, _ = _approve(tmp_path, "", "y")          # two answerable ids: none is guessed
+    assert code == 1 and any("waiting" in line for line in said)
+    assert len(_replies(tmp_path)) == before
+
+
+def test_naga_approve_is_a_command_and_asks_on_a_closed_stdin(tmp_path, monkeypatch, capsys):
+    from nagasim import cli
+
+    assert "approve" in cli.COMMANDS
+    queued(tmp_path, proposal(2.5), decision=None)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": (_ for _ in ()).throw(EOFError()))
+    assert cli.main(["approve", "--outbox", f"file:{tmp_path / 'q.jsonl'}"]) == 1
+    assert "not approved" in capsys.readouterr().out and _replies(tmp_path) == []

@@ -65,6 +65,7 @@ def test_a_deterministic_model_keeps_a_zero_width_interval():
     answer = uncertainty.input_uncertainty(
         _deterministic(), [{"path": SERVICE, "values": [2] * 30}], kpis=[TT],
         resamples=4, replications=2, seed=0, run_length=60, warmup=0)
+    assert isinstance(answer, dict)         # D1322: the released return type stays
     row = answer["kpis"][0]
     assert row["run_ci"][0] == row["run_ci"][1] == row["mean"]
     assert row["input_interval"] == row["run_ci"]
@@ -148,6 +149,32 @@ def test_an_arrival_table_input_resamples_whole_cycles():
     assert answer["inputs"][0]["cycles"] == 12
     assert len(answer["inputs"][0]["point"]) == 2
     assert answer["resamples_used"] == 4
+
+
+def test_the_frame_form_and_the_cli_out_hold_one_row_per_kpi(tmp_path, capsys):
+    """#1896, D1322: input_uncertainty_frame is the frame (one row per KPI, the counts in attrs), and
+    `naga uncertainty --out` writes that frame as CSV or Excel."""
+    import pandas as pd
+    data = tmp_path / "service.csv"
+    data.write_text("minutes" + chr(10) + chr(10).join(f"{v:.6f}" for v in _service_times(40)) + chr(10),
+                    encoding="utf-8")
+    inputs = [{"path": SERVICE, "values": _service_times(40)}]
+    args = {"kpis": [TT], "resamples": 3, "replications": 2, "run_length": 100, "warmup": 0}
+    table = uncertainty.input_uncertainty_frame(_mm1(), inputs, **args)
+    assert isinstance(table, pd.DataFrame) and list(table["kpi"]) == [TT]
+    row = table.iloc[0]
+    assert row["input_lo"] <= row["run_lo"] <= row["run_hi"] <= row["input_hi"]
+    assert table.attrs["runs"] == 8 and table.attrs["resamples_used"] == 3 and table.attrs["notes"]
+    shutil.copy(MODELS / "single_server.json", tmp_path / "single_server.json")
+    for name in ("table.csv", "table.xlsx"):
+        out = tmp_path / name
+        assert uncertainty.main([str(tmp_path / "single_server.json"), "--data",
+                                 f"{SERVICE}={data}:minutes", "--kpi", TT, "--resamples", "3",
+                                 "--replications", "2", "--run-length", "100", "--warmup", "0",
+                                 "--out", str(out)]) == 0
+        read = pd.read_csv(out) if name.endswith(".csv") else pd.read_excel(out)
+        assert list(read.columns) == list(table.columns) and list(read["kpi"]) == [TT]
+    capsys.readouterr()
 
 
 def test_cli_and_agent_tool(tmp_path, capsys):

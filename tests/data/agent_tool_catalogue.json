@@ -2325,7 +2325,7 @@
     "read_only": false
   },
   {
-    "description": "Run the model's scenarios (the options) and compare them against the baseline with\nconfidence intervals and a significance verdict: which option is better, and whether the\ndifference is significant.\n\nThis is the consultancy answer: for each KPI and scenario you get the\nscenario's own mean with its CI, the DIFFERENCE against the baseline with\nits own CI, and whether that difference interval excludes zero\n(\"significant\"). A non-significant difference means \"not distinguishable at\nthis replication count\", not \"no difference\".",
+    "description": "Run the model's scenarios (the options) and compare them against the baseline with\nconfidence intervals and a significance verdict: which option is better, and whether the\ndifference is significant.\n\nThis is the consultancy answer: for each KPI and scenario you get the\nscenario's own mean with its CI, the DIFFERENCE against the baseline with\nits own CI, and whether that difference interval excludes zero\n(\"significant\"). A non-significant difference means \"not distinguishable at\nthis replication count\", not \"no difference\".\n\n\"laws\" are each scenario's law checks, {scenario: {\"passed\", \"partial\"}}, as run_model gives\nthem for one run: a partial law makes it not valid, no result to compare; censoring or\ninitial bias alone may bias it low, so a difference is not verified.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2408,6 +2408,9 @@
         },
         "crn": {
           "type": "boolean"
+        },
+        "laws": {
+          "type": "object"
         },
         "model": {
           "type": "string"
@@ -4205,7 +4208,7 @@
     "read_only": true
   },
   {
-    "description": "What a model file holds, compactly: call it ONCE before writing the first model file.\n\nWith no argument: a minimal example file, the top-level sections with their fields,\nevery block type with its parameters and defaults, every distribution with its\nparameter names and every expression function with what it reads. With `blocks` or\n`sections`: those in full, each field with its meaning. Generated from the registries\nand the JSON Schema (resource naga://reference/schema), so it is never out of date.",
+    "description": "What a model file holds: call it ONCE before writing the first model file.\n\nWith no argument: a minimal example file, the top-level sections with their fields,\nevery block type with its parameters and defaults, every distribution with its\nparameter names and every expression function with what it reads. With `blocks` or\n`sections`: those in full, each field with its meaning. Generated from the registries\nand the JSON Schema (resource naga://reference/schema).",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -4237,6 +4240,9 @@
     "output_schema": {
       "properties": {
         "format": {
+          "type": "string"
+        },
+        "next_step": {
           "type": "string"
         }
       },
@@ -4681,7 +4687,7 @@
     "read_only": false
   },
   {
-    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Send the complete model file as `layout`, or `model`\n(the name of a model open in the workspace), or `patch` (changes to the\nlast version), and a one-line note. A model that does not validate or run is stored as a\ndraft with its problems, not refused: read \"problems\", fix the model, step again.\n\nThe replications come from a precision target, not from the model's own\nsimulation.replications: a first pass of 10, then, if a goal KPI's 95% confidence interval is\nwider than its target, one rerun (same seed) with the count the widest needs, up to the size's\ncap (quick 50, standard 200, deep 1000). The target is a relative half-width (quick 10%,\nstandard 5%, deep 2%; set another with study_update precision={\"relative\": 0.03}) or an\nabsolute one per goal (\"precision\": 0.5 in the KPI's unit). With no goal KPI the count is 10\nand provisional. A cap reached makes the \"precision\" check partial, never failed.\n\nThe model's \"scenarios\" (a list of {\"name\", \"overrides\": [{\"path\":\n\"resources.<name>.capacity\", \"value\": 2}]}) run with the step, with the same replications\nand seed, up to the size's cap; their goal KPIs and goals met come back in \"scenarios\".\n\n`changes` (the same keys and shapes as study_update) is recorded first, in the same call, so\na step that also records the goals or a validation needs one call, not two. Scenario\noverrides sent as {\"resources.<name>.capacity\": 2} are mapped to the list shape; a target\ncomponent without blocks whose name matches a block name is mapped to it. Both are listed in\n\"normalised\". Example: study_step(study=\"naga-studies/cranes\", layout={...the whole model...},\nnote=\"add the second crane\", changes={\"assumptions\": [{\"id\": \"a1\", \"text\": \"...\", \"source\": \"...\"}]}).\n\nA tail goal {\"id\", \"text\", \"kpi\": \"<resource>/Time in Queue\", \"share_above\": 15, \"high\": 0.05}\nbounds the share of entities that waited over 15 at that resource (FIFO only), stored per\nreplication as the KPI \"<resource>/Share waiting over 15\"; \"kpi\": \"Total Wait\" sums each\nentity's waits over every queue (\"Share with total wait over 15\"). Either is judged, sized and\ncompared like any KPI; when it cannot be computed it stays not_verified and \"tail_note\" says why.\n\nA version has no report file by default (the answer is the light output); study_report\nwrites it on request. With scenarios: \"scenarios\": {name: {\"kpis\": {goal KPI: {mean,\nci_half_width}}, \"goals\": {goal id: met|not_met|not_verified}}}, and \"scenario_error\" or\n\"scenarios_skipped\" when a run failed or the cap cut some; \"normalised\" when an input was\nmapped.",
+    "description": "Test one model step: write the whole model, run it, check it, and store it as a new\nversion (or as a draft when it fails). Send the complete model file as `layout`, or `model`\n(the name of a model open in the workspace), or `patch` (changes to the\nlast version), and a one-line note. A model that does not validate or run is stored as a\ndraft with its problems, not refused: read \"problems\", fix the model, step again.\n\nThe replications come from a precision target, not from the model's own\nsimulation.replications: a first pass of 10, then, if a goal KPI's 95% confidence interval is\nwider than its target, one rerun (same seed) with the count the widest needs, up to the size's\ncap (quick 50, standard 200, deep 1000). The target is a relative half-width (quick 10%,\nstandard 5%, deep 2%; set another with study_update precision={\"relative\": 0.03}) or an\nabsolute one per goal (\"precision\": 0.5 in the KPI's unit). With no goal KPI the count is 10\nand provisional. A cap reached makes the \"precision\" check partial, never failed.\n\nThe model's \"scenarios\" (a list of {\"name\", \"overrides\": [{\"path\":\n\"resources.<name>.capacity\", \"value\": 2}]}) run with the step, with the same replications\nand seed, up to the size's cap; their goal KPIs and goals met come back in \"scenarios\".\n\n`changes` (the same keys and shapes as study_update) is recorded first, in the same call, so\na step that also records the goals or a validation needs one call, not two. Scenario\noverrides sent as {\"resources.<name>.capacity\": 2} are mapped to the list shape; a target\ncomponent without blocks whose name matches a block name is mapped to it. Both are listed in\n\"normalised\". Example: study_step(study=\"naga-studies/cranes\", layout={...the whole model...},\nnote=\"add the second crane\", changes={\"assumptions\": [{\"id\": \"a1\", \"text\": \"...\", \"source\": \"...\"}]}).\n\nA tail goal {\"id\", \"text\", \"kpi\": \"<resource>/Time in Queue\", \"share_above\": 15, \"high\": 0.05}\nbounds the share of entities that waited over 15 at that resource (FIFO only), stored per\nreplication as the KPI \"<resource>/Share waiting over 15\"; \"kpi\": \"Total Wait\" sums each\nentity's waits over every queue (\"Share with total wait over 15\"). Either is judged, sized and\ncompared like any KPI; when it cannot be computed it stays not_verified and \"tail_note\" says why.\n\nA version has no report file by default (the answer is the light output); study_report\nwrites it on request. With scenarios: \"scenarios\": {name: {\"kpis\": {goal KPI: {mean,\nci_half_width}}, \"goals\": {goal id: met|not_met|not_verified}}}, and \"scenario_error\" or\n\"scenarios_skipped\" when a run failed or the cap cut some; \"normalised\" when an input was\nmapped. A scenario whose law checks warn carries \"laws\": {\"passed\", \"partial\"} and a partial\n\"scenario <name>\" check says why. A partial law: not valid, goals not_verified, why in place\nof its numbers. Censoring or initial bias only: a goal a low bias may flip is not_verified.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

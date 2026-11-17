@@ -17,6 +17,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _TEST_USER_DIR = Path(tempfile.mkdtemp(prefix="nagasim-test-user-"))
 os.environ.setdefault("NAGASIM_USER_DIR", str(_TEST_USER_DIR))
 os.environ.setdefault("PRODUCT_LIBRARY_DIR", str(_TEST_USER_DIR / "libraries"))
+# D1308: the suite sees the 3D rendering plugin (packages/render3d) when it is installed, even after a test
+# imports a repo tool (tools/_isolate.py hides it otherwise); tests/test_plugin3d.py hides it where it means to.
+os.environ.setdefault("PRODUCT_RENDER3D", "on")
+# Its own tests (tests/render3d/) are collected only when it is there; test_plugin3d.py fails when it is missing
+# from the development environment, so they never skip silently here.
+import importlib.util as _importlib_util  # noqa: E402
+
+collect_ignore_glob = [] if (os.environ["PRODUCT_RENDER3D"].lower() != "off"
+                             and _importlib_util.find_spec("naga_render3d")) else ["render3d/*"]
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")

@@ -49,6 +49,9 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="e_record_kind"></span>`E_RECORD_KIND` | error | A RECORD block's kind is not a known user-statistic kind. | [RECORD](../blocks/record.md) |
 | <span id="e_record_kind_conflict"></span>`E_RECORD_KIND_CONFLICT` | error | Two RECORD blocks give the same statistic different kinds. | [RECORD](../blocks/record.md) |
 | <span id="e_record_stat_name"></span>`E_RECORD_STAT_NAME` | error | A RECORD block has an empty stat_name. | [RECORD](../blocks/record.md) |
+| <span id="e_replay_column"></span>`E_REPLAY_COLUMN` | error | A column the replay needs (order, resource, start, end) is not found, or a column mapping names a field or a column that does not exist. | -- |
+| <span id="e_replay_file"></span>`E_REPLAY_FILE` | error | A schedule or due-date file cannot be read: a missing file, a format other than CSV or Excel, no rows, or times that mix numbers and dates. | -- |
+| <span id="e_replay_input"></span>`E_REPLAY_INPUT` | error | A replay setting is out of range: the spread, the replications, or a breakdown that names an unknown resource or a non-positive time. | -- |
 | <span id="e_route_no_sequences"></span>`E_ROUTE_NO_SEQUENCES` | error | A ROUTE block exists but the model declares no stations or sequences. | [ROUTE](../blocks/route.md) |
 | <span id="e_run_block"></span>`E_RUN_BLOCK` | error | A block stopped the run: a value it computed or drew could not be used (an attribute no block assigned, a negative scale), or no branch took an entity. Raised as ModelRunError with the block's name; fix that block's parameters. | -- |
 | <span id="e_separate_carrier"></span>`E_SEPARATE_CARRIER` | error | A SEPARATE's carrier is not "dispose" or "keep". | [SEPARATE](../blocks/separate.md) |
@@ -78,6 +81,7 @@ Blocks and their parameters, distributions, links, decisions, queues, routings a
 | <span id="w_preempt_no_priority"></span>`W_PREEMPT_NO_PRIORITY` | warning | preempt is set but every block seizing that resource uses the same priority, so nothing can ever preempt anything. | -- |
 | <span id="w_queue_leave_link_unused"></span>`W_QUEUE_LEAVE_LINK_UNUSED` | warning | A SEIZE/PROCESS has a second outgoing link but neither balk_if nor renege_after, so nothing ever takes it. | [PROCESS](../blocks/process.md), [SEIZE](../blocks/seize.md) |
 | <span id="w_queue_row_crossing"></span>`W_QUEUE_ROW_CROSSING` | warning | A placed asset's drawn queue row (up to its queue capacity, at most ten places 0.8 m apart) runs through another placed asset on the floor plan; turn the row (queue_row) so the picture reads right. | -- |
+| <span id="w_replay_row"></span>`W_REPLAY_ROW` | warning | A schedule or due-date row cannot be read (a blank order or resource, a time that is not a time, an end before its start) and was left out; its order is marked. | -- |
 | <span id="w_station_unused"></span>`W_STATION_UNUSED` | warning | A STATION block is named by no sequence step. | [STATION](../blocks/station.md) |
 | <span id="w_unbounded_duration"></span>`W_UNBOUNDED_DURATION` | warning | A duration uses a distribution that can sample below 0; samples truncate to 0. | -- |
 | <span id="w_unknown_key"></span>`W_UNKNOWN_KEY` | warning | A key the model file format does not have, at any level the schema closes; the hint names the nearest valid key. The document keeps it through load and save. | -- |

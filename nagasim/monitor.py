@@ -138,6 +138,17 @@ def _say(words: dict, key: str, **values) -> str:
     return pagetext.say(words, key, **values)
 
 
+def _lost_line(words: dict, sources: list) -> str | None:
+    """#1908: the one sentence for a lost connection, or None while every source answers. It is
+    the page's largest text, so a loss of data is the first thing a reader sees."""
+    down = [row for row in sources if row.get("state") == "down"]
+    if not down:
+        return None
+    age = max((_number(row.get("age")) or 0 for row in down), default=0)
+    return _say(words, "monitor.lost", names=", ".join(_text(row.get("name")) for row in down),
+                age=f"{round(age / 60)} min" if age >= 120 else f"{round(age)} s")
+
+
 def _n(text: str, words: dict) -> str:
     """A number's text (`_g`) with the language's decimal sign."""
     return pagetext.number(text, words)
@@ -434,6 +445,7 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
         "state": {"fresh": fresh, "stale": None if every is None
                   else pagetext.say(words, "monitor.stale", every=shown_every)},
         "notes": [words["twin.approximate"]] if view.get("approximate") or forecast.get("approximate") else [],
+        "lost": _lost_line(words, _rows(doc.get("sources"))),
         "sources": [[_text(row.get("name")), _worded(words, "twin.state_", row.get("state")),
                      _number(row.get("age")),
                      _number(row.get("lost")), _number(row.get("gaps"))]
@@ -582,9 +594,13 @@ class Log:
 # Its own rules, after the player's in the one style sheet the policy pins.
 _STYLE = """
 /* Text, so 4.5:1: in light a darker step of --down (5.5:1 on the page, dataviz contrast()); dark passes (5.3). */
-.stale { color: color-mix(in srgb, var(--down) 85%, black); font-weight: bold; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .stale { color: var(--down); } }
-:root[data-theme=dark] .stale { color: var(--down); }
+.stale, #m-lost { color: color-mix(in srgb, var(--down) 85%, black); font-weight: bold; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .stale, :root:not([data-theme=light]) #m-lost { color: var(--down); } }
+:root[data-theme=dark] .stale, :root[data-theme=dark] #m-lost { color: var(--down); }
+/* bug 1908: a lost connection is the loudest thing on the page, and what it left behind looks old. */
+#m-lost { font-size: 18px; margin: 0 0 8px; padding: 8px 12px; border: 2px solid var(--down);
+          border-radius: var(--radius); }
+body:has(#m-lost:not([hidden])) :is(.centre, .side > *, #m-forecast-box, #m-advice-box) { opacity: 0.6; filter: grayscale(1); }
 .warn { color: var(--down); }
 /* A cell wraps between words only (bug 1761): a word is never split. */
 table.text th, table.text td { text-align: left; overflow-wrap: normal; hyphens: manual; }
@@ -595,15 +611,30 @@ summary { cursor: pointer; font-weight: bold; }
 summary h2 { display: inline; }
 section { margin-top: 8px; font-size: 13px; }
 #view { height: 45vh; }
+/* bug 1905: one column reads now, next, what to do, then the rest. The console's boxes join the page's
+   own column (display: contents) so the forecast and the advice can come before the player's side
+   panels. */
+@media (max-width: 900px) {
+  body { display: flex; flex-direction: column; gap: 12px; }
+  main.console, .side { display: contents; }
+  .centre { order: 1; }
+  #m-forecast-box { order: 2; }
+  #m-advice-box { order: 3; }
+  .side > * { order: 4; }
+  body > section { order: 6; }
+  #m-forecast-box, #m-advice-box { margin-top: 0; }
+  #view { height: 30vh; }
+}
 """
-_TOP = """<p id="m-head"></p>
+_TOP = """<p id="m-lost" role="alert" hidden></p>
+<p id="m-head"></p>
 <p id="m-state" class="note"></p>
 <div id="m-notes"></div>
 """
 # The headings are {{keys}} of the page table (`pagetext.markup`, D1088).
 _BOTTOM = """<section><h2>{{monitor.sources}}</h2><table id="m-sources" class="text"></table></section>
 <section><h2>{{monitor.problems}}</h2><table id="m-problems" class="text"></table></section>
-<section><h2>{{monitor.forecast}}</h2><div id="m-forecast"></div>
+<section id="m-forecast-box"><h2>{{monitor.forecast}}</h2><div id="m-forecast"></div>
 <details id="d-m-kpis"><summary>{{monitor.col_kpi_end}}</summary><table id="m-kpis"></table></details>
 <details id="d-m-points"><summary>{{monitor.col_series}}</summary><table id="m-points"></table></details></section>
 <section id="m-advice-box"><h2>{{monitor.advice}}</h2><div id="m-advice"></div>
@@ -653,6 +684,8 @@ function monitor(m, el, add, clear) {
   el("run-h").textContent = tr("monitor.now");
   el("run-box").open = true;           /* the present is what this page is for */
   el("m-head").textContent = s.head;
+  el("m-lost").hidden = !s.lost;
+  el("m-lost").textContent = s.lost || "";
   el("d-m-kpis").style.display = f.kpis.length ? "" : "none";
   el("d-m-points").style.display = f.points.length ? "" : "none";
   fold("d-m-kpis", false);

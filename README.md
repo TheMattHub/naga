@@ -181,7 +181,8 @@ runs the submodels, the product's artwork is not included here.
 ## Use with an agent
 
 The engine ships 95 tools an agent can call to build, validate, run, debug and analyse a model, and two
-ways to offer them:
+ways to offer them. An assistant's first step is the same on both: `naga skill` prints where the
+study guide is, and the guide's protocol starts with `study_start`.
 
 <!-- no-run: a server that waits for its client, and a request to a language model -->
 ```console

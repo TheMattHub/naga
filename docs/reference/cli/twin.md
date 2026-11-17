@@ -136,6 +136,25 @@ options:
   -h, --help            show this help message and exit
 ```
 
+## naga approve
+
+```text
+usage: naga approve [-h] --outbox SPEC [ID]
+
+Approve one recommendation of a twin's file outbox, as the editor's Approve
+button does: it shows what the record would do, asks, and on y writes one
+"taken" reply line to <outbox>.replies naming you. Nothing is sent to a plant;
+`naga plc-write` writes an approved setpoint, as its own command.
+
+positional arguments:
+  ID             the record's id or the first characters of it (default: the
+                 one record still waiting; with several, they are listed)
+
+options:
+  -h, --help     show this help message and exit
+  --outbox SPEC  the twin's outbox, file:<path>
+```
+
 ## naga plc-write
 
 ```text

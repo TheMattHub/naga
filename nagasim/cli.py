@@ -70,10 +70,11 @@ COMMANDS = {
     "plant": ("plant", "main",
               "map what a plant sends into an observed timeline: check, replay a log, watch"),
     "twin": ("twin", "main",
-             "an operational twin: monitor a plant, forecast from its state, compare, report"),
+             "an operational twin: monitor, forecast, compare, report"),
+    "approve": ("plcwrite", "approve_main",
+                "approve a twin's recommendation (asks first)"),
     "plc-write": ("plcwrite", "main",
-                  "write the setpoints a person approved in a twin's outbox to a soft PLC "
-                  "on this machine (dry-run unless --write)"),
+                  "write approved setpoints to a soft PLC on this machine (dry-run unless --write)"),
     "calibrate": ("calibrate", "main", "fit model parameters to observed KPIs"),
     "forecast": ("forecast", "main", "short-horizon forecast with prediction bands"),
     "plan": ("planning", "main", "deterministic plan, optional CP-SAT proposal and risk"),
@@ -129,21 +130,19 @@ def _dispatch(entry, argv: list, prog: str, name: str) -> int:
 
 
 def _bundled_hint(exc) -> str:
-    """A missing file whose name is close to a bundled model's: say which (review S1-10)."""
-    import difflib
-
+    """A missing file whose name is close to a bundled model's: say which (review S1-10). The
+    error `api.run_model` raises for one says it itself and carries no filename (#1899)."""
     from nagasim import examples
     if not isinstance(exc, FileNotFoundError) or not exc.filename:
         return ""
-    near = difflib.get_close_matches(str(exc.filename), examples.names(), n=1)
-    return f" (did you mean the bundled model '{near[0]}'? `naga examples` lists them)" if near else ""
+    return examples.bundled_hint(str(exc.filename))
 
 
 def _print_help(prog: str = "naga") -> None:
     print(f"usage: {prog} [--no-plugins] [COMMAND] [ARGS ...]")
     print()
-    print("Each command also takes its own --help. --no-plugins runs with the shipped blocks only:")
-    print("no trusted plugin folder, NAGASIM_PLUGIN_PATH or installed plugin is loaded.")
+    print("Each command also takes --help. --no-plugins loads no plugin, only the shipped blocks.")
+    print("An assistant starts with `naga skill`: its guide begins with study_start.")
     print()
     print("commands:")
     width = max(len(name) for name in COMMANDS)

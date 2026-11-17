@@ -1394,7 +1394,7 @@ class Watch:
         while a pull comes back full (a busy plant is caught up with, up to that ceiling, so
         that one step always ends; `problems` says when it was reached). A source the feed
         refuses raises, or with *tolerant* is said in `problems` and the others are still read."""
-        self.problems, batch = [], []
+        self.problems, batch, holes = [], [], []
         for name, cursor in self.cursors.items():
             row = self.rows.setdefault(name, {"name": name, "state": "unopened", "age": None,
                                               "lost": 0, "gaps": 0})
@@ -1402,7 +1402,10 @@ class Watch:
                 for _ in range(pulls):
                     got = self._feed.changes(name, cursor, *(() if pull is None else (pull,)))
                     cursor = self.cursors[name] = got.cursor
-                    self.mapper.hole(got.lost, got.gap)
+                    if got.state == "down":
+                        holes.append((got.lost, got.gap))
+                    else:
+                        self.mapper.hole(got.lost, got.gap)
                     batch += got.events
                     self.problems += got.problems
                     row.update(state=got.state, age=got.age, lost=row["lost"] + got.lost,
@@ -1422,7 +1425,14 @@ class Watch:
                 self.problems.append(problem(exc.code, f"source '{name}': {exc.message}",
                                              f"/data_sources/{name}", hint=exc.hint))
         # Several sources' events of one pull, by their own time: only what is late is clamped.
-        return self.mapper.feed(in_order(self.mapper, batch))
+        out = self.mapper.feed(in_order(self.mapper, batch))
+        # #1907: an answer from a source that is down holds only what came before its break, so
+        # the break is dated after those events (the last word before it), not at the previous
+        # pull's last instant. A live answer's hole is a reconnect, which may come before the
+        # events it returns: dated before them, as it always was.
+        for lost, gap in holes:
+            self.mapper.hole(lost, gap)
+        return out
 
 
 # ---------------------------------------------------------------- the inverse (D257)

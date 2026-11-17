@@ -34,7 +34,7 @@ from nagasim.core.sim_runner import Pacer, run_single_simulation
 from nagasim.core.timeunits import UNITS, units_of
 from nagasim.core.trace import TraceRecorder
 from nagasim.plugins import load_plugins
-from nagasim.results import Results
+from nagasim.results import ALWAYS_KEPT, Results
 
 
 # The one "path or dict -> migrated layout" reader (Wave A2), re-exported
@@ -175,7 +175,12 @@ class WarmupPastEndError(ValueError):
 
 def run_settings(path, replications=None, warmup=None, run_length=None):
     """The settings `_resolve_settings` gives, refused when the warm-up leaves no observed
-    time (#1720): a run whose warm-up reaches its end reports only zeros."""
+    time (#1720): a run whose warm-up reaches its end reports only zeros. A count of
+    replications under 1 is refused before a deterministic model forces it to 1 (#1899: 0 or -3
+    used to run nothing and return None)."""
+    # __index__: an int or a numpy integer, never a float (no import: api.<TAB> stays short, #1897)
+    if replications is not None and not (hasattr(replications, "__index__") and replications >= 1):
+        raise ValueError(f"replications must be a whole number of at least 1, not {replications!r}")
     replications, warmup, run_length = _resolve_settings(path, replications, warmup, run_length)
     if warmup and run_length and float(warmup) >= float(run_length):
         raise WarmupPastEndError(f"the warm-up {warmup:g} reaches the run length {run_length:g}, so nothing "
@@ -646,7 +651,8 @@ def run_model(
     bind_data: bool = False, base_dir: Any = None, network: Any = None, confine_to: Any = None,
     feed: Any = None, controllers: dict | None = None, pool: Any = None,
     logic: str | ModuleType | None = None, record_logs: bool | None = None,
-    deterministic: bool | None = None, pace: float | None = None) -> Results: ...
+    deterministic: bool | None = None, pace: float | None = None,
+    keep_empty: bool = False) -> Results: ...
 @overload
 def run_model(
     path: str | os.PathLike[str] | dict[str, Any], *, replications: int | None = None,
@@ -655,14 +661,15 @@ def run_model(
     bind_data: bool = False, base_dir: Any = None, network: Any = None, confine_to: Any = None,
     feed: Any = None, controllers: dict | None = None, pool: Any = None,
     logic: str | ModuleType | None = None, record_logs: bool | None = None,
-    deterministic: bool | None = None, pace: float | None = None) -> Results | None: ...
+    deterministic: bool | None = None, pace: float | None = None,
+    keep_empty: bool = False) -> Results | None: ...
 def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: float | None = None,
               run_length: float | None = None, workers: int | str = 1, on_progress=None,
               should_stop=None, trace=None, bind_data: bool = False, base_dir=None,
               network=None, confine_to=None, feed=None,
               controllers: dict | None = None, pool=None,
               logic: str | ModuleType | None = None, record_logs: bool | None = None, deterministic: bool | None = None,
-              pace: float | None = None) -> Results | None:
+              pace: float | None = None, keep_empty: bool = False) -> Results | None:
     """Run replications of a model and return its KPI frames.
 
     Replication ``r`` is seeded with ``seed + r``, so a run is reproducible.
@@ -723,9 +730,9 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         a study pays the process start-up once. Results are identical. Build it
         with `new_pool`, so a worker that never starts raises instead of hanging.
     record_logs : bool, optional
-        False switches the per-event logs off: the log frames keep their columns
-        and have no rows, and every summary statistic is untouched. None keeps
-        the model's own setting (default: on).
+        False switches the per-event logs off: the log frames have no rows, so
+        they are left out (see *keep_empty*), and every summary statistic is
+        untouched. None keeps the model's own setting (default: on).
     deterministic : bool, optional
         True makes every distribution sample its mean, chance branches use
         largest-remainder allocation and replications are forced to 1. None keeps
@@ -738,6 +745,11 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         result's ``.pace`` is ``{"paced", "late_events", "max_lag_s"}``.
         Replications run one after another (``workers`` must be 1). Nothing is
         fed into or read out of the running model.
+    keep_empty : bool, default False
+        Also return the frames with no rows (D1321): by default only the frames
+        that have rows come back, plus ``"system"`` always and ``"data_inputs"``
+        when *bind_data* asked for it. True returns every frame the engine
+        builds, each with its columns; the KPI reference generator uses it.
 
     Returns
     -------
@@ -745,7 +757,10 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         A `Results` (a ``dict[str, pandas.DataFrame]``) of the KPI frames
         concatenated over the completed replications, each tagged with a ``Run``
         column, with ``.kpis()``, ``.kpi(key)``, ``.plot(key)`` and
-        ``.to_excel(path)`` on top. None if no replication completed.
+        ``.to_excel(path)`` on top. Only frames with rows are returned (a single
+        server gets about 7), so test for an optional one with
+        ``"store_summary" in results`` or ``results.get("store_summary")``.
+        None if no replication completed.
 
     See Also
     --------
@@ -774,6 +789,8 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     if isinstance(path, str):       # a bundled model's name, as every command takes it (S1-15)
         from nagasim import examples
         path = examples.model_path(path)
+        if near := examples.bundled_hint(path):        # #1899: a misspelt name names the nearest
+            raise FileNotFoundError(f"no model file '{path}'{near}")
 
     pacer = None
     if pace is not None:
@@ -862,7 +879,11 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     collected.sort(key=lambda pair: pair[0])   # pool order is arrival order, not seed order
     if not collected:
         return None
-    results = Results(concat_runs([kpi for _, kpi in collected]))
+    frames = concat_runs([kpi for _, kpi in collected])
+    # D1321: a table with no rows answers nothing, so it is left out. Empty means no rows
+    # (all-NaN rows still count); judged after the concatenation, as a frame empty in one
+    # replication can have rows in another. "system" is kept whatever it holds.
+    results = frames_with_rows(frames, keep_empty)
     # E8: a plugin's objects, by run id; what it recorded as numbers is the "plugin_kpis" frame.
     results._artifacts = dict(kpi[ARTIFACTS_KEY] for _, kpi in collected if ARTIFACTS_KEY in kpi)
     # D906: what `Results.checks()` judges the run by; read_layout returns a
@@ -875,6 +896,16 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
                  pacer.late_events, pacer.max_lag_s)
     if bindings is not None:
         results["data_inputs"] = bindings.frame()
+    return results
+
+
+def frames_with_rows(frames: dict, keep_empty: bool = False) -> Results:
+    """The result frames `run_model` and `run_scenarios` return (D1321, D1328): only those with
+    rows, "system" always; *keep_empty* keeps every frame. `Results._dropped` names what was left out."""
+    dropped = () if keep_empty else tuple(
+        name for name, frame in frames.items() if not len(frame) and name not in ALWAYS_KEPT)
+    results = Results({name: frame for name, frame in frames.items() if name not in dropped})
+    results._dropped = dropped
     return results
 
 

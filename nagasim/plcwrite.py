@@ -26,6 +26,11 @@ process, is the only writer (D743):
   sent and one AFTER, for every attempt; a line that cannot be written stops the command
   before any later write. The audit is also what the interval and "written before" read.
 
+`naga approve` (#1909) is the terminal's way to the editor's Approve button: a person names the
+outbox and a record (its id or the first characters), reads what it would do, and types y; one
+"taken" reply line is written to the reply file, as the editor writes it. The same rule holds:
+the answer is the caller's at a prompt, never a flag, a file or a tool; nothing is sent to a plant.
+
 Stdlib only. No agent tool imports this module (tests/test_plcwrite.py scans for one).
 """
 from __future__ import annotations
@@ -42,7 +47,7 @@ from nagasim import netguard, outbox, recommend, setpoints
 from nagasim.live import iso, stamp
 
 __all__ = ["FORMAT", "KIND", "AUDIT_KIND", "LIMITS", "FUNCTIONS", "Refused", "load", "encode",
-           "run", "main"]
+           "run", "main", "approve", "approve_main"]
 
 # The setpoints file is read by `nagasim.setpoints` (D811), which the twin, the monitor and
 # the editor import to check and show a setpoint; this module, the writer, re-exports it.
@@ -191,11 +196,12 @@ def _lines(path: Path):
     return found
 
 
-def _proposals(sink: outbox.FileSink) -> tuple:
-    """(the setpoint records of the outbox, the first decision on each id, the ids ended)."""
+def _proposals(sink: outbox.FileSink, verb: str | None = "setpoint") -> tuple:
+    """(the records of the outbox with action *verb* (any when None), the first decision on each
+    id, the ids ended)."""
     records = {}
     for record in _lines(sink.path):
-        if recommend.check(record) and record["action"]["verb"] == "setpoint":
+        if recommend.check(record) and (verb is None or record["action"]["verb"] == verb):
             records.setdefault(record["id"], record)
     decided, ended, cursor = {}, set(), None
     for _ in range(LIMITS["pulls"]):
@@ -387,3 +393,87 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     return run(args.outbox, args.setpoints, args.connections, args.audit, write=args.write,
                ids=args.id)
+
+
+# ---------------------------------------------------------------- naga approve
+def approve(outbox_spec, wanted, *, by, ask=None, wall=time.time, out=print) -> int:
+    """`naga approve`: the "taken" reply of one record of a file outbox, after *ask* (the
+    prompt) is answered y. *wanted* is the record's id or its first characters; None takes the
+    one record still waiting. 0 when approved, 1 when refused or not confirmed."""
+    try:
+        scheme, _, rest = str(outbox_spec).partition(":")
+        if scheme != "file" or not rest:
+            raise Refused("E_APPROVE_OUTBOX", "approve reads a file outbox, file:<path>",
+                          "the twin's --outbox of the same run")
+        sink = outbox.FileSink(rest)
+        records, decided, _ended = _proposals(sink, None)
+    except (Refused, netguard.GuardError, outbox.SinkError) as exc:
+        out(f"{exc.code}: {exc.message}" + (f" ({exc.hint})" if exc.hint else ""))
+        return 1
+    now = wall()
+    waiting = [r for r in records if r["id"] not in decided and now < stamp(r["expires"])]
+
+    def line(record) -> str:
+        action = record["action"]
+        return f"{record['id'][:12]}  {action['verb']} {action['target']} = {action['value']}"
+
+    if wanted:
+        found = [r for r in records if r["id"].startswith(str(wanted).lower())]
+    else:
+        found = waiting if len(waiting) == 1 else []
+    if len(found) != 1:
+        out(f"E_APPROVE_RECORD: {'no record' if not found else str(len(found)) + ' records'} of "
+            f"the outbox {'starts with ' + repr(str(wanted)[:80]) if wanted else 'is the one waiting'}")
+        for record in waiting:
+            out("  waiting: " + line(record))
+        return 1
+    record = found[0]
+    if record["id"] in decided:
+        out(f"E_APPROVE_ANSWERED: {record['id'][:12]} was already answered "
+            f"({decided[record['id']]['decision']}); the first answer stands")
+        return 1
+    if now >= stamp(record["expires"]):
+        out(f"E_APPROVE_EXPIRED: {record['id'][:12]} expired at {record['expires']}")
+        return 1
+    out(line(record))
+    try:
+        answer = (ask or input)("Approve this recommendation? Nothing is sent to the plant: acting on it "
+                     "is yours. [y/N] ")
+    except (EOFError, OSError):         # no terminal to answer on: not approved
+        answer = ""
+    if str(answer).strip().lower() not in ("y", "yes"):
+        out("not approved")
+        return 1
+    try:
+        sink.reply(record["id"], "taken", by=by)
+    except (OSError, ValueError) as exc:
+        out(f"E_APPROVE_WRITE: the reply could not be written ({exc})")
+        return 1
+    out(f"approved {record['id'][:12]}: one reply line written to {sink.replies.name}")
+    return 0
+
+
+def approve_main(argv=None) -> int:
+    import argparse
+    import getpass
+
+    from nagasim._cli import setup_cli
+
+    setup_cli()
+    parser = argparse.ArgumentParser(
+        prog="naga approve",
+        description="Approve one recommendation of a twin's file outbox, as the editor's Approve "
+                    "button does: it shows what the record would do, asks, and on y writes one "
+                    "\"taken\" reply line to <outbox>.replies naming you. Nothing is sent to a plant; "
+                    "`naga plc-write` writes an approved setpoint, as its own command.")
+    parser.add_argument("--outbox", required=True, metavar="SPEC",
+                        help="the twin's outbox, file:<path>")
+    parser.add_argument("id", nargs="?", default=None, metavar="ID",
+                        help="the record's id or the first characters of it (default: the one "
+                             "record still waiting; with several, they are listed)")
+    args = parser.parse_args(argv)
+    try:
+        by = getpass.getuser()
+    except (OSError, KeyError, ImportError):
+        by = "terminal"
+    return approve(args.outbox, args.id, by=by)

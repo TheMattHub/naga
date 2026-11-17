@@ -331,7 +331,7 @@ def test_a_model_without_levels_gains_no_system_row_and_two_empty_frames():
     """The fixed-shape rule (A3/A4 precedent): the new frames exist for every
     model, empty with their columns, and the two new system rows appear only
     for a model that actually has flows -- so no golden hash moves."""
-    results = run_model(_minimal(), replications=1, run_length=10)
+    results = run_model(_minimal(), replications=1, run_length=10, keep_empty=True)  # the frame shape: keep_empty (D1321)
     assert results["level_summary"].empty and results["flow_summary"].empty
     assert list(results["level_summary"].columns)[:2] == ["Run", "Level"]
     metrics = set(results["system"]["Metric"])

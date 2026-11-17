@@ -288,10 +288,14 @@ naga study confirm one_server --text "Queue length compared with a week of count
 
 It prints `Recorded on v001 (matches):` followed by the check as every page will show it.
 
-4. Read the label again:
+4. Read the label again (in the same Python session, or a new one in the same folder):
 
 ```python
-print(call("study_status", study=study)["sufficiency"])
+from nagasim import agent_tools
+from nagasim.agent_tools import call
+
+agent_tools.use_workspace(agent_tools.Workspace("."))
+print(call("study_status", study="one_server")["sufficiency"])
 ```
 
 You should see `sufficient for its goals with: Two servers`. The validation is now checked, and the

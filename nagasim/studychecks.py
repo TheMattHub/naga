@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import difflib
 
+from nagasim import laws
+
 
 def _check(name: str, verdict: str, why: str, kind: str) -> dict:
     return {"name": name, "verdict": verdict, "why": why, "kind": kind}
@@ -65,6 +67,23 @@ def _laws(digest: dict) -> list[dict]:
     return out
 
 
+def judge(goal: dict, mean: float | None, biased_low: bool = False) -> str:
+    """met / not_met / not_verified for one goal against one KPI mean. With *biased_low* (the run's
+    censoring or initial bias warned, D1316) only a verdict a higher true value cannot reverse
+    stands: over the upper limit stays not_met, a lower limit reached with no upper limit stays met;
+    any other reads not_verified."""
+    if mean is None:
+        return "not_verified"
+    lo, hi = goal.get("low"), goal.get("high")
+    ok = (lo is None or mean >= lo) and (hi is None or mean <= hi)
+    if biased_low and not (hi is not None and mean > hi) and not (ok and hi is None):
+        return "not_verified"
+    return "met" if ok else "not_met"
+
+
+_CHECK_VERDICT = {"met": "passed", "not_met": "failed", "not_verified": "not_verified"}
+
+
 def _range_check(name: str, kind: str, spec: dict, digest: dict) -> dict | None:
     kpi, lo, hi = goal_kpi(spec), spec.get("low"), spec.get("high")
     if not kpi or (lo is None and hi is None):
@@ -72,9 +91,16 @@ def _range_check(name: str, kind: str, spec: dict, digest: dict) -> dict | None:
     m = kpi_mean(digest, kpi)
     if m is None:
         return _check(name, "not_verified", f"KPI '{kpi}' is not in the run digest" + _nearest(digest, kpi), kind)
-    ok = (lo is None or m >= lo) and (hi is None or m <= hi)
-    return _check(name, "passed" if ok else "failed",
-                  f"{kpi} = {m:g}, expected within [{lo}, {hi}]", kind)
+    why = f"{kpi} = {m:g}, expected within [{lo}, {hi}]"
+    if kind != "goal":     # an assumption checks the model's logic: its range alone decides
+        ok = (lo is None or m >= lo) and (hi is None or m <= hi)
+        return _check(name, "passed" if ok else "failed", why, kind)
+    # #1935: a goal is judged by the one rule (D1310, D1316), with the run's own law warnings.
+    invalid, low = laws.split((digest.get("laws") or {}).get("partial"))
+    verdict = judge(spec, None if invalid else m, biased_low=bool(low))
+    if verdict == "not_verified":
+        why += "; not valid" if invalid else "; " + laws.caveat(low)
+    return _check(name, _CHECK_VERDICT[verdict], why, kind)
 
 
 def precision_check(status: dict, n: int, cap: int) -> dict:
@@ -108,6 +134,21 @@ def step_checks(layout: dict, digest: dict, rerun_digest: dict | None, study: di
             if c:
                 checks.append(c)
     return checks
+
+
+def scenario_checks(scenarios: dict | None) -> list[dict]:
+    """A partial check per option whose own law checks warned (#1880), so a step never answers
+    "passed" beside an option whose numbers are no result or may be biased low (D1316). Kind
+    "scenario": like an unmet goal it is a finding about an option, not a broken model, so the
+    version's verification leaves it out."""
+    out = []
+    for name, r in (scenarios or {}).items():
+        invalid, low = laws.split((r.get("laws") or {}).get("partial"))
+        if invalid or low:
+            why = ("not valid: " + "; ".join(c["why"] for c in invalid) if invalid
+                   else laws.caveat(low) + "; a goal verdict that could reverse is not verified")
+            out.append(_check(f"scenario {name}", "partial", why, "scenario"))
+    return out
 
 
 def overall(checks: list[dict]) -> str:

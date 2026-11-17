@@ -932,6 +932,8 @@ def main(argv=None) -> int:
     print(frame.to_string(index=False) if not frame.empty else "no enabled data bindings")
     for entry in report.problems + [w for r in report.records for w in r.warnings]:
         print(f"{entry.code}: {entry.message}")
+        if entry.hint:      # #1910: which permission is missing and who grants it (hidden like the message)
+            print(f"    hint: {entry.hint}")
     if args.write:
         Path(args.write).write_text(json.dumps(resolved, indent=2))
         print(f"Resolved model written to {args.write}")

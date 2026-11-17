@@ -3,7 +3,7 @@
 
 # KPI reference
 
-Every result frame `nagasim.api.run_model` / `nagasim.experiments.run_scenarios` return, and every column each one carries -- probed against `nagasim/models/job_shop_jackson.json` so a new KPI column fails this generation until it has a definition here.
+Every result frame `nagasim.api.run_model` / `nagasim.experiments.run_scenarios` return, and every column each one carries -- probed against `nagasim/models/job_shop_jackson.json` so a new KPI column fails this generation until it has a definition here. `run_model` returns only the frames that have rows (`system` always); test for an optional one with `"store_summary" in results` or `results.get("store_summary")`, or pass `keep_empty=True` for all of them.
 
 ## system
 

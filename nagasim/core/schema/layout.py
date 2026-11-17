@@ -541,8 +541,10 @@ def _param_problem(text: str, name: str, btype: str, at: str,
                        hint="trust and enable the plugin folder that provides it (Settings > "
                             "Plugins in the editor, or NAGASIM_PLUGIN_PATH), then reopen the model")
     if text.startswith("unknown block type: "):
+        # #1893: a near miss names the one type meant; the whole list only when none is close.
+        said = did_you_mean(btype, BLOCK_REGISTRY)
         return problem("E_UNKNOWN_BLOCK_TYPE", f"{name}: {text}", f"/blocks/{at}/type", block=name,
-                       hint=f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}")
+                       hint=said or f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}")
     spec = BLOCK_REGISTRY.get(btype)
     declared = ", ".join(p.name for p in spec.params) if spec else ""
     if text.startswith("unknown key: "):
@@ -611,12 +613,14 @@ def _validate_resource_refs(layout: dict, problems: list) -> None:
                      + ("; or use action \"Delay\" if it should only wait"
                         if btype == "PROCESS" else "")))
         if name and name not in declared:
+            said = did_you_mean(name, (d for d in declared if d))     # #1893: name the one meant
             problems.append(problem(
                 "E_RESOURCE_UNKNOWN",
                 f"{block.get('name')}: resource_name '{name}' names no declared resource or "
                 f"resource set",
                 f"/blocks/{index}/params/resource_name", block=block.get("name"),
-                hint="declare it under \"resources\"/\"resource_sets\", or fix the typo"))
+                hint=(f"{said} " if said else "")
+                + "declare it under \"resources\"/\"resource_sets\", or fix the typo"))
 
 
 def _validate_queue_behaviour(layout: dict, problems: list) -> None:

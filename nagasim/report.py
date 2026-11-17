@@ -735,16 +735,18 @@ def _forecast_html(result) -> str:
 
     orders = getattr(result, "orders", None)
     if orders is not None and not orders.empty:
+        from nagasim.forecast import NOT_JUDGED
         order_rows = [[esc(row["Order"]), fmt(row["Due"]), fmt(row["Median Completion"]),
-                       fmt(row["Q05"]), fmt(row["Q95"]),
-                       f'{row["P(late)"]:.1%}' if math.isfinite(row["P(late)"]) else "-",
-                       f'{row["Wilson LB"]:.1%}', f'{row["Wilson UB"]:.1%}',
-                       fmt(row["Completed Reps"])]
+                       fmt(row["Q05"]), fmt(row["Q95"])]
+                      + ([f'{row["P(late)"]:.1%}', f'{row["Wilson LB"]:.1%}', f'{row["Wilson UB"]:.1%}']
+                         if math.isfinite(row["P(late)"]) else [NOT_JUDGED, "-", "-"])
+                      + [fmt(row["Completed Reps"])]
                       for _, row in orders.iterrows()]
         parts.append('<h3>Orders</h3><p class="note">Per order: the empirical spread of its '
                      'completion time over the replications where it finished, and the '
                      'probability it misses its due date, with a Wilson score interval. An '
-                     'order still unfinished at the end of the horizon counts as late.</p>' +
+                     'order still unfinished at the end of the horizon counts as late when it '
+                     'was due within it; due after it, it is not judged.</p>' +
                      table(["Order", "Due", "Median completion", f"Q{low:.0%}", f"Q{high:.0%}",
                              "P(late)", "LB", "UB", "Completed reps"], order_rows))
     parts.append("</section>")

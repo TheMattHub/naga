@@ -20,10 +20,10 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nagasim import api, experiments, flowchart, studyinput, studypackage, studypage, studyroom
+from nagasim import api, experiments, flowchart, laws, studyinput, studypackage, studypage, studyroom
 from nagasim.core.stats import ci95, paired_diff_ci, pitman_morgan
 from nagasim import study as study_mod
-from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, step_checks
+from nagasim.studychecks import goal_kpi, kpi_entry, kpi_mean, scenario_checks, step_checks
 from nagasim.studyformulas import TOTAL_WAIT, queue_formula, total_wait_shares, wait_shares, why_not
 from nagasim.study import CHECKLIST, FIRST_PASS, LEVELS, MODES, PRECISION, SIZES, StudyError
 from nagasim.core.schema import ModelValidationError
@@ -327,8 +327,11 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int, base=None) -> tuple
     replications and seed, from the layout itself so a fresh process needs no model slot.
     Answers ({name: {"kpis": {goal kpi: {mean, ci_half_width}}, "goals": {goal id: verdict}}} or
     None, extra answer keys). With the Baseline's results *base*, a goal KPI's entry also holds
-    its paired difference and spread (`_paired`). A failing scenario run is reported, never fails
-    the step; a scenario that does not validate is left out and named in "scenario_error" (#1729)."""
+    its paired difference and spread (`_paired`). A scenario whose law checks warned also holds
+    "laws" ({passed, partial}); its goals are not_verified (#1880), or under censoring or initial
+    bias alone those a low bias could reverse (D1316). A failing scenario run is
+    reported, never fails the step; a scenario that does not validate is left out and named in
+    "scenario_error" (#1729)."""
     names = [sc.get("name") for sc in layout.get("scenarios") or [] if isinstance(sc, dict) and sc.get("name")]
     extra: dict = {}
     cap = SIZES[s["size"]]["scenarios"]
@@ -349,10 +352,15 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int, base=None) -> tuple
         return None, extra
     out, why = {}, []
     base_series = _series(base, layout, s)
+    checks = run.checks()
     for name, results in run.results.items():
         digest = _digest(results)
         why += _tails(s, digest, results, layout, f" in scenario {name}")
         mine = _series(results, layout, s) if base_series else {}
+        # #1880: the option's own law checks, as the Baseline's run has them. A partial law makes its
+        # numbers no result: every goal not_verified, so it is never a best option. D1316: censoring
+        # or initial bias alone keep a verdict a low bias cannot reverse.
+        invalid, low = laws.split(checks[name].partial)
         kpis, verdicts = {}, {}
         for i, g in enumerate(s["goals"]):
             e = kpi_entry(digest, goal_kpi(g)) if g.get("kpi") else None
@@ -360,8 +368,11 @@ def _run_scenarios(layout: dict, s: dict, n: int, seed: int, base=None) -> tuple
                 kpis[goal_kpi(g)] = {k: e[k] for k in ("mean", "ci_half_width") if e.get(k) is not None}
                 if pair := _paired(base_series.get(goal_kpi(g)), mine.get(goal_kpi(g))):
                     kpis[goal_kpi(g)].update(pair)
-            verdicts[g.get("id", f"g{i + 1}")] = study_mod.judge(g, e["mean"] if e else None)
+            verdicts[g.get("id", f"g{i + 1}")] = study_mod.judge(g, None if invalid or not e else e["mean"],
+                                                                 biased_low=bool(low))
         out[name] = {"kpis": kpis, "goals": verdicts}
+        if checks[name].partial:    # only then, so a clean option's record is as it was
+            out[name]["laws"] = {"passed": checks[name].passed, "partial": list(checks[name].partial)}
     if not run.completed:
         extra["scenario_error"] = " ".join(bad + ["The scenario run did not finish."])
     if why:
@@ -458,10 +469,10 @@ def _read_layout(folder: Path, version: str) -> dict:
 
 def _next(folder: Path, s: dict) -> str:
     """The next step with the study id filled in, so the assistant can send the call as written."""
-    text, sid = study_mod.next_step(s, folder), _sid(folder)
-    text = text.replace("study_update(changes=", f'study_update(study="{sid}", changes=')
+    raw, sid = study_mod.next_step(s, folder), _sid(folder)
+    text = raw.replace("study_update(changes=", f'study_update(study="{sid}", changes=')
     offer = _validate_call(folder, s)
-    if offer and text == study_mod._TODO["validation"]:
+    if offer and raw == study_mod._TODO["validation"]:     # compared before the id is filled in (#1891)
         text = f"Check the model against the textbook queue formula with {offer}, or record another validation."
     elif offer and text == study_mod._REPORTED:     # another recorded one would not close it (D1234)
         text = (f"The validation is reported, not checked: check it with {offer}, or show the person "
@@ -903,7 +914,9 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
     writes it on request. With scenarios: "scenarios": {name: {"kpis": {goal KPI: {mean,
     ci_half_width}}, "goals": {goal id: met|not_met|not_verified}}}, and "scenario_error" or
     "scenarios_skipped" when a run failed or the cap cut some; "normalised" when an input was
-    mapped.
+    mapped. A scenario whose law checks warn carries "laws": {"passed", "partial"} and a partial
+    "scenario <name>" check says why. A partial law: not valid, goals not_verified, why in place
+    of its numbers. Censoring or initial bias only: a goal a low bias may flip is not_verified.
     """
     started = time.monotonic()
     if sum(x is not None for x in (layout, model, patch)) != 1:
@@ -983,7 +996,7 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
                 with _stage(3, 3, "scenarios"):
                     scenarios, extra = _run_scenarios(layout, s, n, seed, workspace().results.get(model))
     checks = (step_checks(layout, digest, rerun, s, {"status": status, "n": n, "cap": cap}, first)
-              if digest is not None else [])
+              + scenario_checks(scenarios) if digest is not None else [])
     _log(s, "study_step", started, study_mod.error_code(problems) if problems else None)
     run = {"replications": n, "seed": seed, "precision": status, "precision_note": study_mod.precision_sentence(n, status, cap)}
     if "scenario_error" in extra:   # marks the version, so next_step names it first (#1729)

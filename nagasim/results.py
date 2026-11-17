@@ -27,11 +27,15 @@ from typing import NamedTuple
 import pandas as pd
 
 from nagasim.core.stats import ci95
+from nagasim.core.suggest import did_you_mean
 from nagasim.runchecks import RunChecks
 
-__all__ = ["Interval", "Results"]
+__all__ = ["ALWAYS_KEPT", "Interval", "Results"]
 
 log = logging.getLogger(__name__)
+
+# D1321: the frames `api.run_model` returns even with no rows; every other empty one is left out.
+ALWAYS_KEPT = ("system",)
 
 
 class Interval(NamedTuple):
@@ -42,13 +46,22 @@ class Interval(NamedTuple):
     n: int
 
 
+def _unknown_key(key: str, known, what: str = "a KPI key") -> KeyError:
+    """#1899: a misspelt key names the nearest one; where the keys are listed only when none is close."""
+    said = did_you_mean(key, known)
+    return KeyError(f"{key!r} is not {what} in these results; {said or 'see results.kpis()'}")
+
+
 class Results(dict):
     """What a run returns: KPI frames by name, with notebook conveniences.
 
-    A ``dict[str, pd.DataFrame]`` (the nine-to-twenty KPI frames, each with a
-    "Run" column), so ``results["system"]`` works as on any dict; the methods
+    A ``dict[str, pd.DataFrame]`` (the KPI frames that have rows, each with a
+    "Run" column; ``"system"`` is always there), so ``results["system"]`` works
+    as on any dict; a frame the run left empty is absent, so test for it with
+    ``"store_summary" in results`` or ``results.get("store_summary")``. The methods
     add the mean over runs, a plot and an Excel workbook. Made by
-    `nagasim.api.run_model`, ``Model.run`` and the experiment functions.
+    `nagasim.api.run_model`, ``Model.run`` and the experiment functions (which keep
+    every frame of a scenario, empty or not).
 
     See Also
     --------
@@ -80,6 +93,15 @@ class Results(dict):
     _warmup: float = 0.0
     # E8 (D1119): {run id: {name: object}} a plugin handed over with `ctx.add_artifact`.
     _artifacts: dict | None = None
+    # D1321: the names of the frames `run_model` left out because they had no rows.
+    _dropped: tuple = ()
+
+    def __missing__(self, name):
+        # D1321: a frame the run left empty is absent; say so rather than a bare KeyError.
+        if name in self._dropped:
+            raise KeyError(f"{name!r} has no rows in this run, so run_model left it out; test with "
+                           f"{name!r} in results or results.get({name!r})")
+        raise KeyError(name)
 
     @property
     def artifacts(self) -> dict:
@@ -157,7 +179,8 @@ class Results(dict):
         Returns
         -------
         pandas.DataFrame
-            The frame, one row per metric and run.
+            The frame, one row per metric and run. A frame the run left empty is
+            absent and raises KeyError (D1321).
 
         See Also
         --------
@@ -253,7 +276,7 @@ class Results(dict):
         table = self.kpis()
         hit = table.loc[table["metric"] == key, "mean"]
         if hit.empty:
-            raise KeyError(f"{key!r} is not a KPI key in these results; see results.kpis()")
+            raise _unknown_key(key, table["metric"])
         return float(hit.iloc[0])
 
     def interval(self, key: str) -> Interval:
@@ -295,7 +318,7 @@ class Results(dict):
         flat = flatten_kpis(self)
         values = flat.loc[flat["KPI"] == key, "Value"]
         if values.empty:
-            raise KeyError(f"{key!r} is not a KPI key in these results; see results.kpis()")
+            raise _unknown_key(key, flat["KPI"].unique())
         st = ci95(values)
         return Interval(float(st["mean"]), float(st["ub"] - st["mean"]),
                         int(values.map(math.isfinite).sum()))
@@ -389,10 +412,11 @@ class Results(dict):
 
         from nagasim.experiments import flatten_kpis
 
-        values = flatten_kpis(self)
-        values = values.loc[values["KPI"] == key, "Value"]
+        flat = flatten_kpis(self)
+        values = flat.loc[flat["KPI"] == key, "Value"]
         if values.empty:
-            raise KeyError(f"{key!r} is not a KPI key or a timeseries series in these results")
+            series = [] if ts is None or ts.empty else list(ts["Series"].unique())
+            raise _unknown_key(key, [*flat["KPI"].unique(), *series], "a KPI key or a timeseries series")
         st = ci95(values)
         half = st["ub"] - st["mean"]
         ax.bar([key], [st["mean"]], yerr=[half if half == half else 0.0], **kw)

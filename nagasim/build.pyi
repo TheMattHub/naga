@@ -2045,6 +2045,7 @@ class Model(Level):
         record_logs: Any = ...,
         deterministic: Any = ...,
         pace: Any = ...,
+        keep_empty: Any = ...,
     ) -> Results:
         """Run the model; `nagasim.api.run_model` with its options by name.
         """

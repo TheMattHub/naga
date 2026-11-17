@@ -236,8 +236,9 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
     calendar = calendar_of(layout)
     results = with_datetimes(results, calendar=calendar)
     sys_df = results["system"]
-    ent_sum, res_sum, sto_sum, usr_sum = (results["entity_summary"], results["resource_summary"],
-                                          results["store_summary"], results["user_summary"])
+    # D1321: run_model leaves a frame with no rows out; its sheet is still written, empty.
+    ent_sum, res_sum, sto_sum, usr_sum = (results.get(key, pd.DataFrame()) for key in (
+        "entity_summary", "resource_summary", "store_summary", "user_summary"))
 
     # DEVLOG #8: a model with no SEIZE has no resource summary at all
     if "Bottleneck %" in res_sum.columns:
@@ -349,9 +350,9 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
             frame = results.get(key)
             if frame is not None and not frame.empty:
                 write_sheet(wr, frame, sheet)
-        write_sheet(wr, results["entity_log"], "Entities", format_percent=False)
-        write_sheet(wr, results["resource_log"], "Resources", format_percent=False)
-        write_sheet(wr, results["store_log"], "Stores", format_percent=False)
+        for key, sheet in (("entity_log", "Entities"), ("resource_log", "Resources"),
+                           ("store_log", "Stores")):
+            write_sheet(wr, results.get(key, pd.DataFrame()), sheet, format_percent=False)
 
     log.info(f"Experiment exported to {out_path}")
     return out_path

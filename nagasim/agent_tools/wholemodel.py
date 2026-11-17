@@ -152,8 +152,7 @@ def _overview() -> str:
     others = [s for s in full["properties"] if s not in ("schema_version", "blocks", "links",
                                                           "simulation", *_CORE_SECTIONS)]
     parts = [
-        "A model file is ONE JSON object; write it whole with write_model, which answers with "
-        "its problems (code, JSON path, hint). Every key is optional; '*' marks a required "
+        "A model file is ONE JSON object. Every key is optional; '*' marks a required "
         "field, '=v' a default you may leave out.",
         "Example (an M/M/1 queue): " + _example(),
         "blocks: [{name*, type*, params}] -- params as below; a block may have one outgoing link, "
@@ -189,18 +188,22 @@ _document_args("get_model_format",
                         "[\"levels\", \"schedules\"]; omit for the overview.")
 
 
-@tool(read_only=True, returns={"format": str})
+# #1891: what to do with the file, so this answer names its next call too.
+_FORMAT_NEXT = "Send the whole file as layout to study_step (in a study) or write_model; each lists its problems."
+
+
+@tool(read_only=True, returns={"format": str, "next_step": str})
 def get_model_format(blocks: list[str] | None = None, sections: list[str] | None = None) -> dict:
-    """What a model file holds, compactly: call it ONCE before writing the first model file.
+    """What a model file holds: call it ONCE before writing the first model file.
 
     With no argument: a minimal example file, the top-level sections with their fields,
     every block type with its parameters and defaults, every distribution with its
     parameter names and every expression function with what it reads. With `blocks` or
     `sections`: those in full, each field with its meaning. Generated from the registries
-    and the JSON Schema (resource naga://reference/schema), so it is never out of date.
+    and the JSON Schema (resource naga://reference/schema).
     """
     if not blocks and not sections:
-        return {"format": _overview()}
+        return {"format": _overview(), "next_step": _FORMAT_NEXT}
     full = _schema()
     lines = []
     for name in blocks or ():
@@ -209,7 +212,7 @@ def get_model_format(blocks: list[str] | None = None, sections: list[str] | None
                             f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}")
         lines.append(_block_line(str(name).upper(), True))
     lines += [_section_line(full, str(s), True) for s in sections or ()]
-    return {"format": "\n".join(lines)}
+    return {"format": "\n".join(lines), "next_step": _FORMAT_NEXT}
 
 
 # ---------------------------------------------------------------- write_model

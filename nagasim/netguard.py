@@ -897,7 +897,8 @@ def open_connection(conn: Connection, timeout: float = CONNECT_TIMEOUT) -> socke
                              f"connection '{conn.name}': the TLS handshake with '{conn.host}' "
                              f"failed ({reason})",
                              "the certificate must be valid for that host name; for a private "
-                             "CA, name it as \"ca_file\" in the connections file") from None
+                             "CA, you (the person who runs the model) name its certificate as "
+                             "\"ca_file\" of this connection in your connections file") from None
 
 
 # ---------------------------------------------------------------- consent helpers

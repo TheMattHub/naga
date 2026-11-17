@@ -16,7 +16,7 @@ import numpy as np
 from nagasim.core.sim_classes import EntityRecord
 
 __all__ = ["TimeWeighted", "Tally", "Counter", "UserStat", "USER_STAT_KINDS", "RECORD_KINDS", "ci95",
-           "paired_diff_ci", "welch_diff_ci", "wilson_interval", "EntityTypeStats",
+           "paired_diff_ci", "welch_diff_ci", "wilson_interval", "quantile_interval", "EntityTypeStats",
            "DueDateStats", "FloatSeries", "account_and_retain", "account_due_date", "created_in_window"]
 
 
@@ -525,6 +525,30 @@ def welch_diff_ci(a, b, confidence: float = 0.95) -> dict[str, float]:
     from scipy import stats as _sp_stats
     half = float(_sp_stats.t.ppf(0.5 + confidence / 2.0, df)) * sem
     return {"mean": mean, "sem": sem, "lb": mean - half, "ub": mean + half, "df": float(df)}
+
+
+def quantile_interval(values, q: float, confidence: float = 0.95) -> dict[str, float]:
+    """A *q*-quantile over replication values with a distribution-free interval (D1313).
+
+    The bounds are order statistics: the number of values below the true quantile is
+    Binomial(n, q), so the values at the ranks where that binomial's CDF passes
+    (1 - confidence)/2 and (1 + confidence)/2 hold the quantile with at least about
+    *confidence*. Chosen over a normal approximation because a lateness is skewed and a
+    90th percentile sits in a tail. The point is numpy's interpolated quantile. Non-finite
+    values are dropped. Returns {value, lb, ub, n}; a bound the sample is too small to reach
+    is NaN, and n == 0 gives NaN everywhere.
+    """
+    arr = np.sort(_finite(values))
+    n = int(arr.size)
+    if n == 0:
+        return {"value": np.nan, "lb": np.nan, "ub": np.nan, "n": 0}
+    from scipy import stats as _sp_stats
+    tail = (1.0 - confidence) / 2.0
+    low = int(_sp_stats.binom.ppf(tail, n, q))              # 1-based rank of the lower bound
+    high = int(_sp_stats.binom.ppf(1.0 - tail, n, q)) + 1   # 1-based rank of the upper bound
+    return {"value": float(np.quantile(arr, q)),
+            "lb": float(arr[low - 1]) if low >= 1 else np.nan,
+            "ub": float(arr[high - 1]) if high <= n else np.nan, "n": n}
 
 
 def wilson_interval(successes: int, n: int, confidence: float = 0.95) -> dict[str, float]:

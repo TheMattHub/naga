@@ -83,9 +83,8 @@ def test_checklist_gaps_are_missing_and_reuse_the_checklist(tmp_path):
     s["assumptions"] = []
     out = everything(s, folder)
     gaps = [o for o in out if o["kind"] == "missing"]
-    assert [o["title"] for o in gaps] == ["Assumptions have sources", "A model version exists",
-                                          "The model does what was intended", "The model matches reality",
-                                          "Experiments were run", "Change the model or the goals"]
+    # #1891: the items that wait on a model are not offered before the model's own option
+    assert [o["title"] for o in gaps] == ["Assumptions have sources", "A model version exists"]
     assert "Checklist step 5 of 10" in gaps[0]["why"] and gaps[0]["needs"] == ["assumptions"]
     assert "Goals are measurable" not in titles(out)        # passed: silent
 

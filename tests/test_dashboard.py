@@ -105,7 +105,7 @@ def test_no_dashboard_gives_empty_frame_and_unchanged_kpis():
     with_dashboard = _queue_model({"widgets": [{"name": "q", "kind": "kpi",
                                                 "expr": 'NQ("Server")'}]})
 
-    r1 = run_model(plain, replications=1, seed=0, warmup=0, run_length=6)
+    r1 = run_model(plain, replications=1, seed=0, warmup=0, run_length=6, keep_empty=True)  # the frame shape: keep_empty (D1321)
     r2 = run_model(with_dashboard, replications=1, seed=0, warmup=0, run_length=6)
 
     assert list(r1["dashboard"].columns) == ["Run", "Time", "Widget", "Series", "Value", "Warmup"]

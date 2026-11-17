@@ -41,7 +41,8 @@ def payload_of(results: dict) -> dict:
     rounded = {str(row["Metric"]): (round(row["Value"], 6) if isinstance(row["Value"], (int, float))
                                     else row["Value"])
                for _, row in sys_df.iterrows()}
-    return {"system": rounded, "entity_count": len(results["entity_log"])}
+    # D1321: a run with no entities has no entity_log frame; 0 then, as before.
+    return {"system": rounded, "entity_count": len(results.get("entity_log", ()))}
 
 
 def golden_payload(model: str, seed: int) -> dict:

@@ -3,6 +3,9 @@
     answer = uncertainty.input_uncertainty(
         layout, [{"path": "blocks.process_1.params.distribution", "values": service_times}])
 
+`input_uncertainty` returns the nested dict it has returned since its release (D1322);
+`input_uncertainty_frame` gives the same answer as a DataFrame with one row per KPI (#1896).
+
 A result run on fitted inputs carries two kinds of error: the run-to-run noise a confidence
 interval shows, and the error of the fit itself, which more replications never shrink. This
 module measures the second with a bootstrap:
@@ -51,8 +54,8 @@ from scipy import stats as sstats
 from nagasim import experiments, inputfit, pagetext
 from nagasim.core.stats import ci95
 
-__all__ = ["MAX_RUNS", "NOT_MEASURED", "input_uncertainty", "interval", "render", "same_change",
-           "trust_texts", "what_if_note", "main"]
+__all__ = ["MAX_RUNS", "NOT_MEASURED", "input_uncertainty", "input_uncertainty_frame", "interval", "render",
+           "same_change", "trust_texts", "what_if_note", "main"]
 
 # Every run is a full model run: (resamples + 1) x replications of them. A study bigger
 # than this is refused before the first run, with the count, rather than left to grind.
@@ -179,6 +182,7 @@ def input_uncertainty(layout, inputs: list[dict], *, kpis: list[str] | None = No
     --------
     nagasim.inputfit.best_fit : Fits the distribution a sample comes from.
     nagasim.experiments.run_scenarios : Compares scenarios without input uncertainty.
+    input_uncertainty_frame : The same answer as a DataFrame, one row per KPI.
 
     Examples
     --------
@@ -274,6 +278,75 @@ def input_uncertainty(layout, inputs: list[dict], *, kpis: list[str] | None = No
             floor=not change)})
     answer["notes"] = _notes(answer)
     return answer
+
+
+_FRAME_COLUMNS = ["kpi", "mean", "run_lo", "run_hi", "input_lo", "input_hi", "input_share",
+                  "resamples_used"]
+
+
+def input_uncertainty_frame(layout, inputs: list[dict], **kwargs):
+    """Each KPI's run-to-run interval, its interval with the inputs' uncertainty, and the
+    inputs' share of the spread, as a DataFrame with one row per KPI.
+
+    Parameters
+    ----------
+    layout : dict or str
+        The model.
+    inputs : list of dict
+        ``{"path", "values"}`` per input, as `input_uncertainty` takes them.
+    **kwargs
+        ``kpis``, ``resamples``, ``replications``, ``seed``, ``run_length``, ``warmup``,
+        ``workers``, ``should_stop`` and ``overrides``: see `input_uncertainty`, which does
+        the work.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``kpi, mean, run_lo, run_hi, input_lo, input_hi, input_share,
+        resamples_used`` (NaN where undefined: fewer than 2 replications or 2 usable
+        resamples). ``.attrs`` holds the rest of the answer: ``completed``, ``measure``,
+        ``runs``, ``resamples``, ``replications``, ``seed``, ``inputs``, ``notes``. Errors
+        are those of `input_uncertainty`.
+
+    See Also
+    --------
+    input_uncertainty : The same answer as a nested dict (its released return type, D1322).
+
+    Examples
+    --------
+    >>> import random
+    >>> from nagasim import build as nb, uncertainty
+    >>> m = nb.Model(time_limit=300, warmup=30)
+    >>> m.add_resource(name="Server", capacity=1)
+    'Server'
+    >>> arrive = m.create("arrive", distribution=nb.Exponential(rate=0.9))
+    >>> _ = arrive >> m.process("serve", resource_name="Server",
+    ...                         distribution=nb.Exponential(rate=1.0)) >> m.dispose()
+    >>> rng = random.Random(0)
+    >>> gaps = [round(rng.expovariate(0.9), 3) for _ in range(30)]
+    >>> table = uncertainty.input_uncertainty_frame(
+    ...     m.to_dict(), [{"path": "blocks.arrive.params.distribution", "values": gaps}],
+    ...     kpis=["system/Total Entities Completed"], resamples=2, replications=2)
+    >>> list(table.columns)[:3], table.attrs["runs"]
+    (['kpi', 'mean', 'run_lo'], 6)
+    """
+    return _frame_of(input_uncertainty(layout, inputs, **kwargs))
+
+
+def _frame_of(answer: dict):
+    """The answer of `input_uncertainty` as the frame `input_uncertainty_frame` returns."""
+    import pandas as pd
+
+    def bound(pair, at):
+        return float("nan") if pair is None else float(pair[at])
+    rows = [{"kpi": r["kpi"], "mean": r["mean"], "run_lo": bound(r["run_ci"], 0),
+             "run_hi": bound(r["run_ci"], 1), "input_lo": bound(r["input_interval"], 0),
+             "input_hi": bound(r["input_interval"], 1),
+             "input_share": float("nan") if r["input_share"] is None else r["input_share"],
+             "resamples_used": r["resamples_used"]} for r in answer["kpis"]]
+    table = pd.DataFrame(rows, columns=_FRAME_COLUMNS)
+    table.attrs = {k: v for k, v in answer.items() if k != "kpis"}
+    return table
 
 
 def _notes(answer: dict) -> list[str]:
@@ -434,6 +507,7 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run-length", type=float, default=None)
     parser.add_argument("--warmup", type=float, default=None)
+    parser.add_argument("--out", help="write the KPI table (one row per KPI) here (.xlsx or .csv)")
     parser.add_argument("--bin-width", type=float, default=None,
                         help="an arrival table's bin width, in base time units")
     parser.add_argument("--cycle", type=float, default=None,
@@ -443,9 +517,13 @@ def main(argv=None) -> int:
         inputs = [{"path": path, "values": inputfit.load_column(file, column).values.tolist(),
                    "bin_width": args.bin_width, "cycle": args.cycle}
                   for path, file, column in args.data]
-        answer = input_uncertainty(args.model, inputs, kpis=args.kpi, resamples=args.resamples,
-                                   replications=args.replications, seed=args.seed,
-                                   run_length=args.run_length, warmup=args.warmup)
+        answer = input_uncertainty(
+            args.model, inputs, kpis=args.kpi, resamples=args.resamples,
+            replications=args.replications, seed=args.seed, run_length=args.run_length,
+            warmup=args.warmup)
+        if args.out:
+            from nagasim import optimize
+            optimize._write_table(_frame_of(answer), args.out, "Uncertainty")   # .csv or .xlsx, as calibrate's --out
     except (ValueError, OSError) as exc:        # ModelValidationError included
         print(f"naga uncertainty: {exc}")
         return 2

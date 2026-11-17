@@ -59,7 +59,7 @@ from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core.stats import ci95, wilson_interval
 
 __all__ = ["ForecastResult", "forecast", "bands", "parse_event", "series_extreme_kpis",
-           "order_outlook", "BAND_COLUMNS", "KPI_COLUMNS", "EVENT_COLUMNS", "ORDER_COLUMNS", "main"]
+           "order_outlook", "NOT_JUDGED", "BAND_COLUMNS", "KPI_COLUMNS", "EVENT_COLUMNS", "ORDER_COLUMNS", "main"]
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +96,11 @@ def series_extreme_kpis(results: dict) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Run", "KPI", "Value"])
 
 
-def order_outlook(results: dict, quantiles=(0.05, 0.95), confidence: float = 0.95) -> pd.DataFrame:
+NOT_JUDGED = "not judged within the horizon"     # what a page shows for a NaN P(late) (#1930)
+
+
+def order_outlook(results: dict, quantiles=(0.05, 0.95), confidence: float = 0.95,
+                  horizon: float | None = None) -> pd.DataFrame:
     """"Will order X be late" (PHASE4 A3): per declared order, the spread of
     its completion time across the replications and the probability it misses
     its due date, with a WILSON interval -- the same reason events use one, and
@@ -108,7 +112,13 @@ def order_outlook(results: dict, quantiles=(0.05, 0.95), confidence: float = 0.9
     they describe a finished order and never a censored one; `Completed Reps`
     says how many those were. An order that finished in NO replication still
     gets a row -- NaN times and P(late) 1.0, which is the honest answer when a
-    horizon ends with the job still on the floor.
+    horizon ends with the job still on the floor past its due date.
+
+    With the *horizon*, an order due after it that is unfinished at its end in
+    any replication is NOT JUDGED (#1930): NaN P(late) and interval, shown as
+    `NOT_JUDGED`. It cannot have been late in the time the horizon saw, and
+    whether it will be is unknown; neither 1.0 nor 0 is an answer. Due after
+    the horizon and finished in every replication, it was on time in each.
     """
     df = results.get("order_summary")
     if df is None or df.empty:
@@ -121,10 +131,12 @@ def order_outlook(results: dict, quantiles=(0.05, 0.95), confidence: float = 0.9
         due = pd.to_numeric(group["Due"], errors="coerce").dropna()
         due = float(due.iloc[0]) if not due.empty else np.nan
         # Unfinished counts as late: the order missed a due date inside the
-        # horizon, or the horizon ended before anyone could tell it did not.
+        # horizon. Due after it, an unfinished one is not judged (below, #1930).
         late = int((pd.to_numeric(group["Late"], errors="coerce").fillna(1.0) > 0).sum())
         stat = wilson_interval(late, replications, confidence)
         values = completions.to_numpy(dtype=float)
+        if horizon is not None and due > horizon and values.size < replications:
+            stat = {"p": np.nan, "lb": np.nan, "ub": np.nan}
         rows.append({
             "Order": str(order), "Due": due,
             "Median Completion": float(np.median(values)) if values.size else np.nan,
@@ -313,7 +325,7 @@ def forecast(layout, *, horizon: float, replications: int = 100, kpis=None, even
         horizon=float(horizon), replications=int(results["system"]["Run"].nunique()),
         bands=bands(results, quantiles), kpis=_kpi_table(flat, kpis, quantiles),
         events=_events(flat, events, confidence),
-        orders=order_outlook(results, quantiles, confidence), results=results,
+        orders=order_outlook(results, quantiles, confidence, float(horizon)), results=results,
         bindings=results.get("data_inputs"), quantiles=tuple(quantiles))
 
 

@@ -123,6 +123,20 @@ def test_a_summary_says_the_forecast_against_what_was_observed_and_how_to_read_i
     assert forecast["lines"][-1] == monitor.IN_DISTRIBUTION
 
 
+def test_a_lost_connection_has_its_own_sentence_and_the_page_carries_a_banner_for_it(tmp_path):
+    """#1908: the summary says it in one sentence (None while every source answers), the page
+    has a top alert for it and dims what the loss left behind."""
+    assert monitor.summary(result())["lost"] is None
+    down = result(sources=[{"name": "plc", "state": "down", "age": 1200, "lost": 0, "gaps": 1},
+                           {"name": "mes", "state": "live", "age": 1, "lost": 0, "gaps": 0}])
+    said = monitor.summary(down)["lost"]
+    assert said.startswith("Connection lost: plc.") and "20 min ago" in said and "mes" not in said
+    assert monitor.summary(result(sources=[{"name": "plc", "state": "down", "age": 30}]))["lost"].count("30 s")
+    html = monitor.Page(slow_line(), tmp_path / "m.html", every=5.0).build(down, [])
+    assert 'id="m-lost" role="alert" hidden' in html and "body:has(#m-lost:not([hidden]))" in html
+    assert "#m-forecast-box { order: 2; }" in html and "#m-advice-box { order: 3; }" in html   # #1905
+
+
 def test_a_missing_forecast_always_has_its_reason_and_a_limit_is_named():
     down = "source 'plc' is down or has not answered yet"
     skipped = monitor.summary(result(

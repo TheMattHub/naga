@@ -112,7 +112,7 @@ def test_without_outputs_schedule_the_frame_is_empty_with_fixed_columns(simple_m
     rules"): a model that never sets `outputs.schedule` gets the frame back
     EMPTY with its fixed columns, so no existing model's KPI keys, workbook
     sheet count or golden hash moves."""
-    results = api.run_model(simple_model_path, replications=1, run_length=20)
+    results = api.run_model(simple_model_path, replications=1, run_length=20, keep_empty=True)  # keep_empty (D1321)
     assert results["schedule_log"].empty
     assert list(results["schedule_log"].columns) == SCHEDULE_LOG_COLS
 

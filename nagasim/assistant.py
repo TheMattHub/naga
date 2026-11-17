@@ -80,8 +80,8 @@ NOT_IN_DOCK = frozenset({"new_model", "open_model", "import_event_log", "import_
                          "save_model", "undo", "redo"})
 # #1801: the tools that write a path the call names, by that argument. In the editor they write
 # new files only; every other path argument of an offered tool is read (tests/test_assistant.py
-# keeps the two lists whole).
-_WRITES = {"export": "path", "study_start": "study"}
+# keeps the two lists whole). A product adds the entries of its own tools that write.
+WRITES = {"export": "path", "study_start": "study"}
 # #1813: a tool whose optional "model" is one of several ways to name its input; the open model is
 # filled in only when the call named none of them.
 _MODEL_ALTERNATIVES = {"study_step": ("layout", "patch")}
@@ -394,9 +394,9 @@ class WorkspaceAdapter:
                 "E_NOT_APPLIED", f"'{name}' changed a copy of the model, so nothing changed in the editor",
                 "this tool's thread class is wrong (nagasim.assistant.ON_GUI); say the change was not "
                 "made").as_dict()
-        if (arguments.get(_WRITES.get(name, "")) is not None and isinstance(answer, dict)
+        if (arguments.get(WRITES.get(name, "")) is not None and isinstance(answer, dict)
                 and "error" not in answer):
-            self._written.add(self.workspace.resolve(arguments[_WRITES[name]]))
+            self._written.add(self.workspace.resolve(arguments[WRITES[name]]))
         if replaced:
             # #1797: a tool that opens or creates a model under this handle (open_model with
             # name="current") would send the rest of the turn to a model the editor does not show.
@@ -427,7 +427,7 @@ class WorkspaceAdapter:
         """#1801: in the editor a tool that writes a path the call names writes a new file only
         (or one it wrote itself in this adapter): never the open model's file nor another file
         of its folder, which the turn's undo would not bring back."""
-        value = arguments.get(_WRITES.get(name, ""))
+        value = arguments.get(WRITES.get(name, ""))
         if value is None:
             return None
         try:

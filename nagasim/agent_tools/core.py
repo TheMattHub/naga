@@ -13,7 +13,6 @@ public surface.
 from __future__ import annotations
 
 import contextvars
-import difflib
 import inspect
 import json
 import os
@@ -29,7 +28,7 @@ from pathlib import Path
 
 
 from nagasim import experiments, mdlimport, netguard, nextoptions, sdimport
-from nagasim.core import schema as schema_mod
+from nagasim.core import schema as schema_mod, suggest
 from nagasim.core.agents import PYTHON_CONSENT, PythonRefused
 from nagasim.core.document import ModelDocument
 
@@ -101,7 +100,7 @@ def invalid_model_hint(problems, then: str = "") -> str:
 
 
 def _close(word, choices) -> list[str]:
-    return difflib.get_close_matches(str(word), list(choices), n=3, cutoff=0.5)
+    return suggest.close(word, choices, cutoff=0.5)
 
 
 def unknown_tool_error(name, choices=None) -> ToolError:
@@ -112,7 +111,7 @@ def unknown_tool_error(name, choices=None) -> ToolError:
     from .discover import catalogue_index   # lazy: discover imports this module
     from nagasim import toolsearch
     choices = TOOLS if choices is None else choices
-    close = difflib.get_close_matches(str(name), list(choices), n=3, cutoff=0.75)
+    close = suggest.close(name, choices, cutoff=0.75)
     close += [h["name"] for h in toolsearch.search(catalogue_index(), str(name), 3, set(choices))
               if h["name"] not in close][:3 - len(close)]
     return ToolError("E_UNKNOWN_TOOL", f"no tool named '{name}'",
