@@ -753,6 +753,13 @@
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "capacity": {
+          "description": "Parts a link with a delay holds at once (a full link holds its feeder); 0 = no limit.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "delay": {
           "description": "Optional transfer delay, e.g. {\"distribution\": \"Constant\", \"dist_params\": {\"value\": 2}}.",
           "type": [
@@ -769,7 +776,7 @@
           "type": "string"
         },
         "source_port": {
-          "description": "Out port name, only when the source is a SUBMODEL instance.",
+          "description": "Out port name: a SUBMODEL instance's port, or a CONVEYOR's exit (\"out\", \"d<k>\").",
           "type": [
             "string",
             "null"
@@ -780,7 +787,7 @@
           "type": "string"
         },
         "target_port": {
-          "description": "In port name, only when the target is a SUBMODEL instance.",
+          "description": "In port name: a SUBMODEL instance's port, or a CONVEYOR's \"in\".",
           "type": [
             "string",
             "null"
@@ -1020,7 +1027,7 @@
     "read_only": true
   },
   {
-    "description": "List every record of one section of the model, as stored.\n\nRecord sections: resources, resource_sets, schedules, failures, tables,\nsequences, variables, entities, timeseries_inputs, levels, flows,\nconversions, fixed_costs, fleets, motion_profiles, zones, chargers,\nauxiliaries, delays, subscripts, agent_types, populations, reality_checks and orders\n(keyed by \"id\"; every other section by \"name\"). Record shape: schema\n$defs/<item>, see get_record_schema.\n\nSequences are the routings: the operation order a product follows through the\nstations (a ROUTE block sends an entity whose `sequence` attribute names one to\neach step's STATION); the answer adds \"stations\", the model's STATION blocks.\nOrders are released jobs with a due date (\"make `quantity` of `entity_type` on\nrouting `sequence`, released at `release`, due at `due`\", base time unit); the\nanswer adds \"releases\", the CREATE blocks in Orders mode. Read them before\nwriting a sequence or an order name anywhere else.",
+    "description": "List every record of one section of the model, as stored.\n\nRecord sections: resources, resource_sets, schedules, failures, tables,\nsequences, variables, entities, timeseries_inputs, levels, flows,\nconversions, fixed_costs, fleets, motion_profiles, robots, pallet_patterns, zones,\nchargers, auxiliaries, delays, subscripts, agent_types, populations, reality_checks and orders\n(keyed by \"id\"; every other section by \"name\"). Record shape: schema\n$defs/<item>, see get_record_schema.\n\nSequences are the routings: the operation order a product follows through the\nstations (a ROUTE block sends an entity whose `sequence` attribute names one to\neach step's STATION); the answer adds \"stations\", the model's STATION blocks.\nOrders are released jobs with a due date (\"make `quantity` of `entity_type` on\nrouting `sequence`, released at `release`, due at `due`\", base time unit); the\nanswer adds \"releases\", the CREATE blocks in Orders mode. Read them before\nwriting a sequence or an order name anywhere else.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -1903,6 +1910,13 @@
             "null"
           ]
         },
+        "strict_checks": {
+          "description": "true: conveyor floor checks and run guards are errors, not warnings.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "time_unit": {
           "description": "The model's BASE unit: seconds, minutes, hours or days.",
           "type": [
@@ -2012,6 +2026,95 @@
     "read_only": false
   },
   {
+    "description": "Write the Python class a submodel definition runs (its item code), one undo step.\n\nHooks, each taking item last: on_entry gets entity and returns the output index (0 first);\non_exit gets entity; on_timer; on_state gets variable and value; on_signal gets name.\nLOGIC blocks with hook entry or exit inside the definition run the first two, and\nitem.params holds the instance's arguments.\n\nThe code runs only after a person trusts this exact code on their computer, in the\neditor's code panel or with `naga trust`. You cannot trust code, and any change to it\nneeds the person's yes again. Once trusted, your runs and experiments run it.\n\n\"problems\" lists what to fix in the code or its wiring.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "class_name": {
+          "description": "The class in source the item runs, one instance per placed item.",
+          "type": "string"
+        },
+        "definition": {
+          "description": "Name of the submodel definition whose code this is.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "signals": {
+          "description": "Signal names that trigger on_signal; $name is per instance.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "The whole Python source: a module defining the class.",
+          "type": "string"
+        },
+        "timer": {
+          "description": "Run on_timer every this many model time units; null for no timer.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "watch": {
+          "description": "Model variables whose writes trigger on_state.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model",
+        "definition",
+        "source",
+        "class_name"
+      ],
+      "type": "object"
+    },
+    "name": "set_item_code",
+    "output_schema": {
+      "properties": {
+        "errors": {
+          "type": "integer"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "problems": {
+          "type": "array"
+        },
+        "trusted": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
     "description": "Lay the model's blocks out left to right in a deterministic layered\narrangement, one undo entry.\n\nPurely cosmetic -- it changes no behaviour and no KPI. Call it once after\nbuilding a model so a human opening it in the editor sees a readable\ndiagram instead of a pile of blocks.",
     "input_schema": {
       "additionalProperties": false,
@@ -2095,7 +2198,7 @@
     "read_only": true
   },
   {
-    "description": "Run (simulate) a model over its replications and return a COMPACT KPI digest -- never\nthe raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications; `run_to_precision`\nfinds how many. One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it; a binding it\ncould not resolve is counted in \"bindings\" ({\"problems\", \"first\"}). Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\n\"laws\" are the operational-law checks and guardrails (utilisation, offered load, Little, flow\nconservation, censoring, initial bias) -- warnings, never failures; a partial one names why\nits numbers cannot be read at face value. Only when the model has them: \"entities\" (per\nentity type, when there are several: Avg Time, Total Completed), \"levels\" (Average, Final,\nTime Empty %, Time Full %), \"queues\" (per block: Balked, Reneged) and \"agents\" (per\npopulation/state: Avg Count), in the same {mean, ci_half_width} form.",
+    "description": "Run (simulate) a model over its replications and return a COMPACT KPI digest -- never\nthe raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications; `run_to_precision`\nfinds how many. One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it; a binding it\ncould not resolve is counted in \"bindings\" ({\"problems\", \"first\"}). Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\n\"laws\" are the operational-law checks and guardrails (utilisation, offered load, Little, flow\nconservation, censoring, initial bias) -- warnings, never failures; a partial one names why\nits numbers cannot be read at face value. Only when the model has them: \"entities\" (per\nentity type, when there are several: Avg Time, Total Completed), \"levels\" (Average, Final,\nTime Empty %, Time Full %), \"queues\" (per block: Balked, Reneged) and \"agents\" (per\npopulation/state: Avg Count), in the same {mean, ci_half_width} form. \"problems\" is present\nonly when the run raised warnings while running (a part handed to nothing, a part leaving by\nan exit its rule would not choose, a hold still open at the end): code, message, hint, block.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2171,6 +2274,9 @@
         "model": {
           "type": "string"
         },
+        "problems": {
+          "type": "array"
+        },
         "queues": {
           "type": "object"
         },
@@ -2197,7 +2303,7 @@
       "additionalProperties": false,
       "properties": {
         "frame": {
-          "description": "Which frame: system, resource_summary, entity_summary, user_summary, store_summary, entity_log, resource_log, store_log or timeseries.",
+          "description": "Which frame: system, resource_summary, entity_summary, user_summary, store_summary, entity_log, resource_log, store_log, timeseries, or any other name the run's `frames` lists (a conveyor line adds conveyor_flow, conveyor_zones, transfer_summary, route_holds, link_flow).",
           "type": "string"
         },
         "limit": {
@@ -5940,6 +6046,393 @@
         },
         "problems": {
           "type": "array"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
+    "description": "One layer of equal items on a pallet, as the slots of a pallet pattern.\n\n\"column\" is the better of the two plain grids; \"block\" splits the pallet once and\nturns the items 90 degrees in one part, which packs more when neither grid fills\nit; \"best\" keeps the layout with the most items. Each slot is an item's centre\nfrom the pallet's centre (x along the pallet's length) and its rotation in\ndegrees. It writes nothing: put the slots under a record's `layers` (for example\nas layer \"A\", stacked [{\"layer\": \"A\"}, {\"layer\": \"A\", \"transform\": \"rotate180\"}])\nand store it with upsert_record in \"pallet_patterns\".",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "gap": {
+          "default": 0.0,
+          "description": "The space between two items (default 0).",
+          "type": "number"
+        },
+        "item_length": {
+          "description": "The item's length, in the same unit.",
+          "type": "number"
+        },
+        "item_width": {
+          "description": "The item's width, in the same unit.",
+          "type": "number"
+        },
+        "kind": {
+          "default": "best",
+          "description": "\"column\", \"block\" or \"best\" (default): the layout with the most items.",
+          "enum": [
+            "column",
+            "block",
+            "best"
+          ],
+          "type": "string"
+        },
+        "overhang": {
+          "default": 0.0,
+          "description": "How far an item may pass the pallet's edge (default 0).",
+          "type": "number"
+        },
+        "pallet_length": {
+          "description": "The pallet's length, in the model's length unit.",
+          "type": "number"
+        },
+        "pallet_width": {
+          "description": "The pallet's width, in the same unit.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "pallet_length",
+        "pallet_width",
+        "item_length",
+        "item_width"
+      ],
+      "type": "object"
+    },
+    "name": "generate_pallet_layer",
+    "output_schema": {
+      "properties": {
+        "area_use": {
+          "type": "number"
+        },
+        "items": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "overhang": {
+          "type": "number"
+        },
+        "slots": {
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": true
+  },
+  {
+    "description": "Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at\n(x, y) and travelling at *rotation*.\n\nWith *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that\nport, facing its way, and a link with `source_port` / `target_port` is added, so no\ncoordinates are computed by hand. One undo entry. Segment lengths and radii are in the\nmodel's length unit.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the new belt piece.",
+          "type": "string"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Direction of travel at the entry, degrees clockwise on screen (0 east, 90 south), like set_layout; ignored with snap_to.",
+          "type": "number"
+        },
+        "segments": {
+          "description": "The belt's pieces, entry to end (the CONVEYOR `path` param): {\"straight\": length} or {\"arc\": {\"radius\": r, \"angle\": degrees, \"turn\": \"left\"|\"right\"}}.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "snap_to": {
+          "default": "",
+          "description": "\"<block>.<port>\" of a belt or transfer exit (\"A.out\", \"A.d0\", \"X.left\"): the piece starts at that port, facing its way, and the two are linked.",
+          "type": "string"
+        },
+        "speed": {
+          "description": "Belt speed, model length per time unit; default: the type's datasheet speed (untyped: block default).",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "type": {
+          "default": "",
+          "description": "Conveyor type: \"\" (untyped), \"belt\", \"roller\", \"chain\", \"pallet\" or \"mdr\". A typed piece gets the type's datasheet speed in its params.",
+          "type": "string"
+        },
+        "x": {
+          "default": 0.0,
+          "description": "Floor-plan x of the belt's entry, in metres; ignored with snap_to.",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "description": "Floor-plan y (south is +y), in metres; ignored with snap_to.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "name",
+        "segments"
+      ],
+      "type": "object"
+    },
+    "name": "place_piece",
+    "output_schema": {
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "layout_position": {
+          "type": "array"
+        },
+        "layout_rotation": {
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
+    "description": "Add a CONVEYOR_TRANSFER (moves each load onto one of its exits) on the floor plan, in one\nundo entry.\n\nIts exits are ports: `place_piece` the belt that takes each with snap_to \"<module>.<exit>\",\nor link an existing one with `connect(source=<module>, target=<belt>, source_port=<exit>)`.\nThe belt feeding the module is linked by *snap_to* or `connect`. `get_ports` lists the ports.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "exits": {
+          "description": "The module's exits, in exit order: [{\"port\": name, \"angle\": degrees from the entry heading, clockwise on screen}]. Empty: one straight exit \"out\".",
+          "items": {
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "mechanism": {
+          "default": "popup",
+          "description": "\"popup\" (default), \"turntable\" or \"lift\".",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the new transfer module.",
+          "type": "string"
+        },
+        "rotation": {
+          "default": 0.0,
+          "description": "Heading of the entry, degrees clockwise on screen (0 east, 90 south); ignored with snap_to.",
+          "type": "number"
+        },
+        "snap_to": {
+          "default": "",
+          "description": "\"<belt>.<port>\" (\"A.out\"): the module takes that port's pose and the belt is linked to it.",
+          "type": "string"
+        },
+        "x": {
+          "default": 0.0,
+          "description": "Floor x, metres; ignored with snap_to.",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "description": "Floor y (south +), metres; ignored with snap_to.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "place_transfer",
+    "output_schema": {
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "layout_position": {
+          "type": "array"
+        },
+        "layout_rotation": {
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
+    "description": "The ports of a belt piece or transfer module: each one's name, role (in/out), floor\npose (x, y metres, heading as in set_layout) and `linked_to`, the \"Block.port\" ends it is\nlinked to.\n\nA belt has \"in\", \"out\" and \"d<k>\" (divert k's exit); a pose faces the way a part leaves. A\ntransfer has no footprint: an exit's pose is the module's position, heading = entry plus\nthe exit's angle. Pass an out port to `place_piece` as snap_to.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "block": {
+          "description": "Name of a CONVEYOR or CONVEYOR_TRANSFER.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "block"
+      ],
+      "type": "object"
+    },
+    "name": "get_ports",
+    "output_schema": {
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "ports": {
+          "type": "array"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": true
+  },
+  {
+    "description": "Check the floor layout of belt pieces and transfer modules: open ports\n(W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP) and linked ports that do not meet\n(W_CONVEYOR_SNAP).\n\nThe same problems `validate_model` lists for them (errors under `strict_checks`), with a\nplain sentence each in `lines`. `ok` is true when there are none.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "check_layout",
+    "output_schema": {
+      "properties": {
+        "lines": {
+          "type": "array"
+        },
+        "model": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "problems": {
+          "type": "array"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": true
+  },
+  {
+    "description": "Place a block on the floor plan: its position and rotation, one undo entry. Cosmetic for\nmost blocks; a CONVEYOR's path starts from this pose.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "block": {
+          "description": "Name of the block to place.",
+          "type": "string"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "rotation": {
+          "description": "Degrees clockwise on screen (0 east, 90 south); a belt travels this way from its entry.",
+          "type": "number"
+        },
+        "x": {
+          "description": "Floor-plan x, in metres.",
+          "type": "number"
+        },
+        "y": {
+          "description": "Floor-plan y (south is +y), in metres.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "block",
+        "x",
+        "y",
+        "rotation"
+      ],
+      "type": "object"
+    },
+    "name": "set_layout",
+    "output_schema": {
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
         },
         "warnings": {
           "type": "integer"

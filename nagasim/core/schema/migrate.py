@@ -15,7 +15,9 @@ from nagasim.core import sections
 from nagasim.settings.config import LEGACY_BLOCK_W, LEGACY_BLOCK_H
 
 
-CURRENT_VERSION = 30   # 30: unknown top-level keys kept, info.written_by (D1193)
+CURRENT_VERSION = 32   # 30: unknown top-level keys kept, info.written_by (D1193)
+# 31: conveyor path, types, item size, ports, TRANSFER (conveyor system A)
+# 32: a link's one time field: transfer_time becomes the delay (conveyor A2, D1391)
 
 
 # Keys a model file may carry but must never be OBEYED (ARCHITECTURE 7.4: a
@@ -96,6 +98,23 @@ def _migrate_link(link) -> dict:
         return dict(link)
     src, tgt = link
     return {"source": src, "target": tgt}
+
+
+def _migrate_link_time(link) -> None:
+    """v31 -> v32 (D1391), in place: a link's `transfer_time` (+ `transfer_time_unit`) becomes
+    its `delay`, a Constant in that unit; 0 means no time, so the key just goes. A link that
+    also has a delay, or a time that is not a number >= 0 (A2-R7: v31 refused a negative one),
+    keeps it, for validation to refuse (E_LINK_AREA, case "migrate")."""
+    if not isinstance(link, dict) or "transfer_time" not in link or link.get("delay"):
+        return
+    value = link["transfer_time"]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not value >= 0:
+        return
+    del link["transfer_time"]
+    unit = link.pop("transfer_time_unit", None)
+    if value:
+        link["delay"] = {"distribution": "Constant", "dist_params": {"value": value},
+                         **({"time_unit": unit} if unit is not None else {})}
 
 
 def _migrate_resource(resource: dict) -> dict:
@@ -196,6 +215,14 @@ def migrate(layout: dict) -> dict:
         migrated["resources"] = [_migrate_resource(r) for r in migrated.get("resources", [])]
         migrated["links"] = [_migrate_link(l) for l in migrated.get("links", [])]   # v7 -> v8
     _migrate_hold_mode(migrated)
+    # v31 -> v32 for every file, as the HOLD rename: a link pasted from an older file can carry
+    # the old field inside a current one, and the move is idempotent.
+    for link in migrated.get("links") or [] if isinstance(migrated.get("links"), list) else ():
+        _migrate_link_time(link)
+    for definition in (migrated.get("submodels") or {}).values()             if isinstance(migrated.get("submodels"), dict) else ():
+        if isinstance(definition, dict) and isinstance(definition.get("links"), list):
+            for link in definition["links"]:
+                _migrate_link_time(link)
     # The section defaults below run for a CURRENT-version file too (DEVLOG
     # #215): they are idempotent, and a file the editor saved without a newer
     # default (`simulation.energy_price`) must read the same as its older

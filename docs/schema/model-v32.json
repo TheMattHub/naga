@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://thematthub.github.io/naga/schema/model-v30.json",
-  "title": "Model file, schema version 30",
+  "$id": "https://thematthub.github.io/naga/schema/model-v32.json",
+  "title": "Model file, schema version 32",
   "description": "A discrete-event model: blocks, the links between them, the resources they seize, and the run settings. Generated from the live registries (nagasim.modelschema). RECORD kinds: count, tally, time_between, time_persistent, cost. CREATE arrival modes: Interarrival, Schedule, Orders.",
   "type": "object",
   "properties": {
@@ -12,8 +12,8 @@
     },
     "schema_version": {
       "type": "integer",
-      "maximum": 30,
-      "default": 30,
+      "maximum": 32,
+      "default": 32,
       "description": "Older files migrate on load; a newer one is refused."
     },
     "blocks": {
@@ -128,6 +128,18 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/motion_profile"
+      }
+    },
+    "robots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/robot"
+      }
+    },
+    "pallet_patterns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pallet_pattern"
       }
     },
     "zones": {
@@ -426,6 +438,50 @@
       },
       "minItems": 2,
       "maxItems": 2
+    },
+    "route_rule": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "sequential",
+            "cyclic",
+            "round_robin",
+            "least_loaded",
+            "condition",
+            "attribute",
+            "item"
+          ],
+          "description": "How the exit is picked."
+        },
+        "exits": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "One name per exit, in exit order; \"name:target\" names the CONVEYOR a part counts as under way to. Empty: the exits' own names."
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "For \"condition\": one expression per exit, or one fewer (the last exit is the ELSE)."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Parts under way to one exit at most; 0: no limit."
+        },
+        "attribute": {
+          "type": "string",
+          "description": "For \"attribute\": the entity attribute whose value names the exit."
+        }
+      },
+      "additionalProperties": false
     },
     "structural_argument": {
       "type": "object",
@@ -2389,6 +2445,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -2437,6 +2498,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -2468,7 +2538,7 @@
         },
         {
           "title": "BATCH",
-          "description": "Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard.",
+          "description": "Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard. With a `pattern` too, the carrier is a pallet: each member takes the next slot of that pallet pattern, and the pallet closes when its slots are full or the next member would pass its weight limit (that member waits for the next pallet). The members carry `slot` and `layer`; the pallet carries `items`, `layers`, `load_weight`, `load_height` and `pattern`.",
           "type": "object",
           "properties": {
             "name": {
@@ -2496,6 +2566,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -2545,6 +2620,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -2719,6 +2803,121 @@
                   ],
                   "default": "base",
                   "description": "Unit `member_time` is expressed in: \"base\" (the model's own unit) or one of seconds/minutes/hours/days."
+                },
+                "pattern": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Carrier mode: the carrier is a pallet loaded by this record of \"pallet_patterns\", named outright (\"Euro\") or chosen per pallet by an expression in the carrier's scope. Each member takes the next slot; the pallet closes at the pattern's limits, and carrier_capacity is not used. Empty = no pattern."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Carrier mode: the carrier is a pallet loaded by this record of \"pallet_patterns\", named outright (\"Euro\") or chosen per pallet by an expression in the carrier's scope. Each member takes the next slot; the pallet closes at the pattern's limits, and carrier_capacity is not used. Empty = no pattern."
+                },
+                "place_per": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "item",
+                      "description": "With a pattern: \"item\" loads one member per member_time; \"layer\" waits for a whole layer and places it in one member_time (a layer-forming palletizer)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "item",
+                  "description": "With a pattern: \"item\" loads one member per member_time; \"layer\" waits for a whole layer and places it in one member_time (a layer-forming palletizer)."
+                },
+                "robot": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Name of a record in \"robots\": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Name of a record in \"robots\": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time."
+                },
+                "robot_at": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "description": "Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "description": "Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0."
+                },
+                "targets": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "default": {},
+                      "description": "The robot's named targets, as on MOTION; \"slot\" (the item's place on the pallet) and \"slot_above\" (approach higher) are given per slot and are not defined here."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "The robot's named targets, as on MOTION; \"slot\" (the item's place on the pallet) and \"slot_above\" (approach higher) are given per slot and are not defined here."
+                },
+                "segments": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight."
+                },
+                "approach": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": ""
+                        }
+                      ],
+                      "x-quantity": "length",
+                      "default": "",
+                      "description": "How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m.",
+                  "x-quantity": "length"
                 }
               },
               "required": [],
@@ -2761,6 +2960,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -2810,6 +3014,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -2889,6 +3102,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -2937,6 +3155,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -3173,6 +3400,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -3221,6 +3453,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -3413,15 +3654,35 @@
                   "anyOf": [
                     {
                       "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rule": {
+                            "$ref": "#/$defs/route_rule"
+                          },
+                          "rule_group": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The diverts that share one rule name the same group."
+                          },
+                          "angle": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "exclusiveMaximum": 180,
+                            "default": 90,
+                            "description": "Degrees from the belt's travel to the exit port, on its side: 90 square, 45 leaning downstream."
+                          }
+                        }
+                      },
                       "default": [],
-                      "description": "Points where a part may leave the belt sideways: {\"at\": <distance from the entry, in the unit of `length`>, \"condition\": <expression, read once as the part reaches it>, \"time\"?: <push time, number or expression>, \"when_full\"?: \"wait\" (default: the part waits there for room) or \"pass\" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none."
+                      "description": "Points where a part may leave the belt sideways: {\"at\": <distance from the entry, in the unit of `length`>, \"condition\": <expression, read once as the part reaches it>, \"time\"?: <push time, number or expression>, \"when_full\"?: \"wait\" (default: the part waits there for room) or \"pass\" (it rides on), \"intercept\"?: true (a robot on link k + 1 picks the part on the move; its first move targets this divert), \"on_late\"?: what the part does when that robot is busy: \"wait\" (default: it stands where the robot meets it), \"pass\" (it rides on) or an expression, true meaning wait}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. A link may name its exit instead: source_port \"out\" (the end) or \"d<k>\", each exit once. \"side\"?: \"left\" (default) or \"right\" of a part travelling along the belt as seen on screen, where the divert's exit port faces on the floor plan; \"angle\"?: degrees from the belt's travel to that exit, above 0 and below 180 (90, the default, is square; 45 leans downstream), floor geometry only. \"rule\"?: a routing rule in place of the condition, {\"kind\", \"exits\"?, \"conditions\"?, \"limit\"?, \"attribute\"?} as a Rule-mode DECIDE's, read once as the part reaches it; \"rule_group\"?: a name the diverts sharing one rule all give, the rule on the first of them along the belt only; the exits are the group's diverts in belt order (names default to their ports), and an exit named \"out\" passes them all to the belt's end. A part counts under way until it reaches its exit's target piece or leaves a belt on its way there by a divert; name an exit \"L1:L1\" to stop the count at branch L1. While every exit is at its limit the part waits at the group's first divert and the belt behind packs as at a stop. Empty: none."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
                   "default": [],
-                  "description": "Points where a part may leave the belt sideways: {\"at\": <distance from the entry, in the unit of `length`>, \"condition\": <expression, read once as the part reaches it>, \"time\"?: <push time, number or expression>, \"when_full\"?: \"wait\" (default: the part waits there for room) or \"pass\" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none."
+                  "description": "Points where a part may leave the belt sideways: {\"at\": <distance from the entry, in the unit of `length`>, \"condition\": <expression, read once as the part reaches it>, \"time\"?: <push time, number or expression>, \"when_full\"?: \"wait\" (default: the part waits there for room) or \"pass\" (it rides on), \"intercept\"?: true (a robot on link k + 1 picks the part on the move; its first move targets this divert), \"on_late\"?: what the part does when that robot is busy: \"wait\" (default: it stands where the robot meets it), \"pass\" (it rides on) or an expression, true meaning wait}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. A link may name its exit instead: source_port \"out\" (the end) or \"d<k>\", each exit once. \"side\"?: \"left\" (default) or \"right\" of a part travelling along the belt as seen on screen, where the divert's exit port faces on the floor plan; \"angle\"?: degrees from the belt's travel to that exit, above 0 and below 180 (90, the default, is square; 45 leans downstream), floor geometry only. \"rule\"?: a routing rule in place of the condition, {\"kind\", \"exits\"?, \"conditions\"?, \"limit\"?, \"attribute\"?} as a Rule-mode DECIDE's, read once as the part reaches it; \"rule_group\"?: a name the diverts sharing one rule all give, the rule on the first of them along the belt only; the exits are the group's diverts in belt order (names default to their ports), and an exit named \"out\" passes them all to the belt's end. A part counts under way until it reaches its exit's target piece or leaves a belt on its way there by a divert; name an exit \"L1:L1\" to stop the count at branch L1. While every exit is at its limit the part waits at the group's first divert and the belt behind packs as at a stop. Empty: none."
                 },
                 "merges": {
                   "anyOf": [
@@ -3436,6 +3697,370 @@
                   ],
                   "default": [],
                   "description": "Points where parts from another block join the belt: {\"at\": <distance from the entry, in the unit of `length`>, \"from\": <the block linking to this belt whose parts join there>, \"priority\"?: \"belt\" (default: they wait for a gap of two spacings) or \"merge\" (parts on the belt make room)}. Accumulating belts only. Empty: none."
+                },
+                "eyes": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "Photo-eyes, points that fire as a part passes: {\"at\": <distance from the entry, in the unit of `length`>, \"edge\"?: \"front\" (default: as the part's front reaches `at`) or \"back\" (as its back clears `at`, a `part_length` later), \"assign\"?: <rows {\"target\", \"expr\"} run on that part as ASSIGN runs them>, \"signal\"?: <signal raised, for HOLD blocks and item code>}. Each firing is counted and traced; a queue that stands short of an eye delays it. Empty: none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "Photo-eyes, points that fire as a part passes: {\"at\": <distance from the entry, in the unit of `length`>, \"edge\"?: \"front\" (default: as the part's front reaches `at`) or \"back\" (as its back clears `at`, a `part_length` later), \"assign\"?: <rows {\"target\", \"expr\"} run on that part as ASSIGN runs them>, \"signal\"?: <signal raised, for HOLD blocks and item code>}. Each firing is counted and traced; a queue that stands short of an eye delays it. Empty: none."
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "The belt as pieces laid end to end from its entry: {\"straight\": <length>} or {\"arc\": {\"radius\": <r>, \"angle\": <degrees, up to 360>, \"turn\": \"left\" or \"right\" as seen on screen}}, lengths in the unit of `length`. Their total is the belt's length, so set `length` to 0 and give no nodes. Empty: a straight belt of `length`."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "The belt as pieces laid end to end from its entry: {\"straight\": <length>} or {\"arc\": {\"radius\": <r>, \"angle\": <degrees, up to 360>, \"turn\": \"left\" or \"right\" as seen on screen}}, lengths in the unit of `length`. Their total is the belt's length, so set `length` to 0 and give no nodes. Empty: a straight belt of `length`."
+                },
+                "type": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "belt",
+                        "roller",
+                        "chain",
+                        "pallet",
+                        "mdr"
+                      ],
+                      "default": "",
+                      "description": "Conveyor type: \"belt\", \"roller\", \"chain\", \"pallet\" or \"mdr\". Empty: an untyped belt with `spacing`, one item per cell. A typed belt has cells of `cell` and an item takes ceil((its length + `gap`) / cell) of them; `spacing` is ignored and the results' Capacity counts cells."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Conveyor type: \"belt\", \"roller\", \"chain\", \"pallet\" or \"mdr\". Empty: an untyped belt with `spacing`, one item per cell. A typed belt has cells of `cell` and an item takes ceil((its length + `gap`) / cell) of them; `spacing` is ignored and the results' Capacity counts cells."
+                },
+                "gap": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "length",
+                      "x-unit-key": "gap_unit",
+                      "default": 0.0,
+                      "description": "Free belt length kept between two items on a typed belt."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.0,
+                  "description": "Free belt length kept between two items on a typed belt.",
+                  "x-quantity": "length",
+                  "x-unit-key": "gap_unit"
+                },
+                "gap_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "millimeters",
+                        "centimeters",
+                        "meters",
+                        "kilometers"
+                      ],
+                      "default": "base",
+                      "description": "Unit of `gap`: \"base\" (the model's) or one of its quantity's units."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "base",
+                  "description": "Unit of `gap`: \"base\" (the model's) or one of its quantity's units."
+                },
+                "cell": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "length",
+                      "x-unit-key": "cell_unit",
+                      "default": 0.0,
+                      "description": "Length of one cell of a typed belt; an item takes as many as its length plus `gap` needs. 0: 1 cm in any length unit. Ignored on an untyped belt."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.0,
+                  "description": "Length of one cell of a typed belt; an item takes as many as its length plus `gap` needs. 0: 1 cm in any length unit. Ignored on an untyped belt.",
+                  "x-quantity": "length",
+                  "x-unit-key": "cell_unit"
+                },
+                "cell_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "millimeters",
+                        "centimeters",
+                        "meters",
+                        "kilometers"
+                      ],
+                      "default": "base",
+                      "description": "Unit of `cell`: \"base\" (the model's) or one of its quantity's units."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "base",
+                  "description": "Unit of `cell`: \"base\" (the model's) or one of its quantity's units."
+                },
+                "zones": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "count": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "description": "Zones of equal length, zone 1 at the exit."
+                        },
+                        "release_delay": {
+                          "type": "number",
+                          "minimum": 0,
+                          "default": 0,
+                          "description": "A zone's restart delay per zone from the exit, in `time_unit`."
+                        },
+                        "time_unit": {
+                          "type": "string",
+                          "enum": [
+                            "base",
+                            "milliseconds",
+                            "seconds",
+                            "minutes",
+                            "hours",
+                            "days",
+                            "weeks",
+                            "months",
+                            "years"
+                          ],
+                          "default": "base",
+                          "description": "Unit of `release_delay`: \"base\" (the model's) or one of seconds/minutes/hours/days."
+                        }
+                      },
+                      "dependentRequired": {
+                        "release_delay": [
+                          "count"
+                        ],
+                        "time_unit": [
+                          "count"
+                        ]
+                      },
+                      "additionalProperties": false,
+                      "default": {},
+                      "description": "Accumulation zones: {\"count\": <zones of equal length, zone 1 at the exit>, \"release_delay\"?: <time, in the model's time unit unless \"time_unit\" says another>}. Parts accumulate as without zones; when the held exit frees, a standing part restarts release_delay times its front's zone later, never nearer than its own length to the part ahead; the end part keeps the exit unit through its delay, and a part handed to a next belt waits it before that belt takes it. Delay 0 is a belt without zones and releases the queue as one slug, as Emulate3D does at 0; Emulate3D's staggered headways at a 1 s delay (1.26 s and 0.96 s measured) differ, an open comparison. Accumulating belts with no stop or merge only. Empty: none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "Accumulation zones: {\"count\": <zones of equal length, zone 1 at the exit>, \"release_delay\"?: <time, in the model's time unit unless \"time_unit\" says another>}. Parts accumulate as without zones; when the held exit frees, a standing part restarts release_delay times its front's zone later, never nearer than its own length to the part ahead; the end part keeps the exit unit through its delay, and a part handed to a next belt waits it before that belt takes it. Delay 0 is a belt without zones and releases the queue as one slug, as Emulate3D does at 0; Emulate3D's staggered headways at a 1 s delay (1.26 s and 0.96 s measured) differ, an open comparison. Accumulating belts with no stop or merge only. Empty: none."
+                },
+                "release": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "maxProperties": 1,
+                      "properties": {
+                        "metering": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "maxProperties": 1,
+                          "properties": {
+                            "gap": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "Free length from the last part's tail to the next part's front, in the unit of the belt's `length`."
+                            },
+                            "interval": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "Front-to-front distance, never less than the last part's length on the belt, in the unit of the belt's `length`."
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "singulation": {
+                          "type": "object",
+                          "properties": {
+                            "gap": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "Free length from the last part's tail to the next part's front, in the unit of the belt's `length`."
+                            }
+                          },
+                          "required": [
+                            "gap"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "slug": {
+                          "type": "object",
+                          "properties": {
+                            "count": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "description": "Parts queued before the end lets them go."
+                            },
+                            "timeout": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "Longest hold since the first part stood at the end, in `time_unit`."
+                            },
+                            "time_unit": {
+                              "type": "string",
+                              "enum": [
+                                "base",
+                                "milliseconds",
+                                "seconds",
+                                "minutes",
+                                "hours",
+                                "days",
+                                "weeks",
+                                "months",
+                                "years"
+                              ],
+                              "default": "base",
+                              "description": "Unit of `timeout`: \"base\" (the model's) or one of seconds/minutes/hours/days."
+                            }
+                          },
+                          "required": [
+                            "count",
+                            "timeout"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false,
+                      "default": {},
+                      "description": "How parts leave the end, one form: {\"metering\": {\"gap\": <length>}} (a part leaves once the one before is that far past the end, measured from its tail), {\"metering\": {\"interval\": <length>}} (front to front, never nearer than the part before takes on the belt), {\"singulation\": {\"gap\": <length>}} (the same as metering by gap) or {\"slug\": {\"count\": <parts>, \"timeout\": <time>, \"time_unit\"?}} (the end holds until count parts are queued or timeout has passed since the first stood there, then lets them go nose to tail). Lengths are in the unit of `length` and travelled at the belt speed; the timeout is in the model's time unit unless time_unit says another. Held parts make the ones behind accumulate. A slug counts every part standing in the queue, behind a photo-eye or a stop too; a part whose place in the queue is behind a stop dwells there after the release. Each part's hold at the end is kept (in a slug the lead's; the parts let go with it hold 0). Accumulating belts without zones only. Empty: parts leave as soon as they can."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "How parts leave the end, one form: {\"metering\": {\"gap\": <length>}} (a part leaves once the one before is that far past the end, measured from its tail), {\"metering\": {\"interval\": <length>}} (front to front, never nearer than the part before takes on the belt), {\"singulation\": {\"gap\": <length>}} (the same as metering by gap) or {\"slug\": {\"count\": <parts>, \"timeout\": <time>, \"time_unit\"?}} (the end holds until count parts are queued or timeout has passed since the first stood there, then lets them go nose to tail). Lengths are in the unit of `length` and travelled at the belt speed; the timeout is in the model's time unit unless time_unit says another. Held parts make the ones behind accumulate. A slug counts every part standing in the queue, behind a photo-eye or a stop too; a part whose place in the queue is behind a stop dwells there after the release. Each part's hold at the end is kept (in a slug the lead's; the parts let go with it hold 0). Accumulating belts without zones only. Empty: parts leave as soon as they can."
+                },
+                "reversible": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "True: the belt can run backward during a run, turned by `reverse_signal` or by item code (item.reverse). Each part on it then rides back the distance it has travelled and leaves at the start by `reverse_to`; nothing gets on until it runs forward again. Reversible belts linked end to start, with nothing between them, are one chain that turns as one: a part crosses each joint the way the chain runs. A reversible belt has no stops, diverts, merges, photo-eyes, zones or release rule."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": false,
+                  "description": "True: the belt can run backward during a run, turned by `reverse_signal` or by item code (item.reverse). Each part on it then rides back the distance it has travelled and leaves at the start by `reverse_to`; nothing gets on until it runs forward again. Reversible belts linked end to start, with nothing between them, are one chain that turns as one: a part crosses each joint the way the chain runs. A reversible belt has no stops, diverts, merges, photo-eyes, zones or release rule."
+                },
+                "reverse_signal": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Signal that turns a reversible belt each time it is raised (forward, backward, forward...), with its whole chain. Empty: only item code turns it."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Signal that turns a reversible belt each time it is raised (forward, backward, forward...), with its whole chain. Empty: only item code turns it."
+                },
+                "reverse_to": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Exit of a reversible belt for parts leaving at its start: the target block of one of its links, or \"in\" (the link whose source_port is \"in\"); not a conveyor feeding this belt, since nothing boards a belt by its end. In a chain, only the first piece names it: a later piece hands back to the one before."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Exit of a reversible belt for parts leaving at its start: the target block of one of its links, or \"in\" (the link whose source_port is \"in\"); not a conveyor feeding this belt, since nothing boards a belt by its end. In a chain, only the first piece names it: a later piece hands back to the one before."
+                },
+                "part_length": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "length",
+                      "x-unit-key": "part_length_unit",
+                      "default": 0.0,
+                      "description": "Length of one part along the belt, which a back-edge eye reads. 0: the spacing, or a typed belt's type zone length. On an untyped belt it is no longer than the spacing."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.0,
+                  "description": "Length of one part along the belt, which a back-edge eye reads. 0: the spacing, or a typed belt's type zone length. On an untyped belt it is no longer than the spacing.",
+                  "x-quantity": "length",
+                  "x-unit-key": "part_length_unit"
+                },
+                "part_length_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "millimeters",
+                        "centimeters",
+                        "meters",
+                        "kilometers"
+                      ],
+                      "default": "base",
+                      "description": "Unit of `part_length`: \"base\" (the model's) or one of its quantity's units."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "base",
+                  "description": "Unit of `part_length`: \"base\" (the model's) or one of its quantity's units."
+                },
+                "expose": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "True: the belt writes its state as model variables, read with VAR(\"<belt>.running\") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": false,
+                  "description": "True: the belt writes its state as model variables, read with VAR(\"<belt>.running\") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts)."
                 }
               },
               "required": [
@@ -3452,8 +4077,8 @@
           "additionalProperties": false
         },
         {
-          "title": "CREATE",
-          "description": "Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule. Either samples the inter-arrival gap from `distribution` (`arrival_mode = \"Interarrival\"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = \"Schedule\"`). Every model needs at least one CREATE block.",
+          "title": "CONVEYOR_TRANSFER",
+          "description": "Conveyor transfer module that moves each load onto one of several exits: a pop-up transfer, a turntable or a lift, busy until the load reaches the next conveyor's photo-eye.",
           "type": "object",
           "properties": {
             "name": {
@@ -3466,7 +4091,7 @@
               "description": "Label shown on the canvas."
             },
             "type": {
-              "const": "CREATE"
+              "const": "CONVEYOR_TRANSFER"
             },
             "position": {
               "$ref": "#/$defs/point",
@@ -3481,6 +4106,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -3530,6 +4160,537 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mechanism": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "popup",
+                        "turntable",
+                        "lift"
+                      ],
+                      "default": "popup",
+                      "description": "\"popup\" (a pop-up transfer: chains or rollers lift and carry the load sideways), \"turntable\" (turns the load to its exit) or \"lift\" (carries the load to another level)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "popup",
+                  "description": "\"popup\" (a pop-up transfer: chains or rollers lift and carry the load sideways), \"turntable\" (turns the load to its exit) or \"lift\" (carries the load to another level)."
+                },
+                "exits": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "port": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The exit's name; a link out of the module gives it as its source_port."
+                          },
+                          "angle": {
+                            "type": "number",
+                            "description": "Degrees from the entry heading, clockwise on screen: 0 straight on, 90 or -90 to a side."
+                          }
+                        },
+                        "required": [
+                          "port",
+                          "angle"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "default": [],
+                      "description": "The module's exits, in exit order: {\"port\": <name a link gives as its source_port>, \"angle\": <degrees from the entry heading, clockwise on screen: 0 straight on, 90 or -90 to a side>}. Links without a port take the exits in this order. Empty: one straight exit \"out\"."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "The module's exits, in exit order: {\"port\": <name a link gives as its source_port>, \"angle\": <degrees from the entry heading, clockwise on screen: 0 straight on, 90 or -90 to a side>}. Links without a port take the exits in this order. Empty: one straight exit \"out\"."
+                },
+                "rule": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/route_rule",
+                      "default": {},
+                      "description": "Routing rule picking the exit, {\"kind\", \"exits\"?, \"conditions\"?, \"limit\"?, \"attribute\"?} as a Rule-mode DECIDE's; its exits default to the exits' ports. Empty: round robin over two or more exits, else the one exit. While every exit is at its limit the load waits on the module."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "Routing rule picking the exit, {\"kind\", \"exits\"?, \"conditions\"?, \"limit\"?, \"attribute\"?} as a Rule-mode DECIDE's; its exits default to the exits' ports. Empty: round robin over two or more exits, else the one exit. While every exit is at its limit the load waits on the module."
+                },
+                "lift_time": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "time",
+                      "x-unit-key": "lift_time_unit",
+                      "default": 0.1,
+                      "description": "A pop-up's lift time each way, up before a side or angled exit and down after its handshake; a straight exit has none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.1,
+                  "description": "A pop-up's lift time each way, up before a side or angled exit and down after its handshake; a straight exit has none.",
+                  "x-quantity": "time",
+                  "x-unit-key": "lift_time_unit"
+                },
+                "lift_time_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "milliseconds",
+                        "seconds",
+                        "minutes",
+                        "hours",
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
+                      "default": "seconds",
+                      "description": "Unit of `lift_time`: one of its quantity's units; \"base\" or absent means seconds, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "seconds",
+                  "description": "Unit of `lift_time`: one of its quantity's units; \"base\" or absent means seconds, the unit its default was measured in."
+                },
+                "transfer_speed": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "speed",
+                      "x-unit-key": "transfer_speed_unit",
+                      "default": 0.0,
+                      "description": "Speed of the chains or rollers that carry the load on the module. 0: the speed of the CONVEYOR feeding it."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.0,
+                  "description": "Speed of the chains or rollers that carry the load on the module. 0: the speed of the CONVEYOR feeding it.",
+                  "x-quantity": "speed",
+                  "x-unit-key": "transfer_speed_unit"
+                },
+                "transfer_speed_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(base|(mm|cm|m|km)/(ms|s|min|h|day|week|month|year))$",
+                      "default": "m/s",
+                      "description": "Unit of `transfer_speed`: one of its quantity's units; \"base\" or absent means m/s, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "m/s",
+                  "description": "Unit of `transfer_speed`: one of its quantity's units; \"base\" or absent means m/s, the unit its default was measured in."
+                },
+                "cross_length": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "length",
+                      "x-unit-key": "cross_length_unit",
+                      "default": 0.6,
+                      "description": "A pop-up's travel from the entry to the module edge on a side or angled exit, at transfer_speed."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.6,
+                  "description": "A pop-up's travel from the entry to the module edge on a side or angled exit, at transfer_speed.",
+                  "x-quantity": "length",
+                  "x-unit-key": "cross_length_unit"
+                },
+                "cross_length_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "millimeters",
+                        "centimeters",
+                        "meters",
+                        "kilometers"
+                      ],
+                      "default": "meters",
+                      "description": "Unit of `cross_length`: one of its quantity's units; \"base\" or absent means meters, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "meters",
+                  "description": "Unit of `cross_length`: one of its quantity's units; \"base\" or absent means meters, the unit its default was measured in."
+                },
+                "entry_length": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "length",
+                      "x-unit-key": "entry_length_unit",
+                      "default": 0.0,
+                      "description": "Travel from the entry to the load's position on the module, at transfer_speed, before it moves to its exit."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.0,
+                  "description": "Travel from the entry to the load's position on the module, at transfer_speed, before it moves to its exit.",
+                  "x-quantity": "length",
+                  "x-unit-key": "entry_length_unit"
+                },
+                "entry_length_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "millimeters",
+                        "centimeters",
+                        "meters",
+                        "kilometers"
+                      ],
+                      "default": "meters",
+                      "description": "Unit of `entry_length`: one of its quantity's units; \"base\" or absent means meters, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "meters",
+                  "description": "Unit of `entry_length`: one of its quantity's units; \"base\" or absent means meters, the unit its default was measured in."
+                },
+                "turn_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "x-quantity": "rate",
+                      "x-unit-key": "turn_rate_unit",
+                      "default": 18.0,
+                      "description": "A turntable's turning speed in degrees per time unit (per second by default); a turn of a degrees takes a / turn_rate + turn_ramp, the shorter way."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 18.0,
+                  "description": "A turntable's turning speed in degrees per time unit (per second by default); a turn of a degrees takes a / turn_rate + turn_ramp, the shorter way.",
+                  "x-quantity": "rate",
+                  "x-unit-key": "turn_rate_unit"
+                },
+                "turn_rate_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "milliseconds",
+                        "seconds",
+                        "minutes",
+                        "hours",
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
+                      "default": "seconds",
+                      "description": "Unit of `turn_rate`: one of its quantity's units; \"base\" or absent means seconds, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "seconds",
+                  "description": "Unit of `turn_rate`: one of its quantity's units; \"base\" or absent means seconds, the unit its default was measured in."
+                },
+                "turn_ramp": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "time",
+                      "x-unit-key": "turn_ramp_unit",
+                      "default": 0.3,
+                      "description": "Time a turntable's turn adds to speed up and slow down."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.3,
+                  "description": "Time a turntable's turn adds to speed up and slow down.",
+                  "x-quantity": "time",
+                  "x-unit-key": "turn_ramp_unit"
+                },
+                "turn_ramp_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "milliseconds",
+                        "seconds",
+                        "minutes",
+                        "hours",
+                        "days",
+                        "weeks",
+                        "months",
+                        "years"
+                      ],
+                      "default": "seconds",
+                      "description": "Unit of `turn_ramp`: one of its quantity's units; \"base\" or absent means seconds, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "seconds",
+                  "description": "Unit of `turn_ramp`: one of its quantity's units; \"base\" or absent means seconds, the unit its default was measured in."
+                },
+                "lift_height": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "x-quantity": "length",
+                      "x-unit-key": "lift_height_unit",
+                      "default": 1.0,
+                      "description": "A lift's travel between its two levels; the lift travels it up and back on every exit, whatever its angle."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 1.0,
+                  "description": "A lift's travel between its two levels; the lift travels it up and back on every exit, whatever its angle.",
+                  "x-quantity": "length",
+                  "x-unit-key": "lift_height_unit"
+                },
+                "lift_height_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "base",
+                        "millimeters",
+                        "centimeters",
+                        "meters",
+                        "kilometers"
+                      ],
+                      "default": "meters",
+                      "description": "Unit of `lift_height`: one of its quantity's units; \"base\" or absent means meters, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "meters",
+                  "description": "Unit of `lift_height`: one of its quantity's units; \"base\" or absent means meters, the unit its default was measured in."
+                },
+                "lift_speed": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "x-quantity": "speed",
+                      "x-unit-key": "lift_speed_unit",
+                      "default": 0.5,
+                      "description": "A lift's travel speed; each way takes lift_height / lift_speed."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": 0.5,
+                  "description": "A lift's travel speed; each way takes lift_height / lift_speed.",
+                  "x-quantity": "speed",
+                  "x-unit-key": "lift_speed_unit"
+                },
+                "lift_speed_unit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(base|(mm|cm|m|km)/(ms|s|min|h|day|week|month|year))$",
+                      "default": "m/s",
+                      "description": "Unit of `lift_speed`: one of its quantity's units; \"base\" or absent means m/s, the unit its default was measured in."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "m/s",
+                  "description": "Unit of `lift_speed`: one of its quantity's units; \"base\" or absent means m/s, the unit its default was measured in."
+                },
+                "return_home": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "A turntable turns back to its entry after each handshake, before the next load. False: it stays at the exit and turns back only once the next load waits."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": true,
+                  "description": "A turntable turns back to its entry after each handshake, before the next load. False: it stays at the exit and turns back only once the next load waits."
+                },
+                "expose": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "True: the module writes `<module>.state` as a model variable, read with VAR(\"<module>.state\") in a HOLD condition or item code: 0 idle (or a load standing), 1 lifting (a pop-up's lift, a lift's travel), 2 transferring (the entry travel, a pop-up's cross, boarding the exit's piece until the handshake), 3 turning (a turntable)."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": false,
+                  "description": "True: the module writes `<module>.state` as a model variable, read with VAR(\"<module>.state\") in a HOLD condition or item code: 0 idle (or a load standing), 1 lifting (a pop-up's lift, a lift's travel), 2 transferring (the entry travel, a pop-up's cross, boarding the exit's piece until the handshake), 3 turning (a turntable)."
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "CREATE",
+          "description": "Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule. Either samples the inter-arrival gap from `distribution` (`arrival_mode = \"Interarrival\"`, the classic behaviour) or drives a non-homogeneous Poisson process from an arrival `Schedule` by thinning (`arrival_mode = \"Schedule\"`). Every model needs at least one CREATE block.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Unique block name; the model's identifier for it."
+            },
+            "description": {
+              "type": "string",
+              "description": "Label shown on the canvas."
+            },
+            "type": {
+              "const": "CREATE"
+            },
+            "position": {
+              "$ref": "#/$defs/point",
+              "description": "Block CENTRE in scene units."
+            },
+            "layout_position": {
+              "$ref": "#/$defs/point",
+              "description": "Where the block sits on the FLOOR PLAN, in layout units. Absent for a block that has never been placed in layout mode, and unnecessary for one attached to a network node."
+            },
+            "layout_rotation": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 360,
+              "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
+            "label_offset": {
+              "$ref": "#/$defs/point",
+              "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
+            },
+            "counter_offsets": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/point"
+              },
+              "description": "Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only."
+            },
+            "queue_row": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "$ref": "#/$defs/point",
+                  "description": "Where the row starts, [x, y] normalised over the asset's picture (-1..2)."
+                },
+                "direction": {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMaximum": 360,
+                  "description": "Which way the row runs, in degrees clockwise from +x in the asset's own unturned frame (0 right, 90 down, 180 left, 270 up)."
+                },
+                "slots": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "How many places the row has, e.g. a roller table's; the 2D player draws them numbered with a 'label n/N' counter and an entity past the last one as an overflow."
+                },
+                "frees": {
+                  "enum": [
+                    "leave",
+                    "move_end"
+                  ],
+                  "description": "When a slot frees: when its entity leaves (default) or when its timed move out ends (a lift that holds its spot)."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "The counter's name, e.g. 'Exit'."
+                }
+              },
+              "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "locals": {
+              "type": "object",
+              "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -3789,7 +4950,7 @@
         },
         {
           "title": "DECIDE",
-          "description": "Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. \"Chance\" mode draws on the block's own RNG against `probs`, one probability per branch (not cumulative); \"Condition\" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. \"Policy\" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` (\"first\" / \"random\" / \"shortest\") so a Policy-mode model still runs and validates headless.",
+          "description": "Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. \"Chance\" mode draws on the block's own RNG against `probs`, one probability per branch (not cumulative); \"Condition\" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. \"Policy\" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` (\"first\" / \"random\" / \"shortest\") so a Policy-mode model still runs and validates headless. \"Rule\" mode asks a routing rule (`rule`, core/routing.py) whose exits are the outgoing links; while every exit is at its limit the entity waits here, first come first served, and the rule runs again when an exit's count drops.",
           "type": "object",
           "properties": {
             "name": {
@@ -3817,6 +4978,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -3867,6 +5033,15 @@
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
             },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
+            },
             "params": {
               "type": "object",
               "properties": {
@@ -3875,14 +5050,14 @@
                     {
                       "type": "string",
                       "default": "Chance",
-                      "description": "\"Chance\": branch by probability. \"Condition\": branch by expression. \"Policy\": branch by a controller attached to `policy`."
+                      "description": "\"Chance\": branch by probability. \"Condition\": branch by expression. \"Policy\": branch by a controller attached to `policy`. \"Rule\": branch by the routing `rule`."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
                   "default": "Chance",
-                  "description": "\"Chance\": branch by probability. \"Condition\": branch by expression. \"Policy\": branch by a controller attached to `policy`."
+                  "description": "\"Chance\": branch by probability. \"Condition\": branch by expression. \"Policy\": branch by a controller attached to `policy`. \"Rule\": branch by the routing `rule`."
                 },
                 "probs": {
                   "anyOf": [
@@ -3969,6 +5144,20 @@
                   ],
                   "default": [],
                   "description": "One expression per outgoing link; used by fallback \"shortest\" to pick the argmin."
+                },
+                "rule": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/route_rule",
+                      "default": {},
+                      "description": "Routing rule, used when mode is \"Rule\": {\"kind\": \"fixed\", \"sequential\", \"cyclic\", \"round_robin\", \"least_loaded\", \"condition\", \"attribute\" or \"item\", \"exits\"?: one name per outgoing link (default: the linked blocks' names; \"name:target\" names the CONVEYOR a part counts as under way to), \"conditions\"?: for \"condition\", one per exit or one fewer (the last exit is the ELSE), \"limit\"?: parts under way to one exit at most (0: no limit), \"attribute\"?: for \"attribute\", the entity attribute naming the exit}. A part is under way from its routing until it reaches its exit's target piece (the first photo-eye of the last CONVEYOR of that branch, else that belt's end) or leaves a belt on its way there by a divert; name an exit \"L1:L1\" to stop the count at branch L1; an exit with no CONVEYOR counts nothing. With no true condition and no ELSE the run stops. While every exit is at its limit, parts wait here first come first served: one waiting for a full exit holds back those behind it. Empty: none."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "Routing rule, used when mode is \"Rule\": {\"kind\": \"fixed\", \"sequential\", \"cyclic\", \"round_robin\", \"least_loaded\", \"condition\", \"attribute\" or \"item\", \"exits\"?: one name per outgoing link (default: the linked blocks' names; \"name:target\" names the CONVEYOR a part counts as under way to), \"conditions\"?: for \"condition\", one per exit or one fewer (the last exit is the ELSE), \"limit\"?: parts under way to one exit at most (0: no limit), \"attribute\"?: for \"attribute\", the entity attribute naming the exit}. A part is under way from its routing until it reaches its exit's target piece (the first photo-eye of the last CONVEYOR of that branch, else that belt's end) or leaves a belt on its way there by a divert; name an exit \"L1:L1\" to stop the count at branch L1; an exit with no CONVEYOR counts nothing. With no true condition and no ELSE the run stops. While every exit is at its limit, parts wait here first come first served: one waiting for a full exit holds back those behind it. Empty: none."
                 }
               },
               "required": [],
@@ -4011,6 +5200,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -4060,6 +5254,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -4200,6 +5403,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -4248,6 +5456,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -4402,6 +5619,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -4450,6 +5672,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -4513,6 +5744,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -4561,6 +5797,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -4693,6 +5938,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -4742,6 +5992,15 @@
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
             },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
+            },
             "params": {
               "type": "object",
               "properties": {
@@ -4758,6 +6017,20 @@
                   ],
                   "default": "SampleLogic",
                   "description": "Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int."
+                },
+                "hook": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Inside an item with code: call its on_entry (route by its answer) or its on_exit (then go on by the first link). Empty: use logic_class."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Inside an item with code: call its on_entry (route by its answer) or its on_exit (then go on by the first link). Empty: use logic_class."
                 }
               },
               "required": [],
@@ -4801,6 +6074,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -4849,6 +6127,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -4968,6 +6255,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -5017,6 +6309,15 @@
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
             },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
+            },
             "params": {
               "type": "object",
               "properties": {
@@ -5047,6 +6348,34 @@
                   ],
                   "default": "",
                   "description": "Name of a record in \"motion_profiles\": speed, acceleration, payload derating and collaborative speed of whoever does the motions."
+                },
+                "robot": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Name of a record in \"robots\": the robot whose ptp and lin moves are timed from its axis speeds and accelerations."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Name of a record in \"robots\": the robot whose ptp and lin moves are timed from its axis speeds and accelerations."
+                },
+                "targets": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "default": {},
+                      "description": "Named targets of the ptp and lin moves, in cell coordinates (the floor plan's x and y in metres, z up): {\"joints\": [...]}, {\"xyz\": [x, y, z], \"yaw_deg\"?, \"rpy_deg\"?} with the tool pointing down unless rpy_deg says otherwise, or {\"on\": <block>, \"at\"?: centre|start|end, \"offset\"?: [dx, dy, dz], \"yaw_deg\"?} in that block's own frame: dx along its facing, dy toward the floor plan's +y side at rotation 0 (as x and y), dz up; or {\"belt\": <CONVEYOR>, \"divert\": <index>, \"z\"?: <metres above the floor>, \"yaw_deg\"?}, a part met on the moving belt, the target of the cycle's first move."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "Named targets of the ptp and lin moves, in cell coordinates (the floor plan's x and y in metres, z up): {\"joints\": [...]}, {\"xyz\": [x, y, z], \"yaw_deg\"?, \"rpy_deg\"?} with the tool pointing down unless rpy_deg says otherwise, or {\"on\": <block>, \"at\"?: centre|start|end, \"offset\"?: [dx, dy, dz], \"yaw_deg\"?} in that block's own frame: dx along its facing, dy toward the floor plan's +y side at rotation 0 (as x and y), dz up; or {\"belt\": <CONVEYOR>, \"divert\": <index>, \"z\"?: <metres above the floor>, \"yaw_deg\"?}, a part met on the moving belt, the target of the cycle's first move."
                 },
                 "hrc": {
                   "anyOf": [
@@ -5083,14 +6412,14 @@
                       "x-quantity": "time",
                       "x-unit-key": "time_unit",
                       "default": [],
-                      "description": "The cycle, in order: {\"kind\": \"move\", \"distance_m\", \"payload_kg\"?} or {\"kind\": pick|place|tool_change|dwell|process, \"time\": <number or expression>}. The service time is their sum."
+                      "description": "The cycle, in order: {\"kind\": \"move\", \"distance_m\", \"payload_kg\"?}, {\"kind\": pick|place|tool_change|dwell|process, \"time\": <number or expression>}, or a robot move {\"kind\": ptp|lin, \"to\": <target>, \"time\"?: <number, at least what the move needs>, \"payload_kg\"?}. The service time is their sum."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
                   "default": [],
-                  "description": "The cycle, in order: {\"kind\": \"move\", \"distance_m\", \"payload_kg\"?} or {\"kind\": pick|place|tool_change|dwell|process, \"time\": <number or expression>}. The service time is their sum.",
+                  "description": "The cycle, in order: {\"kind\": \"move\", \"distance_m\", \"payload_kg\"?}, {\"kind\": pick|place|tool_change|dwell|process, \"time\": <number or expression>}, or a robot move {\"kind\": ptp|lin, \"to\": <target>, \"time\"?: <number, at least what the move needs>, \"payload_kg\"?}. The service time is their sum.",
                   "x-quantity": "time",
                   "x-unit-key": "time_unit"
                 },
@@ -5530,6 +6859,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -5578,6 +6912,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -6101,6 +7444,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -6149,6 +7497,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -6253,6 +7610,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -6301,6 +7663,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -6471,6 +7842,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -6519,6 +7895,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -6713,6 +8098,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -6761,6 +8151,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -7100,6 +8499,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -7148,6 +8552,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -7208,7 +8621,7 @@
         },
         {
           "title": "SEPARATE",
-          "description": "Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty.",
+          "description": "Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty. release_order : {'pattern','fifo','lifo'} 'pattern' (the default): a pallet loaded by a pallet pattern comes off top layer first, its slots in reverse order; any other carrier fifo.",
           "type": "object",
           "properties": {
             "name": {
@@ -7236,6 +8649,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -7285,6 +8703,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -7386,15 +8813,130 @@
                   "anyOf": [
                     {
                       "type": "string",
-                      "default": "fifo",
-                      "description": "Order the members leave in: \"fifo\" (the order they were loaded) or \"lifo\" (last loaded first off, a rear-door truck)."
+                      "default": "pattern",
+                      "description": "Order the members leave in: \"pattern\" (a pallet loaded by a pallet pattern comes off top layer first, any other carrier as fifo), \"fifo\" (the order they were loaded) or \"lifo\" (last loaded first off, a rear-door truck)."
                     },
                     {
                       "$ref": "#/$defs/structural_argument"
                     }
                   ],
-                  "default": "fifo",
-                  "description": "Order the members leave in: \"fifo\" (the order they were loaded) or \"lifo\" (last loaded first off, a rear-door truck)."
+                  "default": "pattern",
+                  "description": "Order the members leave in: \"pattern\" (a pallet loaded by a pallet pattern comes off top layer first, any other carrier as fifo), \"fifo\" (the order they were loaded) or \"lifo\" (last loaded first off, a rear-door truck)."
+                },
+                "place_per": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "item",
+                      "description": "Keep mode, a pattern pallet: \"item\" unloads one member per member_time; \"layer\" a whole layer in one member_time."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "item",
+                  "description": "Keep mode, a pattern pallet: \"item\" unloads one member per member_time; \"layer\" a whole layer in one member_time."
+                },
+                "pattern": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "With a robot: the record of \"pallet_patterns\" its cycle is planned for, one cycle per slot; a pallet of another pattern is a run error."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "With a robot: the record of \"pallet_patterns\" its cycle is planned for, one cycle per slot; a pallet of another pattern is a run error."
+                },
+                "robot": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "default": "",
+                      "description": "Name of a record in \"robots\": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "Name of a record in \"robots\": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time."
+                },
+                "robot_at": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "description": "Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "description": "Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0."
+                },
+                "targets": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "default": {},
+                      "description": "The robot's named targets, as on MOTION; \"slot\" (the item's pick on the pallet) and \"slot_above\" (approach higher) are given per slot and are not defined here."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "The robot's named targets, as on MOTION; \"slot\" (the item's pick on the pallet) and \"slot_above\" (approach higher) are given per slot and are not defined here."
+                },
+                "segments": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "default": [],
+                      "description": "The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight."
+                },
+                "approach": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": ""
+                        }
+                      ],
+                      "x-quantity": "length",
+                      "default": "",
+                      "description": "How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": "",
+                  "description": "How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m.",
+                  "x-quantity": "length"
                 }
               },
               "required": [],
@@ -7437,6 +8979,11 @@
               "minimum": 0,
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
+            },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
             },
             "label_offset": {
               "$ref": "#/$defs/point",
@@ -7486,6 +9033,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -7640,6 +9196,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -7688,6 +9249,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -7776,6 +9346,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -7824,6 +9399,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -7912,6 +9496,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -7960,6 +9549,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -8020,6 +9618,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -8068,6 +9671,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -8128,6 +9740,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -8176,6 +9793,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -8287,6 +9913,11 @@
               "exclusiveMaximum": 360,
               "description": "How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned."
             },
+            "asset_3d": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+              "description": "The library mesh the 3D view draws for this block, written \"library/asset\" (for example \"automation/irb6700\"). Display only: a run never reads it. Absent means the view draws its own default shape."
+            },
             "label_offset": {
               "$ref": "#/$defs/point",
               "description": "Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only."
@@ -8335,6 +9966,15 @@
             "locals": {
               "type": "object",
               "description": "Submodel parameter bindings, written by flattening; not authored by hand."
+            },
+            "instance_place": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored."
             },
             "params": {
               "type": "object",
@@ -8431,7 +10071,7 @@
               "type": "null"
             }
           ],
-          "description": "Optional transfer delay on this link.",
+          "description": "Optional transfer delay on this link; with a capacity, the time a part spends in an area link.",
           "x-quantity": "time",
           "x-unit-key": "delay.time_unit"
         },
@@ -8441,7 +10081,7 @@
             "integer",
             "null"
           ],
-          "description": "Out port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks branch by link order and ignore it."
+          "description": "Out port: a SUBMODEL instance's port name (or a whole number, matched as its text); a CONVEYOR's exit, \"out\" (its end) or \"d<k>\" (divert k); other blocks branch by link order and ignore it."
         },
         "target_port": {
           "type": [
@@ -8449,7 +10089,14 @@
             "integer",
             "null"
           ],
-          "description": "In port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks ignore it."
+          "description": "In port: a SUBMODEL instance's port name (or a whole number, matched as its text), or a CONVEYOR's \"in\"; other blocks ignore it."
+        },
+        "capacity": {
+          "type": "integer",
+          "default": 0,
+          "description": "Parts the link holds at once, 0 for no limit. A part keeps its place until the target takes it, so a full link holds the block feeding it. Read only on a link with a delay.",
+          "x-quantity": "count",
+          "minimum": 0
         }
       },
       "required": [
@@ -8629,6 +10276,28 @@
         "graphic": {
           "type": "string",
           "description": "Inline SVG token (24 x 24 artboard), usually copied from a library's entity preset; checked by core/svgsafe before it is drawn."
+        },
+        "size": {
+          "type": "object",
+          "description": "Item size on a conveyor, in the model's length unit (simulation.length_unit); on a typed belt an item takes ceil((length + gap) / cell) cells.",
+          "properties": {
+            "length": {
+              "type": "number",
+              "x-quantity": "length",
+              "exclusiveMinimum": 0
+            },
+            "width": {
+              "type": "number",
+              "x-quantity": "length",
+              "exclusiveMinimum": 0
+            },
+            "height": {
+              "type": "number",
+              "x-quantity": "length",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
         },
         "holding_cost": {
           "description": "WIP cost per entity per base time unit.",
@@ -12129,6 +13798,405 @@
       ],
       "additionalProperties": false
     },
+    "robot": {
+      "type": "object",
+      "description": "A robot type: a structure with its dimensions, or a joint chain, with each actuated axis's range, speed and acceleration, and the tool frame. A MOTION block names it by `robot`. Frame: Z up, X forward; degrees, metres and seconds throughout.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The robot's name, the `robot` of a MOTION block."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the robot is; the run does not read it."
+        },
+        "structure": {
+          "type": "string",
+          "enum": [
+            "serial6",
+            "palletizer4",
+            "scara4",
+            "delta",
+            "gantry",
+            "serial7",
+            "chain"
+          ],
+          "description": "The structure template, or \"chain\" for a robot given by its joints."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "The template's dimensions in metres (a template names the ones it needs)."
+        },
+        "joints": {
+          "type": "array",
+          "description": "With structure \"chain\" only: the serial joints at the zero pose, each {name, type: revolute|prismatic, origin [m], axis, parent?, coupled?: {axis: factor}, passive?}.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "axes": {
+          "type": "array",
+          "description": "One per actuated axis, in the template's order.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "range": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "[lo, hi]: degrees, or metres for a prismatic axis."
+              },
+              "speed": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "deg/s, or m/s for a prismatic axis."
+              },
+              "accel": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "deg/s^2, or m/s^2 for a prismatic axis."
+              }
+            },
+            "required": [
+              "range",
+              "speed",
+              "accel"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "tool": {
+          "type": "object",
+          "description": "The tool frame (TCP) from the flange.",
+          "properties": {
+            "xyz": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Metres."
+            },
+            "rpy_deg": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Roll, pitch, yaw in degrees."
+            }
+          },
+          "additionalProperties": false
+        },
+        "home": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "The rest pose, one value per axis; all zeros clipped into range when absent."
+        },
+        "reach_m": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The datasheet reach in metres, for comparison.",
+          "x-quantity": "length",
+          "exclusiveMinimum": 0
+        },
+        "payload_max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The rated payload; null or absent = no payload derating.",
+          "x-quantity": "mass",
+          "x-unit-key": "payload_unit",
+          "exclusiveMinimum": 0
+        },
+        "payload_unit": {
+          "type": "string",
+          "enum": [
+            "base",
+            "g",
+            "kg",
+            "t"
+          ],
+          "default": "kg",
+          "description": "Unit `payload_max` is in."
+        },
+        "payload_derate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": 1.0,
+          "description": "Axis speed fraction at payload_max, linear from 1.0 at 0 kg.",
+          "x-quantity": "ratio",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "tcp_speed": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Top tool speed along a straight-line move.",
+          "x-quantity": "speed",
+          "x-unit-key": "speed_unit",
+          "exclusiveMinimum": 0
+        },
+        "speed_unit": {
+          "type": "string",
+          "pattern": "^(base|(mm|cm|m|km)/(ms|s|min|h|day|week|month|year))$",
+          "default": "m/s",
+          "description": "Unit `tcp_speed` is in."
+        },
+        "tcp_accel": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Top tool acceleration along a straight-line move, m/s^2.",
+          "exclusiveMinimum": 0
+        },
+        "approximate": {
+          "type": "boolean",
+          "description": "True when the values are read from a public datasheet rather than the maker's model."
+        },
+        "source": {
+          "type": "string",
+          "description": "Where the values come from."
+        }
+      },
+      "required": [
+        "name",
+        "structure",
+        "axes"
+      ],
+      "additionalProperties": false
+    },
+    "pallet_pattern": {
+      "type": "object",
+      "description": "Where each item of a pallet goes: the pallet, the nominal item, named layer layouts, the order they repeat up the stack and the limits that close a pallet. A carrier BATCH names it by `pattern`. Lengths are in the model's length unit, weights in kg; a slot's x and y are the item's centre from the pallet's centre, x along the pallet's length, and its rotation is in degrees, clockwise from above, with the item's length along x at 0.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The pattern's name, the `pattern` of a carrier BATCH."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the pattern is; the run does not read it."
+        },
+        "pallet": {
+          "type": "object",
+          "description": "The pallet's footprint, deck height and tare.",
+          "properties": {
+            "length": {
+              "type": "number",
+              "description": "Along x.",
+              "x-quantity": "length"
+            },
+            "width": {
+              "type": "number",
+              "description": "Along y.",
+              "x-quantity": "length"
+            },
+            "deck_height": {
+              "type": "number",
+              "default": 0,
+              "description": "Height of the deck the first layer stands on.",
+              "x-quantity": "length"
+            },
+            "tare_kg": {
+              "type": "number",
+              "default": 0.0,
+              "description": "The empty pallet's weight.",
+              "x-quantity": "mass"
+            }
+          },
+          "required": [
+            "length",
+            "width"
+          ],
+          "additionalProperties": false
+        },
+        "item": {
+          "type": "object",
+          "description": "The nominal item, used by the checks and the generator.",
+          "properties": {
+            "length": {
+              "type": "number",
+              "description": "Along x at rotation 0.",
+              "x-quantity": "length"
+            },
+            "width": {
+              "type": "number",
+              "description": "Along y at rotation 0.",
+              "x-quantity": "length"
+            },
+            "height": {
+              "type": "number",
+              "description": "One layer's height.",
+              "x-quantity": "length"
+            },
+            "weight_kg": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Used when an item has no `weight` attribute.",
+              "x-quantity": "mass"
+            }
+          },
+          "required": [
+            "length",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        },
+        "overhang": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": 0.0,
+          "description": "How far an item may pass the pallet's edge.",
+          "x-quantity": "length"
+        },
+        "layers": {
+          "type": "object",
+          "description": "Layer layouts by name, each a list of slots in load order.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "rotation": {
+                  "type": "number",
+                  "default": 0
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "stack": {
+          "type": "array",
+          "description": "The layers from the deck up, repeated until a limit is reached.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "layer": {
+                "type": "string"
+              },
+              "transform": {
+                "type": "string",
+                "enum": [
+                  "rotate180",
+                  "mirror_x",
+                  "mirror_y"
+                ]
+              }
+            },
+            "required": [
+              "layer"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "sheet": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "A sheet between layers: its thickness and the time to place it (in the model's time unit), added before each layer after the first.",
+          "properties": {
+            "thickness": {
+              "type": "number",
+              "default": 0.0,
+              "x-quantity": "length"
+            },
+            "time": {
+              "type": "number",
+              "default": 0.0,
+              "x-quantity": "time"
+            }
+          },
+          "additionalProperties": false
+        },
+        "limits": {
+          "type": "object",
+          "description": "The first reached closes the pallet; null = no limit. One of layers, items or height must be set.",
+          "properties": {
+            "layers": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "x-quantity": "count"
+            },
+            "items": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "x-quantity": "count"
+            },
+            "weight_kg": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Tare plus the items.",
+              "x-quantity": "mass"
+            },
+            "height": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "From the floor to the top of the stack.",
+              "x-quantity": "length"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "name",
+        "pallet",
+        "item",
+        "layers",
+        "stack",
+        "limits"
+      ],
+      "additionalProperties": false
+    },
     "zone": {
       "type": "object",
       "description": "A safety zone: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to, so blocks sharing a zone share its radius. With hrc \"separation\", a worker within the radius slows the robot to its collaborative speed.",
@@ -13507,6 +15575,68 @@
             "$ref": "#/$defs/annotation"
           },
           "description": "The canvas notes of the definition; the engine ignores them."
+        },
+        "code": {
+          "type": "object",
+          "description": "The item's own Python logic: a class with event hooks (on_entry, on_exit, on_timer, on_state, on_signal) that reads the instance's parameters. It runs only after a person has trusted this exact code on their computer.",
+          "properties": {
+            "class": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "description": "The class in `source` whose hooks run."
+            },
+            "source": {
+              "type": "string",
+              "maxLength": 200000,
+              "description": "The Python source of the class."
+            },
+            "timer": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How often on_timer runs, in the model's time unit; null for no timer."
+            },
+            "watch": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Model variables whose writes call on_state."
+            },
+            "signals": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Signals that call on_signal; a `$name` is per instance."
+            },
+            "placed": {
+              "type": "object",
+              "description": "Written by library placing: who the library names as author, and the code's fingerprint when placed, to tell a later edit. Never read for trust.",
+              "properties": {
+                "author": {
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "class",
+            "source"
+          ],
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -14446,6 +16576,11 @@
           "type": "boolean",
           "default": true,
           "description": "Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants."
+        },
+        "strict_checks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Stop the run on a conveyor check: an open port, overlapping or unsnapped pieces, a part handed to nothing or routed against its rule become errors with the same code. Off: they are warnings."
         },
         "entity_waits": {
           "type": "boolean",

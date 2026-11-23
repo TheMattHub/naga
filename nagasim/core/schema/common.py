@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import math
+import re
 
 from nagasim.core import agents, sd
 from nagasim.core.distribution_spec import value_problems
@@ -61,7 +62,8 @@ def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: 
                 hint += "; a rate is 1 / the mean"
             problems.append(problem("E_DIST_PARAM_UNKNOWN",
                                     f"{label}: {dist} takes no parameter '{key}'",
-                                    f"{path}/{key}", block=block, hint=hint))
+                                    f"{path}/{key}", block=block, hint=hint,
+                                    fields={"case": "unknown", "label": label, "dist": dist, "key": key}))
     # #1723: a choice outside its list, or a jitter that is negative or not a number, stopped
     # the run (or, for NaN, put every arrival at t = 0); refused here, before any run.
     for param in spec.params:
@@ -76,7 +78,8 @@ def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: 
         else:
             continue
         problems.append(problem("E_DIST_PARAM_VALUE", f"{label}: {dist} {param.name}: {bad}",
-                                f"{path}/{param.name}", block=block, hint=param.hint))
+                                f"{path}/{param.name}", block=block, hint=param.hint,
+                                fields={"case": "setting", "label": label, "dist": dist, "param": param.name}))
     # #1766 (D1221): the registry's bounds, the same the Properties field reads; a negative
     # or zero rate, or a field left empty, died at run time with a bare library message.
     hints = {p.name: p.hint for p in spec.params}
@@ -85,7 +88,8 @@ def _check_dist_param_keys(problems: list, dist, dist_params, label: str, path: 
         if f"{path}/{name}" in said:
             continue        # the choice/jitter check above has named it
         problems.append(problem("E_DIST_PARAM_VALUE", f"{label}: {dist} {name} {bad}",
-                                f"{path}/{name}", block=block, hint=hints.get(name)))
+                                f"{path}/{name}", block=block, hint=hints.get(name),
+                                fields={"case": "bound", "label": label, "dist": dist, "param": name}))
 
 
 def _check_deterministic_mean(problems: list, deterministic: bool, dist, dist_params: dict,
@@ -114,7 +118,13 @@ def _check_deterministic_mean(problems: list, deterministic: bool, dist, dist_pa
             "E_DETERMINISTIC_NO_MEAN",
             f"{label}: {dist} has no finite mean for {dist_params!r} in deterministic mode",
             path, block=block,
-            hint="use a distribution/params with a finite mean, or turn off simulation.deterministic"))
+            hint="use a distribution/params with a finite mean, or turn off simulation.deterministic",
+            fields={"case": "mean", "label": label, "dist": dist}))
+
+
+# D1378: `B1.running` written bare, the attribute access a conveyor's exposed state looks like
+_EXPOSED_READ = re.compile(r"(?<![\w.\"'])(?!entity\.|self\.|sender\.)[A-Za-z_]\w*\."
+                           r"(?:running|forward|state|eye\d+\.(?:count|blocked))\b")
 
 
 def _check_expression(problems: list, block_name: str, text, variables: set[str],
@@ -124,21 +134,27 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
     try:
         expression = compile_expression(text, variables)
     except ExpressionError as exc:
+        exposed = _EXPOSED_READ.search(str(text))
+        # D1378: a belt's or transfer's exposed state has a dot, which a bare name cannot spell
+        hint = (f"read an exposed conveyor state with VAR(\"{exposed.group(0)}\")" if exposed
+                else "see the expression reference; names allowed are entity.<attr>, "
+                     "now/TNOW, declared variables and the built-in functions")
         problems.append(problem("E_EXPRESSION", f"{block_name}: {text}: {exc}", path,
-                                block=block_name,
-                                hint="see the expression reference; names allowed are entity.<attr>, "
-                                     "now/TNOW, declared variables and the built-in functions"))
+                                block=block_name, hint=hint,
+                                fields={"case": "a7_syntax", "text": text}))
         return
     for message in literal_problems(text):     # D912: a DISC/TRIA that fails on every draw
         problems.append(problem("E_EXPRESSION", f"{block_name}: {text}: {message}", path,
                                 block=block_name,
                                 hint="DISC(v1, p1, v2, p2, ...) with probabilities that sum to 1; "
-                                     "TRIA(low, mode, high) with low <= mode <= high"))
+                                     "TRIA(low, mode, high) with low <= mode <= high",
+                                fields={"case": "a7_draw", "text": text}))
     if not allow_self and "self" in expression.names:      # PHASE5 AB-1
         problems.append(problem("E_EXPRESSION", f"{block_name}: {text}: self.<attribute> is only "
                                 f"available in an agent type's expressions", path,
                                 block=block_name,
-                                hint="read agents from here with COUNT/SUM/MEAN(\"population\", ...)"))
+                                hint="read agents from here with COUNT/SUM/MEAN(\"population\", ...)",
+                                fields={"case": "a7_self", "text": text}))
     # Inline delay shorthand and PHASE6 S2 value macros left after `sd.expand`
     # sit where no hidden record can be generated: a block, a price, a
     # TRANSFER amount.
@@ -147,7 +163,8 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
             "E_SD_FUNCTION_CONTEXT", f"{block_name}: {text}: {name}() cannot be used here", path,
             block=block_name,
             hint="write it in a level's initial value, a flow rate, an auxiliary or a delay "
-                 "field, and read the result here with AUX() or LEVEL()/DELAY()"))
+                 "field, and read the result here with AUX() or LEVEL()/DELAY()",
+            fields={"case": "context", "name": name}))
     # SUM/MEAN left after `sd.expand` (PHASE5 SD-3): not in an SD section, no
     # `[*]` to unroll over, or the agent form.
     if expression.calls & set(sd.AGGREGATES):
@@ -160,13 +177,15 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
                     f"over a subscripted record in x, inside a level, flow, auxiliary or delay",
                     path, block=block_name,
                     hint=f"{name}(\"Population\", \"attribute\") over agents" if allow_self else
-                    f"{name}(LEVEL(\"Pop[*]\")) in an auxiliary, read here with AUX()"))
+                    f"{name}(LEVEL(\"Pop[*]\")) in an auxiliary, read here with AUX()",
+                    fields={"case": "star", "name": name}))
         for name in agents.bad_aggregates(text):
             problems.append(problem(
                 "E_AGGREGATE_AGENTS", f"{block_name}: {text}: {name}(population, attribute[, state]) "
                 f"takes literal names", path, block=block_name,
                 hint=f"{name}(\"People\", \"age\"); the system-dynamics form is "
-                     f"{name}(LEVEL(\"x[*]\"))"))
+                     f"{name}(LEVEL(\"x[*]\"))",
+                fields={"case": "literal", "name": name}))
     if tables is None:
         return
     # TABLE("name", ...) with a literal name (PHASE4 A1): a computed name can
@@ -177,13 +196,15 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
                 "E_TABLE_UNKNOWN", f"{block_name}: {text}: unknown table '{name}'", path,
                 block=block_name,
                 hint=f"declare it under \"tables\"; declared: "
-                     f"{', '.join(sorted(tables)) or '(none)'}"))
+                     f"{', '.join(sorted(tables)) or '(none)'}",
+                fields={"case": "unknown", "name": name}))
         elif tables[name] != keys:
             problems.append(problem(
                 "E_TABLE_KEYS",
                 f"{block_name}: {text}: table '{name}' takes {tables[name]} key(s), got {keys}",
                 path, block=block_name,
-                hint=f"TABLE(\"{name}\", {', '.join(f'k{i + 1}' for i in range(tables[name]))})"))
+                hint=f"TABLE(\"{name}\", {', '.join(f'k{i + 1}' for i in range(tables[name]))})",
+                fields={"case": "keys", "name": name, "need": tables[name], "got": keys}))
     # TS("name") / LEVEL("name") / FLOW("name") with a literal name (PHASE4
     # D1/D2), checked against the declared sections the same way.
     # #692: POWER(source) / TS(profile) with a bare name argument that is one of the
@@ -202,7 +223,8 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
             "W_REF_UNSET", f"{block_name}: {text}: {func}({name}) reads '{name}', which is empty",
             path, block=block_name,
             hint=f"set {name} to the {label} " + ("whose power this draws" if func == "POWER"
-                                                   else "it reads")))
+                                                   else "it reads"),
+            fields={"case": "empty", "func": func, "name": name}))
     for func, (declared, code, section, label) in (refs or {}).items():
         for name in (*expression.refs.get(func, ()), *via_local.get(func, ())):
             if name not in declared:
@@ -210,7 +232,8 @@ def _check_expression(problems: list, block_name: str, text, variables: set[str]
                     code, f"{block_name}: {text}: unknown {label} '{name}'", path,
                     block=block_name,
                     hint=f"declare it under \"{section}\"; declared: "
-                         f"{', '.join(sorted(declared)) or '(none)'}"))
+                         f"{', '.join(sorted(declared)) or '(none)'}",
+                    fields={"case": "ref", "name": name}))
     pops = (refs or {}).get("COUNT", (None,))[0]
     if isinstance(pops, dict):
         for code, message, hint in agents.literal_problems(text, pops):

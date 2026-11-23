@@ -46,6 +46,7 @@ import nagasim.settings.color_palette as cp
 from nagasim.core import cranes as cr
 from nagasim.core import playback, queuerow
 from nagasim.core import stockpiles as sp
+from nagasim.core import pallets
 from nagasim.core.grouping import Grouping
 from nagasim.core.network import block_place, build_network, point_on_path
 from nagasim.core.playback import Timeline
@@ -433,15 +434,19 @@ class TapeWriter:
                                   "axis": cr.crane_axis(c), "colour": c.get("colour") or CRANE_COLOUR,
                                   "th": _r(trolley_height(c))} for c in self._cranes]
         grouping = Grouping(events)
-        stays, lifo = [], {}
+        stays, lifo, pats = [], {}, {}
         for group, members in grouping.members.items():
+            _name, record, _per = grouping.pattern_of(group, self._layout)
+            if record is not None:      # a pallet's slot poses, for the carrier panel's layer lines
+                pats[str(group)] = [[s.layer, _r(s.x), _r(s.y), _r(s.z), s.rotation]
+                                    for s in pallets.slots(record)]
             for s in members:
                 if s.t1 > s.t0:          # in and out in one instant: never inside
                     stays.append([s.entity, s.group, s.slot, s.t0, s.t1, self._type(s.e_type)])
             # The unload order changes only where the group enters a block (`unload_order`).
             changes, last = [], None
             for t in sorted({t for t, _block in grouping.blocks.get(group) or ()}):
-                order = int(grouping.unload_order(group, t, self._layout) == "lifo")
+                order = int(grouping.unload_order(group, t, self._layout) in ("lifo", "pattern"))
                 if order != last:
                     changes.append([t, order])
                     last = order
@@ -449,6 +454,8 @@ class TapeWriter:
                 lifo[str(group)] = changes
         if stays:
             derived["grp"] = {"st": stays, "lifo": lifo}
+            if pats:
+                derived["grp"]["pat"] = pats
         self._derived = derived
 
     def _between(self, source, target, progress: float):

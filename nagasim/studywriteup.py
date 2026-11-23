@@ -11,6 +11,7 @@ from pathlib import Path
 
 from nagasim import player, study as study_mod, studyextensions, studypage, svgcharts
 from nagasim.report import esc
+from nagasim.core.timeunits import units_of
 from nagasim.studychecks import goal_kpi, judge
 from nagasim.pagefmt import REFERENCE, kpi_label
 from nagasim.studypage import (_first, _goal_words, _hw, _is_share, _n, _page, _ascii, _prec, _read, _reps,
@@ -86,7 +87,9 @@ def _verdict(study: dict, last: dict, prec: dict, sc: dict, best: list, base_bad
             # Names what meets the goal, so it reads right for "can we ...?" and for "which ...?" alike;
             # never the others, whose lines must carry their own validity (#1880).
             meets = list(dict.fromkeys(yes))
-            return f"Yes: {_and(meets)} {'meets' if len(meets) == 1 else 'meet'} the {noun}."
+            if len(meets) > 1:     # D1348: no option is picked by list order
+                return f"Yes: {_and(meets)} meet the {noun}, and the choice between them is the decision maker's."
+            return f"Yes: {_and(meets)} meets the {noun}."
         if all(s == "no" for s in said.values()):
             return f"No: none of the options meets the {noun}."
         return f"Not clear yet: no option is clearly within the {noun}."
@@ -108,7 +111,10 @@ def facts(folder: Path, study: dict) -> dict:
     suff = study_mod.sufficiency(study)
     prec = _prec(last, step)
     sc = _first(last.get("scenarios"), step.get("scenarios")) or {}
-    best = study_mod.scenarios_meeting(study)
+    meeting = study_mod.scenarios_meeting(study)
+    # D1348: one option meeting every goal leads (D1237); with two or more none does, since
+    # list order is no reason to recommend one, and the verdict names them all.
+    best = meeting if len(meeting) == 1 else []
     # #1880: a Baseline whose law checks warned is written as not valid, with why, never as a number.
     base_bad = studypage.base_invalid(step)
     # D1316: a Baseline that only censoring or initial bias warned keeps its numbers, with the caveat.
@@ -174,8 +180,8 @@ def facts(folder: Path, study: dict) -> dict:
         "banner": "b-ok" if suff["sufficient"] else "b-open" if study.get("accepted") else "b-wait",
         "options": options,
         "question": study["question"], "decision": study["decision"], "label": suff["label"],
-        "best": best, "base_invalid": base_bad,
-        "verdict": _verdict(study, last, prec, sc, best, base_bad, base_cav),
+        "best": best, "tied": meeting if len(meeting) > 1 else [], "base_invalid": base_bad,
+        "verdict": _verdict(study, last, prec, sc, meeting, base_bad, base_cav),
         "version": last["id"], "replications": _reps(last, step), "seed": step.get("seed"),
         "precision": [(k, _hw(p.get("half_width"), k), _hw(p.get("target"), k)) for k, p in prec.items()
                       if isinstance(p, dict)],
@@ -245,7 +251,7 @@ def glossary(text: str, short: bool = False) -> list[str]:
 
 def _status(f: dict) -> str:
     """Where the study stands, under the answer and its numbers (#1881)."""
-    return f"The study is {f['label']}. Validation: {f['level']}."
+    return f"The study is {f['label']}; validation: {f['level']}."
 
 
 def _headline(f: dict) -> str:
@@ -304,6 +310,12 @@ def _next_steps(f: dict) -> list:
     return [["ul", [c["title"] + (f": {c['why']}" if c["why"] else "") for c in f["open"]]]]
 
 
+def run_line(sim: dict) -> str:
+    """The run's length and warm-up, each in the model's time unit (#1968)."""
+    unit = units_of(sim).time
+    return f"Run length {_n(sim.get('time_limit'))} {unit}, warm-up {_n(sim.get('warmup'))} {unit}."
+
+
 def _writeup_sections(f: dict, discussion: str | None) -> list:
     n = [0]
 
@@ -312,7 +324,7 @@ def _writeup_sections(f: dict, discussion: str | None) -> list:
         return f"Figure {n[0]}: {text}"
 
     sim = f["simulation"]
-    horizon = f"Run length {_n(sim.get('time_limit'))}, warm-up {_n(sim.get('warmup'))}." if sim else ""
+    horizon = run_line(sim) if sim else ""
     reps = f"{f['replications']} replications, seed {f['seed']}." if f["replications"] else ""
     prec = [["ul", [f"{kpi_label(k)}: 95% half-width {w} (target {t})" for k, w, t in f["precision"]]]] \
         if f["precision"] else []
@@ -434,7 +446,8 @@ body{font:15px/1.5 Georgia,serif;color:var(--ink);margin:0;background:var(--pane
 main{max-width:820px;margin:0 auto;padding:24px 16px}
 h1{font-size:24px}h2{font-size:18px;margin-top:28px;border-bottom:1px solid var(--line)}
 table{border-collapse:collapse;width:100%;margin:8px 0;font:13px system-ui,Arial,sans-serif}
-th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td{overflow-wrap:anywhere}th{overflow-wrap:break-word}
 figure{margin:12px 0}figcaption{font-size:13px;color:var(--muted)}.flow{overflow-x:auto;background:#fff;border-radius:6px}
 .flow svg{max-width:100%;height:auto}
 @media print{h2{break-after:avoid}figure,table{break-inside:avoid}body{background:#fff}}

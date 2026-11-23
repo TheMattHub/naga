@@ -1,0 +1,9 @@
+Use CONVEYOR_TRANSFER where loads change conveyors through a mechanism. A pop-up transfer lifts a load onto a side belt, a turntable turns a pallet to its exit, and a lift carries it to another level. It sits between a feeding [CONVEYOR](conveyor.md) and one receiving conveyor per exit. For a part that leaves a belt sideways with no module of its own, a divert on the belt is simpler.
+
+## Behaviour and rules
+
+The module holds one load at a time. It is busy from the load's entry until the handshake: the load reaching the receiving conveyor's first photo-eye. On a belt with no eye, the handshake is the load clearing that belt's entry by its own length. Only then, after any return move, does the module take the next load, so the eye's position sets the throughput. The feeding belt keeps its load until the module is free, and a full receiving belt keeps the load on the module.
+
+Each mechanism adds its own times. A pop-up's straight exit (angle 0) adds none. A side or angled exit lifts for `lift_time`, crosses `cross_length` at `transfer_speed`, and lifts down after the handshake. A turntable turns the shorter way to the exit in `angle / turn_rate + turn_ramp`. It turns back before the next load, or with `return_home` off only once the next load waits. A lift travels `lift_height / lift_speed` each way. The travel to the load position is `entry_length`, and `transfer_speed` 0 takes the feeding belt's speed.
+
+The `exits` list names each exit by its `port`, and a link picks its exit with `source_port`, else by order. The `rule` picks an exit per load, round robin over two or more exits by default. A rule with a limit holds the load on the module while every exit is full. The pop-up and turntable timings come from Emulate3D measurements, and a module that can never hand over is named in the deadlock error.

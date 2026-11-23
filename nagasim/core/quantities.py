@@ -45,7 +45,9 @@ _COSTS = (_p("cost_busy", float, 0.0, "rate", min=0, unit_key="cost_time_unit"),
 
 SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
     "links": (_p("delay", dict, None, "time", kinds=("distribution",),
-                 unit_key="delay.time_unit"),),
+                 unit_key="delay.time_unit"),
+              # D1369, D1391: an area link's places (0 = unlimited); its time is the delay
+              _p("capacity", int, 0, "count", min=0)),
     "resources": (_p("capacity", int, 1, "count", min=0), *_COSTS),
     "schedules": (_p("points", list, [], "time", kinds=("table",), unit_key="time_unit"),
                   _p("off_value", float, 0.0, "none"), _unit("time_unit")),
@@ -57,6 +59,9 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
     "variables": (_p("initial", object, 0, "none", kinds=("number", "text", "bool")),),
     "entities": (_p("holding_cost", float, 0.0, "rate", min=0,
                     unit_key="holding_cost_time_unit"), _unit("holding_cost_time_unit")),
+    # D1351: an item's size is in the model's own length unit, like a pallet pattern's (D1346).
+    "entities.size": tuple(_p(n, float, None, "length", min=0, min_exclusive=True, unit_key="")
+                           for n in ("length", "width", "height")),
     "timeseries_inputs": (_p("times", list, [], "time", kinds=("table",), unit_key="time_unit"),
                           _p("start", float, 0.0, "time", unit_key="time_unit"),
                           _p("step", float, None, "time", min=0, min_exclusive=True, unit_key="time_unit"),
@@ -133,6 +138,29 @@ SECTION_FIELDS: dict[str, tuple[ParamSpec, ...]] = {
                            unit_key="payload_unit"),
                         _unit("payload_unit", "kg"),
                         _p("payload_derate", float, None, "ratio", min=0, min_exclusive=True, max=1)),
+    # P1 robotics (D1342): the nested axes, params, joints and tool are in fixed units
+    # (degrees, metres, seconds); reach_m is metres by name, as length_m.
+    "robots": (_p("payload_max", float, None, "mass", min=0, min_exclusive=True,
+                  unit_key="payload_unit"), _unit("payload_unit", "kg"),
+               _p("payload_derate", float, None, "ratio", min=0, min_exclusive=True, max=1),
+               _p("tcp_speed", float, None, "speed", min=0, min_exclusive=True,
+                  unit_key="speed_unit"), _unit("speed_unit", "m/s"),
+               _p("tcp_accel", float, None, "none", min=0, min_exclusive=True),       # m/s^2, fixed
+               _p("reach_m", float, None, "length", min=0, min_exclusive=True, unit_key="")),
+    # D1346: a pallet pattern's lengths are in the model's own length unit and its weights in
+    # kg by name, so no field has a unit key (unit_key ""); E_PALLET_SHAPE checks the bounds.
+    "pallet_patterns": (_p("overhang", float, 0.0, "length", unit_key=""),),
+    "pallet_patterns.pallet": (*(_p(n, float, None, "length", unit_key="")
+                                 for n in ("length", "width", "deck_height")),
+                               _p("tare_kg", float, 0.0, "mass", unit_key="")),
+    "pallet_patterns.item": (*(_p(n, float, None, "length", unit_key="")
+                               for n in ("length", "width", "height")),
+                             _p("weight_kg", float, None, "mass", unit_key="")),
+    "pallet_patterns.sheet": (_p("thickness", float, 0.0, "length", unit_key=""),
+                              _p("time", float, 0.0, "time", unit_key="")),
+    "pallet_patterns.limits": (_p("layers", int, None, "count"), _p("items", int, None, "count"),
+                               _p("weight_kg", float, None, "mass", unit_key=""),
+                               _p("height", float, None, "length", unit_key="")),
     # radius_m is metres by name (unit_key ""), as a fleet's length_m (D830).
     "zones": (_p("radius_m", float, None, "length", min=0, min_exclusive=True, unit_key=""),),
     # power_kw is kW by name (unit_key ""); swap_time is in swap_time_unit.
@@ -323,7 +351,7 @@ def _records(layout: dict, key: str) -> list:
 
 # One trigger each, or an optional block: fill only where a field is present.
 _SPARSE = ("agent_types.transitions", "agent_types.space", "orders", "initial_state",
-           "initial_state.entities", "chargers")
+           "initial_state.entities", "chargers", "links")
 
 
 def _fill(record: dict, fields, units, sparse: bool = False) -> None:
@@ -420,7 +448,8 @@ def check_units(layout: dict, problems: list) -> None:
                 f"{context}: unknown {leaf} '{unit}'",
                 f"{at}/{key.replace('.', '/')}", block=block,
                 hint=f"use \"base\" (the model's own unit) or one of its "
-                     f"{spec.quantity} units"))
+                     f"{spec.quantity} units",
+                fields={"case": "field", "where": context, "unit": unit}))
 
     for i, block in enumerate(layout.get("blocks") or []):
         if not isinstance(block, dict):
@@ -462,7 +491,8 @@ def check_bounds(layout: dict, problems: list) -> None:
                     continue
                 problems.append(problem(
                     "E_FIELD_RANGE", f"{key} '{record.get('name', j)}': {spec.name} must be a "
-                    f"number {rule}", f"{root}/{j}/{spec.name}", hint=f"set {spec.name} {rule}"))
+                    f"number {rule}", f"{root}/{j}/{spec.name}", hint=f"set {spec.name} {rule}",
+                    fields={"case": "range", "name": record.get('name', j), "field": spec.name, "rule": rule}))
 
 
 # What reads time in the model unit and cannot be converted safely (D160's

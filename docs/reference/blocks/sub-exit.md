@@ -71,7 +71,7 @@ print(int(results.kpi("resource/Lathe/Total Seizes")), "parts went through the C
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md), [Container terminal: quay to yard](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md) and 8 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md), [Container terminal: quay to yard](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md) and 9 more.
 
 Guides: [Submodels](../../modelling-guide/submodels.md).
 

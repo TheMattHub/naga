@@ -491,7 +491,8 @@ def open_and_run(path_or_layout, *, replications: int | None = 1, seed: int = 0,
     step that fails is the verdict, and its message says why, e.g. "MY_PLACE comes from a plugin
     that is not loaded" with the hint to trust its folder. A missing or unreadable file raises
     OSError, as `check` does, and so does a model whose Python behaviour the caller has not
-    consented to (`PythonRefused`).
+    consented to (`PythonRefused`), or whose item code is not trusted on this computer
+    (`ItemCodeUntrusted`, a `PythonRefused` too).
 
     *replications* None runs the model's own count: `naga check` does, and keeps that run in
     *runs* (by replication count, as `check` does), so its assertions and laws reuse it rather

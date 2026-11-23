@@ -2,14 +2,16 @@
 
 One turn record, two wire formats. History is a list of plain entries:
 
-    {"role": "user", "text": str}
+    {"role": "user", "text": str, "attachment"?: {"pdf": base64 str}}
     {"role": "assistant", "text": str, "tool_calls": [{"id", "name", "arguments"}], "blocks": [...]}
     {"role": "tool", "id": str, "name": str, "content": str, "is_error": bool}
 
 Each provider converts it on every call. The conversion is deterministic, so a cached prefix
 stays identical between rounds. An assistant entry has "blocks" only when the provider returned
 its own content blocks (Anthropic, with its thinking blocks): that provider replays them verbatim,
-and the other wire ignores them. The endpoint is the CALLER's configuration (flags, environment,
+and the other wire ignores them. A user entry may carry one PDF `attachment`: the Anthropic
+provider sends it as a document block, and the OpenAI-compatible one raises `AttachmentUnsupported`
+(it has no document input; the caller asks for pasted text instead). The endpoint is the CALLER's configuration (flags, environment,
 an application's saved settings): never a model file, never a tool argument.
 """
 from __future__ import annotations
@@ -25,8 +27,8 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit, urlunsplit
 
-__all__ = ["Usage", "ToolCall", "Reply", "Config", "LLMError", "LOCAL_DEFAULT", "is_loopback",
-           "parse_arguments", "resolve_config", "build_provider", "ANTHROPIC_MODELS",
+__all__ = ["Usage", "ToolCall", "Reply", "Config", "LLMError", "AttachmentUnsupported", "TEXT_ONLY", "LOCAL_DEFAULT", "is_loopback",
+           "parse_arguments", "resolve_config", "build_provider", "ANTHROPIC_MODELS", "model_label",
            "DEFAULT_ANTHROPIC_MODEL", "estimate_cost"]
 
 LOCAL_DEFAULT = "http://localhost:11434/v1"
@@ -36,12 +38,13 @@ LOCAL_TIMEOUT_S, HOSTED_TIMEOUT_S = 1800, 600     # a local model may still be l
 # Every model in ANTHROPIC_MODELS allows at least this much output (Haiku 4.5: 64K).
 MAX_TOKENS = 64000
 
-# Prices are $/1M tokens, from the claude-api skill's model table (cached 2026-09-25). A model
+# Prices are $/1M tokens, from the claude-api skill's model table (cached 2026-11-03). A model
 # without prices has none we know: estimate_cost returns None for it (never guess a price).
 # This is the offline fallback, newest first; the app asks the provider for its live list
 # (`list_models`, D585). Never hard-code a model id anywhere else in the app.
 ANTHROPIC_MODELS = {
-    "claude-fable-5-1": {"label": "Claude Fable 5.1 (newest)"},
+    "claude-fable-5-2": {"label": "Claude Fable 5.2 (newest)",
+                         "input_per_mtok": 8.00, "output_per_mtok": 40.00},
     "claude-opus-5-5": {"label": "Claude Opus 5.5 (default)",
                         "input_per_mtok": 4.00, "output_per_mtok": 20.00},
     "claude-sonnet-5-5": {"label": "Claude Sonnet 5.5 (cheaper)",
@@ -51,8 +54,33 @@ ANTHROPIC_MODELS = {
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5"
 
 
+def model_label(model_id: str) -> str:
+    """The picker's name for *model_id*: the built-in label, else the id read as a name
+    ("claude-fable-5-3" -> "Claude Fable 5.3"), so a model the live list brings is never shown
+    as a bare id; an id that does not read that way is shown as it is."""
+    known = ANTHROPIC_MODELS.get(model_id)
+    if known:
+        return known["label"]
+    parts = str(model_id).split("-")
+    if len(parts) < 2 or parts[0] != "claude" or not parts[1].isalpha():
+        return str(model_id)
+    version = [p for p in parts[2:] if p.isdigit() and len(p) < 8]
+    snapshot = [p for p in parts[2:] if p.isdigit() and len(p) >= 8]
+    if len(version) + len(snapshot) != len(parts) - 2:
+        return str(model_id)
+    name = f"Claude {parts[1].capitalize()}" + (f" {'.'.join(version)}" if version else "")
+    return name + (f" ({snapshot[0]})" if snapshot else "")
+
+
 class LLMError(RuntimeError):
     """A failure a person can act on; the message is the whole advice."""
+
+
+TEXT_ONLY = "This model reads text only; paste the document's text."
+
+
+class AttachmentUnsupported(LLMError):
+    """A user turn carries a document this provider cannot read."""
 
 
 @dataclasses.dataclass
@@ -283,6 +311,8 @@ def _openai_messages(system: str, history: list) -> list:
     out = [{"role": "system", "content": system}]
     for entry in history:
         if entry["role"] == "user":
+            if entry.get("attachment"):
+                raise AttachmentUnsupported(TEXT_ONLY)
             out.append({"role": "user", "content": entry["text"]})
         elif entry["role"] == "assistant":
             message = {"role": "assistant", "content": entry["text"] or None}
@@ -437,7 +467,12 @@ def _anthropic_messages(history: list) -> list:
     out = []
     for entry in history:
         if entry["role"] == "user":
-            out.append({"role": "user", "content": entry["text"]})
+            pdf = (entry.get("attachment") or {}).get("pdf")
+            # The document goes before the text, and is cached: it is resent on every round.
+            out.append({"role": "user", "content": entry["text"] if not pdf else [
+                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf},
+                 "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": entry["text"]}]})
         elif entry["role"] == "assistant":
             # The model's own blocks when this provider wrote them (thinking and its signature
             # must come back with the tool_use); else rebuilt from the neutral record.
@@ -459,6 +494,7 @@ def _anthropic_messages(history: list) -> list:
 
 class _Anthropic:
     kind = "hosted"
+    reads_documents = True      # a PDF attachment goes as a document block
 
     def __init__(self, cfg: Config, client=None):
         _check_key(cfg.api_key)     # a hand-built Config must not skip the check

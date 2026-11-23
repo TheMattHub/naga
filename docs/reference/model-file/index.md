@@ -8,7 +8,7 @@ One page per top-level key of the model file, from the published JSON Schema (`n
 | Section | Holds | What it is for |
 |---|---|---|
 | [`blocks`](blocks.md) | a list of blocks | Every block in the model: `name`, `type`, `position` (centre, scene units), `params`. |
-| [`links`](links.md) | a list of entries | Ordered list of `{source, target, delay?, source_port?, target_port?}`; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is). |
+| [`links`](links.md) | a list of entries | Ordered list of `{source, target, delay?, source_port?, target_port?, capacity?}`; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is). |
 | [`scenarios`](scenarios.md) | a list of `scenario` entries | Named parameter-override sets, run and compared by `nagasim.experiments`. |
 | [`orders`](orders.md) | a list of `order` entries | Released jobs with a due date, emitted by a CREATE block in "Orders" arrival mode. |
 | [`resources`](resources.md) | a list of `resource` entries | Named resources: capacity, queue discipline, optional ranking expression, capacity schedule, cost fields. |
@@ -18,7 +18,7 @@ One page per top-level key of the model file, from the published JSON Schema (`n
 | [`tables`](tables.md) | a list of `table` entries | Named 1-D/2-D lookup tables read by TABLE("name", k1[, k2]) in any expression. |
 | [`sequences`](sequences.md) | a list of `sequence` entries | Named routings: ordered steps through STATION blocks, walked by a ROUTE block. |
 | [`variables`](variables.md) | a list of `variable` entries | Model-level variables, read and written by expressions; reset to `initial` each replication. |
-| [`entities`](entities.md) | a list of `entity` entries | Entity types: shape, colour, optional WIP holding cost. |
+| [`entities`](entities.md) | a list of `entity` entries | Entity types: shape, colour, optional size and WIP holding cost. |
 | [`timeseries_inputs`](timeseries_inputs.md) | a list of `timeseries_input` entries | Named time-series profiles read by TS("name") in any expression. |
 | [`levels`](levels.md) | a list of `level` entries | Continuous quantities with bounds (battery energy, tank volume, an inventory position), read by LEVEL("name"). |
 | [`flows`](flows.md) | a list of `flow` entries | Rate-based transfers between levels, re-evaluated at events. |
@@ -26,6 +26,8 @@ One page per top-level key of the model file, from the published JSON Schema (`n
 | [`fixed_costs`](fixed_costs.md) | a list of `fixed_cost` entries | Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter. |
 | [`fleets`](fleets.md) | a list of `fleet` entries | Pools of vehicles that carry entities on the network; a fleet is a resource under its own name. |
 | [`motion_profiles`](motion_profiles.md) | a list of `motion_profile` entries | How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's `profile`. |
+| [`robots`](robots.md) | a list of `robot` entries | Robots: a structure with its dimensions, or a joint chain, with each axis's range, speed and acceleration, and the tool frame; named by a MOTION block's `robot`. |
+| [`pallet_patterns`](pallet_patterns.md) | a list of `pallet_pattern` entries | Pallet patterns: the pallet, the item, layer layouts and how they stack, and the limits that close a pallet; named by a carrier BATCH's `pattern`. |
 | [`zones`](zones.md) | a list of `zone` entries | Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed. |
 | [`chargers`](chargers.md) | a list of `charger` entries | Chargers and battery-swap stations at network nodes, used by fleets that declare a `battery`. |
 | [`auxiliaries`](auxiliaries.md) | a list of `auxiliary` entries | Named expressions read by AUX("name"), evaluated on read. |

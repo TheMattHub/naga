@@ -92,8 +92,16 @@ monitored, and the state or forecast that needs it is refused by name, never sta
 - a pending decision
 - the end of the run
 - a swap station
+- a conveyor with photo-eyes or a robot pick
+- a typed conveyor
+- a conveyor with zones
+- a conveyor with a release rule
+- a reversible conveyor
+- a routing rule
+- an area link
 - blocking before service
 - a polled condition
+- a conveyor transfer
 - a deterministic split's counts
 - agent populations
 - a dispatch plan

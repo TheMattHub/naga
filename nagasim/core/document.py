@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from nagasim.core import network, schema, sections, submodels
+from nagasim.core.arealink import AREA_KEYS
 from nagasim.core.block_registry import BLOCK_REGISTRY, PLUGIN_BLOCK_TYPES
 from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.quantities import SECTION_FIELDS, fill_units, time_expressions
@@ -119,6 +120,9 @@ class BlockData:
     # clockwise as seen on screen (+x east, +y south), normalised to [0, 360).
     # Layout view only -- the schematic is never rotated.
     layout_rotation: float = 0.0
+    # The library mesh the 3D view draws, "library/asset"; "" means the view's default shape.
+    # Display only: a run never reads it, and it is saved only when set.
+    asset_3d: str = ""
     # Where the block's NAME label is dragged to (PHASE4 G2, D82), in scene
     # units relative to its default anchor, in the UNROTATED frame. None (the
     # usual case) means the default position.
@@ -138,9 +142,9 @@ class BlockData:
 
 # The block keys a BlockData holds; any other is kept in `extra`.
 _BLOCK_KEYS = frozenset({"name", "type", "description", "position", "layout_position",
-                         "layout_rotation", "label_offset", "counter_offsets", "queue_row",
-                         "params"})
-_LINK_KEYS = frozenset({"source", "target", "delay", "source_port", "target_port"})
+                         "layout_rotation", "asset_3d", "label_offset", "counter_offsets",
+                         "queue_row", "params"})
+_LINK_KEYS = frozenset({"source", "target", "delay", "source_port", "target_port", *AREA_KEYS})
 
 
 @dataclasses.dataclass
@@ -157,7 +161,15 @@ class LinkData:
     # ROADMAP 2.3 part B: {"source_port"/"target_port"} when an endpoint is a
     # SUBMODEL instance; empty otherwise.
     ports: dict = dataclasses.field(default_factory=dict)
+    # D1369, D1391: an area link's {"capacity"?} as written (its time is the delay); empty
+    # for a plain link, which then saves exactly as before.
+    area: dict = dataclasses.field(default_factory=dict)
     extra: dict | None = None       # unknown keys, kept verbatim (D1220)
+
+
+def _area_of(link: dict) -> dict:
+    """An area link's fields of a link dict (D1369), as written."""
+    return {k: copy.deepcopy(link[k]) for k in AREA_KEYS if k in link}
 
 
 def _link_key(key) -> tuple[str, str, int]:
@@ -172,9 +184,40 @@ def _link_entry(link: LinkData) -> dict:
     if link.delay:
         entry["delay"] = copy.deepcopy(link.delay)
     entry.update(copy.deepcopy(link.ports))
+    entry.update(copy.deepcopy(link.area))
     if link.extra:
         entry.update(copy.deepcopy(link.extra))
     return entry
+
+
+def rename_duplicate_blocks(layout: dict) -> tuple[dict, list[tuple[str, str, str]]]:
+    """A copy of *layout* with every block whose name an earlier block of its level already
+    has renamed to the first free `<name>_<n>` (n from 2), and the renames as
+    (scope, old, new); scope is "" for the model, else the submodel definition's name.
+
+    D1340: the repair the editor offers on E_DUPLICATE_BLOCK. Only block entries change:
+    links and every other reference keep naming the first block, the one a person meant
+    when the file still worked. Pure; the engine and the agent tools still refuse such a file."""
+    repaired = copy.deepcopy(layout)
+    renames: list[tuple[str, str, str]] = []
+    levels = [("", repaired)] + [(name, definition) for name, definition
+                                 in (repaired.get("submodels") or {}).items()
+                                 if isinstance(definition, dict)]
+    for scope, section in levels:
+        blocks = [b for b in section.get("blocks") or [] if isinstance(b, dict) and "name" in b]
+        taken = {b["name"] for b in blocks}     # later names too: a rename must not hit one
+        seen: set = set()
+        for block in blocks:
+            name = block["name"]
+            if name in seen:
+                n = 2
+                while f"{name}_{n}" in taken:
+                    n += 1
+                block["name"] = f"{name}_{n}"
+                taken.add(block["name"])
+                renames.append((scope, name, block["name"]))
+            seen.add(block["name"])
+    return repaired, renames
 
 
 class _Level:
@@ -256,7 +299,10 @@ class ModelDocument:
 
     # -- persistence ----------------------------------------------------
     @classmethod
-    def load(cls, path) -> "ModelDocument":
+    def load(cls, path, *, rename_duplicates: bool = False) -> "ModelDocument":
+        """*rename_duplicates* (D1340, the editor on the person's yes): a block name used
+        twice is opened with the later blocks renamed (`rename_duplicate_blocks`), and the
+        document is left modified so a Save writes the repair; otherwise such a file is refused."""
         # #1722: a JSON file with none of a model's sections (a settings file, a results
         # export) is refused, so a later Save cannot replace it with an empty model.
         raw = schema.read_layout(path)
@@ -264,7 +310,10 @@ class ModelDocument:
             raise schema.ModelValidationError(
                 [f"{Path(path).name} is not a Naga model: it has no blocks, levels, agent types "
                  f"or other model section"])
-        doc = cls(schema.load_layout(path))   # utf-8 (#253), migrated
+        renames = []
+        if rename_duplicates:
+            raw, renames = rename_duplicate_blocks(raw)
+        doc = cls(schema.load_layout(raw))   # utf-8 (#253), migrated (a copy: raw stays as read)
         # D1193: what this build does not know (a newer version's section, the editor's
         # `$schema` pointer) goes back into the file on save, as it was.
         doc.kept = {key: value for key, value in raw.items() if key not in _TOP_KEYS}
@@ -272,7 +321,7 @@ class ModelDocument:
         # load and save round trip is the same model, and written again by `save`.
         doc.written_by = doc.info.pop("written_by", None)
         doc.path = Path(path)
-        doc.dirty = False
+        doc.dirty = bool(renames)
         return doc
 
     def save(self, path=None, *, written_by: bool = True) -> None:
@@ -341,6 +390,7 @@ class ModelDocument:
                  # Same rule for the angle (D74): written only when turned, so a
                  # model that never rotated anything is byte-identical to before.
                  **({"layout_rotation": b.layout_rotation} if b.layout_rotation else {}),
+                 **({"asset_3d": b.asset_3d} if b.asset_3d else {}),
                  # Same rule for a dragged label (D82): absent = default place.
                  **({"label_offset": [b.label_offset[0], b.label_offset[1]]}
                     if b.label_offset else {}),
@@ -367,6 +417,8 @@ class ModelDocument:
                 **({"scoped": copy.deepcopy(meta["scoped"])} if meta.get("scoped") else {}),
                 # Inheritance (PHASE6 W7 Q4, D127): the same omit-when-unused rule.
                 **{k: copy.deepcopy(meta[k]) for k in _INHERIT_KEYS if meta.get(k) is not None},
+                # Item code: the same omit-when-absent rule.
+                **({"code": copy.deepcopy(meta["code"])} if meta.get("code") is not None else {}),
                 "blocks": self._blocks_layout(name),
                 "links": self._links_layout(name),
                 "annotations": copy.deepcopy(self._level(name).annotations),
@@ -399,12 +451,20 @@ class ModelDocument:
             **({"scoped": copy.deepcopy(definition["scoped"])} if definition.get("scoped") else {}),
             **{k: copy.deepcopy(definition[k]) for k in _INHERIT_KEYS
                if definition.get(k) is not None},
+            **({"code": copy.deepcopy(definition["code"])} if definition.get("code") is not None else {}),
         }
 
     @staticmethod
     def _build_level(section: dict) -> _Level:
         level = _Level()
         for b in section.get("blocks", []):
+            # #1973: blocks are kept by name, so a second block of one name would replace the
+            # first and a Save lose it; the model is refused instead, the duplicate named.
+            if b["name"] in level.blocks:
+                text = f"duplicate block name: {b['name']}"
+                raise schema.ModelValidationError([text], [schema.problem(
+                    "E_DUPLICATE_BLOCK", text, "/blocks", block=b["name"],
+                    hint="block names are the model's identifiers: rename one", fields={"case": "twice"})])
             x, y = b.get("position", [0, 0])
             level.blocks[b["name"]] = BlockData(
                 name=b["name"], type=b.get("type", ""), description=b.get("description", b["name"]),
@@ -412,6 +472,8 @@ class ModelDocument:
                 layout_position=(tuple(float(v) for v in b["layout_position"])
                                  if b.get("layout_position") else None),
                 layout_rotation=network.normalise_rotation(b.get("layout_rotation")),
+                # A non-string asset_3d is refused by check (E_FIELD_TYPE, schema/shape.py); it is not coerced to text.
+                asset_3d=b.get("asset_3d") if isinstance(b.get("asset_3d"), str) else "",
                 label_offset=(tuple(float(v) for v in b["label_offset"])
                               if b.get("label_offset") else None),
                 counter_offsets=({str(k): (float(v[0]), float(v[1]))
@@ -426,6 +488,7 @@ class ModelDocument:
                     source=link.get("source"), target=link.get("target"),
                     delay=copy.deepcopy(link["delay"]) if link.get("delay") else None,
                     ports={k: link[k] for k in ("source_port", "target_port") if link.get(k)},
+                    area=_area_of(link),
                     extra={k: copy.deepcopy(v) for k, v in link.items()
                            if k not in _LINK_KEYS} or None))
             else:       # the pre-v8 `[src, tgt]` pair, kept readable here
@@ -504,6 +567,29 @@ class ModelDocument:
         self.dirty = True
         self._notify("links", action="delay", src=src, tgt=tgt, index=index, scope=scope)
 
+    def link_area(self, src: str, tgt: str, *, scope: str = "", index: int = 0) -> dict:
+        """The link's `{"capacity"?}` (D1369, D1391), as written; empty for a link with no
+        capacity."""
+        position = self._link_at(src, tgt, index, scope)
+        return copy.deepcopy(self._level(scope).links[position].area) if position >= 0 else {}
+
+    def set_link_area(self, src: str, tgt: str, area: dict | None, *, scope: str = "",
+                      index: int = 0) -> None:
+        """Set a link's area fields (D1369) to *area*, keys outside them refused; None or
+        {} makes it an instant link again. One undo step."""
+        area = dict(area or {})
+        unknown = sorted(set(area) - set(AREA_KEYS))
+        if unknown:
+            raise ValueError(f"set_link_area: unknown key {unknown[0]!r}; keys: "
+                             f"{', '.join(AREA_KEYS)}")
+        link = self._require_link("set_link_area", src, tgt, index, scope)
+        if link.area == area:
+            return
+        self._push_undo(f"Edit link capacity {src} -> {tgt}")
+        link.area = copy.deepcopy(area)
+        self.dirty = True
+        self._notify("links", action="area", src=src, tgt=tgt, index=index, scope=scope)
+
     def link_ports(self, src: str, tgt: str, *, scope: str = "", index: int = 0) -> dict:
         """`{"source_port"?, "target_port"?}` of a link into/out of a SUBMODEL
         instance (ROADMAP 2.3 part B); empty when the link needs no port."""
@@ -543,7 +629,8 @@ class ModelDocument:
             if path is not None and not path.exists():
                 probs.append(schema.problem(
                     "W_BACKGROUND_MISSING",
-                    f"background image not found: {self.background.get('path')}"))
+                    f"background image not found: {self.background.get('path')}",
+                    fields={"case": "missing", "path": self.background.get("path")}))
         return probs
 
     # -- grouped undo -------------------------------------------------------
@@ -921,6 +1008,25 @@ class ModelDocument:
         self.dirty = True
         self._notify("blocks", action="queue_row", names=list(changed), scope=scope)
 
+    def set_asset_3d(self, refs: dict, *, scope: str = "") -> None:
+        """Link blocks to a 3D asset (D1349), one undo step: *refs* is {block: "library/asset"
+        or "" to clear}. Display only, the run ignores it. A name not of that form is not
+        stored (E_ASSET_3D's rule); whether it is installed is the 3D view's to say."""
+        from nagasim.core.schema.shape import ASSET_3D_RE
+
+        level = self._level(scope)
+        changed = {name: str(ref or "") for name, ref in refs.items()
+                   if name in level.blocks and (not ref or ASSET_3D_RE.fullmatch(str(ref)))}
+        changed = {name: ref for name, ref in changed.items() if level.blocks[name].asset_3d != ref}
+        if not changed:
+            return
+        self._push_undo(f"Set the 3D asset of {next(iter(changed))}" if len(changed) == 1
+                        else f"Set the 3D asset of {len(changed)} blocks")
+        for name, ref in changed.items():
+            level.blocks[name] = dataclasses.replace(level.blocks[name], asset_3d=ref)
+        self.dirty = True
+        self._notify("blocks", action="asset_3d", names=list(changed), scope=scope)
+
     def set_layout_rotations(self, rotations: dict, *, scope: str = "") -> None:
         """Turn blocks on the FLOOR PLAN (PHASE4 T2, D74), one undo step for the
         whole selection. Degrees clockwise on screen; anything is accepted and
@@ -1287,6 +1393,9 @@ class ModelDocument:
                     if record.get("delay") != link.delay:
                         self.set_link_delay(link.source, link.target, record.get("delay"),
                                             scope=scope, index=index)
+                    if _area_of(record) != link.area:      # D1369: its unit pinned too
+                        self.set_link_area(link.source, link.target, _area_of(record),
+                                           scope=scope, index=index)
             for section in (*sections.RECORD_SECTIONS, "orders", "scenarios"):
                 if filled.get(section) != layout.get(section):
                     self.set_records(section, filled[section])
@@ -1594,6 +1703,28 @@ class ModelDocument:
     def definition_info(self, name: str) -> dict:
         return copy.deepcopy(self.submodels.get(name, {}).get("info", {}))
 
+    def definition_code(self, name: str) -> dict | None:
+        """The definition's own item code record (class, source, timer, watch, signals,
+        placed), or None."""
+        code = self.submodels.get(name, {}).get("code")
+        return copy.deepcopy(code) if code is not None else None
+
+    def set_definition_code(self, name: str, code: dict | None) -> None:
+        """Replace a definition's item code record (None removes it): one undo step. Writing
+        code trusts nothing: the run asks a person for the new fingerprint."""
+        meta = self.submodels.get(name)
+        if meta is None:
+            raise ValueError(f"unknown submodel definition: {name}")
+        if meta.get("code") == code:
+            return
+        self._push_undo(f"Edit {name} code")
+        if code is None:
+            meta.pop("code", None)
+        else:
+            meta["code"] = copy.deepcopy(code)
+        self.dirty = True
+        self._notify("submodels", action="code", name=name)
+
     def definition_ports(self, name: str, side: str) -> list[str]:
         """Port names of definition *name* on "in" (SUB_ENTRY blocks) or "out"
         (SUB_EXIT), in block order; empty for an unknown definition."""
@@ -1675,6 +1806,9 @@ class ModelDocument:
                 if link.delay:
                     self.set_link_delay(link.source, link.target, copy.deepcopy(link.delay),
                                         scope=def_name, index=index)
+                if link.area:
+                    self.set_link_area(link.source, link.target, link.area, scope=def_name,
+                                       index=index)
 
             in_ports, out_ports = {}, {}
             for i, (src, tgt) in enumerate(incoming):
@@ -1816,12 +1950,13 @@ class ModelDocument:
             if instance in (old.source, old.target):
                 for link in replacements.get(position, []):
                     links.append(LinkData(source=link["source"], target=link["target"],
-                                          delay=copy.deepcopy(link.get("delay") or old.delay)))
+                                          delay=copy.deepcopy(link.get("delay") or old.delay),
+                                          area=_area_of(link) or copy.deepcopy(old.area)))
                 continue
             links.append(old)
         for link in internal:
             links.append(LinkData(source=link["source"], target=link["target"],
-                                  delay=copy.deepcopy(link.get("delay"))))
+                                  delay=copy.deepcopy(link.get("delay")), area=_area_of(link)))
         level.blocks.pop(instance, None)
         level.links = links
         self.dirty = True
@@ -2121,6 +2256,9 @@ class DefinitionView:
     def set_queue_rows(self, rows):
         self.document.set_queue_rows(rows, scope=self.name)
 
+    def set_asset_3d(self, refs):
+        self.document.set_asset_3d(refs, scope=self.name)
+
     def set_params(self, name, params):
         self.document.set_params(name, params, scope=self.name)
 
@@ -2161,3 +2299,12 @@ class DefinitionView:
 
     def background_abs_path(self):
         return None
+
+
+def connect_ports(document: Document, out_port, in_port) -> None:
+    """Link *out_port* to *in_port* (`conveyor_path.Port`s): a link from the out port's block to
+    the in port's block carrying `source_port` and `target_port`."""
+    if out_port.role != "out" or in_port.role != "in":
+        raise ValueError("connect_ports: join an out port to an in port")
+    document.add_link(out_port.block, in_port.block,
+                      source_port=out_port.name, target_port=in_port.name)

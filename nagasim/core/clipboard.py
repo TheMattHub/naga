@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 
 from nagasim.core import submodels
+from nagasim.core.arealink import AREA_KEYS
 from nagasim.core.document import ModelDocument
 
 __all__ = ["copy_selection", "paste_fragment"]
@@ -53,6 +54,7 @@ def copy_selection(doc: ModelDocument, block_names, annotation_ids=()) -> dict:
             entry = {"source": link.source, "target": link.target}
             if link.delay:
                 entry["delay"] = copy.deepcopy(link.delay)
+            entry.update(copy.deepcopy(link.area))         # D1369
             links.append(entry)
     ann_set = set(annotation_ids)
     annotations = [copy.deepcopy(a) for a in doc.annotations if a.get("id") in ann_set]
@@ -134,6 +136,9 @@ def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40)) -> list[
                 index = doc.add_link(src, tgt)
                 if entry.get("delay"):
                     doc.set_link_delay(src, tgt, entry["delay"], index=index)
+                area = {k: entry[k] for k in AREA_KEYS if k in entry}
+                if area:
+                    doc.set_link_area(src, tgt, area, index=index)
 
         for entry in fragment.get("annotations", []):
             fields = {k: v for k, v in entry.items() if k not in ("id", "kind")}

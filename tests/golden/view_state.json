@@ -55,6 +55,7 @@
     "mfg_line_library.json": "f1bfe2d2a12f0098bcd9db9264015843ba60b0d21a9f8287fa45ffe58287eef8",
     "order_due_dates.json": "0e3b2bfa2e0a194cd061a27245111859757154bc5c8b6036ca3b01c8dadefa5b",
     "order_priority_shop.json": "ce16d2f4e111b44d6b94ab6111c50c49f0f38d2ffbac3d358999a6f1bfa05fce",
+    "palletizing_line.json": "2503758dca17f74202e52e0af0f90774cbed470ad8219db1face31cf5ff6aa82",
     "parallel_routing_policy.json": "9c2a9cbfa1250a60a29d1c48c8090441635bcc2c00d9ffda3ba7d0dbd51f26e7",
     "priority_rework.json": "f7b80c19fe1156ccc9defe610d81ffc1761be27a6df771797cb548076d4c4e54",
     "sd_bass_diffusion.json": "0d4c02397936584c01ea050e52d94ebcab09cb045b62143f84acbd874e3b0ed2",

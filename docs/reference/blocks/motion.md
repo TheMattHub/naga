@@ -34,9 +34,11 @@ The `motion_summary` frame breaks the cycle time down by segment kind and report
 |---|---|---|---|---|---|---|
 | `action` | str | `'Seize Delay Release'` |  |  |  | Which of seize/delay/release run: "Seize Delay Release", "Seize Delay", "Delay Release" or "Delay". |
 | `profile` | str | `''` |  |  |  | Name of a record in "motion_profiles": speed, acceleration, payload derating and collaborative speed of whoever does the motions. |
+| `robot` | str | `''` |  |  |  | Name of a record in "robots": the robot whose ptp and lin moves are timed from its axis speeds and accelerations. |
+| `targets` | dict | `{}` |  |  |  | Named targets of the ptp and lin moves, in cell coordinates (the floor plan's x and y in metres, z up): {"joints": [...]}, {"xyz": [x, y, z], "yaw_deg"?, "rpy_deg"?} with the tool pointing down unless rpy_deg says otherwise, or {"on": <block>, "at"?: centre|start|end, "offset"?: [dx, dy, dz], "yaw_deg"?} in that block's own frame: dx along its facing, dy toward the floor plan's +y side at rotation 0 (as x and y), dz up; or {"belt": <CONVEYOR>, "divert": <index>, "z"?: <metres above the floor>, "yaw_deg"?}, a part met on the moving belt, the target of the cycle's first move. |
 | `hrc` | str | `'none'` |  |  |  | Human-robot collaboration: "none", "collaborative" (every move at the profile's collaborative_speed) or "separation" (a move starts at collaborative_speed when a worker-fleet unit is within the zone's radius of its node, by path or straight distance). |
 | `zone` | dict | `{}` |  |  |  | With hrc "separation": {"name": <a "zones" record>} -- the record's node and radius win -- or, with no name, {"node": <network node>, "radius_m": <metres>, "measure"?: "path"|"straight"}. |
-| `segments` | list | `[]` |  | time | `time_unit` | The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?} or {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}. The service time is their sum. |
+| `segments` | list | `[]` |  | time | `time_unit` | The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?}, {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}, or a robot move {"kind": ptp|lin, "to": <target>, "time"?: <number, at least what the move needs>, "payload_kg"?}. The service time is their sum. |
 | `time_unit` | str | `'seconds'` |  |  |  | Unit of every segment `time`: "base" or seconds/minutes/hours/days. Moves are always computed in seconds. |
 | `priority` | int | `0` |  |  |  | Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource. |
 | `quantity` | int | `1` |  | count |  | Number of resource units requested/released. |
@@ -82,6 +84,7 @@ A check of the model reports these about this block:
 | `E_MOTION_SEGMENT` | A MOTION segment has an unknown kind or field, no distance/time, or a negative value; or the cycle has no segments. |
 | `E_MOTION_ZONE` | A MOTION block's hrc mode is unknown, or a separation zone names no network node, has radius_m <= 0 or an unknown measure. |
 | `E_MOTION_ZONE_UNKNOWN` | A MOTION block's zone names a zone the model does not declare under "zones". |
+| `E_ROBOT_UNKNOWN` | A MOTION block, or a BATCH or SEPARATE that works by a pallet pattern, names a robot the model does not declare, or has robot moves and names none. |
 
 ## Example
 
@@ -116,7 +119,7 @@ print(results["motion_summary"].round(2).to_string(index=False))
 
 ## Used in
 
-Bundled models: [Robot cell against manual assembly](../../gallery/manufacturing.md), [Automation floor (robot cells, AMR, palletiser)](../../gallery/manufacturing.md).
+Bundled models: [Robot cell against manual assembly](../../gallery/manufacturing.md), [Automation floor (robot cells, AMR, palletiser)](../../gallery/manufacturing.md), [Palletizing line](../../gallery/manufacturing.md).
 
 Guides: [Motion cycles](../../modelling-guide/motion.md), [Mobile cobots: machine tending](../../modelling-guide/tending.md), [Digital twin](../../digital-twin.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md).
 

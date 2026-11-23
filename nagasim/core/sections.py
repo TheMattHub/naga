@@ -84,7 +84,8 @@ SECTIONS: tuple[Section, ...] = (
             doc="Every block in the model: `name`, `type`, `position` (centre, scene units), "
                 "`params`."),
     Section("links", [], overridable=True,
-            doc="Ordered list of `{source, target, delay?, source_port?, target_port?}`; array "
+            doc="Ordered list of `{source, target, delay?, source_port?, target_port?, "
+                "capacity?}`; array "
                 "order is branch order, and several links may join the same pair of blocks (a "
                 "link is identified by source, target and which of the parallel links it is)."),
     Section("scenarios", [], "name", "scenario",
@@ -113,11 +114,11 @@ SECTIONS: tuple[Section, ...] = (
     _record("variables", "variable",
             "Model-level variables, read and written by expressions; reset to `initial` each "
             "replication.", overridable=True, bindable=True, tab="Variables", **_CLONE),
-    # NOT overridable (D145): the only numeric field is holding_cost, which
-    # feeds cost KPIs only, never the dynamics -- a what-if is a post-hoc
-    # rescale (total holding cost = holding_cost x time-averaged WIP), not a
-    # rerun.
-    _record("entities", "entity", "Entity types: shape, colour, optional WIP holding cost.",
+    # NOT overridable (D145): holding_cost feeds cost KPIs only -- a what-if is a post-hoc
+    # rescale (total holding cost = holding_cost x time-averaged WIP), not a rerun. The
+    # optional `size` does feed a typed belt's cells (D1351), so a scenario cannot vary it.
+    _record("entities", "entity", "Entity types: shape, colour, optional size and WIP holding "
+            "cost.",
             tab="Entities"),
     _record("timeseries_inputs", "timeseries_input",
             'Named time-series profiles read by TS("name") in any expression.',
@@ -146,6 +147,16 @@ SECTIONS: tuple[Section, ...] = (
             "speed, acceleration, payload derating and a collaborative speed, named by a "
             "MOTION block's `profile`.", overridable=True, tab="Motion profiles",
             validate="nagasim.core.motion:validate_motion", **_CLONE),
+    # Not overridable: a scenario does not swap a robot's hardware (D1342).
+    _record("robots", "robot", "Robots: a structure with its dimensions, or a joint chain, with "
+            "each axis's range, speed and acceleration, and the tool frame; named by a MOTION "
+            "block's `robot`.", validate="nagasim.core.robotics.records:validate_robots",
+            tab="Robots", **_CLONE),
+    # D1346: not overridable, like robots; a template's literal name is the top-level record.
+    _record("pallet_patterns", "pallet_pattern", "Pallet patterns: the pallet, the item, layer "
+            "layouts and how they stack, and the limits that close a pallet; named by a carrier "
+            "BATCH's `pattern`.", validate="nagasim.core.pallets:validate_pallet_patterns",
+            tab="Pallet patterns", **_CLONE),
     # D830-D831: continuous like chargers -- a cloned template (`"node": "$zone"`)
     # leaves the flattened layout, so its `$` node never reaches validation.
     _record("zones", "zone", "Safety zones: a network node and a radius that a MOTION block's "
@@ -262,7 +273,7 @@ _FAMILY_OF_TAB = {
     "Variables": "Data", "Lookup tables": "Data", "Time series": "Data",
     "Data sources": "Data", "Bindings": "Data", "Initial state": "Data", "Dashboard": "Data",
     "Fleets": "Logistics", "Chargers": "Logistics", "Motion profiles": "Logistics",
-    "Safety zones": "Logistics",
+    "Robots": "Logistics", "Pallet patterns": "Logistics", "Safety zones": "Logistics",
     "Stocks": "Dynamics", "Conversions": "Dynamics", "Agents": "Dynamics",
     "Costs": "Money", "Investment": "Money",
 }

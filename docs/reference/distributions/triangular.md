@@ -44,7 +44,7 @@ An expression has its own call for it: `TRIA(low, mode, high)`.
 
 ## Used in
 
-Bundled models: [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Emergency department: bedside scan (film template)](../../gallery/services.md), [Chance-based branching (DECIDE)](../../gallery/teaching.md), [Delay, seize/release and signal HOLD](../../gallery/teaching.md).
+Bundled models: [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Palletizing line](../../gallery/manufacturing.md), [Emergency department: bedside scan (film template)](../../gallery/services.md), [Chance-based branching (DECIDE)](../../gallery/teaching.md), [Delay, seize/release and signal HOLD](../../gallery/teaching.md).
 
 Guides: [Python API](../../python-api.md).
 

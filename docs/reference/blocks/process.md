@@ -108,7 +108,7 @@ print(round(results.kpi("resource/Lathe/Time in Queue Avg"), 2), "time units mea
 
 ## Used in
 
-Bundled models: [Emergency department: staffing game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md), [Container terminal: quay to yard](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md) and 25 more.
+Bundled models: [Emergency department: staffing game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md), [Container terminal: quay to yard](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md) and 26 more.
 
 Guides: [Resources, sets and queue disciplines](../../modelling-guide/resources-queues.md), [Coming from SimPy](../../coming-from/simpy.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Costing](../../modelling-guide/costing.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Python API](../../python-api.md) and 47 more.
 

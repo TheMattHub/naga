@@ -191,6 +191,7 @@ nav:
           - BUFFER: reference/blocks/buffer.md
           - CHARGE: reference/blocks/charge.md
           - CONVEYOR: reference/blocks/conveyor.md
+          - CONVEYOR_TRANSFER: reference/blocks/conveyor-transfer.md
           - CREATE: reference/blocks/create.md
           - DECIDE: reference/blocks/decide.md
           - DELAY: reference/blocks/delay.md
@@ -281,6 +282,8 @@ nav:
           - fixed_costs: reference/model-file/fixed_costs.md
           - fleets: reference/model-file/fleets.md
           - motion_profiles: reference/model-file/motion_profiles.md
+          - robots: reference/model-file/robots.md
+          - pallet_patterns: reference/model-file/pallet_patterns.md
           - zones: reference/model-file/zones.md
           - chargers: reference/model-file/chargers.md
           - auxiliaries: reference/model-file/auxiliaries.md

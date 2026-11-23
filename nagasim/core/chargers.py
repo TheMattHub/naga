@@ -179,13 +179,15 @@ def validate_chargers(layout: dict, problems: list) -> None:
             problems.append(problem("E_CHARGER", f"charger {index}: empty or duplicate name "
                                     f"'{name}'", f"{at}/name",
                                     hint="give every charger a name no other charger, resource "
-                                         "or fleet has"))
+                                         "or fleet has",
+                                    fields={"case": "name", "index": index, "name": name}))
             continue
         chargers[name] = record
 
         def bad(field, text, hint, name=name, at=at):
             problems.append(problem("E_CHARGER", f"charger '{name}': {text}", f"{at}/{field}",
-                                    hint=hint))
+                                    hint=hint,
+                                    fields={"case": "said"}))
 
         if str(record.get("node", "")).strip() not in nodes:
             bad("node", f"unknown node '{record.get('node', '')}'",
@@ -235,9 +237,10 @@ def _validate_batteries(layout: dict, chargers: dict, nodes: set, problems: list
         at = f"/fleets/{index}/battery"
         name = fleet.get("name", index)
 
-        def bad(code, field, text, hint, name=name, at=at):
+        def bad(code, field, text, hint, name=name, at=at, fields=None):
             problems.append(problem(code, f"fleet '{name}': battery: {text}",
-                                    f"{at}/{field}".rstrip("/"), hint=hint))
+                                    f"{at}/{field}".rstrip("/"), hint=hint,
+                                    fields={"fleet": name, **(fields or {})}))
 
         if not isinstance(battery, dict):
             bad("E_BATTERY", "", "must be an object", "{\"capacity_kwh\": 2.0, \"low\": 0.25}")
@@ -272,7 +275,8 @@ def _validate_batteries(layout: dict, chargers: dict, nodes: set, problems: list
                     "name a record of \"schedules\"; charging happens while its value is > 0")
             elif schedule not in schedules:
                 bad("E_BATTERY_SCHEDULE", "schedule", f"unknown schedule '{schedule}'",
-                    f"declared: {', '.join(sorted(map(str, schedules))) or '(none)'}")
+                    f"declared: {', '.join(sorted(map(str, schedules))) or '(none)'}",
+                    fields={"schedule": schedule})
         allowed = battery.get("chargers")
         if allowed is not None and not (isinstance(allowed, list)
                                         and all(isinstance(c, str) for c in allowed)):
@@ -282,7 +286,8 @@ def _validate_batteries(layout: dict, chargers: dict, nodes: set, problems: list
         for charger in allowed or ():
             if charger not in chargers:
                 bad("E_CHARGER_UNKNOWN", "chargers", f"unknown charger '{charger}'",
-                    f"declared: {', '.join(sorted(chargers)) or '(none)'}")
+                    f"declared: {', '.join(sorted(chargers)) or '(none)'}",
+                    fields={"charger": charger})
         # W_NO_CHARGER: no charger of the kind the strategy needs can be driven
         # to from the fleet's home (a gantry flies there: any known node counts).
         if network is None:

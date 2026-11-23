@@ -9,6 +9,7 @@ from typing import Literal
 
 from nagasim.core import network as network_mod
 from nagasim.core import orders as orders_mod
+from nagasim.core import pallets as pallets_mod
 from nagasim.core import sections
 from nagasim.core import tables as tables_mod
 from nagasim.core import timeseries_inputs as series_mod
@@ -88,8 +89,8 @@ def list_records(model: str, section: str) -> dict:
 
     Record sections: resources, resource_sets, schedules, failures, tables,
     sequences, variables, entities, timeseries_inputs, levels, flows,
-    conversions, fixed_costs, fleets, motion_profiles, zones, chargers,
-    auxiliaries, delays, subscripts, agent_types, populations, reality_checks and orders
+    conversions, fixed_costs, fleets, motion_profiles, robots, pallet_patterns, zones,
+    chargers, auxiliaries, delays, subscripts, agent_types, populations, reality_checks and orders
     (keyed by "id"; every other section by "name"). Record shape: schema
     $defs/<item>, see get_record_schema.
 
@@ -412,6 +413,41 @@ def get_distance(model: str, source: str, target: str) -> dict:
     return {"model": model, "from": source, "to": target,
             "distance": distance if reachable else None,
             "path": net.path(a, b), "reachable": reachable}
+
+
+_document_args("generate_pallet_layer",
+               pallet_length="The pallet's length, in the model's length unit.",
+               pallet_width="The pallet's width, in the same unit.",
+               item_length="The item's length, in the same unit.",
+               item_width="The item's width, in the same unit.",
+               overhang="How far an item may pass the pallet's edge (default 0).",
+               gap="The space between two items (default 0).",
+               kind="\"column\", \"block\" or \"best\" (default): the layout with the most items.")
+
+PalletLayerKind = Literal[pallets_mod.GENERATED_KINDS]
+
+
+@tool(read_only=True, returns={
+    "kind": str, "slots": list, "items": int, "area_use": float, "overhang": float})
+def generate_pallet_layer(pallet_length: float, pallet_width: float, item_length: float,
+                          item_width: float, overhang: float = 0.0, gap: float = 0.0,
+                          kind: PalletLayerKind = "best") -> dict:
+    """One layer of equal items on a pallet, as the slots of a pallet pattern.
+
+    "column" is the better of the two plain grids; "block" splits the pallet once and
+    turns the items 90 degrees in one part, which packs more when neither grid fills
+    it; "best" keeps the layout with the most items. Each slot is an item's centre
+    from the pallet's centre (x along the pallet's length) and its rotation in
+    degrees. It writes nothing: put the slots under a record's `layers` (for example
+    as layer "A", stacked [{"layer": "A"}, {"layer": "A", "transform": "rotate180"}])
+    and store it with upsert_record in "pallet_patterns".
+    """
+    try:
+        return pallets_mod.generate_layer(pallet_length, pallet_width, item_length, item_width,
+                                          overhang=overhang, gap=gap, kind=kind)
+    except ValueError as exc:
+        raise ToolError("E_BAD_ARGUMENT", str(exc),
+                        "give the sizes as numbers > 0 and overhang and gap as numbers >= 0")
 
 
 _document_args("upsert_orders_from_csv", model="Workspace name of the model to edit.",

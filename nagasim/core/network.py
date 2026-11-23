@@ -407,86 +407,100 @@ def validate_network_structured(layout: dict) -> tuple[list, set]:
     section = layout.get("network") or {}
     if not isinstance(section, dict):
         problems.append(problem("E_NETWORK_SHAPE", "network: must be an object", "/network",
-                                hint="write {\"nodes\": [...], \"segments\": [...]}"))
+                                hint="write {\"nodes\": [...], \"segments\": [...]}",
+                                fields={"case": "object"}))
         return problems, set()
 
     factor = section.get("length_factor", 1.0)
     if not isinstance(factor, (int, float)) or isinstance(factor, bool) or factor <= 0:
         problems.append(problem("E_NETWORK_SHAPE", "network: length_factor must be a number > 0",
                                 "/network/length_factor",
-                                hint="1.0 is the straight-line distance; 1.2 adds 20%"))
+                                hint="1.0 is the straight-line distance; 1.2 adds 20%",
+                                fields={"case": "factor"}))
 
     names: set[str] = set()
     for index, entry in enumerate(section.get("nodes") or []):
         at = f"/network/nodes/{index}"
         if not isinstance(entry, dict):
             problems.append(problem("E_NETWORK_NODE", f"network node {index} is not an object", at,
-                                    hint="a node is {\"name\": \"dock\", \"x\": 0, \"y\": 0}"))
+                                    hint="a node is {\"name\": \"dock\", \"x\": 0, \"y\": 0}",
+                                    fields={"case": "notobj", "index": index}))
             continue
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_NETWORK_NODE", "network node: name must not be empty",
-                                    f"{at}/name", hint="give every node a unique name"))
+                                    f"{at}/name", hint="give every node a unique name",
+                                    fields={"case": "noname"}))
             continue
         name = name.strip()
         if name in names:
             problems.append(problem("E_NETWORK_NODE", f"duplicate network node name: {name}",
-                                    f"{at}/name", hint="rename one of the two nodes"))
+                                    f"{at}/name", hint="rename one of the two nodes",
+                                    fields={"case": "twice", "name": name}))
         names.add(name)
         for axis in ("x", "y"):
             value = entry.get(axis, 0)
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 problems.append(problem(
                     "E_NETWORK_NODE", f"network node '{name}': {axis} must be a number",
-                    f"{at}/{axis}", hint="layout coordinates, metres once a scale is set"))
+                    f"{at}/{axis}", hint="layout coordinates, metres once a scale is set",
+                    fields={"case": "axis", "name": name, "axis": axis}))
         capacity = entry.get("capacity")
         if capacity is not None and (not isinstance(capacity, int) or isinstance(capacity, bool)
                                      or capacity < 1):
             problems.append(problem(
                 "E_NETWORK_NODE", f"network node '{name}': capacity must be an integer >= 1 or null",
-                f"{at}/capacity", hint="null means unlimited (the only mode modelled today)"))
+                f"{at}/capacity", hint="null means unlimited (the only mode modelled today)",
+                fields={"case": "capacity", "name": name}))
 
     known = ", ".join(sorted(names)) or "(none)"
     for index, entry in enumerate(section.get("segments") or []):
         at = f"/network/segments/{index}"
         if not isinstance(entry, dict):
             problems.append(problem("E_NETWORK_SEGMENT", f"network segment {index} is not an object",
-                                    at, hint="a segment is {\"from\": \"a\", \"to\": \"b\"}"))
+                                    at, hint="a segment is {\"from\": \"a\", \"to\": \"b\"}",
+                                    fields={"case": "notobj", "index": index}))
             continue
         a, b = entry.get("from", ""), entry.get("to", "")
         for side, value in (("from", a), ("to", b)):
             if not isinstance(value, str) or not value.strip():
                 problems.append(problem(
                     "E_NETWORK_SEGMENT", f"network segment {index}: \"{side}\" names no node",
-                    f"{at}/{side}", hint=f"name a declared node: {known}"))
+                    f"{at}/{side}", hint=f"name a declared node: {known}",
+                    fields={"case": "noside", "index": index, "side": side}))
             elif value.strip() not in names:
                 problems.append(problem(
                     "E_NETWORK_SEGMENT",
                     f"network segment {index}: unknown node '{value}'", f"{at}/{side}",
-                    hint=f"add a node named '{value}'; declared: {known}"))
+                    hint=f"add a node named '{value}'; declared: {known}",
+                    fields={"case": "unknown", "index": index, "value": value}))
         if isinstance(a, str) and isinstance(b, str) and a.strip() and a.strip() == b.strip():
             problems.append(problem(
                 "E_NETWORK_SEGMENT", f"network segment {index}: '{a}' joins itself",
-                at, hint="a segment joins two different nodes"))
+                at, hint="a segment joins two different nodes",
+                fields={"case": "self", "index": index, "a": a}))
         length = entry.get("length")
         if length is not None and (not isinstance(length, (int, float))
                                    or isinstance(length, bool) or length <= 0):
             problems.append(problem(
                 "E_NETWORK_SEGMENT", f"network segment {index}: length must be a number > 0 or null",
-                f"{at}/length", hint="null takes the straight-line distance x length_factor"))
+                f"{at}/length", hint="null takes the straight-line distance x length_factor",
+                fields={"case": "length", "index": index}))
         speed = entry.get("speed")
         if speed is not None and (not isinstance(speed, (int, float))
                                   or isinstance(speed, bool) or speed <= 0):
             problems.append(problem(
                 "E_NETWORK_SEGMENT", f"network segment {index}: speed must be a number > 0 or null",
-                f"{at}/speed", hint="a speed LIMIT on this segment; null means no limit"))
+                f"{at}/speed", hint="a speed LIMIT on this segment; null means no limit",
+                fields={"case": "speed", "index": index}))
         capacity = entry.get("capacity")
         if capacity is not None and (not isinstance(capacity, int) or isinstance(capacity, bool)
                                      or capacity < 1):
             problems.append(problem(
                 "E_NETWORK_SEGMENT",
                 f"network segment {index}: capacity must be an integer >= 1 or null",
-                f"{at}/capacity", hint="null means unlimited"))
+                f"{at}/capacity", hint="null means unlimited",
+                fields={"case": "capacity", "index": index}))
         elif capacity == 1 and entry.get("two_way", True) is not False and _units(layout) > 1:
             # D117: any two vehicles -- one fleet or two -- can meet head-on here.
             problems.append(problem(
@@ -495,11 +509,13 @@ def validate_network_structured(layout: dict) -> tuple[list, set]:
                 f"driven by more than one vehicle; two meeting head-on deadlock",
                 f"{at}/capacity",
                 hint="make it one-way, give it capacity 2, or add a passing place; "
-                     "a run that locks up stops with a deadlock error"))
+                     "a run that locks up stops with a deadlock error",
+                fields={"case": "deadlock", "index": index}))
         if entry.get("two_way") is not None and not isinstance(entry.get("two_way"), bool):
             problems.append(problem(
                 "E_NETWORK_SEGMENT", f"network segment {index}: two_way must be a boolean",
-                f"{at}/two_way", hint="true (both directions) or false (from -> to only)"))
+                f"{at}/two_way", hint="true (both directions) or false (from -> to only)",
+                fields={"case": "twoway", "index": index}))
 
     problems.extend(_attachment_problems(layout, names, known))
     return problems, names
@@ -529,7 +545,8 @@ def _attachment_problems(layout: dict, names: set, known: str) -> list:
             problems.append(problem(
                 "E_NETWORK_NODE_UNKNOWN", f"{name}: unknown network node '{node}'",
                 f"/blocks/{index}/params/node", block=name,
-                hint=f"add a node named '{node}' under \"network\"; declared: {known}"))
+                hint=f"add a node named '{node}' under \"network\"; declared: {known}",
+                fields={"case": "a6_node", "node": node}))
     return problems
 
 

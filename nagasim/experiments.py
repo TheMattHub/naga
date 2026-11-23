@@ -33,7 +33,7 @@ from scipy import stats as sp_stats
 from nagasim import api
 from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import schema
-from nagasim.core.export import concat_runs
+from nagasim.core.export import PROBLEMS_KEY, concat_runs
 from nagasim.core.outputs import LOG_DERIVED_COLUMNS
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95, paired_diff_ci, welch_diff_ci
@@ -111,6 +111,17 @@ _OBJECT_FRAMES = (("resource_summary", "Resource", "resource"),
                   # D855: `divert/<belt>/<index>/Diverted` and friends, the same rule.
                   ("conveyor_diverts", ("Conveyor", "Divert"), "divert"),
                   ("conveyor_merges", ("Conveyor", "Merge"), "merge"),
+                  # D1347: `eye/<belt>/<index>/Fired`, the same rule.
+                  ("conveyor_eyes", ("Conveyor", "Eye"), "eye"),
+                  # A12 (D1373-D1376): `conveyor/<belt>/Dieback Length` (beside the summary's
+                  # columns, none shared), `zone/<belt>/<zone>/Dieback %`,
+                  # `transfer/<module>/Busy %`, `route/<block>/<point>/Hold %` and
+                  # `link/<source> -> <target>/Avg Occupancy`: only for a model with the feature.
+                  ("conveyor_flow", "Conveyor", "conveyor"),
+                  ("conveyor_zones", ("Conveyor", "Zone"), "zone"),
+                  ("transfer_summary", "Transfer", "transfer"),
+                  ("route_holds", ("Block", "Point"), "route"),
+                  ("link_flow", "Link", "link"),
                   # D164-D165: `charger/<name>/Grid kWh` and
                   # `battery/<fleet>/Charging %` -- nothing without batteries.
                   ("charging_summary", "Charger", "charger"),
@@ -636,6 +647,9 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
         frames = api.frames_with_rows(concat_runs([kpi for _, kpi in pairs]), keep_empty)   # D1328
         # D906: what `checks()` judges the scenario by, as `api.run_model` sets them for a run.
         frames._layout, frames._warmup = layouts[name], float(windows[name][1] or 0)
+        # D1389 (final review M2): the scenario's run-time warnings, as a run's
+        frames._run_problems = api._union_problems(kpi[PROBLEMS_KEY][1] for _, kpi in pairs
+                                                   if PROBLEMS_KEY in kpi)
         result.results[name] = frames
         result.seeds[name] = [s for s, _ in pairs]
         result.warmups[name] = float(windows[name][1] or 0)

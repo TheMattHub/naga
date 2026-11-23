@@ -189,17 +189,20 @@ def validate_orders_structured(layout: dict, sequences: dict | None = None,
         if not isinstance(entry, dict):
             problems.append(problem("E_ORDER_FIELD", f"order {index} is not an object", at,
                                     hint="an order is {\"id\": \"WO-1\", \"release\": 0, "
-                                         "\"due\": 480}"))
+                                         "\"due\": 480}",
+                                    fields={"case": "not_object", "index": index}))
             continue
         oid = entry.get("id", "")
         if not isinstance(oid, str) or not oid.strip():
             problems.append(problem("E_ORDER_ID", "order: id must not be empty", f"{at}/id",
-                                    hint="give every order a unique id, e.g. \"WO-1001\""))
+                                    hint="give every order a unique id, e.g. \"WO-1001\"",
+                                    fields={"case": "empty"}))
             continue
         if oid in seen:
             problems.append(problem("E_ORDER_ID", f"duplicate order id: {oid}", f"{at}/id",
                                     hint="order ids identify an order in the KPI frames: "
-                                         "rename one"))
+                                         "rename one",
+                                    fields={"case": "dup", "order": oid}))
         seen.add(oid)
 
         problems.extend(_field_problems(oid, entry, at, calendar))
@@ -211,7 +214,8 @@ def validate_orders_structured(layout: dict, sequences: dict | None = None,
                 "W_ORDER_DUE_BEFORE_RELEASE",
                 f"order '{oid}': due {due:g} is before release {release:g}",
                 f"{at}/due",
-                hint="a due date is an absolute time in the model's base unit, not a lead time"))
+                hint="a due date is an absolute time in the model's base unit, not a lead time",
+                fields={"case": "due", "order": oid, "due": due, "release": release}))
 
         sequence = entry.get("sequence")
         if sequence and sequence not in sequences:
@@ -219,14 +223,16 @@ def validate_orders_structured(layout: dict, sequences: dict | None = None,
                 "E_SEQUENCE_UNKNOWN", f"order '{oid}': unknown sequence '{sequence}'",
                 f"{at}/sequence",
                 hint=f"declare it under \"sequences\"; declared: "
-                     f"{', '.join(sorted(sequences)) or '(none)'}"))
+                     f"{', '.join(sorted(sequences)) or '(none)'}",
+                fields={"case": "a8_order", "order": oid, "sequence": sequence}))
 
         e_type = entry.get("entity_type")
         if e_type and declared_types and str(e_type).casefold() not in declared_types:
             problems.append(problem(
                 "E_ORDER_ENTITY_TYPE", f"order '{oid}': unknown entity type '{e_type}'",
                 f"{at}/entity_type",
-                hint=f"declare it under \"entities\"; declared: {known_types}"))
+                hint=f"declare it under \"entities\"; declared: {known_types}",
+                fields={"case": "type", "order": oid, "type": e_type}))
 
         source = entry.get("source")
         if source:
@@ -238,7 +244,8 @@ def validate_orders_structured(layout: dict, sequences: dict | None = None,
                     f"order '{oid}': '{source}' is not a CREATE block in \"Orders\" mode",
                     f"{at}/source",
                     hint=f"name one of: {', '.join(creates) or '(no CREATE is in Orders mode)'}, "
-                         f"or drop \"source\" to use the first one"))
+                         f"or drop \"source\" to use the first one",
+                    fields={"case": "source", "order": oid, "source": source}))
         elif creates:
             owned[creates[0]] += 1
 
@@ -247,7 +254,8 @@ def validate_orders_structured(layout: dict, sequences: dict | None = None,
             "W_ORDERS_NOT_CONSUMED",
             f"the model declares {len(entries)} order(s) but no CREATE block releases "
             f"them", "/orders",
-            hint="set a CREATE block's arrival_mode to \"Orders\""))
+            hint="set a CREATE block's arrival_mode to \"Orders\"",
+            fields={"case": "none", "n": len(entries)}))
     for name in creates:
         if not owned.get(name):
             index = next((i for i, b in enumerate(layout.get("blocks", []))
@@ -256,7 +264,8 @@ def validate_orders_structured(layout: dict, sequences: dict | None = None,
                 "W_CREATE_NO_ORDERS",
                 f"{name}: arrival mode \"Orders\" but no order names it",
                 f"/blocks/{index}/params/arrival_mode", block=name,
-                hint="add orders under \"orders\", or switch this CREATE back to Interarrival"))
+                hint="add orders under \"orders\", or switch this CREATE back to Interarrival",
+                fields={"case": "none"}))
     return problems
 
 
@@ -267,19 +276,22 @@ def _plan_problems(oid: str, plan, at: str, stations: dict) -> list:
         return []
     if not isinstance(plan, dict):
         return [problem("E_ORDER_FIELD", f"order '{oid}': \"plan\" must be an object",
-                        f"{at}/plan", hint="write {\"Cutting\": 0, \"Drilling\": 4.5}")]
+                        f"{at}/plan", hint="write {\"Cutting\": 0, \"Drilling\": 4.5}",
+                        fields={"case": "plan_object", "order": oid})]
     problems = []
     for station, start in plan.items():
         if not _is_number(start):
             problems.append(problem("E_ORDER_FIELD",
                                     f"order '{oid}': planned start at '{station}' must be a number",
-                                    f"{at}/plan/{station}", hint="a time in the model's base unit"))
+                                    f"{at}/plan/{station}", hint="a time in the model's base unit",
+                                    fields={"case": "plan_start", "order": oid, "station": station}))
         elif station not in stations:
             problems.append(problem(
                 "W_PLAN_STATION_UNKNOWN",
                 f"order '{oid}': plan names unknown station '{station}'",
                 f"{at}/plan/{station}",
-                hint=f"stations: {', '.join(sorted(stations)) or '(none)'}"))
+                hint=f"stations: {', '.join(sorted(stations)) or '(none)'}",
+                fields={"case": "unknown", "order": oid, "station": station}))
     return problems
 
 
@@ -309,45 +321,53 @@ def _field_problems(oid: str, entry: dict, at: str, calendar=None) -> list:
             except cal.CalendarError as exc:
                 problems.append(problem("E_CALENDAR_DATE", f"order '{oid}': {exc}", f"{at}/{key}",
                                         hint="write it as 2026-01-05T06:00:00, or use a number "
-                                             "in the model's base time unit"))
+                                             "in the model's base time unit",
+                                        fields={"case": "a8_order", "order": oid}))
             continue
         if not _is_number(value):
             problems.append(problem(
                 "E_ORDER_FIELD", f"order '{oid}': {key} must be a number", f"{at}/{key}",
                 hint=f"\"{key}\" is a number in the model's base time unit"
-                     if key in ("release", "due") else f"\"{key}\" is a number"))
+                     if key in ("release", "due") else f"\"{key}\" is a number",
+                fields={"case": "number", "order": oid, "key": key}))
         elif minimum is not None and value < minimum:
             problems.append(problem(
                 "E_ORDER_FIELD", f"order '{oid}': {key} must be at least {minimum:g}",
-                f"{at}/{key}", hint=f"use {minimum:g} or more"))
+                f"{at}/{key}", hint=f"use {minimum:g} or more",
+                fields={"case": "minimum", "order": oid, "key": key, "minimum": minimum}))
     for key in ("entity_type", "sequence", "source"):
         value = entry.get(key)
         if value is not None and not isinstance(value, str):
             problems.append(problem("E_ORDER_FIELD", f"order '{oid}': {key} must be a string",
-                                    f"{at}/{key}", hint=f"\"{key}\" names a declared {key}"))
+                                    f"{at}/{key}", hint=f"\"{key}\" names a declared {key}",
+                                    fields={"case": "string", "order": oid, "key": key}))
     attributes = entry.get("attributes")
     if attributes is None:
         return problems
     if not isinstance(attributes, dict):
         return problems + [problem(
             "E_ORDER_FIELD", f"order '{oid}': \"attributes\" must be an object",
-            f"{at}/attributes", hint="write {\"customer\": \"ACME\", \"lot\": 3}")]
+            f"{at}/attributes", hint="write {\"customer\": \"ACME\", \"lot\": 3}",
+            fields={"case": "attrs_object", "order": oid})]
     for key, value in attributes.items():
         if str(key) in reserved_attribute_names():
             problems.append(problem(
                 "W_ORDER_FIELD", f"order '{oid}': attribute '{key}' names a field of the entity "
-                "itself and is ignored", f"{at}/attributes/{key}", hint="rename the attribute"))
+                "itself and is ignored", f"{at}/attributes/{key}", hint="rename the attribute",
+                fields={"case": "reserved", "order": oid, "key": key}))
         elif not str(key).isidentifier() or str(key).startswith("_"):
             problems.append(problem(
                 "E_ORDER_FIELD", f"order '{oid}': '{key}' is not a valid attribute name",
                 f"{at}/attributes/{key}",
-                hint="an entity attribute is a Python identifier not starting with _"))
+                hint="an entity attribute is a Python identifier not starting with _",
+                fields={"case": "attr_name", "order": oid, "key": key}))
         elif not isinstance(value, (int, float, str, bool)):
             problems.append(problem(
                 "E_ORDER_FIELD",
                 f"order '{oid}': value of '{key}' must be a number, string or boolean",
                 f"{at}/attributes/{key}",
-                hint="an attribute is assigned straight onto the entity: keep it scalar"))
+                hint="an attribute is assigned straight onto the entity: keep it scalar",
+                fields={"case": "attr_value", "order": oid, "key": key}))
     return problems
 
 

@@ -273,9 +273,17 @@ def test_every_stage_of_a_belt_with_a_divert_is_carried_exactly(when_full):
 
 @pytest.mark.parametrize("priority", ["belt", "merge"])
 def test_every_stage_of_a_belt_with_a_merge_is_carried_exactly(priority):
+    """Priority "merge" meets `gap` and `blocked`; priority "belt" meets neither since #2014 and
+    #2016. A main part reaches the place a spacing before the merge only by leaving the 4.5
+    stop, and it leaves the stop once the last part to join has its back past 4.5, the very
+    time the gap rule gives. So it waits in `gap`, or blocked at the stop, only when a merging
+    part landed on it there: with priority "merge" that still happens (#2016, open there with
+    #2012: joiners land on the part at the stop at 4.8, 5.8, 9.0 and 12.2); with priority
+    "belt" a merging part waits until that part has passed (#2016)."""
     met = _sweep(_merge_line(priority, crowded=True), SWEEP + EXTRA["M"])
-    assert met >= {"ride", "packed", "gap", "claim", "blocked", "cell", "door", "join",
-                   "held by side_m"}
+    assert met >= {"ride", "packed", "claim", "cell", "door", "join", "held by side_m"}
+    if priority == "merge":
+        assert {"gap", "blocked"} <= met
 
 
 @pytest.mark.slow

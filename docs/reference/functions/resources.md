@@ -45,7 +45,7 @@ entities waiting for resource/set NAME.
 
 Example: `NQ("Desk")` gives 23.
 
-Used in the bundled models Emergency department: staffing game, Policy-routed parallel servers.
+Used in the bundled models Emergency department: staffing game, Palletizing line, Policy-routed parallel servers.
 
 ## NR
 
@@ -55,7 +55,7 @@ entities/units currently in service at resource/set NAME.
 
 Example: `NR("Desk")` gives 2.
 
-Used in the bundled models Emergency department: staffing game, Policy-routed parallel servers.
+Used in the bundled models Emergency department: staffing game, Palletizing line, Policy-routed parallel servers.
 
 ## NS
 

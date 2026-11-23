@@ -76,7 +76,7 @@ print(round(results.kpi("system/Avg Throughput Time"), 2), "time units in the mo
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 33 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 34 more.
 
 Guides: [Costing](../../modelling-guide/costing.md), [Quick start](../../quickstart.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from SimPy](../../coming-from/simpy.md), [How do I calibrate a model to data?](../../goals/calibrate-to-data.md) and 46 more.
 

@@ -225,7 +225,8 @@ class FileSink:
             said = () if why is None else (problem(
                 "W_OUTBOX", f"the replies file cannot be read ({why})", "/outbox",
                 hint="it is read again at the next cycle; a reader must open, read and "
-                     "close it"),)
+                     "close it",
+                fields={"case": "replies"}),)
             return Changes(tuple(events), str(offset), lost, gap, state, None, said)
         try:
             fd = _open(self.replies, os.O_RDONLY)
@@ -397,7 +398,8 @@ class MqttSink:
         except Exception as exc:        # a refusal before any socket: its code or class
             return Changes((), cursor or "", 0, False, "down", None, (problem(
                 "W_OUTBOX", f"the replies cannot be read "
-                f"({str(getattr(exc, 'code', '') or type(exc).__name__)[:40]})", "/outbox"),))
+                f"({str(getattr(exc, 'code', '') or type(exc).__name__)[:40]})", "/outbox",
+                fields={"case": "replies"}),))
         events, lost = [], got.lost
         for event in got.events:
             reply = parse_reply(event.value.encode("utf-8")) if isinstance(event.value, str) \

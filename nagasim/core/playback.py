@@ -515,6 +515,7 @@ class Timeline:
         # D734: belt -> {entity: (started, x0, x1, duration, stage, spacing)}, boarding order
         self._belts: dict[str, dict[int, tuple]] = {}
         self._belt_of: dict[int, str] = {}
+        self._belts_back: set = set()     # R46: reversible belts running backward
         # Live mode only (PHASE6 L1): running totals instead of the sorted
         # timestamp lists `created_until`/`disposed_until` bisect over, this
         # chunk's moves, and a raw-event counter for `__len__` -- see
@@ -692,9 +693,23 @@ class Timeline:
                 self._in_service_counts.pop(block, None)
 
     def _belt_stage(self, e) -> None:
-        """D734: a part's new stage on a belt; "off" takes it off."""
+        """D734: a part's new stage on a belt; "off" takes it off. R46: "turn" (value 1 forward,
+        0 backward) turns the belt's rows round, nearest the new exit first."""
         if e.state == "off":
             self._off_belt(e.entity_id)
+            return
+        if e.state == "turn":
+            back = not e.value
+            if back != (e.block in self._belts_back):
+                if back:
+                    self._belts_back.add(e.block)
+                else:
+                    self._belts_back.discard(e.block)
+                parts = self._belts.get(e.block)
+                if parts:
+                    items = list(parts.items())[::-1]
+                    parts.clear()
+                    parts.update(items)
             return
         if self._belt_of.get(e.entity_id, e.block) != e.block:
             self._off_belt(e.entity_id)        # a trace that never said it left the last one
@@ -721,22 +736,34 @@ class Timeline:
         parts.pop(entity_id, None)
         if not parts:
             del self._belts[block]
+            self._belts_back.discard(block)     # an empty belt boards forward only
 
     def _belts_state(self, t: float) -> dict:
         """`{belt: [(id, position, stage)]}` at *t*, lead part first (D734). Each stage
-        is linear from x0 to x1; a part is never less than a spacing behind the one ahead
-        (a packed part's own stage puts it AT the place it waits for), nor behind the
-        entry. A minimum of non-decreasing positions, so a part only ever moves forward."""
+        is linear from x0 to x1; a part is never less than the length the one ahead takes
+        behind it (its own row's value: the spacing, or its cells on a typed belt, D1355; a
+        packed part's own stage puts it AT the place it waits for), nor behind the entry. A
+        minimum of non-decreasing positions, so a part only ever moves forward. R46: on a
+        belt running backward the rows are nearest the start first and the clamp turns round:
+        a part is never nearer the one ahead than its own length (the spacing of two
+        neighbours is the occupied length of the one farther from the entry)."""
         out = {}
         for block, parts in self._belts.items():
-            rows, ahead = [], None
+            rows, ahead, taken = [], None, 0.0
+            back = block in self._belts_back
             for entity_id, (t0, x0, x1, span, stage, spacing) in parts.items():
                 x = x0 + (x1 - x0) * _progress(t, t0, span)
+                if back:
+                    if ahead is not None:
+                        x = max(x, ahead + spacing)
+                    rows.append((entity_id, x, stage))
+                    ahead = x
+                    continue
                 if ahead is not None:
-                    x = min(x, ahead - spacing)
+                    x = min(x, ahead - taken)
                 x = max(x, 0.0)
                 rows.append((entity_id, x, stage))
-                ahead = x
+                ahead, taken = x, spacing
             out[block] = rows
         return out
 

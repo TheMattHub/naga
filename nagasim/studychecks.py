@@ -91,7 +91,10 @@ def _range_check(name: str, kind: str, spec: dict, digest: dict) -> dict | None:
     m = kpi_mean(digest, kpi)
     if m is None:
         return _check(name, "not_verified", f"KPI '{kpi}' is not in the run digest" + _nearest(digest, kpi), kind)
-    why = f"{kpi} = {m:g}, expected within [{lo}, {hi}]"
+    # #1969: a missing bound is not said ("[None, 2]").
+    bounds = (f"within [{lo}, {hi}]" if lo is not None and hi is not None
+              else f"at most {hi}" if lo is None else f"at least {lo}")
+    why = f"{kpi} = {m:g}, expected {bounds}"
     if kind != "goal":     # an assumption checks the model's logic: its range alone decides
         ok = (lo is None or m >= lo) and (hi is None or m <= hi)
         return _check(name, "passed" if ok else "failed", why, kind)

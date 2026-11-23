@@ -67,7 +67,7 @@ same file gives the same answer from the command line, Python or an agent.
   `naga export --python` to turn any model into that code.
 - **Outputs**: pandas frames, Excel, CSV, JSON, a self-contained HTML report, a recorded run to
   replay, and a viewer in which the engine itself runs in a browser.
-- **Agent tools**: 95 tools over MCP to build, validate, run, debug and analyse a model.
+- **Agent tools**: 102 tools over MCP to build, validate, run, debug and analyse a model.
 
 ## Quick start
 
@@ -117,8 +117,8 @@ hand; the `$schema` line gives completion in an editor that reads JSON Schema:
 
 ```json
 {
-  "$schema": "https://thematthub.github.io/naga/schema/model-v30.json",
-  "schema_version": 30,
+  "$schema": "https://thematthub.github.io/naga/schema/model-v32.json",
+  "schema_version": 32,
   "blocks": [
     {
       "name": "create_1",
@@ -180,7 +180,7 @@ runs the submodels, the product's artwork is not included here.
 
 ## Use with an agent
 
-The engine ships 95 tools an agent can call to build, validate, run, debug and analyse a model, and two
+The engine ships 102 tools an agent can call to build, validate, run, debug and analyse a model, and two
 ways to offer them. An assistant's first step is the same on both: `naga skill` prints where the
 study guide is, and the guide's protocol starts with `study_start`.
 

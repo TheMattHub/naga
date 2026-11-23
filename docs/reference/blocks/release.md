@@ -78,7 +78,7 @@ print(int(results.kpi("resource/Dock/Total Seizes")), "seizes; each ended by the
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md) and 5 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md) and 6 more.
 
 Guides: [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Resources, sets and queue disciplines](../../modelling-guide/resources-queues.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md) and 4 more.
 

@@ -98,7 +98,7 @@ print(round(results.kpi("resource/Operator/Time in Queue Avg"), 2), "time units 
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md) and 5 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md) and 6 more.
 
 Guides: [Resources, sets and queue disciplines](../../modelling-guide/resources-queues.md), [Digital twin](../../digital-twin.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Mobile cobots: machine tending](../../modelling-guide/tending.md), [Coming from AnyLogic](../../coming-from/anylogic.md) and 8 more.
 

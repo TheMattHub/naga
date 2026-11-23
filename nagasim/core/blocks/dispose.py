@@ -2,6 +2,7 @@ import logging
 
 from nagasim.core import tending
 from nagasim.core.base_process import BaseProcess
+from nagasim.core.blocks._routing import end_routes
 from nagasim.core.block_spec import BlockSpec, DIST_PARAMS, ParamSpec
 from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.movers import free_held
@@ -45,6 +46,7 @@ class Dispose(BaseProcess):
                 log.debug("Entity %s has been disposed at time %s.", entity.id, self.env.now)
             tending.cobot_of(self, entity)     # D169: a cobot that stayed with it is freed
             free_held(self, entity)            # D837: and a vehicle a TRANSPORT kept
+            end_routes(self.ctx, entity)       # R34: a rule counting it under way lets it go
 
     def _finish(self, entity):
             entity.deletion_time = self.env.now

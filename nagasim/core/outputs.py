@@ -192,6 +192,21 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
            if any(belt._diverts for belt in env.ctx.conveyors.values()) else {}),
         **({"conveyor_merges": summarize_conveyor_merges(env, warmup=warmup, run_id=run_id)}
            if any(belt._merges for belt in env.ctx.conveyors.values()) else {}),
+        # D1347: the same rule for photo-eyes.
+        **({"conveyor_eyes": summarize_conveyor_eyes(env, run_id=run_id)}
+           if any(belt._eyes for belt in env.ctx.conveyors.values()) else {}),
+        # Conveyor system A12 (R3, D1373-D1376): the same rule for what explains a slow line,
+        # each frame only for a model with the feature it reads.
+        **({"conveyor_flow": summarize_conveyor_flow(env, warmup=warmup, run_id=run_id)}
+           if flow_belts(env.ctx) else {}),
+        **({"conveyor_zones": summarize_conveyor_zones(env, warmup=warmup, run_id=run_id)}
+           if any(belt._zone_count for belt in env.ctx.conveyors.values()) else {}),
+        **({"transfer_summary": summarize_transfers(env, warmup=warmup, run_id=run_id)}
+           if _transfers(env.ctx) else {}),
+        **({"route_holds": summarize_route_holds(env, warmup=warmup, run_id=run_id)}
+           if routed(env.ctx) else {}),
+        **({"link_flow": summarize_links(env, warmup=warmup, run_id=run_id)}
+           if getattr(env.ctx, "area_links", None) else {}),
         # Automation sub-project 2 (D164-D165), the same rule: EMPTY with their
         # fixed columns for a model with no charger and no battery fleet.
         "charging_summary": summarize_charging(env, warmup=warmup, run_id=run_id),
@@ -1131,6 +1146,17 @@ _CONVEYOR_DIVERTS_COLS = ["Run", "Conveyor", "Divert", "At", "Exit", "Diverted",
                           "Skipped", "Avg Wait", "Max Wait", "Busy %", "Blocked %"]
 _CONVEYOR_MERGES_COLS = ["Run", "Conveyor", "Merge", "At", "From", "Merged", "Avg Wait",
                          "Max Wait", "Waiting %"]
+_CONVEYOR_EYES_COLS = ["Run", "Conveyor", "Eye", "At", "Edge", "Fired"]
+# Conveyor system A12 (D1373-D1376): frames of their own, present only when a model uses the
+# features they explain (R3), so `conveyor_summary` and every other model's digest keep theirs.
+_CONVEYOR_FLOW_COLS = ["Run", "Conveyor", "Dieback Length", "Time Full %", "Released",
+                       "Avg Release Hold", "Release Hold %", "Backward %", "Reversals"]
+_CONVEYOR_ZONES_COLS = ["Run", "Conveyor", "Zone", "Dieback Time", "Dieback %"]
+_TRANSFER_SUMMARY_COLS = ["Run", "Transfer", "Mechanism", "Loads", "Busy %", "Move %",
+                          "Handshake %", "Rule Hold %", "Blocked %"]
+_ROUTE_HOLDS_COLS = ["Run", "Block", "Kind", "Point", "Holds", "Hold Time", "Hold %"]
+_LINK_FLOW_COLS = ["Run", "Link", "Avg Delay", "Capacity", "Carried", "Avg Time",
+                   "Avg Occupancy", "Max Occupancy", "Time Full %"]
 # PHASE4 T5 (ARCHITECTURE D78): one row per BUFFER block and per station that
 # blocks after service or has a finite input queue. The first four columns
 # describe the block's INPUT SPACE (NaN for a station with none); `Blocked %`
@@ -1324,6 +1350,169 @@ def summarize_conveyor_merges(env, *, warmup: float = 0.0,
     return _frame(rows, _CONVEYOR_MERGES_COLS)
 
 
+def summarize_conveyor_eyes(env, *, run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "conveyor_eyes" frame (D1347): one row per photo-eye of a CONVEYOR, in declared
+    order. `At` is the eye's declared place, `Fired` how many parts it fired for in the
+    window. Only `results` of a model with an eye has it."""
+    rows = [{"Run": run_id, "Conveyor": belt.name, "Eye": eye.index, "At": eye.sensor,
+             "Edge": eye.edge, "Fired": eye.fired}
+            for belt in env.ctx.conveyors.values() for eye in belt._eyes]
+    return _frame(rows, _CONVEYOR_EYES_COLS)
+
+
+# -- conveyor system A12: what explains a slow line (D1373-D1376) ------------------------
+def _pct(area: float, window: float) -> float:
+    """100 x *area* / *window*: a share of the window; NaN for an empty window. Areas, not
+    `time_avg`: a routing point is built on its first load, after the window may have begun."""
+    return 100.0 * area / window if window > 0 else np.nan
+
+
+def flow_belts(ctx) -> bool:
+    """A belt uses a feature `conveyor_flow` explains: typed, zoned, released, reversible or
+    laid on a path (R3). What every model without one keeps its results by."""
+    return any(belt.type or belt._zone_count or belt._release_kind or belt.reversible
+               or belt.path for belt in ctx.conveyors.values())
+
+
+def _transfers(ctx) -> list:
+    return [p for p in ctx.process_list
+            if getattr(getattr(p, "block", None), "block_type", "") == "CONVEYOR_TRANSFER"]
+
+
+def routed(ctx) -> bool:
+    """A block that may hold a load by its routing rule: a CONVEYOR_TRANSFER, a DECIDE in
+    mode "Rule" or a belt with a routed divert group (D1359), read from the model, not from the
+    routing points a run builds on first use, so every replication has the same frames."""
+    return bool(_transfers(ctx)) or any(
+        getattr(p, "mode", None) == "Rule"
+        and getattr(getattr(p, "block", None), "block_type", "") == "DECIDE"
+        for p in ctx.process_list) or any(
+        getattr(d, "head", None) is not None for belt in ctx.conveyors.values()
+        for d in belt._diverts)
+
+
+def summarize_conveyor_flow(env, *, warmup: float = 0.0,
+                            run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "conveyor_flow" frame (D1373): one row per CONVEYOR, in a model with a typed, zoned,
+    released, reversible or path-laid belt. `Dieback Length` is the mean belt length standing
+    parts hold over the window (their occupied lengths; a stop's dwell and a held exit count;
+    a reversible belt's from its parts' true places, R64); the belt's blocked share is
+    `conveyor_summary`'s `Blocked %`. `Time Full %` is the share of the window the belt took no
+    part (its space has no room, D1355). `Released` and `Avg Release Hold` are its release
+    rule's holds of the end part as they end (the per-part metering loss, D1357; a slug records
+    the lead's stand, the parts let go with it 0), and `Release Hold %` the share of the window
+    the rule held the end part, open holds and the warm-up's edge cut as every share (R65).
+    `Backward %` and `Reversals` are a reversible belt's (D1368)."""
+    t0, t1 = observed_window(env, warmup)
+    window = t1 - t0
+    rows = []
+    for belt in env.ctx.conveyors.values():
+        holds, rev = belt.release_waits, belt._rev
+        released = bool(belt._release_kind)
+        rows.append({
+            "Run": run_id, "Conveyor": belt.name,
+            "Dieback Length": belt.dieback_area(t1) / window if window > 0 else np.nan,
+            "Time Full %": _pct(belt.space.full.area(t1), window),
+            "Released": holds.count if released else np.nan,
+            "Avg Release Hold": holds.mean if released and holds.count else np.nan,
+            "Release Hold %": _pct(belt.release_held.area(t1), window) if released else np.nan,
+            "Backward %": _pct(rev.backward.area(t1), window) if rev is not None else np.nan,
+            "Reversals": rev.turns if rev is not None else np.nan})
+    return _frame(rows, _CONVEYOR_FLOW_COLS)
+
+
+def summarize_conveyor_zones(env, *, warmup: float = 0.0,
+                             run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "conveyor_zones" frame (D1373): one row per zone of a zoned CONVEYOR, zone 1 at the
+    exit. `Dieback Time` is the time a part's front stood in the zone (D1356), `Dieback %` its
+    share of the window: the zone's blocked share."""
+    t0, t1 = observed_window(env, warmup)
+    rows = [{"Run": run_id, "Conveyor": belt.name, "Zone": zone, "Dieback Time": stood,
+             "Dieback %": _pct(stood, t1 - t0)}
+            for belt in env.ctx.conveyors.values() if belt._zone_count
+            for zone, stood in enumerate(belt.zone_dieback_time, start=1)]
+    return _frame(rows, _CONVEYOR_ZONES_COLS)
+
+
+def summarize_transfers(env, *, warmup: float = 0.0,
+                        run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "transfer_summary" frame (D1374): one row per CONVEYOR_TRANSFER. `Busy %` is the share
+    of the window the module holds a load (from taking it to free again); within it, `Move %` its
+    own motion (lift, cross, travel, and the turn time: a turntable's turns, a turn back
+    included), `Handshake %` the hand-over wait from the load boarding the receiving piece until
+    the module is free of it (its first eye firing for the load, or, with no eye, the load
+    clearing the entry by its own length), `Rule Hold %` a load held by the rule with every exit
+    full, and `Blocked %` the wait for the next block to take the load; the entry travel and the
+    feeding belt's zone-1 delay (R23, taken after the module's place) are the rest. Every module has its row, an unused one zeros."""
+    t0, t1 = observed_window(env, warmup)
+    window = t1 - t0
+    rows = []
+    for module in _transfers(env.ctx):
+        route = module._route
+        rows.append({
+            "Run": run_id, "Transfer": module.name, "Mechanism": module.mechanism,
+            "Loads": module.loads,
+            "Busy %": _pct(module.space.content.area(t1), window),
+            "Move %": _pct(module.moving.area(t1), window),
+            "Handshake %": _pct(module.handshake.area(t1), window),
+            "Rule Hold %": _pct(route.any_held.area(t1), window) if route is not None else 0.0,
+            "Blocked %": _pct(module.blocked.area(t1), window)})
+    return _frame(rows, _TRANSFER_SUMMARY_COLS)
+
+
+def summarize_route_holds(env, *, warmup: float = 0.0,
+                          run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "route_holds" frame (D1375, R35, R66): one row per routing rule of the model, in model
+    order, so every replication has the same rows: "divert" (a belt's routed divert group,
+    `Point` its first divert), "transfer" or "decide" (`Point` 0); a rule no load reached has
+    zeros. `Holds` counts the loads held with every exit at its limit, `Hold Time` the load time
+    held (two loads held for 1 s: 2), `Hold %` the share of the window at least one was held;
+    holds still open count to the window's end."""
+    t0, t1 = observed_window(env, warmup)
+    rows = []
+    for kind, block, at, point in _routing_points(env.ctx):
+        rows.append({"Run": run_id, "Block": block.name, "Kind": kind, "Point": at,
+                     "Holds": point.holds if point is not None else 0,
+                     "Hold Time": point.holding.area(t1) if point is not None else 0.0,
+                     "Hold %": _pct(point.any_held.area(t1), t1 - t0)
+                     if point is not None else 0.0})
+    return _frame(rows, _ROUTE_HOLDS_COLS)
+
+
+def _routing_points(ctx) -> list:
+    """(kind, block, point index, its RoutePoint or None while unused) of every routing rule in
+    the model, in model order (R66)."""
+    out = []
+    for p in ctx.process_list:
+        kind = getattr(getattr(p, "block", None), "block_type", "")
+        if kind == "CONVEYOR_TRANSFER":
+            out.append(("transfer", p, 0, p._route))
+        elif kind == "DECIDE" and getattr(p, "mode", None) == "Rule":
+            out.append(("decide", p, 0, p._route))
+        elif kind == "CONVEYOR":
+            out += [("divert", p, d.index, getattr(d, "route", None)) for d in p._diverts
+                    if getattr(d, "head", None) is d]
+    return out
+
+
+def summarize_links(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> pd.DataFrame:
+    """The "link_flow" frame (D1376): one row per area link "<source> -> <target>" (D1369).
+    `Avg Delay` is the mean of the parts' delay draws (D1391), `Carried` counts the parts that
+    left it for the target, `Avg Time` their time in it (the delay plus any wait for the
+    target), `Avg Occupancy`/`Max Occupancy` the parts in it, `Time Full %` the share of the
+    window every place was taken."""
+    t0, t1 = observed_window(env, warmup)
+    window = t1 - t0
+    rows = [{"Run": run_id, "Link": link.label, "Avg Delay": link.delays.mean,
+             "Capacity": link.capacity, "Carried": link.times.count,
+             "Avg Time": link.times.mean,
+             "Avg Occupancy": link.inside.area(t1) / window if window > 0 else np.nan,
+             "Max Occupancy": link.inside.max,
+             "Time Full %": _pct(link.space.full.area(t1), window)}
+            for link in env.ctx.area_links]
+    return _frame(rows, _LINK_FLOW_COLS)
+
+
 def summarize_buffers(env, *, warmup: float = 0.0,
                       run_id: Optional[int] = None) -> pd.DataFrame:
     """The "buffer_summary" frame (PHASE4 T5): one row per finite buffer and
@@ -1339,8 +1528,10 @@ def summarize_buffers(env, *, warmup: float = 0.0,
     _, t1 = observed_window(env, warmup)
     rows = []
     for name, node in nodes.items():
-        if name in env.ctx.conveyors:
-            continue        # a belt's cells report in conveyor_summary (T7)
+        if name in env.ctx.conveyors or node.block.block_type == "CONVEYOR_TRANSFER"                 or getattr(node, "area_link", False):
+            # a belt's cells report in conveyor_summary (T7); a transfer is no buffer, nor is
+            # an area link a block (D1369: its numbers would go in a frame of their own, R3)
+            continue
         space = node.space
         resource_name = blocking.resource_name_of(node)
         res = env.ctx.resource_manager.resolve(resource_name) if resource_name else None

@@ -20,11 +20,15 @@ from nagasim.core.timeunits import factor
 log = logging.getLogger(__name__)
 
 __all__ = ["write_sheet", "concat_runs", "calendar_of", "with_datetimes",
-           "export_workbook", "export_csv_folder", "plugin_outputs", "ARTIFACTS_KEY"]
+           "export_workbook", "export_csv_folder", "plugin_outputs", "ARTIFACTS_KEY",
+           "PROBLEMS_KEY"]
 
 # The per-replication entry carrying a plugin's artifacts (E8): `(run id, {name: object})`, not
 # a frame, so `concat_runs` leaves it out and `api.run_model` gathers it into `Results.artifacts`.
 ARTIFACTS_KEY = "plugin_artifacts"
+# D1389: likewise the run-time warnings of a replication, `(run id, [Problem])`, gathered into
+# `Results.run_problems`.
+PROBLEMS_KEY = "run_problems"
 
 
 def plugin_outputs(ctx, run_id) -> dict:
@@ -37,6 +41,8 @@ def plugin_outputs(ctx, run_id) -> dict:
                                            "Run": run_id})
     if ctx.artifacts:
         out[ARTIFACTS_KEY] = (run_id, dict(ctx.artifacts))
+    if getattr(ctx, "run_problems", None):
+        out[PROBLEMS_KEY] = (run_id, list(ctx.run_problems.values()))
     return out
 
 
@@ -334,6 +340,13 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
                            ("conveyor_stops", "Conveyor stops"),
                            ("conveyor_diverts", "Conveyor diverts"),
                            ("conveyor_merges", "Conveyor merges"),
+                           ("conveyor_eyes", "Conveyor eyes"),
+                           # A12: present only when a model has the feature (R3)
+                           ("conveyor_flow", "Conveyor flow"),
+                           ("conveyor_zones", "Conveyor zones"),
+                           ("transfer_summary", "Transfers"),
+                           ("route_holds", "Route holds"),
+                           ("link_flow", "Link flow"),
                            ("buffer_summary", "Buffers"),
                            ("energy_summary", "Energy"),
                            ("material_flow_summary", "Material Flow"),
@@ -361,9 +374,11 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
 def export_csv_folder(results: dict[str, pd.DataFrame], directory) -> Path:
     """Write one CSV per result frame into *directory* (ROADMAP 2.4 C): the
     shared implementation behind both `ui/results.py`'s CSV export action and
-    the `csv` entry in `nagasim.exporters.EXPORTER_REGISTRY`."""
+    the `csv` entry in `nagasim.exporters.EXPORTER_REGISTRY`. A side entry that is not a
+    frame (a `SimSession.finish()` dict's `run_problems` or plugin artifacts) has no CSV."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     for key, df in results.items():
-        df.to_csv(directory / f"{key}.csv", index=False)
+        if isinstance(df, pd.DataFrame):
+            df.to_csv(directory / f"{key}.csv", index=False)
     return directory

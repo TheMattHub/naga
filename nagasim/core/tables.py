@@ -227,11 +227,13 @@ def validate_tables_structured(layout: dict) -> tuple[list, dict]:
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_TABLE_NAME", "table: name must not be empty",
-                                    f"{at}/name", hint="give every table a unique name"))
+                                    f"{at}/name", hint="give every table a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in dims:
             problems.append(problem("E_TABLE_NAME", f"duplicate table name: {name}",
-                                    f"{at}/name", hint="rename one of the two tables"))
+                                    f"{at}/name", hint="rename one of the two tables",
+                                    fields={"case": "dup", "name": name}))
 
         keys = entry.get("keys")
         columns = entry.get("columns")
@@ -241,17 +243,20 @@ def validate_tables_structured(layout: dict) -> tuple[list, dict]:
         if not isinstance(keys, list) or not keys:
             problems.append(problem("E_TABLE_SHAPE", f"table '{name}': \"keys\" must be a "
                                                      f"non-empty list", f"{at}/keys",
-                                    hint="list the key of every row, e.g. [\"Widget\", \"Gadget\"]"))
+                                    hint="list the key of every row, e.g. [\"Widget\", \"Gadget\"]",
+                                    fields={"case": "keys_list", "name": name}))
             continue
         if len(set(map(_hashable, keys))) != len(keys):
             problems.append(problem("E_TABLE_SHAPE", f"table '{name}': duplicate key",
-                                    f"{at}/keys", hint="every key appears once"))
+                                    f"{at}/keys", hint="every key appears once",
+                                    fields={"case": "dup_key", "name": name}))
         if not isinstance(values, list) or len(values) != len(keys):
             problems.append(problem(
                 "E_TABLE_SHAPE",
                 f"table '{name}': {len(keys)} keys but "
                 f"{len(values) if isinstance(values, list) else 0} value rows",
-                f"{at}/values", hint="\"values\" has one entry per key"))
+                f"{at}/values", hint="\"values\" has one entry per key",
+                fields={"case": "rows_count", "name": name}))
             continue
 
         for mode_key, axis_keys in (("key_mode", keys), ("column_mode", columns)):
@@ -261,23 +266,27 @@ def validate_tables_structured(layout: dict) -> tuple[list, dict]:
             if mode not in LOOKUP_MODES:
                 problems.append(problem(
                     "E_TABLE_MODE", f"table '{name}': unknown {mode_key} '{mode}'",
-                    f"{at}/{mode_key}", hint=f"use one of: {', '.join(LOOKUP_MODES)}"))
+                    f"{at}/{mode_key}", hint=f"use one of: {', '.join(LOOKUP_MODES)}",
+                    fields={"case": "unknown", "name": name, "mode": mode}))
             elif mode != "exact" and not all(_is_number(k) for k in axis_keys):
                 problems.append(problem(
                     "E_TABLE_MODE",
                     f"table '{name}': {mode_key} '{mode}' needs numeric keys",
                     f"{at}/{mode_key}",
-                    hint="use \"exact\" for string keys; step/linear interpolate numbers"))
+                    hint="use \"exact\" for string keys; step/linear interpolate numbers",
+                    fields={"case": "numeric", "name": name, "mode": mode}))
 
         if columns is not None and (not isinstance(columns, list) or not columns):
             problems.append(problem("E_TABLE_SHAPE",
                                     f"table '{name}': \"columns\" must be a non-empty list",
                                     f"{at}/columns",
-                                    hint="drop \"columns\" for a 1-D table"))
+                                    hint="drop \"columns\" for a 1-D table",
+                                    fields={"case": "columns_list", "name": name}))
             continue
         if columns is not None and len(set(map(_hashable, columns))) != len(columns):
             problems.append(problem("E_TABLE_SHAPE", f"table '{name}': duplicate column key",
-                                    f"{at}/columns", hint="every column key appears once"))
+                                    f"{at}/columns", hint="every column key appears once",
+                                    fields={"case": "dup_column", "name": name}))
 
         problems.extend(_value_problems(name, columns, values, at))
         default = entry.get("default")
@@ -286,7 +295,8 @@ def validate_tables_structured(layout: dict) -> tuple[list, dict]:
                                     f"table '{name}': default {default!r} is not a number",
                                     f"{at}/default",
                                     hint="use a number, or drop \"default\" to make a missing "
-                                         "key an error"))
+                                         "key an error",
+                                    fields={"case": "default", "name": name, "value": repr(default)}))
     return problems, dims
 
 
@@ -298,21 +308,24 @@ def _value_problems(name: str, columns, values, at: str) -> list:
                 problems.append(problem("E_TABLE_VALUE",
                                         f"table '{name}': value {row!r} is not a number",
                                         f"{at}/values/{row_index}",
-                                        hint="a 1-D table's \"values\" is a flat list of numbers"))
+                                        hint="a 1-D table's \"values\" is a flat list of numbers",
+                                        fields={"case": "value", "name": name, "value": repr(row)}))
             continue
         if not isinstance(row, list) or len(row) != len(columns):
             problems.append(problem(
                 "E_TABLE_SHAPE",
                 f"table '{name}': row {row_index} has "
                 f"{len(row) if isinstance(row, list) else 0} values, expected {len(columns)}",
-                f"{at}/values/{row_index}", hint="every row has one value per column key"))
+                f"{at}/values/{row_index}", hint="every row has one value per column key",
+                fields={"case": "row_length", "name": name, "row": row_index}))
             continue
         for column_index, cell in enumerate(row):
             if not _is_number(cell):
                 problems.append(problem(
                     "E_TABLE_VALUE", f"table '{name}': value {cell!r} is not a number",
                     f"{at}/values/{row_index}/{column_index}",
-                    hint="every cell of a table is a number"))
+                    hint="every cell of a table is a number",
+                    fields={"case": "value", "name": name, "value": repr(cell)}))
     return problems
 
 

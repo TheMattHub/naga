@@ -854,8 +854,9 @@ def _results_html(layout: dict, results: dict, experiment) -> str:
     return f"<section><h2>Results</h2>{body}</section>"
 
 
-_METHODS_NOTE = (
-    "Confidence intervals are Student-t, across replications, at the 95% level. "
+# D1331: the first sentence is shown, the rest folds under it (and prints open).
+_METHODS_NOTE = "Confidence intervals are Student-t, across replications, at the 95% level."
+_METHODS_MORE = (
     "Scenario differences use the paired-t interval on common-random-number replications "
     "when CRN was used, otherwise Welch's interval on independent samples. "
     "Warm-up excludes each collector's statistics up to the warm-up time (the model state "
@@ -885,12 +886,14 @@ thead th { background: var(--raised); }
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 460px)); gap: 16px; }
 .chart { max-width: 460px; background: #fff; border-radius: 6px; }
 .chart svg { display: block; width: 100%; height: auto; max-width: 100%; }
+footer summary { cursor: pointer; padding: 12px 0; }     /* a 40 px target on a phone */
 footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted);
          font-size: 12px; }
 @media (max-width: 700px) { body { padding: 12px 16px; } h2 { margin-top: 28px; } }
 @media print {
   h2 { page-break-before: always; }
   body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  details::details-content { content-visibility: visible; }
 }
 """
 
@@ -1000,7 +1003,8 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
         body.append(_forecast_html(forecast))
     body += extra_sections
     body.append(_settings_html(layout, results, title))
-    body.append(f"<footer><h2>Methods</h2><p>{esc(_METHODS_NOTE)}</p></footer>")
+    body.append(f"<footer><h2>Methods</h2><p>{esc(_METHODS_NOTE)}</p><details><summary>Differences, "
+                f"warm-up and utilization</summary><p>{esc(_METHODS_MORE)}</p></details></footer>")
 
     # #1740: no script, and the one style block pinned by hash (the study pages use the same policy)
     head = (f'<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="{csp(_CSS)}">'

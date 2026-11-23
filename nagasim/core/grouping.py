@@ -14,8 +14,8 @@ truck is inside the pallet and the pallet inside the truck.
   slot the 1-based load position. A follow ring moves to the outermost group drawn and marks
   the slot; it comes back when the entity is separated (an empty path).
 - `load(group, t)`: the members inside, in load order.
-- `carrier_load(group, t, layout)`: the members with their unload order, FIFO or LIFO by the
-  SEPARATE that unloads the group (its `release_order`, D819), as plain JSON-ready data, so
+- `carrier_load(group, t, layout)`: the members with their unload order, FIFO, LIFO or by
+  pattern (top layer first) by the SEPARATE that unloads the group (its `release_order`, D819), as plain JSON-ready data, so
   the editor's carrier view and the HTML player (a later package) show the same thing.
 
 Pure Python over `TraceEvent`-like objects (t, kind, entity_id, e_type, block, target, value).
@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import bisect
 from dataclasses import dataclass
+
+from nagasim.core import pallets
 
 __all__ = ["Grouping", "Stay"]
 
@@ -57,6 +59,7 @@ class Grouping:
         self.stays: dict[int, list[Stay]] = {}          # entity -> its stays, in time order
         self.members: dict[int, list[Stay]] = {}        # group -> its members' stays, by load
         self.blocks: dict[int, list[tuple[float, str]]] = {}   # entity -> [(t, block entered)]
+        self.loaded_by: dict[int, str] = {}             # group -> the block that last loaded it
         open_: dict[int, Stay] = {}
         inside: dict[int, list[Stay]] = {}              # group -> members inside now
         for n, e in enumerate(events):
@@ -78,6 +81,7 @@ class Grouping:
                     open_.pop(member.entity, None)
             if n in into:
                 group = into[n]
+                self.loaded_by[group] = e.block
                 now = inside.setdefault(group, [])
                 used = {m.slot for m in now}            # a carrier reloaded after unloading
                 slot = next(k for k in range(1, len(now) + 2) if k not in used)
@@ -119,35 +123,73 @@ class Grouping:
         return rows[i][1] if i >= 0 else None
 
     def unload_order(self, group: int, t: float, layout: dict | None) -> str:
-        """"fifo" or "lifo": the release order of the SEPARATE that unloads *group* (the one
-        it is in at *t*, else the next one it enters); "fifo", the engine's default, when the
-        trace shows none or no layout is given."""
-        separates = {}
+        """"fifo", "lifo" or "pattern": the release order of the SEPARATE that unloads *group*
+        (the one it is in at *t*, else the next one it enters). "pattern" (top layer first,
+        the reverse of the load order) for a group a BATCH with a pattern loaded; "fifo", the
+        engine's default otherwise, when the trace shows none or no layout is given."""
+        separates, patterned = {}, set()
         for b in (layout or {}).get("blocks") or []:
-            if isinstance(b, dict) and str(b.get("type", "")).upper() == "SEPARATE":
-                separates[b.get("name")] = str((b.get("params") or {}).get("release_order") or "fifo")
+            kind = str(b.get("type", "")).upper() if isinstance(b, dict) else ""
+            params = (b.get("params") or {}) if isinstance(b, dict) else {}
+            if kind == "SEPARATE":
+                separates[b.get("name")] = str(params.get("release_order") or "pattern")
+            elif kind == "BATCH" and str(params.get("carrier_type") or "").strip() \
+                    and str(params.get("pattern") or "").strip():
+                patterned.add(b.get("name"))
         rows = self.blocks.get(group) or []
         i = max(bisect.bisect_right([r[0] for r in rows], t) - 1, 0)
         for _t, block in rows[i:]:
             if block in separates:
-                return "lifo" if separates[block] == "lifo" else "fifo"
+                if separates[block] == "lifo":
+                    return "lifo"
+                pattern = separates[block] == "pattern" and self.loaded_by.get(group) in patterned
+                return "pattern" if pattern else "fifo"
         return "fifo"
+
+    def pattern_of(self, group: int, layout: dict | None) -> tuple[str | None, dict | None, bool]:
+        """(name, record, per_pallet) of the pattern the BATCH that loaded *group* gives: a
+        literal name the model has, or `per_pallet` True when it is an expression."""
+        block, records = self.loaded_by.get(group), pallets.pattern_records(layout or {})
+        for b in (layout or {}).get("blocks") or []:
+            if isinstance(b, dict) and b.get("name") == block and str(b.get("type", "")).upper() == "BATCH":
+                text = str((b.get("params") or {}).get("pattern") or "").strip()
+                name = pallets.literal_pattern(text, records) if text else None
+                if name is None:
+                    return None, None, bool(text)
+                return (name, records[name], False) if name in records else (None, None, False)
+        return None, None, False
 
     def carrier_load(self, group: int, t: float, layout: dict | None = None) -> dict:
         """What *group* holds at *t*, JSON-ready: {"group", "t", "order", "slots": [{"slot",
         "entity", "type", "loaded", "unloads"}]}, slots in load order and `unloads` 1 for the
-        member that comes off first. Nested groups list their own members under "inside"."""
+        member that comes off first. Nested groups list their own members under "inside".
+        When the BATCH that loaded the group names a literal pattern, each row also has
+        "layer" and "pose" [x, y, z, rotation] (the pattern's slot, in the model's length
+        unit), and the result has "pattern" (its name), "layers" and "item" (its size); with
+        a pattern chosen by an expression it has "per_pallet": True and no poses."""
         order = self.unload_order(group, t, layout)
+        name, record, per_pallet = self.pattern_of(group, layout)
+        places = {s.index: s for s in pallets.slots(record)} if record else {}
         members = self.load(group, t)
         rank = list(range(1, len(members) + 1))
-        if order == "lifo":
+        if order in ("lifo", "pattern"):          # a pattern loads in slot order
             rank.reverse()
         slots = []
         for stay, r in zip(members, rank):
             row = {"slot": stay.slot, "entity": stay.entity, "type": stay.e_type,
                    "loaded": stay.t0, "unloads": r}
+            place = places.get(stay.slot)
+            if place is not None:
+                row["layer"], row["pose"] = place.layer, [place.x, place.y, place.z, place.rotation]
             nested = self.load(stay.entity, t)
             if nested:
                 row["inside"] = [{"slot": s.slot, "entity": s.entity, "type": s.e_type} for s in nested]
             slots.append(row)
-        return {"group": group, "t": t, "order": order, "slots": slots}
+        out = {"group": group, "t": t, "order": order, "slots": slots}
+        if places:
+            item = record.get("item") or {}
+            out.update(pattern=name, layers=max(s.layer for s in places.values()),
+                       item={k: item.get(k) for k in ("length", "width", "height")})
+        elif per_pallet:
+            out["per_pallet"] = True
+        return out

@@ -1,9 +1,12 @@
 import logging
 import math
+from collections import deque
 
+from nagasim.core.arealink import real_target
 from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, ParamSpec
 from nagasim.core.blocks._common import compiled_closure, entity_scope, evaluate_expression, validated_probs
+from nagasim.core.blocks._routing import RoutePoint, rule_of
 from nagasim.core.control import DecisionRequest, PausingController
 from nagasim.core.errors import ModelRunError
 
@@ -33,10 +36,14 @@ class Decide(BaseProcess):
     until something resolves it. With no controller attached for `policy`, the
     block falls back to `fallback` ("first" / "random" / "shortest") so a
     Policy-mode model still runs and validates headless.
+
+    "Rule" mode asks a routing rule (`rule`, core/routing.py) whose exits are the
+    outgoing links; while every exit is at its limit the entity waits
+    here, first come first served, and the rule runs again when an exit's count drops.
     """
 
     def __init__(self, env, block, next_process=None, conditions=None, probs=None, mode="Chance",
-                policy="", observation=None, fallback="first", queue_exprs=None):
+                policy="", observation=None, fallback="first", queue_exprs=None, rule=None):
         super().__init__(env, block, next_process)
         self.conditions = list(conditions) if conditions else []
         self.probs = validated_probs(list(probs) if probs else [], block.name)
@@ -45,6 +52,9 @@ class Decide(BaseProcess):
         self.observation = list(observation) if observation else []
         self.fallback = fallback or "first"
         self.queue_exprs = list(queue_exprs) if queue_exprs else []
+        self.rule = dict(rule) if rule else {}
+        self._route = None                  # "Rule" mode's RoutePoint, built on first use
+        self._held = deque()                # entities waiting for a free exit, in arrival order
         # Deterministic Chance mode (PHASE6 W4 P1, D119): largest-remainder
         # allocation state, built lazily on the first entity (next_process is
         # not known yet at __init__ time -- GraphModel.link wires it after).
@@ -119,9 +129,55 @@ class Decide(BaseProcess):
             self.forward(entity, self._policy_action(entity))
 
     def self_run(self, entity):
+        if self.mode == "Rule":
+            return self._rule_run(entity)
         if self.mode == "Policy" and isinstance(self.ctx.controllers.get(self.policy), PausingController):
             return self.env.process(self._process_policy_paused(entity))
         self.self_process(entity)
+
+    def _rule_point(self) -> RoutePoint:
+        if self._route is None:
+            links = [real_target(p).name for p in self.next_process or []]   # D1369
+            rule = rule_of(self, self.rule, links)
+            if len(rule.exits) != len(links):
+                raise ModelRunError(f"Decide block '{self.name}': its rule has "
+                                    f"{len(rule.exits)} exits for {len(links)} outgoing links "
+                                    f"(E_DECIDE_RULE).")
+            self._route = RoutePoint(self, rule, range(len(links)))
+        return self._route
+
+    def _rule_run(self, entity):
+        """Mode "Rule": forward at once to the exit the rule picks; with every exit full, or
+        others already waiting, wait in line (`_rule_hold`)."""
+        route = self._rule_point()
+        if not self._held:
+            index = route.choose(entity)
+            if index is not None:
+                route.routed(entity, index)
+                self.forward(entity, index)
+                return None
+            return self.env.process(self._rule_hold(entity, tried=True))
+        return self.env.process(self._rule_hold(entity, tried=False))
+
+    def _rule_hold(self, entity, tried: bool):
+        """Generator: wait in line until the rule finds a free exit for *entity*, re-run each
+        time an exit's count drops (never polled, D675); *tried*: it was just asked, in this
+        instant, so the first try waits for a change."""
+        route = self._route
+        self._held.append(entity)
+        since = route.held(1)
+        while True:
+            if not tried and self._held[0] is entity:
+                index = route.choose(entity)
+                if index is not None:
+                    break
+            tried = False
+            yield route.freed()
+        self._held.popleft()
+        route.held(-1, since)
+        route.routed(entity, index)
+        route.wake()                        # the next in line tries in this instant too
+        self.forward(entity, index)
 
     def _observation_tuple(self, entity) -> tuple:
         return tuple(float(evaluate_expression(self, expr, entity)) for expr in self.observation)
@@ -210,7 +266,7 @@ class Decide(BaseProcess):
         self.forward(entity, action)
 
     def get_params_dict(self):
-        return {
+        out = {
             "conditions": self.conditions,
             "probs": self.probs,
             "mode": self.mode,
@@ -219,6 +275,9 @@ class Decide(BaseProcess):
             "fallback": self.fallback,
             "queue_exprs": self.queue_exprs,
         }
+        if self.rule:           # only when set, so other DECIDE params stay as they were
+            out["rule"] = dict(self.rule)
+        return out
 
     def set_params_from_dict(self, param_dict):
         self.conditions = param_dict.get("conditions", [])
@@ -228,6 +287,8 @@ class Decide(BaseProcess):
         self.observation = param_dict.get("observation", [])
         self.fallback = param_dict.get("fallback", "first")
         self.queue_exprs = param_dict.get("queue_exprs", [])
+        self.rule = dict(param_dict.get("rule") or {})
+        self._route = None
 
 
 SPEC = BlockSpec(
@@ -235,13 +296,32 @@ SPEC = BlockSpec(
     params=(
         ParamSpec("mode", str, "Chance",
                   description="\"Chance\": branch by probability. \"Condition\": branch by "
-                              "expression. \"Policy\": branch by a controller attached to `policy`.", quantity="none"),
+                              "expression. \"Policy\": branch by a controller attached to `policy`. "
+                              "\"Rule\": branch by the routing `rule`.", quantity="none"),
         ParamSpec("probs", list, [], description="One probability per branch, in link order (not cumulative), used when mode is \"Chance\".", quantity="ratio", kinds=("table",)),
         ParamSpec("conditions", list, [], description="Ordered list of boolean expressions, used when mode is \"Condition\".", quantity="none"),
         ParamSpec("policy", str, "", description="Decision-point name; used when mode is \"Policy\". Several DECIDE blocks may share one.", quantity="none"),
         ParamSpec("observation", list, [], description="Expressions (evaluated with the arriving entity) forming the observation handed to the controller, when mode is \"Policy\".", quantity="none"),
         ParamSpec("fallback", str, "first", description="\"first\"/\"random\"/\"shortest\": used when mode is \"Policy\" and no controller is attached for `policy`.", quantity="none"),
         ParamSpec("queue_exprs", list, [], description="One expression per outgoing link; used by fallback \"shortest\" to pick the argmin.", quantity="none"),
+        ParamSpec("rule", dict, {},
+                  description="Routing rule, used when mode is \"Rule\": {\"kind\": \"fixed\", "
+                              "\"sequential\", \"cyclic\", \"round_robin\", \"least_loaded\", "
+                              "\"condition\", \"attribute\" or \"item\", \"exits\"?: one name per "
+                              "outgoing link (default: the linked blocks' names; \"name:target\" "
+                              "names the CONVEYOR a part counts as under way to), \"conditions\"?: "
+                              "for \"condition\", one per exit or one fewer (the last exit is the "
+                              "ELSE), \"limit\"?: parts under way to one exit at most (0: no "
+                              "limit), \"attribute\"?: for \"attribute\", the entity attribute "
+                              "naming the exit}. A part is under way from its routing until it "
+                              "reaches its exit's target piece (the first photo-eye of the last "
+                              "CONVEYOR of that branch, else that belt's end) or leaves a belt on "
+                              "its way there by a divert; name an exit \"L1:L1\" to stop the count "
+                              "at branch L1; an exit with no CONVEYOR counts nothing. With no "
+                              "true condition and no ELSE the run stops. While every exit is at "
+                              "its limit, parts wait here first come first served: one waiting "
+                              "for a full exit holds back those behind it. Empty: none.",
+                  quantity="none"),
     ),
     factory=lambda env, block: Decide(env, block, conditions=["True"]),
     multi_output=True,

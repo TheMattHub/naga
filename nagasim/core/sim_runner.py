@@ -140,7 +140,15 @@ def reset_statistics(env, t: float) -> None:
             node.space.reset_stats(t)
         if getattr(node, "blocked", None) is not None:
             node.blocked.reset(t)
+    # A12 (D1373): routing holds and area links; a transfer's own shares (CONVEYOR_TRANSFER).
+    # Read as the run end reads route_holds: a bare context (a test's stand-in) has neither.
+    for point in getattr(env.ctx, "route_points", ()):
+        point.reset_stats(t)
+    for link in getattr(env.ctx, "area_links", ()):
+        link.reset_stats(t)
     for process in env.ctx.process_list:
+        if hasattr(process, "reset_transfer_stats"):
+            process.reset_transfer_stats(t)
         # duck-typed so the runner does not import the block classes;
         # counter_arrivals is left alone, it drives max_arrivals.
         if hasattr(process, "created_entities"):
@@ -293,10 +301,17 @@ def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None =
         pacer.wait(limit, should_stop, late=False)
     env.ctx.sim_end_time = limit if reached_limit else env.now
     env.ctx.sim_horizon = None if limit == math.inf else limit
-    if not interrupted and env.peek() == math.inf and env.ctx.blocking_nodes:
+    # A bare context (a test's stand-in, a pacer probe) carries no routing state.
+    holds = getattr(env.ctx, "route_holds", None)
+    if not interrupted and env.peek() == math.inf and (env.ctx.blocking_nodes or holds):
         # Nothing left to happen. If a station is still blocked, that is a
         # deadlock and the KPIs would describe a quiet system (PHASE4 T5).
         blocking.deadlock_at_end(env.ctx)
+    elif not interrupted:
+        if holds:
+            blocking.route_holds_at_end(env.ctx)     # R35: an open-ended run names its holds
+        if getattr(env.ctx, "conveyors", None):
+            blocking.reversed_holds_at_end(env.ctx)  # R45: and a reversed belt's held start
     return interrupted
 
 def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,

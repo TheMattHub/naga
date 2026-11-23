@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from nagasim import live, monitor, player, twin
+from nagasim import live, monitor, pagetext, player, twin
 from nagasim.core.trace import TraceEvent
 from nagasim.core.playback import Timeline
 from test_twin_cycle import mock_plant, playing, slow_line
@@ -110,7 +110,10 @@ def said(code, message, severity="warning"):
 
 def test_a_summary_says_the_forecast_against_what_was_observed_and_how_to_read_it():
     shown = monitor.summary(result())
-    assert shown["head"] == "Plant time 720 minutes (2026-10-10T12:00:00+00:00); cycle 12"
+    # D1333: the plant's date as a local clock; its own stamp is the head's title.
+    at = pagetext.clock(live.stamp("2026-10-10T12:00:00+00:00"))
+    assert shown["head"] == f"Plant time 720 minutes ({at}); cycle 12"
+    assert shown["stamp"] == "2026-10-10T12:00:00+00:00"
     assert shown["notes"] == [] and shown["sources"] == [["plc", "live", 1.5, 0, 0]]
     forecast = shown["forecast"]
     # S4-09: labels, the key last (the page puts it in the cell's title).
@@ -130,8 +133,15 @@ def test_a_lost_connection_has_its_own_sentence_and_the_page_carries_a_banner_fo
     down = result(sources=[{"name": "plc", "state": "down", "age": 1200, "lost": 0, "gaps": 1},
                            {"name": "mes", "state": "live", "age": 1, "lost": 0, "gaps": 0}])
     said = monitor.summary(down)["lost"]
-    assert said.startswith("Connection lost: plc.") and "20 min ago" in said and "mes" not in said
-    assert monitor.summary(result(sources=[{"name": "plc", "state": "down", "age": 30}]))["lost"].count("30 s")
+    # D1333: a fixed time, the result's stamp less the age, never a running age.
+    from nagasim import pagetext
+    from nagasim.live import stamp
+    written = stamp(result()["written"])
+    assert said == f"Connection lost: plc. Last data received {pagetext.clock(written - 1200)}."
+    assert "mes" not in said and "ago" not in said
+    never = monitor.summary(result(sources=[{"name": "plc", "state": "down", "age": None}]))["lost"]
+    assert never == "Connection lost: plc. No data received yet."
+    assert monitor.summary(result(sources=[{"name": "plc", "state": "down", "age": 30}]), language="it")["lost"]         == f"Connessione persa: plc. Ultimo dato ricevuto: {pagetext.clock(written - 30)}."
     html = monitor.Page(slow_line(), tmp_path / "m.html", every=5.0).build(down, [])
     assert 'id="m-lost" role="alert" hidden' in html and "body:has(#m-lost:not([hidden]))" in html
     assert "#m-forecast-box { order: 2; }" in html and "#m-advice-box { order: 3; }" in html   # #1905
@@ -181,8 +191,7 @@ def test_a_twin_is_stale_after_two_cadences_and_never_when_a_scheduler_steps_it(
     assert monitor.state(shown, at + 9.0) == (
         "Updated 9 s ago; the twin looks at the plant every 5 s.", False)
     assert monitor.state(shown, at + 11.0) == (
-        "STALE: no update for 11 s, though the twin looks at the plant every 5 s. What is "
-        "shown is old.", True)
+        "STALE: no update for 11 s. The twin looks at the plant every 5 s; what is shown is old.", True)
     scheduled = monitor.summary(result(cadence={"every": None, "forecast_every": 0.0}))
     assert monitor.state(scheduled, at + 9999.0) == (
         "Updated 9999 s ago; stepped by a scheduler, so not watched for staleness.", False)
@@ -201,8 +210,10 @@ def test_the_event_lines_are_what_happened_to_items_resources_and_the_twin():
                          "an item entered at c", "an item moved from c to p"]
     assert "an item left from d" in texts
     # Then what the twin itself did, at the instant of the step.
-    assert texts[-4:-1] == ["source plant: live", "forecast: failed (E_TWIN_FORECAST)",
-                            "E_TWIN_FORECAST: the forecast failed (ZeroDivisionError)"]
+    # D1332: a problem reads as its plain line, the code and the engine's message its title.
+    assert texts[-4:-1] == ["source plant: live", ["forecast: failed", "forecast: failed (E_TWIN_FORECAST)"],
+                            ["The forecast failed; the last one is kept",
+                             "E_TWIN_FORECAST: the forecast failed (ZeroDivisionError)"]]
     # This plant's clock starts at 1970-01-01: a log in model time, so no date (D20).
     assert list(log.rows[3][:2]) == [2.0, None] and log.rows[-1][0] == 5.5
     before = len(log.rows)
@@ -281,7 +292,7 @@ def test_the_page_is_the_present_as_the_result_has_it_and_the_summary(tmp_path):
         for model in (named, slow_line())]
     assert titles == ["Bottling line 3", "Plant monitor"]       # never a file's name (D282)
     # Newest first.
-    assert shown["events"][0][2].startswith(("W_", "E_"))
+    assert shown["events"][0][2][1].startswith(("W_", "E_"))       # [plain line, "CODE: message"]
     assert shown["events"][-1][2] == "Server capacity 1"
     # The next step adds to the same page; nothing but the one file is ever there.
     page.write(doc, [])
@@ -323,7 +334,7 @@ def test_text_of_a_plant_reaches_the_page_as_data_only(tmp_path):
                                        e_type=HOSTILE, block="p", target=None)])
     assert text.count("</script>") == 4 and "<img" not in text      # theme pick, words, data, drawer
     data = data_of(page, text)
-    assert data["monitor"]["summary"]["problems"][0][2] == HOSTILE
+    assert data["monitor"]["summary"]["problems"][0][1][1] == "W_X: " + HOSTILE
     assert data["monitor"]["events"][-1][2] == HOSTILE + " entered at p"
     # Nothing of the model but what a player file holds, and nothing of the advice.
     assert "secret order" not in text and "dist_params" not in text and "resource_name" not in text
@@ -359,8 +370,12 @@ var out = {made: made.filter(function (tag, i) { return made.indexOf(tag) === i;
            banned: banned, sources: sources, hidden: nodes.bar.style.display};
 ["m-head", "m-state", "m-notes", "m-sources", "m-problems", "m-forecast", "m-kpis", "m-points",
  "m-events", "m-more", "now-t", "now-wip", "run-h", "foot", "m-scores", "m-score-rows",
- "m-counted", "m-counters", "m-advice", "m-advice-fold", "m-advice-rows"].forEach(function (id) {
+ "m-counted", "m-counters", "m-advice", "m-advice-fold", "m-advice-rows", "m-alerts"].forEach(function (id) {
   out[id] = text(nodes[id]); });
+function tips(node) { return (node.title || "") + node.children.map(tips).join("|"); }
+out.titles = {};
+["m-head", "m-notes", "m-forecast", "m-scores", "m-counted", "m-alerts", "m-events"].forEach(function (id) {
+  out.titles[id] = tips(nodes[id]); });
 out["counted-hidden"] = nodes["m-counted-box"].style.display || "";
 out.stale = nodes["m-state"].className;
 console.log(JSON.stringify(out));
@@ -398,28 +413,31 @@ def test_the_script_shows_the_summary_the_events_and_says_when_the_twin_is_stale
     written = live.stamp(doc["written"])
     fresh = run_panel(text, written + 4.0)
     assert fresh["hidden"] == "none" and fresh["run-h"] == "The plant now"
-    assert fresh["m-head"] == "Plant time 720 minutes (2026-10-10T12:00:00+00:00); cycle 12"
-    assert fresh["stale"] == "" and fresh["m-state"] == (
-        monitor.state(page_summary(text), written + 4.0)[0]
-        + " Twin started 2026-10-10T11:00:00+00:00. This page reloads every 2 s.")
-    assert "Updated 4 s ago; the twin looks at the plant every 5 s." in fresh["m-state"]
-    assert fresh["m-notes"] == monitor.APPROXIMATE
+    at = pagetext.clock(live.stamp("2026-10-10T12:00:00+00:00"))
+    assert fresh["m-head"] == f"Plant time 720 minutes ({at}); cycle 12"
+    assert fresh["titles"]["m-head"] == "2026-10-10T12:00:00+00:00"
+    # D1331: the first clause stays; the rest (cadence, start, reload) is the line's title.
+    assert fresh["stale"] == "" and fresh["m-state"] == "Updated 4 s ago"
+    assert monitor.state(page_summary(text), written + 4.0)[0].startswith(fresh["m-state"] + "; ")
+    # D1331: a note's first sentence is shown, the whole of it is its title.
+    assert monitor.APPROXIMATE.startswith(fresh["m-notes"]) and fresh["titles"]["m-notes"] == monitor.APPROXIMATE
     assert "plc|live|1.5|0|0" in fresh["m-sources"] and HOSTILE in fresh["m-problems"]
-    assert monitor.IN_DISTRIBUTION in fresh["m-forecast"]
+    assert monitor.IN_DISTRIBUTION not in fresh["m-forecast"] and monitor.IN_DISTRIBUTION in fresh["titles"]["m-forecast"]
     assert fresh["m-forecast"].startswith("Status: ok|")
     assert "|WIP|710|4|2|6|7|no" in fresh["m-points"] and "|WIP|4|2|6" in fresh["m-kpis"]
     assert "system/" not in fresh["m-points"] + fresh["m-kpis"]
-    assert "700|2026-10-10T11:40:00+00:00|Server down" in fresh["m-events"]
+    # #1962: the date a local clock (the date in front, not today), its stamp the cell's title.
+    at = pagetext.clock(live.stamp("2026-10-10T11:40:00+00:00"))
+    assert f"700|{at}|Server down" in fresh["m-events"] and "+00:00" not in fresh["m-events"]
     assert fresh["now-t"] == "700"
     old = run_panel(text, written + 11.0)
-    assert old["stale"] == "stale" and old["m-state"].startswith(
-        monitor.state(page_summary(text), written + 11.0)[0])
-    assert "STALE: no update for 11 s" in old["m-state"]
+    assert old["stale"] == "stale" and old["m-state"] == "STALE: no update for 11 s."
+    assert monitor.state(page_summary(text), written + 11.0)[0].startswith(old["m-state"])
     doc["cadence"] = {"every": None, "forecast_every": 0.0}
     scheduled = run_panel(monitor.Page(slow_line(), tmp_path / "s.html").build(doc, []),
                           written + 9999.0)
-    assert scheduled["stale"] == "" and "Updated 9999 s ago" in scheduled["m-state"] \
-        and "stepped by a scheduler, so not watched for staleness" in scheduled["m-state"]
+    # D1331: why it is not watched (a scheduler steps it) is the line's title.
+    assert scheduled["stale"] == "" and scheduled["m-state"] == "Updated 9999 s ago"
 
 
 # -- a real browser: Chrome or Edge prints the page it made ----------------------------
@@ -442,12 +460,12 @@ def test_a_real_browser_runs_the_page_opened_from_disk(tmp_path):
          (tmp_path / "out" / monitor.PAGE_FILE).as_uri()],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     dom = done.stdout
-    assert done.returncode == 0 and '<p id="m-head">Plant time 10.5 seconds' in dom, \
+    assert done.returncode == 0 and re.search(r'<p id="m-head"[^>]*>Plant time 10.5 seconds', dom), \
         done.stderr[-2000:]
     # The policy let the one script run, and the script filled the panels as text.
     assert '<h2 id="run-h">The plant now</h2>' in dom and "<td>an item entered at c</td>" in dom
     assert "&lt;img src=x onerror=alert(1)&gt;" in dom and "<img" not in dom
-    assert 'class="stale">STALE: no update for' in dom
+    assert re.search(r'class="stale"[^>]*>STALE: no update for', dom)
     # Not asserted: the drawing and its "now" panel, filled on an animation frame the
     # dump may come before (the script's drawing half is run under node, above).
 
@@ -505,8 +523,8 @@ COUNTERS = {"Drill": {"total": 41, "since": 12.5, "resets": 1}}
 def test_a_summary_never_shows_a_score_without_its_basis_nor_none_without_its_reason():
     shown = monitor.summary(result(scores=SCORES))["scores"]
     assert shown["lines"] == [
-        "12 forecasts, 40 readings scored, 3 missed, 2 not compared, since "
-        "2026-10-10T08:00:00+00:00 (plant time 100 to 715 minutes).", monitor.SCORED,
+        "12 forecasts, 40 readings scored, 3 missed, 2 not compared, since "        # #1962: a clock
+        f"{pagetext.clock(live.stamp('2026-10-10T08:00:00+00:00'))} (plant time 100 to 715 minutes).", monitor.SCORED,
         monitor.MISSED]
     # A row of whole numbers is marked once, where its coverage is read.
     assert shown["rows"] == [["WIP", 10.0, 12, 0, 0, "75% *", -0.5, 1.25, 0.2, "system/WIP"],
@@ -549,16 +567,28 @@ def test_what_a_counter_counts_is_shown_as_observed_and_the_note_no_longer_waits
         == [["b", None, None, None]]
 
 
+def test_the_script_says_an_alert_in_one_line_and_what_an_alert_is_on_hover(tmp_path):
+    """D1331: the alert and its basis are shown; what an alert is, the basis line's title."""
+    alerts = {"k": 0.5, "h": 4.0, "basis": {"points": 40, "flat": 0, "raised": 1, "since": "x"},
+              "rows": [{"rule": "sustained shift", "side": "above", "since": 700.0,
+                        "message": "a sustained shift above the forecast on system/WIP since t = 700"}]}
+    doc = result(alerts=alerts)
+    shown = run_panel(monitor.Page(slow_line(), tmp_path / "m.html", every=5.0).build(doc, []),
+                      live.stamp(doc["written"]) + 1.0)
+    assert shown["m-alerts"].startswith("Alert: a sustained shift above") and "40 readings" in shown["m-alerts"]
+    assert monitor.ALERTED not in shown["m-alerts"] and monitor.ALERTED in shown["titles"]["m-alerts"]
+
+
 def test_the_script_shows_the_scores_and_the_counters(tmp_path):
     page = monitor.Page(slow_line(), tmp_path / "m.html", every=5.0)
     doc = result(scores=SCORES, view={"approximate": False, "wip": 3, "counters": COUNTERS})
     shown = run_panel(page.build(doc, []), live.stamp(doc["written"]) + 1.0)
     assert shown["m-scores"].startswith("12 forecasts, 40 readings scored, 3 missed, 2 not compared")
-    assert monitor.SCORED in shown["m-scores"]
+    assert monitor.SCORED.split(". ")[0] + "." in shown["m-scores"] and monitor.SCORED in shown["titles"]["m-scores"]
     assert "|WIP|10|12|0|0|75% *|-0.5|1.25|0.2" in shown["m-score-rows"]
     assert "block/Drill/out|60|0|3|2||-|-|-" in shown["m-score-rows"]
     assert "Not compared|Coverage" in shown["m-score-rows"]
-    assert shown["m-counted"] == monitor.COUNTED and "Drill|41|12.5|1" in shown["m-counters"]
+    assert monitor.COUNTED.startswith(shown["m-counted"]) and shown["titles"]["m-counted"] == monitor.COUNTED and "Drill|41|12.5|1" in shown["m-counters"]
     # No counter: the section is hidden. No score: its reason.
     bare = run_panel(page.build(result(scores={"rows": [], "reason": "none_due"}), []),
                      live.stamp(doc["written"]) + 1.0)
@@ -667,7 +697,8 @@ def test_an_italian_summary_and_its_event_lines_are_italian_and_english_is_as_it
         assert [word for word in _ENGLISH if word in italian] == [], (name, italian)
     english = monitor.summary(result(scores=SCORES, alerts=_WORDED["no_alert"]["alerts"]))
     assert english["forecast"]["lines"][:2] == [
-        "Status: ok", "From t = 700 minutes (2026-10-10T11:40:00+00:00), 50 replications over 60 minutes, "
+        "Status: ok", f"From t = 700 minutes ({pagetext.clock(live.stamp('2026-10-10T11:40:00+00:00'))}), "
+                      "50 replications over 60 minutes, "
                       "seed 7, state ssssssssssss."]
     assert english["alerts"]["lines"][:2] == [
         "No alert: no compared series shows a sustained shift (k = 0.5, h = 4).",
@@ -680,9 +711,9 @@ def test_an_italian_summary_and_its_event_lines_are_italian_and_english_is_as_it
     assert _events(None) == ["an item entered at c", "an item moved from c to p", "an item back at q",
                              "an item in a: x to y", "an item left from c", "R down", "R up", "R capacity 2.5",
                              "R blocked", "R no longer blocked", "source plc: live", "forecast: ok",
-                             "source plc: live to down", "forecast: refused (E_Y)"]
+                             "source plc: live to down", ["forecast: refused", "forecast: refused (E_Y)"]]
     assert _events("it") == ["un pezzo \u00e8 entrato in c", "un pezzo \u00e8 passato da c a p",
                              "un pezzo \u00e8 tornato in q", "un pezzo in a: da x a y", "un pezzo \u00e8 uscito da c",
                              "R guasto", "R di nuovo in funzione", "R: capacit\u00e0 2,5", "R bloccato",
                              "R non pi\u00f9 bloccato", "fonte plc: attiva", "previsione: ok",
-                             "fonte plc: da attiva a non raggiungibile", "previsione: rifiutata (E_Y)"]
+                             "fonte plc: da attiva a non raggiungibile", ["previsione: rifiutata", "previsione: rifiutata (E_Y)"]]

@@ -35,7 +35,9 @@ from pathlib import Path
 
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.blocks.create import ARRIVAL_MODES
+from nagasim.core.blocks.transfer_piece import MECHANISMS as TRANSFER_MECHANISMS
 from nagasim.core.calendar import WEEKDAYS
+from nagasim.core.conveyor_types import TYPES as CONVEYOR_TYPES
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 from nagasim.core.resource_manager import DISCIPLINES, ENERGY_STATES, SELECTION_RULES
 from nagasim.core.schedules import SCHEDULE_KINDS
@@ -53,6 +55,7 @@ from nagasim.core.stats import RECORD_KINDS
 from nagasim.core.conversions import DEFAULT_STEPS, DEFAULT_TAIL
 from nagasim.core.levels import DEFAULT_BLEND_TOLERANCE, SD_METHODS, THRESHOLD_DIRECTIONS
 from nagasim.core.tables import LOOKUP_MODES
+from nagasim.core.routing import KINDS as ROUTE_KINDS
 from nagasim.core.timeseries_inputs import BEYOND_MODES, INTERPOLATIONS
 from nagasim.core.timeunits import LENGTH_UNITS, SPEED_PATTERN, UNITS, unit_choices
 
@@ -119,13 +122,93 @@ def _param_schema(param, unit_quantity: str | None = None) -> dict:
                "description": param.description or "Name of a registered distribution."}
     elif param.name == "dist_params":
         out = {"$ref": "#/$defs/dist_params"}
+    elif param.name == "zones" and param.type is dict:      # CONVEYOR's (D1356)
+        out = {"type": "object",
+               "properties": {
+                   "count": {"type": "integer", "minimum": 1,
+                             "description": "Zones of equal length, zone 1 at the exit."},
+                   "release_delay": {"type": "number", "minimum": 0, "default": 0,
+                                     "description": "A zone's restart delay per zone from "
+                                                    "the exit, in `time_unit`."},
+                   "time_unit": _time_unit("Unit of `release_delay`: \"base\" (the "
+                                           "model's) or one of seconds/minutes/hours/days.")},
+               # {} is the default (no zones); a delay or unit needs its count
+               "dependentRequired": {"release_delay": ["count"], "time_unit": ["count"]},
+               "additionalProperties": False}
+    elif param.name == "exits" and param.type is list:      # CONVEYOR_TRANSFER's (A8)
+        out = {"type": "array",
+               "items": {"type": "object",
+                         "properties": {
+                             "port": {"type": "string", "minLength": 1,
+                                      "description": "The exit's name; a link out of the "
+                                                     "module gives it as its source_port."},
+                             "angle": {"type": "number",
+                                       "description": "Degrees from the entry heading, "
+                                                      "clockwise on screen: 0 straight on, "
+                                                      "90 or -90 to a side."}},
+                         "required": ["port", "angle"], "additionalProperties": False}}
+    elif param.name == "mechanism" and param.type is str:   # CONVEYOR_TRANSFER's (A8)
+        out = {"type": "string", "enum": list(TRANSFER_MECHANISMS)}
+    elif param.name == "rule" and param.type is dict:       # a routing rule (D1358, D1359)
+        out = {"$ref": "#/$defs/route_rule"}
+    elif param.name == "diverts" and param.type is list:    # CONVEYOR's (D851, A7)
+        # R38: the routing keys of a divert item; its other keys stay with the validator
+        out = {"type": "array",
+               "items": {"type": "object",
+                         "properties": {
+                             "rule": {"$ref": "#/$defs/route_rule"},
+                             "rule_group": {"type": "string", "minLength": 1,
+                                            "description": "The diverts that share one rule "
+                                                           "name the same group."},
+                             "angle": {"type": "number", "exclusiveMinimum": 0,
+                                       "exclusiveMaximum": 180, "default": 90,
+                                       "description": "Degrees from the belt's travel to "
+                                                      "the exit port, on its side: 90 "
+                                                      "square, 45 leaning downstream."}}}}
+    elif param.name == "type" and param.type is str:        # CONVEYOR's, the only one (D1355)
+        out = {"type": "string", "enum": ["", *CONVEYOR_TYPES]}
+    elif param.name == "release" and param.type is dict:    # CONVEYOR's (D1357)
+        def length(text):
+            return {"type": "number", "minimum": 0,
+                    "description": f"{text}, in the unit of the belt's `length`."}
+        gap = length("Free length from the last part's tail to the next part's front")
+        out = {"type": "object", "maxProperties": 1,
+               "properties": {
+                   "metering": {"type": "object", "minProperties": 1, "maxProperties": 1,
+                                "properties": {
+                                    "gap": gap,
+                                    "interval": length("Front-to-front distance, never "
+                                                       "less than the last part's length "
+                                                       "on the belt")},
+                                "additionalProperties": False},
+                   "singulation": {"type": "object", "properties": {"gap": gap},
+                                   "required": ["gap"], "additionalProperties": False},
+                   "slug": {"type": "object",
+                            "properties": {
+                                "count": {"type": "integer", "minimum": 1,
+                                          "description": "Parts queued before the end lets "
+                                                         "them go."},
+                                "timeout": {"type": "number", "minimum": 0,
+                                            "description": "Longest hold since the first "
+                                                           "part stood at the end, in "
+                                                           "`time_unit`."},
+                                "time_unit": _time_unit("Unit of `timeout`: \"base\" (the "
+                                                        "model's) or one of "
+                                                        "seconds/minutes/hours/days.")},
+                            "required": ["count", "timeout"], "additionalProperties": False}},
+               "additionalProperties": False}
     elif {"number", "integer"} & set(kinds):
         number = {"type": "number" if "number" in kinds else "integer"}
         if param.min is not None:
             number["exclusiveMinimum" if param.min_exclusive else "minimum"] = param.min
         if param.max is not None:
             number["maximum"] = param.max
-        out = {"anyOf": [number, {"type": "string"}]} if "expression" in kinds else number
+        if "expression" in kinds:
+            out = {"anyOf": [number, {"type": "string"}]}
+        elif param.default == "":       # empty = the block's own default (robot "approach")
+            out = {"anyOf": [number, {"const": ""}]}
+        else:
+            out = number
     else:
         # `object` is "any JSON value" (SEND's `to`: an expression or an object).
         out = {} if param.type is object else {"type": json_type}
@@ -181,6 +264,12 @@ def _block_variant(type_name: str, spec) -> dict:
                                                "Layout view only -- the schematic is never "
                                                "rotated. An asset's own network nodes are stored "
                                                "already turned."},
+            "asset_3d": {"type": "string", "pattern": "^[a-z0-9_]+/[a-z0-9_]+$",
+                         "description": "The library mesh the 3D view draws for this block, "
+                                        "written \"library/asset\" (for example "
+                                        "\"automation/irb6700\"). Display only: a run never "
+                                        "reads it. Absent means the view draws its own "
+                                        "default shape."},
             "label_offset": {"$ref": "#/$defs/point",
                              "description": "Where the block's NAME label was dragged to "
                                             ", in scene units from its default "
@@ -225,6 +314,13 @@ def _block_variant(type_name: str, spec) -> dict:
                                          "slots the run counts the arrivals that find them "
                                          "full (the slot_summary frame)."},
             "locals": _LOCALS,
+            # D1343: written by flattening, like `locals`.
+            "instance_place": {"type": "array", "items": {"type": "number"}, "minItems": 3,
+                               "maxItems": 3,
+                               "description": "Written when a model is flattened, never by hand: "
+                                              "[x, y, rotation] of the placed asset instance the "
+                                              "block came from, on the floor plan; one written by "
+                                              "hand is ignored."},
             "params": {"type": "object", "properties": properties, "required": required,
                        "additionalProperties": False},
         },
@@ -282,6 +378,26 @@ _ELEMENTS = {"type": "object", "additionalProperties": {"type": ["string", "numb
 def _defs() -> dict:
     return {
         "point": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+        # A routing rule (D1358, D1359): a Rule-mode DECIDE's, a CONVEYOR_TRANSFER's and a
+        # CONVEYOR divert's, written once (R38)
+        "route_rule": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": list(ROUTE_KINDS),
+                         "description": "How the exit is picked."},
+                "exits": {"type": "array", "items": {"type": "string", "minLength": 1},
+                          "description": "One name per exit, in exit order; \"name:target\" "
+                                         "names the CONVEYOR a part counts as under way to. "
+                                         "Empty: the exits' own names."},
+                "conditions": {"type": "array", "items": {"type": "string"},
+                               "description": "For \"condition\": one expression per exit, or "
+                                              "one fewer (the last exit is the ELSE)."},
+                "limit": {"type": "integer", "minimum": 0,
+                          "description": "Parts under way to one exit at most; 0: no limit."},
+                "attribute": {"type": "string",
+                              "description": "For \"attribute\": the entity attribute whose "
+                                             "value names the exit."}},
+            "additionalProperties": False},
         "structural_argument": {
             "type": "object",
             "description": "Inside a submodel definition only: bind this param to the instance's "
@@ -327,17 +443,25 @@ def _defs() -> dict:
                 "source": {"type": "string", "description": "Name of the source block."},
                 "target": {"type": "string", "description": "Name of the target block."},
                 "delay": {"anyOf": [{"$ref": "#/$defs/duration"}, {"type": "null"}],
-                          "description": "Optional transfer delay on this link."},
+                          "description": "Optional transfer delay on this link; with a capacity, "
+                                         "the time a part spends in an area link."},
                 # A number too (#1771): a plugin block's builder call may name its exit by
                 # index (`source_port=1`); only a SUBMODEL instance's port is resolved.
                 "source_port": {"type": ["string", "integer", "null"],
                                 "description": "Out port: a SUBMODEL instance's port name (or a "
-                                               "whole number, matched as its text); other blocks "
-                                               "branch by link order and ignore it."},
+                                               "whole number, matched as its text); a CONVEYOR's "
+                                               "exit, \"out\" (its end) or \"d<k>\" (divert k); "
+                                               "other blocks branch by link order and ignore it."},
                 "target_port": {"type": ["string", "integer", "null"],
                                 "description": "In port: a SUBMODEL instance's port name (or a "
-                                               "whole number, matched as its text); other blocks "
-                                               "ignore it."},
+                                               "whole number, matched as its text), or a "
+                                               "CONVEYOR's \"in\"; other blocks ignore it."},
+                # D1369, D1391: an area link is a delay with a capacity
+                "capacity": {"type": "integer", "minimum": 0, "default": 0,
+                             "description": "Parts the link holds at once, 0 for no limit. A "
+                                            "part keeps its place until the target takes it, "
+                                            "so a full link holds the block feeding it. Read "
+                                            "only on a link with a delay."},
             },
             "required": ["source", "target"],
             "additionalProperties": False,
@@ -392,6 +516,13 @@ def _defs() -> dict:
                             "description": "Inline SVG token (24 x 24 artboard), usually copied "
                                            "from a library's entity preset; checked by "
                                            "core/svgsafe before it is drawn."},
+                "size": {"type": "object",
+                         "description": "Item size on a conveyor, in the model's length unit "
+                                        "(simulation.length_unit); on a typed belt an item "
+                                        "takes ceil((length + gap) / cell) cells.",
+                         "properties": {k: {"type": "number", "exclusiveMinimum": 0}
+                                        for k in ("length", "width", "height")},
+                         "additionalProperties": False},
                 "holding_cost": {
                                  "description": "WIP cost per entity per base time unit."},
                 "holding_cost_time_unit": _unit_schema("time", "Unit `holding_cost` is per."),
@@ -1843,6 +1974,170 @@ def _defs() -> dict:
             "required": ["name", "speed", "accel"],
             "additionalProperties": False,
         },
+        # P1 robotics (D1342, D1343): the chain, its limits and the tool live here, in the
+        # model; the 3D rig is derived from it.
+        "robot": {
+            "type": "object",
+            "description": "A robot type: a structure with its dimensions, or a joint chain, with "
+                           "each actuated axis's range, speed and acceleration, and the tool "
+                           "frame. A MOTION block names it by `robot`. Frame: Z up, X forward; "
+                           "degrees, metres and seconds throughout.",
+            "properties": {
+                "name": {"type": "string", "minLength": 1,
+                         "description": "The robot's name, the `robot` of a MOTION block."},
+                "description": {"type": "string",
+                                "description": "What the robot is; the run does not read it."},
+                "structure": {"type": "string",
+                              "enum": ["serial6", "palletizer4", "scara4", "delta", "gantry",
+                                       "serial7", "chain"],
+                              "description": "The structure template, or \"chain\" for a robot "
+                                             "given by its joints."},
+                "params": {"type": "object", "additionalProperties": {"type": "number"},
+                           "description": "The template's dimensions in metres (a template "
+                                          "names the ones it needs)."},
+                "joints": {"type": "array",
+                           "description": "With structure \"chain\" only: the serial joints at the "
+                                          "zero pose, each {name, type: revolute|prismatic, origin "
+                                          "[m], axis, parent?, coupled?: {axis: factor}, passive?}.",
+                           "items": {"type": "object"}},
+                "axes": {"type": "array",
+                         "description": "One per actuated axis, in the template's order.",
+                         "items": {"type": "object",
+                                   "properties": {
+                                       "name": {"type": "string"},
+                                       "range": {"type": "array", "items": {"type": "number"},
+                                                 "minItems": 2, "maxItems": 2,
+                                                 "description": "[lo, hi]: degrees, or metres "
+                                                                "for a prismatic axis."},
+                                       "speed": {"type": "number", "exclusiveMinimum": 0,
+                                                 "description": "deg/s, or m/s for a prismatic "
+                                                                "axis."},
+                                       "accel": {"type": "number", "exclusiveMinimum": 0,
+                                                 "description": "deg/s^2, or m/s^2 for a "
+                                                                "prismatic axis."}},
+                                   "required": ["range", "speed", "accel"],
+                                   "additionalProperties": False}},
+                "tool": {"type": "object",
+                         "description": "The tool frame (TCP) from the flange.",
+                         "properties": {"xyz": {"type": "array", "items": {"type": "number"},
+                                                "minItems": 3, "maxItems": 3,
+                                                "description": "Metres."},
+                                        "rpy_deg": {"type": "array", "items": {"type": "number"},
+                                                    "minItems": 3, "maxItems": 3,
+                                                    "description": "Roll, pitch, yaw in degrees."}},
+                         "additionalProperties": False},
+                "home": {"type": "array", "items": {"type": "number"},
+                         "description": "The rest pose, one value per axis; all zeros clipped "
+                                        "into range when absent."},
+                "reach_m": {"type": ["number", "null"],
+                            "description": "The datasheet reach in metres, for comparison."},
+                "payload_max": {"type": ["number", "null"],
+                                "description": "The rated payload; null or absent = no payload "
+                                               "derating."},
+                "payload_unit": _unit_schema("mass", "Unit `payload_max` is in.", "kg"),
+                "payload_derate": {"type": ["number", "null"], "default": 1.0,
+                                   "description": "Axis speed fraction at payload_max, linear "
+                                                  "from 1.0 at 0 kg."},
+                "tcp_speed": {"type": ["number", "null"],
+                              "description": "Top tool speed along a straight-line move."},
+                "speed_unit": _unit_schema("speed", "Unit `tcp_speed` is in.", "m/s"),
+                "tcp_accel": {"type": ["number", "null"],
+                              "description": "Top tool acceleration along a straight-line move, "
+                                             "m/s^2."},
+                "approximate": {"type": "boolean",
+                                "description": "True when the values are read from a public "
+                                               "datasheet rather than the maker's model."},
+                "source": {"type": "string", "description": "Where the values come from."},
+            },
+            "required": ["name", "structure", "axes"],
+            "additionalProperties": False,
+        },
+        # Palletizing (D1346): a carrier BATCH loads a pallet by it, a keep SEPARATE unloads it.
+        "pallet_pattern": {
+            "type": "object",
+            "description": "Where each item of a pallet goes: the pallet, the nominal item, named "
+                           "layer layouts, the order they repeat up the stack and the limits that "
+                           "close a pallet. A carrier BATCH names it by `pattern`. Lengths are in "
+                           "the model's length unit, weights in kg; a slot's x and y are the "
+                           "item's centre from the pallet's centre, x along the pallet's length, "
+                           "and its rotation is in degrees, clockwise from above, with the item's "
+                           "length along x at 0.",
+            "properties": {
+                "name": {"type": "string", "minLength": 1,
+                         "description": "The pattern's name, the `pattern` of a carrier BATCH."},
+                "description": {"type": "string",
+                                "description": "What the pattern is; the run does not read it."},
+                "pallet": {"type": "object",
+                           "description": "The pallet's footprint, deck height and tare.",
+                           "properties": {"length": {"type": "number",
+                                                     "description": "Along x."},
+                                          "width": {"type": "number",
+                                                    "description": "Along y."},
+                                          "deck_height": {"type": "number", "default": 0,
+                                                          "description": "Height of the deck "
+                                                                         "the first layer "
+                                                                         "stands on."},
+                                          "tare_kg": {"type": "number", "default": 0,
+                                                      "description": "The empty pallet's "
+                                                                     "weight."}},
+                           "required": ["length", "width"], "additionalProperties": False},
+                "item": {"type": "object",
+                         "description": "The nominal item, used by the checks and the "
+                                        "generator.",
+                         "properties": {"length": {"type": "number",
+                                                   "description": "Along x at rotation 0."},
+                                        "width": {"type": "number",
+                                                  "description": "Along y at rotation 0."},
+                                        "height": {"type": "number",
+                                                   "description": "One layer's height."},
+                                        "weight_kg": {"type": ["number", "null"],
+                                                      "description": "Used when an item has no "
+                                                                     "`weight` attribute."}},
+                         "required": ["length", "width", "height"], "additionalProperties": False},
+                "overhang": {"type": ["number", "null"], "default": 0,
+                             "description": "How far an item may pass the pallet's edge."},
+                "layers": {"type": "object",
+                           "description": "Layer layouts by name, each a list of slots in load "
+                                          "order.",
+                           "additionalProperties": {
+                               "type": "array",
+                               "items": {"type": "object",
+                                         "properties": {"x": {"type": "number"},
+                                                        "y": {"type": "number"},
+                                                        "rotation": {"type": "number",
+                                                                     "default": 0}},
+                                         "required": ["x", "y"], "additionalProperties": False}}},
+                "stack": {"type": "array",
+                          "description": "The layers from the deck up, repeated until a limit "
+                                         "is reached.",
+                          "items": {"type": "object",
+                                    "properties": {"layer": {"type": "string"},
+                                                   "transform": {"type": "string",
+                                                                 "enum": ["rotate180", "mirror_x",
+                                                                          "mirror_y"]}},
+                                    "required": ["layer"], "additionalProperties": False}},
+                "sheet": {"type": ["object", "null"],
+                          "description": "A sheet between layers: its thickness and the time "
+                                         "to place it (in the model's time unit), added before "
+                                         "each layer after the first.",
+                          "properties": {"thickness": {"type": "number", "default": 0},
+                                         "time": {"type": "number", "default": 0}},
+                          "additionalProperties": False},
+                "limits": {"type": "object",
+                           "description": "The first reached closes the pallet; null = no "
+                                          "limit. One of layers, items or height must be set.",
+                           "properties": {"layers": {"type": ["integer", "null"]},
+                                          "items": {"type": ["integer", "null"]},
+                                          "weight_kg": {"type": ["number", "null"],
+                                                        "description": "Tare plus the items."},
+                                          "height": {"type": ["number", "null"],
+                                                     "description": "From the floor to the top "
+                                                                    "of the stack."}},
+                           "additionalProperties": False},
+            },
+            "required": ["name", "pallet", "item", "layers", "stack", "limits"],
+            "additionalProperties": False,
+        },
         "zone": {
             "type": "object",
             "description": "A safety zone: a network node and a radius that a MOTION "
@@ -2471,6 +2766,39 @@ def _defs() -> dict:
                 "blocks": {"type": "array", "items": {"$ref": "#/$defs/block"}},
                 "links": {"type": "array", "items": {"$ref": "#/$defs/link"}},
                 "annotations": {"type": "array", "items": {"$ref": "#/$defs/annotation"}},
+                "code": {
+                    "type": "object",
+                    "description": "The item's own Python logic: a class with event hooks "
+                                   "(on_entry, on_exit, on_timer, on_state, on_signal) that "
+                                   "reads the instance's parameters. It runs only after a "
+                                   "person has trusted this exact code on their computer.",
+                    "properties": {
+                        "class": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                                  "description": "The class in `source` whose hooks run."},
+                        "source": {"type": "string", "maxLength": 200000,
+                                   "description": "The Python source of the class."},
+                        "timer": {"anyOf": [{"type": "number", "exclusiveMinimum": 0},
+                                            {"type": "null"}],
+                                  "description": "How often on_timer runs, in the model's "
+                                                 "time unit; null for no timer."},
+                        "watch": {"type": "array", "items": {"type": "string", "minLength": 1},
+                                  "description": "Model variables whose writes call on_state."},
+                        "signals": {"type": "array", "items": {"type": "string", "minLength": 1},
+                                    "description": "Signals that call on_signal; a `$name` is "
+                                                   "per instance."},
+                        "placed": {
+                            "type": "object",
+                            "description": "Written by library placing: who the library names "
+                                           "as author, and the code's fingerprint when placed, "
+                                           "to tell a later edit. Never read for trust.",
+                            "properties": {"author": {"type": "string"},
+                                           "fingerprint": {"type": "string"}},
+                            "additionalProperties": False,
+                        },
+                    },
+                    "required": ["class", "source"],
+                    "additionalProperties": False,
+                },
             },
             "additionalProperties": False,
         },
@@ -2870,6 +3198,12 @@ def _defs() -> dict:
                                                ". False returns the three flat log "
                                                "frames empty and leaves every summary statistic "
                                                "exact -- what a big study wants."},
+                "strict_checks": {"type": "boolean", "default": False,
+                                  "description": "Stop the run on a conveyor check: an open "
+                                                 "port, overlapping or unsnapped pieces, a part "
+                                                 "handed to nothing or routed against its rule "
+                                                 "become errors with the same code. Off: "
+                                                 "they are warnings."},
                 "entity_waits": {"type": "boolean", "default": False,
                                  "description": "Sum each entity's queue time over every "
                                                 "seize into a \"Total Wait\" column of the "
@@ -3121,7 +3455,10 @@ _SECTION_PATHS = {"entities": ("entity_type",), "links": ("link",), "simulation"
                   "levels.storage": ("level", "storage"), "flows.grid": ("flow", "grid"),
                   "dispatch": ("dispatch",),
                   "initial_state.entities": ("initial_state", "entities", "items"),
-                  "agent_types.tick": ("agent_tick",), "populations.tick": ("agent_tick",)}
+                  "agent_types.tick": ("agent_tick",), "populations.tick": ("agent_tick",),
+                  "entities.size": ("entity_type", "size"),
+                  **{f"pallet_patterns.{part}": ("pallet_pattern", part)
+                     for part in ("pallet", "item", "sheet", "limits")}}
 
 
 def _section_props(defs: dict, key: str) -> dict:

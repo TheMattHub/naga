@@ -265,8 +265,10 @@ def test_tool_names_are_snake_case_verbs():
              "debug",           # debug_run, debug_inspect: the names the 7.5 spec uses
              "study",          # the study_* tools
              "find",            # find_tool
+             "robot",           # robot_spec_schema, robot_from_datasheet, robot_from_mesh: the names the robotics plan uses
              "what",            # what_if: the question the spec names
              "check",           # check_draft
+             "generate",        # generate_pallet_layer: the name the palletizing plan uses
              "explain",         # explain_kpi
              "input",           # input_uncertainty: the name the spec uses
              "view",            # view_model, view_3d: a picture of the model

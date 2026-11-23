@@ -43,7 +43,8 @@ from nagasim.settings.userpaths import user_data_dir
 log = logging.getLogger(__name__)
 
 __all__ = ["KINDS", "TrustedEntry", "StoreUnreadable", "store_path", "store_problem", "entries", "find",
-           "add", "remove", "set_enabled", "enabled_paths", "is_trusted", "folder_files", "code_files", "digest", "changed", "BytesLoader"]
+           "add", "remove", "set_enabled", "enabled_paths", "is_trusted", "folder_files", "code_files", "digest", "changed", "BytesLoader",
+           "atomic_write_text"]
 
 KINDS = ("plugin_folder", "policy")
 _ADDED_BY = ("user", "assistant")
@@ -166,12 +167,17 @@ def _save(found: list[TrustedEntry]) -> None:
     if problem:
         raise StoreUnreadable(f"the trusted code store {path} does not read ({problem}); repair or remove "
                               "it, nothing was changed")
+    atomic_write_text(path, json.dumps([asdict(e) for e in found], indent=2))
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write *text* to *path* whole or not at all: both trust stores save through here."""
     path.parent.mkdir(parents=True, exist_ok=True)
     # a temporary file beside the store, then one replace: a write cut short leaves the old store whole
-    fd, tmp = tempfile.mkstemp(prefix=_FILE + ".", suffix=".tmp", dir=path.parent)
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps([asdict(e) for e in found], indent=2))
+            fh.write(text)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

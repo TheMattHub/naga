@@ -32,11 +32,13 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_LEVEL_NAME", "level: name must not be empty",
-                                    f"{at}/name", hint="give every level a unique name"))
+                                    f"{at}/name", hint="give every level a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in levels:
             problems.append(problem("E_LEVEL_NAME", f"duplicate level name: {name}",
-                                    f"{at}/name", hint="rename one of the two levels"))
+                                    f"{at}/name", hint="rename one of the two levels",
+                                    fields={"case": "twice", "name": name}))
         levels.add(name)
         if all(entry.get(key) is None
                for key in ("min", "capacity", "max_inflow", "max_outflow")) and "min" in entry:
@@ -53,11 +55,13 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
             if value is not None and not _is_number(value):
                 problems.append(problem("E_LEVEL_BOUNDS",
                                         f"level '{name}': \"{field}\" must be a number",
-                                        f"{at}/{field}", hint="leave it out for no limit"))
+                                        f"{at}/{field}", hint="leave it out for no limit",
+                                        fields={"case": "a5_number", "name": name}))
         if capacity is not None and _is_number(capacity) and capacity < minimum:
             problems.append(problem("E_LEVEL_BOUNDS",
                                     f"level '{name}': capacity {capacity} is below min {minimum}",
-                                    f"{at}/capacity", hint="capacity is the upper bound"))
+                                    f"{at}/capacity", hint="capacity is the upper bound",
+                                    fields={"case": "a5_below", "name": name}))
         elif _is_number(initial) and (initial < minimum
                                       or (capacity is not None and _is_number(capacity)
                                           and initial > capacity)):
@@ -65,9 +69,10 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
                 "E_LEVEL_BOUNDS",
                 f"level '{name}': initial {initial} is outside [{minimum}, "
                 f"{'inf' if capacity is None else capacity}]",
-                f"{at}/initial", hint="a run starts inside the level's own bounds"))
+                f"{at}/initial", hint="a run starts inside the level's own bounds",
+                fields={"case": "a5_outside", "name": name}))
         _check_thresholds(problems, f"level '{name}'", entry.get("thresholds"),
-                          f"{at}/thresholds", "E_LEVEL_THRESHOLD")
+                          f"{at}/thresholds", "E_LEVEL_THRESHOLD", fields={"name": name})
         _check_components(problems, name, entry, at)
 
     flows: set = set()
@@ -76,11 +81,13 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_FLOW_NAME", "flow: name must not be empty",
-                                    f"{at}/name", hint="give every flow a unique name"))
+                                    f"{at}/name", hint="give every flow a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in flows:
             problems.append(problem("E_FLOW_NAME", f"duplicate flow name: {name}",
-                                    f"{at}/name", hint="rename one of the two flows"))
+                                    f"{at}/name", hint="rename one of the two flows",
+                                    fields={"case": "twice", "name": name}))
         flows.add(name)
         for side in ("from", "to"):
             end = entry.get(side)
@@ -89,11 +96,13 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
                     "E_FLOW_LEVEL", f"flow '{name}': \"{side}\" names no level: {end}",
                     f"{at}/{side}",
                     hint=f"declared levels: {', '.join(sorted(levels)) or '(none)'}; "
-                         f"leave it out for a source or sink outside the model"))
+                         f"leave it out for a source or sink outside the model",
+                    fields={"case": "one", "name": name, "side": side, "end": end}))
         biflow = entry.get("biflow", False)
         if not isinstance(biflow, bool):
             problems.append(problem("E_FLOW_BIFLOW", f"flow '{name}': \"biflow\" must be true "
-                                    f"or false", f"{at}/biflow"))
+                                    f"or false", f"{at}/biflow",
+                                    fields={"case": "type", "name": name}))
         elif biflow:
             bounded = [str(end) for end in (entry.get("from"), entry.get("to"))
                        if end not in (None, "") and str(end) in levels
@@ -105,37 +114,43 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
                     f"{', '.join(bounded)} has a bound",
                     f"{at}/biflow",
                     hint="give that level \"min\": null and no capacity or power limit, or "
-                         "split the flow into two one-way flows"))
+                         "split the flow into two one-way flows",
+                    fields={"case": "bounded", "name": name}))
         if entry.get("tag") is not None and not isinstance(entry.get("tag"), str):
             problems.append(problem("E_FLOW_TAG", f"flow '{name}': \"tag\" must be a string",
                                     f"{at}/tag",
-                                    hint="flows sharing a tag are summed by FLOWSUM(\"tag\")"))
+                                    hint="flows sharing a tag are summed by FLOWSUM(\"tag\")",
+                                    fields={"case": "tag", "name": name}))
         if entry.get("priority") is not None and not _is_number(entry.get("priority")):
             problems.append(problem("E_FLOW_TAG", f"flow '{name}': \"priority\" must be a number",
                                     f"{at}/priority",
                                     hint="lower dispatches first; FLOWSUM(\"tag\", p) sums the "
-                                         "flows ahead of priority p"))
+                                         "flows ahead of priority p",
+                                    fields={"case": "priority", "name": name}))
         peak_price = entry.get("peak_price")
         if peak_price is not None and not _is_number(peak_price):
             problems.append(problem("E_FLOW_PEAK_PRICE",
                                     f"flow '{name}': \"peak_price\" must be a number",
                                     f"{at}/peak_price",
                                     hint="money per unit of Peak Rate, billed once at the end "
-                                         "of the run; a time-varying tariff is \"price\""))
+                                         "of the run; a time-varying tariff is \"price\"",
+                                    fields={"case": "one", "name": name}))
         efficiency = entry.get("efficiency", 1.0)
         if efficiency is not None and (not _is_number(efficiency)
                                        or not 0 < float(efficiency) <= 1):
             problems.append(problem("E_FLOW_EFFICIENCY",
                                     f"flow '{name}': efficiency must be in (0, 1]",
                                     f"{at}/efficiency",
-                                    hint="out = in * efficiency; 1 means lossless"))
+                                    hint="out = in * efficiency; 1 means lossless",
+                                    fields={"case": "one", "name": name}))
         min_rate = entry.get("min_rate")
         if min_rate is not None and (not _is_number(min_rate) or float(min_rate) < 0):
             problems.append(problem("E_FLOW_MIN_RATE",
                                     f"flow '{name}': \"min_rate\" must be a number >= 0",
                                     f"{at}/min_rate",
                                     hint="semi-continuous equipment: below this rate the flow is "
-                                         "0, never something in between"))
+                                         "0, never something in between",
+                                    fields={"case": "one", "name": name}))
         components = entry.get("components")
         if components is not None and not isinstance(components, dict):
             problems.append(problem(
@@ -143,9 +158,10 @@ def validate_levels_structured(layout: dict) -> tuple[list, set, set]:
                 f"flow '{name}': \"components\" must be an object of component -> share",
                 f"{at}/components",
                 hint="{\"ch4\": 0.52} or {\"ch4\": \"FRACTION(\\\"Digester\\\", \\\"ch4\\\")\"}; "
-                     "leave it out to carry the source level's own blend"))
+                     "leave it out to carry the source level's own blend",
+                fields={"case": "one", "name": name}))
         _check_thresholds(problems, f"flow '{name}'", entry.get("thresholds"),
-                          f"{at}/thresholds", "E_FLOW_THRESHOLD")
+                          f"{at}/thresholds", "E_FLOW_THRESHOLD", fields={"name": name})
     _check_sd(problems, layout)
     _check_clock_rates(problems, layout)
     _check_conveyors(problems, layout)
@@ -189,7 +205,8 @@ def _check_rate_units(problems: list, layout: dict) -> None:
             "E_FLOW_TAG", f"flows tagged '{tag}' have different rate_time_units ({listed})",
             f"/flows/{odd}/rate_time_unit",
             hint=f"set the same \"rate_time_unit\" on every flow tagged '{tag}' (the Energy "
-                 f"library uses \"hours\")"))
+                 f"library uses \"hours\")",
+            fields={"case": "units", "tag": tag}))
 
     def check(text, own, who, at, constants=None):
         if own is None:
@@ -224,14 +241,16 @@ def _check_rate_units(problems: list, layout: dict) -> None:
                     "W_RATE_UNIT_UNCHECKED",
                     f"{who}: {call} reads a computed name, and those it may read are per "
                     f"different time units, so the read cannot be unit-checked", at,
-                    hint="write the name as a literal, or give every one the same time unit"))
+                    hint="write the name as a literal, or give every one the same time unit",
+                    fields={"case": "one", "who": who, "call": call}))
         for call, other in reads:
             if other is not None and other != own:
                 problems.append(problem(
                     "W_RATE_UNIT_READ",
                     f"{who}: {call} is per another time unit than this rate, and is read "
                     f"unconverted", at,
-                    hint="give both the same time unit, or convert in the expression"))
+                    hint="give both the same time unit, or convert in the expression",
+                    fields={"case": "one", "who": who, "call": call}))
 
     # #683: a 0.10.0 change notice. A model from 0.9.x whose rates are written per another
     # unit than the base one now prices, thresholds and reports them per that unit. A
@@ -248,7 +267,8 @@ def _check_rate_units(problems: list, layout: dict) -> None:
                 f"flow '{entry.get('name')}': since 0.10.0 this flow's peak_price/thresholds "
                 f"and reported rates are per {unit}, not per {base}; check the numbers",
                 f"/flows/{index}/rate_time_unit",
-                hint="a 0.9.x model gave them per the base time unit"))
+                hint="a 0.9.x model gave them per the base time unit",
+                fields={"case": "flow", "name": entry.get('name'), "unit": unit, "base": base}))
     for index, entry in enumerate(layout.get("conversions") or []):
         if isinstance(entry, dict) and "/" not in str(entry.get("name"))                 and conv_per.get(str(entry.get("name"))) not in (None, 1.0):
             problems.append(problem(
@@ -256,7 +276,8 @@ def _check_rate_units(problems: list, layout: dict) -> None:
                 f"conversion '{entry.get('name')}': since 0.10.0 its CONV() and reported "
                 f"rates are per {entry.get('time_unit')}, not per {base}; check the numbers",
                 f"/conversions/{index}/time_unit",
-                hint="a 0.9.x model gave them per the base time unit"))
+                hint="a 0.9.x model gave them per the base time unit",
+                fields={"case": "conv", "name": entry.get('name'), "unit": entry.get('time_unit'), "base": base}))
     for index, entry in enumerate(flows):
         check(entry.get("rate") or "0", flow_per[str(entry.get("name"))],
               f"flow '{entry.get('name')}'", f"/flows/{index}/rate", entry.get("locals"))
@@ -295,7 +316,8 @@ def _check_clock_rates(problems: list, layout: dict) -> None:
                 hint="a rate that switches on a timetable is exact read from a profile: "
                      "TS(\"name\") of a timeseries_inputs entry with interpolation \"step\" "
                      "and beyond \"repeat\". Otherwise add \"simulation\": {\"sd\": "
-                     "{\"dt\": ...}} (set_sd_settings): each switch is then late by up to dt"))
+                     "{\"dt\": ...}} (set_sd_settings): each switch is then late by up to dt",
+                fields={"case": "one", "name": entry.get('name', '')}))
 
 
 def _check_conveyors(problems: list, layout: dict) -> None:
@@ -314,7 +336,8 @@ def _check_conveyors(problems: list, layout: dict) -> None:
                     "E_CONVEYOR_WRITE", f"conveyor '{name}': a subscripted conveyor is not "
                     f"supported (its transit_time/capacity/in_limit/arrest are never rewritten "
                     f"per element)", f"/levels/{index}/dims",
-                    hint="give each element its own conveyor level instead of a \"dims\" array"))
+                    hint="give each element its own conveyor level instead of a \"dims\" array",
+                    fields={"case": "a5_dims", "name": name}))
             # DEVLOG #242: `build_level_system` drops these on a conveyor. A
             # min of 0 is kept quiet: the editor grid writes it, and it holds.
             ignored = [key for key in ("capacity", "min", "max_inflow", "max_outflow")
@@ -324,7 +347,8 @@ def _check_conveyors(problems: list, layout: dict) -> None:
                     "W_CONVEYOR_LEVEL_KEY", f"conveyor '{name}': "
                     f"{', '.join(ignored)} is ignored on a conveyor", f"/levels/{index}/{ignored[0]}",
                     hint="use conveyor.capacity (content) and conveyor.in_limit (inflow per "
-                         "time unit) instead"))
+                         "time unit) instead",
+                    fields={"case": "one", "name": name}))
     spec = (layout.get("simulation") or {}).get("sd")
     slats = {}      # belt -> slat count, for a literal transit only
     for name, (index, belt) in belts.items():
@@ -332,21 +356,25 @@ def _check_conveyors(problems: list, layout: dict) -> None:
         if not isinstance(belt, dict) or belt.get("transit_time") in (None, ""):
             problems.append(problem("E_CONVEYOR_SPEC", f"conveyor '{name}': needs a "
                                     f"\"transit_time\"", at,
-                                    hint="{\"transit_time\": 5} -- a number or an expression"))
+                                    hint="{\"transit_time\": 5} -- a number or an expression",
+                                    fields={"case": "transit", "name": name}))
             continue
         if belt.get("leak_kind", "linear") not in LEAK_KINDS:
             problems.append(problem("E_CONVEYOR_SPEC", f"conveyor '{name}': unknown leak_kind "
                                     f"'{belt.get('leak_kind')}'", f"{at}/leak_kind",
-                                    hint=f"use one of: {', '.join(LEAK_KINDS)}"))
+                                    hint=f"use one of: {', '.join(LEAK_KINDS)}",
+                                    fields={"case": "leak_kind", "name": name, "kind": belt.get('leak_kind')}))
         if not isinstance(spec, dict):
             problems.append(problem("E_CONVEYOR_GRID", f"conveyor '{name}': needs the "
                                     f"system-dynamics grid", at,
-                                    hint="add \"simulation\": {\"sd\": {\"dt\": 0.25}}"))
+                                    hint="add \"simulation\": {\"sd\": {\"dt\": 0.25}}",
+                                    fields={"case": "one", "name": name}))
             continue
         if spec.get("method", "euler") == "rk4":
             problems.append(problem("E_CONVEYOR_METHOD", f"conveyor '{name}': runs one slat per "
                                     f"DT, so it needs method \"euler\"", "/simulation/sd/method",
-                                    hint="use \"method\": \"euler\""))
+                                    hint="use \"method\": \"euler\"",
+                                    fields={"case": "one", "name": name}))
         transit, dt = belt.get("transit_time"), spec.get("dt")
         try:
             transit = float(transit)
@@ -358,7 +386,8 @@ def _check_conveyors(problems: list, layout: dict) -> None:
             problems.append(problem(
                 "W_CONVEYOR_TRANSIT", f"conveyor '{name}': transit_time {transit:g} is "
                 f"not a multiple of dt {dt:g}; the belt has round(T/dt) slats", f"{at}/transit_time",
-                hint="pick a dt that divides the transit time"))
+                hint="pick a dt that divides the transit time",
+                fields={"case": "one", "name": name}))
 
     primaries: dict = {name: [] for name in belts}
     for index, entry in enumerate(layout.get("flows") or []):
@@ -372,23 +401,27 @@ def _check_conveyors(problems: list, layout: dict) -> None:
                 problems.append(problem("E_CONVEYOR_LEAK", f"flow '{name}': a leak must flow out "
                                         f"of a conveyor", f"{at}/leak",
                                         hint="set \"from\" to a conveyor stock, or drop "
-                                             "\"leak\""))
+                                             "\"leak\"",
+                                        fields={"case": "nobelt", "name": name}))
             elif not isinstance(leak, dict) or leak.get("fraction") in (None, ""):
                 problems.append(problem("E_CONVEYOR_LEAK", f"flow '{name}': a leak needs a "
                                         f"\"fraction\"", f"{at}/leak",
-                                        hint="{\"fraction\": 0.1, \"zone\": [0, 1]}"))
+                                        hint="{\"fraction\": 0.1, \"zone\": [0, 1]}",
+                                        fields={"case": "fraction", "name": name}))
             elif not (isinstance(zone, (list, tuple)) and len(zone) == 2
                       and all(_is_number(z) for z in zone) and 0 <= zone[0] < zone[1] <= 1):
                 problems.append(problem("E_CONVEYOR_LEAK", f"flow '{name}': leak zone must be "
                                         f"[start, end] with 0 <= start < end <= 1",
                                         f"{at}/leak/zone",
-                                        hint="fractions of the belt from the inflowing side"))
+                                        hint="fractions of the belt from the inflowing side",
+                                        fields={"case": "zone", "name": name}))
             elif source in slats and (_half_up(zone[0] * slats[source])
                                       == _half_up(zone[1] * slats[source])):
                 problems.append(problem(
                     "W_CONVEYOR_ZONE", f"flow '{name}': leak zone {zone[0]:g}-{zone[1]:g} "
                     f"covers no slat of the {slats[source]}-slat belt, so nothing leaks",
-                    f"{at}/leak/zone", hint="widen the zone or use a smaller dt"))
+                    f"{at}/leak/zone", hint="widen the zone or use a smaller dt",
+                    fields={"case": "one", "name": name}))
         elif source in belts:
             primaries[source].append((index, entry))
     for name, found in primaries.items():
@@ -396,13 +429,15 @@ def _check_conveyors(problems: list, layout: dict) -> None:
             problems.append(problem(
                 "E_CONVEYOR_OUTFLOW", f"conveyor '{name}': needs exactly one primary outflow, "
                 f"has {len(found)}", f"/levels/{belts[name][0]}/conveyor",
-                hint="mark the other outflows as leaks with \"leak\": {\"fraction\": ...}"))
+                hint="mark the other outflows as leaks with \"leak\": {\"fraction\": ...}",
+                fields={"case": "count", "name": name, "n": len(found)}))
         for index, entry in found:
             if str(entry.get("rate") or "").strip():
                 problems.append(problem(
                     "E_CONVEYOR_OUTFLOW", f"flow '{entry.get('name', '')}': a conveyor's primary "
                     f"outflow is what leaves the belt and takes no rate", f"/flows/{index}/rate",
-                    hint="set \"rate\": \"\""))
+                    hint="set \"rate\": \"\"",
+                    fields={"case": "rate", "name": entry.get('name', '')}))
 
 
 def _check_sd(problems: list, layout: dict) -> None:
@@ -413,25 +448,30 @@ def _check_sd(problems: list, layout: dict) -> None:
     at = "/simulation/sd"
     hint = "{\"dt\": 0.25, \"method\": \"euler\"} -- dt in the model's base unit, > 0"
     if not isinstance(spec, dict):
-        problems.append(problem("E_SD_SETTINGS", "simulation.sd must be an object", at, hint=hint))
+        problems.append(problem("E_SD_SETTINGS", "simulation.sd must be an object", at, hint=hint,
+                                fields={"case": "object"}))
         return
     dt = spec.get("dt")
     if not _is_number(dt) or not dt > 0:
         problems.append(problem("E_SD_SETTINGS", "simulation.sd: \"dt\" must be a number > 0",
-                                f"{at}/dt", hint=hint))
+                                f"{at}/dt", hint=hint,
+                                fields={"case": "dt"}))
     method = spec.get("method", "euler")
     if method not in SD_METHODS:
         problems.append(problem("E_SD_SETTINGS", f"simulation.sd: unknown method '{method}'",
-                                f"{at}/method", hint=f"use one of: {', '.join(SD_METHODS)}"))
+                                f"{at}/method", hint=f"use one of: {', '.join(SD_METHODS)}",
+                                fields={"case": "method", "method": method}))
     unit = spec.get("time_unit", "base")
     if unit != "base" and unit not in UNITS:
         problems.append(problem("E_SD_SETTINGS", f"simulation.sd: unknown time_unit '{unit}'",
                                 f"{at}/time_unit",
-                                hint=f"use \"base\" or one of: {', '.join(UNITS)}"))
+                                hint=f"use \"base\" or one of: {', '.join(UNITS)}",
+                                fields={"case": "unit", "unit": unit}))
     unknown = sorted(set(spec) - {"dt", "method", "time_unit"})
     if unknown:
         problems.append(problem("E_SD_SETTINGS", f"simulation.sd: unknown key(s) "
-                                f"{', '.join(unknown)}", at, hint=hint))
+                                f"{', '.join(unknown)}", at, hint=hint,
+                                fields={"case": "keys", "unknown": ', '.join(unknown)}))
     if method != "rk4":
         return
     auxes = {}
@@ -462,33 +502,38 @@ def _check_sd(problems: list, layout: dict) -> None:
                 f"flow '{name}': RK4 re-evaluates a dynamic rate four times per step, so it "
                 f"cannot draw random numbers", f"/flows/{index}/rate",
                 hint="use \"method\": \"euler\", or move the draw into a variable an ASSIGN "
-                     "sets"))
+                     "sets",
+                fields={"case": "one", "name": name}))
         if _BUS_CALLS & calls:
             problems.append(problem(
                 "W_SD_RK4_BUS",
                 f"flow '{name}': RK4 stages ignore saturation, so FLOW()/FLOWSUM() "
                 f"read the rates of the step's start", f"/flows/{index}/rate",
-                hint="exact under Euler; under RK4 the read lags by one stage"))
+                hint="exact under Euler; under RK4 the read lags by one stage",
+                fields={"case": "one", "name": name}))
 
 
-def _check_thresholds(problems: list, who: str, thresholds, at: str, code: str) -> None:
+def _check_thresholds(problems: list, who: str, thresholds, at: str, code: str,
+                      fields=None) -> None:
     """A level's or a flow's threshold list (Bio-1 G3 added the flow half)."""
     for index, threshold in enumerate(thresholds or []):
         t_at = f"{at}/{index}"
         if not isinstance(threshold, dict) or not _is_number(threshold.get("value")):
             problems.append(problem(code, f"{who}: a threshold needs a numeric \"value\"", t_at,
                                     hint="{\"value\": 20, \"direction\": \"falling\", "
-                                         "\"signal\": \"low\"}"))
+                                         "\"signal\": \"low\"}", fields=fields))
             continue
         if threshold.get("direction", "falling") not in THRESHOLD_DIRECTIONS:
             problems.append(problem(
                 code, f"{who}: unknown threshold direction '{threshold.get('direction')}'",
-                f"{t_at}/direction", hint=f"use one of: {', '.join(THRESHOLD_DIRECTIONS)}"))
+                f"{t_at}/direction", hint=f"use one of: {', '.join(THRESHOLD_DIRECTIONS)}",
+                fields=fields))
         cost = threshold.get("cost")
         if cost is not None and not _is_number(cost):
             problems.append(problem(
                 code, f"{who}: a threshold's \"cost\" must be a number", f"{t_at}/cost",
-                hint="one lump charged per crossing -- a start cost; it lands in cost_summary"))
+                hint="one lump charged per crossing -- a start cost; it lands in cost_summary",
+                fields=fields))
 
 
 def _check_components(problems: list, name: str, entry: dict, at: str) -> None:
@@ -500,23 +545,27 @@ def _check_components(problems: list, name: str, entry: dict, at: str) -> None:
         if not label.strip():
             problems.append(problem("E_LEVEL_COMPONENT",
                                     f"level '{name}': a component needs a name", f"{c_at}/name",
-                                    hint="{\"name\": \"ch4\", \"initial_fraction\": 0.5}"))
+                                    hint="{\"name\": \"ch4\", \"initial_fraction\": 0.5}",
+                                    fields={"case": "noname", "name": name}))
             continue
         if label in seen:
             problems.append(problem("E_LEVEL_COMPONENT",
                                     f"level '{name}': duplicate component '{label}'",
-                                    f"{c_at}/name", hint="rename one of the two"))
+                                    f"{c_at}/name", hint="rename one of the two",
+                                    fields={"case": "twice", "name": name, "label": label}))
         seen.add(label)
         fraction = component.get("initial_fraction", 0.0) or 0.0
         if not _is_number(fraction) or not 0.0 <= float(fraction) <= 1.0:
             problems.append(problem(
                 "E_LEVEL_COMPONENT",
                 f"level '{name}': component '{label}' initial_fraction must be in [0, 1]",
-                f"{c_at}/initial_fraction", hint="the share of the level's INITIAL content"))
+                f"{c_at}/initial_fraction", hint="the share of the level's INITIAL content",
+                fields={"case": "fraction", "name": name, "label": label}))
     tolerance = entry.get("blend_tolerance")
     if tolerance is not None and (not _is_number(tolerance) or float(tolerance) <= 0):
         problems.append(problem(
             "E_LEVEL_COMPONENT", f"level '{name}': \"blend_tolerance\" must be a positive number",
             f"{at}/blend_tolerance",
             hint=f"how far the fraction may drift before the outflows re-read it "
-                 f"(default {DEFAULT_BLEND_TOLERANCE})"))
+                 f"(default {DEFAULT_BLEND_TOLERANCE})",
+            fields={"case": "tolerance", "name": name}))

@@ -4,6 +4,8 @@ player or a viewer is written, so a file speaks one language and holds no switch
     table("it")                {key: text}, every key of the English table
     say(words, key, **values)  one text with its {placeholders} filled
     number(text, words)        a number's text with the language's decimal sign
+    clock(seconds, now)        a moment as "06:00", or "2026-11-16 06:00" on another day
+    first(text)                its first sentence (or clause before a ";"): what stays on screen
     markup(page, words)        the constant page with each {{key}} as its HTML-safe text
 
 The tables are data (`templates/pagetext.<language>.json`), not code: the pages' scripts
@@ -17,9 +19,13 @@ import functools
 import html
 import json
 import re
+import time
+from datetime import datetime
 from pathlib import Path
 
-__all__ = ["LANGUAGES", "DEFAULT", "table", "say", "number", "unit", "markup", "Refusal", "page_words",
+from nagasim.core.plainlines import first  # noqa: F401 (D1331: one cut for pages and screens)
+
+__all__ = ["LANGUAGES", "DEFAULT", "table", "say", "number", "unit", "clock", "first", "markup", "Refusal", "page_words",
            "explain"]
 
 LANGUAGES = ("en", "it")
@@ -50,6 +56,15 @@ def say(words: dict, key: str, **values) -> str:
 def number(text: str, words: dict) -> str:
     """*text*, a number written by Python, with the language's decimal sign."""
     return text.replace(".", words["decimal"]) if words["decimal"] != "." else text
+
+
+def clock(seconds: float, now: float | None = None) -> str:
+    """The moment *seconds* (since the epoch) in local time, as a person reads a clock: "06:00",
+    with the date in front when it is not the day of *now* (default: the time now). D1333: a
+    fixed time, which needs no refresh, where a running age would."""
+    moment = datetime.fromtimestamp(seconds)
+    today = datetime.fromtimestamp(time.time() if now is None else now).date()
+    return moment.strftime("%H:%M" if moment.date() == today else "%Y-%m-%d %H:%M")
 
 
 def unit(name: str, words: dict) -> str:

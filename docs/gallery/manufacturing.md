@@ -3,7 +3,7 @@
 
 # Manufacturing
 
-12 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+13 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
 
 ## Robot cell against manual assembly
 
@@ -388,6 +388,66 @@ flowchart LR
 | `system/Avg Throughput Time` | 6.83 |  |
 | `system/Avg Queue Length` | 1.5 |  |
 | `system/Avg Resource Usage %` | 71.4 |  |
+
+## Palletizing line
+
+Boxes ride an infeed belt past a photo-eye that counts them, then a router whose Python item code sends them to three lines in turn and skips a line with three boxes on its way. Line 1 is a gantry palletizer that picks each box from its moving belt and stacks a pallet pattern of 2 x 2 boxes in two layers; line 2 is a gantry robot picking from a moving belt; line 3 packs by hand, a little slower than the boxes come, so the router skips it now and then. Illustrative figures.
+
+```console
+naga run palletizing_line
+```
+
+```mermaid
+flowchart LR
+    b0["boxes (CREATE)"]
+    b1["infeed (CONVEYOR)"]
+    b2["to_line_1 (SEIZE)"]
+    b3["at_line_1 (RELEASE)"]
+    b4["to_line_2 (SEIZE)"]
+    b5["at_line_2 (RELEASE)"]
+    b6["to_line_3 (SEIZE)"]
+    b7["at_line_3 (RELEASE)"]
+    b8["pallet_belt (CONVEYOR)"]
+    b9["palletizer (BATCH)"]
+    b10["empty_pallets (CREATE)"]
+    b11["full_pallets (DISPOSE)"]
+    b12["pallet_belt_end (DISPOSE)"]
+    b13["pick_belt (CONVEYOR)"]
+    b14["pick_robot (MOTION)"]
+    b15["picked (DISPOSE)"]
+    b16["pick_belt_end (DISPOSE)"]
+    b17["hand_pack (PROCESS)"]
+    b18["packed (DISPOSE)"]
+    b19["router (SUBMODEL)"]
+    b0 --> b1
+    b2 --> b3
+    b3 --> b8
+    b8 --> b12
+    b8 --> b9
+    b9 --> b11
+    b10 --> b9
+    b4 --> b5
+    b5 --> b13
+    b13 --> b16
+    b13 --> b14
+    b14 --> b15
+    b6 --> b17
+    b17 --> b7
+    b7 --> b18
+    b1 --> b19
+    b19 --> b2
+    b19 --> b4
+    b19 --> b6
+```
+
+1 replication, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 66 |  |
+| `system/Avg Throughput Time` | 31 |  |
+| `system/Avg Queue Length` | 1.35 |  |
+| `system/Avg Resource Usage %` | 28.9 |  |
 
 ## Priority jobs with rework
 

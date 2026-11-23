@@ -16,7 +16,7 @@ from simpy.events import NORMAL
 log = logging.getLogger(__name__)
 
 __all__ = ["ResourceSnapshot", "ResourceLog", "StoreSnapshot", "timeout_at", "is_number", "is_finite_number",
-           "canonical_json", "sha256_text"]
+           "canonical_json", "cache_key", "sha256_text"]
 
 # Last-used paths are stored via QSettings in the Qt UI (product/ui/main_window.py),
 # not here -- this file used to hold a JSON-file equivalent for the original editor.
@@ -43,6 +43,13 @@ def canonical_json(value) -> str:
     """*value* as the one JSON text two equal values share (sorted keys, no spaces,
     no NaN): what a hash is taken over."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def cache_key(value) -> str:
+    """`canonical_json` for an in-memory cache key: a NaN, or a value JSON cannot hold (as
+    its str), is keyed rather than refused, because a model file may carry either. Never
+    persisted, so it need not be a hash's input."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def sha256_text(text: str) -> str:

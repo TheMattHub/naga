@@ -1554,43 +1554,51 @@ def validate_fleets_structured(layout: dict, nodes: set,
         at = f"/fleets/{index}"
         if not isinstance(spec, dict):
             problems.append(problem("E_FLEET_FIELD", f"fleet {index} is not an object", at,
-                                    hint="a fleet is {\"name\": ..., \"count\": 2, \"speed\": 1.5}"))
+                                    hint="a fleet is {\"name\": ..., \"count\": 2, \"speed\": 1.5}",
+                                    fields={"case": "notobj", "index": index}))
             continue
         name = spec.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_FLEET_NAME", "fleet: name must not be empty", f"{at}/name",
-                                    hint="give every fleet a unique name"))
+                                    hint="give every fleet a unique name",
+                                    fields={"case": "empty"}))
             continue
         name = name.strip()
         if name in names:
             problems.append(problem("E_FLEET_NAME", f"duplicate fleet name: {name}", f"{at}/name",
-                                    hint="rename one of the two fleets"))
+                                    hint="rename one of the two fleets",
+                                    fields={"case": "twice", "name": name}))
         if name in declared:
             problems.append(problem(
                 "E_FLEET_NAME", f"fleet '{name}' clashes with a resource of the same name",
                 f"{at}/name",
-                hint="a fleet IS a resource: it must not be declared twice"))
+                hint="a fleet IS a resource: it must not be declared twice",
+                fields={"case": "clash", "name": name}))
         names.add(name)
 
         count = spec.get("count", 1)
         if not isinstance(count, int) or isinstance(count, bool) or count < 1:
             problems.append(problem("E_FLEET_FIELD", f"fleet '{name}': count must be an integer >= 1",
-                                    f"{at}/count", hint="how many vehicles the pool holds"))
+                                    f"{at}/count", hint="how many vehicles the pool holds",
+                                    fields={"case": "count", "name": name}))
         kind = spec.get("kind", "vehicle")
         if kind not in FLEET_KINDS:
             problems.append(problem("E_FLEET_FIELD", f"fleet '{name}': unknown kind '{kind}'",
-                                    f"{at}/kind", hint=f"one of: {', '.join(FLEET_KINDS)}"))
+                                    f"{at}/kind", hint=f"one of: {', '.join(FLEET_KINDS)}",
+                                    fields={"case": "kind", "name": name, "kind": kind}))
         loads = spec.get("loads", 1)
         if not isinstance(loads, int) or isinstance(loads, bool) or loads < 1:
             problems.append(problem("E_FLEET_LOADS", f"fleet '{name}': loads must be an integer "
                                     ">= 1", f"{at}/loads",
-                                    hint="how many entities one vehicle carries on a tour"))
+                                    hint="how many entities one vehicle carries on a tour",
+                                    fields={"case": "loads", "name": name}))
         elif loads > 1 and kind == "worker":
             # D116: a worker is summoned to a station one job at a time, and the
             # skill check reserves a unit per request; no case asks for more.
             problems.append(problem("E_FLEET_LOADS", f"fleet '{name}': a worker fleet carries "
                                     "one load at a time", f"{at}/loads",
-                                    hint="drop loads, or use a fleet of kind \"vehicle\""))
+                                    hint="drop loads, or use a fleet of kind \"vehicle\"",
+                                    fields={"case": "worker", "name": name}))
         problems.extend(_validate_motion(spec, name, at, kind))
         problems.extend(_validate_units(spec, name, at, nodes, known_nodes))
         for field in ("speed", "speed_empty"):
@@ -1598,53 +1606,62 @@ def validate_fleets_structured(layout: dict, nodes: set,
             if field == "speed" and value is None:
                 problems.append(problem("E_FLEET_FIELD", f"fleet '{name}': speed is required",
                                         f"{at}/speed",
-                                        hint="distance per time unit, in the network's own units"))
+                                        hint="distance per time unit, in the network's own units",
+                                        fields={"case": "nospeed", "name": name}))
             elif value is not None and (not isinstance(value, (int, float))
                                         or isinstance(value, bool) or value <= 0):
                 problems.append(problem("E_FLEET_FIELD",
                                         f"fleet '{name}': {field} must be a number > 0",
                                         f"{at}/{field}",
-                                        hint="distance per time unit; omit speed_empty to reuse speed"))
+                                        hint="distance per time unit; omit speed_empty to reuse speed",
+                                        fields={"case": "speed", "name": name}))
         for field, allowed in (("dispatch", DISPATCH_RULES), ("select", SELECT_RULES),
                                ("park", PARK_RULES)):
             value = spec.get(field)
             if value is not None and value not in allowed:
                 problems.append(problem(
                     "E_FLEET_FIELD", f"fleet '{name}': unknown {field} rule '{value}'",
-                    f"{at}/{field}", hint=f"one of: {', '.join(allowed)}"))
+                    f"{at}/{field}", hint=f"one of: {', '.join(allowed)}",
+                    fields={"case": "rule", "name": name, "value": value}))
         schedule_name = spec.get("capacity_schedule")
         if schedule_name and schedule_kinds.get(schedule_name) != "capacity":
             problems.append(problem(
                 "E_FLEET_FIELD", f"fleet '{name}': unknown capacity schedule '{schedule_name}'",
                 f"{at}/capacity_schedule",
-                hint="declare a schedule with kind \"capacity\" under \"schedules\""))
+                hint="declare a schedule with kind \"capacity\" under \"schedules\"",
+                fields={"case": "schedule", "name": name, "schedule_name": schedule_name}))
         home = spec.get("home")
         if home is not None and str(home).strip() and str(home).strip() not in nodes:
             problems.append(problem("E_FLEET_NODE", f"fleet '{name}': unknown home node '{home}'",
                                     f"{at}/home",
-                                    hint=f"name a declared network node: {known_nodes}"))
+                                    hint=f"name a declared network node: {known_nodes}",
+                                    fields={"case": "home", "name": name, "home": home}))
         if not nodes:
             problems.append(problem(
                 "E_FLEET_NODE", f"fleet '{name}': the model declares no path network",
                 "/network",
                 hint="add a \"network\" section with nodes and segments for the vehicles to "
-                     "drive on"))
+                     "drive on",
+                fields={"case": "nonet", "name": name}))
         power = spec.get("power")
         if power is not None:
             if not isinstance(power, dict):
                 problems.append(problem(
                     "E_FLEET_POWER", f"fleet '{name}': power must be an object",
-                    f"{at}/power", hint="{\"busy\": 5.0, \"idle\": 1.0} -- kW per vehicle"))
+                    f"{at}/power", hint="{\"busy\": 5.0, \"idle\": 1.0} -- kW per vehicle",
+                    fields={"case": "notobj", "name": name}))
             else:
                 for state, value in power.items():
                     if state not in ENERGY_STATES:
                         problems.append(problem(
                             "E_FLEET_POWER_STATE", f"fleet '{name}': unknown power state '{state}'",
-                            f"{at}/power/{state}", hint=f"one of: {', '.join(ENERGY_STATES)}"))
+                            f"{at}/power/{state}", hint=f"one of: {', '.join(ENERGY_STATES)}",
+                            fields={"case": "unknown", "name": name, "state": state}))
                     elif not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
                         problems.append(problem(
                             "E_FLEET_POWER", f"fleet '{name}': power.{state} must be a number >= 0",
-                            f"{at}/power/{state}", hint="kW for one vehicle in that state"))
+                            f"{at}/power/{state}", hint="kW for one vehicle in that state",
+                            fields={"case": "value", "name": name, "state": state}))
     return problems, names
 
 
@@ -1656,24 +1673,28 @@ def _validate_motion(spec: dict, name: str, at: str, kind: str) -> list:
     motion = spec.get("motion", "network") or "network"
     if motion not in FLEET_MOTIONS:
         return [problem("E_FLEET_MOTION", f"fleet '{name}': unknown motion '{motion}'",
-                        f"{at}/motion", hint=f"one of: {', '.join(FLEET_MOTIONS)}")]
+                        f"{at}/motion", hint=f"one of: {', '.join(FLEET_MOTIONS)}",
+                        fields={"case": "unknown", "name": name})]
     if motion != "gantry":
         return []
     out = []
     if kind == "worker":
         out.append(problem("E_FLEET_MOTION", f"fleet '{name}': a gantry crane cannot be a worker "
-                           "fleet", f"{at}/motion", hint="drop motion, or use kind \"vehicle\""))
+                           "fleet", f"{at}/motion", hint="drop motion, or use kind \"vehicle\"",
+                           fields={"case": "worker", "name": name}))
     for field in ("speed_x", "speed_y"):
         value = spec.get(field)
         if value is None or not isinstance(value, (int, float)) or isinstance(value, bool) \
                 or value <= 0:
             out.append(problem("E_FLEET_MOTION", f"fleet '{name}': {field} must be a number > 0",
-                               f"{at}/{field}", hint="axis speed, distance per model time unit"))
+                               f"{at}/{field}", hint="axis speed, distance per model time unit",
+                               fields={"case": "speed", "name": name}))
     hoist = spec.get("hoist_time", 0)
     if hoist is not None and (not isinstance(hoist, (int, float)) or isinstance(hoist, bool)
                               or hoist < 0):
         out.append(problem("E_FLEET_MOTION", f"fleet '{name}': hoist_time must be a number >= 0",
-                           f"{at}/hoist_time", hint="fixed time added to every gantry hop"))
+                           f"{at}/hoist_time", hint="fixed time added to every gantry hop",
+                           fields={"case": "hoist", "name": name}))
     return out
 
 
@@ -1685,38 +1706,45 @@ def _validate_units(spec: dict, name: str, at: str, nodes: set, known_nodes: str
         return []
     if not isinstance(units, list) or not units:
         return [problem("E_FLEET_UNITS", f"fleet '{name}': units must be a non-empty list",
-                        f"{at}/units", hint="[{\"name\": \"Ann\", \"skills\": [\"weld\"]}]")]
+                        f"{at}/units", hint="[{\"name\": \"Ann\", \"skills\": [\"weld\"]}]",
+                        fields={"case": "empty", "name": name})]
     out = []
     count = spec.get("count")
     if count is not None and count != len(units):
         out.append(problem(
             "E_FLEET_UNITS", f"fleet '{name}': count {count} but {len(units)} units",
-            f"{at}/count", hint="units replaces count: drop count, or make them agree"))
+            f"{at}/count", hint="units replaces count: drop count, or make them agree",
+            fields={"case": "count", "name": name, "count": count, "units": len(units)}))
     seen: set[str] = set()
     for i, unit in enumerate(units):
         where = f"{at}/units/{i}"
         if not isinstance(unit, dict):
             out.append(problem("E_FLEET_UNITS", f"fleet '{name}': unit {i} is not an object",
-                               where, hint="{\"name\": \"Ann\", \"skills\": [\"weld\"]}"))
+                               where, hint="{\"name\": \"Ann\", \"skills\": [\"weld\"]}",
+                               fields={"case": "notobj", "name": name, "i": i}))
             continue
         unit_name = unit.get("name")
         if not isinstance(unit_name, str) or not unit_name.strip():
             out.append(problem("E_FLEET_UNITS", f"fleet '{name}': unit {i} has no name",
-                               f"{where}/name", hint="give every unit a unique name"))
+                               f"{where}/name", hint="give every unit a unique name",
+                               fields={"case": "noname", "name": name, "i": i}))
         elif unit_name in seen:
             out.append(problem("E_FLEET_UNITS", f"fleet '{name}': duplicate unit name "
-                               f"'{unit_name}'", f"{where}/name", hint="rename one of the two"))
+                               f"'{unit_name}'", f"{where}/name", hint="rename one of the two",
+                               fields={"case": "dup", "name": name, "unit_name": unit_name}))
         else:
             seen.add(unit_name)
         skills = unit.get("skills", [])
         if not isinstance(skills, list) or not all(isinstance(s, str) and s for s in skills):
             out.append(problem("E_FLEET_UNITS", f"fleet '{name}': unit {i} skills must be a list "
-                               f"of names", f"{where}/skills", hint="[\"weld\", \"paint\"]"))
+                               f"of names", f"{where}/skills", hint="[\"weld\", \"paint\"]",
+                               fields={"case": "skills", "name": name, "i": i}))
         home = unit.get("home")
         if home is not None and str(home).strip() and str(home).strip() not in nodes:
             out.append(problem("E_FLEET_NODE", f"fleet '{name}': unit {i} has unknown home node "
                                f"'{home}'", f"{where}/home",
-                               hint=f"name a declared network node: {known_nodes}"))
+                               hint=f"name a declared network node: {known_nodes}",
+                               fields={"case": "unithome", "name": name, "i": i, "home": home}))
     return out
 
 
@@ -1748,7 +1776,8 @@ def validate_workers_structured(layout: dict) -> list:
             problems.append(problem(
                 "E_WORKER_WHEN_BLOCKED", f"{name}: unknown worker_when_blocked '{mode}'",
                 f"{at}/worker_when_blocked", block=name,
-                hint=f"use one of: {', '.join(WORKER_BLOCKED_MODES)}"))
+                hint=f"use one of: {', '.join(WORKER_BLOCKED_MODES)}",
+                fields={"case": "mode", "mode": mode}))
         fleet = str(params.get("worker_fleet", "") or "").strip()
         if not fleet or str(block.get("type", "")).upper() not in QUEUEING_BLOCK_TYPES:
             continue
@@ -1757,19 +1786,22 @@ def validate_workers_structured(layout: dict) -> list:
             problems.append(problem(
                 "E_WORKER_FLEET", f"{name}: '{fleet}' is not a worker fleet", f"{at}/worker_fleet",
                 block=name, hint=f"declare it under \"fleets\" with kind \"worker\"; "
-                                 f"declared: {workers or '(none)'}"))
+                                 f"declared: {workers or '(none)'}",
+                fields={"case": "notworker", "fleet": fleet}))
             continue
         skill = str(params.get("worker_skill", "") or "").strip()
         if skill and skill not in skills:
             problems.append(problem(
                 "E_WORKER_SKILL_UNKNOWN", f"{name}: no unit of '{fleet}' has skill '{skill}'",
                 f"{at}/worker_skill", block=name,
-                hint=f"skills in '{fleet}': {', '.join(sorted(skills)) or '(none)'}"))
+                hint=f"skills in '{fleet}': {', '.join(sorted(skills)) or '(none)'}",
+                fields={"case": "skill", "fleet": fleet, "skill": skill}))
         if not str(params.get("node", "") or "").strip():
             problems.append(problem(
                 "E_WORKER_NO_NODE", f"{name}: worker_fleet is set but the block sits on no node",
                 f"{at}/node", block=name,
-                hint="set `node` to the network node the worker walks to"))
+                hint="set `node` to the network node the worker walks to",
+                fields={"case": "nonode"}))
     _validate_worker_preempt(layout, problems)
     return problems
 
@@ -1826,7 +1858,8 @@ def validate_vehicle_holds_structured(layout: dict) -> list:
             problems.append(problem(
                 "E_TRANSPORT_KEEP_ARM", f"{name}: keep_vehicle on arm fleet '{fleet}'", at,
                 block=name, hint="a cobot stays with its part through the station's tending "
-                                 "\"cobot\": \"stay\"; drop keep_vehicle"))
+                                 "\"cobot\": \"stay\"; drop keep_vehicle",
+                fields={"case": "arm", "fleet": fleet}))
             continue
         # The walk `blocking.analyse` uses: through any block, ending at one that frees it.
         if not stops(name, after, lambda n: n in blocks and frees(blocks[n], fleet),
@@ -1835,7 +1868,8 @@ def validate_vehicle_holds_structured(layout: dict) -> list:
                 "W_TRANSPORT_KEEP_UNFREED", f"{name}: nothing downstream frees the vehicle it "
                 f"keeps; it waits with the part until the part leaves the model", at,
                 block=name, hint=f"add a RELEASE naming '{fleet}' where the vehicle should go, "
-                                 "or a TRANSPORT on that fleet without keep_vehicle"))
+                                 "or a TRANSPORT on that fleet without keep_vehicle",
+                fields={"case": "unfreed"}))
     return problems
 
 
@@ -1868,5 +1902,6 @@ def _validate_worker_preempt(layout: dict, problems: list) -> None:
                             f"block '{worker}' also seizes")
             problems.append(problem(
                 "E_WORKER_PREEMPT", message, f"/blocks/{index}/params/preempt", block=name,
-                hint="an interrupted job would keep its worker while it waits for the machine"))
+                hint="an interrupted job would keep its worker while it waits for the machine",
+                fields={"case": "preempt"}))
             break

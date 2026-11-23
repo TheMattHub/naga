@@ -336,7 +336,7 @@ def validate_tending(layout: dict, problems: list) -> None:
 
         def bad(field, text, hint, name=name, index=index):
             problems.append(problem("E_FLEET_ARM", f"fleet '{name}': {text}",
-                                    f"/fleets/{index}/{field}", hint=hint))
+                                    f"/fleets/{index}/{field}", hint=hint, fields={"fleet": name}))
 
         arm = str(fleet.get("arm") or "").strip()
         if not arm:
@@ -428,8 +428,9 @@ def _validate_station(block: dict, at: str, arms: dict, profiles: dict, graph: _
     params = block.get("params") or {}
     group = params["tending"]
 
-    def report(code, text, path, hint):
-        # MOTION's segment and zone checks report E_MOTION_*: one code here.
+    def report(code, text, path, hint, fields=None):
+        # MOTION's segment and zone checks report E_MOTION_*: one code here. Their fields
+        # name what an E_MOTION_* line says, not E_TENDING's: not passed on.
         code = code if code.startswith("W_") else "E_TENDING"
         problems.append(problem(code, f"{name}: tending: {text}", f"{at}/{path}".rstrip("/"),
                                 block=name, hint=hint))

@@ -513,7 +513,7 @@ def serve_models(answer):
 
 
 def test_the_built_in_models_are_current_and_newest_first():
-    assert list(llm.ANTHROPIC_MODELS) == ["claude-fable-5-1", "claude-opus-5-5",
+    assert list(llm.ANTHROPIC_MODELS) == ["claude-fable-5-2", "claude-opus-5-5",
                                           "claude-sonnet-5-5", "claude-haiku-5-5"]
     assert llm.DEFAULT_ANTHROPIC_MODEL in llm.ANTHROPIC_MODELS
     assert llm.estimate_cost(llm.Usage(1, 1), "claude-haiku-5-5") is None   # no known price: no guess
@@ -587,3 +587,12 @@ def test_1787_base_url_implies_the_openai_provider():
     assert llm.resolve_config(provider="anthropic", base_url="http://127.0.0.1:9/v1",
                               environ=env).provider == "anthropic"
     assert llm.resolve_config(environ=env).provider == "anthropic"      # no address: unchanged
+
+
+def test_2009_a_listed_model_the_app_does_not_know_is_shown_by_name():
+    assert llm.model_label("claude-opus-5-5") == "Claude Opus 5.5 (default)"
+    assert llm.model_label("claude-fable-5-3") == "Claude Fable 5.3"
+    assert llm.model_label("claude-fable-5") == "Claude Fable 5"
+    assert llm.model_label("claude-haiku-4-5-20251001") == "Claude Haiku 4.5 (20251001)"
+    assert llm.model_label("claude-3-7-sonnet-latest") == "claude-3-7-sonnet-latest"
+    assert llm.model_label("gpt-x") == "gpt-x"

@@ -1,12 +1,16 @@
 import logging
 
-from nagasim.core import tending
+import simpy
+
+from nagasim.core import pallets, tending
 from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, ParamSpec
-from nagasim.core.blocks._common import SEPARATE_EXCLUDED_FIELDS, member_time_of
+from nagasim.core.blocks._common import SEPARATE_EXCLUDED_FIELDS, member_time_of, robot_params
+from nagasim.core.blocks._routing import end_routes
 from nagasim.core.movers import free_held
 from nagasim.core.quantities import field_factor, param
 from nagasim.core.stats import account_and_retain
+from nagasim.core.timeunits import base_factor
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +32,9 @@ class Separate(BaseProcess):
         'keep': the parent is a CARRIER (a truck) that lives on. Its members
         leave one at a time on exit 0, each after its own `member_time`, and the
         carrier leaves on exit 1 once it is empty.
+    release_order : {'pattern','fifo','lifo'}
+        'pattern' (the default): a pallet loaded by a pallet pattern comes off
+        top layer first, its slots in reverse order; any other carrier fifo.
     """
     # default fields. used by the UI
     MODES = (
@@ -36,7 +43,8 @@ class Separate(BaseProcess):
         "Take specific representative values",
     )
     CARRIER_MODES = ("dispose", "keep")
-    RELEASE_ORDERS = ("fifo", "lifo")
+    # D1346: "pattern" is the default and is fifo for a carrier no pattern loaded.
+    RELEASE_ORDERS = ("pattern", "fifo", "lifo")
 
     CURATED_ATTRS_MAP = {
         "Batch ID": "_id",
@@ -64,8 +72,12 @@ class Separate(BaseProcess):
         self.carrier = "dispose"
         self.member_time = ""
         self.member_time_unit = "base"
-        self.release_order = "fifo"
+        self.release_order = "pattern"
         self._time_factor = 1.0
+        self.place_per = "item"
+        self.robot = ""
+        self._robot_pattern = ""
+        self._place = simpy.Resource(env, 1)    # a robot's one pallet place (#1992)
 
         # and our full "always copy" list
         block.curated_attrs_map = list(self.CURATED_ATTRS_MAP.keys())  # visible to UI
@@ -80,13 +92,14 @@ class Separate(BaseProcess):
         #Compute and store info
         parent.deletion_time = self.env.now
         parent.throughput_time = parent.deletion_time - parent.creation_time
-        children = self._ordered(parent.batch_elems)
+        children = self._ordered(parent.batch_elems, parent)
 
         # --- parent handling  (always destroy) --------------------------
         self.ctx.live_entities.remove(parent)
         self.emit("entity_absorbed", entity=parent)      # #319: the batch itself is gone
         tending.cobot_of(self, parent)       # D169: a cobot staying with the batch is freed
         free_held(self, parent)              # D837: and a vehicle a TRANSPORT kept for it
+        end_routes(self.ctx, parent)         # R34: a rule counting the batch lets it go
 
         # Split the parent's cost evenly across children (ROADMAP 2.2), then
         # zero it on the parent: it stays in entity_summary as one completed
@@ -114,8 +127,22 @@ class Separate(BaseProcess):
             self._restore(child, parent, payload, children, parent.deletion_time)
             self.forward(child, 0)
 
-    def _ordered(self, members):
-        return list(reversed(members)) if self.release_order == "lifo" else list(members)
+    def _ordered(self, members, carrier=None):
+        if self.release_order == "lifo":
+            return list(reversed(members))
+        if self.release_order == "pattern" and self._pattern_record(carrier) is not None:
+            return sorted(members, key=lambda m: -m.slot)     # top layer first
+        return list(members)
+
+    def _pattern_record(self, carrier):
+        """The pattern *carrier* was loaded by, when every member holds a slot of it; else None
+        (a carrier loaded with no pattern, or a model's own `pattern` attribute)."""
+        name = getattr(carrier, "pattern", None)
+        record = self.ctx.pallet_patterns.get(name) if isinstance(name, str) else None
+        members = getattr(carrier, "batch_elems", None) or []
+        if record is None or not all(isinstance(getattr(m, "slot", None), int) for m in members):
+            return None
+        return record
 
     def _payload(self, parent):
         """The parent's values each child takes, by `mode`; None = retain."""
@@ -164,21 +191,58 @@ class Separate(BaseProcess):
         if len(self.next_process) < 2:
             raise RuntimeError(f"SEPARATE block '{self.name}' keeps the carrier but has no "
                                f"second outgoing link for it.")
-        members = self._ordered(getattr(carrier, "batch_elems", None) or [])
+        record = self._pattern_record(carrier)
+        # #1992: one robot works at one pallet place (this block's), so its pallets take turns.
+        turn = self._place.request() if self.robot and record is not None else None
+        if turn is not None:
+            yield turn
+        members = self._ordered(getattr(carrier, "batch_elems", None) or [], carrier)
         payload = self._payload(carrier)
         self.active_entity = carrier     # the truck is here while it unloads (review R3)
-        for child in members:
-            wait = member_time_of(self, self.member_time, self._time_factor, child)
+        for group in self._groups(members, record):
+            wait = self._member_time(group[0], carrier, record)
             if wait > 0:
                 yield self.env.timeout(wait)
-            carrier.batch_elems.remove(child)
-            carrier.cost -= child.cost
-            carrier._auto_cost -= child._auto_cost
-            carrier._holding_cost -= child._holding_cost
-            self._restore(child, carrier, payload, members, self.env.now)
-            self.forward(child, 0)
+            for child in group:
+                carrier.batch_elems.remove(child)
+                carrier.cost -= child.cost
+                carrier._auto_cost -= child._auto_cost
+                carrier._holding_cost -= child._holding_cost
+                self._restore(child, carrier, payload, members, self.env.now)
+                self.forward(child, 0)
+            if record is not None:
+                pallets.set_load(carrier, record, pallets.tare(record) + sum(
+                    pallets.member_kg(m, record) for m in carrier.batch_elems))
         self.remove_active_entity(carrier)
+        if turn is not None:
+            self._place.release(turn)
         self.forward(carrier, 1)
+
+    def _groups(self, members, record):
+        """The members that come off in one member time: one each, or on a pattern pallet
+        with `place_per` "layer" the members of one layer together."""
+        if record is None or self.place_per != "layer":
+            return [[m] for m in members]
+        out = []
+        for m in members:
+            if out and out[-1][0].layer == m.layer:
+                out[-1].append(m)
+            else:
+                out.append([m])
+        return out
+
+    def _member_time(self, child, carrier, record) -> float:
+        """With a robot and a pattern pallet, the robot's cycle from *child*'s slot (planned
+        for the block's `pattern`); else member_time in the child's scope."""
+        if self.robot and record is not None:
+            cycles = self.ctx.pallet_cycles.get(self.name) or []
+            if self.ctx.pallet_patterns.get(self._robot_pattern) is not record \
+                    or not 0 < child.slot <= len(cycles):
+                raise ValueError(f"E_PALLET_UNKNOWN: block '{self.name}': its robot is planned "
+                                 f"for pallet pattern '{self._robot_pattern}', not for the "
+                                 f"pallet's '{carrier.pattern}'")
+            return cycles[child.slot - 1] * base_factor("time", "seconds", self.ctx.units)
+        return member_time_of(self, self.member_time, self._time_factor, child)
 
     def self_run(self, entity):
         if self.carrier == "keep":
@@ -190,7 +254,8 @@ class Separate(BaseProcess):
         # we persist the _user_ picks only:
         return {"mode": self.mode, "attrs": self.attrs, "carrier": self.carrier,
                 "member_time": self.member_time, "member_time_unit": self.member_time_unit,
-                "release_order": self.release_order}
+                "release_order": self.release_order, "place_per": self.place_per,
+                "robot": self.robot}
 
     def set_params_from_dict(self, param_dict):
         self.mode = param_dict.get("mode", "Retain original entity values")
@@ -198,10 +263,17 @@ class Separate(BaseProcess):
         self.carrier = param_dict.get("carrier", "dispose") or "dispose"
         self.member_time = str(param_dict.get("member_time", "") or "").strip()
         self.member_time_unit = param_dict.get("member_time_unit", "base")
-        self.release_order = param_dict.get("release_order", "fifo") or "fifo"
+        self.release_order = param_dict.get("release_order", "pattern") or "pattern"
+        self.place_per = str(param_dict.get("place_per", "item") or "item")
+        self.robot = str(param_dict.get("robot", "") or "").strip()
+        self._robot_pattern = pallets.literal_pattern(param_dict.get("pattern"),
+                                                      self.ctx.pallet_patterns) or ""
         if self.carrier not in self.CARRIER_MODES:
             raise ValueError(f"SEPARATE block '{self.name}': carrier must be one of "
                              f"{self.CARRIER_MODES}, not {self.carrier!r}")
+        if self.place_per not in pallets.PLACE_PER:
+            raise ValueError(f"SEPARATE block '{self.name}': place_per must be one of "
+                             f"{pallets.PLACE_PER}, not {self.place_per!r}")
         if self.release_order not in self.RELEASE_ORDERS:
             raise ValueError(f"SEPARATE block '{self.name}': release_order must be one of "
                              f"{self.RELEASE_ORDERS}, not {self.release_order!r}")
@@ -231,10 +303,21 @@ SPEC = BlockSpec(
         ParamSpec("member_time_unit", str, "base",
                   description="Unit `member_time` is expressed in: \"base\" (the model's own unit) or "
                               "one of seconds/minutes/hours/days.", quantity="none", kinds=("choice",)),
-        ParamSpec("release_order", str, "fifo",
-                  description="Order the members leave in: \"fifo\" (the order they were loaded) or "
-                              "\"lifo\" (last loaded first off, a rear-door truck).", quantity="none",
+        ParamSpec("release_order", str, "pattern",
+                  description="Order the members leave in: \"pattern\" (a pallet loaded by a "
+                              "pallet pattern comes off top layer first, any other carrier as "
+                              "fifo), \"fifo\" (the order they were loaded) or \"lifo\" (last "
+                              "loaded first off, a rear-door truck).", quantity="none",
                   kinds=("choice",)),
+        ParamSpec("place_per", str, "item",
+                  description="Keep mode, a pattern pallet: \"item\" unloads one member per "
+                              "member_time; \"layer\" a whole layer in one member_time.",
+                  quantity="none", kinds=("choice",)),
+        ParamSpec("pattern", str, "",
+                  description="With a robot: the record of \"pallet_patterns\" its cycle is "
+                              "planned for, one cycle per slot; a pallet of another pattern is a "
+                              "run error.", quantity="none"),
+        *robot_params("SEPARATE"),
     ),
     factory=lambda env, block: Separate(env, block),
     family="group",

@@ -188,7 +188,7 @@ class Charge(BaseProcess):
             return
         ctx = self.ctx
         ctx.variables[name] = total
-        if ctx.watched or ctx.traced_variables:
+        if ctx.watched or ctx.traced_variables or ctx.variable_hooks:
             ctx.wrote_variable(name)
         if ctx.level_system is not None:
             ctx.level_system.trigger()

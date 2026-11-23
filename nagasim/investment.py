@@ -222,12 +222,13 @@ def validate_investment(layout: dict, problems: list) -> None:
     if section is None:
         return
 
-    def bad(code, field, text, hint):
+    def bad(code, field, text, hint, fields=None):
         problems.append(problem(code, f"investment: {text}", f"/investment/{field}".rstrip("/"),
-                                hint=hint))
+                                hint=hint, fields=fields))
 
     if not isinstance(section, dict):
-        bad("E_INVESTMENT", "", "must be an object", "{\"baseline\": \"\", \"horizon_years\": 5}")
+        bad("E_INVESTMENT", "", "must be an object", "{\"baseline\": \"\", \"horizon_years\": 5}",
+            fields={"case": "object"})
         return
     settings = investment_settings(layout)
     scenarios = [s for s in layout.get("scenarios") or [] if isinstance(s, dict)]
@@ -235,19 +236,22 @@ def validate_investment(layout: dict, problems: list) -> None:
     baseline = settings["baseline"] or BASELINE
     if not isinstance(baseline, str) or baseline not in names:
         bad("E_INVESTMENT", "baseline", f"unknown baseline scenario '{baseline}'",
-            "a scenario name, or \"\" for the model as saved")
+            "a scenario name, or \"\" for the model as saved",
+            fields={"case": "baseline", "name": baseline})
     for field, ok, rule in (("horizon_years", lambda v: v > 0, "> 0"),
                             ("operating_hours_per_year", lambda v: v > 0, "> 0"),
                             ("discount_rate", lambda v: v >= 0, ">= 0"),
                             ("margin_per_part", lambda v: True, "")):
         if not (is_finite_number(settings[field]) and ok(settings[field])):
             bad("E_INVESTMENT", field, f"{field} must be a number {rule}".rstrip(),
-                f"default {DEFAULTS[field]}")
+                f"default {DEFAULTS[field]}",
+                fields={"case": "number", "setting": field.replace("_", " ")})
     key = settings["throughput"]
     kind, _, rest = key.partition("/") if isinstance(key, str) else ("", "", "")
     if key != "" and not (kind in KPI_PREFIXES and rest):
         bad("E_INVESTMENT", "throughput", f"unknown throughput KPI '{key}'",
-            f"a KPI key counting good parts, e.g. \"user/Good parts\"; \"\" is {THROUGHPUT}")
+            f"a KPI key counting good parts, e.g. \"user/Good parts\"; \"\" is {THROUGHPUT}",
+            fields={"case": "throughput", "name": key})
 
     if not (any(isinstance(c, dict) and c.get("capex") for c in layout.get("fixed_costs") or [])
             or any(str(o.get("path", "")).startswith("fixed_costs.")

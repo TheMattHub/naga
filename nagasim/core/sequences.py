@@ -97,18 +97,21 @@ def validate_sequences_structured(layout: dict) -> tuple[list, dict]:
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_SEQUENCE_NAME", "sequence: name must not be empty",
-                                    f"{at}/name", hint="give every sequence a unique name"))
+                                    f"{at}/name", hint="give every sequence a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in steps_of:
             problems.append(problem("E_SEQUENCE_NAME", f"duplicate sequence name: {name}",
-                                    f"{at}/name", hint="rename one of the two sequences"))
+                                    f"{at}/name", hint="rename one of the two sequences",
+                                    fields={"case": "dup", "name": name}))
 
         steps = entry.get("steps")
         if not isinstance(steps, list) or not steps:
             problems.append(problem("E_SEQUENCE_EMPTY", f"sequence '{name}': no steps",
                                     f"{at}/steps",
                                     hint="list at least one step: "
-                                         "{\"station\": \"<a STATION block>\"}"))
+                                         "{\"station\": \"<a STATION block>\"}",
+                                    fields={"case": "empty", "name": name}))
             steps_of[name] = 0
             continue
         steps_of[name] = len(steps)
@@ -118,19 +121,22 @@ def validate_sequences_structured(layout: dict) -> tuple[list, dict]:
             if not isinstance(step, dict):
                 problems.append(problem(
                     "E_SEQUENCE_STEP", f"sequence '{name}': step {step_index} is not an object",
-                    where, hint="a step is {\"station\": \"<name>\", \"values\": {...}}"))
+                    where, hint="a step is {\"station\": \"<name>\", \"values\": {...}}",
+                    fields={"case": "object", "name": name, "step": step_index}))
                 continue
             station = step.get("station", "")
             if not isinstance(station, str) or not station.strip():
                 problems.append(problem(
                     "E_SEQUENCE_STEP", f"sequence '{name}': step {step_index} names no station",
-                    f"{where}/station", hint=f"name a STATION block: {known}"))
+                    f"{where}/station", hint=f"name a STATION block: {known}",
+                    fields={"case": "no_station", "name": name, "step": step_index}))
             elif station not in stations:
                 problems.append(problem(
                     "E_SEQUENCE_STATION_UNKNOWN",
                     f"sequence '{name}': step {step_index}: unknown station '{station}'",
                     f"{where}/station",
-                    hint=f"add a STATION block named '{station}'; declared: {known}"))
+                    hint=f"add a STATION block named '{station}'; declared: {known}",
+                    fields={"case": "a8_step", "name": name, "step": step_index, "station": station}))
             problems.extend(_value_problems(name, step_index, step.get("values"), where))
 
     problems.extend(_usage_problems(layout, stations, steps_of))
@@ -146,7 +152,8 @@ def _value_problems(name: str, step_index: int, values, where: str) -> list:
         return [problem("E_SEQUENCE_STEP",
                         f"sequence '{name}': step {step_index}: \"values\" must be an object",
                         f"{where}/values",
-                        hint="write {\"process_time\": 3, \"operation\": \"mill\"}")]
+                        hint="write {\"process_time\": 3, \"operation\": \"mill\"}",
+                        fields={"case": "values_object", "name": name, "step": step_index})]
     problems = []
     for key, value in values.items():
         if not str(key).isidentifier() or str(key).startswith("_"):
@@ -154,14 +161,16 @@ def _value_problems(name: str, step_index: int, values, where: str) -> list:
                 "E_SEQUENCE_STEP",
                 f"sequence '{name}': step {step_index}: '{key}' is not a valid attribute name",
                 f"{where}/values/{key}",
-                hint="an entity attribute is a Python identifier not starting with _"))
+                hint="an entity attribute is a Python identifier not starting with _",
+                fields={"case": "attr_name", "name": name, "step": step_index, "key": key}))
         elif not isinstance(value, (int, float, str, bool)):
             problems.append(problem(
                 "E_SEQUENCE_STEP",
                 f"sequence '{name}': step {step_index}: value of '{key}' must be a number, "
                 f"string or boolean",
                 f"{where}/values/{key}",
-                hint="a step value is assigned straight onto the entity: keep it scalar"))
+                hint="a step value is assigned straight onto the entity: keep it scalar",
+                fields={"case": "value_type", "name": name, "step": step_index, "key": key}))
     return problems
 
 
@@ -178,7 +187,8 @@ def _usage_problems(layout: dict, stations: set, steps_of: dict) -> list:
             "E_ROUTE_NO_SEQUENCES",
             f"{first}: ROUTE needs {missing}: the model declares none",
             "/sequences" if missing == "sequences" else "/blocks", block=first,
-            hint="declare a sequence under \"sequences\" and a STATION block per operation"))
+            hint="declare a sequence under \"sequences\" and a STATION block per operation",
+            fields={"case": "none", "missing": missing}))
 
     visited = {str(step.get("station", ""))
                for entry in layout.get("sequences", []) or []
@@ -200,11 +210,13 @@ def _usage_problems(layout: dict, stations: set, steps_of: dict) -> list:
                     f"station name '{candidate}' is claimed by both '{owner[candidate]}' "
                     f"and '{name}'",
                     f"/blocks/{index_of.get(name, 0)}/params/station", block=name,
-                    hint="a station name identifies one block: rename one of the two"))
+                    hint="a station name identifies one block: rename one of the two",
+                    fields={"case": "twice", "station": candidate}))
         if routes_by_sequence and name not in placed and not visited & ({name, alias} - {""}):
             problems.append(problem(
                 "W_STATION_UNUSED",
                 f"station {alias or name} is named by no sequence",
                 f"/blocks/{index_of.get(name, 0)}", block=name,
-                hint="add it to a sequence's steps, or delete the STATION block"))
+                hint="add it to a sequence's steps, or delete the STATION block",
+                fields={"case": "none"}))
     return problems

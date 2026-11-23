@@ -24,8 +24,23 @@ class Logic(BaseProcess):
 
         params = getattr(block, "params", {})
         self.logic_class = params.get("logic_class", "SampleLogic")
+        self.hook = ""
+        # The item instance this block belongs to, stamped by flattening on a hook block of an
+        # item with code (D1344); None everywhere else.
+        self.item = None
 
     def self_process(self, entity):
+        if self.hook and self.item is not None:
+            runtime = self.ctx.items.get(self.item)
+            if runtime is None:
+                raise RuntimeError(f"Block '{self.name}': item '{self.item}' has no code loaded for its "
+                                   f"{self.hook} hook")
+            if self.hook == "entry":
+                self.forward(entity, runtime.entry(entity, len(self.next_process)))
+            else:
+                runtime.exit(entity)
+                self.forward(entity, 0)
+            return
         # D914: the caller's module (run_model(logic=...)) first, then custom_logic.
         logic_cls = logic_authoring.logic_class(self.logic_class, self.ctx.logic_module)
         logic_instance = logic_cls()
@@ -42,16 +57,20 @@ class Logic(BaseProcess):
         # return self.env.process(self.self_process(entity))
 
     def get_params_dict(self):
-        return { "logic_class": self.logic_class }
+        return {"logic_class": self.logic_class, **({"hook": self.hook} if self.hook else {})}
 
     def set_params_from_dict(self, param_dict):
         self.logic_class = param_dict.get("logic_class", "SampleLogic")
+        self.hook = str(param_dict.get("hook") or "")
 
 
 SPEC = BlockSpec(
     type_name="LOGIC", cls=Logic,
     params=(ParamSpec("logic_class", str, "SampleLogic",
-                      description="Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int.", quantity="none"),),
+                      description="Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int.", quantity="none"),
+            ParamSpec("hook", str, "", quantity="none",
+                      description="Inside an item with code: call its on_entry (route by its answer) or its "
+                                  "on_exit (then go on by the first link). Empty: use logic_class."),),
     factory=lambda env, block: Logic(env, block),
     multi_output=True,
     family="control",

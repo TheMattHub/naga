@@ -203,6 +203,26 @@ def _refuse_kinds(session) -> None:
     for name, charger in ctx.chargers.items():
         if charger.kind == "swap":
             raise _unsupported("a swap station", f"'{name}'")
+    # D1347, D1343: a part's stage between an eye or a robot call and its meeting point is
+    # not a vocabulary the state has
+    for belt in ctx.conveyors.values():
+        if belt.eyes or any(divert.intercept for divert in belt.diverts):
+            raise _unsupported("a conveyor with photo-eyes or a robot pick", f"'{belt.name}'")
+        if belt.type:           # D1355: an item's cells are not in the vocabulary
+            raise _unsupported("a typed conveyor", f"'{belt.name}' (a state does not carry "
+                               f"an item's cells yet)")
+        if belt.zones:          # D1356: nor a part's stand in its zone
+            raise _unsupported("a conveyor with zones", f"'{belt.name}'")
+        if belt.release:        # D1357: nor where a part stands in its release rule
+            raise _unsupported("a conveyor with a release rule", f"'{belt.name}'")
+        if belt.reversible:     # D1368: nor a part's place and direction on a reversible belt
+            raise _unsupported("a reversible conveyor", f"'{belt.name}'")
+        if any(divert.rule is not None for divert in belt.diverts):
+            # D1359: nor the loads a routing rule counts under way
+            raise _unsupported("a routing rule", f"conveyor '{belt.name}'")
+    for link in ctx.process_list:
+        if getattr(link, "area_link", False):   # D1369: nor a part's place and time in a link
+            raise _unsupported("an area link", f"'{link.name}'")
     for block in session.model.blocks.values():
         kind = block.block.block_type
         if block.hold_until_space:      # a place reserved before the job starts (D386)
@@ -212,6 +232,10 @@ def _refuse_kinds(session) -> None:
         if kind == "HOLD" and block.mode == "Condition" and block.waiting_entities \
                 and block._wake_keys()[1]:
             raise _unsupported("a polled condition", f"HOLD '{block.name}' scans on a clock")
+        if kind == "CONVEYOR_TRANSFER":     # A8: a load on the module, its move and handshake
+            raise _unsupported("a conveyor transfer", f"'{block.name}'")
+        if kind == "DECIDE" and block.mode == "Rule":     # D1359: loads under way
+            raise _unsupported("a routing rule", f"DECIDE '{block.name}'")
         if ctx.deterministic and getattr(block, "mode", None) == "Chance":
             raise _unsupported("a deterministic split's counts", f"DECIDE '{block.name}'")
 
@@ -532,7 +556,7 @@ def _belt_history(belt, now) -> dict:
     the last part left each point and the end, and `sections`, the recent leave times of each
     section with a lag. A time that can no longer act is dropped: every reader compares
     `left + spacing / speed` or `leave + lag` with a time at or after the clock."""
-    gap, out = belt.spacing / belt.speed, {}
+    gap, out = belt.cell_length / belt.speed, {}
     left = [float(t) if t + gap > now else None
             for t in [point.left for point in belt._points] + [belt._end_left]]
     if any(t is not None for t in left):
@@ -920,7 +944,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                     "W_PLANT_SERVICE_INFERRED", f"the plant reports {said['busy']} units of "
                     f"'{rname}' busy and names {named} jobs: the longest-waiting entities of "
                     f"'{at[0]}' are taken as in service", f"/{initial_state.SECTION}/entities",
-                    hint="map the station's job (\"job\") to say which"))
+                    hint="map the station's job (\"job\") to say which",
+                    fields={"case": "busy", "name": rname, "busy": said["busy"], "named": named}))
         if said["down"]:
             failures = [f.get("name") for f in flat.get("failures") or []
                         if rname in (f.get("resources") or [])]
@@ -931,7 +956,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                     "W_STATE_NOT_COVERED", f"resource '{rname}' is down and the model has "
                     f"{len(failures)} failures for it: it starts up",
                     f"/{initial_state.SECTION}/resources/{rname}",
-                    hint="a resource with one failure starts down, its repair drawn afresh"))
+                    hint="a resource with one failure starts down, its repair drawn afresh",
+                    fields={"case": "failures", "name": rname}))
 
     out_links: dict = {}
     for link in flat.get("links") or []:
@@ -1040,7 +1066,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
             elif kind == "MOTION" and step and step[1] <= clock and entity["since"] is not None                     and step[1] < entity["since"]:
                 problems.append(problem(      # M2: said, not dropped silently
                     "W_STATE_NOT_COVERED", f"the step of MOTION '{name}' predates its job: "
-                    f"the job runs a whole cycle afresh", f"/{initial_state.SECTION}/entities"))
+                    f"the job runs a whole cycle afresh", f"/{initial_state.SECTION}/entities",
+                    fields={"case": "motion", "name": name}))
             return out
         if kind == "TRANSFER" and params.get("wait"):
             # D462: the amount it waits for is the block's number, or the attribute it names
@@ -1050,7 +1077,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                     "E_STATE_UNSUPPORTED", f"a state from a plant cannot carry an entity "
                     f"waiting at TRANSFER '{name}': the amount it waits for is not observed",
                     f"/{initial_state.SECTION}/entities", hint="map the attribute the "
-                    "block's amount names (an \"at\" signal's attributes)"))
+                    "block's amount names (an \"at\" signal's attributes)",
+                    fields={"case": "transfer", "name": name}))
                 return out
             out.update(transfer={"amount": amount}, since=entity["since"])
             return out
@@ -1085,7 +1113,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                 "W_PLANT_CONTRADICTION", f"the plant reports level '{level}' at "
                 f"{reported[level]:g} and {parts} parts in BUFFER '{buffer}', which mirrors it: "
                 f"the parts stand", f"/{initial_state.SECTION}/levels/{level}",
-                hint="the level a BUFFER mirrors is its parts; map one of the two"))
+                hint="the level a BUFFER mirrors is its parts; map one of the two",
+                fields={"case": "level", "level": level, "buffer": buffer}))
         reported[level] = held
     if entries:
         state["blocks"] = entries
@@ -1105,7 +1134,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
         problems.append(problem(
             "E_STATE_UNSUPPORTED", f"a state from a plant cannot carry {refused}",
             f"/{initial_state.SECTION}",
-            hint="see the coverage table of the state documentation"))
+            hint="see the coverage table of the state documentation",
+            fields={"case": "model"}))
     for kind, has, key in _KINDS:
         if key == "arrivals" and book is not None and all(
                 (b.get("params") or {}).get("arrival_mode") == orders.ORDERS_MODE
@@ -1115,7 +1145,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
             problems.append(problem(
                 "W_STATE_NOT_COVERED", f"the observed timeline says nothing about {kind}: "
                 f"they start as the model declares them", f"/{initial_state.SECTION}",
-                hint="map a signal for it, or accept the model's start"))
+                hint="map a signal for it, or accept the model's start",
+                fields={"case": "unread", "name": kind}))
     return document(model, state, name=name, source="observed", at=clock,
                     stamp=seen.get("stamp")), problems
 
@@ -1178,19 +1209,22 @@ def _plant_orders(flat, seen, entities, clock, problems) -> tuple:
             "W_PLANT_CONTRADICTION", f"the plant reports jobs on the floor of {contradicted} "
             f"orders not released (taken as released) and of {unknown} orders it does not "
             f"report (no order is linked)", f"/{initial_state.SECTION}/order_book",
-            hint="an order's status and its jobs come from two signals that do not agree"))
+            hint="an order's status and its jobs come from two signals that do not agree",
+            fields={"case": "orders", "n": contradicted + unknown}))
     if short:
         problems.append(problem(
             "W_PLANT_CONTRADICTION", f"{short} released orders have fewer jobs done and on "
             f"the floor than their quantity: each counts only the jobs the plant shows and "
             f"completes when they do (one with none is released again at the clock)",
             f"/{initial_state.SECTION}/orders",
-            hint="map every job of a released order (its WIP rows), or its quantity done"))
+            hint="map every job of a released order (its WIP rows), or its quantity done",
+            fields={"case": "short", "n": short}))
     if untimed:
         problems.append(problem(
             "W_STATE_NOT_COVERED", f"{untimed} orders not released have no release time: "
             f"they are released at the clock", f"/{initial_state.SECTION}/order_book",
-            hint="map the order's release cell (\"fields\": {\"release\": ...})"))
+            hint="map the order's release cell (\"fields\": {\"release\": ...})",
+            fields={"case": "release", "n": untimed}))
     return book, counters
 
 
@@ -1207,7 +1241,7 @@ def _plant_fleets(flat, blocks, seen, entities, problems, routes, clock) -> tupl
             "W_STATE_NOT_COVERED", f"the observed timeline cannot place fleet '{fleet}': {what}",
             f"/{initial_state.SECTION}/fleets/{fleet}",
             hint="map a \"vehicle\" and a \"load\" signal for every vehicle, and give the "
-                 "TRANSPORT block a destination"))
+                 "TRANSPORT block a destination", fields={"case": "fleet", "name": fleet}))
 
     carriers: dict = {}             # fleet -> its TRANSPORT blocks
     for name, block in blocks.items():
@@ -1404,7 +1438,8 @@ def _plant_belts(flat, blocks, entities, seen, clock, problems) -> tuple:
                     problems.append(problem(
                         "W_STATE_NOT_COVERED", f"the observed timeline shows a part at the end "
                         f"of belt '{name}' with no end stop: what holds it is not observed",
-                        f"/{initial_state.SECTION}/entities", hint="map the belt after it"))
+                        f"/{initial_state.SECTION}/entities", hint="map the belt after it",
+                        fields={"case": "belt", "name": name}))
                     continue
                 ahead = True
             out[id(entity)] = {"belt": belt}
@@ -1550,21 +1585,22 @@ class _Routes:
 def check(layout, doc, *, max_age: float | None = None, now: float | None = None) -> list:
     """The problems that refuse *doc* as a state of the model *layout*; [] when it may start.
     *max_age* (seconds) is the caller's: an observed state older than it is stale."""
-    def refused(code, message, hint):
-        return [problem(code, message, "/initial_state", hint=hint)]
+    def refused(code, message, hint, fields=None):
+        return [problem(code, message, "/initial_state", hint=hint, fields=fields)]
 
     if not (isinstance(doc, dict) and doc.get("format") == FORMAT
             and isinstance(doc.get("state"), dict) and isinstance(doc.get("model"), dict)
             and isinstance(doc.get("hash"), str) and isinstance(doc["model"].get("hash"), str)):
         return refused("E_STATE_FORMAT", "this is not a state document of format 1",
-                       "write one with `naga state take`")
+                       "write one with `naga state take`", fields={"case": "unread"})
     state = doc["state"]
     entities = state.get("entities")
     try:
         text = canonical_json(state)
     except (TypeError, ValueError, RecursionError):
         return refused("E_STATE_FORMAT", "the state holds a value that is not plain data",
-                       "numbers must be finite; no value may nest without end")
+                       "numbers must be finite; no value may nest without end",
+                       fields={"case": "unread"})
     counts = [e.get("count", 0) for e in entities if isinstance(e, dict)] \
         if isinstance(entities, list) else []
     counts += [len(e["members"]) for e in (entities if isinstance(entities, list) else [])
@@ -1573,7 +1609,8 @@ def check(layout, doc, *, max_age: float | None = None, now: float | None = None
             or sum(c for c in counts if isinstance(c, int) and c > 0) > MAX_ENTITIES:
         return refused("E_STATE_SIZE", f"the state is over the bound of {MAX_BYTES} bytes or "
                        f"{MAX_ENTITIES} entities",
-                       "a state this large is not one a run can start from")
+                       "a state this large is not one a run can start from",
+                       fields={"case": "size"})
     if doc["hash"] != sha256_text(canonical_json([doc["model"]["hash"], state])):
         return refused("E_STATE_HASH", "the state does not match its own hash",
                        "it was edited after it was written; take it again")
@@ -1619,7 +1656,7 @@ def coverage(layout, doc) -> list:
     return [problem("W_STATE_NOT_COVERED", f"the state (written by {writer}) says "
                     f"nothing about {kind}: they start as the model declares them",
                     f"/{initial_state.SECTION}",
-                    hint="take the state again with this version")
+                    hint="take the state again with this version", fields={"case": "unread", "name": kind})
             for kind in missing]
 
 
@@ -1695,12 +1732,14 @@ def read(path) -> tuple:
     try:
         if Path(path).stat().st_size > 2 * MAX_BYTES:
             return None, [problem("E_STATE_SIZE", f"the state file is over {2 * MAX_BYTES} bytes",
-                                  "/initial_state", hint="a state holds at most 16 MiB")]
+                                  "/initial_state", hint="a state holds at most 16 MiB",
+                                  fields={"case": "size"})]
         return json.loads(Path(path).read_text(encoding="utf-8")), []
     except (OSError, ValueError, RecursionError) as exc:
         return None, [problem("E_STATE_FORMAT", f"the state file cannot be read "
                               f"({type(exc).__name__})", "/initial_state",
-                              hint="write one with `naga state take`")]
+                              hint="write one with `naga state take`",
+                              fields={"case": "unread"})]
 
 
 def _report(problems) -> int:

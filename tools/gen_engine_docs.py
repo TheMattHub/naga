@@ -127,7 +127,7 @@ SECTION_FAMILIES = {
     "levels-and-flows": ("levels", "flows", "conversions"),
     "system-dynamics": ("auxiliaries", "delays", "subscripts"),
     "agents": ("agent_types", "populations"),
-    "vehicles-and-layout": ("fleets", "motion_profiles", "zones", "chargers", "network"),
+    "vehicles-and-layout": ("fleets", "motion_profiles", "robots", "pallet_patterns", "zones", "chargers", "network"),
     "structure-and-notes": ("submodels", "annotations", "background", "building", "cranes", "stockpiles",
                             "info", "view"),
     "costs-and-decisions": ("fixed_costs", "investment", "dispatch"),
@@ -1185,7 +1185,7 @@ CLI_GROUPS = (
      ("generate", "discover", "sdimport")),
     ("twin", "Digital twin",
      "Read a plant, start a run from its state, calibrate and forecast.",
-     ("bind", "watch", "state", "plant", "twin", "approve", "plc-write", "calibrate", "forecast")),
+     ("bind", "watch", "state", "plant", "twin", "approve", "trust", "plc-write", "calibrate", "forecast")),
     ("plan-and-share", "Plan, inspect and share",
      "Plan with a solver, find the loops that drive a system dynamics model, and share a model in a browser.",
      ("plan", "loops", "viewer")),
@@ -1378,6 +1378,15 @@ SECTION_EXAMPLES: dict[str, object] = {
     "fixed_costs": [{"name": "Machine", "amount": 50000, "capex": True}],
     "fleets": ([{"name": "Forklifts", "count": 2, "speed": 1.5}], {"network": _NODES}),
     "motion_profiles": [{"name": "Arm", "kind": "robot", "speed": 1.0, "accel": 2.0}],
+    "robots": [{"name": "Gantry", "structure": "gantry", "params": {"mount_height": 2.5},
+                "axes": [{"name": "x", "range": [0, 3], "speed": 1.0, "accel": 2.0},
+                         {"name": "y", "range": [0, 2], "speed": 1.0, "accel": 2.0},
+                         {"name": "z", "range": [0, 1], "speed": 0.5, "accel": 1.0}]}],
+    "pallet_patterns": [{"name": "Euro", "pallet": {"length": 1.2, "width": 0.8, "deck_height": 0.144},
+                         "item": {"length": 0.4, "width": 0.3, "height": 0.25},
+                         "layers": {"A": [{"x": -0.2, "y": 0}, {"x": 0.2, "y": 0}]},
+                         "stack": [{"layer": "A"}, {"layer": "A", "transform": "rotate180"}],
+                         "limits": {"layers": 4}}],
     "zones": ([{"name": "Cell", "node": "A", "radius_m": 2.0}], {"network": _NODES}),
     "chargers": ([{"name": "Dock", "node": "A", "power_kw": 10}], {"network": _NODES}),
     "auxiliaries": [{"name": "Demand", "expr": "10 + 2"}],
@@ -1670,6 +1679,7 @@ def problem_fixes() -> dict[str, str]:
 
 
 def gen_problems(out: Path, product: bool = False) -> None:
+    from nagasim.core import plainlines
     from nagasim.core.problems import PROBLEM_CODES
 
     fixes = problem_fixes()
@@ -1685,6 +1695,9 @@ def gen_problems(out: Path, product: bool = False) -> None:
              "one starting `W_` is a warning that does not. Before 1.0 new codes are added and a message may be "
              "reworded, so match on the code and not on the text"
              + ("." if product else " (see [Stability](../../stability.md))."), "",
+             "A screen shows a code's short line (\"On screen\" below), filled from the problem's own "
+             "values; a code without one shows the first clause of its message. The code, the whole "
+             "message and the hint show on hover.", "",
              "| Area | Codes | What they cover |", "|---|---|---|"]
     for stem, title, about, _pattern in PROBLEM_AREAS:
         codes = per_area[stem]
@@ -1694,6 +1707,10 @@ def gen_problems(out: Path, product: bool = False) -> None:
                  "| Code | Severity | Meaning | About |", "|---|---|---|---|"]
         for code in codes:
             message = _text(PROBLEM_CODES[code], product)
+            shown = plainlines.PLAIN.get(code)       # D1332: what a screen shows for it
+            if shown:
+                message += " On screen: " + " / ".join(
+                    f"\"{line}\"" for line in (shown.values() if isinstance(shown, dict) else [shown]))
             about_cell = ", ".join(_problem_elements(code, PROBLEM_CODES[code])) or "--"
             lines.append(f"| <span id=\"{code.lower()}\"></span>`{code}` | {'warning' if code.startswith('W_') else 'error'} "
                          f"| {message} | {about_cell} |")

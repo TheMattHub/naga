@@ -362,16 +362,19 @@ def validate_conversions_structured(layout: dict) -> tuple[list, set, set]:
         if not isinstance(entry, dict):
             problems.append(problem("E_CONVERSION_NAME",
                                     "conversion: each entry must be an object", at,
-                                    hint="{\"name\": \"Digester\", \"substrates\": [...]}"))
+                                    hint="{\"name\": \"Digester\", \"substrates\": [...]}",
+                                    fields={"case": "object"}))
             continue
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_CONVERSION_NAME", "conversion: name must not be empty",
-                                    f"{at}/name", hint="give every conversion a unique name"))
+                                    f"{at}/name", hint="give every conversion a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in names:
             problems.append(problem("E_CONVERSION_NAME", f"duplicate conversion name: {name}",
-                                    f"{at}/name", hint="rename one of the two conversions"))
+                                    f"{at}/name", hint="rename one of the two conversions",
+                                    fields={"case": "dup", "name": name}))
         names.add(name)
         interval = entry.get("cohort_interval", 1.0)
         if not _is_number(interval) or float(interval) <= 0:
@@ -380,27 +383,31 @@ def validate_conversions_structured(layout: dict) -> tuple[list, set, set]:
                 f"conversion '{name}': \"cohort_interval\" must be a positive number",
                 f"{at}/cohort_interval",
                 hint="feed is grouped into cohorts closed at this interval; 1 hour is the "
-                     "default and halving it halves the release delay it introduces"))
+                     "default and halving it halves the release delay it introduces",
+                fields={"case": "interval", "name": name}))
         substrates = entry.get("substrates") or []
         if not substrates:
             problems.append(problem(
                 "E_CONVERSION_SUBSTRATE", f"conversion '{name}': declare at least one substrate",
                 f"{at}/substrates",
                 hint="{\"name\": \"maize\", \"feed\": \"FLOW(\\\"feed\\\")\", \"yield\": 200, "
-                     "\"half_life\": 60}"))
+                     "\"half_life\": 60}",
+                fields={"case": "none", "name": name}))
         seen: set = set()
         for s_index, spec in enumerate(substrates):
             s_at = f"{at}/substrates/{s_index}"
             if not isinstance(spec, dict) or not str(spec.get("name", "")).strip():
                 problems.append(problem("E_CONVERSION_SUBSTRATE",
                                         f"conversion '{name}': a substrate has no name",
-                                        f"{s_at}/name", hint="name every feedstock"))
+                                        f"{s_at}/name", hint="name every feedstock",
+                                        fields={"case": "noname", "name": name}))
                 continue
             s_name = str(spec["name"])
             if s_name in seen:
                 problems.append(problem("E_CONVERSION_SUBSTRATE",
                                         f"conversion '{name}': duplicate substrate '{s_name}'",
-                                        f"{s_at}/name", hint="rename one of the two"))
+                                        f"{s_at}/name", hint="rename one of the two",
+                                        fields={"case": "dup", "name": name, "substrate": s_name}))
             seen.add(s_name)
             components.update(str(key) for key in (spec.get("components") or {}))
             _check_curve(problems, name, s_name, spec, s_at)
@@ -412,7 +419,8 @@ def _check_curve(problems: list, name: str, s_name: str, spec: dict, at: str) ->
     if not _is_number(spec.get("yield", 0.0)) or float(spec.get("yield", 0.0) or 0.0) < 0:
         problems.append(problem("E_CONVERSION_CURVE", f"{where}: \"yield\" must be a number >= 0",
                                 f"{at}/yield",
-                                hint="product per unit of feed, e.g. 200 Nm3 of biogas per tonne"))
+                                hint="product per unit of feed, e.g. 200 Nm3 of biogas per tonne",
+                                fields={"case": "yield", "where": where}))
     curve = spec.get("curve")
     if curve in (None, []):
         half_life = spec.get("half_life")
@@ -421,16 +429,19 @@ def _check_curve(problems: list, name: str, s_name: str, spec: dict, at: str) ->
                 "E_CONVERSION_CURVE", f"{where}: needs a \"curve\" or a positive \"half_life\"",
                 f"{at}/half_life",
                 hint="\"half_life\": 60 discretises a first-order release into 12 equal-width "
-                     "steps; \"curve\": [[24, 0.4], [72, 1.0]] gives the knots directly"))
+                     "steps; \"curve\": [[24, 0.4], [72, 1.0]] gives the knots directly",
+                fields={"case": "need", "where": where}))
         steps = spec.get("steps", DEFAULT_STEPS)
         if not _is_number(steps) or int(steps) < 1:
             problems.append(problem("E_CONVERSION_CURVE", f"{where}: \"steps\" must be >= 1",
-                                    f"{at}/steps", hint=f"the default is {DEFAULT_STEPS}"))
+                                    f"{at}/steps", hint=f"the default is {DEFAULT_STEPS}",
+                                    fields={"case": "steps", "where": where}))
         return
     if not isinstance(curve, list):
         problems.append(problem("E_CONVERSION_CURVE", f"{where}: \"curve\" must be a list of "
                                                       f"[age, cumulative fraction] pairs",
-                                f"{at}/curve", hint="[[24, 0.4], [72, 0.8], [240, 1.0]]"))
+                                f"{at}/curve", hint="[[24, 0.4], [72, 0.8], [240, 1.0]]",
+                                fields={"case": "list", "where": where}))
         return
     age, cumulative = 0.0, 0.0
     for point in curve:
@@ -438,20 +449,23 @@ def _check_curve(problems: list, name: str, s_name: str, spec: dict, at: str) ->
                 and _is_number(point[0]) and _is_number(point[1])):
             problems.append(problem("E_CONVERSION_CURVE",
                                     f"{where}: every curve knot is [age, cumulative fraction]",
-                                    f"{at}/curve", hint="[[24, 0.4], [72, 1.0]]"))
+                                    f"{at}/curve", hint="[[24, 0.4], [72, 1.0]]",
+                                    fields={"case": "knot", "where": where}))
             return
         if float(point[0]) <= age or float(point[1]) < cumulative:
             problems.append(problem(
                 "E_CONVERSION_CURVE",
                 f"{where}: curve ages must increase and the fraction must not decrease",
-                f"{at}/curve", hint="the fraction is CUMULATIVE: 0.4 at 24 h, 1.0 at 240 h"))
+                f"{at}/curve", hint="the fraction is CUMULATIVE: 0.4 at 24 h, 1.0 at 240 h",
+                fields={"case": "order", "where": where}))
             return
         age, cumulative = float(point[0]), float(point[1])
     if abs(cumulative - 1.0) > 1e-9:
         problems.append(problem(
             "E_CONVERSION_CURVE", f"{where}: the last curve knot must be 1.0, not {cumulative:g}",
             f"{at}/curve",
-            hint="the curve is the cumulative SHARE of the yield; scale \"yield\" instead"))
+            hint="the curve is the cumulative SHARE of the yield; scale \"yield\" instead",
+            fields={"case": "last", "where": where, "last": cumulative}))
 
 
 def validate_conversion_expressions(layout: dict, variables: set, check) -> None:

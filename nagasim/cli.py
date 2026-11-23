@@ -73,6 +73,7 @@ COMMANDS = {
              "an operational twin: monitor, forecast, compare, report"),
     "approve": ("plcwrite", "approve_main",
                 "approve a twin's recommendation (asks first)"),
+    "trust": ("trustcli", "main", "trust a model's item code on this computer (shows it, asks first)"),
     "plc-write": ("plcwrite", "main",
                   "write approved setpoints to a soft PLC on this machine (dry-run unless --write)"),
     "calibrate": ("calibrate", "main", "fit model parameters to observed KPIs"),

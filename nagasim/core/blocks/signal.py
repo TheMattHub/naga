@@ -43,11 +43,9 @@ class Signal(BaseProcess):
         if self.ctx.debug:
             log.debug("Signal '%s' activated by entity %s at time %s.", self.signal_name, entity.id, self.env.now)
 
-         # Succeed the signal event to release all listening Hold blocks
-        self.ctx.signals[self.signal_name].succeed()
-
-        # Reset the signal so another entity can trigger it again
-        self.ctx.signals[self.signal_name] = self.env.event()
+        # Succeed the signal event to release all listening Hold blocks, reset it so another
+        # entity can trigger it again, and call the items listening for it (D1344).
+        self.ctx.raise_signal(self.signal_name)
 
         self.remove_active_entity(entity)
 

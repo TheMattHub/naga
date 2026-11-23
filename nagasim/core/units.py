@@ -347,7 +347,8 @@ def _declared(text: str, kind: str, name: str, path: str, problems: list) -> Uni
     except UnitParseError:
         problems.append(problem("W_UNIT_UNPARSED",
                                 f'{kind} "{name}": unit "{text}" could not be parsed',
-                                path, block=name))
+                                path, block=name,
+                                fields={"case": "unparsed", "unit": text}))
         return WILDCARD
 
 def _mismatch_code(strict: bool) -> str:
@@ -363,11 +364,13 @@ def _compare(problems: list, path: str, block: str, subject: str,
              a_label: str, a: Unit, b_label: str, b: Unit, strict: bool = False) -> None:
     if a.dims != b.dims:
         problems.append(problem(_mismatch_code(strict),
-                                f"{subject}: {a_label} {a}, {b_label} {b}", path, block=block))
+                                f"{subject}: {a_label} {a}, {b_label} {b}", path, block=block,
+                                fields={"case": "compare", "a": str(a), "b": str(b)}))
     elif abs(a.scale - b.scale) > 1e-9 * max(abs(a.scale), abs(b.scale), 1.0):
         problems.append(problem(_time_code(strict),
                                 f"{subject}: {a_label} {a}, {b_label} {b} (different time scale)",
-                                path, block=block))
+                                path, block=block,
+                                fields={"case": "compare", "a": str(a), "b": str(b)}))
 
 def _resolve(section: str, kind: str, field_name: str, by_name: dict, memo: dict,
              resolving: set, name: str, env: Env, problems: list, strict: bool = False) -> Unit:
@@ -385,7 +388,8 @@ def _resolve(section: str, kind: str, field_name: str, by_name: dict, memo: dict
         inferred = infer(entry.get(field_name) or "", env)
     except UnitMismatchError as exc:
         problems.append(problem(_mismatch_code(strict), f'{kind} "{name}": {exc}',
-                                f"/{section}/{index}/{field_name}", block=name))
+                                f"/{section}/{index}/{field_name}", block=name,
+                                fields={"case": "expr"}))
         inferred = WILDCARD
     if not declared.wildcard and not inferred.wildcard:
         _compare(problems, f"/{section}/{index}/unit", name, f'{kind} "{name}"',
@@ -426,7 +430,8 @@ def check(layout: dict) -> list:
         if strict and not text:
             problems.append(problem("W_UNIT_MISSING", f'level "{name}": no unit declared',
                                     f"/levels/{index}/unit", block=name,
-                                    hint='add a "unit" (e.g. "people", "kg") so mismatches can be checked'))
+                                    hint='add a "unit" (e.g. "people", "kg") so mismatches can be checked',
+                                    fields={"case": "level"}))
 
     # Tables' unit_x/unit_y and time series' unit (PHASE6 S9): parsed here so
     # TABLE()/TS() calls anywhere below (a flow rate, an auxiliary, a delay
@@ -489,12 +494,13 @@ def check(layout: dict) -> list:
         if strict and not text:
             problems.append(problem("W_UNIT_MISSING", f'flow "{name}": no unit declared',
                                     f"{path}/unit", block=name,
-                                    hint='add a "unit" (e.g. "people/day") so mismatches can be checked'))
+                                    hint='add a "unit" (e.g. "people/day") so mismatches can be checked',
+                                    fields={"case": "flow"}))
         try:
             inferred = infer(entry.get("rate") or "0", env)
         except UnitMismatchError as exc:
             problems.append(problem(_mismatch_code(strict), f'flow "{name}": {exc}',
-                                    f"{path}/rate", block=name))
+                                    f"{path}/rate", block=name, fields={"case": "expr"}))
             inferred = WILDCARD
 
         candidates = []

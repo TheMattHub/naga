@@ -421,25 +421,29 @@ def validate_calendar_structured(layout: dict) -> tuple[list, "Calendar | None"]
     if not isinstance(spec, dict):
         return [problem("E_CALENDAR_START", "simulation.calendar: must be an object",
                         "/simulation/calendar",
-                        hint="{\"start\": \"2026-01-05T06:00:00\", \"timezone\": \"Europe/Rome\"}")], None
+                        hint="{\"start\": \"2026-01-05T06:00:00\", \"timezone\": \"Europe/Rome\"}",
+                        fields={"case": "object"})], None
     if not spec.get("start"):
         problems.append(problem(
             "E_CALENDAR_START", "simulation.calendar: no \"start\"", "/simulation/calendar/start",
-            hint="the ISO 8601 instant model time 0 stands for, e.g. \"2026-01-05T06:00:00\""))
+            hint="the ISO 8601 instant model time 0 stands for, e.g. \"2026-01-05T06:00:00\"",
+            fields={"case": "missing"}))
         return problems, None
     try:
         _zone(spec.get("timezone"))
     except CalendarError as exc:
         problems.append(problem("E_CALENDAR_TIMEZONE", f"simulation.calendar: {exc}",
                                 "/simulation/calendar/timezone",
-                                hint="an IANA name such as UTC, Europe/Rome or America/New_York"))
+                                hint="an IANA name such as UTC, Europe/Rome or America/New_York",
+                                fields={"case": "zone"}))
         return problems, None
     try:
         calendar = model_calendar(layout)
     except CalendarError as exc:
         problems.append(problem("E_CALENDAR_START", f"simulation.calendar: {exc}",
                                 "/simulation/calendar/start",
-                                hint="write it as 2026-01-05T06:00:00 or 2026-01-05T05:00:00Z"))
+                                hint="write it as 2026-01-05T06:00:00 or 2026-01-05T05:00:00Z",
+                                fields={"case": "bad"}))
         return problems, None
     end = spec.get("end")
     if end:
@@ -448,12 +452,14 @@ def validate_calendar_structured(layout: dict) -> tuple[list, "Calendar | None"]
         except CalendarError as exc:
             problems.append(problem("E_CALENDAR_DATE", f"simulation.calendar: {exc}",
                                     "/simulation/calendar/end",
-                                    hint="the run's end instant, e.g. \"2026-01-12T00:00:00\""))
+                                    hint="the run's end instant, e.g. \"2026-01-12T00:00:00\"",
+                                    fields={"case": "a8_end"}))
             length = 1.0
         if length <= 0:
             problems.append(problem(
                 "E_CALENDAR_DATE", "simulation.calendar: \"end\" is not after \"start\"",
-                "/simulation/calendar/end", hint="the run ends after it starts"))
+                "/simulation/calendar/end", hint="the run ends after it starts",
+                fields={"case": "a8_end_order"}))
     return problems, calendar
 
 
@@ -469,31 +475,36 @@ def validate_weekly_schedule(entry: dict, at: str, calendar: "Calendar | None",
             f"schedule '{name}': a weekday schedule needs a model calendar",
             f"{at}/weekly",
             hint="set \"simulation\": {\"calendar\": {\"start\": \"2026-01-05T00:00:00\", "
-                 "\"timezone\": \"Europe/Rome\"}}")]
+                 "\"timezone\": \"Europe/Rome\"}}",
+            fields={"case": "none", "name": name})]
     try:
         _bands(entry)
     except CalendarError as exc:
         return [problem("E_SCHEDULE_WEEKLY", f"schedule '{name}': {exc}", f"{at}/weekly",
-                        hint="{\"mon\": [[\"06:00\", \"14:00\", 3]], \"sat\": []}")]
+                        hint="{\"mon\": [[\"06:00\", \"14:00\", 3]], \"sat\": []}",
+                        fields={"case": "weekly", "name": name})]
     limit = horizon
     for index, item in enumerate(entry.get("exceptions") or []):
         where = f"{at}/exceptions/{index}"
         if not isinstance(item, dict) or not item.get("start"):
             problems.append(problem(
                 "E_SCHEDULE_EXCEPTION", f"schedule '{name}': exception {index} has no \"start\"",
-                where, hint="{\"start\": \"2026-12-24\", \"end\": \"2026-12-26\", \"value\": 0}"))
+                where, hint="{\"start\": \"2026-12-24\", \"end\": \"2026-12-26\", \"value\": 0}",
+                fields={"case": "no_start", "name": name, "index": index}))
             continue
         try:
             start = _day_value(item.get("start"), "exception")
             end = _day_value(item.get("end"), "exception") if item.get("end") else start
         except CalendarError as exc:
             problems.append(problem("E_SCHEDULE_EXCEPTION", f"schedule '{name}': {exc}", where,
-                                    hint="dates are ISO, e.g. \"2026-12-25\""))
+                                    hint="dates are ISO, e.g. \"2026-12-25\"",
+                                    fields={"case": "date", "name": name}))
             continue
         if end < start:
             problems.append(problem(
                 "E_SCHEDULE_EXCEPTION", f"schedule '{name}': exception {index} ends before it starts",
-                where, hint="\"end\" is the last day of the range, inclusive"))
+                where, hint="\"end\" is the last day of the range, inclusive",
+                fields={"case": "order", "name": name, "index": index}))
             continue
         if limit and limit > 0:
             first, last = calendar.to_model(calendar.local(start)), calendar.to_model(
@@ -504,5 +515,6 @@ def validate_weekly_schedule(entry: dict, at: str, calendar: "Calendar | None",
                     f"schedule '{name}': exception {index} ({start}) falls outside the "
                     f"run", where,
                     hint="the run covers "
-                         f"{calendar.label(0, '%Y-%m-%d')} to {calendar.label(limit, '%Y-%m-%d')}"))
+                         f"{calendar.label(0, '%Y-%m-%d')} to {calendar.label(limit, '%Y-%m-%d')}",
+                    fields={"case": "unused", "name": name, "index": index}))
     return problems

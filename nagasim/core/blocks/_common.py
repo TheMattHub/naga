@@ -80,6 +80,9 @@ def _absorbed(block, member, batch, **traced):
     member.in_batch = batch.id
     tending.cobot_of(block, member)      # D169: a cobot staying with it has nothing to wait for
     free_held(block, member)             # D837: nor a vehicle a TRANSPORT kept for it
+    # R34: a rule counting it under way lets it go (imported here: _routing imports this module)
+    from nagasim.core.blocks._routing import end_routes
+    end_routes(block.ctx, member)
     if member in block.ctx.live_entities:
         block.ctx.live_entities.remove(member)
     # An absorbed member never passes Dispose: give its planned stations
@@ -115,6 +118,37 @@ def member_time_of(block, text, factor, entity, label="member_time") -> float:
     except (ExpressionError, TypeError, ValueError) as exc:
         raise ExpressionError(f"Block '{block.name}': {label}: {exc}") from None
     return max(value * factor, 0.0)
+
+
+def robot_params(block_kind: str) -> tuple:
+    """The ParamSpecs of a robot that palletizes (BATCH) or depalletizes (SEPARATE) by a
+    pallet pattern: one cycle per slot, planned before the run (D1346)."""
+    from nagasim.core.block_spec import ParamSpec
+    where = "pick" if block_kind == "SEPARATE" else "place"
+    return (
+        ParamSpec("robot", str, "",
+                  description="Name of a record in \"robots\": with a pattern, each item's time "
+                              "is this robot's cycle to that item's own slot, and member_time is "
+                              "not used. Empty = member_time.", quantity="none"),
+        ParamSpec("robot_at", list, [0, 0, 0],
+                  description="Where the robot stands, from this block (the pallet's place): "
+                              "[dx, dy, rotation] in the model's length unit and degrees, dx along "
+                              "the block's facing, dy toward the floor plan's +y side at rotation 0.",
+                  quantity="none"),
+        ParamSpec("targets", dict, {},
+                  description="The robot's named targets, as on MOTION; \"slot\" (the item's "
+                              f"{where} on the pallet) and \"slot_above\" (approach higher) are "
+                              "given per slot and are not defined here.", quantity="none"),
+        ParamSpec("segments", list, [],
+                  description="The robot's cycle, as on MOTION: ptp and lin moves to targets, "
+                              "with timed pick and place segments, every time in seconds. A move "
+                              "without its own payload_kg carries the pattern's item weight.",
+                  quantity="none", kinds=("table",)),
+        # Text, not a float: a numeric default would mean 0.3 mm in a millimetre model.
+        ParamSpec("approach", str, "",
+                  description="How far slot_above is over the slot, in the model's length unit. "
+                              "Empty = 0.3 m.", quantity="length", kinds=("number",), unit_key=""),
+    )
 
 
 def validated_probs(probs, block_name):

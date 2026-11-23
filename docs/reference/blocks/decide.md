@@ -9,6 +9,8 @@ Routing decision: sends each part, order or customer down one of several links b
 
 "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
 
+"Rule" mode asks a routing rule (`rule`, core/routing.py) whose exits are the outgoing links; while every exit is at its limit the entity waits here, first come first served, and the rule runs again when an exit's count drops.
+
 Family: control. Python builder: `m.decide(...)`.
 
 ## Typical uses
@@ -34,13 +36,14 @@ In `Policy` mode, the number of actions is the number of links. Without an attac
 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
-| `mode` | str | `'Chance'` |  |  |  | "Chance": branch by probability. "Condition": branch by expression. "Policy": branch by a controller attached to `policy`. |
+| `mode` | str | `'Chance'` |  |  |  | "Chance": branch by probability. "Condition": branch by expression. "Policy": branch by a controller attached to `policy`. "Rule": branch by the routing `rule`. |
 | `probs` | list | `[]` |  | ratio |  | One probability per branch, in link order (not cumulative), used when mode is "Chance". |
 | `conditions` | list | `[]` |  |  |  | Ordered list of boolean expressions, used when mode is "Condition". |
 | `policy` | str | `''` |  |  |  | Decision-point name; used when mode is "Policy". Several DECIDE blocks may share one. |
 | `observation` | list | `[]` |  |  |  | Expressions (evaluated with the arriving entity) forming the observation handed to the controller, when mode is "Policy". |
 | `fallback` | str | `'first'` |  |  |  | "first"/"random"/"shortest": used when mode is "Policy" and no controller is attached for `policy`. |
 | `queue_exprs` | list | `[]` |  |  |  | One expression per outgoing link; used by fallback "shortest" to pick the argmin. |
+| `rule` | dict | `{}` |  |  |  | Routing rule, used when mode is "Rule": {"kind": "fixed", "sequential", "cyclic", "round_robin", "least_loaded", "condition", "attribute" or "item", "exits"?: one name per outgoing link (default: the linked blocks' names; "name:target" names the CONVEYOR a part counts as under way to), "conditions"?: for "condition", one per exit or one fewer (the last exit is the ELSE), "limit"?: parts under way to one exit at most (0: no limit), "attribute"?: for "attribute", the entity attribute naming the exit}. A part is under way from its routing until it reaches its exit's target piece (the first photo-eye of the last CONVEYOR of that branch, else that belt's end) or leaves a belt on its way there by a divert; name an exit "L1:L1" to stop the count at branch L1; an exit with no CONVEYOR counts nothing. With no true condition and no ELSE the run stops. While every exit is at its limit, parts wait here first come first served: one waiting for a full exit holds back those behind it. Empty: none. |
 
 ## Statistics
 
@@ -63,8 +66,10 @@ A check of the model reports these about this block:
 | `E_DECIDE_POLICY_NAME` | A Policy-mode DECIDE has an empty policy name. |
 | `E_DECIDE_PROBS` | A DECIDE's chance probabilities do not fit its branches. |
 | `E_DECIDE_QUEUE_EXPRS` | A Policy-mode DECIDE with fallback "shortest" needs one queue_exprs entry per outgoing link. |
+| `E_DECIDE_RULE` | A Rule-mode DECIDE's routing rule is not usable (an unknown kind, conditions that do not fit its exits, a limit that is not a whole number >= 0, no attribute name, a key it does not take), or it names a number of exits other than its outgoing links, or an exit names a target piece that is not a CONVEYOR its loads reach. |
 | `W_AVAILABLE_IS_CAPACITY` | A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE). |
 | `W_DECIDE_NO_ELSE` | A Condition-mode DECIDE has no ELSE link, so an entity no condition takes stops the run. |
+| `W_ROUTE_RULE` | A routing rule (a divert's, a transfer's or a Rule-mode DECIDE's) has a condition per exit and no ELSE, so a part no condition takes stops the run, or it has a limit or is least_loaded while an exit leads to no CONVEYOR and names no target piece, so nothing is counted under way there; or a CONVEYOR_TRANSFER exit reaches its conveyor through a block that branches (no handshake at its eye), hands to a conveyor with no eye and a stop nearer its entry than the longest item, or counts a limit or least_loaded only until the handshake; or a merge joins a belt between the first and last divert of a rule group, so its parts are never routed; or a zoned belt has diverts, so its zone timing is not modelled behind the last divert or eye. |
 
 ## Example
 
@@ -97,7 +102,7 @@ print(int(results.kpi("resource/Fast/Total Seizes")), "went the fast way,", int(
 
 Bundled models: [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md), [Container terminal: quay to yard](../../gallery/logistics.md), [Hub day: turnaround workload (crews, ground equipment, on-time departures)](../../gallery/logistics.md) and 10 more.
 
-Guides: [How do I train a policy with reinforcement learning?](../../goals/train-a-policy-with-rl.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Digital twin](../../digital-twin.md), [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md), [Expressions and variables](../../modelling-guide/expressions-variables.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md) and 10 more.
+Guides: [How do I train a policy with reinforcement learning?](../../goals/train-a-policy-with-rl.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Digital twin](../../digital-twin.md), [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md), [Expressions and variables](../../modelling-guide/expressions-variables.md) and 10 more.
 
 ## See also
 

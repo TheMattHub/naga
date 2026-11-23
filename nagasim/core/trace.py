@@ -51,6 +51,8 @@ _RECORDED_EVENTS = {
     # D734: a part's stage on a CONVEYOR (`x0` -> `x1` along the belt in
     # `duration`, `value` the spacing), so playback places it without the belt.
     "belt_stage",
+    # D1347: a CONVEYOR photo-eye fired for a part (`state` the edge, `value` the eye's index).
+    "eye",
 }
 _AGENT_EVENTS = ("agent_state", "agent_moved", "agent_removed", "agent_linked", "agent_unlinked")
 
@@ -180,6 +182,11 @@ class TraceRecorder:
                 t=t, kind=name, entity_id=entity.id, e_type=getattr(entity, "e_type", "Unknown"),
                 block=block.name, target=None, duration=duration, state=state, value=value,
                 x0=x0, x1=x1, ahead=ahead))
+            return
+        if name == "eye":
+            self.events.append(TraceEvent(
+                t=t, kind=name, entity_id=entity.id, e_type=getattr(entity, "e_type", "Unknown"),
+                block=block.name, target=None, state=state, value=value))
             return
         if name in ("resource_state", "level_changed", "variable_changed"):
             # Both are emitted with block=None (core/resource_manager.py,

@@ -165,11 +165,13 @@ def load(path) -> tuple:
     try:
         if Path(path).stat().st_size > LIMITS["map_bytes"]:
             return None, [problem("E_PLANTMAP_SIZE", f"the mapping file is over "
-                                  f"{LIMITS['map_bytes']} bytes", "/", hint=_HINT)]
+                                  f"{LIMITS['map_bytes']} bytes", "/", hint=_HINT,
+                                  fields={"case": "size"})]
         return json.loads(Path(path).read_text(encoding="utf-8")), []
     except (OSError, ValueError, RecursionError) as exc:
         return None, [problem("E_PLANTMAP_FORMAT", f"the mapping file cannot be read "
-                              f"({type(exc).__name__})", "/", hint=_HINT)]
+                              f"({type(exc).__name__})", "/", hint=_HINT,
+                              fields={"case": "unread"})]
 
 
 _NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
@@ -197,14 +199,14 @@ def check(mapping, layout=None) -> list[Problem]:
     `Mapper` may use it."""
     found: list[Problem] = []
 
-    def bad(message, at="/", code="E_PLANTMAP_FORMAT", hint=_HINT):
-        found.append(problem(code, f"mapping: {message}", at, hint=hint))
+    def bad(message, at="/", code="E_PLANTMAP_FORMAT", hint=_HINT, fields=None):
+        found.append(problem(code, f"mapping: {message}", at, hint=hint, fields=fields))
 
     if not isinstance(mapping, dict) or mapping.get("format") != FORMAT:
-        bad(f"this is not a plant mapping of format {FORMAT}")
+        bad(f"this is not a plant mapping of format {FORMAT}", fields={"case": "unread"})
         return found
     for key in mapping.keys() - {"format", "description", "time", "signals"}:
-        bad(f"unknown key '{str(key)[:80]}'", f"/{str(key)[:80]}")
+        bad(f"unknown key '{str(key)[:80]}'", f"/{str(key)[:80]}", fields={"case": "mapping"})
     time = mapping.get("time")
     epoch = _instant(time["epoch"]) if isinstance(time, dict) \
         and isinstance(time.get("epoch"), str) else None
@@ -212,20 +214,21 @@ def check(mapping, layout=None) -> list[Problem]:
         # Bounded: an instant outside what the platform's clock can name would make every
         # stamp of the timeline raise (Windows refuses a date before 1970).
         bad("time.epoch must be an ISO 8601 instant from 1970 to 2200: what model time 0 "
-            "stands for", "/time/epoch")
+            "stands for", "/time/epoch", fields={"case": "mapping"})
         time = {}
     if time.get("unit", "minutes") not in UNITS:
-        bad(f"time.unit must be one of {', '.join(UNITS)}", "/time/unit")
+        bad(f"time.unit must be one of {', '.join(UNITS)}", "/time/unit", fields={"case": "mapping"})
     if time.get("stamp", "source") not in ("source", "received"):
-        bad("time.stamp must be \"source\" or \"received\"", "/time/stamp")
+        bad("time.stamp must be \"source\" or \"received\"", "/time/stamp", fields={"case": "mapping"})
     for key in time.keys() - {"epoch", "unit", "stamp"}:
-        bad(f"unknown key 'time.{str(key)[:80]}'", "/time")
+        bad(f"unknown key 'time.{str(key)[:80]}'", "/time", fields={"case": "mapping"})
     signals = mapping.get("signals", [])
     if not isinstance(signals, list):
-        bad("signals must be a list", "/signals")
+        bad("signals must be a list", "/signals", fields={"case": "mapping"})
         return found
     if len(signals) > LIMITS["signals"]:
-        bad(f"over the bound of {LIMITS['signals']} signals", "/signals", "E_PLANTMAP_SIZE")
+        bad(f"over the bound of {LIMITS['signals']} signals", "/signals", "E_PLANTMAP_SIZE",
+            fields={"case": "signals"})
         return found
     names = layout_names(layout) if layout is not None else None
     drivers: dict[str, set] = {}        # resource -> what holds its units
@@ -235,26 +238,26 @@ def check(mapping, layout=None) -> list[Problem]:
         at = f"/signals/{index}"
         kind = signal.get("as") if isinstance(signal, dict) else None
         if kind not in KINDS:
-            bad(f"signal {index}: \"as\" must be one of {', '.join(KINDS)}", f"{at}/as")
+            bad(f"signal {index}: \"as\" must be one of {', '.join(KINDS)}", f"{at}/as", fields={"case": "signal", "index": index})
             continue
         target, extra = KINDS[kind]
         for key in signal.keys() - {*_COMMON, target, *extra}:
-            bad(f"signal {index}: unknown key '{str(key)[:80]}' for \"{kind}\"", at)
+            bad(f"signal {index}: unknown key '{str(key)[:80]}' for \"{kind}\"", at, fields={"case": "signal", "index": index})
         key = signal.get("key")
         if not isinstance(key, str) or not key:
-            bad(f"signal {index}: key must be a text", f"{at}/key")
+            bad(f"signal {index}: key must be a text", f"{at}/key", fields={"case": "signal", "index": index})
             continue
         if len(key.encode("utf-8", "replace")) > MAX_TEXT:
-            bad(f"signal {index}: key is over {MAX_TEXT} bytes", f"{at}/key", "E_PLANTMAP_SIZE")
+            bad(f"signal {index}: key is over {MAX_TEXT} bytes", f"{at}/key", "E_PLANTMAP_SIZE", fields={"case": "signal", "index": index})
             continue
         if key.count("{id}") != (kind in ("at", "order")) or key.count("*") > (kind == "job"):
             bad(f"signal {index}: an \"at\" or \"order\" key holds one {{id}}, a \"job\" key "
-                f"may hold one *, and no other key holds either", f"{at}/key")
+                f"may hold one *, and no other key holds either", f"{at}/key", fields={"case": "signal", "index": index})
         for name in ("source", "field", "type", "type_field", "batch_field", "order_field"):
             if name in signal and not (isinstance(signal[name], str) and signal[name]
                                        and len(signal[name]) <= 200):
                 bad(f"signal {index}: {name} must be a text of at most 200 characters",
-                    f"{at}/{name}")
+                    f"{at}/{name}", fields={"case": "signal", "index": index})
         tables = {"states": STATES, "blocks": None, "types": None, "nodes": None,
                   "attributes": None, "cycles": CYCLES, "fields": None, "sequences": None,
                   "statuses": ORDER_STATES}
@@ -265,39 +268,39 @@ def check(mapping, layout=None) -> list[Problem]:
                 reason = _table(signal.get(name), allowed)
                 bound = LIMITS["attributes" if name == "attributes" else "entries"]
                 if reason:
-                    bad(f"signal {index}: {name} {reason}", f"{at}/{name}")
+                    bad(f"signal {index}: {name} {reason}", f"{at}/{name}", fields={"case": "signal", "index": index})
                 elif len(signal[name]) > bound:
                     bad(f"signal {index}: {name} is over {bound} entries",
-                        f"{at}/{name}", "E_PLANTMAP_SIZE")
+                        f"{at}/{name}", "E_PLANTMAP_SIZE", fields={"case": "signal", "index": index})
                 elif name == "attributes" and not all(map(_attribute, signal[name].values())):
                     # D459: what the plant gives is a number the model reads; the routing
                     # and what the engine keeps on an entity are never the plant's (D458)
                     bad(f"signal {index}: attributes names an attribute that is not a name "
                         f"of at most 64 letters, digits and _, or that the engine owns",
-                        f"{at}/attributes")
+                        f"{at}/attributes", fields={"case": "signal", "index": index})
                 elif name == "fields" and not (set(signal[name]) <= set(ORDER_FIELDS)
                                                and "status" in signal[name]):
                     bad(f"signal {index}: fields names the cell of each of "
-                        f"{', '.join(ORDER_FIELDS)}, status always", f"{at}/fields")
+                        f"{', '.join(ORDER_FIELDS)}, status always", f"{at}/fields", fields={"case": "signal", "index": index})
         for name in ("gone", "merged"):
             codes = signal.get(name, [])
             if not isinstance(codes, list) or len(codes) > LIMITS["entries"] or not all(
                     isinstance(c, (str, int, float, bool, type(None))) for c in codes):
-                bad(f"signal {index}: {name} must be a list of values", f"{at}/{name}")
+                bad(f"signal {index}: {name} must be a list of values", f"{at}/{name}", fields={"case": "signal", "index": index})
         scale = signal.get("scale", 1.0)
         if not is_finite_number(scale) or scale == 0:
-            bad(f"signal {index}: scale must be a number other than 0", f"{at}/scale")
+            bad(f"signal {index}: scale must be a number other than 0", f"{at}/scale", fields={"case": "signal", "index": index})
         roll = signal.get("rollover", 2)
         if isinstance(roll, bool) or not is_finite_number(roll) or roll < 2 or not float(roll).is_integer():
             bad(f"signal {index}: rollover must be a whole number of at least 2: the value "
-                f"the counter returns to 0 at", f"{at}/rollover")
+                f"the counter returns to 0 at", f"{at}/rollover", fields={"case": "signal", "index": index})
         if "leaves" in signal and not isinstance(signal["leaves"], bool):
-            bad(f"signal {index}: leaves must be true or false", f"{at}/leaves")
+            bad(f"signal {index}: leaves must be true or false", f"{at}/leaves", fields={"case": "signal", "index": index})
         unit = signal.get("unit", 0 if kind in ("vehicle", "load", "tend") else None)
         if unit is not None and (isinstance(unit, bool) or not isinstance(unit, int)
                                  or not 0 <= unit < LIMITS["count"]):
             bad(f"signal {index}: unit must be the index of a vehicle of the fleet, from 0",
-                f"{at}/unit")
+                f"{at}/unit", fields={"case": "signal", "index": index})
             continue
         if kind == "order":         # D481: the book; it names no block, only routings
             told["\"order\" book"] = told.get("\"order\" book", 0) + 1
@@ -307,7 +310,9 @@ def check(mapping, layout=None) -> list[Problem]:
                 if sequence not in names["sequence"]:
                     bad(f"signal {index}: the model has no sequence '{sequence[:80]}'",
                         f"{at}/sequences", "E_PLANTMAP_NAME", "its sequences: "
-                        f"{', '.join(sorted(names['sequence'])[:20]) or '(none)'}")
+                        f"{', '.join(sorted(names['sequence'])[:20]) or '(none)'}",
+                        fields={"case": "missing", "index": index, "what": "sequence",
+                                "name": sequence})
             continue
         # What it speaks of: one name, a table of them, or (seen) a way out.
         if kind == "at":
@@ -317,7 +322,7 @@ def check(mapping, layout=None) -> list[Problem]:
         else:
             named = [signal.get(target)]
             if not isinstance(named[0], str) or not named[0]:
-                bad(f"signal {index}: \"{kind}\" needs \"{target}\"", f"{at}/{target}")
+                bad(f"signal {index}: \"{kind}\" needs \"{target}\"", f"{at}/{target}", fields={"case": "signal", "index": index})
                 continue
         group = "block" if target == "blocks" else target
         if names is not None:
@@ -325,19 +330,24 @@ def check(mapping, layout=None) -> list[Problem]:
                 if isinstance(name, str) and name not in names[group]:
                     bad(f"signal {index}: the model has no {group} '{name[:80]}'", f"{at}/{target}",
                         "E_PLANTMAP_NAME", f"its {group}s: "
-                        f"{', '.join(sorted(names[group])[:20]) or '(none)'}")
+                        f"{', '.join(sorted(names[group])[:20]) or '(none)'}",
+                        fields={"case": "missing", "index": index, "what": group, "name": name})
             if group == "fleet" and named[0] in names["units"] and unit >= names["units"][named[0]]:
                 bad(f"signal {index}: fleet '{named[0][:80]}' has no vehicle {unit}", f"{at}/unit",
-                    "E_PLANTMAP_NAME", f"its vehicles are 0 to {names['units'][named[0]] - 1}")
+                    "E_PLANTMAP_NAME", f"its vehicles are 0 to {names['units'][named[0]] - 1}",
+                    fields={"case": "vehicle", "index": index, "name": named[0], "unit": unit})
             for node in (signal["nodes"].values() if isinstance(signal.get("nodes"), dict) else ()):
                 if isinstance(node, str) and node not in names["node"]:
                     bad(f"signal {index}: the model's network has no node '{node[:80]}'",
                         f"{at}/nodes", "E_PLANTMAP_NAME",
-                        f"its nodes: {', '.join(sorted(names['node'])[:20]) or '(none)'}")
+                        f"its nodes: {', '.join(sorted(names['node'])[:20]) or '(none)'}",
+                        fields={"case": "missing", "index": index, "what": "network node",
+                                "name": node})
             if kind == "step" and named[0] in names["block"] and named[0] not in names["motion"]:
                 bad(f"signal {index}: block '{named[0][:80]}' is no MOTION block, which a step "
                     f"belongs to", f"{at}/block", "E_PLANTMAP_NAME",
-                    f"its MOTION blocks: {', '.join(sorted(names['motion'])[:20]) or '(none)'}")
+                    f"its MOTION blocks: {', '.join(sorted(names['motion'])[:20]) or '(none)'}",
+                    fields={"case": "motion", "index": index, "name": named[0]})
         if kind in ("job", "busy", "blocked") or (
                 kind == "state" and isinstance(signal.get("states"), dict)
                 and _UNITS_STATES & set(signal["states"].values())):
@@ -1289,7 +1299,8 @@ class Mapper:
                 "W_PLANT_GAP", f"plant: the log has {holes} holes ({lost} events "
                 f"lost, {breaks} breaks), the first at t = "
                 f"{self._holes[0][0]:g}", "/signals",
-                hint="what was missed is not shown; the next values put the timeline right"))
+                hint="what was missed is not shown; the next values put the timeline right",
+                fields={"holes": holes, "lost": lost}))
         return found
 
 
@@ -1332,10 +1343,12 @@ def read_log(path) -> tuple:
     except (OSError, ValueError) as exc:
         return [], [problem("E_PLANT_LOG", f"the log cannot be read ({type(exc).__name__}), or is "
                             f"over {LIMITS['log_bytes']} bytes or {LIMITS['lines']} lines", "/",
-                            hint="record one with `naga watch --record`, or cut it")]
+                            hint="record one with `naga watch --record`, or cut it",
+                            fields={"case": "unread"})]
     found = [problem("W_PLANT_DROPPED", f"plant: {skipped} lines of the log are not an "
                      f"observation, or are over {LIMITS['line_bytes']} bytes", "/",
-                     hint="one JSON object a line, as `naga watch --record` writes")] if skipped else []
+                     hint="one JSON object a line, as `naga watch --record` writes",
+                     fields={"case": "lines", "n": skipped})] if skipped else []
     return observations, found
 
 
@@ -1416,14 +1429,16 @@ class Watch:
                     self.problems.append(problem(
                         "W_TWIN_CUT", f"source '{name}' had over {pulls * pull} events waiting: "
                         f"the rest is read at the next step", f"/data_sources/{name}",
-                        hint="the view is behind the plant until the twin has caught up"))
+                        hint="the view is behind the plant until the twin has caught up",
+                        fields={"case": "events", "source": name}))
             except (ReadError, netguard.GuardError) as exc:
                 if not tolerant:
                     raise
                 # Refused before any socket (no connection, a kind that is not live).
                 row["state"] = "refused"
                 self.problems.append(problem(exc.code, f"source '{name}': {exc.message}",
-                                             f"/data_sources/{name}", hint=exc.hint))
+                                             f"/data_sources/{name}", hint=exc.hint,
+                                             fields={"source": name}))
         # Several sources' events of one pull, by their own time: only what is late is clamped.
         out = self.mapper.feed(in_order(self.mapper, batch))
         # #1907: an answer from a source that is down holds only what came before its break, so

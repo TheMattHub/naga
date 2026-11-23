@@ -39,6 +39,7 @@ import math
 from simpy.events import URGENT
 
 from nagasim.core import initial_state
+from nagasim.core.arealink import real_target
 from nagasim.core.blocks._common import validated_probs
 from nagasim.core.blocks.decide import Decide
 from nagasim.core.calendar import run_horizon
@@ -307,7 +308,8 @@ class SimSession:
         """
         return [{"id": rid, "policy": req.policy, "block": req.block, "t": req.t,
                  "entity_id": req.entity_id,
-                 "options": [p.name for p in self.model.blocks[req.block].next_process]}
+                 "options": [real_target(p).name
+                             for p in self.model.blocks[req.block].next_process]}
                 for rid, req, _controller in self._requests()]
 
     def snapshot(self) -> dict:

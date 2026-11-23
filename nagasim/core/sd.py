@@ -1080,16 +1080,19 @@ def _subscript_problems(layout: dict) -> list:
         hint = "{\"name\": \"region\", \"elements\": [\"north\", \"south\"]}"
         if not isinstance(name, str) or not name.isidentifier():
             problems.append(problem("E_SUBSCRIPT_NAME", f"subscript: name must be an "
-                                    f"identifier, got {name!r}", f"{at}/name", hint=hint))
+                                    f"identifier, got {name!r}", f"{at}/name", hint=hint,
+                                    fields={"case": "ident"}))
             continue
         if name in seen:
             problems.append(problem("E_SUBSCRIPT_NAME", f"duplicate subscript name: {name}",
-                                    f"{at}/name", hint="rename one of the two"))
+                                    f"{at}/name", hint="rename one of the two",
+                                    fields={"case": "twice", "name": name}))
         seen.add(name)
         elements = entry.get("elements")
         if not isinstance(elements, list) or not elements:
             problems.append(problem("E_SUBSCRIPT_NAME", f"subscript '{name}': \"elements\" "
-                                    f"must be a non-empty list", f"{at}/elements", hint=hint))
+                                    f"must be a non-empty list", f"{at}/elements", hint=hint,
+                                    fields={"case": "list", "name": name}))
             continue
         texts = [str(e) for e in elements]
         bad = [e for e, text in zip(elements, texts)
@@ -1098,7 +1101,8 @@ def _subscript_problems(layout: dict) -> list:
         if bad or len(set(texts)) < len(texts):
             problems.append(problem(
                 "E_SUBSCRIPT_NAME", f"subscript '{name}': elements must be unique, non-empty "
-                f"and free of [ ] , * and surrounding spaces", f"{at}/elements", hint=hint))
+                f"and free of [ ] , * and surrounding spaces", f"{at}/elements", hint=hint,
+                fields={"case": "elements", "name": name}))
         for text in texts:
             elements_seen.setdefault(text, at)
         up = entry.get("parent")
@@ -1107,18 +1111,21 @@ def _subscript_problems(layout: dict) -> list:
             problems.append(problem(
                 "E_SUBSCRIPT_RANGE", f"subscript '{name}': parent {up!r} is not another "
                 f"declared subscript holding all of its elements", f"{at}/parent",
-                hint="{\"name\": \"North\", \"elements\": [\"n1\"], \"parent\": \"Region\"}"))
+                hint="{\"name\": \"North\", \"elements\": [\"n1\"], \"parent\": \"Region\"}",
+                fields={"case": "one", "name": name}))
         if entry.get("map_to") is not None and name in subs and _map_target(entry, subs) is None:
             problems.append(problem(
                 "E_SUBSCRIPT_MAP", f"subscript '{name}': map_to must name another declared "
                 f"subscript, with one of its elements per element of '{name}' (or the same "
                 f"size, mapped by position)", f"{at}/map_to",
-                hint="{\"dim\": \"Zone\"} or {\"dim\": \"Zone\", \"elements\": [\"z2\", \"z1\"]}"))
+                hint="{\"dim\": \"Zone\"} or {\"dim\": \"Zone\", \"elements\": [\"z2\", \"z1\"]}",
+                fields={"case": "one", "name": name}))
     for text in sorted(set(elements_seen) & set(subs)):
         problems.append(problem(
             "E_SUBSCRIPT_NAME", f"'{text}' is both a subscript and an element: an index "
             f"naming it would be ambiguous", f"{elements_seen[text]}/elements",
-            hint="rename the element or the subscript"))
+            hint="rename the element or the subscript",
+            fields={"case": "both", "text": text}))
 
     level_names = {entry.get("name") for entry in layout.get("levels") or []
                    if isinstance(entry, dict)}
@@ -1137,24 +1144,28 @@ def _subscript_problems(layout: dict) -> list:
                        if isinstance(found, dict) else "must be an object"),
                     f"{at}/elements",
                     hint="give the record \"dims\" and key each override by an element: "
-                         "{\"north\": \"2\", \"a,x\": \"3\"}"))
+                         "{\"north\": \"2\", \"a,x\": \"3\"}",
+                    fields={"case": "one", "who": who}))
             if dims and _dims_ok(dims, subs) and _too_big(dims, subs):
                 problems.append(problem(
                     "E_SUBSCRIPT_SIZE", f"{who}: {math.prod(len(subs[d]) for d in dims):,} "
                     f"elements, over the {MAX_SUBSCRIPT_ELEMENTS:,} cap", f"{at}/dims",
-                    hint="use fewer or smaller dimensions"))
+                    hint="use fewer or smaller dimensions",
+                    fields={"case": "one", "who": who}))
             if dims and not _dims_ok(dims, subs):
                 if (isinstance(dims, list) and all(isinstance(d, str) and d in subs for d in dims)):
                     problems.append(problem("E_SUBSCRIPT_DIM", f"{who}: \"dims\" repeats a "
                                             f"subscript", f"{at}/dims",
-                                            hint="each dimension once"))
+                                            hint="each dimension once",
+                                            fields={"case": "repeat", "who": who}))
                 else:
                     unknown = [d for d in dims if d not in subs] if isinstance(dims, list) else [dims]
                     problems.append(problem(
                         "E_SUBSCRIPT_UNKNOWN", f"{who}: unknown subscript(s) "
                         f"{', '.join(map(str, unknown))}", f"{at}/dims",
                         hint=f"declare it under \"subscripts\"; declared: "
-                             f"{', '.join(sorted(subs)) or '(none)'}"))
+                             f"{', '.join(sorted(subs)) or '(none)'}",
+                        fields={"case": "one", "who": who, "unknown": ', '.join(str(d) for d in unknown)}))
             if not subs:
                 continue
             for field in fields:
@@ -1172,7 +1183,8 @@ def _subscript_problems(layout: dict) -> list:
                                                           else "is not a dimension of this record"),
                                 f"{at}/{field}",
                                 hint="give the record the same \"dims\", or name one element: "
-                                     "LEVEL(\"Pop[north]\")"))
+                                     "LEVEL(\"Pop[north]\")",
+                                fields={"case": "outside" if loose == stars else "notdim", "who": who, "loose": ', '.join(loose)}))
             if section != "flows":
                 continue
             for side in ("from", "to"):
@@ -1185,7 +1197,8 @@ def _subscript_problems(layout: dict) -> list:
                     problems.append(problem(
                         "E_SUBSCRIPT_DIM", f"{who}: \"{side}\" {end} is subscripted, the flow "
                         f"is not (or not over the same dims)", f"{at}/{side}",
-                        hint="give the flow the level's \"dims\" to map it element by element"))
+                        hint="give the flow the level's \"dims\" to map it element by element",
+                        fields={"case": "side", "who": who}))
     return problems
 
 
@@ -1200,11 +1213,13 @@ def validate_structured(layout: dict) -> tuple[list, set, set]:
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_AUX_NAME", "auxiliary: name must not be empty",
                                     f"/auxiliaries/{index}/name",
-                                    hint="{\"name\": \"birth_rate\", \"expr\": \"0.02\"}"))
+                                    hint="{\"name\": \"birth_rate\", \"expr\": \"0.02\"}",
+                                    fields={"case": "empty"}))
             continue
         if name in auxes:
             problems.append(problem("E_AUX_NAME", f"duplicate auxiliary name: {name}",
-                                    f"/auxiliaries/{index}/name", hint="rename one of the two"))
+                                    f"/auxiliaries/{index}/name", hint="rename one of the two",
+                                    fields={"case": "twice", "name": name}))
         auxes[name] = _compiled(entry.get("expr", ""))
     graph = {name: {ref for ref in expr.refs.get("AUX", ()) if ref in auxes}
              for name, expr in auxes.items() if expr is not None}
@@ -1213,7 +1228,8 @@ def validate_structured(layout: dict) -> tuple[list, set, set]:
         problems.append(problem("E_AUX_CYCLE", f"auxiliaries read each other in a cycle: "
                                 f"{' -> '.join(cycle)}", "/auxiliaries",
                                 hint="an auxiliary is evaluated on read; break the loop with a "
-                                     "level (a stock) or a delay"))
+                                     "level (a stock) or a delay",
+                                fields={"case": "one", "cycle": ' -> '.join(cycle)}))
 
     delays: set = set()
     stems: dict = {}
@@ -1223,32 +1239,38 @@ def validate_structured(layout: dict) -> tuple[list, set, set]:
         name = entry.get("name") if isinstance(entry, dict) else None
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_DELAY_NAME", "delay: name must not be empty", f"{at}/name",
-                                    hint="give every delay a unique name"))
+                                    hint="give every delay a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in delays:
             problems.append(problem("E_DELAY_NAME", f"duplicate delay name: {name}",
-                                    f"{at}/name", hint="rename one of the two"))
+                                    f"{at}/name", hint="rename one of the two",
+                                    fields={"case": "twice", "name": name}))
         elif _parts(entry) is not None and stem(name) in stems:     # "f" and inline "f#1", #130
             problems.append(problem(
                 "E_DELAY_NAME", f"delays '{stems[stem(name)]}' and '{name}' would both name "
                 f"their hidden stages '{stem(name)}~s1..'", f"{at}/name",
-                hint="rename the delay: 'f#1' is the first inline SMOOTH/DELAY call in 'f'"))
+                hint="rename the delay: 'f#1' is the first inline SMOOTH/DELAY call in 'f'",
+                fields={"case": "stages", "name": name}))
         delays.add(name)
         if _parts(entry) is not None:       # a staged (material/information) delay
             stems.setdefault(stem(name), name)
         kind = entry.get("kind", "material")
         if kind not in DELAY_KINDS:
             problems.append(problem("E_DELAY_SPEC", f"delay '{name}': unknown kind '{kind}'",
-                                    f"{at}/kind", hint=f"use one of: {', '.join(DELAY_KINDS)}"))
+                                    f"{at}/kind", hint=f"use one of: {', '.join(DELAY_KINDS)}",
+                                    fields={"case": "kind", "name": name, "kind": kind}))
             continue
         for field in _DELAY_FIELDS[kind]:
             if entry.get(field) in (None, ""):
                 problems.append(problem("E_DELAY_SPEC", f"delay '{name}': \"{field}\" is missing",
-                                        f"{at}/{field}", hint="a number or an expression"))
+                                        f"{at}/{field}", hint="a number or an expression",
+                                        fields={"case": "missing", "name": name, "field": field}))
         tau = entry.get("delay_time")
         if isinstance(tau, (int, float)) and not isinstance(tau, bool) and tau <= 0:
             problems.append(problem("E_DELAY_SPEC", f"delay '{name}': delay_time must be > 0",
-                                    f"{at}/delay_time", hint="in the model's base time unit"))
+                                    f"{at}/delay_time", hint="in the model's base time unit",
+                                    fields={"case": "time", "name": name}))
         if kind in _STAGELESS_KINDS:
             continue
         order = entry.get("order", 1)
@@ -1256,13 +1278,15 @@ def validate_structured(layout: dict) -> tuple[list, set, set]:
             problems.append(problem(
                 "E_SD_DELAY_ORDER", f"delay '{name}': order must be a literal integer >= 1, "
                 f"got {order!r}", f"{at}/order",
-                hint="the number of stages is fixed when the model is built: DELAYN(x, tau, 3)"))
+                hint="the number of stages is fixed when the model is built: DELAYN(x, tau, 3)",
+                fields={"case": "one", "name": name}))
         if not has_dt:
             problems.append(problem(
                 "E_SD_REQUIRES_DT", f"delay '{name}': a {kind} delay integrates hidden stocks and "
                 f"needs the system-dynamics grid", at,
                 hint="add \"simulation\": {\"sd\": {\"dt\": 0.25}}, or use a pipeline delay "
-                     "(DELAYP), which is exact without one"))
+                     "(DELAYP), which is exact without one",
+                fields={"case": "one", "name": name}))
 
     # Level initial expressions are evaluated once, in dependency order.
     initials = {str(entry.get("name")): _compiled(entry["initial"])
@@ -1279,6 +1303,7 @@ def validate_structured(layout: dict) -> tuple[list, set, set]:
             problems.append(problem(
                 "E_LEVEL_INITIAL_CYCLE",
                 f"level initial values depend on each other in a cycle: {' -> '.join(cycle)}",
-                "/levels", hint="give one of them a number"))
+                "/levels", hint="give one of them a number",
+                fields={"case": "one", "cycle": ' -> '.join(cycle)}))
     return problems, set(auxes), delays
 

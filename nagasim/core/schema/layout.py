@@ -7,8 +7,11 @@ from __future__ import annotations
 import dataclasses
 from importlib import import_module
 
-from nagasim.core import agents, blocking, sd, submodels, units
+from nagasim.core import agents, blocking, itemlogic, sd, submodels, units
+from nagasim.core.arealink import is_area_link
+from nagasim.core.utils import is_number
 from nagasim.core.block_registry import BLOCK_REGISTRY, duration_types, validate_params
+from nagasim.core.blocks.conveyor import exposed_variables
 from nagasim.core.blocks.create import ARRIVAL_MODES
 from nagasim.core.calendar import run_horizon, validate_calendar_structured
 from nagasim.core.conversions import (validate_conversion_expressions,
@@ -64,22 +67,26 @@ def _validate_variables(layout: dict, problems: list) -> set[str]:
             problems.append(problem("E_VARIABLE_NAME", f"variable '{name}': not a valid identifier",
                                     f"{at}/name",
                                     hint="use a Python identifier: letters, digits and _, not "
-                                         "starting with a digit"))
+                                         "starting with a digit",
+                                    fields={"case": "name", "name": name}))
         elif name in RESERVED_NAMES:
             problems.append(problem("E_VARIABLE_RESERVED", f"variable '{name}': reserved name",
                                     f"{at}/name",
                                     hint=f"pick a name that is not one of: "
-                                         f"{', '.join(sorted(RESERVED_NAMES))}"))
+                                         f"{', '.join(sorted(RESERVED_NAMES))}",
+                                    fields={"case": "reserved", "name": name}))
         elif name in declared:
             problems.append(problem("E_DUPLICATE_VARIABLE", f"duplicate variable name: {name}",
-                                    f"{at}/name", hint="rename one of the two variables"))
+                                    f"{at}/name", hint="rename one of the two variables",
+                                    fields={"case": "twice", "name": name}))
         else:
             declared.add(name)
         if not isinstance(entry.get("initial", 0), (int, float, str, bool)):
             problems.append(problem(
                 "E_VARIABLE_INITIAL",
                 f"variable '{name}': initial value must be a number, string or boolean",
-                f"{at}/initial", hint="give the variable a scalar initial value, e.g. 0"))
+                f"{at}/initial", hint="give the variable a scalar initial value, e.g. 0",
+                fields={"case": "initial", "name": name}))
     return declared
 
 
@@ -97,10 +104,12 @@ def _validate_annotations(layout: dict, problems: list) -> None:
         ann_id = entry.get("id", "")
         if not ann_id:
             problems.append(problem("E_ANNOTATION_ID", "annotation: id must not be empty",
-                                    f"{at}/id", hint="give every annotation a unique id"))
+                                    f"{at}/id", hint="give every annotation a unique id",
+                                    fields={"case": "empty"}))
         elif ann_id in seen:
             problems.append(problem("E_DUPLICATE_ANNOTATION", f"duplicate annotation id: {ann_id}",
-                                    f"{at}/id", hint="rename one of the two annotations"))
+                                    f"{at}/id", hint="rename one of the two annotations",
+                                    fields={"case": "twice", "id": ann_id}))
         seen.add(ann_id)
         kind = entry.get("kind")
         if kind not in _ANNOTATION_KINDS:
@@ -108,21 +117,24 @@ def _validate_annotations(layout: dict, problems: list) -> None:
                 "E_ANNOTATION_KIND",
                 f"annotation '{ann_id}': unknown kind '{kind}' "
                 f"(expected one of {', '.join(_ANNOTATION_KINDS)})",
-                f"{at}/kind", hint=f"use one of: {', '.join(_ANNOTATION_KINDS)}"))
+                f"{at}/kind", hint=f"use one of: {', '.join(_ANNOTATION_KINDS)}",
+                fields={"case": "kind", "id": ann_id}))
             continue
         if kind == "text":
             pos = entry.get("position")
             if not (isinstance(pos, (list, tuple)) and len(pos) == 2):
                 problems.append(problem(
                     "E_ANNOTATION_SHAPE", f"annotation '{ann_id}': text needs a 2-element position",
-                    f"{at}/position", hint="set \"position\": [x, y]"))
+                    f"{at}/position", hint="set \"position\": [x, y]",
+                    fields={"case": "text", "id": ann_id}))
         else:  # frame
             rect = entry.get("rect")
             if not (isinstance(rect, (list, tuple)) and len(rect) == 4):
                 problems.append(problem(
                     "E_ANNOTATION_SHAPE",
                     f"annotation '{ann_id}': frame needs a 4-element rect [x, y, w, h]",
-                    f"{at}/rect", hint="set \"rect\": [x, y, width, height]"))
+                    f"{at}/rect", hint="set \"rect\": [x, y, width, height]",
+                    fields={"case": "frame", "id": ann_id}))
 
 
 def _validate_background(layout: dict, problems: list) -> None:
@@ -137,26 +149,32 @@ def _validate_background(layout: dict, problems: list) -> None:
         return
     if not isinstance(bg, dict):
         problems.append(problem("E_BACKGROUND", "background: must be an object", "/background",
-                                hint="use null for no background, or an object with a \"path\""))
+                                hint="use null for no background, or an object with a \"path\"",
+                                fields={"case": "object"}))
         return
     if not bg.get("path"):
         problems.append(problem("E_BACKGROUND", "background: path must not be empty",
-                                "/background/path", hint="point \"path\" at the floor-plan image"))
+                                "/background/path", hint="point \"path\" at the floor-plan image",
+                                fields={"case": "path"}))
     position = bg.get("position", [0, 0])
     if not (isinstance(position, (list, tuple)) and len(position) == 2):
         problems.append(problem("E_BACKGROUND", "background: position must be a 2-element [x, y]",
-                                "/background/position", hint="set \"position\": [x, y]"))
+                                "/background/position", hint="set \"position\": [x, y]",
+                                fields={"case": "position"}))
     scale = bg.get("scale", 1.0)
     if not isinstance(scale, (int, float)) or isinstance(scale, bool) or scale <= 0:
         problems.append(problem("E_BACKGROUND", "background: scale must be a number > 0",
-                                "/background/scale", hint="use 1.0 for the image's natural size"))
+                                "/background/scale", hint="use 1.0 for the image's natural size",
+                                fields={"case": "scale"}))
     opacity = bg.get("opacity", 1.0)
     if not isinstance(opacity, (int, float)) or isinstance(opacity, bool) or not (0 <= opacity <= 1):
         problems.append(problem("E_BACKGROUND", "background: opacity must be a number in [0, 1]",
-                                "/background/opacity", hint="0 is invisible, 1 fully opaque"))
+                                "/background/opacity", hint="0 is invisible, 1 fully opaque",
+                                fields={"case": "opacity"}))
     if "locked" in bg and not isinstance(bg["locked"], bool):
         problems.append(problem("E_BACKGROUND", "background: locked must be a boolean",
-                                "/background/locked", hint="use true or false"))
+                                "/background/locked", hint="use true or false",
+                                fields={"case": "locked"}))
     units_per_metre = bg.get("units_per_metre")
     if units_per_metre is not None and (
             not isinstance(units_per_metre, (int, float)) or isinstance(units_per_metre, bool)
@@ -164,7 +182,8 @@ def _validate_background(layout: dict, problems: list) -> None:
         problems.append(problem("E_BACKGROUND",
                                 "background: units_per_metre must be a number > 0 or null",
                                 "/background/units_per_metre",
-                                hint="scene units per real-world metre, or null for no scale"))
+                                hint="scene units per real-world metre, or null for no scale",
+                                fields={"case": "units"}))
 
 
 def _validate_initial_state(layout: dict, problems: list) -> None:
@@ -179,14 +198,16 @@ def _validate_simulation(layout: dict, problems: list) -> None:
         unit = sim.get(key)
         if unit is not None and unit not in table:
             problems.append(problem(code, f"simulation: unknown {key} '{unit}'",
-                                    f"/simulation/{key}", hint=f"one of: {', '.join(table)}"))
+                                    f"/simulation/{key}", hint=f"one of: {', '.join(table)}",
+                                    fields={"case": "model", "unit": unit}))
     # #1720: a warm-up that reaches the run's end leaves only zeros to report.
     limit, warmup = sim.get("time_limit"), sim.get("warmup")
     if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (limit, warmup)) \
             and 0 < limit <= warmup:
         problems.append(problem("E_WARMUP_PAST_END", f"simulation: the warm-up {warmup:g} reaches "
                                 f"the run length {limit:g}, so nothing would be observed",
-                                "/simulation/warmup", hint="shorten the warm-up or lengthen the run"))
+                                "/simulation/warmup", hint="shorten the warm-up or lengthen the run",
+                                fields={"case": "past", "warmup": warmup, "limit": limit}))
     # The blocks whose departures are sampled (PHASE7 7.14, D290): names of blocks there
     # are. An authored model with submodels is judged again flattened, and its counted
     # names are the flattened ones: here they are only judged as a list.
@@ -199,14 +220,16 @@ def _validate_simulation(layout: dict, problems: list) -> None:
             problems.append(problem(
                 "E_TIMESERIES_COUNTS", "simulation: timeseries_counts must be a list of at most "
                 "1000 different block names", "/simulation/timeseries_counts",
-                hint="for example [\"Drill\", \"Pack\"]: the series block/<name>/out"))
+                hint="for example [\"Drill\", \"Pack\"]: the series block/<name>/out",
+                fields={"case": "list"}))
         elif not nested:
             for name in counted:
                 if name not in names:
                     problems.append(problem(
                         "E_TIMESERIES_COUNTS", f"simulation: timeseries_counts names '{name[:80]}'"
                         f", which is no block of the model", "/simulation/timeseries_counts",
-                        hint=f"its blocks: {', '.join(sorted(map(str, names))[:20]) or '(none)'}"))
+                        hint=f"its blocks: {', '.join(sorted(map(str, names))[:20]) or '(none)'}",
+                        fields={"case": "unknown", "name": name}))
     # Every other field's unit, from the metadata (units spec): blocks, links,
     # failures and each section's own unit keys, once per layout.
     check_units(layout, problems)
@@ -220,19 +243,37 @@ def _validate_link_delays(layout: dict, problems: list) -> None:
         if not isinstance(link, dict):
             continue
         delay = link.get("delay")
+        label = f"link {link.get('source', '?')}->{link.get('target', '?')}"
+        capacity = link.get("capacity", 0)
+        if is_number(capacity) and capacity > 0 and not delay:
+            # R52: a capacity is read only on a link with a delay
+            problems.append(problem(
+                "W_UNKNOWN_KEY", f"{label}: capacity is read only with a delay, so this link "
+                f"passes parts at once", f"/links/{index}/capacity",
+                hint="give the link a delay, or drop the capacity",
+                fields={"case": "unread", "key": "capacity", "where": label.removeprefix("link ")}))
+        if "transfer_time" in link:
+            # D1391: the migration moves an old transfer_time into the delay; one left over
+            # sits beside a delay (or is no number), and the run would read neither as written
+            problems.append(problem(
+                "E_LINK_AREA", f"{label}: has a transfer_time, an old field the migration to "
+                f"schema 32 could not move into the delay", f"/links/{index}/transfer_time",
+                hint="keep one time: put it in the delay and drop transfer_time",
+                fields={"case": "migrate", "where": label.removeprefix("link ")}))
         if not delay:
             continue
         at = f"/links/{index}/delay"
-        label = f"link {link.get('source', '?')}->{link.get('target', '?')}"
         dist = delay.get("distribution")
         if dist is None:
             problems.append(problem("E_DISTRIBUTION_MISSING", f"{label}: delay has no distribution",
                                     f"{at}/distribution",
-                                    hint="drop the delay, or name a distribution: " + _dist_hint()))
+                                    hint="drop the delay, or name a distribution: " + _dist_hint(),
+                                    fields={"case": "link", "where": label}))
         elif dist not in _known_distributions():
             problems.append(problem("E_UNKNOWN_DISTRIBUTION",
                                     f"{label}: unknown delay distribution '{dist}'",
-                                    f"{at}/distribution", hint=_dist_hint()))
+                                    f"{at}/distribution", hint=_dist_hint(),
+                                    fields={"name": dist, "where": label}))
         _check_deterministic_mean(problems, deterministic, dist, delay.get("dist_params", {}),
                                   label, f"{at}/dist_params")
         _check_dist_param_keys(problems, dist, delay.get("dist_params"), label, f"{at}/dist_params")
@@ -252,23 +293,27 @@ def _validate_failures(layout: dict, problems: list) -> None:
         name = entry.get("name", "")
         if not name:
             problems.append(problem("E_FAILURE_NAME", "failure: name must not be empty",
-                                    f"{at}/name", hint="give every failure a unique name"))
+                                    f"{at}/name", hint="give every failure a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in seen:
             problems.append(problem("E_DUPLICATE_FAILURE", f"duplicate failure name: {name}",
-                                    f"{at}/name", hint="rename one of the two failures"))
+                                    f"{at}/name", hint="rename one of the two failures",
+                                    fields={"case": "twice", "name": name}))
         seen.add(name)
         if not entry.get("resources"):
             problems.append(problem("E_FAILURE_RESOURCES", f"failure '{name}': no resources",
                                     f"{at}/resources",
-                                    hint="list the resources this failure takes down"))
+                                    hint="list the resources this failure takes down",
+                                    fields={"case": "none", "name": name}))
         for resource in entry.get("resources", []):
             if resource not in resources:
                 problems.append(problem(
                     "E_FAILURE_RESOURCE_UNKNOWN", f"failure '{name}': unknown resource '{resource}'",
                     f"{at}/resources",
                     hint=f"declare the resource first; declared: "
-                         f"{', '.join(sorted(str(r) for r in resources)) or '(none)'}"))
+                         f"{', '.join(sorted(str(r) for r in resources)) or '(none)'}",
+                    fields={"case": "unknown", "name": name, "resource": resource}))
         for key in ("uptime", "downtime"):
             dist = entry.get(key, {}).get("distribution")
             if dist is None:
@@ -276,11 +321,13 @@ def _validate_failures(layout: dict, problems: list) -> None:
                                         f"failure '{name}': {key} has no distribution",
                                         f"{at}/{key}/distribution",
                                         hint="uptime and downtime are both duration specs: "
-                                             + _dist_hint()))
+                                             + _dist_hint(),
+                                        fields={"case": "failure", "name": name, "key": key}))
             elif dist not in _known_distributions():
                 problems.append(problem("E_UNKNOWN_DISTRIBUTION",
                                         f"failure '{name}': unknown {key} distribution '{dist}'",
-                                        f"{at}/{key}/distribution", hint=_dist_hint()))
+                                        f"{at}/{key}/distribution", hint=_dist_hint(),
+                                        fields={"name": dist, "where": f"failure {name}"}))
             _check_deterministic_mean(problems, deterministic, dist, entry.get(key, {}).get("dist_params", {}),
                                       f"failure '{name}': {key}", f"{at}/{key}/dist_params")
             _check_dist_param_keys(problems, dist, entry.get(key, {}).get("dist_params"),
@@ -297,7 +344,8 @@ def _validate_entities(layout: dict, problems: list) -> None:
             problems.append(problem("E_ENTITY_COST",
                                     f"entity '{name}': holding_cost must be a number >= 0",
                                     f"/entities/{index}/holding_cost",
-                                    hint="use 0 when WIP costs nothing to hold"))
+                                    hint="use 0 when WIP costs nothing to hold",
+                                    fields={"case": "cost", "name": name}))
 
 
 def _validate_record_stats(layout: dict, problems: list) -> None:
@@ -316,13 +364,15 @@ def _validate_record_stats(layout: dict, problems: list) -> None:
         if not stat_name:
             problems.append(problem("E_RECORD_STAT_NAME", f"{name}: stat_name must not be empty",
                                     f"{at}/stat_name", block=name,
-                                    hint="name the statistic this RECORD collects"))
+                                    hint="name the statistic this RECORD collects",
+                                    fields={"case": "empty"}))
             continue
         if kind not in RECORD_KINDS:
             problems.append(problem(
                 "E_RECORD_KIND",
                 f"{name}: unknown kind '{kind}' (expected one of {', '.join(RECORD_KINDS)})",
-                f"{at}/kind", block=name, hint=f"use one of: {', '.join(RECORD_KINDS)}"))
+                f"{at}/kind", block=name, hint=f"use one of: {', '.join(RECORD_KINDS)}",
+                fields={"case": "kind", "kind": kind}))
             continue
         prior = kinds.get(stat_name)
         if prior is not None and prior != kind:
@@ -331,7 +381,8 @@ def _validate_record_stats(layout: dict, problems: list) -> None:
                 f"{name}: statistic '{stat_name}' is already kind '{prior}', "
                 f"cannot also be '{kind}'",
                 f"{at}/kind", block=name,
-                hint=f"use kind '{prior}' here, or record into a different stat_name"))
+                hint=f"use kind '{prior}' here, or record into a different stat_name",
+                fields={"case": "conflict", "stat": stat_name, "prior": prior}))
         else:
             kinds[stat_name] = kind
 
@@ -345,7 +396,8 @@ def _check_arrival_mode(problems: list, name: str, params: dict,
         problems.append(problem(
             "E_ARRIVAL_MODE",
             f"{name}: unknown arrival_mode '{mode}' (expected one of {', '.join(ARRIVAL_MODES)})",
-            f"{at}/arrival_mode", block=name, hint=f"use one of: {', '.join(ARRIVAL_MODES)}"))
+            f"{at}/arrival_mode", block=name, hint=f"use one of: {', '.join(ARRIVAL_MODES)}",
+            fields={"case": "mode", "mode": mode}))
         return
     if mode != "Schedule":
         return
@@ -355,7 +407,8 @@ def _check_arrival_mode(problems: list, name: str, params: dict,
         problems.append(problem(
             "E_ARRIVAL_SCHEDULE", f"{name}: arrival_mode 'Schedule' needs a schedule_name",
             f"{at}/schedule_name", block=name,
-            hint=f"name a declared arrival schedule: {', '.join(arrivals) or '(none declared)'}"))
+            hint=f"name a declared arrival schedule: {', '.join(arrivals) or '(none declared)'}",
+            fields={"case": "missing"}))
     elif schedule_kinds.get(schedule_name) != "arrival":
         problems.append(problem(
             "E_ARRIVAL_SCHEDULE",
@@ -363,7 +416,8 @@ def _check_arrival_mode(problems: list, name: str, params: dict,
             f"schedule of kind 'arrival'",
             f"{at}/schedule_name", block=name,
             hint=f"declare it under \"schedules\" with \"kind\": \"arrival\"; declared: "
-                 f"{', '.join(arrivals) or '(none)'}"))
+                 f"{', '.join(arrivals) or '(none)'}",
+            fields={"case": "undeclared", "schedule": schedule_name}))
 
 
 def _check_sequence_names(problems: list, name: str, btype: str, params: dict,
@@ -381,7 +435,8 @@ def _check_sequence_names(problems: list, name: str, btype: str, params: dict,
         if value and value not in sequences:
             problems.append(problem(
                 "E_SEQUENCE_UNKNOWN", f"{name}: unknown sequence '{value}'", path, block=name,
-                hint=f"declare it under \"sequences\"; declared: {known}"))
+                hint=f"declare it under \"sequences\"; declared: {known}",
+                fields={"case": "a3_unknown", "sequence": value}))
 
     if btype == "CREATE":
         check(params.get("sequence", ""), f"{at}/sequence")
@@ -418,6 +473,14 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
     def check(*args, **kwargs):
         _check_expression(*args, constants=constants, **kwargs)
 
+    def rule_conditions(rule, path):
+        """A routing rule's conditions (A7, D1359), read per part like a DECIDE's."""
+        conditions = rule.get("conditions") if isinstance(rule, dict) else None
+        for index, text in enumerate(conditions if isinstance(conditions, list) else []):
+            if isinstance(text, str) and text.strip():
+                check(problems, name, text, variables, f"{path}/conditions/{index}",
+                      tables=tables, refs=refs)
+
     if btype in blocking.PROCESS_TYPES:
         # The setup expression (PHASE4 A2) is the one place `previous_key` and
         # `key` are legal names; `setup_key` is an ordinary expression.
@@ -440,7 +503,9 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
     for key, segments in cycles.items():
         for index, segment in enumerate(segments or []):
             text = segment.get("time") if isinstance(segment, dict) else None
-            if isinstance(text, str) and text.strip() and segment.get("kind") != "move":
+            # ptp/lin take a number only (validate_segment says so, D1343)
+            if isinstance(text, str) and text.strip() and segment.get("kind") not in (
+                    "move", "ptp", "lin"):
                 check(problems, name, text, variables,
                                   f"{at}/{key}/{index}/time", tables=tables, refs=refs)
     if btype == "CONVEYOR":         # D732: a stop's time, per part
@@ -453,11 +518,44 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
         # D851: a divert's condition and push time, per part
         diverts = params.get("diverts")
         for index, divert in enumerate(diverts if isinstance(diverts, list) else []):
-            for field in ("condition", "time"):
+            for field in ("condition", "time", "on_late"):
                 text = divert.get(field) if isinstance(divert, dict) else None
+                if field == "on_late" and text in ("wait", "pass"):
+                    continue        # D1343: the two words are not expressions
                 if isinstance(text, str) and text.strip():
                     check(problems, name, text, variables, f"{at}/diverts/{index}/{field}",
                           tables=tables, refs=refs)
+            rule = divert.get("rule") if isinstance(divert, dict) else None
+            rule_conditions(rule, f"{at}/diverts/{index}/rule")
+        # D1347: an eye's assign rows, as ASSIGN reads them
+        eyes = params.get("eyes")
+        for index, eye in enumerate(eyes if isinstance(eyes, list) else []):
+            rows = eye.get("assign") if isinstance(eye, dict) else None
+            for row, entry in enumerate(rows if isinstance(rows, list) else []):
+                where = f"{at}/eyes/{index}/assign/{row}"
+                expr = entry.get("expr") if isinstance(entry, dict) else None
+                if isinstance(expr, str) and expr.strip():
+                    check(problems, name, expr, variables, f"{where}/expr",
+                          tables=tables, refs=refs)
+                target = entry.get("target") if isinstance(entry, dict) else None
+                if not (isinstance(target, str) and target.strip()):
+                    continue        # a2_assign says so
+                try:
+                    kind, target_name = parse_target(target)
+                    if kind == "self":
+                        raise ExpressionError("self.<attribute> is only valid in an agent action")
+                    if kind == "variable" and target_name not in variables:
+                        problems.append(problem(
+                            "E_UNDECLARED_VARIABLE", f"{name}: {target}: undeclared variable",
+                            f"{where}/target", block=name,
+                            hint=f"add '{target_name}' to the model's \"variables\", or assign "
+                                 f"to entity.{target_name} instead",
+                            fields={"case": "assign", "variable": target_name}))
+                except ExpressionError as exc:
+                    problems.append(problem(
+                        "E_ASSIGN_TARGET", f"{name}: {target}: {exc}", f"{where}/target",
+                        block=name, hint="a target is `entity.<attr>` or a declared variable name",
+                        fields={"case": "target", "target": target}))
     if btype in QUEUEING_BLOCK_TYPES:
         # PHASE4 A4: balk_if is the one place `queue_length` is a legal name.
         if params.get("balk_if"):
@@ -484,7 +582,8 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
                     "E_ASSIGN_KEY", f"{name}: assignment {index}: unknown key(s) "
                     f"{', '.join(repr(key) for key in unknown)}", f"{where}/{unknown[0]}",
                     block=name, hint=(f"{said} " if said else "") + "an ASSIGN entry takes: "
-                    + ", ".join(ASSIGN_ENTRY_KEYS)))
+                    + ", ".join(ASSIGN_ENTRY_KEYS),
+                    fields={"case": "key", "index": index}))
             # Only what the entry does carry is checked once a key is misspelt: a missing
             # target or expr then is that misspelt key, not a second problem.
             if "expr" in assignment or not unknown:
@@ -502,14 +601,18 @@ def _check_block_expressions(problems: list, name: str, btype: str, params: dict
                         "E_UNDECLARED_VARIABLE", f"{name}: {target}: undeclared variable",
                         f"{where}/target", block=name,
                         hint=f"add '{target_name}' to the model's \"variables\", or assign to "
-                             f"entity.{target_name} instead"))
+                             f"entity.{target_name} instead",
+                        fields={"case": "assign", "variable": target_name}))
             except ExpressionError as exc:
                 problems.append(problem("E_ASSIGN_TARGET", f"{name}: {target}: {exc}",
                                         f"{where}/target", block=name,
-                                        hint="a target is `entity.<attr>` or a declared variable name"))
+                                        hint="a target is `entity.<attr>` or a declared variable name",
+                                        fields={"case": "target", "target": target}))
     elif btype in ("DECIDE", "HOLD") and params.get("mode") == "Condition":
         for index, condition in enumerate(params.get("conditions", [])):
             check(problems, name, condition, variables, f"{at}/conditions/{index}", tables=tables, refs=refs)
+    elif btype == "DECIDE" and params.get("mode") == "Rule":         # D1359
+        rule_conditions(params.get("rule"), f"{at}/rule")
     elif btype == "DECIDE" and params.get("mode") == "Policy":
         for index, expr in enumerate(params.get("observation", [])):
             check(problems, name, expr, variables, f"{at}/observation/{index}", tables=tables, refs=refs)
@@ -544,7 +647,8 @@ def _param_problem(text: str, name: str, btype: str, at: str,
         # #1893: a near miss names the one type meant; the whole list only when none is close.
         said = did_you_mean(btype, BLOCK_REGISTRY)
         return problem("E_UNKNOWN_BLOCK_TYPE", f"{name}: {text}", f"/blocks/{at}/type", block=name,
-                       hint=said or f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}")
+                       hint=said or f"use one of: {', '.join(sorted(BLOCK_REGISTRY))}",
+                       fields={"case": "type", "btype": text.removeprefix("unknown block type: ")})
     spec = BLOCK_REGISTRY.get(btype)
     declared = ", ".join(p.name for p in spec.params) if spec else ""
     if text.startswith("unknown key: "):
@@ -552,16 +656,20 @@ def _param_problem(text: str, name: str, btype: str, at: str,
         said = did_you_mean(key, (p.name for p in spec.params) if spec else ())
         return problem("E_PARAM_UNKNOWN", f"{name}: {text}", f"/blocks/{at}/params/{key}",
                        block=name, hint=(f"{said} " if said else "")
-                       + f"{btype} takes: {declared or '(no parameters)'}")
+                       + f"{btype} takes: {declared or '(no parameters)'}",
+                       fields={"case": "key", "key": key})
     if text.startswith("missing required key: "):
         key = text.split(": ", 1)[1]
         return problem("E_PARAM_MISSING", f"{name}: {text}", f"/blocks/{at}/params/{key}",
-                       block=name, hint=f"set \"{key}\" on this block")
+                       block=name, hint=f"set \"{key}\" on this block",
+                       fields={"case": "key", "key": key})
     if text.startswith("wrong type for key "):
         key = text.split("'", 2)[1]
         return problem("E_PARAM_TYPE", f"{name}: {text}", f"/blocks/{at}/params/{key}",
-                       block=name, hint=f"{btype} takes: {declared or '(no parameters)'}")
-    return problem("E_PARAM_TYPE", f"{name}: {text}", f"/blocks/{at}/params", block=name)
+                       block=name, hint=f"{btype} takes: {declared or '(no parameters)'}",
+                       fields={"case": "key", "key": key})
+    return problem("E_PARAM_TYPE", f"{name}: {text}", f"/blocks/{at}/params", block=name,
+                   fields={"case": "other"})
 
 
 def _service_owner(block: dict) -> bool:
@@ -611,7 +719,8 @@ def _validate_resource_refs(layout: dict, problems: list) -> None:
                 f"/blocks/{index}/params/resource_name", block=block.get("name"),
                 hint="set resource_name to a declared resource or resource set"
                      + ("; or use action \"Delay\" if it should only wait"
-                        if btype == "PROCESS" else "")))
+                        if btype == "PROCESS" else ""),
+                fields={"case": "none"}))
         if name and name not in declared:
             said = did_you_mean(name, (d for d in declared if d))     # #1893: name the one meant
             problems.append(problem(
@@ -620,7 +729,8 @@ def _validate_resource_refs(layout: dict, problems: list) -> None:
                 f"resource set",
                 f"/blocks/{index}/params/resource_name", block=block.get("name"),
                 hint=(f"{said} " if said else "")
-                + "declare it under \"resources\"/\"resource_sets\", or fix the typo"))
+                + "declare it under \"resources\"/\"resource_sets\", or fix the typo",
+                fields={"case": "undeclared", "resource": name}))
 
 
 def _validate_queue_behaviour(layout: dict, problems: list) -> None:
@@ -645,7 +755,8 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
         if mode not in ON_PREEMPT_MODES:
             problems.append(problem("E_ON_PREEMPT", f"{name}: unknown on_preempt '{mode}'",
                                     f"{at}/params/on_preempt", block=name,
-                                    hint=f"use one of: {', '.join(ON_PREEMPT_MODES)}"))
+                                    hint=f"use one of: {', '.join(ON_PREEMPT_MODES)}",
+                                    fields={"case": "mode", "mode": mode}))
         if not params.get("preempt"):
             continue
         if not _service_owner(block):
@@ -654,7 +765,8 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
                 f"{name}: preempt needs action \"Seize Delay Release\"",
                 f"{at}/params/preempt", block=name,
                 hint="only a PROCESS that seizes, serves and releases in one block can hand the "
-                     "interrupted job its remaining service back; use that action, or drop preempt"))
+                     "interrupted job its remaining service back; use that action, or drop preempt",
+                fields={"case": "action"}))
             continue
         resource = params.get("resource_name", "")
         if resource in sets:
@@ -662,7 +774,8 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
                 "E_PREEMPT_RESOURCE_SET",
                 f"{name}: preempt on resource set '{resource}'",
                 f"{at}/params/resource_name", block=name,
-                hint="preemption interrupts a job on ONE resource: name a member instead of the set"))
+                hint="preemption interrupts a job on ONE resource: name a member instead of the set",
+                fields={"case": "set"}))
             continue
         others = [b for b in seizers.get(resource, []) if b is not block]
         across = [b.get("name") for b in others if not _service_owner(b)]
@@ -672,7 +785,8 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
                 f"{name}: preempt on '{resource}', which {across[0]} holds across blocks",
                 f"{at}/params/preempt", block=name,
                 hint=f"a job seized in {across[0]} and released elsewhere cannot be interrupted "
-                     f"safely: make it a PROCESS \"Seize Delay Release\", or drop preempt"))
+                     f"safely: make it a PROCESS \"Seize Delay Release\", or drop preempt",
+                fields={"case": "across", "resource": resource, "other": across[0]}))
         own = params.get("priority", 0)
         if not any(b.get("params", {}).get("priority", 0) != own for b in others):
             problems.append(problem(
@@ -681,7 +795,8 @@ def _validate_queue_behaviour(layout: dict, problems: list) -> None:
                 f"priority {own}, so nothing is ever preempted",
                 f"{at}/params/preempt", block=name,
                 hint="give the interrupting block a LOWER priority number than the jobs it should "
-                     "interrupt"))
+                     "interrupt",
+                fields={"case": "same", "resource": resource}))
 
 
 def _validate_belt_stop_holds(layout: dict, problems: list) -> None:
@@ -740,7 +855,8 @@ def _validate_belt_stop_holds(layout: dict, problems: list) -> None:
                         f"gets there",
                         f"/blocks/{index_of[name]}/params/stops/{index}/resource", block=name,
                         hint=f"release '{resource}' before the belt, or drop the stop's "
-                             f"resource: the part already has it"))
+                             f"resource: the part already has it",
+                        fields={"case": "held", "index": index, "resource": resource}))
             todo.extend(out_links.get(name, []))
 
 
@@ -757,7 +873,8 @@ def _validate_match(layout: dict, problems: list) -> None:
                 "E_MATCH_ATTRIBUTE", f"{name}: match_on {value!r} is not an attribute name",
                 f"/blocks/{index}/params/match_on", block=name,
                 hint="write the attribute's name, e.g. \"order\" (or \"entity.order\"); empty "
-                     "matches by type alone"))
+                     "matches by type alone",
+                fields={"case": "attribute"}))
 
 
 def _validate_blocking(layout: dict, problems: list, levels: set) -> None:
@@ -785,17 +902,20 @@ def _validate_blocking(layout: dict, problems: list, levels: set) -> None:
                     "E_BUFFER_CAPACITY", f"{name}: {key} must be a count (0 or more), got {value!r}",
                     f"{at}/params/{key}", block=name,
                     hint="0 places is a legal buffer (pure blocking after service); for an "
-                         "unlimited queue leave queue_capacity at 0 and draw no BUFFER"))
+                         "unlimited queue leave queue_capacity at 0 and draw no BUFFER",
+                    fields={"case": "count"}))
         if btype == "BUFFER" and params.get("level") and params["level"] not in levels:
             problems.append(problem(
                 "E_BUFFER_LEVEL", f"{name}: no level named '{params['level']}'",
                 f"{at}/params/level", block=name,
-                hint="declare the level in the \"levels\" section, or clear the field"))
+                hint="declare the level in the \"levels\" section, or clear the field",
+                fields={"case": "level", "level": params["level"]}))
         elif btype == "BUFFER" and params.get("level") in conveyors:     # DEVLOG #240
             problems.append(problem(
                 "E_CONVEYOR_WRITE", f"{name}: '{params['level']}' is a conveyor; a BUFFER "
                 f"cannot mirror its content into it", f"{at}/params/level", block=name,
-                hint="mirror into an ordinary level"))
+                hint="mirror into an ordinary level",
+                fields={"case": "a3_buffer", "level": params["level"]}))
 
     out_links: dict[str, list[str]] = {}
     for src, tgt in _link_pairs(layout):
@@ -811,7 +931,8 @@ def _validate_blocking(layout: dict, problems: list, levels: set) -> None:
             f"finite buffers form a closed loop: {chain}; if every one fills, nothing "
             f"in the loop can move again", f"/blocks/{index_of.get(head, 0)}", block=head,
             hint="give one buffer in the loop enough places to never fill, or send one station's "
-                 "output somewhere with an unlimited queue"))
+                 "output somewhere with an unlimited queue",
+            fields={"case": "loop", "chain": chain}))
 
     # Blocking BEFORE service (PHASE5 O4) reserves a place in a real space.
     by_name = {b.get("name"): b for b in blocks}
@@ -821,6 +942,18 @@ def _validate_blocking(layout: dict, problems: list, levels: set) -> None:
             continue
         name = block.get("name")
         target = blocking.hold_target(str(params.get("space_of") or ""), out_links.get(name, []))
+        if not params.get("space_of") and is_area_link(next(
+                (k for k in layout.get("links") or [] if isinstance(k, dict)
+                 and k.get("source") == name), None)):
+            # D1369: the run would reserve in the hidden link, which takes no reservation
+            problems.append(problem(
+                "E_HOLD_SPACE_TARGET",
+                f"{name}: hold_until_space reserves a place in the next block, but its link to "
+                f"'{target}' is an area link, so no place is reserved across it",
+                f"/blocks/{index}/params/hold_until_space", block=name,
+                hint="name the block in space_of, or drop the link's capacity",
+                fields={"case": "area", "target": target}))
+            continue
         other = by_name.get(target) or {}
         kind = other.get("type", "").upper()
         places = (other.get("params") or {}).get("capacity" if kind == "BUFFER" else "queue_capacity",
@@ -831,7 +964,8 @@ def _validate_blocking(layout: dict, problems: list, levels: set) -> None:
                 f"{name}: hold_until_space reserves a place in '{target or '(no link)'}', which has "
                 f"no places", f"/blocks/{index}/params/hold_until_space", block=name,
                 hint="link this block to (or name in space_of) a BUFFER with capacity > 0 or a "
-                     "SEIZE/PROCESS with queue_capacity > 0"))
+                     "SEIZE/PROCESS with queue_capacity > 0",
+                fields={"case": "target", "target": target or "(no link)"}))
 
     # A part that is blocked is finished: there is no remaining service to hand
     # back, so it must not be preempted (ARCHITECTURE D55 and D78).
@@ -848,7 +982,8 @@ def _validate_blocking(layout: dict, problems: list, levels: set) -> None:
                 f"holds while blocked after service",
                 f"/blocks/{index}/params/preempt", block=block.get("name"),
                 hint="a finished part waiting for room has no service left to give back: drop "
-                     "preempt, or give the downstream buffer enough places that nothing blocks"))
+                     "preempt, or give the downstream buffer enough places that nothing blocks",
+                fields={"case": "blocked", "resource": params.get("resource_name")}))
 
 
 def _validate_flow_expressions(layout: dict, problems: list, variables: set[str],
@@ -918,7 +1053,8 @@ def _check_send(problems: list, name: str, params: dict, layout: dict, variables
             if isinstance(p, dict)}
     if not pops:
         problems.append(problem("E_SEND_TARGET", f"{name}: the model declares no populations",
-                                f"{at}/to", block=name, hint="declare a population to send to"))
+                                f"{at}/to", block=name, hint="declare a population to send to",
+                                fields={"case": "a3_none"}))
         return
 
     def check(text, path):
@@ -943,15 +1079,18 @@ def _check_transfer(problems: list, name: str, params: dict, levels: set, convey
         problems.append(problem(
             "E_CONVEYOR_WRITE", f"{name}: '{level}' is a conveyor; a TRANSFER cannot move "
             f"material into or out of it", f"{at}/level", block=name,
-            hint="TRANSFER only ordinary levels; a conveyor's inflow/outflow are its own flows"))
+            hint="TRANSFER only ordinary levels; a conveyor's inflow/outflow are its own flows",
+            fields={"case": "a3_transfer", "level": level}))
     elif not level or level not in levels:
         problems.append(problem(
             "E_LEVEL_UNKNOWN", f"{name}: unknown level '{level}'", f"{at}/level", block=name,
-            hint=f"declare it under \"levels\"; declared: {', '.join(sorted(levels)) or '(none)'}"))
+            hint=f"declare it under \"levels\"; declared: {', '.join(sorted(levels)) or '(none)'}",
+            fields={"case": "a3_unknown", "level": level}))
     if params.get("mode", "remove") not in TRANSFER_MODES:
         problems.append(problem(
             "E_TRANSFER_MODE", f"{name}: unknown mode '{params.get('mode')}'", f"{at}/mode",
-            block=name, hint=f"use one of: {', '.join(TRANSFER_MODES)}"))
+            block=name, hint=f"use one of: {', '.join(TRANSFER_MODES)}",
+            fields={"case": "a3_unknown", "mode": params.get("mode")}))
     _check_expression(problems, name, params.get("amount", "1"), variables, f"{at}/amount",
                       tables=tables, refs=refs)
 
@@ -969,25 +1108,29 @@ def _check_charge(problems: list, name: str, params: dict, variables: set[str], 
     if params.get("sharing", "equal") not in SHARING_RULES:
         problems.append(problem(
             "E_CHARGE", f"{name}: unknown sharing rule '{params.get('sharing')}'",
-            f"{at}/sharing", block=name, hint=f"use one of: {', '.join(SHARING_RULES)}"))
+            f"{at}/sharing", block=name, hint=f"use one of: {', '.join(SHARING_RULES)}",
+            fields={"case": "sharing", "sharing": params.get("sharing")}))
     if params.get("leave_when_full", True) is False \
             and not str(params.get("time_limit") or "").strip():
         problems.append(problem(
             "E_CHARGE", f"{name}: an entity that stays after it is full needs a time limit",
             f"{at}/time_limit", block=name,
-            hint="set time_limit (e.g. the dwell), or turn leave_when_full back on"))
+            hint="set time_limit (e.g. the dwell), or turn leave_when_full back on",
+            fields={"case": "stay"}))
     efficiency = params.get("efficiency", 1.0)
     if not (isinstance(efficiency, (int, float)) and not isinstance(efficiency, bool)
             and 0 < efficiency <= 1):
         problems.append(problem(
             "E_CHARGE", f"{name}: efficiency must be above 0 and at most 1", f"{at}/efficiency",
-            block=name, hint="stored kWh per grid kWh, e.g. 0.92; 1 = no charger losses"))
+            block=name, hint="stored kWh per grid kWh, e.g. 0.92; 1 = no charger losses",
+            fields={"case": "efficiency"}))
     variable = str(params.get("power_variable") or "")
     if variable and variable not in variables:
         problems.append(problem(
             "E_UNDECLARED_VARIABLE", f"{name}: power_variable '{variable}': undeclared variable",
             f"{at}/power_variable", block=name,
-            hint=f"add '{variable}' to the model's \"variables\""))
+            hint=f"add '{variable}' to the model's \"variables\"",
+            fields={"case": "power", "variable": variable}))
 
 
 def _without_stray_structural_args(layout: dict, problems: list) -> dict:
@@ -1011,7 +1154,8 @@ def _without_stray_structural_args(layout: dict, problems: list) -> dict:
                     f"'{value[submodels.ARG_KEY]}', but this block is not inside a submodel definition",
                     f"/blocks/{index}/params/{key}", block=block.get("name"),
                     hint="give the param a plain value, or move the block into a definition "
-                         "that declares the parameter"))
+                         "that declares the parameter",
+                    fields={"case": "a3_outside", "parameter": value[submodels.ARG_KEY]}))
                 del params[key]
         cleaned.append({**block, "params": params})
     return {**layout, "blocks": cleaned}
@@ -1033,6 +1177,9 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
     blocks = layout.get("blocks", [])
     names = {b["name"] for b in blocks}
     variables = _validate_variables(layout, problems)
+    # D1378: what an exposed belt or transfer writes is read by VAR() only (never assigned)
+    exposed = {name for block in blocks if isinstance(block, dict)
+               for name in exposed_variables(block)}
     # The calendar first (PHASE4 T10): every dated field below resolves through
     # it, and a model without one skips all of that at zero cost.
     calendar_problems, calendar = validate_calendar_structured(layout)
@@ -1071,7 +1218,8 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
             "FLOW": (flow_names, "E_FLOW_UNKNOWN", _hint_sections("FLOW"), "flow"),
             "CONV": (conversion_names, "E_CONVERSION_UNKNOWN", _hint_sections("CONV"), "conversion"),
             # VAR("name") reads a variable the bare name cannot spell (D72).
-            "VAR": (variables, "E_VARIABLE_UNKNOWN", _hint_sections("VAR"), "variable"),
+            "VAR": (variables | exposed, "E_VARIABLE_UNKNOWN", _hint_sections("VAR"),
+                    "variable"),
             # DISTANCE("a", "b") names a station, an alias or a node (PHASE4 E1).
             "DISTANCE": (places, "E_DISTANCE_UNKNOWN", _hint_sections("DISTANCE"), "place"),
             "AUX": (aux_names, "E_AUX_UNKNOWN", _hint_sections("AUX"), "auxiliary"),     # PHASE5 SD-2
@@ -1121,6 +1269,7 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
     _validate_blocking(layout, problems, level_names)                     # PHASE4 T5
     _validate_belt_stop_holds(layout, problems)                           # D796
     _validate_match(layout, problems)                                     # PHASE5 O4
+    problems.extend(itemlogic.hook_block_problems(layout))                # D1344: hook LOGIC blocks
     _validate_scenarios(layout, problems)
     _validate_reality_checks(layout, problems, variables, table_dims, refs)   # PHASE6 S8
     _validate_assertions(layout, problems)                                   # PHASE6 W7 Q3
@@ -1174,19 +1323,22 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                 problems.append(problem(
                     "E_POPULATION_UNKNOWN", f"{name}: unknown population '{pop_name}'",
                     f"{at}/params/population", block=name,
-                    hint=f"declared: {', '.join(sorted(map(str, population_names))) or '(none)'}"))
+                    hint=f"declared: {', '.join(sorted(map(str, population_names))) or '(none)'}",
+                    fields={"case": "a3_unknown", "population": pop_name}))
         _check_sequence_names(problems, name, btype, params, sequence_steps, f"{at}/params")
 
         dist = params.get("distribution")
         if dist is not None and dist not in _known_distributions():
             problems.append(problem("E_UNKNOWN_DISTRIBUTION", f"{name}: unknown distribution '{dist}'",
-                                    f"{at}/params/distribution", block=name, hint=_dist_hint()))
+                                    f"{at}/params/distribution", block=name, hint=_dist_hint(),
+                                    fields={"name": dist, "where": name}))
         if btype in _DURATION_BLOCK_TYPES and dist in _UNBOUNDED_BELOW_DISTRIBUTIONS:
             problems.append(problem(
                 "W_UNBOUNDED_DURATION",
                 f"{name}: {dist} can produce negative durations; they are truncated to 0",
                 f"{at}/params/distribution", block=name,
-                hint="use BoundedNormal, Lognormal or Gamma for a strictly positive duration"))
+                hint="use BoundedNormal, Lognormal or Gamma for a strictly positive duration",
+                fields={"case": "negative", "dist": dist}))
         if btype in _DURATION_BLOCK_TYPES and dist is not None:
             _check_deterministic_mean(problems, deterministic, dist, params.get("dist_params", {}),
                                       name, f"{at}/params/dist_params", block=name)
@@ -1206,12 +1358,14 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                     f"discrete points (pre-1.8 behaviour); use EmpiricalDiscrete, or give "
                     f"len(values) == len(probs) + 1 bin edges for true continuous sampling",
                     f"{at}/params/dist_params", block=name,
-                    hint="switch to EmpiricalDiscrete, or add one more bin edge to \"values\""))
+                    hint="switch to EmpiricalDiscrete, or add one more bin edge to \"values\"",
+                    fields={"case": "discrete"}))
 
         if name in seen_names:
             problems.append(problem("E_DUPLICATE_BLOCK", f"duplicate block name: {name}",
                                     f"{at}/name", block=name,
-                                    hint="block names are the model's identifiers: rename one"))
+                                    hint="block names are the model's identifiers: rename one",
+                                    fields={"case": "twice"}))
         seen_names.add(name)
 
     for index, (src, tgt) in enumerate(_link_pairs(layout)):
@@ -1221,7 +1375,8 @@ def validate_layout_structured(layout: dict) -> list[Problem]:
                     "E_LINK_UNKNOWN_BLOCK", f"link references unknown block: {other}",
                     f"/links/{index}/{side}",
                     hint=f"add a block named '{other}', or point the link at an existing one: "
-                         f"{', '.join(sorted(names)) or '(no blocks)'}"))
+                         f"{', '.join(sorted(names)) or '(no blocks)'}",
+                    fields={"case": "unknown", "other": other}))
 
     _validate_link_delays(layout, problems)
     check_bounds(layout, problems)       # last: a section its own check refused is left to it

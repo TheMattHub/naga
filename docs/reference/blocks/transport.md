@@ -90,4 +90,4 @@ Guides: [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles
 ## See also
 
 - [All blocks](index.md), [KPI reference](../kpis.md), [Model file keys](../schema.md), [Model file format](../../model-file-format.md)
-- Same family (move): [BUFFER](buffer.md), [CONVEYOR](conveyor.md), [STATION](station.md), [TRANSFER](transfer.md)
+- Same family (move): [BUFFER](buffer.md), [CONVEYOR](conveyor.md), [CONVEYOR_TRANSFER](conveyor-transfer.md), [STATION](station.md), [TRANSFER](transfer.md)

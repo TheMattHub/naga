@@ -47,7 +47,7 @@ m = nb.Model(info={'description': 'A one-server queue.', 'author': 'A. Modeller'
 
 ## Used in
 
-Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 56 more.
+Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 57 more.
 
 Guides: [Model file format](../../model-file-format.md), [Submodels](../../modelling-guide/submodels.md).
 

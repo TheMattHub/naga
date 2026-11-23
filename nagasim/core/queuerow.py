@@ -310,7 +310,8 @@ def problems(layout: dict) -> list[Problem]:
                 out.append(problem("E_QUEUE_ROW", f"{block.get('name')}: queue_row {reason}",
                                    f"/blocks/{i}/{KEY}", block=block.get("name"),
                                    hint="{\"anchor\": [0, 0.5], \"direction\": 90}, or remove it "
-                                        "to use the asset's own row"))
+                                        "to use the asset's own row",
+                                   fields={"case": "row", "reason": reason}))
     definitions = layout.get("submodels") if isinstance(layout.get("submodels"), dict) else {}
     nodes = {n.get("name"): n for n in ((layout.get("network") or {}).get("nodes") or ())
              if isinstance(n, dict)}
@@ -373,5 +374,6 @@ def problems(layout: dict) -> list[Problem]:
                     f"/blocks/{i}", block=name,
                     hint="select the place in the layout view and drag the handle at the end of "
                          "its queue row to turn it, or set Queue row in Properties; the run is "
-                         "not affected"))
+                         "not affected",
+                    fields={"case": "crossing", "name": name, "other": other}))
     return out

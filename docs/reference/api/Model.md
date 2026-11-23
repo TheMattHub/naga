@@ -39,7 +39,7 @@ m.add_resource(name="Server", capacity=2)     # returns 'Server'
 | `add_table` | `tables` | `name` | Named 1-D/2-D lookup tables read by TABLE("name", k1[, k2]) in any expression. |
 | `add_sequence` | `sequences` | `name` | Named routings: ordered steps through STATION blocks, walked by a ROUTE block. |
 | `add_variable` | `variables` | `name` | Model-level variables, read and written by expressions; reset to `initial` each replication. |
-| `add_entity` | `entities` | `name` | Entity types: shape, colour, optional WIP holding cost. |
+| `add_entity` | `entities` | `name` | Entity types: shape, colour, optional size and WIP holding cost. |
 | `add_timeseries_input` | `timeseries_inputs` | `name` | Named time-series profiles read by TS("name") in any expression. |
 | `add_level` | `levels` | `name` | Continuous quantities with bounds (battery energy, tank volume, an inventory position), read by LEVEL("name"). |
 | `add_flow` | `flows` | `name` | Rate-based transfers between levels, re-evaluated at events. |
@@ -47,6 +47,8 @@ m.add_resource(name="Server", capacity=2)     # returns 'Server'
 | `add_fixed_cost` | `fixed_costs` | `name` | Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter. |
 | `add_fleet` | `fleets` | `name` | Pools of vehicles that carry entities on the network; a fleet is a resource under its own name. |
 | `add_motion_profile` | `motion_profiles` | `name` | How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's `profile`. |
+| `add_robot` | `robots` | `name` | Robots: a structure with its dimensions, or a joint chain, with each axis's range, speed and acceleration, and the tool frame; named by a MOTION block's `robot`. |
+| `add_pallet_pattern` | `pallet_patterns` | `name` | Pallet patterns: the pallet, the item, layer layouts and how they stack, and the limits that close a pallet; named by a carrier BATCH's `pattern`. |
 | `add_zone` | `zones` | `name` | Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed. |
 | `add_charger` | `chargers` | `name` | Chargers and battery-swap stations at network nodes, used by fleets that declare a `battery`. |
 | `add_auxiliary` | `auxiliaries` | `name` | Named expressions read by AUX("name"), evaluated on read. |

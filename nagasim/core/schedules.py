@@ -170,18 +170,21 @@ def validate_schedules_structured(layout: dict, calendar=None,
         name = entry.get("name", "")
         if not name:
             problems.append(problem("E_SCHEDULE_NAME", "schedule: name must not be empty",
-                                    f"{at}/name", hint="give every schedule a unique name"))
+                                    f"{at}/name", hint="give every schedule a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in kinds:
             problems.append(problem("E_DUPLICATE_SCHEDULE", f"duplicate schedule name: {name}",
-                                    f"{at}/name", hint="rename one of the two schedules"))
+                                    f"{at}/name", hint="rename one of the two schedules",
+                                    fields={"case": "dup", "name": name}))
         kind = entry.get("kind", "arrival")
         if kind not in SCHEDULE_KINDS:
             problems.append(problem(
                 "E_SCHEDULE_KIND",
                 f"schedule '{name}': unknown kind '{kind}' "
                 f"(expected one of {', '.join(SCHEDULE_KINDS)})",
-                f"{at}/kind", hint=f"use one of: {', '.join(SCHEDULE_KINDS)}"))
+                f"{at}/kind", hint=f"use one of: {', '.join(SCHEDULE_KINDS)}",
+                fields={"case": "kind", "name": name, "kind": kind}))
             continue
         kinds[name] = kind
 
@@ -193,29 +196,34 @@ def validate_schedules_structured(layout: dict, calendar=None,
         if not points:
             problems.append(problem("E_SCHEDULE_POINTS", f"schedule '{name}': no points",
                                     f"{at}/points",
-                                    hint="add at least one [duration, value] point"))
+                                    hint="add at least one [duration, value] point",
+                                    fields={"case": "empty", "name": name}))
             continue
         for index, point in enumerate(points):
             where = f"{at}/points/{index}"
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 problems.append(problem(
                     "E_SCHEDULE_POINT", f"schedule '{name}': point {index} is not [duration, value]",
-                    where, hint="each point is a two-element [duration, value] array"))
+                    where, hint="each point is a two-element [duration, value] array",
+                    fields={"case": "shape", "name": name, "point": index}))
                 continue
             duration, value = point
             if not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0:
                 problems.append(problem(
                     "E_SCHEDULE_POINT", f"schedule '{name}': point {index} duration must be > 0",
-                    f"{where}/0", hint="a point holds for a positive number of time units"))
+                    f"{where}/0", hint="a point holds for a positive number of time units",
+                    fields={"case": "duration", "name": name, "point": index}))
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
                 problems.append(problem(
                     "E_SCHEDULE_POINT", f"schedule '{name}': point {index} value must be >= 0",
-                    f"{where}/1", hint="an arrival rate or a capacity is never negative"))
+                    f"{where}/1", hint="an arrival rate or a capacity is never negative",
+                    fields={"case": "value", "name": name, "point": index}))
             elif kind == "capacity" and float(value) != int(value):
                 problems.append(problem(
                     "E_SCHEDULE_POINT",
                     f"schedule '{name}': point {index} capacity value must be a whole number",
-                    f"{where}/1", hint="a capacity is a whole number of resource units"))
+                    f"{where}/1", hint="a capacity is a whole number of resource units",
+                    fields={"case": "whole", "name": name, "point": index}))
     return problems, kinds
 
 

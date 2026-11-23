@@ -455,26 +455,31 @@ class Feed:
         at, found = f"/data_sources/{src.name}", []
         if src.error is not None:
             found.append(problem(src.error.code, f"source '{src.name}': {src.error.message}", at,
-                                 hint=src.error.hint))
+                                 hint=src.error.hint, fields={"source": src.name}))
         if lost:
             found.append(problem("W_LIVE_LOST", f"source '{src.name}': {lost} events were "
                                  f"dropped before they were read", at,
-                                 hint="read more often, or raise the connection's \"events\" limit"))
+                                 hint="read more often, or raise the connection's \"events\" limit",
+                                 fields={"source": src.name, "lost": lost}))
         if gap:
             found.append(problem("W_LIVE_GAP", f"source '{src.name}': the stream broke, so an "
                                  f"unknown number of events is missing", at,
-                                 hint="the latest values are right again; the history has a hole"))
+                                 hint="the latest values are right again; the history has a hole",
+                                 fields={"source": src.name}))
         if src.skew is not None and abs(src.skew) > SKEW_SECONDS:
             found.append(problem("W_LIVE_SKEW", f"source '{src.name}': its clock and this "
                                  f"machine's differ by {src.skew:.0f} s", at,
-                                 hint="synchronise the clocks; both stamps travel with every event"))
+                                 hint="synchronise the clocks; both stamps travel with every event",
+                                 fields={"source": src.name, "skew": round(src.skew)}))
         if src.warning:
-            found.append(problem("W_LIVE_LIMIT", src.warning[0], at, hint=src.warning[1]))
+            found.append(problem("W_LIVE_LIMIT", src.warning[0], at, hint=src.warning[1],
+                                 fields={"source": src.name}))
         if src.dropped:
             counts = ", ".join(f"{n} {reason}" for reason, n in sorted(src.dropped.items()))
             found.append(problem("W_LIVE_DROPPED", f"source '{src.name}' dropped since the feed "
                                  f"opened: {counts}", at,
-                                 hint="see the bounds of live data in the documentation"))
+                                 hint="see the bounds of live data in the documentation",
+                                 fields={"source": src.name}))
         return found
 
 

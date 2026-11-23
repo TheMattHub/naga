@@ -76,7 +76,7 @@ __all__ = ["Change", "Conflict", "RecordChange", "diff", "record_changes", "merg
 # spot", the engine reads none of them, and their only effect is where
 # something is drawn.
 _CANVAS_FIELDS = {"position", "layout_position", "layout_rotation", "label_offset", "counter_offsets",
-                  "queue_row",
+                  "queue_row", "asset_3d",
                   "diagram"}
 
 # Record lists one level inside a record, matched by identity like a section

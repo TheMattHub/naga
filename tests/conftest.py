@@ -368,6 +368,13 @@ def worker_pool():
         yield pool
 
 
+@pytest.fixture
+def tmp_user_dir(tmp_path, monkeypatch):
+    """The user library folder (robot assets, imported meshes) moved under tmp_path."""
+    monkeypatch.setenv("PRODUCT_LIBRARY_DIR", str(tmp_path / "libraries"))
+    return tmp_path / "libraries"
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """Shared offscreen QApplication for every Qt UI test (test_ui_shell.py,
@@ -444,6 +451,20 @@ def _qt_tests_always_have_an_application(request):
 
 
 @pytest.fixture(autouse=True)
+def _collector_state_is_left_as_found():
+    """#1990: a test that switched automatic garbage collection back on (qapp turns it off,
+    #94) let later tests on that worker collect Qt wrappers off the GUI thread: assertion
+    failures and access violations in unrelated tests. Turn it off again and fail the leaking
+    test. Only on-after-off counts: the first Qt test on a worker creates qapp, which turns it off."""
+    import gc
+    before = gc.isenabled()
+    yield
+    if gc.isenabled() and not before:
+        gc.disable()
+        pytest.fail("the test switched automatic garbage collection back on (#94, #1990)")
+
+
+@pytest.fixture(autouse=True)
 def _modal_dialogs_never_hang_the_suite(request, monkeypatch):
     """A `QMessageBox.critical/warning/information/question` call that reaches
     a REAL `.exec()` blocks forever under the offscreen platform (no user to
@@ -491,7 +512,10 @@ def _main_window(qapp):
 @pytest.fixture
 def window(_main_window):
     _main_window.document.dirty = False   # never prompt when resetting
-    assert _main_window.new_model()
+    # one window per module: a run, game or plant monitor an earlier test left on keeps it
+    # busy, and this setup fails in whichever test lands next on that worker (#1980)
+    assert _main_window.new_model(), "the shared window is busy: an earlier test left a run, " \
+        "a game or the plant monitor on"
     return _main_window
 
 

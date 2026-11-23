@@ -193,17 +193,25 @@ def test_a_belt_loop_closed_by_full_sections_is_a_deadlock_at_once():
     hold ceil(2.5) = 3 parts each (#1270, D853), more than its 10 cells; B holds 2. With 12
     parts both fill: A's sections full is what stops its entry once its last part is in, and
     the loop check says so when it closes, not only once nothing is left to happen. (Before
-    #1270 the sections held 2 each, 8 in all, and 10 parts closed the loop.)"""
+    #1270 the sections held 2 each, 8 in all, and 10 parts closed the loop.) R60: B hands to A
+    directly; closed through a DECIDE that may send a part out ("again"), the loop is not
+    counted live, and the drain check names the same deadlock."""
     stops = [{"at": a, "time": 0} for a in (2.5, 5, 7.5)]
     blocks = [create(max_arrivals=12, dist_params={"value": 0.1}), belt("A", stops=stops),
               belt("B", length=2.0),
               {"name": "again", "description": "again", "type": "DECIDE", "position": [2, 0],
                "params": {"mode": "Condition", "conditions": ["1 == 1"]}}, dispose()]
     links = [{"source": "create_1", "target": "A"}, {"source": "A", "target": "B"},
-             {"source": "B", "target": "again"}, {"source": "again", "target": "A"},
-             {"source": "again", "target": "dispose_1"}]
-    model = layout(blocks, links, simulation={"time_limit": 500, "warmup": 0, "replications": 1})
+             {"source": "B", "target": "A"}]
+    model = layout([b for b in blocks if b["name"] != "again"], links,
+                   simulation={"time_limit": 500, "warmup": 0, "replications": 1})
     with pytest.raises(RuntimeError, match="every station and buffer in the loop"):
+        api.run_model(model, replications=1)
+    model["blocks"] = blocks
+    model["links"] = links[:2] + [{"source": "B", "target": "again"},
+                                  {"source": "again", "target": "A"},
+                                  {"source": "again", "target": "dispose_1"}]
+    with pytest.raises(RuntimeError, match="nothing is left to happen but A, B"):
         api.run_model(model, replications=1)
 
 

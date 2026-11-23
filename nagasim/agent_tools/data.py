@@ -424,7 +424,10 @@ def get_twin_monitor() -> dict:
     return {**{key: doc.get(key) for key in ("cycle", "written", "started", "cadence", "model",
                                               "at", "stamp", "view", "mapped")},
             "sources": _listed(doc.get("sources")),
-            "problems": _listed(doc.get("problems"), MAX_PROBLEMS)}
+            # D1334: a stored problem's `fields` fill a screen's plain line; an agent reads
+            # the problem as it always did.
+            "problems": [{k: v for k, v in p.items() if k != "fields"} if isinstance(p, dict) else p
+                         for p in _listed(doc.get("problems"), MAX_PROBLEMS)]}
 
 
 @tool(read_only=True, returns={

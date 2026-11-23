@@ -1,15 +1,20 @@
 from nagasim.core import blocking, bottleneck, queuerow, sd, timeseries
+from nagasim.core.arealink import AreaLink, is_area_link
 from nagasim.core.base_process import Block
+from nagasim.core.beltpick import belt_meets
+from nagasim.core.conveyor_path import belt_exit_links, reverse_chains
 from nagasim.core.blocks import Batch, Hold, Match
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import StochasticDistribution
+from nagasim.core.itemlogic import build_items
 from nagasim.core.costs import build_energy_price, build_fixed_costs
 from nagasim.core.levels import build_level_system
 from nagasim.core.agents import build_agent_system
 from nagasim.core.chargers import build_chargers
-from nagasim.core.motion import build_motion_profiles, build_zones
+from nagasim.core.motion import build_motion_profiles, build_zones, robot_plans
+from nagasim.core.pallets import pattern_records, robot_cycles, robot_phases
 from nagasim.core.movers import build_fleets
-from nagasim.core.network import block_nodes, build_network
+from nagasim.core.network import block_nodes, build_network, normalise_rotation
 from nagasim.core.orders import build_orders
 from nagasim.core.resource_manager import PlanGates
 from nagasim.core.initial_state import schedule_offset
@@ -38,6 +43,8 @@ class GraphModel:
         Register every block in ctx.process_list as a node in the graph.
         """
         for process in env.ctx.process_list:
+            if getattr(process, "area_link", False):
+                continue        # D1369: a hidden area link is no block of the model
             self.blocks[process.block.name] = process
 
     def link(self, *connections):
@@ -133,6 +140,7 @@ class GraphModel:
         # nothing else.
         env.ctx.record_logs = bool(sim_settings.get("record_logs", True))
         env.ctx.entity_waits = bool(sim_settings.get("entity_waits", False))    # D1232
+        env.ctx.strict_checks = sim_settings.get("strict_checks", False) is True   # D1371
 
         # Deterministic run mode (PHASE6 W4 P1, ARCHITECTURE D119): read once
         # here, same pattern as record_logs above. `core/base_process.py`'s
@@ -257,6 +265,11 @@ class GraphModel:
         # name, so a failure or a capacity schedule may name it like any other.
         env.ctx.fleets = build_fleets(env, layout, env.ctx.network, env.ctx.resource_manager)
         env.ctx.motion_profiles = build_motion_profiles(layout)     # D157
+        env.ctx.robot_plans = robot_plans(layout)                   # D1343
+        env.ctx.pallet_patterns = pattern_records(layout)           # D1346
+        env.ctx.pallet_cycles = robot_cycles(layout)                # D1346
+        env.ctx.pallet_phases = robot_phases(layout)                # blocks in 3D
+        env.ctx.belt_meets = belt_meets(layout)                     # D1343, part 3
         env.ctx.zones = build_zones(layout)                         # D830
         env.ctx.chargers = build_chargers(layout, env)              # D165
         env.ctx.resource_manager.load_failures_from_json(layout.get("failures", []), env.ctx.seed,
@@ -290,6 +303,12 @@ class GraphModel:
             # Submodel parameters bound to this block by flatten() (ROADMAP 2.3
             # part B); empty for every block of a plain model.
             process.locals = dict(blk.get("locals") or {})
+            if isinstance(blk.get("item"), str):     # a hook LOGIC block of an item with code (D1344)
+                process.item = blk["item"]
+
+            if btype == "CONVEYOR":      # a curved belt's pose comes from the floor plan
+                process.layout_position = blk.get("layout_position")
+                process.layout_rotation = normalise_rotation(blk.get("layout_rotation"))
 
             if "params" in blk and hasattr(process, "set_params_from_dict"):
                 # Apply loaded params to the blocks, for sim recreation later
@@ -305,7 +324,8 @@ class GraphModel:
         # (ROADMAP 1.5); a delay is sampled with the SOURCE block's own rng, so
         # it is built here as a plain StochasticDistribution, same as any
         # other duration-bearing param.
-        for entry in layout["links"]:
+        taken = set(block_map)
+        for entry in belt_exit_links(layout):
             src, tgt = entry["source"], entry["target"]
             if src in block_map and tgt in block_map:
                 delay_spec = entry.get("delay")
@@ -314,18 +334,37 @@ class GraphModel:
                     delay = StochasticDistribution(
                         delay_spec.get("distribution", "Constant"), delay_spec.get("dist_params", {}),
                         time_unit=delay_spec.get("time_unit", "base"))
-                self.link((block_map[src], block_map[tgt], delay))  # wire the link into the runnable graph
+                target = block_map[tgt]
+                if is_area_link(entry):
+                    # D1369, D1391: a link with a delay and a capacity is a hidden process at
+                    # the link's own slot, so exit order and ports are the drawn link's; never
+                    # in self.blocks. It draws the delay itself, so the forward has none.
+                    target = AreaLink.build(env, entry, target, taken, block_map[src], delay)
+                    taken.add(target.name)
+                    delay = None
+                self.link((block_map[src], target, delay))  # wire the link into the runnable graph
 
         # Belt merges (D854): a merge's source links to the belt's entry at the merge.
         for process in block_map.values():
             if getattr(process, "merges", None) and hasattr(process, "wire_merges"):
                 process.wire_merges(block_map)
 
+        # D1392: reversible belts linked end to start reverse as one chain, found once here.
+        for name, after in reverse_chains(layout).items():
+            if name in block_map and after in block_map:
+                block_map[name].chain_to(block_map[after])
+
         # Blocking after service (PHASE4 T5, ARCHITECTURE D78): once every link
         # is wired, decide which blocks must hold their resource until the part
         # is accepted, and remember the loops that could deadlock. A model with
         # no finite space returns from this immediately.
         blocking.analyse(env.ctx)
+
+        # Item code (D1344): refused whole here, before any of it loads, unless every
+        # fingerprint is trusted on this computer; one dict lookup for every other model.
+        item_code = layout.get("item_code")
+        if item_code:
+            env.ctx.items = build_items(item_code, env.ctx)
 
     def attach_stores(self, env, process):
         """Give Hold/Batch/Match their SimPy stores (D5: the engine owns them, not

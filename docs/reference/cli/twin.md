@@ -155,6 +155,27 @@ options:
   --outbox SPEC  the twin's outbox, file:<path>
 ```
 
+## naga trust
+
+```text
+usage: naga trust [-h] [--list] [--remove PREFIX] [MODEL]
+
+Trust a model's item code on this computer. It shows each block of code that
+is not trusted yet, where the model file says it comes from and its
+fingerprint, and asks; only a typed y trusts it. Trusted code runs with your
+permissions, unsandboxed, in your runs, experiments and assistant tool calls.
+Any change to the code needs your yes again.
+
+positional arguments:
+  MODEL            the model file
+
+options:
+  -h, --help       show this help message and exit
+  --list           list the item code trusted on this computer
+  --remove PREFIX  stop trusting the code whose fingerprint starts with PREFIX
+                   (12 or more hex characters)
+```
+
 ## naga plc-write
 
 ```text

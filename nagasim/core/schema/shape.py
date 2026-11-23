@@ -13,10 +13,12 @@ build wrote loses nothing. Block `params` are left to the block validator (E_PAR
 """
 from __future__ import annotations
 
+import re
+
 from nagasim.core.problems import Problem, problem
 from nagasim.core.suggest import did_you_mean
 
-__all__ = ["shape_problems", "type_problems_unsaid", "fields_at"]
+__all__ = ["shape_problems", "asset_3d_problems", "type_problems_unsaid", "fields_at"]
 
 _DEPTH = 2      # the top level is 0: records (1) and the objects inside them (2)
 _JSON_TYPES = {"string": str, "array": list, "object": dict, "boolean": bool}
@@ -127,6 +129,30 @@ def type_problems_unsaid(found: list[Problem], said: list[Problem]) -> list[Prob
     return [p for p in found if p.code != "E_FIELD_TYPE" or _record(p.path) not in refused]
 
 
+# A block's `asset_3d`: "library/asset". Public: `ModelDocument.set_asset_3d` stores only this form.
+ASSET_3D_RE = re.compile(r"[a-z0-9_]+/[a-z0-9_]+")
+
+
+def asset_3d_problems(layout: dict) -> list[Problem]:
+    """E_ASSET_3D for a block's `asset_3d` that is a string but not "library/asset" (lower-case
+    letters, digits and underscores each side). A value of another JSON type is E_FIELD_TYPE's.
+    The JSON Schema states the same pattern, but nothing else enforces a pattern."""
+    out: list[Problem] = []
+    scopes = [("/blocks", layout.get("blocks"))] + [
+        (f"/submodels/{name}/blocks", d.get("blocks")) for name, d in
+        (layout.get("submodels") or {}).items() if isinstance(d, dict)]
+    for at, blocks in scopes:
+        for i, block in enumerate(blocks if isinstance(blocks, list) else ()):
+            value = block.get("asset_3d") if isinstance(block, dict) else None
+            if isinstance(value, str) and not ASSET_3D_RE.fullmatch(value):
+                out.append(problem(
+                    "E_ASSET_3D", f"{block.get('name')}: asset_3d {value!r} is not \"library/asset\""[:300],
+                    f"{at}/{i}/asset_3d", block=block.get("name"),
+                    hint='write it like "automation/irb6700", or remove it for the default shape',
+                    fields={"case": "form", "value": value[:80]}))
+    return out
+
+
 def shape_problems(layout: dict) -> list[Problem]:
     """W_UNKNOWN_KEY for every key *layout* holds that the JSON Schema does not, at every
     level the schema closes, with the nearest valid name in the hint; E_FIELD_TYPE for a
@@ -148,7 +174,8 @@ def shape_problems(layout: dict) -> list[Problem]:
                     found.append(problem(
                         "E_FIELD_TYPE", f"{_label(value, at)}: {key} must be {wanted}; got "
                         f"{inner!r}"[:300], f"{at}/{key}", block=block,
-                        hint=f"write {key} as {wanted}"))
+                        hint=f"write {key} as {wanted}",
+                        fields={"case": "type", "key": key, "wanted": wanted}))
                     continue
                 if depth < _DEPTH and key != "params":
                     sub = _target(full, known[key])
@@ -166,12 +193,14 @@ def shape_problems(layout: dict) -> list[Problem]:
                 found.append(problem(
                     "W_UNKNOWN_KEY", f"unknown top-level key '{key}': this build does not use it "
                     "and keeps it as it is", f"/{key}",
-                    hint=said or "a section of a newer version, or a misspelt one"))
+                    hint=said or "a section of a newer version, or a misspelt one",
+                    fields={"case": "top", "key": key}))
                 continue
             found.append(problem(
                 "W_UNKNOWN_KEY", f"{_label(value, at)}: unknown key '{key}': this build does "
                 "not use it and keeps it as it is", f"{at}/{key}", block=block,
-                hint=(f"{said} " if said else "") + "keys here: " + ", ".join(known)))
+                hint=(f"{said} " if said else "") + "keys here: " + ", ".join(known),
+                fields={"case": "inner", "key": key}))
 
     check(layout, full, "", 0, None)
     return found

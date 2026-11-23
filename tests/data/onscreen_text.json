@@ -1,0 +1,131 @@
+{
+  "editor": {
+    "analyze": {
+      "multi": 0,
+      "units": 128,
+      "words": 352
+    },
+    "canvas": {
+      "multi": 0,
+      "units": 3,
+      "words": 21
+    },
+    "data": {
+      "multi": 0,
+      "units": 84,
+      "words": 227
+    },
+    "dialogs": {
+      "multi": 1,
+      "units": 155,
+      "words": 664
+    },
+    "mes twin": {
+      "multi": 0,
+      "units": 33,
+      "words": 135
+    },
+    "mes twin lost": {
+      "multi": 1,
+      "units": 34,
+      "words": 142
+    },
+    "monitor panel": {
+      "multi": 0,
+      "units": 19,
+      "words": 140
+    },
+    "operate": {
+      "multi": 0,
+      "units": 128,
+      "words": 484
+    },
+    "problems": {
+      "multi": 0,
+      "units": 4,
+      "words": 27
+    },
+    "properties": {
+      "multi": 0,
+      "units": 449,
+      "words": 703
+    },
+    "results": {
+      "multi": 0,
+      "units": 232,
+      "words": 616
+    },
+    "window": {
+      "multi": 0,
+      "units": 115,
+      "words": 288
+    }
+  },
+  "pages": {
+    "client": {
+      "multi": 0,
+      "units": 35,
+      "words": 135
+    },
+    "deck": {
+      "multi": 0,
+      "units": 65,
+      "words": 412
+    },
+    "monitor": {
+      "multi": 0,
+      "units": 34,
+      "words": 119
+    },
+    "monitor advice": {
+      "multi": 0,
+      "units": 40,
+      "words": 188
+    },
+    "monitor alerts": {
+      "multi": 0,
+      "units": 52,
+      "words": 212
+    },
+    "monitor lost": {
+      "multi": 1,
+      "units": 42,
+      "words": 136
+    },
+    "monitor skipped": {
+      "multi": 1,
+      "units": 43,
+      "words": 133
+    },
+    "player": {
+      "multi": 0,
+      "units": 38,
+      "words": 85
+    },
+    "report": {
+      "multi": 1,
+      "units": 81,
+      "words": 201
+    },
+    "room": {
+      "multi": 0,
+      "units": 26,
+      "words": 188
+    },
+    "scenario report": {
+      "multi": 1,
+      "units": 99,
+      "words": 246
+    },
+    "schedule replay": {
+      "multi": 0,
+      "units": 24,
+      "words": 260
+    },
+    "viewer": {
+      "multi": 0,
+      "units": 60,
+      "words": 211
+    }
+  }
+}

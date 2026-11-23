@@ -7,9 +7,13 @@ package.
 """
 from __future__ import annotations
 
-from nagasim.core import layout_tools
+from nagasim.core import conveyor_checks, conveyor_path, document, layout_tools
+from nagasim.core.blocks import conveyor
+from nagasim.core.conveyor_types import TYPES
+from nagasim.core.timeunits import LENGTH_UNITS, UNITS, units_of
 
-from .core import EDIT, ToolError, _document_args, _duration, _edit_result, _open, tool
+from .core import (EDIT, ToolError, _document_args, _duration, _edit_result, _open, _problem_dicts,
+                   _problems, tool, workspace)
 
 _document_args("add_block",
                model="Workspace name of the model to edit.",
@@ -103,15 +107,18 @@ _document_args("connect",
                model="Workspace name of the model to edit.",
                source="Name of the block the entity leaves.",
                target="Name of the block the entity arrives at.",
-               source_port="Out port name, only when the source is a SUBMODEL instance.",
-               target_port="In port name, only when the target is a SUBMODEL instance.",
+               source_port="Out port name: a SUBMODEL instance's port, or a CONVEYOR's exit (\"out\", \"d<k>\").",
+               target_port="In port name: a SUBMODEL instance's port, or a CONVEYOR's \"in\".",
                delay="Optional transfer delay, e.g. {\"distribution\": \"Constant\", "
-                     "\"dist_params\": {\"value\": 2}}.")
+                     "\"dist_params\": {\"value\": 2}}.",
+               capacity="Parts a link with a delay holds at once (a full link holds its "
+                        "feeder); 0 = no limit.")
 
 
 @tool(returns={**EDIT, "link": str, "index": float})
 def connect(model: str, source: str, target: str, source_port: str | None = None,
-            target_port: str | None = None, delay: dict | None = None) -> dict:
+            target_port: str | None = None, delay: dict | None = None,
+            capacity: int | None = None) -> dict:
     """Link two blocks so entities flow from *source* to *target*, optionally
     with a transfer delay.
 
@@ -129,6 +136,8 @@ def connect(model: str, source: str, target: str, source_port: str | None = None
         index = doc.add_link(source, target, source_port=source_port, target_port=target_port)
         if delay:
             doc.set_link_delay(source, target, _duration(delay, "delay"), index=index)
+        if capacity is not None:
+            doc.set_link_area(source, target, {"capacity": capacity}, index=index)
     return _edit_result(doc, before, {"link": f"{source} -> {target}", "index": index})
 
 
@@ -264,13 +273,15 @@ _document_args("set_simulation_settings", model="Workspace name of the model to 
                warmup="Time at which statistics are reset.",
                replications="How many independent replications a run does by default.",
                time_unit="The model's BASE unit: seconds, minutes, hours or days.",
-               currency="Cost label only; never enters the arithmetic.")
+               currency="Cost label only; never enters the arithmetic.",
+               strict_checks="true: conveyor floor checks and run guards are errors, not warnings.")
 
 
 @tool(returns={**EDIT, "simulation": dict})
 def set_simulation_settings(model: str, run_length: float | None = None,
                             warmup: float | None = None, replications: int | None = None,
-                            time_unit: str | None = None, currency: str | None = None) -> dict:
+                            time_unit: str | None = None, currency: str | None = None,
+                            strict_checks: bool | None = None) -> dict:
     """Set the model's default run settings; only the arguments you pass change.
 
     ALWAYS set a run length for a model that cannot drain on its own -- one with
@@ -289,6 +300,8 @@ def set_simulation_settings(model: str, run_length: float | None = None,
         changes["time_unit"] = time_unit
     if currency is not None:
         changes["currency"] = currency
+    if strict_checks is not None:
+        changes["strict_checks"] = bool(strict_checks)
     if changes:
         doc.set_simulation(**changes)
     return _edit_result(doc, before, {"simulation": doc.simulation})
@@ -337,3 +350,340 @@ def auto_layout(model: str) -> dict:
     positions = layout_tools.auto_layout(doc)
     doc.move_blocks(positions)
     return _edit_result(doc, before, {"moved": len(positions)})
+
+
+_document_args("set_item_code", model="Workspace name of the model to edit.",
+               definition="Name of the submodel definition whose code this is.",
+               source="The whole Python source: a module defining the class.",
+               class_name="The class in source the item runs, one instance per placed item.",
+               timer="Run on_timer every this many model time units; null for no timer.",
+               watch="Model variables whose writes trigger on_state.",
+               signals="Signal names that trigger on_signal; $name is per instance.")
+
+
+@tool(returns={**EDIT, "fingerprint": str, "trusted": bool, "problems": list})
+def set_item_code(model: str, definition: str, source: str, class_name: str,
+                  timer: float | None = None, watch: list[str] | None = None,
+                  signals: list[str] | None = None) -> dict:
+    """Write the Python class a submodel definition runs (its item code), one undo step.
+
+    Hooks, each taking item last: on_entry gets entity and returns the output index (0 first);
+    on_exit gets entity; on_timer; on_state gets variable and value; on_signal gets name.
+    LOGIC blocks with hook entry or exit inside the definition run the first two, and
+    item.params holds the instance's arguments.
+
+    The code runs only after a person trusts this exact code on their computer, in the
+    editor's code panel or with `naga trust`. You cannot trust code, and any change to it
+    needs the person's yes again. Once trusted, your runs and experiments run it.
+
+    "problems" lists what to fix in the code or its wiring.
+    """
+    from nagasim.core import plainlines
+    from nagasim.settings import itemtrust
+
+    doc, before = _open(model)
+    if definition not in doc.submodels:
+        raise ToolError("E_UNKNOWN_SUBMODEL", f"no submodel definition named '{definition}'",
+                        "get_model_summary lists the definitions; write_model can add one")
+    current = doc.definition_code(definition)
+    code = {"class": class_name, "source": source, "timer": timer,
+            "watch": list(watch or []), "signals": list(signals or [])}
+    # Only library placing writes `placed`; an edit keeps it, so the edit shows as one.
+    if current and isinstance(current.get("placed"), dict):
+        code["placed"] = current["placed"]
+    doc.set_definition_code(definition, code)
+    fp = itemtrust.fingerprint(source)
+    mine = [p for p in _problems(doc) if p.code in ("E_ITEM_CODE", "E_ITEM_HOOK")
+            and ((p.fields or {}).get("definition") == definition
+                 or p.path.startswith(f"/submodels/{definition}/"))]
+    return _edit_result(doc, before, {"fingerprint": fp, "trusted": itemtrust.is_trusted(fp),
+                                      "problems": [plainlines.plain(p) for p in mine]})
+
+
+def _belt_ports(doc, name: str) -> list:
+    """The ports of block *name* (a CONVEYOR), laid out from its floor-plan pose."""
+    block = doc.blocks[name]
+    return conveyor.belt_ports({"name": name, "params": block.params,
+                                "layout_position": block.layout_position,
+                                "layout_rotation": block.layout_rotation},
+                               units_of(doc.simulation))
+
+
+def _model_units(doc):
+    """The model's units, or E_UNIT when its time or length unit is one this build does not
+    know (#2011: `write_model` keeps a draft with a bad unit so its errors can be listed, and
+    the floor tools then died on a KeyError)."""
+    units = units_of(doc.simulation)
+    for what, name, known in (("length_unit", units.length, LENGTH_UNITS),
+                              ("time_unit", units.time, UNITS)):
+        if name not in known:
+            raise ToolError("E_UNIT", f"simulation.{what} '{name}' is not a unit this build knows",
+                            f"set simulation.{what} to one of: {', '.join(known)}")
+    return units
+
+
+_document_args("place_piece",
+               model="Workspace name of the model to edit.",
+               name="Name of the new belt piece.",
+               segments="The belt's pieces, entry to end (the CONVEYOR `path` param): {\"straight\": length} or {\"arc\": "
+                    "{\"radius\": r, \"angle\": degrees, \"turn\": \"left\"|\"right\"}}.",
+               type="Conveyor type: \"\" (untyped), \"belt\", \"roller\", \"chain\", \"pallet\" or "
+                    "\"mdr\". A typed piece gets the type's datasheet speed in its params.",
+               x="Floor-plan x of the belt's entry, in metres; ignored with snap_to.",
+               y="Floor-plan y (south is +y), in metres; ignored with snap_to.",
+               rotation="Direction of travel at the entry, degrees clockwise on screen (0 east, "
+                        "90 south), like set_layout; ignored with snap_to.",
+               snap_to="\"<block>.<port>\" of a belt or transfer exit (\"A.out\", \"A.d0\", "
+                       "\"X.left\"): the piece starts at that port, facing its way, and the two "
+                       "are linked.",
+               speed="Belt speed, model length per time unit; default: the type's datasheet speed "
+                     "(untyped: block default).")
+
+
+@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float})
+def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: float = 0.0,
+                y: float = 0.0, rotation: float = 0.0, snap_to: str = "",
+                speed: float | None = None) -> dict:
+    """Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at
+    (x, y) and travelling at *rotation*.
+
+    With *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that
+    port, facing its way, and a link with `source_port` / `target_port` is added, so no
+    coordinates are computed by hand. One undo entry. Segment lengths and radii are in the
+    model's length unit.
+    """
+    doc, before = _open(model)
+    _model_units(doc)
+    if speed is not None and (isinstance(speed, bool) or not isinstance(speed, (int, float))
+                              or not speed > 0):
+        raise ToolError("E_PLACE_SPEED", f"speed {speed!r} is not a number above 0",
+                        "give the speed in the model's length per time unit, or leave it out")
+    kind = str(type or "").strip().lower()
+    if kind and kind not in TYPES:
+        raise ToolError("E_PLACE_TYPE", f"'{type}' is not a conveyor type",
+                        f"type is \"\" or one of {', '.join(sorted(TYPES))}")
+    try:
+        conveyor_path.parse_path(segments)
+    except ValueError as exc:
+        raise ToolError("E_PLACE_PATH", str(exc), "segments: [{\"straight\": 2.0}, "
+                        "{\"arc\": {\"radius\": 1.0, \"angle\": 90, \"turn\": \"left\"}}]")
+    source = None
+    if snap_to:
+        source = _snap_port(doc, model, snap_to)
+        x, y, rotation = source.pose
+    x, y = round(float(x), 6), round(float(y), 6)
+    with doc.transaction():
+        created = doc.add_block("CONVEYOR", (200.0 + 220.0 * len(doc.blocks), 300.0), name)
+        params = {**doc.blocks[created].params, "path": segments}
+        if kind:
+            # Written at creation so the file shows it (D1298), in the datasheet's own unit so a
+            # later change of the model's time unit leaves the belt's speed as it is (I1).
+            params.update(type=kind, speed=TYPES[kind].speed, speed_unit="m/s")
+        if speed is not None:
+            params.update(speed=float(speed), speed_unit="base")
+        doc.set_params(created, params)
+        doc.set_layout_positions({created: (x, y)})
+        doc.set_layout_rotations({created: rotation})     # folded into [0, 360) (D74)
+        if source is not None:
+            ours = next(p for p in _belt_ports(doc, created) if p.name == "in")
+            document.connect_ports(doc, source, ours)
+    return _edit_result(doc, before, {
+        "block": created, "layout_position": [x, y],
+        "layout_rotation": doc.blocks[created].layout_rotation})
+
+
+_document_args("set_layout",
+               model="Workspace name of the model to edit.",
+               block="Name of the block to place.",
+               x="Floor-plan x, in metres.",
+               y="Floor-plan y (south is +y), in metres.",
+               rotation="Degrees clockwise on screen (0 east, 90 south); a belt travels this "
+                        "way from its entry.")
+
+
+@tool(returns={**EDIT, "block": str})
+def set_layout(model: str, block: str, x: float, y: float, rotation: float) -> dict:
+    """Place a block on the floor plan: its position and rotation, one undo entry. Cosmetic for
+    most blocks; a CONVEYOR's path starts from this pose."""
+    doc, before = _open(model)
+    if block not in doc.blocks:
+        raise ToolError("E_UNKNOWN_BLOCK", f"no block named '{block}' in model '{model}'",
+                        f"blocks: {', '.join(doc.blocks) or '(none)'}")
+    with doc.transaction():
+        doc.set_layout_positions({block: (float(x), float(y))})
+        doc.set_layout_rotations({block: float(rotation)})
+    return _edit_result(doc, before, {"block": block})
+
+
+def _transfer_ports(name: str, position, rotation, params: dict) -> list:
+    """A CONVEYOR_TRANSFER's ports as `conveyor_path.Port`s: "in" and one out port per exit
+    (`conveyor_path.exit_names`). It has no footprint, so each pose is the module's position;
+    "in" heads along the module's rotation, an exit that heading turned by the exit's angle. The
+    one rule of `get_ports` and of `snap_to` on an exit."""
+    x, y = position or (0.0, 0.0)
+    heading = float(rotation or 0.0)
+    angles = {str(e.get("port")): float(e.get("angle", 0.0))
+              for e in params.get("exits") or [] if isinstance(e, dict)}
+    names = conveyor_path.exit_names({"type": "CONVEYOR_TRANSFER", "params": params})
+    return [conveyor_path.Port(name, "in", conveyor_path.Pose(float(x), float(y), heading % 360.0),
+                               "in")] + [
+        conveyor_path.Port(name, port, conveyor_path.Pose(
+            float(x), float(y), (heading + angles.get(port, 0.0)) % 360.0), "out")
+        for port in names]
+
+
+def _snap_port(doc, model: str, snap_to: str):
+    """The out port a `snap_to` of "<block>.<port>" names (a belt's out or divert, a transfer's
+    exit), or the ToolError saying why not."""
+    block, _, port = snap_to.rpartition(".")
+    form = "snap_to is \"<block>.<port>\", e.g. \"A.out\" or \"X.left\""
+    if not block or not port:
+        raise ToolError("E_UNKNOWN_PORT", f"snap_to {snap_to!r} is not <block>.<port>", form)
+    if block not in doc.blocks:
+        raise ToolError("E_UNKNOWN_BLOCK", f"snap_to: no block named '{block}' in model "
+                        f"'{model}'", form)
+    kind = doc.blocks[block].type
+    if kind == "CONVEYOR":
+        ports = _belt_ports(doc, block)
+    elif kind == "CONVEYOR_TRANSFER":
+        entry = doc.blocks[block]
+        ports = _transfer_ports(block, entry.layout_position, entry.layout_rotation, entry.params)
+    else:
+        raise ToolError("E_UNKNOWN_BLOCK", f"snap_to: block '{block}' is a {kind}, not a "
+                        "CONVEYOR or CONVEYOR_TRANSFER", form)
+    found = [p for p in ports if p.name == port and p.role == "out"]
+    if not found:
+        names = [p.name for p in ports if p.role == "out"]
+        raise ToolError("E_UNKNOWN_PORT", f"snap_to: '{block}' has no out port '{port}'",
+                        f"out ports: {', '.join(names)}")
+    return found[0]
+
+
+_document_args("place_transfer",
+               model="Workspace name of the model to edit.",
+               name="Name of the new transfer module.",
+               mechanism="\"popup\" (default), \"turntable\" or \"lift\".",
+               exits="The module's exits, in exit order: [{\"port\": name, \"angle\": degrees from "
+                     "the entry heading, clockwise on screen}]. Empty: one straight exit \"out\".",
+               x="Floor x, metres; ignored with snap_to.",
+               y="Floor y (south +), metres; ignored with snap_to.",
+               rotation="Heading of the entry, degrees clockwise on screen (0 east, 90 south); "
+                        "ignored with snap_to.",
+               snap_to="\"<belt>.<port>\" (\"A.out\"): the module takes that port's pose and "
+                       "the belt is linked to it.")
+
+
+@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float})
+def place_transfer(model: str, name: str, mechanism: str = "popup", exits: list[dict] | None = None,
+                   x: float = 0.0, y: float = 0.0, rotation: float = 0.0,
+                   snap_to: str = "") -> dict:
+    """Add a CONVEYOR_TRANSFER (moves each load onto one of its exits) on the floor plan, in one
+    undo entry.
+
+    Its exits are ports: `place_piece` the belt that takes each with snap_to "<module>.<exit>",
+    or link an existing one with `connect(source=<module>, target=<belt>, source_port=<exit>)`.
+    The belt feeding the module is linked by *snap_to* or `connect`. `get_ports` lists the ports.
+    """
+    doc, before = _open(model)
+    _model_units(doc)
+    from nagasim.core.blocks import transfer_piece
+    kind = str(mechanism or "popup").strip().lower()
+    if kind not in transfer_piece.MECHANISMS:
+        raise ToolError("E_PLACE_TYPE", f"'{mechanism}' is not a transfer mechanism",
+                        f"mechanism is one of {', '.join(transfer_piece.MECHANISMS)}")
+    listed = exits or [{"port": "out", "angle": 0.0}]
+    ports = [e.get("port") if isinstance(e, dict) else None for e in listed]
+    if any(not isinstance(p, str) or not p.strip() or ":" in p for p in ports) \
+            or len(set(ports)) != len(ports) \
+            or any(isinstance(e.get("angle"), bool) or not isinstance(e.get("angle"), (int, float))
+                   for e in listed):
+        raise ToolError("E_PLACE_EXITS", f"exits {listed!r} is not a list of distinct "
+                        "{port, angle} entries", "exits: [{\"port\": \"left\", \"angle\": -90}, "
+                        "{\"port\": \"straight\", \"angle\": 0}]")
+    source = None
+    if snap_to:
+        source = _snap_port(doc, model, snap_to)
+        x, y, rotation = source.pose
+    x, y = round(float(x), 6), round(float(y), 6)
+    with doc.transaction():
+        created = doc.add_block("CONVEYOR_TRANSFER", (200.0 + 220.0 * len(doc.blocks), 300.0), name)
+        doc.set_params(created, {**doc.blocks[created].params, "mechanism": kind,
+                                 "exits": [{"port": e["port"].strip(), "angle": float(e["angle"])}
+                                           for e in listed]})
+        doc.set_layout_positions({created: (x, y)})
+        doc.set_layout_rotations({created: rotation})
+        if source is not None:
+            doc.add_link(source.block, created, source_port=source.name)
+    return _edit_result(doc, before, {
+        "block": created, "layout_position": [x, y],
+        "layout_rotation": doc.blocks[created].layout_rotation})
+
+
+_document_args("get_ports",
+               model="Workspace name of the model.",
+               block="Name of a CONVEYOR or CONVEYOR_TRANSFER.")
+
+
+@tool(read_only=True, returns={"block": str, "type": str, "ports": list})
+def get_ports(model: str, block: str) -> dict:
+    """The ports of a belt piece or transfer module: each one's name, role (in/out), floor
+    pose (x, y metres, heading as in set_layout) and `linked_to`, the "Block.port" ends it is
+    linked to.
+
+    A belt has "in", "out" and "d<k>" (divert k's exit); a pose faces the way a part leaves. A
+    transfer has no footprint: an exit's pose is the module's position, heading = entry plus
+    the exit's angle. Pass an out port to `place_piece` as snap_to.
+    """
+    doc = workspace().document(model)
+    _model_units(doc)
+    layout = doc.to_layout()
+    entry = next((b for b in layout["blocks"] if b.get("name") == block), None)
+    if entry is None:
+        names = [b["name"] for b in layout["blocks"]]
+        more = f", and {len(names) - 5} more" if len(names) > 5 else ""
+        raise ToolError("E_UNKNOWN_BLOCK", f"no block named '{block}' in model '{model}'",
+                        f"blocks: {', '.join(names[:5]) or '(none)'}{more}")
+    kind = str(entry.get("type", "")).upper()
+    if kind not in ("CONVEYOR", "CONVEYOR_TRANSFER"):
+        raise ToolError("E_NOT_A_PIECE", f"block '{block}' is a {kind}, not a CONVEYOR or "
+                        "CONVEYOR_TRANSFER", "get_ports reads belt pieces and transfer modules")
+    params = entry.get("params") or {}
+    links = [k for k in layout.get("links") or [] if isinstance(k, dict)]
+    taken = conveyor_checks.exit_links(entry, [k for k in links if k.get("source") == block])
+    merges = {m.get("from") for m in params.get("merges") or [] if isinstance(m, dict)}
+    feeders = sorted(f"{k['source']}.{k.get('source_port') or 'out'}" for k in links
+                     if k.get("target") == block and k.get("source") not in merges
+                     and k.get("target_port") in (None, "", "in"))
+
+    def joined(port: str, role: str) -> list[str]:
+        if role == "in":
+            return feeders
+        link = taken.get(port)
+        return [f"{link['target']}.{link.get('target_port') or 'in'}"] if link else []
+
+    found = (_belt_ports(doc, block) if kind == "CONVEYOR" else
+             _transfer_ports(block, entry.get("layout_position"), entry.get("layout_rotation"),
+                             params))
+    return {"block": block, "type": kind, "ports": [
+        {"name": p.name, "role": p.role, "x": round(p.pose.x, 6), "y": round(p.pose.y, 6),
+         "heading": round(p.pose.heading, 6) % 360.0, "linked_to": joined(p.name, p.role)}
+        for p in found]}
+
+
+@tool(read_only=True, returns={"model": str, "ok": bool, "warnings": int, "problems": list,
+                               "lines": list})
+def check_layout(model: str) -> dict:
+    """Check the floor layout of belt pieces and transfer modules: open ports
+    (W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP) and linked ports that do not meet
+    (W_CONVEYOR_SNAP).
+
+    The same problems `validate_model` lists for them (errors under `strict_checks`), with a
+    plain sentence each in `lines`. `ok` is true when there are none.
+    """
+    from nagasim.core import plainlines
+    doc = workspace().document(model)
+    _model_units(doc)
+    found = conveyor_checks.static_checks(doc.to_layout())
+    return {"model": model, "ok": not found,
+            "warnings": sum(1 for p in found if p.severity == "warning"),
+            "problems": _problem_dicts(found), "lines": [plainlines.plain(p) for p in found]}

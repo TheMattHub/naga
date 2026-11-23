@@ -3,7 +3,7 @@
 
 # links
 
-Ordered list of `{source, target, delay?, source_port?, target_port?}`; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is).
+Ordered list of `{source, target, delay?, source_port?, target_port?, capacity?}`; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is).
 
 In the model file this key holds a list of entries.
 
@@ -29,9 +29,10 @@ A scenario can override a block parameter with the path `blocks.<name>.params.<p
 |---|---|---|---|---|---|
 | `source` | string | yes |  |  | Name of the source block. |
 | `target` | string | yes |  |  | Name of the target block. |
-| `delay` | duration or null |  |  | time (`delay.time_unit`) | Optional transfer delay on this link. |
-| `source_port` | string or integer or null |  |  |  | Out port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks branch by link order and ignore it. |
-| `target_port` | string or integer or null |  |  |  | In port: a SUBMODEL instance's port name (or a whole number, matched as its text); other blocks ignore it. |
+| `delay` | duration or null |  |  | time (`delay.time_unit`) | Optional transfer delay on this link; with a capacity, the time a part spends in an area link. |
+| `source_port` | string or integer or null |  |  |  | Out port: a SUBMODEL instance's port name (or a whole number, matched as its text); a CONVEYOR's exit, "out" (its end) or "d&lt;k&gt;" (divert k); other blocks branch by link order and ignore it. |
+| `target_port` | string or integer or null |  |  |  | In port: a SUBMODEL instance's port name (or a whole number, matched as its text), or a CONVEYOR's "in"; other blocks ignore it. |
+| `capacity` | integer |  | `0` | count | Parts the link holds at once, 0 for no limit. A part keeps its place until the target takes it, so a full link holds the block feeding it. Read only on a link with a delay. |
 
 A field of a nested object is described in the JSON Schema (`naga schema`).
 
@@ -53,7 +54,7 @@ In the Python builder `a >> b` adds a link, and `m.link(a, b, delay=...)` adds o
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 33 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 34 more.
 
 Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from SimPy](../../coming-from/simpy.md), [Model file format](../../model-file-format.md), [Submodels](../../modelling-guide/submodels.md), [Semantic diff](../../semantic-diff.md), [Quick start](../../quickstart.md).
 

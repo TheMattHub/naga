@@ -348,24 +348,28 @@ def target_problems(to, who: str, path: str, pops: dict, variables, agent: bool,
     if to == "links" or isinstance(to, dict) and "links" in to:        # PHASE6 A5
         if not agent:
             return [problem("E_SEND_TARGET", f"{who}: \"links\" is a target only inside an "
-                            f"agent type", path, hint=_TARGET_HINT)]
+                            f"agent type", path, hint=_TARGET_HINT,
+                            fields={"case": "a1_links_outside", "who": who})]
         if to == "links":
             return out
         if (to["links"] is not True or set(to) - {"links", "where", "random"}
                 or not isinstance(to.get("random", False), bool)):
             return [problem("E_SEND_TARGET", f"{who}: to {to!r} is malformed", path,
-                            hint='{"links": true, "where"?: "...", "random"?: true}')]
+                            hint='{"links": true, "where"?: "...", "random"?: true}',
+                            fields={"case": "a1_malformed", "who": who})]
         where, kind = to.get("where"), own
     elif isinstance(to, dict):
         pop = to.get("population")
         if (not isinstance(pop, str) or set(to) - {"population", "where", "random"}
                 or not isinstance(to.get("random", False), bool)):
             return [problem("E_SEND_TARGET", f"{who}: to {to!r} is malformed", path,
-                            hint=_TARGET_HINT)]
+                            hint=_TARGET_HINT,
+                            fields={"case": "a1_malformed", "who": who})]
         if pop not in pops:
             return [problem("E_POPULATION_UNKNOWN", f"{who}: unknown population '{pop}'",
                             f"{path}/population",
-                            hint=f"declared: {', '.join(sorted(map(str, pops))) or '(none)'}")]
+                            hint=f"declared: {', '.join(sorted(map(str, pops))) or '(none)'}",
+                            fields={"case": "a1_send", "who": who, "population": pop})]
         where, kind = to.get("where"), pops[pop]
     if isinstance(to, dict):
         if where not in (None, "") and kind is not None:
@@ -380,7 +384,8 @@ def target_problems(to, who: str, path: str, pops: dict, variables, agent: bool,
                     _builtin_reads(own)
             except ExpressionError as exc:
                 return [problem("E_AGENT_EXPRESSION", f"{who}: where {where}: {exc}",
-                                f"{path}/where", hint="a condition on the recipient's self.<attr>")]
+                                f"{path}/where", hint="a condition on the recipient's self.<attr>",
+                                fields={"case": "recipient_where", "who": who})]
             # Evaluated once per candidate recipient, with neither an entity
             # nor a random stream (DEVLOG #132, #136): refusing a draw here
             # keeps every agent's own stream untouched by who sends to it.
@@ -388,11 +393,14 @@ def target_problems(to, who: str, path: str, pops: dict, variables, agent: bool,
                 return [problem("E_AGENT_EXPRESSION", f"{who}: where {where}: a where reads "
                                 f"only the recipient, with no entity and no random draw",
                                 f"{path}/where", hint='pick one at random with "random": true, '
-                                'or draw in the sender before the send')]
+                                'or draw in the sender before the send',
+                                fields={"case": "where_draw", "who": who})]
             out += [problem("E_AGENT_ATTRIBUTE", f"{who}: where: self.{a} is not an attribute "
-                            f"of '{kind.get('name')}'", f"{path}/where") for a in sorted(unknown)]
+                            f"of '{kind.get('name')}'", f"{path}/where",
+                            fields={"case": "recipient_attr", "who": who, "attr": a}) for a in sorted(unknown)]
             out += [problem("E_AGENT_ATTRIBUTE", f"{who}: where: sender.{a} is not an attribute "
-                            f"of '{(own or {}).get('name')}'", f"{path}/where")
+                            f"of '{(own or {}).get('name')}'", f"{path}/where",
+                            fields={"case": "sender_attr", "who": who, "attr": a})
                     for a in sorted(unknown_sender)]
             if check is not None:
                 check(who, where, names, f"{path}/where")
@@ -400,7 +408,8 @@ def target_problems(to, who: str, path: str, pops: dict, variables, agent: bool,
     if to == "self":
         if not agent:
             out.append(problem("E_SEND_TARGET", f"{who}: \"self\" is a target only inside an "
-                               f"agent type", path, hint=_TARGET_HINT))
+                               f"agent type", path, hint=_TARGET_HINT,
+                               fields={"case": "a1_self_outside", "who": who}))
         return out
     if not agent and not isinstance(to, bool):
         # An index is "agent i of my own population": only an agent has one
@@ -412,11 +421,13 @@ def target_problems(to, who: str, path: str, pops: dict, variables, agent: bool,
         else:
             return [problem("E_SEND_TARGET", f"{who}: to {to!r}: an index names an agent of "
                             f"the sender's own population, and a block is not an agent", path,
-                            hint=_TARGET_HINT)]
+                            hint=_TARGET_HINT,
+                            fields={"case": "a1_index", "who": who})]
     if (isinstance(to, str) and to.strip()) or (isinstance(to, int) and not isinstance(to, bool)):
         expr(str(to), path)
         return out
-    return [problem("E_SEND_TARGET", f"{who}: to {to!r} is malformed", path, hint=_TARGET_HINT)]
+    return [problem("E_SEND_TARGET", f"{who}: to {to!r} is malformed", path, hint=_TARGET_HINT,
+                    fields={"case": "a1_malformed", "who": who})]
 
 
 def validate_structured(layout: dict, variables: set, check=None) -> list:
@@ -456,7 +467,8 @@ def validate_structured(layout: dict, variables: set, check=None) -> list:
         if not isinstance(name, str) or not name or name in types:
             problems.append(problem(
                 "E_AGENT_TYPE_NAME", f"agent type '{name}': empty or duplicate name", f"{at}/name",
-                hint="give every agent type a unique, non-empty name"))
+                hint="give every agent type a unique, non-empty name",
+                fields={"case": "name"}))
             continue
         types[name] = entry
         _TypeCheck(problems, entry, at, variables, check, model).run()
@@ -464,7 +476,8 @@ def validate_structured(layout: dict, variables: set, check=None) -> list:
         if message and message not in model["sent"]:
             problems.append(problem("W_AGENT_MESSAGE_UNUSED", f"{who}: no send action "
                                     f"or SEND block sends \"{message}\"", path,
-                                    hint="send it somewhere, or remove the transition"))
+                                    hint="send it somewhere, or remove the transition",
+                                    fields={"case": "unused", "who": who, "message": message}))
     seen: set = set()
     for index, entry in enumerate(layout.get("populations") or []):
         at = f"/populations/{index}"
@@ -472,7 +485,8 @@ def validate_structured(layout: dict, variables: set, check=None) -> list:
         if not isinstance(name, str) or not name or name in seen:
             problems.append(problem(
                 "E_POPULATION_NAME", f"population '{name}': empty or duplicate name", f"{at}/name",
-                hint="give every population a unique, non-empty name"))
+                hint="give every population a unique, non-empty name",
+                fields={"case": "name"}))
             continue
         seen.add(name)
         kind = types.get(entry.get("type"))
@@ -481,7 +495,8 @@ def validate_structured(layout: dict, variables: set, check=None) -> list:
                 "E_POPULATION_TYPE", f"population '{name}': unknown agent type "
                 f"'{entry.get('type')}'", f"{at}/type",
                 hint=f"declare it under \"agent_types\"; declared: "
-                     f"{', '.join(sorted(types)) or '(none)'}"))
+                     f"{', '.join(sorted(types)) or '(none)'}",
+                fields={"case": "unknown", "population": name, "agent": entry.get('type')}))
         _check_counts(problems, name, entry, kind, at, tables)
         _check_placement(problems, name, entry, kind, at)
         _check_population_tick(problems, name, entry, kind, at)
@@ -508,19 +523,22 @@ def _check_timing(problems: list, tname: str, where: str, tr: dict, kind: str, h
                              or not scan > 0):
         problems.append(problem("E_AGENT_TRANSITION", f"agent type '{tname}': {where}: scan "
                                 f"must be a number > 0", f"{here}/scan",
-                                hint="the re-check interval, e.g. \"scan\": 0.5"))
+                                hint="the re-check interval, e.g. \"scan\": 0.5",
+                                fields={"case": "scan", "agent": tname, "where": where}))
     _instants, held, continuous = timing(tr[kind], linear)
     if kind == "rate" and continuous:
         problems.append(problem("E_AGENT_RATE_FORM", f"agent type '{tname}': {where}: the rate "
                                 f"varies continuously with time ({', '.join(sorted(continuous))})",
                                 f"{here}/rate",
                                 hint="write the time dependence with STEP/PULSE, a literal TNOW "
-                                     "comparison or a step TS: piecewise constant is exact"))
+                                     "comparison or a step TS: piecewise constant is exact",
+                                fields={"case": "continuous", "agent": tname, "where": where}))
     elif (held or continuous) and scan is None:
         problems.append(problem("W_AGENT_SCAN", f"agent type '{tname}': {where}: reads "
                                 f"{', '.join(sorted(held | continuous))}, re-evaluated only at "
                                 f"agent events", f"{here}/{kind}",
-                                hint="add \"scan\": <interval> to re-check it on a grid"))
+                                hint="add \"scan\": <interval> to re-check it on a grid",
+                                fields={"case": "agent_events", "agent": tname, "where": where}))
 
 
 def _is_count(value) -> bool:
@@ -539,17 +557,21 @@ def _tick_problems(tick, who: str, path: str) -> list:
     population, so the merged spec is checked by `_check_population_tick`."""
     if not isinstance(tick, dict) or set(tick) - {"dt", "activation", "phase", "time_unit"}:
         return [problem("E_AGENT_TICK", f"{who}: tick is {{dt, activation?, phase?}}", path,
-                        hint=_TICK_HINT)]
+                        hint=_TICK_HINT,
+                        fields={"case": "tick_shape", "who": who})]
     out = []
     if "dt" in tick and not (_is_real(tick["dt"]) and tick["dt"] > 0):
         out.append(problem("E_AGENT_TICK", f"{who}: tick.dt must be a number > 0", f"{path}/dt",
-                           hint=_TICK_HINT))
+                           hint=_TICK_HINT,
+                           fields={"case": "tick_dt", "who": who}))
     if tick.get("activation", "synchronous") not in ACTIVATIONS:
         out.append(problem("E_AGENT_TICK", f"{who}: tick.activation must be one of "
-                           f"{', '.join(ACTIVATIONS)}", f"{path}/activation", hint=_TICK_HINT))
+                           f"{', '.join(ACTIVATIONS)}", f"{path}/activation", hint=_TICK_HINT,
+                           fields={"case": "tick_activation", "who": who}))
     if "phase" in tick and not (_is_real(tick["phase"]) and tick["phase"] >= 0):
         out.append(problem("E_AGENT_TICK", f"{who}: tick.phase must be a number >= 0",
-                           f"{path}/phase", hint="an offset in [0, dt): ticks at phase + k * dt"))
+                           f"{path}/phase", hint="an offset in [0, dt): ticks at phase + k * dt",
+                           fields={"case": "tick_phase", "who": who}))
     return out
 
 
@@ -576,11 +598,13 @@ def _check_population_tick(problems: list, name: str, entry: dict, kind: dict | 
         problems.append(problem("E_AGENT_TICK", f"population '{name}': " + (
             "no tick.dt on the population or its type" if spec else
             f"type '{kind.get('name')}' has on_tick or \"tick\" transitions but no tick"),
-            f"{at}/tick", hint=_TICK_HINT))
+            f"{at}/tick", hint=_TICK_HINT,
+                                fields={"case": "population_tick", "population": name}))
     elif _is_real(dt) and dt > 0 and _is_real(phase) and phase >= dt:
         problems.append(problem("E_AGENT_TICK", f"population '{name}': tick.phase ({phase:g}) "
                                 f"must be < dt ({dt:g})", f"{at}/tick",
-                                hint="an offset in [0, dt): ticks at phase + k * dt"))
+                                hint="an offset in [0, dt): ticks at phase + k * dt",
+                                fields={"case": "population_phase", "population": name}))
 
 
 def _check_counts(problems: list, name: str, entry: dict, kind: dict | None, at: str,
@@ -592,40 +616,47 @@ def _check_counts(problems: list, name: str, entry: dict, kind: dict | None, at:
         ok = error is None
         if error:
             problems.append(problem("E_POPULATION_COUNT", f"population '{name}': count: {error}",
-                                    f"{at}/count", hint='"count": {"table": "People"}'))
+                                    f"{at}/count", hint='"count": {"table": "People"}',
+                                    fields={"case": "count", "population": name}))
     elif not ok:
         problems.append(problem("E_POPULATION_COUNT", f"population '{name}': count must be an "
                                 f"integer >= 0, or {{\"table\": \"<name>\"}}", f"{at}/count",
-                                hint="e.g. \"count\": 1000"))
+                                hint="e.g. \"count\": 1000",
+                                fields={"case": "count_form", "population": name}))
     initial = entry.get("initial") or []
     placed = 0
     if not isinstance(initial, list):
         initial = []
         problems.append(problem("E_POPULATION_COUNT", f"population '{name}': \"initial\" must be "
                                 f"a list of {{state, count}}", f"{at}/initial",
-                                hint='[{"state": "I", "count": 10}]'))
+                                hint='[{"state": "I", "count": 10}]',
+                                fields={"case": "initial_list", "population": name}))
     states = {s.get("name") for s in (kind or {}).get("states") or [] if isinstance(s, dict)}
     for i, item in enumerate(initial):
         if not isinstance(item, dict) or not _is_count(item.get("count", 0)):
             problems.append(problem("E_POPULATION_COUNT", f"population '{name}': initial count "
                                     f"must be an integer >= 0", f"{at}/initial/{i}",
-                                    hint='[{"state": "I", "count": 10}]'))
+                                    hint='[{"state": "I", "count": 10}]',
+                                    fields={"case": "initial_count", "population": name}))
             continue
         placed += item.get("count", 0)
         if kind is not None and item.get("state") not in states:
             problems.append(problem("E_AGENT_STATE", f"population '{name}': unknown state "
                                     f"'{item.get('state')}'", f"{at}/initial/{i}/state",
-                                    hint=f"declared: {', '.join(sorted(map(str, states)))}"))
+                                    hint=f"declared: {', '.join(sorted(map(str, states)))}",
+                                    fields={"case": "population_state", "population": name, "state": item.get('state')}))
     if ok and placed > resolved:
         problems.append(problem("E_POPULATION_COUNT", f"population '{name}': the initial states "
                                 f"place {placed} agents, the population has {resolved}",
-                                f"{at}/initial", hint="raise count or lower the initial counts"))
+                                f"{at}/initial", hint="raise count or lower the initial counts",
+                                fields={"case": "initial_sum", "population": name, "placed": placed, "resolved": resolved}))
     most = entry.get("max_count")
     if most is not None and not (_is_count(most) and (not ok or most >= resolved)):
         problems.append(problem("E_POPULATION_COUNT", f"population '{name}': max_count must be "
                                 f"an integer >= count" + (f" ({resolved})" if ok else ""),
                                 f"{at}/max_count",
-                                hint="the most agents alive at once, births included"))
+                                hint="the most agents alive at once, births included",
+                                fields={"case": "max_count", "population": name}))
 
 
 def _check_population_data(problems: list, name: str, entry: dict, kind: dict, at: str,
@@ -647,7 +678,8 @@ def _check_population_data(problems: list, name: str, entry: dict, kind: dict, a
                                     f"'{aname}' reads a column, but count is not "
                                     f"{{\"table\": \"<name>\"}} without \"column\" (a "
                                     f"row-per-agent table)", f"{at}/count",
-                                    hint='"count": {"table": "People"}'))
+                                    hint='"count": {"table": "People"}',
+                                    fields={"case": "column_rows", "population": name, "attr": aname}))
         elif table is not None:      # else _check_counts already reported the unknown table
             cats = attribute.get("categories") if attribute.get("kind") == "category" else None
             _, error = _table_column(table, column, cats)
@@ -655,7 +687,8 @@ def _check_population_data(problems: list, name: str, entry: dict, kind: dict, a
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"population '{name}': attribute "
                                         f"'{aname}': {error}", f"{at}/count",
                                         hint="the column must be one of the table's declared "
-                                             "columns"))
+                                             "columns",
+                                        fields={"case": "column_bad", "population": name, "attr": aname}))
 
 
 def _check_color_by(problems: list, name: str, entry: dict, kind: dict, at: str) -> None:
@@ -673,7 +706,8 @@ def _check_color_by(problems: list, name: str, entry: dict, kind: dict, at: str)
         problems.append(problem("E_AGENT_ATTRIBUTE", f"population '{name}': color_by "
                                 f"'{color_by}' is not a declared categorical attribute of "
                                 f"'{kind.get('name')}'", f"{at}/color_by",
-                                hint=f"declared: {', '.join(declared) or '(none)'}"))
+                                hint=f"declared: {', '.join(declared) or '(none)'}",
+                                fields={"case": "color_by", "population": name, "attr": color_by}))
 
 
 # PHASE6 A5: each network kind's own keys, beside kind/directed/link_on_spawn.
@@ -695,7 +729,8 @@ def _check_network(problems: list, name: str, entry: dict, at: str, tables: dict
 
     def bad(message, hint=_NETWORK_HINT):
         problems.append(problem("E_AGENT_NETWORK", f"population '{name}': network: {message}",
-                                here, hint=hint))
+                                here, hint=hint,
+                                fields={"case": "population", "population": name}))
     kind = net.get("kind", "none") if isinstance(net, dict) else None
     if kind not in NETWORK_KINDS:
         return bad(f"kind must be one of {', '.join(NETWORK_KINDS)}")
@@ -753,7 +788,8 @@ def _check_placement(problems: list, name: str, entry: dict, kind: dict | None, 
     if not isinstance(placement, dict) or pkind not in _PLACEMENT_KINDS:
         problems.append(problem("E_AGENT_PLACEMENT", f"population '{name}': placement.kind must "
                                 f"be \"random\" or \"table\"", f"{at}/placement",
-                                hint='{"kind": "random", "bounds": [0, 0, 100, 100]}'))
+                                hint='{"kind": "random", "bounds": [0, 0, 100, 100]}',
+                                fields={"case": "kind", "population": name}))
         return
     network_space = isinstance(space, dict) and space.get("kind") == "network"
     if isinstance(space, dict) and space.get("kind") == "grid":         # PHASE6 A4
@@ -766,7 +802,8 @@ def _check_placement(problems: list, name: str, entry: dict, kind: dict | None, 
             problems.append(problem("E_AGENT_PLACEMENT", f"population '{name}': on a grid, "
                                     f"placement is {{\"kind\": \"random\"}} (every cell) or a "
                                     f"table of cells [cx, cy] inside the grid",
-                                    f"{at}/placement", hint='{"kind": "table", "points": [[0, 0]]}'))
+                                    f"{at}/placement", hint='{"kind": "table", "points": [[0, 0]]}',
+                                    fields={"case": "grid", "population": name}))
         return
     if pkind == "table":
         key = "nodes" if network_space else "points"
@@ -780,13 +817,15 @@ def _check_placement(problems: list, name: str, entry: dict, kind: dict | None, 
             problems.append(problem("E_AGENT_PLACEMENT", f"population '{name}': a table "
                                     f"placement needs a non-empty \"{key}\" list",
                                     f"{at}/placement/{key}",
-                                    hint='["a", "b"]' if network_space else '[[0, 0], [10, 5]]'))
+                                    hint='["a", "b"]' if network_space else '[[0, 0], [10, 5]]',
+                                    fields={"case": "table", "population": name, "key": key}))
     elif not network_space:
         bounds = placement.get("bounds")
         if bounds is not None and not (isinstance(bounds, (list, tuple)) and len(bounds) == 4
                 and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in bounds)):
             problems.append(problem("E_AGENT_PLACEMENT", f"population '{name}': bounds must be "
-                                    f"[x0, y0, x1, y1]", f"{at}/placement/bounds"))
+                                    f"[x0, y0, x1, y1]", f"{at}/placement/bounds",
+                                    fields={"case": "bounds", "population": name}))
 
 
 _SPACE_KINDS = ("continuous", "network", "grid")
@@ -800,7 +839,8 @@ def _check_space(problems: list, tname: str, at: str, space, model: dict) -> Non
         problems.append(problem("E_AGENT_SPACE", f"agent type '{tname}': space.kind must be "
                                 f"\"continuous\", \"network\" or \"grid\"", f"{at}/space",
                                 hint='"space": {"kind": "continuous", "bounds": [0, 0, 100, 100]}'
-                                     ' or {"kind": "network"}'))
+                                     ' or {"kind": "network"}',
+                                fields={"case": "kind", "agent": tname}))
         return
     if space["kind"] == "grid":                                         # PHASE6 A4
         size, cell = space.get("size"), space.get("cell", 1)
@@ -815,7 +855,8 @@ def _check_space(problems: list, tname: str, at: str, space, model: dict) -> Non
                                     f"\"size\": [w, h] (integers > 0), \"cell\" > 0, \"torus\" "
                                     f"true/false and \"neighbourhood\" \"moore\" or "
                                     f"\"von_neumann\"; bad: {', '.join(bad)}", f"{at}/space",
-                                    hint='{"kind": "grid", "size": [50, 50], "torus": true}'))
+                                    hint='{"kind": "grid", "size": [50, 50], "torus": true}',
+                                    fields={"case": "grid", "agent": tname}))
     elif space["kind"] == "continuous":
         bounds = space.get("bounds")
         if not (isinstance(bounds, (list, tuple)) and len(bounds) == 4
@@ -823,16 +864,19 @@ def _check_space(problems: list, tname: str, at: str, space, model: dict) -> Non
                 and bounds[2] > bounds[0] and bounds[3] > bounds[1]):
             problems.append(problem("E_AGENT_SPACE", f"agent type '{tname}': a continuous space "
                                     f"needs \"bounds\": [x0, y0, x1, y1] with x1 > x0 and "
-                                    f"y1 > y0", f"{at}/space/bounds", hint="e.g. [0, 0, 100, 100]"))
+                                    f"y1 > y0", f"{at}/space/bounds", hint="e.g. [0, 0, 100, 100]",
+                                    fields={"case": "bounds", "agent": tname}))
         if space.get("edge", "none") not in _EDGES:              # PHASE6 A6
             problems.append(problem("E_AGENT_SPACE", f"agent type '{tname}': space.edge must be "
                                     f"\"none\", \"clamp\", \"wrap\" or \"bounce\"",
-                                    f"{at}/space/edge", hint='"edge": "wrap"'))
+                                    f"{at}/space/edge", hint='"edge": "wrap"',
+                                    fields={"case": "edge", "agent": tname}))
     elif not model["nodes"]:
         problems.append(problem("E_AGENT_SPACE", f"agent type '{tname}': a network space needs "
                                 f"the model's \"network\" section to declare nodes", f"{at}/space",
                                 hint="add nodes and segments under \"network\", or use "
-                                     "{\"kind\": \"continuous\", \"bounds\": [...]}"))
+                                     "{\"kind\": \"continuous\", \"bounds\": [...]}",
+                                fields={"case": "network", "agent": tname}))
 
 
 _ACTION_SHAPES = ("{target, expr} (set), {send, to, payload?}, {enter, e_type?}, "
@@ -866,7 +910,8 @@ def _hierarchy_problems(problems: list, tname: str, at: str, specs: list, states
             problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': state "
                                     f"'{spec.get('name')}': unknown parent '{spec['parent']}'",
                                     f"{at}/states/{i}/parent",
-                                    hint=f"declared: {', '.join(states) or '(none)'}"))
+                                    hint=f"declared: {', '.join(states) or '(none)'}",
+                                    fields={"case": "parent", "agent": tname, "state": spec.get('name'), "parent": spec['parent']}))
         else:
             parents.setdefault(spec.get("name"), spec["parent"])
     for i, spec in enumerate(specs):
@@ -878,7 +923,8 @@ def _hierarchy_problems(problems: list, tname: str, at: str, specs: list, states
         if x is not None and x == name:
             problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': state '{name}' "
                                     f"is its own ancestor (a parent cycle)",
-                                    f"{at}/states/{i}/parent", hint="break the parent cycle"))
+                                    f"{at}/states/{i}/parent", hint="break the parent cycle",
+                                    fields={"case": "cycle", "agent": tname, "state": name}))
     children: dict = {}
     for name, parent in parents.items():
         children.setdefault(parent, []).append(name)
@@ -891,7 +937,8 @@ def _hierarchy_problems(problems: list, tname: str, at: str, specs: list, states
                                     f"initial '{spec['initial']}' is not one of its children "
                                     f"(only a composite state has an initial)",
                                     f"{at}/states/{i}/initial",
-                                    hint=f"children: {', '.join(children.get(name, [])) or '(none)'}"))
+                                    hint=f"children: {', '.join(children.get(name, [])) or '(none)'}",
+                                    fields={"case": "initial_child", "agent": tname, "state": name}))
     return set(children)
 
 
@@ -949,14 +996,16 @@ class _TypeCheck:
             params = {}
             problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': parameters must be "
                                     f"an object of name: number", f"{at}/parameters",
-                                    hint='"parameters": {"beta": 0.3}'))
+                                    hint='"parameters": {"beta": 0.3}',
+                                    fields={"case": "params", "agent": tname}))
         for key, value in params.items():
             if not str(key).isidentifier() or key in RESERVED_NAMES or \
                     not isinstance(value, (int, float)) or isinstance(value, bool):
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': parameter "
                                         f"'{key}' must be an identifier with a number (payload is "
                                         f"reserved)", f"{at}/parameters/{key}",
-                                        hint='"parameters": {"beta": 0.3}'))
+                                        hint='"parameters": {"beta": 0.3}',
+                                        fields={"case": "param_name", "agent": tname, "parameter": key}))
         self.params = params
         self.names = set(self.variables) | set(params)
 
@@ -970,7 +1019,8 @@ class _TypeCheck:
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': attribute "
                                         f"'{aname}' is not a unique identifier (state, id and "
                                         f"heading are read-only built-ins)", f"{at}/attributes/{i}/name",
-                                        hint="rename the attribute"))
+                                        hint="rename the attribute",
+                                        fields={"case": "attr_name", "agent": tname, "attr": aname}))
                 continue
             attrs.add(aname)
             akind = attribute.get("kind", "number")
@@ -978,14 +1028,16 @@ class _TypeCheck:
             if akind not in ("number", "category"):
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': attribute "
                                         f"'{aname}': kind must be \"number\" or \"category\"",
-                                        f"{at}/attributes/{i}/kind", hint='"kind": "category"'))
+                                        f"{at}/attributes/{i}/kind", hint='"kind": "category"',
+                                        fields={"case": "attr_kind", "agent": tname, "attr": aname}))
             elif akind == "category" and (
                     not isinstance(cats, list) or len(cats) < 2
                     or not all(isinstance(c, str) and c for c in cats) or len(set(cats)) != len(cats)):
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': attribute "
                                         f"'{aname}': categories must be a list of >= 2 unique, "
                                         f"non-empty names", f"{at}/attributes/{i}/categories",
-                                        hint='"categories": ["red", "blue"]'))
+                                        hint='"categories": ["red", "blue"]',
+                                        fields={"case": "attr_categories", "agent": tname, "attr": aname}))
         self.attrs = attrs
 
     def check_attribute_inits(self) -> None:
@@ -1000,7 +1052,8 @@ class _TypeCheck:
                     problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': attribute "
                                             f"'{attribute.get('name')}': init must be an expression "
                                             f"or {{\"column\": \"<col>\"}}", path,
-                                            hint='"init": {"column": "age"}'))
+                                            hint='"init": {"column": "age"}',
+                                            fields={"case": "attr_init", "agent": tname, "attr": attribute.get('name')}))
                 # checked against the POPULATION's table, in _check_population_data.
             else:
                 self.expr(init, path, f"attribute {attribute.get('name')}")
@@ -1018,7 +1071,8 @@ class _TypeCheck:
                         problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': "
                                                 f"attribute '{attribute.get('name')}': init "
                                                 f"{literal.value!r} is not a declared category", path,
-                                                hint=f"declared: {', '.join(attribute['categories'])}"))
+                                                hint=f"declared: {', '.join(attribute['categories'])}",
+                                                fields={"case": "init_category", "agent": tname, "attr": attribute.get('name')}))
 
     # -- states and hierarchy -----------------------------------------------------
     def check_states(self) -> None:
@@ -1029,16 +1083,19 @@ class _TypeCheck:
             if not isinstance(sname, str) or not sname or sname in states:
                 problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': state '{sname}' has "
                                         f"an empty or duplicate name", f"{at}/states/{i}/name",
-                                        hint="give every state a unique name"))
+                                        hint="give every state a unique name",
+                                        fields={"case": "state_name", "agent": tname}))
                 continue
             states.append(sname)
         if not states:
             problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': no states",
-                                    f"{at}/states", hint='"states": [{"name": "S"}, {"name": "I"}]'))
+                                    f"{at}/states", hint='"states": [{"name": "S"}, {"name": "I"}]',
+                                    fields={"case": "no_states", "agent": tname}))
         elif entry.get("initial_state", states[0]) not in states:
             problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': initial state "
                                     f"'{entry.get('initial_state')}' is not declared",
-                                    f"{at}/initial_state", hint=f"one of: {', '.join(states)}"))
+                                    f"{at}/initial_state", hint=f"one of: {', '.join(states)}",
+                                    fields={"case": "initial_state", "agent": tname, "state": entry.get('initial_state')}))
         self.states = states
         self.composites = _hierarchy_problems(problems, tname, at, entry.get("states") or [], states)
 
@@ -1062,7 +1119,8 @@ class _TypeCheck:
 
         def bad_patch(message, here, hint=None):
             problems.append(problem("E_AGENT_PATCH", f"agent type '{tname}': {message}", here,
-                                    hint=hint))
+                                    hint=hint,
+                                    fields={"case": "setting", "agent": tname}))
         seen, flows = set(), False
         for i, patch in enumerate(patches if isinstance(patches, list) else [None]):
             here = f"{at}/space/patches/{i}"
@@ -1117,7 +1175,8 @@ class _TypeCheck:
                 self.model["sent"] |= sends
             for error in errors:
                 self.problems.append(problem("E_AGENT_PYTHON", f"agent type '{self.tname}': python "
-                                             f"{error}", f"{self.at}/python", hint=py_hint))
+                                             f"{error}", f"{self.at}/python", hint=py_hint,
+                                             fields={"case": "code", "agent": self.tname}))
 
     # -- expressions ----------------------------------------------------------------
     def expr(self, text, path, where, extra=()):
@@ -1132,40 +1191,47 @@ class _TypeCheck:
                 hint="payload is readable only in a message transition's guard and actions"
                      if "'payload'" in str(exc) else
                      "names allowed: self.<attribute>, the type's parameters, model variables, "
-                     "TNOW and the built-in functions"))
+                     "TNOW and the built-in functions",
+                fields={"case": "unreadable", "agent": tname, "where": where}))
             return False
         if "entity" in compiled.names:          # DEVLOG #136: no entity in an agent
             problems.append(problem(
                 "E_AGENT_EXPRESSION", f"agent type '{tname}': {where}: {text}: an agent type has "
                 f"no entity", path, hint="read self.<attribute>; entity.agent is for a SEND "
-                                         "block, where an entity carries the reference"))
+                                         "block, where an entity carries the reference",
+                fields={"case": "no_entity", "agent": tname, "where": where}))
             return False
         for attr in sorted(_self_reads(text) - self.attrs - self.read_only):
             problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': {where}: "
                                     f"self.{attr} is not a declared attribute", path,
-                                    hint=f"declared: {', '.join(sorted(self.attrs)) or '(none)'}"))
+                                    hint=f"declared: {', '.join(sorted(self.attrs)) or '(none)'}",
+                                    fields={"case": "undeclared", "agent": tname, "where": where, "attr": attr}))
         for name in sorted(_state_literals(text) & self.composites):          # K review
             problems.append(problem("W_AGENT_STATE_COMPOSITE", f"agent type '{tname}': "
                                     f"{where}: self.state == \"{name}\" is never true: self.state "
                                     f"is the leaf, '{name}' is a composite", path,
                                     hint=f"compare with one of its leaves, or use "
-                                         f"COUNT(\"<population>\", \"{name}\") for the group"))
+                                         f"COUNT(\"<population>\", \"{name}\") for the group",
+                                    fields={"case": "composite", "agent": tname, "where": where, "state": name}))
         for pop, attr in _agent_reads(text):
             kind = model["pops"].get(pop)
             if kind is not None and attr not in _attr_names(kind) | _builtin_reads(kind):
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': {where}: "
                                         f"AGENT(\"{pop}\", ...).{attr}: '{kind.get('name')}' "
-                                        f"has no such attribute", path))
+                                        f"has no such attribute", path,
+                                        fields={"case": "agent_attr", "agent": tname, "where": where, "population": pop, "attr": attr}))
         grid_calls = compiled.calls & _GRID_CALLS                       # PHASE6 A4
         if grid_calls and self.grid is None:
             problems.append(problem("E_AGENT_GRID", f"agent type '{tname}': {where}: "
                                     f"{', '.join(sorted(grid_calls))} need a grid space", path,
-                                    hint='"space": {"kind": "grid", "size": [50, 50]}'))
+                                    hint='"space": {"kind": "grid", "size": [50, 50]}',
+                                    fields={"case": "needs", "agent": tname, "where": where}))
         elif grid_calls:
             for pname in sorted(_patch_reads(text) - self.patch_names):
                 problems.append(problem("E_AGENT_PATCH", f"agent type '{tname}': {where}: "
                                         f"PATCH(\"{pname}\"): no such patch", path,
-                                        hint=f"declared: {', '.join(sorted(map(str, self.patch_names))) or '(none)'}"))
+                                        hint=f"declared: {', '.join(sorted(map(str, self.patch_names))) or '(none)'}",
+                                        fields={"case": "missing", "agent": tname, "where": where, "patch": pname}))
         for code, message, hint in _link_problems(text, self.entry):         # PHASE6 A5
             problems.append(problem(code, f"agent type '{tname}': {where}: {message}", path,
                                     hint=hint))
@@ -1181,7 +1247,8 @@ class _TypeCheck:
         if lets is not None and not isinstance(lets, dict):
             problems.append(problem("E_AGENT_TICK", f"agent type '{tname}': let is an object of "
                                     f"name: expression", f"{at}/let",
-                                    hint='"let": {"slow": "UNIF(0, 1) < p"}'))
+                                    hint='"let": {"slow": "UNIF(0, 1) < p"}',
+                                    fields={"case": "let_shape", "agent": tname}))
         for lname, text in (lets or {}).items() if isinstance(lets, dict) else ():
             if not str(lname).isidentifier() or lname in names or lname in RESERVED_NAMES or \
                     lname in ("cx", "cy") or isinstance(text, bool) or \
@@ -1189,7 +1256,8 @@ class _TypeCheck:
                 problems.append(problem("E_AGENT_TICK", f"agent type '{tname}': let '{lname}' needs "
                                         f"a new identifier (not a parameter, variable or reserved "
                                         f"name) and an expression", f"{at}/let/{lname}",
-                                        hint='"let": {"slow": "UNIF(0, 1) < p"}'))
+                                        hint='"let": {"slow": "UNIF(0, 1) < p"}',
+                                        fields={"case": "let_name", "agent": tname, "name": lname}))
                 continue
             self.expr(str(text), f"{at}/let/{lname}", f"let {lname}", let_names)
             let_names += (lname,)
@@ -1207,7 +1275,8 @@ class _TypeCheck:
                 if tr.get(key) not in states:
                     problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': {where}: unknown "
                                             f"state '{tr.get(key)}'", f"{here}/{key}",
-                                            hint=f"declared: {', '.join(states) or '(none)'}"))
+                                            hint=f"declared: {', '.join(states) or '(none)'}",
+                                            fields={"case": "transition_state", "agent": tname, "where": where, "state": tr.get(key)}))
             history = tr.get("history")                     # PHASE6 K1
             if history is not None and (history not in ("shallow", "deep")
                                         or tr.get("to") not in self.composites):
@@ -1215,19 +1284,22 @@ class _TypeCheck:
                                         f"history must be \"shallow\" or \"deep\" and needs a "
                                         f"composite target", f"{here}/history",
                                         hint="drop history, or target a state other states name "
-                                             "as their parent"))
+                                             "as their parent",
+                                        fields={"case": "history", "agent": tname, "where": where}))
             triggers = [key for key in TRIGGERS if key in tr]
             extra = ()
             if len(triggers) != 1:
                 problems.append(problem("E_AGENT_TRANSITION", f"agent type '{tname}': {where}: needs "
                                         f"exactly one trigger of timeout, rate, condition, message or "
                                         f"tick, has {triggers or 'none'}", here,
-                                        hint="exactly one of timeout/rate/condition/message/tick"))
+                                        hint="exactly one of timeout/rate/condition/message/tick",
+                                        fields={"case": "trigger", "agent": tname, "where": where}))
             elif triggers[0] == "tick":                     # PHASE6 A1
                 if not isinstance(tr["tick"], str):
                     problems.append(problem("E_AGENT_TRANSITION", f"agent type '{tname}': {where}: "
                                             f"tick must be a condition (\"\" fires at every tick)",
-                                            f"{here}/tick", hint='"tick": "self.energy > 0"'))
+                                            f"{here}/tick", hint='"tick": "self.energy > 0"',
+                                            fields={"case": "tick", "agent": tname, "where": where}))
                 elif tr["tick"].strip():
                     expr(tr["tick"], f"{here}/tick", where, let_names)
                 extra = let_names                           # PHASE6 A9: guard and actions too
@@ -1236,7 +1308,8 @@ class _TypeCheck:
                 if not isinstance(tr["message"], str):
                     problems.append(problem("E_AGENT_TRANSITION", f"agent type '{tname}': {where}: "
                                             f"message must be a name (\"\" matches any message)",
-                                            f"{here}/message", hint='"message": "infect"'))
+                                            f"{here}/message", hint='"message": "infect"',
+                                            fields={"case": "message", "agent": tname, "where": where}))
                 else:
                     model["listeners"].append((f"agent type '{tname}': {where}", f"{here}/message",
                                                tr["message"]))
@@ -1249,7 +1322,8 @@ class _TypeCheck:
                         problems.append(problem("E_AGENT_RATE_FORM", f"agent type '{tname}': "
                                                 f"{where}: {exc}", f"{here}/rate",
                                                 hint="write it as (own) * (shared): own reads only "
-                                                     "self, parameters and constants"))
+                                                     "self, parameters and constants",
+                                                fields={"case": "form", "agent": tname, "where": where}))
                 if kind in ("rate", "condition") and _compiles(tr[kind]):
                     _check_timing(problems, tname, where, tr, kind, here, model["linear"])
                     # Re-checked after every batch in the system, so a draw would
@@ -1258,7 +1332,8 @@ class _TypeCheck:
                         problems.append(problem(
                             "E_AGENT_EXPRESSION", f"agent type '{tname}': {where}: a condition "
                             f"cannot draw random numbers", f"{here}/condition",
-                            hint="use a rate: a random firing time with an exact hazard"))
+                            hint="use a rate: a random firing time with an exact hazard",
+                            fields={"case": "condition_draw", "agent": tname, "where": where}))
             if tr.get("guard"):
                 expr(tr["guard"], f"{here}/guard", where, extra)
             self.actions(tr.get("actions"), f"{here}/actions", where, extra)
@@ -1266,7 +1341,8 @@ class _TypeCheck:
     # -- actions ------------------------------------------------------------------------
     def bad_action(self, where, here, text, hint=None):
         self.problems.append(problem("E_AGENT_ACTION", f"agent type '{self.tname}': {where}: {text}",
-                                     here, hint=hint))
+                                     here, hint=hint,
+                                     fields={"case": "invalid", "agent": self.tname, "where": where}))
 
     def actions(self, items, path, where, extra=()):
         for i, action in enumerate(items or []):
@@ -1296,11 +1372,13 @@ class _TypeCheck:
         if target.startswith("patch."):                         # PHASE6 A4
             if self.grid is None:
                 problems.append(problem("E_AGENT_GRID", f"agent type '{tname}': {where}: "
-                                        f"'{target}' needs a grid space", f"{here}/target"))
+                                        f"'{target}' needs a grid space", f"{here}/target",
+                                        fields={"case": "needs", "agent": tname, "where": where}))
             elif target[6:] not in self.patch_names:
                 problems.append(problem("E_AGENT_PATCH", f"agent type '{tname}': {where}: "
                                         f"'{target}': no such patch", f"{here}/target",
-                                        hint=f"declared: {', '.join(sorted(map(str, self.patch_names))) or '(none)'}"))
+                                        hint=f"declared: {', '.join(sorted(map(str, self.patch_names))) or '(none)'}",
+                                        fields={"case": "missing", "agent": tname, "where": where, "patch": target}))
             self.expr(action["expr"], f"{here}/expr", where, extra)
             return
         try:
@@ -1350,14 +1428,17 @@ class _TypeCheck:
         if level in model["conveyors"]:
             problems.append(problem("E_CONVEYOR_WRITE", f"agent type '{tname}': {where}: "
                                     f"'{level}' is a conveyor; a transfer action cannot "
-                                    f"move material into or out of it", f"{here}/transfer"))
+                                    f"move material into or out of it", f"{here}/transfer",
+                                    fields={"case": "a1_transfer", "agent": tname, "where": where, "level": level}))
         elif level not in model["levels"]:
             problems.append(problem("E_LEVEL_UNKNOWN", f"agent type '{tname}': {where}: "
                                     f"unknown level '{level}'", f"{here}/transfer",
-                                    hint="declare it under \"levels\""))
+                                    hint="declare it under \"levels\"",
+                                    fields={"case": "a1_transfer", "agent": tname, "where": where, "level": level}))
         if action.get("mode", "remove") not in TRANSFER_MODES:
             problems.append(problem("E_TRANSFER_MODE", f"agent type '{tname}': {where}: "
-                                    f"mode must be \"remove\" or \"add\"", f"{here}/mode"))
+                                    f"mode must be \"remove\" or \"add\"", f"{here}/mode",
+                                    fields={"case": "a1_transfer", "agent": tname, "where": where}))
         self.expr(action["amount"], f"{here}/amount", where, extra)
 
     def _signal_action(self, verb, action, here, where, extra):
@@ -1380,7 +1461,8 @@ class _TypeCheck:
         if pop not in model["pops"]:
             problems.append(problem("E_POPULATION_UNKNOWN", f"agent type '{tname}': {where}: "
                                     f"unknown population '{pop}'", f"{here}/spawn",
-                                    hint=f"declared: {', '.join(sorted(map(str, model['pops'])))}"))
+                                    hint=f"declared: {', '.join(sorted(map(str, model['pops'])))}",
+                                    fields={"case": "a1_spawn", "agent": tname, "where": where, "population": pop}))
             return
         kind = model["pops"][pop] or {}
         count = action.get("count")
@@ -1394,14 +1476,16 @@ class _TypeCheck:
         if "state" in action and kind and action["state"] not in states:
             problems.append(problem("E_AGENT_STATE", f"agent type '{tname}': {where}: spawn: "
                                     f"'{kind.get('name')}' has no state '{action['state']}'",
-                                    f"{here}/state", hint=f"declared: {', '.join(map(str, states))}"))
+                                    f"{here}/state", hint=f"declared: {', '.join(map(str, states))}",
+                                    fields={"case": "spawn_state", "agent": tname, "where": where, "state": action['state']}))
         for attr, text in init.items():
             if kind and attr not in _attr_names(kind):
                 problems.append(problem("E_AGENT_ATTRIBUTE", f"agent type '{tname}': {where}: "
                                         f"spawn: '{kind.get('name')}' has no attribute '{attr}'",
                                         f"{here}/init/{attr}",
                                         hint=f"declared: "
-                                             f"{', '.join(sorted(map(str, _attr_names(kind))))}"))
+                                             f"{', '.join(sorted(map(str, _attr_names(kind))))}",
+                                        fields={"case": "spawn_attr", "agent": tname, "where": where, "attr": attr}))
             if isinstance(text, bool) or not isinstance(text, (str, int, float)):
                 self.bad_action(where, f"{here}/init/{attr}", "an init value is an expression")
             else:
@@ -1440,7 +1524,8 @@ class _TypeCheck:
                    else f"no top-level def {fname}(agent, api) in the type's python")
             self.problems.append(problem("E_AGENT_PYTHON", f"agent type '{self.tname}': {where}: "
                                          f"{{python: \"{fname}\"}}: {why}", f"{here}/python",
-                                         hint=f"defined: {', '.join(sorted(py_functions or ())) or '(none)'}"))
+                                         hint=f"defined: {', '.join(sorted(py_functions or ())) or '(none)'}",
+                                         fields={"case": "function", "agent": self.tname, "where": where, "function": fname}))
 
     def _heading_action(self, verb, action, here, where, extra):    # PHASE6 A6
         value = action[verb]
@@ -1481,7 +1566,8 @@ class _TypeCheck:
         elif self.grid is None:
             self.problems.append(problem("E_AGENT_GRID", f"agent type '{self.tname}': {where}: "
                                          f"{verb} needs a grid space", f"{here}/{verb}",
-                                         hint='"space": {"kind": "grid", "size": [50, 50]}'))
+                                         hint='"space": {"kind": "grid", "size": [50, 50]}',
+                                         fields={"case": "needs", "agent": self.tname, "where": where}))
         elif verb == "move_random" and value not in ("any", "free"):
             self.bad_action(where, f"{here}/move_random", "move_random is \"any\" or "
                             "\"free\"", '{"move_random": "free"}')

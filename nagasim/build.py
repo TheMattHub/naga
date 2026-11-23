@@ -236,7 +236,8 @@ class Level:
             The ends: blocks of this level, or block names. A block made on
             another level raises ``ValueError``.
         **fields
-            The link's own keys: ``delay``, ``source_port``, ``target_port``.
+            The link's own keys: ``delay``, ``source_port``, ``target_port``,
+            ``capacity`` (with a delay, an area link).
 
         Returns
         -------

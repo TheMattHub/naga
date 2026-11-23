@@ -29,14 +29,16 @@ A scenario can override a block parameter with the path `blocks.<name>.params.<p
 |---|---|---|---|---|---|
 | `name` | string | yes |  |  | Unique block name; the model's identifier for it. |
 | `description` | string |  |  |  | Label shown on the canvas. |
-| `type` | choice | yes |  |  | The block type; it decides which parameters the block takes. One of `ASSIGN`, `BATCH`, `BUFFER`, `CHARGE`, `CONVEYOR`, `CREATE`, `DECIDE`, `DELAY`, `DISPOSE`, `DUPLICATE`, `HOLD`, `LOGIC`, `MATCH`, `MOTION`, `PROCESS`, `RECORD`, `RELEASE`, `ROUTE`, `SEIZE`, `SEND`, `SEPARATE`, `SIGNAL`, `STATION`, `SUBMODEL`, `SUB_ENTRY`, `SUB_EXIT`, `TRANSFER`, `TRANSPORT`. |
+| `type` | choice | yes |  |  | The block type; it decides which parameters the block takes. One of `ASSIGN`, `BATCH`, `BUFFER`, `CHARGE`, `CONVEYOR`, `CONVEYOR_TRANSFER`, `CREATE`, `DECIDE`, `DELAY`, `DISPOSE`, `DUPLICATE`, `HOLD`, `LOGIC`, `MATCH`, `MOTION`, `PROCESS`, `RECORD`, `RELEASE`, `ROUTE`, `SEIZE`, `SEND`, `SEPARATE`, `SIGNAL`, `STATION`, `SUBMODEL`, `SUB_ENTRY`, `SUB_EXIT`, `TRANSFER`, `TRANSPORT`. |
 | `position` | point |  |  |  | Block CENTRE in scene units. |
 | `layout_position` | point |  |  |  | Where the block sits on the FLOOR PLAN, in layout units. Absent for a block that has never been placed in layout mode, and unnecessary for one attached to a network node. |
 | `layout_rotation` | number |  |  |  | How the block is turned on the FLOOR PLAN, in degrees CLOCKWISE as seen on screen (+x east, +y south); 0 or absent means unturned. Layout view only -- the schematic is never rotated. An asset's own network nodes are stored already turned. |
+| `asset_3d` | string |  |  |  | The library mesh the 3D view draws for this block, written "library/asset" (for example "automation/irb6700"). Display only: a run never reads it. Absent means the view draws its own default shape. |
 | `label_offset` | point |  |  |  | Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only. |
 | `counter_offsets` | object |  |  |  | Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only. |
 | `queue_row` | object |  |  |  | A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame). |
 | `locals` | object |  |  |  | Submodel parameter bindings, written by flattening; not authored by hand. |
+| `instance_place` | list of number |  |  |  | Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored. |
 | `params` | object |  |  |  | The block type's parameters, by name (see the [block reference](../blocks/index.md)). |
 
 A field of a nested object is described in the JSON Schema (`naga schema`).
@@ -67,7 +69,7 @@ arrive >> leave        # links the two blocks
 
 ## Used in
 
-Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 51 more.
+Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 52 more.
 
 Guides: [Submodels](../../modelling-guide/submodels.md), [Model file format](../../model-file-format.md), [A plant as a timeline](../../plant-timeline.md), [Semantic diff](../../semantic-diff.md), [Coming from SimPy](../../coming-from/simpy.md), [Quick start](../../quickstart.md).
 

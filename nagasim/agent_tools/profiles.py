@@ -27,10 +27,10 @@ BUILD = COMPACT | {
     "new_model", "list_models", "get_model_summary", "undo", "redo", "import_sd_model",
     "add_block", "remove_blocks", "connect", "disconnect", "reorder_branches",
     "set_resources", "set_calendar", "set_entity_types", "set_simulation_settings",
-    "set_sd_settings", "auto_layout", "get_record_schema", "list_records", "upsert_record",
-    "remove_record", "list_block_types", "describe_block_type", "list_distributions",
-    "describe_distribution", "get_expression_help", "validate_model", "check_draft",
-    "view_model"}
+    "set_sd_settings", "set_item_code", "auto_layout", "place_piece", "place_transfer", "get_ports", "check_layout", "set_layout", "get_record_schema", "list_records",
+    "upsert_record", "remove_record", "generate_pallet_layer", "list_block_types",
+    "describe_block_type", "list_distributions", "describe_distribution", "get_expression_help",
+    "validate_model", "check_draft", "view_model"}
 
 # Run a finished model and read the answer: scenarios, precision, checks, the run debugger.
 RUN = frozenset({

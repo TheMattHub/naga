@@ -1251,7 +1251,8 @@ def validate_resources_structured(layout: dict,
         name = entry.get("name", "")
         if name in names:
             problems.append(problem("E_DUPLICATE_RESOURCE", f"duplicate resource name: {name}",
-                                    f"{at}/name", hint="rename one of the two resources"))
+                                    f"{at}/name", hint="rename one of the two resources",
+                                    fields={"case": "resource", "name": name}))
         names.add(name)
 
         schedule_name = entry.get("capacity_schedule")
@@ -1263,7 +1264,8 @@ def validate_resources_structured(layout: dict,
                     f"is not a declared schedule of kind 'capacity'",
                     f"{at}/capacity_schedule",
                     hint=f"declare it under \"schedules\" with \"kind\": \"capacity\"; declared: "
-                         f"{', '.join(capacity_schedules) or '(none)'}"))
+                         f"{', '.join(capacity_schedules) or '(none)'}",
+                    fields={"case": "schedule", "name": name, "schedule": schedule_name}))
             elif "capacity" in entry and entry["capacity"] < max_values.get(schedule_name, 0):
                 problems.append(problem(
                     "E_RESOURCE_CAPACITY",
@@ -1271,33 +1273,38 @@ def validate_resources_structured(layout: dict,
                     f"maximum {max_values[schedule_name]} that schedule "
                     f"'{schedule_name}' asks for",
                     f"{at}/capacity",
-                    hint=f"raise capacity to at least {max_values[schedule_name]}"))
+                    hint=f"raise capacity to at least {max_values[schedule_name]}",
+                    fields={"case": "capacity", "name": name, "capacity": entry['capacity'], "schedule": schedule_name}))
 
         for cost_key in ("cost_busy", "cost_idle", "cost_per_use"):
             if cost_key in entry and (not isinstance(entry[cost_key], (int, float))
                                       or isinstance(entry[cost_key], bool) or entry[cost_key] < 0):
                 problems.append(problem("E_RESOURCE_COST",
                                         f"resource '{name}': {cost_key} must be a number >= 0",
-                                        f"{at}/{cost_key}", hint="use 0 for no cost"))
+                                        f"{at}/{cost_key}", hint="use 0 for no cost",
+                                        fields={"case": "cost", "name": name}))
 
         power = entry.get("power")
         if power is not None:
             if not isinstance(power, dict):
                 problems.append(problem(
                     "E_RESOURCE_POWER", f"resource '{name}': power must be an object",
-                    f"{at}/power", hint="{\"busy\": 5.0, \"idle\": 1.0} -- kW per unit"))
+                    f"{at}/power", hint="{\"busy\": 5.0, \"idle\": 1.0} -- kW per unit",
+                    fields={"case": "object", "name": name}))
             else:
                 for state, value in power.items():
                     if state not in ENERGY_STATES:
                         problems.append(problem(
                             "E_RESOURCE_POWER_STATE",
                             f"resource '{name}': unknown power state '{state}'",
-                            f"{at}/power/{state}", hint=f"one of: {', '.join(ENERGY_STATES)}"))
+                            f"{at}/power/{state}", hint=f"one of: {', '.join(ENERGY_STATES)}",
+                            fields={"case": "state", "name": name, "state": state}))
                     elif not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
                         problems.append(problem(
                             "E_RESOURCE_POWER", f"resource '{name}': power.{state} must be a "
                                                 f"number >= 0",
-                            f"{at}/power/{state}", hint="kW for one unit in that state"))
+                            f"{at}/power/{state}", hint="kW for one unit in that state",
+                            fields={"case": "state", "name": name, "state": state}))
 
         discipline = entry.get("discipline", "FIFO")
         if discipline not in DISCIPLINES:
@@ -1305,7 +1312,8 @@ def validate_resources_structured(layout: dict,
                 "E_RESOURCE_DISCIPLINE",
                 f"resource '{name}': unknown discipline '{discipline}' "
                 f"(expected one of {', '.join(DISCIPLINES)})",
-                f"{at}/discipline", hint=f"use one of: {', '.join(DISCIPLINES)}"))
+                f"{at}/discipline", hint=f"use one of: {', '.join(DISCIPLINES)}",
+                fields={"case": "discipline", "name": name, "discipline": discipline}))
             continue
         ranking = entry.get("ranking_expr", "")
         if discipline in RANKED_DISCIPLINES and not ranking:
@@ -1313,7 +1321,8 @@ def validate_resources_structured(layout: dict,
                 "E_RANKING_REQUIRED",
                 f"resource '{name}': discipline '{discipline}' needs a ranking_expr",
                 f"{at}/ranking_expr",
-                hint="add an expression to rank the queue by, e.g. \"entity.priority\""))
+                hint="add an expression to rank the queue by, e.g. \"entity.priority\"",
+                fields={"case": "ranking", "name": name, "discipline": discipline}))
         elif ranking:
             try:
                 compile_expression(ranking)
@@ -1321,13 +1330,15 @@ def validate_resources_structured(layout: dict,
                 problems.append(problem("E_EXPRESSION",
                                         f"resource '{name}': ranking_expr: {exc}",
                                         f"{at}/ranking_expr",
-                                        hint="see the expression reference for the allowed grammar"))
+                                        hint="see the expression reference for the allowed grammar",
+                                        fields={"case": "a8_ranking", "name": name}))
         if entry.get("rerank") and discipline not in RANKED_DISCIPLINES:
             problems.append(problem(
                 "W_RERANK_UNRANKED",
                 f"resource '{name}': rerank has no effect on discipline '{discipline}'",
                 f"{at}/rerank",
-                hint="rerank only matters with LowestValueFirst/HighestValueFirst"))
+                hint="rerank only matters with LowestValueFirst/HighestValueFirst",
+                fields={"case": "rerank", "name": name, "discipline": discipline}))
 
     for index, entry in enumerate(layout.get("resource_sets", [])):
         at = f"/resource_sets/{index}"
@@ -1336,7 +1347,8 @@ def validate_resources_structured(layout: dict,
             problems.append(problem(
                 "E_DUPLICATE_RESOURCE",
                 f"resource set '{name}': name already used by a resource or set",
-                f"{at}/name", hint="resources and sets share one namespace: rename one"))
+                f"{at}/name", hint="resources and sets share one namespace: rename one",
+                fields={"case": "set", "name": name}))
         names.add(name)
         rule = entry.get("rule", "PreferredOrder")
         if rule not in SELECTION_RULES:
@@ -1344,12 +1356,14 @@ def validate_resources_structured(layout: dict,
                 "E_SET_RULE",
                 f"resource set '{name}': unknown rule '{rule}' "
                 f"(expected one of {', '.join(SELECTION_RULES)})",
-                f"{at}/rule", hint=f"use one of: {', '.join(SELECTION_RULES)}"))
+                f"{at}/rule", hint=f"use one of: {', '.join(SELECTION_RULES)}",
+                fields={"case": "rule", "name": name, "rule": rule}))
         members = entry.get("members", [])
         if not members:
             problems.append(problem("E_SET_EMPTY", f"resource set '{name}': no members",
                                     f"{at}/members",
-                                    hint="list at least one declared resource as a member"))
+                                    hint="list at least one declared resource as a member",
+                                    fields={"case": "empty", "name": name}))
         declared = {r.get("name") for r in layout.get("resources", [])}
         for member in members:
             if member not in declared:
@@ -1357,5 +1371,6 @@ def validate_resources_structured(layout: dict,
                     "E_SET_MEMBER", f"resource set '{name}': unknown member '{member}'",
                     f"{at}/members",
                     hint=f"declare it under \"resources\" first; declared: "
-                         f"{', '.join(sorted(str(d) for d in declared)) or '(none)'}"))
+                         f"{', '.join(sorted(str(d) for d in declared)) or '(none)'}",
+                    fields={"case": "member", "name": name, "member": member}))
     return problems

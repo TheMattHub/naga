@@ -81,8 +81,9 @@ include = ["nagasim*"]
 # templates/*.yml: `naga ci-template`'s GitHub Actions workflow, read by path from
 # nagasim/modelcheck.py at run time. models/data/mes_twin_shop/*.csv and
 # models/data/*.mesmap.json: the MES twin demo.
+# settings/*.json: the fingerprints of the item code shipped with the install.
 nagasim = ["models/*.json", "models/data/*.csv", "models/data/*.mesmap.json",
-          "models/data/mes_twin_shop/*.csv", "templates/*.yml", "templates/*.txt", "templates/*.json", "py.typed",
+          "models/data/mes_twin_shop/*.csv", "templates/*.yml", "templates/*.txt", "templates/*.json", "settings/*.json", "py.typed",
           "*.pyi", "skills/*/*.md", "skills/*/references/*.md"]
 
 [tool.setuptools.dynamic]

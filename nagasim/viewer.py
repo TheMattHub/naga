@@ -100,6 +100,16 @@ def viewer_problems(layout: dict) -> list[Problem]:
         if isinstance(block, dict) and block.get("type") == "LOGIC":
             refuse(f"block '{str(block.get('name', '?'))[:40]}' is a LOGIC block: it runs a "
                    "class of custom_logic.py, which a viewer does not carry", "/blocks")
+    # D1344: a viewer has no trust store, so it runs no item code, not even code shipped with
+    # the product. Both shapes: a model file's definitions and an already flattened layout.
+    from nagasim.core.itemlogic import code_blocks
+    flat = layout.get("item_code")
+    coded = sorted({entry["definition"] for entry in code_blocks(layout)}
+                   | {str(r.get("definition", "?")) for r in (flat.values() if isinstance(flat, dict) else ())
+                      if isinstance(r, dict)})
+    if coded:
+        refuse(f"the browser viewer does not run item code ({', '.join(d[:40] for d in coded[:5])})",
+               "/submodels")
     plugged = {entry.partition(":")[2] for entry in load_plugins().loaded
                if entry.startswith(("blocks:", "distributions:"))}
     used = sorted(plugged.intersection(_strings(layout))) if plugged else []
@@ -1227,6 +1237,7 @@ function boot() {
   el("title").textContent = D.question || D.title;
   el("subtitle").textContent = D.question ? D.title : tr("viewer.subtitle");
   el("versions").textContent = tr(D.cdn ? "viewer.versions_cdn" : "viewer.versions", {naga: author.versions.nagasim, python: D.python, pyodide: D.pyodide});
+  el("versions").title = tr("viewer.readable");     /* D1331: said on hover */
   inputs();
   try { state.saved = savedFrom(window.localStorage.getItem(KEY) || "[]", paths); } catch (e) { state.saved = []; }
   state.made = state.saved.length;

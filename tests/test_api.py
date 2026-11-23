@@ -37,7 +37,8 @@ def test_run_model_returns_the_frames_with_rows_per_replication(curated_results)
     # runs are what cost, and the loop reports the first example that breaks.
     # D1321: only the frames with rows come back ("system" always); the rest of
     # KEYS are named in `_dropped`, so nothing is lost without a trace.
-    extra = {"conveyor_stops", "conveyor_diverts", "conveyor_merges"}   # a belt with points
+    # a belt with points; a photo-eye's frame too (D1347), only when a model has one
+    extra = {"conveyor_stops", "conveyor_diverts", "conveyor_merges", "conveyor_eyes"}
     for path, results in curated_results.items():
         assert "system" in results, path.stem
         empty = sorted(name for name, frame in results.items() if frame.empty and name != "system")

@@ -31,6 +31,8 @@ RECORD_GROUPS = (
     ("Time series", "timeseries_inputs", "timeseries_input"),
     ("Variables", "variables", "variable"),
     ("Conversions", "conversions", "conversion"),
+    ("Robots", "robots", "robot"),
+    ("Pallet patterns", "pallet_patterns", "pallet_pattern"),
 )
 SECTION_OF_KIND = {kind: section for _label, section, kind in RECORD_GROUPS}
 _KIND_OF_SECTION = {section: kind for _label, section, kind in RECORD_GROUPS}

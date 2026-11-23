@@ -31,6 +31,9 @@ from nagasim import experiments, mdlimport, netguard, nextoptions, sdimport
 from nagasim.core import schema as schema_mod, suggest
 from nagasim.core.agents import PYTHON_CONSENT, PythonRefused
 from nagasim.core.document import ModelDocument
+from nagasim.core.itemlogic import ItemCodeUntrusted
+from nagasim.settings import itemtrust
+from nagasim.settings.userpaths import user_data_dir
 
 # Rows/problems a single answer may carry. An agent pays for every token of a
 # tool result, so the caps are deliberately tight; `get_kpi_table` pages.
@@ -161,6 +164,11 @@ class Workspace:
             full = netguard.confine_path(path, self.root)
         except netguard.PathRefused as exc:
             raise ToolError("E_PATH_OUTSIDE_ROOT", exc.message, exc.hint) from None
+        # D1344: the per-user folder holds both trust stores, so a root that contains it must
+        # still not let a file tool rewrite them. Read per call: the folder follows NAGASIM_USER_DIR.
+        if _inside(full, user_data_dir().resolve()):
+            raise ToolError("E_PATH_OUTSIDE_ROOT", f"{path} is in this user's own settings folder",
+                            "give a path to a model or data file in the workspace, outside that folder")
         if must_exist and not full.exists():
             raise ToolError("E_FILE_NOT_FOUND", f"no such file: {path}",
                             "call list_models, or give a path relative to the workspace root")
@@ -176,6 +184,37 @@ class Workspace:
                             f"open or create it first; loaded: "
                             f"{', '.join(sorted(self.models)) or '(none)'}")
         return doc
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    """Whether *path* is *folder* or under it, compared as the OS compares paths (case-blind on
+    Windows)."""
+    def names(p: Path) -> list[str]:
+        parts = p.parts
+        if os.name == "nt":
+            # #1996: Windows drops a name's trailing dots and spaces when it opens or makes it,
+            # so "the product." is "the product"; resolve() keeps them while the folder is absent.
+            parts = [part.rstrip(". ") or part for part in parts]
+        return [os.path.normcase(part) for part in parts]
+
+    p, f = names(path), names(folder)
+    return p[:len(f)] == f
+
+
+def _untrusted_error(exc: ItemCodeUntrusted) -> ToolError:
+    """E_ITEM_CODE_UNTRUSTED for *exc*. A worker pool may hand back the exception without its
+    list, so the names then come from its message. The hint names no command (S2-17): the
+    agent's person may have the editor and no terminal."""
+    if exc.untrusted:
+        named = ", ".join(f"{u.get('definition', '?')} ({itemtrust.short(str(u.get('fingerprint', '')))})"
+                          for u in exc.untrusted)
+    else:
+        found = re.search(r"not trusted on this computer: (.*?); a person", str(exc))
+        named = found.group(1) if found else str(exc)
+    return ToolError("E_ITEM_CODE_UNTRUSTED",
+                     f"this model's item code is not trusted on this computer: {named}",
+                     "ask the person to trust it in the item's code panel, or with the trust command in "
+                     "a terminal; you cannot trust code yourself. Editing and validating still work.")
 
 
 _WORKSPACE = Workspace()
@@ -487,6 +526,8 @@ def tool(read_only: bool = False, returns: dict | None = None):
                 return fn(**kwargs)
             except ToolError as exc:
                 return exc.as_dict()
+            except ItemCodeUntrusted as exc:    # D1344: a PythonRefused, but the person can say yes
+                return _untrusted_error(exc).as_dict()
             except PythonRefused:
                 return ToolError(
                     "E_AGENT_PYTHON_REFUSED",

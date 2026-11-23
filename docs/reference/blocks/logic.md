@@ -31,6 +31,7 @@ A new instance of the class is created for every entity. Anything the rule must 
 | Parameter | Type | Default | Required | Quantity | Unit key | Description |
 |---|---|---|---|---|---|---|
 | `logic_class` | str | `'SampleLogic'` |  |  |  | Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int. |
+| `hook` | str | `''` |  |  |  | Inside an item with code: call its on_entry (route by its answer) or its on_exit (then go on by the first link). Empty: use logic_class. |
 
 ## Statistics
 
@@ -46,6 +47,7 @@ A check of the model reports these about this block:
 
 | Code | Meaning |
 |---|---|
+| `E_ITEM_HOOK` | An item's code is wired wrong: a LOGIC hook outside an item with code, a hook its class does not define, a timer or signals without their hook, a watched name that is not a variable, item code at the top of the file, or an "item" routing rule on a block outside an item with code. |
 | `E_LOGIC_CLASS_UNKNOWN` | A LOGIC block names a class the logic module (nagasim.core.custom_logic) does not define, so a run from an agent tool would fail on it. |
 | `E_VIEWER_MODEL` | A model cannot be shared as a browser viewer as it is: it holds agent Python, a LOGIC block, something a plugin registered, a data source that was not frozen into the copy, or it is too large. |
 
@@ -71,6 +73,8 @@ print(int(results.kpi("system/Total Entities Completed")), "entities, all sent d
 ```
 
 ## Used in
+
+Bundled models: [Palletizing line](../../gallery/manufacturing.md).
 
 Guides: [How do I route entities by a rule I write in Python?](../../how-to/recipes/custom-routing.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md), [Coming from SimPy](../../coming-from/simpy.md), [How do I share a viewer or a player?](../../goals/share-a-viewer-or-player.md) and 3 more.
 

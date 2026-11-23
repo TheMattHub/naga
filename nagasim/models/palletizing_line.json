@@ -1,0 +1,388 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v32.json",
+  "schema_version": 32,
+  "blocks": [
+    {
+      "name": "boxes",
+      "type": "CREATE",
+      "description": "Boxes arrive",
+      "position": [0.0, 240.0],
+      "params": {"e_type": "BOX", "dist_params": {"value": 4.0}, "max_arrivals": 96}
+    },
+    {
+      "name": "infeed",
+      "type": "CONVEYOR",
+      "description": "Infeed belt with a photo-eye that counts boxes",
+      "position": [160.0, 240.0],
+      "params": {
+        "length": 3.0,
+        "speed": 0.5,
+        "spacing": 1.0,
+        "eyes": [{"at": 1.5, "assign": [{"target": "boxes_seen", "expr": "boxes_seen + 1"}]}]
+      }
+    },
+    {
+      "name": "to_line_1",
+      "type": "SEIZE",
+      "description": "A box is on its way to line 1",
+      "position": [420.0, 80.0],
+      "params": {"resource_name": "Line 1"}
+    },
+    {
+      "name": "at_line_1",
+      "type": "RELEASE",
+      "description": "The box reached line 1",
+      "position": [520.0, 80.0],
+      "params": {"resource_name": "Line 1"}
+    },
+    {
+      "name": "to_line_2",
+      "type": "SEIZE",
+      "description": "A box is on its way to line 2",
+      "position": [420.0, 240.0],
+      "params": {"resource_name": "Line 2"}
+    },
+    {
+      "name": "at_line_2",
+      "type": "RELEASE",
+      "description": "The box reached line 2",
+      "position": [520.0, 240.0],
+      "params": {"resource_name": "Line 2"}
+    },
+    {
+      "name": "to_line_3",
+      "type": "SEIZE",
+      "description": "A box is on its way to line 3",
+      "position": [420.0, 400.0],
+      "params": {"resource_name": "Line 3"}
+    },
+    {
+      "name": "at_line_3",
+      "type": "RELEASE",
+      "description": "The box is off line 3's way",
+      "position": [760.0, 400.0],
+      "params": {"resource_name": "Line 3"}
+    },
+    {
+      "name": "pallet_belt",
+      "type": "CONVEYOR",
+      "description": "Belt to the palletizer",
+      "position": [620.0, 80.0],
+      "layout_position": [2.0, 0.0],
+      "params": {
+        "length": 4.0,
+        "speed": 0.5,
+        "spacing": 1.0,
+        "diverts": [{"at": 0.5, "condition": "True", "intercept": true, "on_late": "wait"}]
+      }
+    },
+    {
+      "name": "palletizer",
+      "type": "BATCH",
+      "description": "Gantry palletizer: 2 x 2 boxes, two layers",
+      "position": [820.0, 80.0],
+      "layout_position": [1.5, -1.0],
+      "params": {
+        "batch_size": 8,
+        "batched_entity_type": "PALLET",
+        "carrier_type": "PALLET",
+        "pattern": "TWO_BY_TWO",
+        "robot": "pallet_gantry",
+        "robot_at": [-1.5, 1.0, 0.0],
+        "targets": {
+          "box": {"belt": "pallet_belt", "divert": 0, "z": 1.0},
+          "home": {"joints": [0, 0, 0]}
+        },
+        "segments": [
+          {"kind": "ptp", "to": "box"},
+          {"kind": "pick", "time": 1.0},
+          {"kind": "ptp", "to": "slot_above"},
+          {"kind": "ptp", "to": "slot"},
+          {"kind": "place", "time": 1.0},
+          {"kind": "ptp", "to": "home"}
+        ]
+      }
+    },
+    {
+      "name": "empty_pallets",
+      "type": "CREATE",
+      "description": "Empty pallets, one every 90 s",
+      "position": [620.0, -40.0],
+      "params": {"e_type": "PALLET", "dist_params": {"value": 90.0}, "max_arrivals": 6}
+    },
+    {
+      "name": "full_pallets",
+      "type": "DISPOSE",
+      "description": "Full pallets leave",
+      "position": [1000.0, 80.0]
+    },
+    {
+      "name": "pallet_belt_end",
+      "type": "DISPOSE",
+      "description": "Boxes past the palletizer",
+      "position": [820.0, 0.0]
+    },
+    {
+      "name": "pick_belt",
+      "type": "CONVEYOR",
+      "description": "Belt to the pick robot",
+      "position": [620.0, 240.0],
+      "layout_position": [2.0, -4.0],
+      "params": {
+        "length": 4.0,
+        "speed": 0.5,
+        "spacing": 1.0,
+        "diverts": [{"at": 0.5, "condition": "True", "intercept": true, "on_late": "wait"}]
+      }
+    },
+    {
+      "name": "pick_robot",
+      "type": "MOTION",
+      "description": "Gantry robot picking from the moving belt",
+      "position": [820.0, 240.0],
+      "layout_position": [0.0, -4.0],
+      "params": {
+        "robot": "pick_gantry",
+        "targets": {
+          "box": {"belt": "pick_belt", "divert": 0, "z": 1.0},
+          "home": {"joints": [0, 0, 0]}
+        },
+        "segments": [
+          {"kind": "ptp", "to": "box"},
+          {"kind": "pick", "time": 1.0},
+          {"kind": "ptp", "to": "home"},
+          {"kind": "place", "time": 1.0}
+        ],
+        "resource_name": "Robot"
+      }
+    },
+    {
+      "name": "picked",
+      "type": "DISPOSE",
+      "description": "Picked boxes leave",
+      "position": [1000.0, 240.0]
+    },
+    {
+      "name": "pick_belt_end",
+      "type": "DISPOSE",
+      "description": "Boxes past the pick robot",
+      "position": [820.0, 320.0]
+    },
+    {
+      "name": "hand_pack",
+      "type": "PROCESS",
+      "description": "Packed by hand, a little slower than boxes come",
+      "position": [600.0, 400.0],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {"low": 10, "mode": 13, "high": 20},
+        "resource_name": "Packer"
+      }
+    },
+    {
+      "name": "packed",
+      "type": "DISPOSE",
+      "description": "Hand-packed boxes leave",
+      "position": [900.0, 400.0]
+    },
+    {
+      "name": "router",
+      "type": "SUBMODEL",
+      "description": "Photo-eye router: its item code sends boxes to the three lines in turn",
+      "position": [300.0, 240.0],
+      "params": {
+        "definition": "Photo-eye router",
+        "arguments": {"way_1": "Line 1", "way_2": "Line 2", "way_3": "Line 3", "limit": 3}
+      }
+    }
+  ],
+  "links": [
+    {"source": "boxes", "target": "infeed"},
+    {"source": "to_line_1", "target": "at_line_1"},
+    {"source": "at_line_1", "target": "pallet_belt"},
+    {"source": "pallet_belt", "target": "pallet_belt_end"},
+    {"source": "pallet_belt", "target": "palletizer"},
+    {"source": "palletizer", "target": "full_pallets"},
+    {"source": "empty_pallets", "target": "palletizer"},
+    {"source": "to_line_2", "target": "at_line_2"},
+    {"source": "at_line_2", "target": "pick_belt"},
+    {"source": "pick_belt", "target": "pick_belt_end"},
+    {"source": "pick_belt", "target": "pick_robot"},
+    {"source": "pick_robot", "target": "picked"},
+    {"source": "to_line_3", "target": "hand_pack"},
+    {"source": "hand_pack", "target": "at_line_3"},
+    {"source": "at_line_3", "target": "packed"},
+    {"source": "infeed", "target": "router", "target_port": "in"},
+    {"source": "router", "target": "to_line_1", "source_port": "out_1"},
+    {"source": "router", "target": "to_line_2", "source_port": "out_2"},
+    {"source": "router", "target": "to_line_3", "source_port": "out_3"}
+  ],
+  "resources": [
+    {"name": "Line 1", "capacity": 99, "discipline": "FIFO"},
+    {"name": "Line 2", "capacity": 99, "discipline": "FIFO"},
+    {"name": "Line 3", "capacity": 99, "discipline": "FIFO"},
+    {"name": "Packer", "capacity": 1, "discipline": "FIFO"},
+    {"name": "Robot", "capacity": 1, "discipline": "FIFO"}
+  ],
+  "variables": [{"name": "boxes_seen", "initial": 0}],
+  "robots": [
+    {
+      "name": "pallet_gantry",
+      "structure": "gantry",
+      "params": {"mount_height": 2.0},
+      "axes": [
+        {"name": "x", "range": [0, 3.0], "speed": 1.0, "accel": 2.0},
+        {"name": "y", "range": [0, 2.0], "speed": 1.0, "accel": 2.0},
+        {"name": "z", "range": [0, 1.8], "speed": 0.5, "accel": 1.0}
+      ]
+    },
+    {
+      "name": "pick_gantry",
+      "structure": "gantry",
+      "params": {"mount_height": 2.0},
+      "axes": [
+        {"name": "x", "range": [0, 3.0], "speed": 1.0, "accel": 2.0},
+        {"name": "y", "range": [0, 2.0], "speed": 1.0, "accel": 2.0},
+        {"name": "z", "range": [0, 1.2], "speed": 0.5, "accel": 1.0}
+      ]
+    }
+  ],
+  "pallet_patterns": [
+    {
+      "name": "TWO_BY_TWO",
+      "pallet": {"length": 0.8, "width": 0.8, "deck_height": 0.15},
+      "item": {"length": 0.4, "width": 0.4, "height": 0.25, "weight_kg": 1.0},
+      "layers": {
+        "A": [
+          {"x": -0.2, "y": -0.2},
+          {"x": 0.2, "y": -0.2},
+          {"x": -0.2, "y": 0.2},
+          {"x": 0.2, "y": 0.2}
+        ]
+      },
+      "stack": [{"layer": "A"}, {"layer": "A"}],
+      "limits": {"layers": 2}
+    }
+  ],
+  "submodels": {
+    "Photo-eye router": {
+      "info": {
+        "description": "Parts boxes over three lines in turn. A line with the limit of boxes on its way is skipped; when every line is at the limit the least loaded one takes the box. A box is on its way to a line while it holds that line's resource, so the model sets where on its way ends by where it releases the resource. The routing is Python code in the item (Code panel); it runs once you trust it.",
+        "library": {"library": "automation", "asset": "photo_eye_router", "version": "2.2.0"},
+        "parameters": [
+          {
+            "name": "way_1",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Line 1 resource",
+            "help": "The resource a box holds while it is on its way to line 1; the model decides where on its way ends by where it releases it.",
+            "group": "Lines",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "way_2",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Line 2 resource",
+            "help": "The resource a box holds while it is on its way to line 2; the model decides where on its way ends by where it releases it.",
+            "group": "Lines",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "way_3",
+            "type": "name",
+            "default": "",
+            "unit": "",
+            "label": "Line 3 resource",
+            "help": "The resource a box holds while it is on its way to line 3; the model decides where on its way ends by where it releases it.",
+            "group": "Lines",
+            "min": null,
+            "max": null,
+            "choices": [],
+            "refers_to": "resource"
+          },
+          {
+            "name": "limit",
+            "type": "number",
+            "default": 6,
+            "unit": "",
+            "label": "Boxes on their way per line",
+            "help": "A line with this many boxes on its way is skipped.",
+            "group": "Lines",
+            "min": 1,
+            "max": null,
+            "choices": [],
+            "refers_to": ""
+          }
+        ],
+        "owns": {}
+      },
+      "parameters": [
+        {
+          "name": "way_1",
+          "default": "",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The resource a box holds while it is on its way to line 1; the model decides where on its way ends by where it releases it."
+        },
+        {
+          "name": "way_2",
+          "default": "",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The resource a box holds while it is on its way to line 2; the model decides where on its way ends by where it releases it."
+        },
+        {
+          "name": "way_3",
+          "default": "",
+          "type": "name",
+          "refers_to": "resource",
+          "description": "The resource a box holds while it is on its way to line 3; the model decides where on its way ends by where it releases it."
+        },
+        {
+          "name": "limit",
+          "default": 6,
+          "type": "number",
+          "description": "A line with this many boxes on its way is skipped."
+        }
+      ],
+      "blocks": [
+        {"name": "in", "type": "SUB_ENTRY", "position": [0.0, 0.0]},
+        {"name": "route", "type": "LOGIC", "position": [200.0, 0.0], "params": {"hook": "entry"}},
+        {"name": "out_1", "type": "SUB_EXIT", "position": [400.0, 0.0], "params": {"port": "out_1"}},
+        {"name": "out_2", "type": "SUB_EXIT", "position": [400.0, 0.0], "params": {"port": "out_2"}},
+        {"name": "out_3", "type": "SUB_EXIT", "position": [400.0, 0.0], "params": {"port": "out_3"}}
+      ],
+      "links": [
+        {"source": "in", "target": "route"},
+        {"source": "route", "target": "out_1"},
+        {"source": "route", "target": "out_2"},
+        {"source": "route", "target": "out_3"}
+      ],
+      "annotations": [],
+      "code": {
+        "class": "PhotoEyeRouter",
+        "source": "class PhotoEyeRouter:\n    \"\"\"Round robin over three lines; a line with `limit` boxes in flight is skipped, and\n    with every line at the limit the least loaded one takes the box.\"\"\"\n\n    def __init__(self):\n        self.turn = 0\n\n    def on_entry(self, entity, item):\n        ways = [item.params[f\"way_{k}\"] for k in (1, 2, 3)]\n        n = [item.evaluate(f'NR(\"{w}\") + NQ(\"{w}\")') for w in ways]\n        limit = item.params[\"limit\"]\n        order = [(self.turn + k) % 3 for k in range(3)]\n        free = [k for k in order if n[k] < limit]\n        chosen = free[0] if free else min(order, key=lambda k: n[k])\n        self.turn = (chosen + 1) % 3\n        return chosen\n",
+        "placed": {
+          "author": "Naga",
+          "fingerprint": "sha256:2fad7cc9bb819b4b02c288288c32a5fa6c2befc6908d841f4008897cce5e46c5"
+        }
+      }
+    }
+  },
+  "info": {
+    "title": "Palletizing line",
+    "category": "Manufacturing",
+    "description": "Boxes ride an infeed belt past a photo-eye that counts them, then a router whose Python item code sends them to three lines in turn and skips a line with three boxes on its way. Line 1 is a gantry palletizer that picks each box from its moving belt and stacks a pallet pattern of 2 x 2 boxes in two layers; line 2 is a gantry robot picking from a moving belt; line 3 packs by hand, a little slower than the boxes come, so the router skips it now and then. Illustrative figures."
+  },
+  "simulation": {"time_limit": 600, "warmup": 0, "replications": 1, "time_unit": "seconds"},
+  "outputs": {}
+}

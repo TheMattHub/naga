@@ -35,6 +35,7 @@ A scenario is a list of overrides applied in order to the base model. An overrid
 | `energy_price` | number or string |  | `0` | money | Money per kWh, a number or an expression, evaluated once at run start. Prices every resource/fleet's "power". |
 | `entity_log_limit` | integer or null |  |  | count | Cap on retained entity-log rows. |
 | `record_logs` | boolean |  | `true` |  | Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants. |
+| `strict_checks` | boolean |  | `false` |  | Stop the run on a conveyor check: an open port, overlapping or unsnapped pieces, a part handed to nothing or routed against its rule become errors with the same code. Off: they are warnings. |
 | `entity_waits` | boolean |  | `false` |  | Sum each entity's queue time over every seize into a "Total Wait" column of the entity log (what a tail goal on Total Wait reads). Off: no column. |
 | `timeseries_points` | integer or null |  | `200` | count | How many samples the time-series OUTPUT sampler takes over a time-limited run (default 200). |
 | `timeseries_interval` | number or null |  |  | time (`time_unit`) | Fixed sampling interval for a draining run, which has no horizon to divide. |
@@ -59,7 +60,7 @@ m = nb.Model(simulation={'time_limit': 480, 'warmup': 60, 'replications': 10, 't
 
 ## Used in
 
-Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 55 more.
+Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 56 more.
 
 Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from SimPy](../../coming-from/simpy.md), [Python API](../../python-api.md), [Model file format](../../model-file-format.md), [Dates and calendars](../../modelling-guide/dates-and-calendars.md), [Quick start](../../quickstart.md) and 1 more.
 

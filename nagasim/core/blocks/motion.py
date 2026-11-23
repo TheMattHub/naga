@@ -13,7 +13,7 @@ progress is never re-timed. A state carries a cycle mid-way as its `cycle`
 """
 import simpy
 
-from nagasim.core import motion as timing
+from nagasim.core import beltpick, motion as timing
 from nagasim.core.block_spec import BlockSpec, ParamSpec
 from nagasim.core.blocks.process import SPEC as _PROCESS_SPEC, Process
 from nagasim.core.distributions import StochasticDistribution
@@ -43,8 +43,13 @@ class Motion(Process):
         self.zone = {}
         self.segments = []
         self.time_unit = "seconds"
+        self.robot = ""
+        self.targets = {}
         self._times = []            # per segment: a Constant distribution, None for a move
         self._profile = None
+        # D1343: {segment index: base-unit time} of the robot moves, from the run's plan
+        # (ctx.robot_plans), filled at the first draw; constants, so no stream draw.
+        self._robot_seconds: dict[int, float] | None = None
         self.reset_motion_stats()
 
     def reset_motion_stats(self) -> None:
@@ -57,6 +62,16 @@ class Motion(Process):
 
     def _serve(self, entity):
         yield from self._run(entity, self._draw_times(entity), 0, [])
+
+    def ready_now(self) -> bool:
+        """The robot would start on a part handed to it now: its resource has the units
+        free and nobody queues for them. What a belt's "pass" pick reads at the call (D1343)."""
+        if not self.seizes:
+            return True                 # nothing to wait for: every part starts at once
+        target = self.ctx.resource_manager.resolve(self.resource_name)
+        quantity = self.quantity if isinstance(self.quantity, (int, float)) else 1
+        return target is not None and getattr(target, "free", 0) >= quantity \
+            and not getattr(target, "waiting", 0)
 
     def resume(self, entity, cycle: dict):
         """Generator: the cycle a state found mid-way (D444), from its segment in progress,
@@ -85,12 +100,24 @@ class Motion(Process):
         """The cycle from segment *done* on, inside PROCESS's preemption loop. *until*: the
         segment in progress ends then (a state's, D444), with no changeover before it."""
         left = None if until is None else until - self.env.now      # of the current segment
+        # D1343: a part called from a moving belt. Segment 0 is the approach to the meeting
+        # point; when it ends the robot waits there for the part (a "meet" segment, recorded
+        # only when it waited).
+        meeting = until is None and done == 0 and bool(self.segments) \
+            and getattr(entity, "_meet", None) is not None
+        met, meet_wait, meet_since = False, 0.0, None
         while True:
             started = None
             try:
                 if (self.setup or self.setup_cost) and self.seizes and until is None:
                     yield from self._changeover(entity)
-                while done < len(self.segments):
+                while done < len(self.segments) or (meeting and not met):
+                    if meeting and done >= 1 and not met:
+                        meet_since = self.env.now
+                        yield from beltpick.robot_arrives(self.env, entity)
+                        meet_wait += self.env.now - meet_since
+                        met, meet_since = True, None
+                        continue
                     segment = self.segments[done]
                     if left is None:
                         collaborative = False
@@ -104,6 +131,8 @@ class Motion(Process):
                         self.emit("cycle_phase", entity=entity, state=segment.get("kind"),
                                   value=float(done), duration=left)
                     started = self.env.now
+                    if meeting and done == 0:
+                        beltpick.robot_starts(entity, started + left)
                     # D383: what a state reads; a state's segment lands on its own end
                     entity._cycle = (done, started + left if until is None else until,
                                      times, record)
@@ -113,6 +142,11 @@ class Motion(Process):
                 break
             except simpy.Interrupt:
                 entity._cycle = until = None
+                if meeting and not met:     # on its way to the part or waiting for it there
+                    beltpick.robot_leaves(self.env, entity)
+                if meet_since is not None:                  # preempted while waiting there
+                    meet_wait += self.env.now - meet_since
+                    meet_since = None
                 # PROCESS's rule per segment: "resume" finishes the segment in
                 # progress (not re-timed, not re-traced); "restart" runs the whole
                 # cycle again -- the same timed draws, or fresh ones with
@@ -128,11 +162,25 @@ class Motion(Process):
                 yield from acquire(self, entity, self.resource_name, self.quantity,
                                    self.priority, preempt=self.preempt, resumed=True)
         entity._cycle = None
-        self._commit(record)
+        self._commit(record + [("meet", meet_wait, False)] if meet_wait > 1e-9 else record)
 
     def _draw_times(self, entity) -> list:
-        return [None if dist is None else self.sample_duration(dist, entity)
-                for dist in self._times]
+        robot = self._robot_times()
+        return [robot.get(i) if dist is None else self.sample_duration(dist, entity)
+                for i, dist in enumerate(self._times)]
+
+    def _robot_times(self) -> dict:
+        """{index: base-unit time} of the robot moves: the plan's seconds (D1343). A robot
+        move is a constant, so `_run`, `resume` and a restart treat it as a timed segment."""
+        if self._robot_seconds is None:
+            indices = [i for i, s in enumerate(self.segments) if s.get("kind") in timing.ROBOT_KINDS]
+            plan = self.ctx.robot_plans.get(self.name) if indices else None
+            if indices and (plan is None or plan.errors or set(indices) - set(plan.moves)):
+                raise RuntimeError(f"MOTION block '{self.name}': its robot moves have no plan "
+                                   f"(E_ROBOT_UNKNOWN, E_ROBOT_TARGET).")
+            to_base = base_factor("time", "seconds", self.ctx.units)
+            self._robot_seconds = {i: plan.moves[i].seconds * to_base for i in indices}
+        return self._robot_seconds
 
     def _profile_record(self) -> dict:
         if self._profile is None:
@@ -164,23 +212,27 @@ class Motion(Process):
 
     def get_params_dict(self):
         params = {k: v for k, v in super().get_params_dict().items() if k not in _NOT_MOTION}
-        return {**params, "profile": self.profile, "hrc": self.hrc, "zone": dict(self.zone),
+        return {**params, "profile": self.profile, "robot": self.robot,
+                "targets": dict(self.targets), "hrc": self.hrc, "zone": dict(self.zone),
                 "segments": [dict(s) for s in self.segments], "time_unit": self.time_unit}
 
     def set_params_from_dict(self, param_dict):
         super().set_params_from_dict({k: v for k, v in param_dict.items()
                                       if k not in _NOT_MOTION})
         self.profile = str(param_dict.get("profile", "") or "")
+        self.robot = str(param_dict.get("robot", "") or "")
+        self.targets = dict(param_dict.get("targets") or {})
         self.hrc = str(param_dict.get("hrc", "none") or "none")
         self.zone = dict(param_dict.get("zone") or {})
         self.segments = [dict(s) for s in param_dict.get("segments") or []
                          if isinstance(s, dict)]
         self.time_unit = str(param_dict.get("time_unit", "seconds") or "seconds")
-        self._times = [None if s.get("kind") == "move"
+        self._times = [None if s.get("kind") == "move" or s.get("kind") in timing.ROBOT_KINDS
                        else StochasticDistribution("Constant", {"value": s.get("time") or 0},
                                                    time_unit=self.time_unit)
                        for s in self.segments]
         self._profile = None
+        self._robot_seconds = None
 
 
 _INHERITED = tuple(p for p in _PROCESS_SPEC.params if p.name not in _NOT_MOTION)
@@ -188,6 +240,20 @@ _MOTION_PARAMS = (
     ParamSpec("profile", str, "",
               description="Name of a record in \"motion_profiles\": speed, acceleration, payload "
                           "derating and collaborative speed of whoever does the motions.", quantity="none"),
+    ParamSpec("robot", str, "",
+              description="Name of a record in \"robots\": the robot whose ptp and lin moves are "
+                          "timed from its axis speeds and accelerations.", quantity="none"),
+    ParamSpec("targets", dict, {},
+              description="Named targets of the ptp and lin moves, in cell coordinates (the floor "
+                          "plan's x and y in metres, z up): {\"joints\": [...]}, {\"xyz\": [x, "
+                          "y, z], \"yaw_deg\"?, \"rpy_deg\"?} with the tool pointing down unless "
+                          "rpy_deg says otherwise, or {\"on\": <block>, \"at\"?: "
+                          "centre|start|end, \"offset\"?: [dx, dy, dz], \"yaw_deg\"?} in that "
+                          "block's own frame: dx along its facing, dy toward the floor plan's +y "
+                          "side at rotation 0 (as x and y), dz up; or {\"belt\": <CONVEYOR>, "
+                          "\"divert\": <index>, \"z\"?: <metres above the floor>, "
+                          "\"yaw_deg\"?}, a part met on the moving belt, the target of the "
+                          "cycle's first move.", quantity="none"),
     ParamSpec("hrc", str, "none",
               description="Human-robot collaboration: \"none\", \"collaborative\" (every "
                           "move at the profile's collaborative_speed) or \"separation\" (a move "
@@ -200,8 +266,10 @@ _MOTION_PARAMS = (
               quantity="none"),
     ParamSpec("segments", list, [],
               description="The cycle, in order: {\"kind\": \"move\", \"distance_m\", "
-                          "\"payload_kg\"?} or {\"kind\": pick|place|tool_change|dwell|process, "
-                          "\"time\": <number or expression>}. The service time is their sum.", quantity="time", kinds=("table",), unit_key="time_unit"),
+                          "\"payload_kg\"?}, {\"kind\": pick|place|tool_change|dwell|process, "
+                          "\"time\": <number or expression>}, or a robot move {\"kind\": "
+                          "ptp|lin, \"to\": <target>, \"time\"?: <number, at least what the "
+                          "move needs>, \"payload_kg\"?}. The service time is their sum.", quantity="time", kinds=("table",), unit_key="time_unit"),
     ParamSpec("time_unit", str, "seconds",
               description="Unit of every segment `time`: \"base\" or seconds/minutes/hours/"
                           "days. Moves are always computed in seconds.", quantity="none", kinds=("choice",)),

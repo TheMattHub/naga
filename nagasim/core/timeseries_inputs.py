@@ -260,53 +260,63 @@ def _validate_dated(entry: dict, at: str, name: str, calendar, horizon) -> list:
             "E_SERIES_NO_CALENDAR",
             f"time series '{name}': real timestamps need a model calendar", at,
             hint="set \"simulation\": {\"calendar\": {\"start\": \"2026-01-05T00:00:00\", "
-                 "\"timezone\": \"Europe/Rome\"}}, or use plain numeric \"times\"")]
+                 "\"timezone\": \"Europe/Rome\"}}, or use plain numeric \"times\"",
+            fields={"case": "no_calendar", "name": name})]
     timestamps = entry.get("timestamps")
     if timestamps is not None and not isinstance(timestamps, list):
         return [problem("E_SERIES_SHAPE",
                         f"time series '{name}': \"timestamps\" must be a list of ISO stamps",
-                        f"{at}/timestamps", hint="[\"2026-01-05T00:00:00\", ...]")]
+                        f"{at}/timestamps", hint="[\"2026-01-05T00:00:00\", ...]",
+                        fields={"case": "stamps_list", "name": name})]
     if timestamps is not None and entry.get("times") is not None:
         return [problem("E_SERIES_SHAPE",
                         f"time series '{name}': \"times\" and \"timestamps\" are exclusive", at,
-                        hint="numeric model times, or real timestamps -- not both")]
+                        hint="numeric model times, or real timestamps -- not both",
+                        fields={"case": "stamps_and_times", "name": name})]
     if timestamps is None and not entry.get("step"):
         return [problem("E_SERIES_SHAPE",
                         f"time series '{name}': a dated \"start\" needs a \"step\"", at,
-                        hint="the spacing between two samples, in \"time_unit\"")]
+                        hint="the spacing between two samples, in \"time_unit\"",
+                        fields={"case": "start_no_step", "name": name})]
     if timestamps is not None and len(timestamps) != len(entry.get("values") or []):
         return [problem("E_SERIES_SHAPE",
                         f"time series '{name}': {len(timestamps)} timestamps but "
                         f"{len(entry.get('values') or [])} values", at,
-                        hint="one timestamp per value")]
+                        hint="one timestamp per value",
+                        fields={"case": "stamps_count", "name": name})]
     try:
         times = dated_times(entry, calendar)
     except SeriesError as exc:
         return [problem("E_CALENDAR_DATE", str(exc), at,
-                        hint="write each stamp as 2026-01-05T06:00:00")]
+                        hint="write each stamp as 2026-01-05T06:00:00",
+                        fields={"case": "a8_series_date"})]
     for i in range(1, len(times)):
         if times[i] <= times[i - 1]:
             problems.append(problem(
                 "E_SERIES_TIMES", f"time series '{name}': timestamps must increase",
-                f"{at}/timestamps/{i}", hint="sort the samples; duplicates are not allowed"))
+                f"{at}/timestamps/{i}", hint="sort the samples; duplicates are not allowed",
+                fields={"case": "stamps_order", "name": name}))
             break
     if times and times[0] < 0:
         problems.append(problem(
             "W_SERIES_BEFORE_START",
             f"time series '{name}': starts before the model's calendar start; "
             f"the first value applies until the run begins", at,
-            hint=f"the run starts at {calendar.label(0)}"))
+            hint=f"the run starts at {calendar.label(0)}",
+            fields={"case": "early", "name": name}))
     if times and horizon and horizon > 0 and times[0] > horizon:
         problems.append(problem(
             "W_SERIES_BEFORE_START",
             f"time series '{name}': every sample falls after the end of the run", at,
-            hint=f"the run ends at {calendar.label(horizon)}"))
+            hint=f"the run ends at {calendar.label(horizon)}",
+            fields={"case": "late", "name": name}))
     if isinstance(entry.get("period"), str):
         try:
             _calendar_period(entry, calendar, "minutes")
         except SeriesError as exc:
             problems.append(problem("E_SERIES_MODE", str(exc), f"{at}/period",
-                                    hint="use daily, weekly, yearly or a number"))
+                                    hint="use daily, weekly, yearly or a number",
+                                    fields={"case": "period"}))
     return problems
 
 
@@ -322,11 +332,13 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_SERIES_NAME", "time series: name must not be empty",
-                                    f"{at}/name", hint="give every time series a unique name"))
+                                    f"{at}/name", hint="give every time series a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in names:
             problems.append(problem("E_SERIES_NAME", f"duplicate time series name: {name}",
-                                    f"{at}/name", hint="rename one of the two series"))
+                                    f"{at}/name", hint="rename one of the two series",
+                                    fields={"case": "dup", "name": name}))
         names.add(name)
 
         values = entry.get("values")
@@ -334,13 +346,15 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
             problems.append(problem("E_SERIES_SHAPE",
                                     f"time series '{name}': \"values\" must be a non-empty list",
                                     f"{at}/values",
-                                    hint="list one number per sample, e.g. [0, 1.2, 3.4]"))
+                                    hint="list one number per sample, e.g. [0, 1.2, 3.4]",
+                                    fields={"case": "values_list", "name": name}))
             continue
         bad = next((v for v in values if not _is_number(v)), None)
         if bad is not None:
             problems.append(problem("E_SERIES_SHAPE",
                                     f"time series '{name}': value {bad!r} is not a number",
-                                    f"{at}/values", hint="every sample of a series is a number"))
+                                    f"{at}/values", hint="every sample of a series is a number",
+                                    fields={"case": "value_bad", "name": name, "value": repr(bad)}))
             continue
 
         # The study's tank task: a period without beyond "repeat" is never read, and the
@@ -349,7 +363,8 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
             problems.append(problem(
                 "W_SERIES_PERIOD_UNUSED",
                 f"time series '{name}': \"period\" is read only when \"beyond\" is \"repeat\"",
-                f"{at}/period", hint="add \"beyond\": \"repeat\", or drop \"period\""))
+                f"{at}/period", hint="add \"beyond\": \"repeat\", or drop \"period\"",
+                fields={"case": "unused", "name": name}))
         if is_dated(entry):                            # PHASE4 T10 dated series
             problems.extend(_validate_dated(entry, at, name, calendar, horizon))
             continue
@@ -359,35 +374,41 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
             problems.append(problem(
                 "E_SERIES_SHAPE", f"time series '{name}': give either \"times\" or a \"step\"",
                 at, hint="a regular profile is \"start\" + \"step\" + \"values\"; an irregular "
-                        "one is \"times\" + \"values\""))
+                        "one is \"times\" + \"values\"",
+                fields={"case": "no_times_or_step", "name": name}))
             continue
         if times is not None and step:
             problems.append(problem(
                 "E_SERIES_SHAPE", f"time series '{name}': \"times\" and \"step\" are exclusive",
                 at, hint="drop \"step\" for an irregular series, or \"times\" for a regular one; "
-                     "the length of a repeating cycle is \"period\""))
+                     "the length of a repeating cycle is \"period\"",
+                fields={"case": "times_and_step", "name": name}))
             continue
         if times is not None and (not isinstance(times, list)
                                   or not all(_is_number(t) for t in times)):
             problems.append(problem("E_SERIES_SHAPE",
                                     f"time series '{name}': \"times\" must be a list of numbers",
-                                    f"{at}/times", hint="one time per value, increasing"))
+                                    f"{at}/times", hint="one time per value, increasing",
+                                    fields={"case": "times_list", "name": name}))
             continue
         if times is not None and len(times) != len(values):
             problems.append(problem(
                 "E_SERIES_SHAPE",
                 f"time series '{name}': {len(times)} times but {len(values)} values",
-                at, hint="\"times\" has exactly one entry per value"))
+                at, hint="\"times\" has exactly one entry per value",
+                fields={"case": "times_count", "name": name}))
             continue
         if step and not _is_number(step):
             problems.append(problem("E_SERIES_SHAPE",
                                     f"time series '{name}': \"step\" must be a number",
-                                    f"{at}/step", hint="the spacing between two samples"))
+                                    f"{at}/step", hint="the spacing between two samples",
+                                    fields={"case": "step_number", "name": name}))
             continue
         if step and float(step) <= 0:
             problems.append(problem("E_SERIES_TIMES",
                                     f"time series '{name}': \"step\" must be positive",
-                                    f"{at}/step", hint="samples run forwards in time"))
+                                    f"{at}/step", hint="samples run forwards in time",
+                                    fields={"case": "step_positive", "name": name}))
 
         authored = series_times(entry)
         for i in range(1, len(authored)):
@@ -396,7 +417,8 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
                     "E_SERIES_TIMES",
                     f"time series '{name}': times must increase "
                     f"({authored[i - 1]:g} then {authored[i]:g})",
-                    f"{at}/times/{i}", hint="sort the samples by time; duplicates are not allowed"))
+                    f"{at}/times/{i}", hint="sort the samples by time; duplicates are not allowed",
+                    fields={"case": "times_order", "name": name}))
                 break
 
         for key, allowed in (("interpolation", INTERPOLATIONS), ("beyond", BEYOND_MODES)):
@@ -404,7 +426,8 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
             if value is not None and value not in allowed:
                 problems.append(problem(
                     "E_SERIES_MODE", f"time series '{name}': unknown {key} '{value}'",
-                    f"{at}/{key}", hint=f"use one of: {', '.join(allowed)}"))
+                    f"{at}/{key}", hint=f"use one of: {', '.join(allowed)}",
+                    fields={"case": "mode", "name": name, "key": key, "value": value}))
         period = entry.get("period")
         if isinstance(period, str):
             # PHASE4 T10: a calendar cycle -- daily/weekly/yearly -- instead of a number.
@@ -412,12 +435,14 @@ def validate_timeseries_inputs_structured(layout: dict, calendar=None,
                 _calendar_period(entry, calendar, "minutes")
             except SeriesError as exc:
                 problems.append(problem("E_SERIES_MODE", str(exc), f"{at}/period",
-                                        hint="use daily, weekly, yearly or a number"))
+                                        hint="use daily, weekly, yearly or a number",
+                                        fields={"case": "period"}))
         elif period is not None and not _is_number(period):
             problems.append(problem("E_SERIES_SHAPE",
                                     f"time series '{name}': \"period\" must be a number",
                                     f"{at}/period",
-                                    hint="the cycle length \"beyond\": \"repeat\" wraps on"))
+                                    hint="the cycle length \"beyond\": \"repeat\" wraps on",
+                                    fields={"case": "period_number", "name": name}))
     return problems, names
 
 

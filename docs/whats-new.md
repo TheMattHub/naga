@@ -272,7 +272,7 @@ print(m.run().kpis().head())
   builds it again, the bundled models included, so you can start from an example.
 - **Short, readable model files.** `naga fmt` rewrites a file in its shortest form (defaults
   left out) without changing what it does; the bundled models ship that way. Add
-  `"$schema": "https://thematthub.github.io/naga/schema/model-v30.json"` and an editor completes
+  `"$schema": "https://thematthub.github.io/naga/schema/model-v32.json"` and an editor completes
   the keys of a JSON model too.
 - **A twin from plant data on more lines.** A state read from a live plant now covers conveyors,
   batches, transfers and robot and cobot cycles, so a twin forecasts the warehouse and

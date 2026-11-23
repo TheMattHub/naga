@@ -310,6 +310,13 @@ def _reading(record: dict, series: str, seen: dict):
     return value - start[0]
 
 
+def _stored(found: Problem) -> dict:
+    """A problem as a result stores it: its dict, and the fields its plain line is filled
+    from when it has any (D1332), so a screen reading the file words it as the editor does."""
+    said = found.as_dict()
+    return {**said, "fields": dict(found.fields)} if found.fields else said
+
+
 class Cycle:
     """One twin. Owned by one thread (the loop's, or the editor's worker: rule 14)."""
 
@@ -378,12 +385,14 @@ class Cycle:
                 self._carried.append(problem(
                     "W_TWIN_REFIT", f"the adopted refit in this directory is not applied: {why}",
                     "/refit", hint="its score is not continued; a refit the outbox ledger still "
-                                   "holds as taken is adopted again from its record"))
+                                   "holds as taken is adopted again from its record",
+                    fields={"case": "kept"}))
         elif kept_layer is not None:
             self._carried.append(problem(
                 "W_TWIN_REFIT", "an adopted refit is kept in this directory and no --refit file "
                 "was given: it is not applied, and the score of its model is not continued",
-                "/refit", hint="give the same --refit file to go on with it"))
+                "/refit", hint="give the same --refit file to go on with it",
+                fields={"case": "no_file"}))
         # The rolling score (D293): this model's and this horizon's, kept in the history
         # beside the forecasts it sums, or a new one, and then never in silence.
         kept = history.get("scores") if history else None
@@ -397,7 +406,8 @@ class Cycle:
                     "model": "it is of another model", "horizon": "it is of another horizon",
                     "unsound": "it cannot be read as one"}[why], "/scores",
                 hint="the stored forecasts keep their own scores; use one --out directory "
-                     "a model and a horizon to keep a score"))
+                     "a model and a horizon to keep a score",
+                fields={"case": why}))
         # The alerts' sums (D721), kept beside the score and judged whole as it is.
         self._cusum, why = score.Cusum.load(history.get("alerts") if history else None,
                                             self._identity(), alert_k, alert_h, self._born)
@@ -407,7 +417,8 @@ class Cycle:
                 "start again from now: " + {
                     "model": "they are of another model",
                     "limits": "they were kept under other limits (--alert-k, --alert-h)",
-                    "unsound": "they cannot be read as such"}[why], "/alerts"))
+                    "unsound": "they cannot be read as such"}[why], "/alerts",
+                fields={"case": why}))
         self._observes = False              # whether the source offers a series to compare
         # A twin started again goes on from the counters' last readings (D378), which the
         # result in this directory holds when it is this model's. The oldest reading that
@@ -438,14 +449,15 @@ class Cycle:
                 "W_TWIN_CLOCK", f"this machine's clock moved by "
                 f"{(wall - self._last[0]) - (mono - self._last[1]):+.0f} s against its own "
                 f"count of time", "/", hint="cadences are not moved; stamps written from here "
-                                           "on use the new time"))
+                                           "on use the new time",
+                fields={"by": f"{(wall - self._last[0]) - (mono - self._last[1]):+.0f}"}))
         self._last = (wall, mono)
         try:
             seen = self.source.observe()
         except Exception as exc:            # a source's own failure mode: the class only
             seen = {"ready": False, "problems": [problem(
                 "W_TWIN_SOURCE", f"the source could not be read ({type(exc).__name__})", "/",
-                hint="the cycle goes on and reads again at the next step")]}
+                hint="the cycle goes on and reads again at the next step", fields={"case": "unread"})]}
         # What the source mapped since it was last asked, a listen window before the first
         # step included: a view fed from here misses nothing the result's view counts.
         take = getattr(self.source, "take", None)
@@ -458,7 +470,8 @@ class Cycle:
             problems.append(problem(
                 "W_TWIN_FORECAST_BUSY", "the previous forecast is still running: none was "
                 "started", "/forecast", hint="lengthen --forecast-every, or shorten the "
-                                             "horizon or the replications"))
+                                             "horizon or the replications",
+                fields={"case": "busy"}))
         elif due and not seen.get("ready", True):
             self._status = ("skipped", "W_TWIN_SOURCE")     # and tried again at the next step
             self._no_set()
@@ -474,7 +487,7 @@ class Cycle:
             except Exception as exc:        # as a source's: the class only, and the step ends
                 problems.append(problem(
                     "W_TWIN_RECOMMEND", f"the recommendations could not be stepped "
-                    f"({type(exc).__name__})", "/recommend"))
+                    f"({type(exc).__name__})", "/recommend", fields={"case": "step"}))
         if self._refit is not None and self._advisor is not None:
             problems += self._follow(wall)      # a reply read now counts from the next cycle
         doc = self._document(seen, problems + self._standing, wall)
@@ -513,7 +526,8 @@ class Cycle:
                 "E_TWIN_STATE", f"no start could be made from the plant's state "
                 f"({type(exc).__name__})", "/initial_state",
                 hint="see `naga state check` and the coverage table of the state "
-                     "documentation")]
+                     "documentation",
+                fields={"case": "failed"})]
         self._standing = list(found)
         if model is None:
             refusal = [p.code for p in found if p.severity == "error"] or ["E_TWIN_STATE"]
@@ -532,7 +546,8 @@ class Cycle:
                 self._standing.append(problem(
                     "E_TWIN_REFIT", f"the adopted refit does not apply to the started model "
                     f"({type(exc).__name__}): no forecast is made with it", "/refit",
-                    hint="end it with an \"ended\" reply, or start the twin with its model"))
+                    hint="end it with an \"ended\" reply, or start the twin with its model",
+                    fields={"case": "apply"}))
                 self._no_set()
                 return
         self._forecasts += 1
@@ -619,7 +634,8 @@ class Cycle:
             self._standing.append(problem(
                 "E_TWIN_FORECAST", f"the forecast failed ({type(result).__name__})",
                 "/forecast", hint="the last good forecast is kept; run the model from this "
-                                  "state with `naga run --state` to see why"))
+                                  "state with `naga run --state` to see why",
+                fields={"case": "failed"}))
             self._no_set()
             return []
         try:
@@ -631,7 +647,8 @@ class Cycle:
             self._status, self.failure = ("failed", "E_TWIN_FORECAST"), exc
             self._standing.append(problem(
                 "E_TWIN_FORECAST", f"the forecast could not be read ({type(exc).__name__})",
-                "/forecast"))
+                "/forecast",
+                fields={"case": "unread"}))
             self._no_set()
             return []
         self.forecast, self._status = result, ("ok", None)
@@ -647,10 +664,10 @@ class Cycle:
                 self._advisor.none("failed")
                 self._standing.append(problem(
                     "W_TWIN_RECOMMEND", f"the recommendations could not be made "
-                    f"({type(exc).__name__})", "/recommend"))
+                    f"({type(exc).__name__})", "/recommend", fields={"case": "made"}))
         return [problem("W_TWIN_CUT", f"the forecast holds more than {LIMITS['kpis']} KPIs "
                         f"or {LIMITS['series']} compared series: the rest is not in the result",
-                        "/forecast")] if cut else []
+                        "/forecast", fields={"case": "kpis"})] if cut else []
 
     def _save_history(self) -> None:
         # The forecasts and the score that sums them, in one write: neither is ever ahead
@@ -676,7 +693,8 @@ class Cycle:
                 workers=self.workers)
         except Exception as exc:            # as the advisor's: the class only
             return [problem("W_TWIN_REFIT", f"the refit could not be stepped "
-                                            f"({type(exc).__name__})", "/refit")]
+                                            f"({type(exc).__name__})", "/refit",
+                            fields={"case": "step"})]
         if fields is None:
             return []
         from nagasim.live import stamp
@@ -685,7 +703,8 @@ class Cycle:
         ident = self._advisor.propose_refit(fields, wall if made is None else made)
         if ident is None:
             return [problem("W_TWIN_REFIT", "the refit's proposal is no record of format 1: "
-                                            "it is not proposed", "/refit")]
+                                            "it is not proposed", "/refit",
+                            fields={"case": "proposal"})]
         self._refit.named(ident)
         return []
 
@@ -706,7 +725,8 @@ class Cycle:
                         "W_TWIN_REFIT", f"the refit {want['id'][:12]} a reply took is not "
                         f"applied: {why}", "/refit",
                         hint="the --refit file decides what a refit may set; reply \"ended\" "
-                             "to it"))
+                             "to it",
+                        fields={"case": "taken"}))
                 want = None
                 if have is None:
                     return said
@@ -782,7 +802,8 @@ class Cycle:
         if len(problems) > LIMITS["problems"]:
             problems = problems[:LIMITS["problems"] - 1] + [problem(
                 "W_TWIN_CUT", f"{len(problems) - LIMITS['problems'] + 1} more problems are "
-                              f"not in the result", "/problems")]
+                              f"not in the result", "/problems",
+                fields={"case": "problems", "n": len(problems) - LIMITS["problems"] + 1})]
         doc = {"format": FORMAT, "kind": KIND, "cycle": self._n, "written": iso(wall),
                "started": self._born, "cadence": dict(self._cadence),
                # `time_unit` and `epoch` (what model time 0 stands for) turn `at` and a
@@ -793,7 +814,7 @@ class Cycle:
                          "epoch": getattr(self.source, "epoch", None)},
                "at": seen.get("at"), "stamp": seen.get("stamp"),
                "sources": seen.get("sources") or [], "view": seen.get("view"),
-               "problems": [p.as_dict() if isinstance(p, Problem) else p for p in problems],
+               "problems": [_stored(p) if isinstance(p, Problem) else p for p in problems],
                "forecast": forecast, "comparison": self._rows()}
         # Never rows without their basis, nor none without the reason (D294).
         rows = self._scores.rows()
@@ -827,10 +848,10 @@ class Cycle:
             except (TypeError, ValueError):
                 pass                        # not plain data: cut like what is too large
             if doc.pop(key, None) is not None:
-                doc["problems"].append(problem(
+                doc["problems"].append(_stored(problem(
                     "W_TWIN_CUT", f"the result was over {LIMITS['result_bytes']} bytes or "
                     f"held a value that is not plain data: \"{key}\" was left out",
-                    f"/{key}").as_dict())
+                    f"/{key}", fields={"case": "result", "key": key})))
             if key == "view":
                 doc["view"] = None
         return doc
@@ -845,7 +866,8 @@ class Cycle:
             self._carried = [problem(
                 "E_TWIN_OUTPUT", f"{name} could not be written at cycle {self._n} ({exc})",
                 "/", hint="check the result directory: its rights, its free space, and that "
-                          "no reader keeps the file open")]
+                          "no reader keeps the file open",
+                fields={"case": "file", "name": name})]
 
 
 def loop(step, *, every: float, max_cycles: int | None = None, wait=time.sleep,
@@ -991,14 +1013,16 @@ class PlantSource:
                 problems.append(problem(
                     "W_TWIN_SOURCE", f"source '{name}' is down or has not answered yet: the "
                     f"view keeps its last picture and no forecast is started",
-                    f"/data_sources/{name}", hint="the feed connects again by itself"))
+                    f"/data_sources/{name}", hint="the feed connects again by itself",
+                    fields={"case": "down", "source": name}))
             elif self._max_age is not None and row["age"] > self._max_age:
                 ready = False
                 problems.append(problem(
                     "W_TWIN_SOURCE", f"source '{name}' last spoke {row['age']:.0f} s ago, over "
                     f"the {self._max_age:g} s of --max-age: no forecast is started",
                     f"/data_sources/{name}", hint="the view keeps its last picture; a "
-                                                  "forecast starts again when the source speaks"))
+                                                  "forecast starts again when the source speaks",
+                    fields={"case": "silent", "source": name, "age": round(row["age"])}))
         self._timeline.append(events)
         # Kept until `take`: the newest only, for a caller that observes and never takes.
         self._held = (self._held + events)[-_HELD:]
@@ -1006,7 +1030,8 @@ class PlantSource:
             problems.append(problem(
                 "W_TWIN_MODEL_CHANGED", "the model file changed on disk: this twin keeps the "
                 "model it loaded", "/", hint="stop the twin and start it again to use the "
-                                             "new model"))
+                                             "new model",
+                fields={"case": "changed"}))
         # The timeline's clock moves with events; the present is later when the plant is
         # quiet, and nothing has changed in between.
         told = self.mapper.now
@@ -1041,7 +1066,8 @@ class PlantSource:
             problems.append(problem(
                 "W_TWIN_SOURCE", f"{report['observations']} observations, none mapped (no "
                 f"signal's key matches any of them): no forecast is started", "/signals",
-                hint="check the mapping's keys against what the plant sends (naga watch)"))
+                hint="check the mapping's keys against what the plant sends (naga watch)",
+                fields={"case": "unmapped"}))
         # The view keeps its last picture while a source is down, silent past the caller's
         # limit or unread; a picture is not a reading, and none is taken from it (#371).
         return {"at": self._at, "stamp": stamp, "ready": ready, "view": view,
@@ -1083,7 +1109,8 @@ class PlantSource:
                 "E_TWIN_STATE", f"this model cannot be started from plant state yet: "
                 f"{self._kind}", "/initial_state",
                 hint="the twin goes on monitoring; see the coverage table of the state "
-                     "documentation")]
+                     "documentation",
+                fields={"case": "model"})]
         seen = dict(self.mapper.snapshot(), at=self._at)
         doc, found = state.from_plant(self.model, seen, name=self.name or None)
         if any(str(p.path).startswith("/initial_state/fleets/") for p in found):
@@ -1093,7 +1120,8 @@ class PlantSource:
                 "E_TWIN_STATE", "this model cannot be started from plant state yet: fleets "
                 "and vehicles the plant mapping does not observe", "/initial_state",
                 hint="map a \"vehicle\" signal for every vehicle of the fleet; the twin goes "
-                     "on monitoring")]
+                     "on monitoring",
+                fields={"case": "fleets"})]
         model, refused = state.start(self.model, doc, until=self._at + float(horizon))
         if model is not None:
             # A forecast has no warm-up (it would discard the state it starts from); the
@@ -1167,7 +1195,10 @@ def _summary(doc: dict) -> list[str]:
                   in shown["recommend"]["rows"]]
         fold = shown["recommend"]["fold"]       # the KPI line, then effects; ADVICE is the page's
         lines += ["  basis: " + _show(fold[0], 1000)] + ["    " + _show(line, 1000) for line in fold[2:]]
-    return lines + [f"{_show(code)}: {_show(message)}" for _severity, code, message, _hint in shown["problems"]]
+    # The terminal (and an agent) reads the engine's full message, not a screen's plain line.
+    # The problem cell's title is "CODE: message" (D1334).
+    return lines + [_show(cell[-1] if isinstance(cell, list) else cell, 340)
+                    for _severity, cell, _hint in shown["problems"]]
 
 
 def _failed(doc: dict) -> bool:

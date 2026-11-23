@@ -112,6 +112,11 @@ class SimulationContext:
     entity_ids: object = field(default_factory=lambda: itertools.count(1))
     process_list: list = field(default_factory=list)
     signals: dict = field(default_factory=dict)
+    # Item code (D1344, `core/itemlogic.py`): {flattened instance: ItemRuntime}, and the hooks
+    # its watched variables and signals call. Empty for every model without item code.
+    items: dict = field(default_factory=dict)
+    variable_hooks: dict = field(default_factory=dict)
+    signal_hooks: dict = field(default_factory=dict)
     # Model variables, loaded from the layout's "variables" section once per
     # replication (GraphModel.load_from_json); expressions read and Assign writes.
     variables: dict = field(default_factory=dict)
@@ -166,6 +171,16 @@ class SimulationContext:
     fleets: dict = field(default_factory=dict)
     # Automation sub-project 1 (D157): {name: profile record}, read by MOTION.
     motion_profiles: dict = field(default_factory=dict)
+    # ... and {MOTION block name: robotics.moves.CyclePlan}: the robot move times it reads.
+    robot_plans: dict = field(default_factory=dict)
+    # D1346: {name: pallet pattern record}, read by a carrier BATCH with a `pattern`.
+    pallet_patterns: dict = field(default_factory=dict)
+    # ... and {BATCH or SEPARATE name: [robot cycle seconds per slot]}, planned before the run.
+    pallet_cycles: dict = field(default_factory=dict)
+    # ... and {the same name: per slot, ((segment kind, seconds), ...)}: its traced phases.
+    pallet_phases: dict = field(default_factory=dict)
+    # D1343 (part 3): {robot block name: beltpick.BeltMeet}, read by a belt at build.
+    belt_meets: dict = field(default_factory=dict)
     # Phase 15 M5 (D830): {name: zone record}, read by MOTION and tending.
     zones: dict = field(default_factory=dict)
     # Automation sub-project 2 (D165): {name: Charger}, used by battery fleets.
@@ -181,6 +196,17 @@ class SimulationContext:
     # feature free for every other model.
     blocking_nodes: dict = field(default_factory=dict)
     blocking_cycles: list = field(default_factory=list)
+    # Routing holds (conveyor system A7, D1359): {block name: [the start time of each load held
+    # now because no exit of its routing rule is free]}; read by the run-end checks (R35).
+    route_holds: dict = field(default_factory=dict)
+    # R34: {entity id: [callbacks]} of the rules counting that load under way, ended when it
+    # is disposed or batched (`_routing.end_routes`); empty unless a rule counts
+    route_ends: dict = field(default_factory=dict)
+    # Conveyor system A12 (D1373): every routing point and every area link built in the run, for
+    # the `route_holds` and `link_flow` frames and the warm-up reset; a routing point is built
+    # on its first load, an area link with the graph
+    route_points: list = field(default_factory=list)
+    area_links: list = field(default_factory=list)
     # Orders (PHASE4 A3): `orders` is {id: orders.Order}, built once per
     # replication from the "orders" section and already assigned to the CREATE
     # that releases each one; the Order objects carry the run's own counters.
@@ -267,6 +293,14 @@ class SimulationContext:
     # `_total_wait`, and the entity log gains a "Total Wait" column. Off by default, so a run
     # that does not ask keeps its frames (and digests) exactly as they were.
     entity_waits: bool = False
+    # D1371 (`simulation.strict_checks`): a conveyor run guard (`core/conveyor_checks.py`)
+    # stops the run with its code instead of warning; `run_warned` keeps each (block, code)
+    # warned once.
+    strict_checks: bool = False
+    run_warned: set = field(default_factory=set)
+    # D1389: the run-time warnings as Problems, once each by (code, block, case); they leave
+    # the replication with its KPIs (`export.PROBLEMS_KEY`) and reach `Results.run_problems`.
+    run_problems: dict = field(default_factory=dict)
     # Deterministic run mode (PHASE6 W4 P1, ARCHITECTURE D119): every
     # distribution draw becomes its mean (`core/distributions.py`'s `mean()`),
     # DECIDE-by-chance becomes a largest-remainder allocation
@@ -351,6 +385,9 @@ class SimulationContext:
         if event is not None:
             event.succeed()
         self.signals[name] = self.env.event()
+        if self.signal_hooks:
+            for hook in self.signal_hooks.get(name, ()):
+                hook(name)
 
     def wake_power(self) -> None:
         """A resource's or a charger's draw just changed: re-evaluate the flow
@@ -373,6 +410,9 @@ class SimulationContext:
             self.touch(("var", name))
         if name in self.traced_variables:
             self.trace_variable(name)
+        if self.variable_hooks:
+            for hook in self.variable_hooks.get(name, ()):
+                hook(name)
 
     def trace_variable(self, name) -> None:
         value = self.variables.get(name)

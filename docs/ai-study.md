@@ -83,7 +83,8 @@ the same precision with at most half the replications. Then the write-up, the cl
 goals add one modest line saying so. That line is a statistical observation, not a cause, and it never
 reaches the headline. Once an option is recommended, the room's goal chips and the client page's goals
 table show that option's value and verdict, with the Baseline beside it. The answer to the person is the
-option that meets the goals with a clear difference.
+option that meets the goals with a clear difference. When two or more options meet every goal, none
+is put first: the answer names them all and leaves the choice to the decision maker.
 
 ## Who checks the model
 

@@ -3,7 +3,7 @@
 
 # entities
 
-Entity types: shape, colour, optional WIP holding cost.
+Entity types: shape, colour, optional size and WIP holding cost.
 
 In the model file this key holds a list of `entity` entries, each named by its `name`.
 
@@ -28,6 +28,7 @@ An entity type is named by the `e_type` of a CREATE block. A `holding_cost` char
 | `color` | string |  |  |  | The colour the editor draws these entities in, as a hex string such as "#1f77b4". |
 | `icon` | string |  |  |  | Path to an animation icon image. |
 | `graphic` | string |  |  |  | Inline SVG token (24 x 24 artboard), usually copied from a library's entity preset; checked by core/svgsafe before it is drawn. |
+| `size` | object |  |  |  | Item size on a conveyor, in the model's length unit (simulation.length_unit); on a typed belt an item takes ceil((length + gap) / cell) cells. |
 | `holding_cost` | number |  | `0.0` | rate (`holding_cost_time_unit`) | WIP cost per entity per base time unit. |
 | `holding_cost_time_unit` | choice |  | `"base"` |  | Unit `holding_cost` is per. One of `base`, `milliseconds`, `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years`. |
 

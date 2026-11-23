@@ -724,7 +724,8 @@ def _orders(binding: dict, frame: pd.DataFrame, warnings: list | None = None) ->
             f"{', '.join(skipped)} skipped: each names a field of the entity itself or is "
             f"no valid attribute name", "/data_bindings",
             hint="rename it with the binding's map; an attribute is a Python identifier "
-                 "not starting with _"))
+                 "not starting with _",
+            fields={"case": "columns", "binding": binding.get('name', ''), "columns": ', '.join(skipped)}))
     extras = [c for c in extras if str(c) not in skipped]
     entries = []
     for _, row in frame.iterrows():
@@ -897,12 +898,13 @@ def resolve_bindings(layout: dict, base_dir=None, *, network: netguard.NetworkPo
             # All carry (code, message, hint); a refused URL or path reads on
             # the report exactly like any other coded binding failure.
             record.problem = problem(exc.code, f"binding '{record.name}': {exc.message}",
-                                     f"/data_bindings/{len(report.records)}", hint=exc.hint)
+                                     f"/data_bindings/{len(report.records)}", hint=exc.hint,
+                                     fields={"source": record.name})
             log.warning("data binding '%s': %s", record.name, exc.message)
         except Exception as exc:                        # a reader's own failure mode
             record.problem = problem("E_DATA_READ", f"binding '{record.name}': {exc}",
                                      f"/data_bindings/{len(report.records)}",
-                                     hint=_READ_HINT)
+                                     hint=_READ_HINT, fields={"source": record.name})
             log.warning("data binding '%s': %s", record.name, exc)
         report.records.append(record)
 

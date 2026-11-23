@@ -13,6 +13,8 @@ import pytest
 from nagasim import live, netguard, outbox, plcwrite, recommend
 from nagasim.live import iso
 
+from _astscan import imports_module
+
 KPI = "timeseries/block/p/out/max"
 TAG = "line.cycle"
 PATH = "blocks.p.params.dist_params.value"
@@ -359,55 +361,6 @@ def test_every_reader_refuses_a_write_connection(fake, tmp_path):
         netguard.load_connections(connections)
 
 
-# Imports by name (`importlib.import_module`, `__import__`) whose name is not a literal,
-# reviewed one by one: {(folder/file, the name expression's source): why it may stay}.
-_DYNAMIC_IMPORTS_REVIEWED = {
-    ("product/cli.py", 'f"product.{module}"'): "the person's command line, product commands",
-    ("product/cli.py", 'f"nagasim.{module}"'): "the person's command line: `product "
-                                                 "plc-write` is a person's command, as naga's",
-    ("product/callerpolicy.py", "name"): "the stem of the .py file a person picked in a dialog "
-                                            "(D1123); never a model, storyboard or tool argument",
-    ("product/plugin3d.py", 'f"{NAME}.{name}"'): "a module of the 3D rendering plugin, named by core code "
-                                                     "(D1308); never a model, storyboard or tool argument",
-    ("product/plugin3d.py", "NAME"): "the 3D rendering plugin's fixed package name (D1308)",
-    ("product/film.py", "logic"): "the caller's --logic / make(logic=) module, already imported "
-                                     "by run_model; hashed for the cache key (D1124)",
-}
-
-
-def _imports_plcwrite(path: Path) -> bool:
-    """Whether *path* imports `nagasim.plcwrite`, by an AST walk (a word in a comment or a
-    string is not an import; nothing is imported). An import by name counts too: one whose
-    literal name ends in plcwrite, or whose name is not a literal at all, unless that call
-    is in `_DYNAMIC_IMPORTS_REVIEWED` (Phase 15 FA)."""
-    import ast
-
-    source = path.read_text("utf-8")
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import) and any(a.name.split(".")[-1] == "plcwrite" for a in node.names):
-            return True
-        if isinstance(node, ast.ImportFrom) and ((node.module or "").split(".")[-1] == "plcwrite"
-                                                 or any(a.name == "plcwrite" for a in node.names)):
-            return True
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-        if called not in ("import_module", "__import__"):
-            continue
-        name = node.args[0] if node.args else next(
-            (k.value for k in node.keywords if k.arg == "name"), None)
-        if isinstance(name, ast.Constant) and isinstance(name.value, str):
-            if name.value.split(".")[-1] == "plcwrite":
-                return True
-        else:
-            where = f"{path.parent.name}/{path.name}"
-            if (where, ast.get_source_segment(source, name) if name else "") \
-                    not in _DYNAMIC_IMPORTS_REVIEWED:
-                return True
-    return False
-
-
 def test_the_scan_sees_an_import_by_name(tmp_path):
     """An import by name reaches the writer when it names it, or when its name is computed
     (it could be anything); a literal other name does not."""
@@ -421,7 +374,7 @@ def test_the_scan_sees_an_import_by_name(tmp_path):
     for text, reaches in cases.items():
         probe = tmp_path / "probe.py"
         probe.write_text(text, encoding="utf-8")
-        assert _imports_plcwrite(probe) is reaches, text
+        assert imports_module(probe, "plcwrite") is reaches, text
 
 
 def test_the_writer_sends_only_codes_6_and_16_and_the_reader_only_reads(fake, tmp_path):
@@ -438,7 +391,7 @@ def test_the_writer_sends_only_codes_6_and_16_and_the_reader_only_reads(fake, tm
     # What the PLC was sent: reads (3) and the two write codes, one of each kind of register.
     assert set(server.seen) == {3, 6, 16}
     assert set(netguard.MODBUS_KINDS.values()) == {1, 2, 3, 4}
-    assert not _imports_plcwrite(Path(modbus.__file__))
+    assert not imports_module(Path(modbus.__file__), "plcwrite")
 
 
 def test_no_agent_tool_reaches_the_writer(tmp_path):
@@ -448,11 +401,11 @@ def test_no_agent_tool_reaches_the_writer(tmp_path):
     root = Path(plcwrite.__file__).parents[1]
     surfaces = [*(root / "nagasim" / "agent_tools").rglob("*.py"), root / "nagasim" / "mcp_server.py",
                 root / "nagasim" / "assistant.py", *(root / "product").rglob("*.py")]
-    reached = [p.name for p in surfaces if p.exists() and _imports_plcwrite(p)]
+    reached = [p.name for p in surfaces if p.exists() and imports_module(p, "plcwrite")]
     assert reached == []
     probe = tmp_path / "probe.py"                 # the walk finds an import when there is one
     probe.write_text("from nagasim import plcwrite" + chr(10), encoding="utf-8")
-    assert _imports_plcwrite(probe)
+    assert imports_module(probe, "plcwrite")
     for tool in T.tool_schemas():
         names = set(tool["input_schema"].get("properties") or {})
         assert not names & {"setpoints", "setpoint", "register", "write"}, tool["name"]

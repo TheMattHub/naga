@@ -11,6 +11,8 @@ With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arriv
 
 With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard.
 
+With a `pattern` too, the carrier is a pallet: each member takes the next slot of that pallet pattern, and the pallet closes when its slots are full or the next member would pass its weight limit (that member waits for the next pallet). The members carry `slot` and `layer`; the pallet carries `items`, `layers`, `load_weight`, `load_height` and `pattern`.
+
 Family: group. Python builder: `m.batch(...)`.
 
 ## Typical uses
@@ -44,6 +46,13 @@ Waiting entities show in the `store_summary` frame, with their average size and 
 | `carrier_capacity` | str | `''` |  | count |  | Carrier mode: how many members a carrier takes, e.g. "entity.capacity", evaluated for each carrier when it arrives. Empty = batch_size. |
 | `member_time` | str | `''` |  | time | `member_time_unit` | Carrier mode: time to load one member, evaluated in the member's own scope when its load starts. Empty = loading takes no time. |
 | `member_time_unit` | str | `'base'` |  |  |  | Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days. |
+| `pattern` | str | `''` |  |  |  | Carrier mode: the carrier is a pallet loaded by this record of "pallet_patterns", named outright ("Euro") or chosen per pallet by an expression in the carrier's scope. Each member takes the next slot; the pallet closes at the pattern's limits, and carrier_capacity is not used. Empty = no pattern. |
+| `place_per` | str | `'item'` |  |  |  | With a pattern: "item" loads one member per member_time; "layer" waits for a whole layer and places it in one member_time (a layer-forming palletizer). |
+| `robot` | str | `''` |  |  |  | Name of a record in "robots": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time. |
+| `robot_at` | list | `[0, 0, 0]` |  |  |  | Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0. |
+| `targets` | dict | `{}` |  |  |  | The robot's named targets, as on MOTION; "slot" (the item's place on the pallet) and "slot_above" (approach higher) are given per slot and are not defined here. |
+| `segments` | list | `[]` |  |  |  | The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight. |
+| `approach` | str | `''` |  | length |  | How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m. |
 
 ## Statistics
 
@@ -63,6 +72,9 @@ A check of the model reports these about this block:
 | `E_BATCH_CARRIER_CAPACITY` | A carrier BATCH's carrier_capacity came out below 0 for a carrier (a run-time error). |
 | `E_BATCH_MEMBER_TIME` | A BATCH has a member_time or a carrier_capacity but no carrier_type. |
 | `E_INITIAL_CARRIER` | An initial_state entry of the carrier type waits at a carrier BATCH: its cut-off cannot be put back. |
+| `E_PALLET_UNKNOWN` | A carrier BATCH names a pallet pattern the model does not declare, or a robot palletizes by a pattern chosen per pallet, which cannot be planned before the run. |
+| `E_ROBOT_TARGET` | A robot move names no target of its block, a target is not a joint vector, a frame or a point on a block, or a pattern BATCH or SEPARATE defines the per-slot target slot or slot_above itself. |
+| `E_ROBOT_UNKNOWN` | A MOTION block, or a BATCH or SEPARATE that works by a pallet pattern, names a robot the model does not declare, or has robot moves and names none. |
 
 ## Example
 
@@ -84,7 +96,7 @@ print(int(results.kpi("system/Total Entities Completed")), "completed: 30 parts 
 
 ## Used in
 
-Bundled models: [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Automation floor (robot cells, AMR, palletiser)](../../gallery/manufacturing.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md), [HOLD on a store's contents](../../gallery/teaching.md).
+Bundled models: [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Automation floor (robot cells, AMR, palletiser)](../../gallery/manufacturing.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md), [Palletizing line](../../gallery/manufacturing.md), [HOLD on a store's contents](../../gallery/teaching.md).
 
 Guides: [Digital twin](../../digital-twin.md), [How do I pack parts on a pallet and unpack them later?](../../how-to/recipes/unpack-pallet.md), [Batching and matching](../../modelling-guide/batching-matching.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md) and 8 more.
 

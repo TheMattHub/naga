@@ -99,6 +99,95 @@ The zone has these limits:
 - Only straight `zones` records are drawn, and only in the 2D layout view.
 - The Automation library's Tended machine always tends with `hrc` `none`.
 
+## Robot moves
+
+A MOTION block can run a real robot instead of a profile speed. Name one of the
+model's `robots` records in the block's `robot` parameter. Its `ptp` and `lin`
+segments then take their times from the robot's joints, axis by axis. Plain `move`
+segments keep their meaning, so a block can mix both kinds.
+
+The `robots` record describes the hardware once, and any number of blocks can use it:
+
+| Field | Meaning |
+|---|---|
+| `name` | unique name, picked by a block's `robot` |
+| `structure` | `serial6` (six-axis arm), `palletizer4`, `scara4`, `delta`, `gantry`, `serial7`, or `chain` for any serial joint chain |
+| `params` | the structure's dimensions in metres (not for `chain`) |
+| `joints` | for `chain` only: each joint's `name`, `type` (`revolute` or `prismatic`), `origin` and `axis` at the zero pose, Z up |
+| `axes` | one entry per driven axis: `name`, `range` [low, high] in degrees (metres for a sliding axis), `speed` per second, `accel` per second squared |
+| `tool` | the tool point from the flange: `xyz` in metres, `rpy_deg` in degrees |
+| `payload_max`, `payload_derate` | kg, and the speed fraction at `payload_max`, as on a profile |
+| `tcp_speed`, `tcp_accel` | optional caps on the tool's own speed along a `lin` move |
+| `reach_m`, `approximate`, `source` | the datasheet's reach, and whether the numbers are estimates |
+
+A robot segment is `{"kind": "ptp" | "lin", "to": <target>}`, with an optional
+`payload_kg` that derates every axis. `ptp` moves all axes together so that they
+finish at the same moment, and the slowest axis sets the time. `lin` keeps the
+tool on a straight line, so it is slower near awkward poses. Without a `time` the
+segment is a Move and takes the shortest time the limits allow; with a `time`, a
+number in the block's `time_unit`, it is a MoveOverTime that lasts exactly that long. A MoveOverTime shorter
+than the limits allow is a problem, never silently stretched.
+
+Targets are named on the block, in its `targets` parameter, because they belong to
+one cell while the robot record is reusable. A target is one of four forms:
+
+- `{"joints": [...]}`: one value per axis, in degrees (metres for a sliding axis);
+- `{"xyz": [x, y, z]}`: a point of the floor plan in metres, with optional
+  `yaw_deg` or `rpy_deg`; the tool points down by default;
+- `{"on": "<block>"}`: a point on another block, `at` its `centre`, `start` or
+  `end`, moved by an `offset` in the block's own frame (a pallet slot, say).
+- `{"belt": "<CONVEYOR>", "divert": k, "z": metres}`: where the robot meets a part on a moving
+  belt, solved for you, so the first segment is a `ptp` to it. The belt's divert k has
+  `"intercept": true`, and its `on_late` says whether a part waits for a busy robot (`wait`),
+  rides on (`pass`) or is judged by an expression.
+
+The robot stands where its block stands on the floor plan, and a frame target is
+mapped into the robot's own frame from there. The times are fixed numbers, so they
+draw nothing from the block's random stream and a model's other results do not
+move. Every cycle starts from the last target of the cycle before, so every cycle
+takes the same time.
+
+This cell has two `ptp` moves of 90 degrees on axis 1, each 1.15 s, and a pick
+and a place of 1 s each:
+
+```python
+from nagasim.core import motion
+from nagasim.core.robotics.moves import plan_cycle
+from nagasim.core.robotics.records import robot_from_record
+
+arm = {"name": "Arm", "structure": "serial6",
+       "params": {"base_height": 0.78, "shoulder_offset": 0.32, "upper_arm": 1.125,
+                  "elbow_offset": 0.2, "forearm": 1.1425, "wrist_flange": 0.2},
+       "axes": [{"name": f"a{i + 1}", "range": r, "speed": s, "accel": 4 * s}
+                for i, (r, s) in enumerate([([-170, 170], 100), ([-65, 85], 90), ([-180, 70], 90),
+                                            ([-300, 300], 170), ([-130, 130], 120), ([-360, 360], 190)])],
+       "tool": {"xyz": [0, 0, 0.2], "rpy_deg": [0, 0, 0]}, "payload_max": 175}
+targets = {"above_pick": {"joints": [90, 0, 0, 0, 30, 0]},
+           "above_place": {"joints": [0, 0, 0, 0, 30, 0]}}
+segments = [{"kind": "ptp", "to": "above_pick"}, {"kind": "pick", "time": 1.0},
+            {"kind": "ptp", "to": "above_place"}, {"kind": "place", "time": 1.0}]
+plan = plan_cycle(robot_from_record(arm), targets, segments)     # the moves, as the run plans them
+cycle = motion.nominal_cycle_seconds(segments, None, "seconds", "seconds", plan=plan)
+print(f"cycle {cycle:.2f} s")      # cycle 4.30 s
+```
+
+Every robot problem is found when the model is checked, before the run starts:
+
+| Code | What it means |
+|---|---|
+| `E_ROBOT` | a record is incomplete: a name, a structure, a dimension or an axis's range, speed or acceleration |
+| `E_ROBOT_UNKNOWN` | a block names a robot the model lacks, or has robot moves and names none |
+| `E_ROBOT_TARGET` | a move names a target the block lacks, or a target has none of the three forms |
+| `E_ROBOT_REACH` | a target is out of reach or outside an axis range |
+| `E_ROBOT_SINGULAR` | a `lin` move passes a pose where the joints would have to turn without limit |
+| `E_ROBOT_LIN` | a `lin` move leaves the reach or changes the arm's configuration on the way |
+| `E_ROBOT_MOVE_TIME` | a MoveOverTime is shorter than the limits allow |
+
+Robot moves model times, not forces: there are no torques, and the payload only
+slows the axes as above. `hrc` works on `move` segments only, so a block with
+robot moves and `hrc` set is refused. Model a collaborative robot's slowdown with
+plain `move` segments instead.
+
 ## Results
 
 The `motion_summary` frame gives, per block and

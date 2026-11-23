@@ -49,7 +49,7 @@ A check of the model reports these about this block:
 |---|---|
 | `E_BUFFER_CAPACITY` | A BUFFER's capacity, or a SEIZE/PROCESS queue_capacity, is negative. |
 | `E_BUFFER_LEVEL` | A BUFFER's "level" names a level the model does not declare. |
-| `E_CONVEYOR_DIVERT` | A CONVEYOR divert is not {at, condition, time?, when_full?}, its `at` is off the belt or on another point, its condition is empty, its time is not a number >= 0 or an expression, its when_full is not wait/pass, the belt has fewer links than 1 + diverts, or a "pass" divert's link does not go straight to a CONVEYOR, BUFFER or queue_capacity station. |
+| `E_CONVEYOR_DIVERT` | A CONVEYOR divert is not {at, condition, time?, when_full?}, its `at` is off the belt or on another point, its condition is empty, its time is not a number >= 0 or an expression, its when_full is not wait/pass, the belt has fewer links than 1 + diverts, a "pass" divert's link does not go straight to a CONVEYOR, BUFFER or queue_capacity station, or an intercept divert has a push time or when_full, a bad on_late, or a link that is not the robot picking from it, a divert's side is not left or right, or a link out of the belt names an exit that is not out or d<k>, or a routing rule is not usable, is not on the first divert of its rule_group along the belt, has an exit count other than its group's diverts, or sits beside a condition, a robot pick or when_full "pass", or a rule exit names a target piece that is not a CONVEYOR its loads reach; or a CONVEYOR_TRANSFER's links do not match its exits one to one (a port that is not one of its exits, or named twice), or its routing rule is not usable. |
 | `E_CONVEYOR_WRITE` | Something would write a conveyor stock directly (a TRANSFER block or agent transfer action, a BUFFER's mirror level, initial_state.levels, or a subscripted conveyor), bypassing its slat model. |
 | `E_HOLD_SPACE_TARGET` | hold_until_space is set but the block it reserves in (space_of, or the first link's target) is not a BUFFER with capacity > 0 or a SEIZE/PROCESS with queue_capacity > 0. |
 | `E_INITIAL_QUEUE_CAPACITY` | More entities wait at a block, or sit in a BUFFER, than it has places. |
@@ -86,4 +86,4 @@ Guides: [Finite buffers and blocking after service](../../modelling-guide/finite
 ## See also
 
 - [All blocks](index.md), [KPI reference](../kpis.md), [Model file keys](../schema.md), [Model file format](../../model-file-format.md)
-- Same family (move): [CONVEYOR](conveyor.md), [STATION](station.md), [TRANSFER](transfer.md), [TRANSPORT](transport.md)
+- Same family (move): [CONVEYOR](conveyor.md), [CONVEYOR_TRANSFER](conveyor-transfer.md), [STATION](station.md), [TRANSFER](transfer.md), [TRANSPORT](transport.md)

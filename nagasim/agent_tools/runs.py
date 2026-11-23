@@ -95,7 +95,7 @@ def propose_plugin_folder(model: str, folder: str) -> dict:
 @tool(returns={
     "model": str, "replications": int, "system": dict, "resources": dict, "user_stats": dict,
     "frames": list, "laws": dict, "entities": dict, "levels": dict, "queues": dict,
-    "bindings": dict, "agents": dict})
+    "bindings": dict, "agents": dict, "problems": list})
 def run_model(model: str, replications: int | None = None, run_length: float | None = None,
               warmup: float | None = None, seed: int = 0, bind_data: bool = False,
               max_seconds: float | None = None) -> dict:
@@ -121,7 +121,9 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     its numbers cannot be read at face value. Only when the model has them: "entities" (per
     entity type, when there are several: Avg Time, Total Completed), "levels" (Average, Final,
     Time Empty %, Time Full %), "queues" (per block: Balked, Reneged) and "agents" (per
-    population/state: Avg Count), in the same {mean, ci_half_width} form.
+    population/state: Avg Count), in the same {mean, ci_half_width} form. "problems" is present
+    only when the run raised warnings while running (a part handed to nothing, a part leaving by
+    an exit its rule would not choose, a hold still open at the end): code, message, hint, block.
     """
     ws = workspace()
     doc = ws.document(model)
@@ -144,6 +146,8 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     digest.update({"model": model, "frames": sorted(results), "laws": _run_laws(layout, results, warmup)})
     if bind_data and (bound := _binding_problems(results)):
         digest["bindings"] = bound
+    if results.run_problems:         # D1389: only when the run raised some, so no digest grows
+        digest["problems"] = [p.as_dict() for p in results.run_problems]
     note_asked(model, {"tool": "run_model", "warnings": [{"name": c["name"], "why": c["why"]}
                                                          for c in digest["laws"]["partial"]]})
     return digest
@@ -178,7 +182,10 @@ def _run_laws(layout: dict, results, warmup: float | None = None) -> dict:
 
 _document_args("get_kpi_table", model="Workspace name of a model that has been run.",
                frame="Which frame: system, resource_summary, entity_summary, user_summary, "
-                     "store_summary, entity_log, resource_log, store_log or timeseries.",
+                     "store_summary, entity_log, resource_log, store_log, timeseries, or "
+                     "any other name the run's `frames` lists (a conveyor line adds "
+                     "conveyor_flow, conveyor_zones, transfer_summary, route_holds, "
+                     "link_flow).",
                offset="Rows to skip.",
                limit="Rows to return (at most 200).")
 

@@ -23,13 +23,14 @@ it and how (D199). Nothing here reads a file, opens a socket or is steered by a 
 from __future__ import annotations
 
 import logging
+import time
 from collections import deque
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from nagasim import pagefmt, pagetext, player
-from nagasim.core import tape
+from nagasim.core import plainlines, tape
 from nagasim.core.playback import Timeline
 from nagasim.core.timeunits import UNITS
 from nagasim.core.utils import is_finite_number
@@ -124,6 +125,16 @@ def _clock(value) -> str:
     return "-" if _number(value) is None else f"{round(value, 2):g}"
 
 
+def date_cell(full) -> list | None:
+    """An event's date as a table cell: [the local clock (`pagetext.clock`, the date in front
+    when not today), the stamp as written] for its title (#1962); a stamp nobody can read is
+    shown as written; None for no date."""
+    if not full:
+        return None
+    moment = stamp(str(full))
+    return [str(full) if moment is None else pagetext.clock(moment), str(full)]
+
+
 def _dated(doc: dict) -> bool:
     """Whether the plant of this result has dates (D576): from its epoch, else its clock."""
     model = _table(doc.get("model"))
@@ -138,15 +149,28 @@ def _say(words: dict, key: str, **values) -> str:
     return pagetext.say(words, key, **values)
 
 
-def _lost_line(words: dict, sources: list) -> str | None:
+def _lost_line(words: dict, sources: list, written: str) -> str | None:
     """#1908: the one sentence for a lost connection, or None while every source answers. It is
-    the page's largest text, so a loss of data is the first thing a reader sees."""
+    the page's largest text, so a loss of data is the first thing a reader sees. D1333: it says
+    when the data was last received (the result's stamp less the oldest age), a fixed time."""
     down = [row for row in sources if row.get("state") == "down"]
     if not down:
         return None
-    age = max((_number(row.get("age")) or 0 for row in down), default=0)
-    return _say(words, "monitor.lost", names=", ".join(_text(row.get("name")) for row in down),
-                age=f"{round(age / 60)} min" if age >= 120 else f"{round(age)} s")
+    names = ", ".join(_text(row.get("name")) for row in down)
+    ages = [_number(row.get("age")) for row in down]
+    if any(age is None for age in ages):        # a source never read: no time is true
+        return _say(words, "monitor.lost_never", names=names)
+    now = stamp(written)
+    now = time.time() if now is None else now
+    # The date shows when the data is not from today (the reader's day, not the result's).
+    return _say(words, "monitor.lost", names=names, at=pagetext.clock(now - max(ages)))
+
+
+def _problem_cell(found: dict):
+    """A problem's cell: its plain line, with the code and the engine's message as the title
+    ([text, title], as the page's cells read); the table has no code column (D1334)."""
+    code, message = _text(found.get("code")), _text(found.get("message"))
+    return [_text(plainlines.plain(found)), f"{code}: {message}" if code else message]
 
 
 def _n(text: str, words: dict) -> str:
@@ -172,7 +196,7 @@ def _scores(doc: dict, unit: str, words: dict = _EN) -> dict:
                 "rows": [], "more": 0}
     first, last = _number(basis.get("first")), _number(basis.get("last"))
     counts = {key: _n(_g(basis.get(key)), words) for key in ("forecasts", "points", "missed", "lost")}
-    lines = [_say(words, "twin.score_basis", since=_text(basis.get("since")) or "?", **counts)
+    lines = [_say(words, "twin.score_basis", since=(date_cell(_text(basis.get("since"))) or ["?"])[0], **counts)
              + ("" if first is None or last is None
                 else _say(words, "twin.score_span", first=_n(f"{first:g}", words),
                           last=f"{_n(f'{last:g}', words)} {unit}".rstrip())) + ".", words["twin.scored"]]
@@ -206,7 +230,7 @@ def _alerts(doc: dict, words: dict = _EN) -> dict | None:
     if len(rows) > _ALERTS:
         lines.append(_say(words, "twin.more_alerts", n=len(rows) - _ALERTS))
     lines += [_say(words, "twin.alert_basis", points=_n(_g(basis.get("points")), words),
-                   since=_text(basis.get("since")) or "?", raised=_n(_g(basis.get("raised")), words))
+                   since=(date_cell(_text(basis.get("since"))) or ["?"])[0], raised=_n(_g(basis.get("raised")), words))
               + (_say(words, "twin.alert_flat", flat=_n(_g(basis.get("flat")), words))
                  if _number(basis.get("flat")) else "") + ".", words["twin.alerted"]]
     return {"lines": lines, "alerting": min(len(rows), _ALERTS)}
@@ -391,7 +415,11 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
     model, view, forecast = _table(doc.get("model")), _table(doc.get("view")), _table(doc.get("forecast"))
     unit = pagetext.unit(_text(model.get("time_unit")), words)
     problems = _rows(doc.get("problems"))
-    date = _text(doc.get("stamp")) if _dated(doc) else words["monitor.no_date"]
+    # The plant's date as a local clock, like the lost line beside it (D1333); its own stamp
+    # is the head's title. A stamp nobody can read is shown as written.
+    full = _text(doc.get("stamp")) if _dated(doc) else ""
+    moment = stamp(full) if full else None
+    date = (full if moment is None else pagetext.clock(moment)) if full else words["monitor.no_date"]
     head = (f"{words['monitor.plant_time']} {pagetext.number(_clock(doc.get('at')), words)} {unit}".rstrip()
             + (f" ({date})" if date else "") + f"; {words['monitor.cycle']} {_text(doc.get('cycle'))}")
     status, reason = _text(forecast.get("status")) or "none", _text(forecast.get("reason"))
@@ -402,7 +430,7 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
     elif status == "running":
         lines.append(words["twin.running"])
     elif status in _WHY:
-        why = [_text(p.get("message")) for p in problems
+        why = [_text(plainlines.plain(p)) for p in problems
                if reason and p.get("code") == reason] or [reason or words["twin.no_reason"]]
         lead = words["twin.limit" if reason == "E_TWIN_STATE" else f"twin.why_{status}"]
         lines += [lead + text for text in why]
@@ -412,7 +440,7 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
         lines.append(
             ("" if status == "ok" else words["twin.shown_last"])
             + _say(words, "twin.from", t=span("from"))
-            + (f" ({_text(forecast.get('stamp'))})" if forecast.get("stamp") and _dated(doc) else "")
+            + (f" ({date_cell(_text(forecast.get('stamp')))[0]})" if forecast.get("stamp") and _dated(doc) else "")
             + _say(words, "twin.over", n=_n(_g(forecast.get("replications")), words), horizon=span("horizon"))
             + _say(words, "twin.seed", seed=_n(_g(forecast.get("seed")), words),
                    state=_text(forecast.get("state"))[:12]))
@@ -441,17 +469,17 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
         words["monitor.scheduled"] if every is None
         else pagetext.say(words, "monitor.watches", every=shown_every))
     return {
-        "head": head, "written": written, "started": _text(doc.get("started")), "every": every,
+        "head": head, "stamp": full, "written": written, "started": _text(doc.get("started")), "every": every,
         "state": {"fresh": fresh, "stale": None if every is None
                   else pagetext.say(words, "monitor.stale", every=shown_every)},
         "notes": [words["twin.approximate"]] if view.get("approximate") or forecast.get("approximate") else [],
-        "lost": _lost_line(words, _rows(doc.get("sources"))),
+        "lost": _lost_line(words, _rows(doc.get("sources")), written),
         "sources": [[_text(row.get("name")), _worded(words, "twin.state_", row.get("state")),
                      _number(row.get("age")),
                      _number(row.get("lost")), _number(row.get("gaps"))]
                     for row in _rows(doc.get("sources"))],
-        "problems": [[_worded(words, "twin.severity_", p.get("severity")), _text(p.get("code")),
-                      _text(p.get("message")),
+        # D1332: the code's plain line, with the engine's message as the cell's title.
+        "problems": [[_worded(words, "twin.severity_", p.get("severity")), _problem_cell(p),
                       _text(p.get("hint"))] for p in problems],
         # What the plant counted (D288): block, total, since (model time), resets.
         "counters": [[_text(name), _number(said.get("total")), _number(said.get("since")),
@@ -465,6 +493,9 @@ def summary(doc, setpoints=None, language: str | None = None) -> dict:
         "recommend": _recommend(doc, setpoints),
         "forecast": {
             "status": status, "lines": lines,
+            # How to read the lines (the last of them, when there is evidence): a page shows it
+            # on hover over the line before it (D1331).
+            "about": words["twin.in_distribution"] if points or compared else "",
             # S4-09: a row reads by its label (`pagefmt.kpi_label`), its key the cell's title; the
             # bookkeeping rows (the state the run started from, a cost of zero) are left out.
             "kpis": [[pagefmt.kpi_label(_text(k.get("kpi"))), _number(k.get("mean")), _number(k.get("q05")),
@@ -529,7 +560,7 @@ def _folded(events) -> list:
 
 class Log:
     """The event lines of one twin, oldest first: `rows` is `[t, stamp or None, text]`, at
-    most `KEPT`; `more` counts what a step had over `PER_STEP`."""
+    most `KEPT` (a problem's text is `[plain line, "CODE: message"]`, a cell and its title); `more` counts what a step had over `PER_STEP`."""
 
     def __init__(self, language: str | None = None):
         self._words = pagetext.table(language)  # the lines' language (#1762); English by default
@@ -567,7 +598,8 @@ class Log:
         sources = {_text(row.get("name")): _text(row.get("state")) for row in _rows(doc.get("sources"))}
         forecast = _table(doc.get("forecast"))
         status = (_text(forecast.get("status")), _text(forecast.get("reason")))
-        codes = {(_text(p.get("code")), _text(p.get("message"))) for p in _rows(doc.get("problems"))}
+        problems = {(_text(p.get("code")), _text(p.get("message"))): p for p in _rows(doc.get("problems"))}
+        codes = set(problems)
         was_sources, was_status, was_codes = self._was
         words = self._words
 
@@ -577,13 +609,17 @@ class Log:
                else _say(words, "twin.source_changed", name=name, was=shown(was_sources[name]), state=shown(state))
                for name, state in sources.items() if was_sources.get(name) != state]
         if status != was_status and status[0]:
-            own.append(_say(words, "twin.forecast_event", status=_worded(words, "twin.status_", status[0]))
-                       + (f" ({status[1]})" if status[1] else ""))
+            said = _say(words, "twin.forecast_event", status=_worded(words, "twin.status_", status[0]))
+            # D1334: the reason's code is the line's title, not its text.
+            own.append([said, f"{said} ({status[1]})"] if status[1] else said)
         seen = {code for code, _message in was_codes}
-        own += [f"{code}: {message}" for code, message in sorted(codes) if code not in seen]
+        # D1332: a problem reads as its code's plain line, "CODE: message" its title.
+        own += [[_text(plainlines.plain(problems[key])), f"{key[0]}: {key[1]}"]
+                for key in sorted(codes) if key[0] not in seen]
         at = _number(doc.get("at"))
         self.rows.extend([at, _text(doc.get("stamp")) or None if self.dated else None,
-                          text[:_TEXT]] for text in own[:PER_STEP])
+                          [text[0][:_TEXT], text[1][:_TEXT]] if isinstance(text, list) else text[:_TEXT]]
+                         for text in own[:PER_STEP])
         self._was = (sources, status, codes)
 
 
@@ -653,6 +689,15 @@ _SCRIPT = """/* The panel of a twin's monitor: it shows the summary and the even
 function monitor(m, el, add, clear) {
   var s = m.summary, f = s.forecast, age = (Date.now() - Date.parse(s.written)) / 1000;
   var old = s.state.stale !== null && age > 2 * s.every;
+  /* D1331: what stays on the page is the first sentence (or clause before a ";"); the whole
+     text is the line's title, read on hover. */
+  function brief(box, text) {
+    var cut = text.search(/[.;] (?=\\S)/);
+    box.textContent = cut > 0 ? text.slice(0, cut + 1).replace(/;$/, "") : text;
+    box.title = text;
+    return box;
+  }
+  function say(box, text, cls) { return brief(add("p", box, "", cls), text); }
   function rows(id, head, list, empty, cells) {
     var table = el(id), line;
     clear(table);
@@ -684,6 +729,7 @@ function monitor(m, el, add, clear) {
   el("run-h").textContent = tr("monitor.now");
   el("run-box").open = true;           /* the present is what this page is for */
   el("m-head").textContent = s.head;
+  el("m-head").title = s.stamp;
   el("m-lost").hidden = !s.lost;
   el("m-lost").textContent = s.lost || "";
   el("d-m-kpis").style.display = f.kpis.length ? "" : "none";
@@ -693,20 +739,24 @@ function monitor(m, el, add, clear) {
   fold("d-m-events", s.problems.length > 0 || !!(s.alerts && s.alerts.alerting > 0));
   /* The sentence is the summary's; only the age is worked out here, by this clock. */
   if (old) { el("m-state").className = "stale"; }
-  el("m-state").textContent = (old ? s.state.stale : s.state.fresh).replace(
-    "{age}", isFinite(age) ? String(Math.round(age)) : "?") + " " + m.tail;
+  brief(el("m-state"), (old ? s.state.stale : s.state.fresh).replace(
+    "{age}", isFinite(age) ? String(Math.round(age)) : "?") + " " + m.tail);
   clear(el("m-notes"));
-  s.notes.forEach(function (note) { add("p", el("m-notes"), note, "warn"); });
+  s.notes.forEach(function (note) { say(el("m-notes"), note, "warn"); });
   rows("m-sources", [tr("monitor.col_source"), tr("monitor.col_state"), tr("monitor.col_age"),
                       tr("monitor.col_lost"), tr("monitor.col_gaps")], s.sources,
        tr("monitor.no_sources"), function (r) {
     return [r[0], r[1], fmt(r[2]), fmt(r[3]), fmt(r[4])];
   });
-  rows("m-problems", [tr("monitor.col_severity"), tr("monitor.col_code"), tr("monitor.col_problem"),
+  rows("m-problems", [tr("monitor.col_severity"), tr("monitor.col_problem"),
                       tr("monitor.col_hint")], s.problems, tr("monitor.no_problems"),
        function (r) { return r; });
   clear(el("m-forecast"));
-  f.lines.forEach(function (line, index) { add("p", el("m-forecast"), line, index ? "note" : ""); });
+  var said = null;
+  f.lines.forEach(function (line, index) {
+    if (said && line === f.about) { said.title += "\\n" + line; return; }
+    said = say(el("m-forecast"), line, index ? "note" : "");
+  });
   if (f.more) { add("p", el("m-forecast"), tr("monitor.more_points", {n: f.more}), "note"); }
   clear(el("m-kpis"));
   if (f.kpis.length) {
@@ -729,7 +779,7 @@ function monitor(m, el, add, clear) {
   clear(el("m-advice-fold"));
   clear(el("m-advice-rows"));
   if (s.recommend) {
-    s.recommend.lead.forEach(function (line) { add("p", el("m-advice"), line, ""); });
+    s.recommend.lead.forEach(function (line) { say(el("m-advice"), line, ""); });     /* #1964 */
     s.recommend.fold.forEach(function (line) { add("p", el("m-advice-fold"), line, "note"); });
     if (s.recommend.more) { add("p", el("m-advice-fold"), tr("monitor.more_listed", {n: s.recommend.more}), "note"); }
     if (s.recommend.rows.length) {
@@ -745,9 +795,12 @@ function monitor(m, el, add, clear) {
   el("m-alerts-box").style.display = s.alerts ? "" : "none";
   clear(el("m-alerts"));
   if (s.alerts) {
-    s.alerts.lines.forEach(function (line, index) {
-      add("p", el("m-alerts"), line, index < s.alerts.alerting ? "warn" : "note");
+    /* The last line says what an alert is: the title of the basis line before it. */
+    var about = s.alerts.lines[s.alerts.lines.length - 1], last = null;
+    s.alerts.lines.slice(0, -1).forEach(function (line, index) {
+      last = say(el("m-alerts"), line, index < s.alerts.alerting ? "warn" : "note");
     });
+    if (last) { last.title += "\\n" + about; }
   }
   el("m-refit-box").style.display = s.refit ? "" : "none";
   clear(el("m-refit"));
@@ -757,7 +810,7 @@ function monitor(m, el, add, clear) {
     });
   }
   clear(el("m-scores"));
-  s.scores.lines.forEach(function (line, index) { add("p", el("m-scores"), line, index ? "note" : ""); });
+  s.scores.lines.forEach(function (line, index) { say(el("m-scores"), line, index ? "note" : ""); });
   if (s.scores.more) { add("p", el("m-scores"), tr("monitor.more_rows", {n: s.scores.more}), "note"); }
   clear(el("m-score-rows"));
   if (s.scores.rows.length) {
@@ -768,7 +821,7 @@ function monitor(m, el, add, clear) {
     });
   }
   el("m-counted-box").style.display = s.counters.length ? "" : "none";
-  el("m-counted").textContent = s.counted;
+  brief(el("m-counted"), s.counted);
   rows("m-counters", [tr("monitor.col_block"), tr("monitor.col_counted"), tr("monitor.col_since"),
                        tr("monitor.col_resets")], s.counters, "", function (r) {
     return [r[0], fmt(r[1]), fmt(r[2]), fmt(r[3])];
@@ -783,7 +836,7 @@ function monitor(m, el, add, clear) {
     var t = typeof r[0] === "number" ? String(Math.round(r[0] * 100) / 100) : "";
     return dated ? [t, r[1] === null ? "" : r[1], r[2]] : [t, r[2]];
   });
-  el("foot").textContent = tr("monitor.foot");
+  brief(el("foot"), tr("monitor.foot"));
 }
 """
 
@@ -829,7 +882,8 @@ class Page:
                 "art": {"blocks": {}, "types": {}, "fleets": {}, "fills": {}},
                 "runs": {name: {"scene": self._writer.scene([frame]), "t": [t], "frames": [frame],
                                 "truncated": False, "events": 0}},
-                "monitor": {"summary": shown, "events": [list(row) for row in reversed(self._log.rows)],
+                "monitor": {"summary": shown, "events": [[t, date_cell(at), text]                  # #1962
+                                       for t, at, text in reversed(self._log.rows)],
                             "more": self._log.more,
                             "tail": pagetext.say(self._words, "monitor.tail",
                                                  started=shown["started"], n=self.refresh)}}

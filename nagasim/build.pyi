@@ -374,6 +374,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -414,6 +415,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -438,6 +440,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -456,6 +459,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -466,16 +470,18 @@ class Level:
         observation: list[Any] | dict[str, Any] = ...,
         fallback: str | dict[str, Any] = 'first',
         queue_exprs: list[Any] | dict[str, Any] = ...,
+        rule: dict[str, Any] = ...,
     ) -> Block:
-        """Add a DECIDE block. Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. "Chance" mode draws on the block's own RNG against `probs`, one probability per branch (not cumulative); "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless.
+        """Add a DECIDE block. Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. "Chance" mode draws on the block's own RNG against `probs`, one probability per branch (not cumulative); "Condition" mode evaluates each of `conditions` in order and takes the first true one. Both modes take the last outgoing link as an ELSE branch when there is one more link than probs/conditions; otherwise an uncovered draw or condition fails loud rather than silently dropping the entity. "Policy" mode hands the choice to `ctx.controllers[policy]`: the number of actions is simply the number of outgoing links. A plain (synchronous) controller is called inline, in zero simulated time, exactly like Chance/Condition above. A `PausingController` (used by `nagasim.rl. SimEnv` to drive the policy from outside the run) is different: this block yields on a simpy event instead, so the whole simulation genuinely pauses until something resolves it. With no controller attached for `policy`, the block falls back to `fallback` ("first" / "random" / "shortest") so a Policy-mode model still runs and validates headless. "Rule" mode asks a routing rule (`rule`, core/routing.py) whose exits are the outgoing links; while every exit is at its limit the entity waits here, first come first served, and the rule runs again when an exit's count drops.
 
-        mode='Chance': "Chance": branch by probability. "Condition": branch by expression. "Policy": branch by a controller attached to `policy`.
+        mode='Chance': "Chance": branch by probability. "Condition": branch by expression. "Policy": branch by a controller attached to `policy`. "Rule": branch by the routing `rule`.
         probs=[]: One probability per branch, in link order (not cumulative), used when mode is "Chance".
         conditions=[]: Ordered list of boolean expressions, used when mode is "Condition".
         policy='': Decision-point name; used when mode is "Policy". Several DECIDE blocks may share one.
         observation=[]: Expressions (evaluated with the arriving entity) forming the observation handed to the controller, when mode is "Policy".
         fallback='first': "first"/"random"/"shortest": used when mode is "Policy" and no controller is attached for `policy`.
         queue_exprs=[]: One expression per outgoing link; used by fallback "shortest" to pick the argmin.
+        rule={}: Routing rule, used when mode is "Rule": {"kind": "fixed", "sequential", "cyclic", "round_robin", "least_loaded", "condition", "attribute" or "item", "exits"?: one name per outgoing link (default: the linked blocks' names; "name:target" names the CONVEYOR a part counts as under way to), "conditions"?: for "condition", one per exit or one fewer (the last exit is the ELSE), "limit"?: parts under way to one exit at most (0: no limit), "attribute"?: for "attribute", the entity attribute naming the exit}. A part is under way from its routing until it reaches its exit's target piece (the first photo-eye of the last CONVEYOR of that branch, else that belt's end) or leaves a belt on its way there by a divert; name an exit "L1:L1" to stop the count at branch L1; an exit with no CONVEYOR counts nothing. With no true condition and no ELSE the run stops. While every exit is at its limit, parts wait here first come first served: one waiting for a full exit holds back those behind it. Empty: none.
         """
 
     def seize(
@@ -486,6 +492,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -532,6 +539,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -554,6 +562,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -580,6 +589,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -591,8 +601,15 @@ class Level:
         carrier_capacity: float | str | dict[str, Any] = '',
         member_time: float | str | dict[str, Any] = '',
         member_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
+        pattern: str | dict[str, Any] = '',
+        place_per: str | dict[str, Any] = 'item',
+        robot: str | dict[str, Any] = '',
+        robot_at: list[Any] | dict[str, Any] = ...,
+        targets: dict[str, Any] = ...,
+        segments: list[Any] | dict[str, Any] = ...,
+        approach: float | str | dict[str, Any] = '',
     ) -> Block:
-        """Add a BATCH block. Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard.
+        """Add a BATCH block. Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity. Groups entities by count: puts each arrival in the block's store and, as soon as `batch_size` items are waiting, takes exactly that many atomically to form one batch entity. Members leave live_entities and carry `in_batch` until a SEPARATE splits the batch again. With `max_wait` set, a PARTIAL batch leaves too: the timer is armed by the arrival that starts a new group and releases whatever is waiting once the oldest member has waited that long. TIE RULE: a batch that fills in the same instant as the timer expires wins and the timer releases nothing -- the same zero-delay re-check reneging uses, so the outcome never depends on the order SimPy happened to schedule two events at one timestamp. With `carrier_type` set, an arrival of that type is a CARRIER (a truck): it is not stored, and loads the stored arrivals one at a time, `member_time` each, until it holds `carrier_capacity` (default `batch_size`) or its `max_wait`, counted from its own arrival, has passed; then it leaves as itself, its members aboard. With a `pattern` too, the carrier is a pallet: each member takes the next slot of that pallet pattern, and the pallet closes when its slots are full or the next member would pass its weight limit (that member waits for the next pallet). The members carry `slot` and `layer`; the pallet carries `items`, `layers`, `load_weight`, `load_height` and `pattern`.
 
         batch_size=2: Number of entities grouped into one batch entity.
         batched_entity_type='BATCH': Entity type assigned to the batch entity.
@@ -602,6 +619,13 @@ class Level:
         carrier_capacity='': Carrier mode: how many members a carrier takes, e.g. "entity.capacity", evaluated for each carrier when it arrives. Empty = batch_size.
         member_time='': Carrier mode: time to load one member, evaluated in the member's own scope when its load starts. Empty = loading takes no time.
         member_time_unit='base': Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days.
+        pattern='': Carrier mode: the carrier is a pallet loaded by this record of "pallet_patterns", named outright ("Euro") or chosen per pallet by an expression in the carrier's scope. Each member takes the next slot; the pallet closes at the pattern's limits, and carrier_capacity is not used. Empty = no pattern.
+        place_per='item': With a pattern: "item" loads one member per member_time; "layer" waits for a whole layer and places it in one member_time (a layer-forming palletizer).
+        robot='': Name of a record in "robots": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time.
+        robot_at=[0, 0, 0]: Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0.
+        targets={}: The robot's named targets, as on MOTION; "slot" (the item's place on the pallet) and "slot_above" (approach higher) are given per slot and are not defined here.
+        segments=[]: The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight.
+        approach='': How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m.
         """
 
     def match(
@@ -612,6 +636,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -638,6 +663,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -646,16 +672,30 @@ class Level:
         carrier: str | dict[str, Any] = 'dispose',
         member_time: float | str | dict[str, Any] = '',
         member_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'base',
-        release_order: str | dict[str, Any] = 'fifo',
+        release_order: str | dict[str, Any] = 'pattern',
+        place_per: str | dict[str, Any] = 'item',
+        pattern: str | dict[str, Any] = '',
+        robot: str | dict[str, Any] = '',
+        robot_at: list[Any] | dict[str, Any] = ...,
+        targets: dict[str, Any] = ...,
+        segments: list[Any] | dict[str, Any] = ...,
+        approach: float | str | dict[str, Any] = '',
     ) -> Block:
-        """Add a SEPARATE block. Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty.
+        """Add a SEPARATE block. Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each. Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty. release_order : {'pattern','fifo','lifo'} 'pattern' (the default): a pallet loaded by a pallet pattern comes off top layer first, its slots in reverse order; any other carrier fifo.
 
         mode='Retain original entity values': How children get their attributes: retain their own values, take all of the parent's, or take only the ones listed in attrs.
         attrs=[]: Attribute labels to copy from the parent, used when mode is "specific".
         carrier='dispose': "dispose": the batch ends here and its parts leave together. "keep": the batch is a carrier (a truck) that lives on -- its members leave one at a time by the first link, each after member_time, and the carrier leaves by the SECOND link once it is empty.
         member_time='': Keep mode only: time for one member to come off, e.g. "2" or "TRIA(1, 2, 3)", evaluated for each member in its own scope when its turn starts. Empty = every member leaves in the same instant.
         member_time_unit='base': Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days.
-        release_order='fifo': Order the members leave in: "fifo" (the order they were loaded) or "lifo" (last loaded first off, a rear-door truck).
+        release_order='pattern': Order the members leave in: "pattern" (a pallet loaded by a pallet pattern comes off top layer first, any other carrier as fifo), "fifo" (the order they were loaded) or "lifo" (last loaded first off, a rear-door truck).
+        place_per='item': Keep mode, a pattern pallet: "item" unloads one member per member_time; "layer" a whole layer in one member_time.
+        pattern='': With a robot: the record of "pallet_patterns" its cycle is planned for, one cycle per slot; a pallet of another pattern is a run error.
+        robot='': Name of a record in "robots": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time.
+        robot_at=[0, 0, 0]: Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0.
+        targets={}: The robot's named targets, as on MOTION; "slot" (the item's pick on the pallet) and "slot_above" (approach higher) are given per slot and are not defined here.
+        segments=[]: The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight.
+        approach='': How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m.
         """
 
     def duplicate(
@@ -666,6 +706,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -684,6 +725,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -710,6 +752,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -734,14 +777,17 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
         logic_class: str | dict[str, Any] = 'SampleLogic',
+        hook: str | dict[str, Any] = '',
     ) -> Block:
         """Add a LOGIC block. Custom routing written in Python: sends each entity to one of several outgoing links by your own rule when chance or a condition is not enough. Routes an entity through a user-supplied, plain (non-BaseProcess) class defined in nagasim.core.custom_logic, or first in the module the caller passes as `run_model(logic=...)`. The class only needs an `execute(self, entity, ctx) -> int` method returning the outgoing link index; `execute(self, entity)` (no ctx) is also accepted.
 
         logic_class='SampleLogic': Name of a class in nagasim.core.custom_logic implementing execute(entity, ctx) -> int.
+        hook='': Inside an item with code: call its on_entry (route by its answer) or its on_exit (then go on by the first link). Empty: use logic_class.
         """
 
     def process(
@@ -752,6 +798,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -820,11 +867,14 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
         action: str | dict[str, Any] = 'Seize Delay Release',
         profile: str | dict[str, Any] = '',
+        robot: str | dict[str, Any] = '',
+        targets: dict[str, Any] = ...,
         hrc: str | dict[str, Any] = 'none',
         zone: dict[str, Any] = ...,
         segments: list[Any] | dict[str, Any] = ...,
@@ -856,9 +906,11 @@ class Level:
 
         action='Seize Delay Release': Which of seize/delay/release run: "Seize Delay Release", "Seize Delay", "Delay Release" or "Delay".
         profile='': Name of a record in "motion_profiles": speed, acceleration, payload derating and collaborative speed of whoever does the motions.
+        robot='': Name of a record in "robots": the robot whose ptp and lin moves are timed from its axis speeds and accelerations.
+        targets={}: Named targets of the ptp and lin moves, in cell coordinates (the floor plan's x and y in metres, z up): {"joints": [...]}, {"xyz": [x, y, z], "yaw_deg"?, "rpy_deg"?} with the tool pointing down unless rpy_deg says otherwise, or {"on": <block>, "at"?: centre|start|end, "offset"?: [dx, dy, dz], "yaw_deg"?} in that block's own frame: dx along its facing, dy toward the floor plan's +y side at rotation 0 (as x and y), dz up; or {"belt": <CONVEYOR>, "divert": <index>, "z"?: <metres above the floor>, "yaw_deg"?}, a part met on the moving belt, the target of the cycle's first move.
         hrc='none': Human-robot collaboration: "none", "collaborative" (every move at the profile's collaborative_speed) or "separation" (a move starts at collaborative_speed when a worker-fleet unit is within the zone's radius of its node, by path or straight distance).
         zone={}: With hrc "separation": {"name": <a "zones" record>} -- the record's node and radius win -- or, with no name, {"node": <network node>, "radius_m": <metres>, "measure"?: "path"|"straight"}.
-        segments=[]: The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?} or {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}. The service time is their sum.
+        segments=[]: The cycle, in order: {"kind": "move", "distance_m", "payload_kg"?}, {"kind": pick|place|tool_change|dwell|process, "time": <number or expression>}, or a robot move {"kind": ptp|lin, "to": <target>, "time"?: <number, at least what the move needs>, "payload_kg"?}. The service time is their sum.
         time_unit='seconds': Unit of every segment `time`: "base" or seconds/minutes/hours/days. Moves are always computed in seconds.
         priority=0: Lower draws first when the resource's queue is contested. One number for the block (an entity attribute is not read): to rank entity types, route each to its own block on the shared resource.
         quantity=1: Number of resource units requested/released.
@@ -892,6 +944,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -916,6 +969,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -938,6 +992,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -966,6 +1021,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -990,6 +1046,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1026,6 +1083,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1050,6 +1108,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1066,6 +1125,21 @@ class Level:
         stops: list[Any] | dict[str, Any] = ...,
         diverts: list[Any] | dict[str, Any] = ...,
         merges: list[Any] | dict[str, Any] = ...,
+        eyes: list[Any] | dict[str, Any] = ...,
+        path: list[Any] | dict[str, Any] = ...,
+        type: str | dict[str, Any] = '',
+        gap: float | dict[str, Any] = 0.0,
+        gap_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'base',
+        cell: float | dict[str, Any] = 0.0,
+        cell_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'base',
+        zones: dict[str, Any] = ...,
+        release: dict[str, Any] = ...,
+        reversible: bool | dict[str, Any] = False,
+        reverse_signal: str | dict[str, Any] = '',
+        reverse_to: str | dict[str, Any] = '',
+        part_length: float | dict[str, Any] = 0.0,
+        part_length_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'base',
+        expose: bool | dict[str, Any] = False,
     ) -> Block:
         """Add a CONVEYOR block. Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
 
@@ -1080,8 +1154,82 @@ class Level:
         from_node='': Path-network node the belt starts at (drawing, and the length when `length` is 0).
         to_node='': Path-network node the belt ends at.
         stops=[]: Points where each part halts on the belt: {"at": <distance from the entry, in the unit of `length`, between 0 and the length>, "time": <number or expression>, "resource"?: <seized for the stop>}. Parts behind pack against a stop on an accumulating belt; a non-accumulating belt stops while a part is at one. Empty: none.
-        diverts=[]: Points where a part may leave the belt sideways: {"at": <distance from the entry, in the unit of `length`>, "condition": <expression, read once as the part reaches it>, "time"?: <push time, number or expression>, "when_full"?: "wait" (default: the part waits there for room) or "pass" (it rides on)}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. Empty: none.
+        diverts=[]: Points where a part may leave the belt sideways: {"at": <distance from the entry, in the unit of `length`>, "condition": <expression, read once as the part reaches it>, "time"?: <push time, number or expression>, "when_full"?: "wait" (default: the part waits there for room) or "pass" (it rides on), "intercept"?: true (a robot on link k + 1 picks the part on the move; its first move targets this divert), "on_late"?: what the part does when that robot is busy: "wait" (default: it stands where the robot meets it), "pass" (it rides on) or an expression, true meaning wait}. Divert k leaves by outgoing link k + 1; link 0 is the belt's end. A link may name its exit instead: source_port "out" (the end) or "d<k>", each exit once. "side"?: "left" (default) or "right" of a part travelling along the belt as seen on screen, where the divert's exit port faces on the floor plan; "angle"?: degrees from the belt's travel to that exit, above 0 and below 180 (90, the default, is square; 45 leans downstream), floor geometry only. "rule"?: a routing rule in place of the condition, {"kind", "exits"?, "conditions"?, "limit"?, "attribute"?} as a Rule-mode DECIDE's, read once as the part reaches it; "rule_group"?: a name the diverts sharing one rule all give, the rule on the first of them along the belt only; the exits are the group's diverts in belt order (names default to their ports), and an exit named "out" passes them all to the belt's end. A part counts under way until it reaches its exit's target piece or leaves a belt on its way there by a divert; name an exit "L1:L1" to stop the count at branch L1. While every exit is at its limit the part waits at the group's first divert and the belt behind packs as at a stop. Empty: none.
         merges=[]: Points where parts from another block join the belt: {"at": <distance from the entry, in the unit of `length`>, "from": <the block linking to this belt whose parts join there>, "priority"?: "belt" (default: they wait for a gap of two spacings) or "merge" (parts on the belt make room)}. Accumulating belts only. Empty: none.
+        eyes=[]: Photo-eyes, points that fire as a part passes: {"at": <distance from the entry, in the unit of `length`>, "edge"?: "front" (default: as the part's front reaches `at`) or "back" (as its back clears `at`, a `part_length` later), "assign"?: <rows {"target", "expr"} run on that part as ASSIGN runs them>, "signal"?: <signal raised, for HOLD blocks and item code>}. Each firing is counted and traced; a queue that stands short of an eye delays it. Empty: none.
+        path=[]: The belt as pieces laid end to end from its entry: {"straight": <length>} or {"arc": {"radius": <r>, "angle": <degrees, up to 360>, "turn": "left" or "right" as seen on screen}}, lengths in the unit of `length`. Their total is the belt's length, so set `length` to 0 and give no nodes. Empty: a straight belt of `length`.
+        type='': Conveyor type: "belt", "roller", "chain", "pallet" or "mdr". Empty: an untyped belt with `spacing`, one item per cell. A typed belt has cells of `cell` and an item takes ceil((its length + `gap`) / cell) of them; `spacing` is ignored and the results' Capacity counts cells.
+        gap=0.0: Free belt length kept between two items on a typed belt.
+        gap_unit='base': Unit of `gap`: "base" (the model's) or one of its quantity's units.
+        cell=0.0: Length of one cell of a typed belt; an item takes as many as its length plus `gap` needs. 0: 1 cm in any length unit. Ignored on an untyped belt.
+        cell_unit='base': Unit of `cell`: "base" (the model's) or one of its quantity's units.
+        zones={}: Accumulation zones: {"count": <zones of equal length, zone 1 at the exit>, "release_delay"?: <time, in the model's time unit unless "time_unit" says another>}. Parts accumulate as without zones; when the held exit frees, a standing part restarts release_delay times its front's zone later, never nearer than its own length to the part ahead; the end part keeps the exit unit through its delay, and a part handed to a next belt waits it before that belt takes it. Delay 0 is a belt without zones and releases the queue as one slug, as Emulate3D does at 0; Emulate3D's staggered headways at a 1 s delay (1.26 s and 0.96 s measured) differ, an open comparison. Accumulating belts with no stop or merge only. Empty: none.
+        release={}: How parts leave the end, one form: {"metering": {"gap": <length>}} (a part leaves once the one before is that far past the end, measured from its tail), {"metering": {"interval": <length>}} (front to front, never nearer than the part before takes on the belt), {"singulation": {"gap": <length>}} (the same as metering by gap) or {"slug": {"count": <parts>, "timeout": <time>, "time_unit"?}} (the end holds until count parts are queued or timeout has passed since the first stood there, then lets them go nose to tail). Lengths are in the unit of `length` and travelled at the belt speed; the timeout is in the model's time unit unless time_unit says another. Held parts make the ones behind accumulate. A slug counts every part standing in the queue, behind a photo-eye or a stop too; a part whose place in the queue is behind a stop dwells there after the release. Each part's hold at the end is kept (in a slug the lead's; the parts let go with it hold 0). Accumulating belts without zones only. Empty: parts leave as soon as they can.
+        reversible=False: True: the belt can run backward during a run, turned by `reverse_signal` or by item code (item.reverse). Each part on it then rides back the distance it has travelled and leaves at the start by `reverse_to`; nothing gets on until it runs forward again. Reversible belts linked end to start, with nothing between them, are one chain that turns as one: a part crosses each joint the way the chain runs. A reversible belt has no stops, diverts, merges, photo-eyes, zones or release rule.
+        reverse_signal='': Signal that turns a reversible belt each time it is raised (forward, backward, forward...), with its whole chain. Empty: only item code turns it.
+        reverse_to='': Exit of a reversible belt for parts leaving at its start: the target block of one of its links, or "in" (the link whose source_port is "in"); not a conveyor feeding this belt, since nothing boards a belt by its end. In a chain, only the first piece names it: a later piece hands back to the one before.
+        part_length=0.0: Length of one part along the belt, which a back-edge eye reads. 0: the spacing, or a typed belt's type zone length. On an untyped belt it is no longer than the spacing.
+        part_length_unit='base': Unit of `part_length`: "base" (the model's) or one of its quantity's units.
+        expose=False: True: the belt writes its state as model variables, read with VAR("<belt>.running") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts).
+        """
+
+    def conveyor_transfer(
+        self,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        position: list[Any] | None = None,
+        layout_position: list[Any] | None = None,
+        layout_rotation: float | None = None,
+        asset_3d: str | None = None,
+        label_offset: list[Any] | None = None,
+        counter_offsets: dict[str, Any] | None = None,
+        queue_row: dict[str, Any] | None = None,
+        mechanism: str | dict[str, Any] = 'popup',
+        exits: list[Any] | dict[str, Any] = ...,
+        rule: dict[str, Any] = ...,
+        lift_time: float | dict[str, Any] = 0.1,
+        lift_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'seconds',
+        transfer_speed: float | dict[str, Any] = 0.0,
+        transfer_speed_unit: Literal['base', 'mm/ms', 'mm/s', 'mm/min', 'mm/h', 'mm/day', 'mm/week', 'mm/month', 'mm/year', 'cm/ms', 'cm/s', 'cm/min', 'cm/h', 'cm/day', 'cm/week', 'cm/month', 'cm/year', 'm/ms', 'm/s', 'm/min', 'm/h', 'm/day', 'm/week', 'm/month', 'm/year', 'km/ms', 'km/s', 'km/min', 'km/h', 'km/day', 'km/week', 'km/month', 'km/year'] | dict[str, Any] = 'm/s',
+        cross_length: float | dict[str, Any] = 0.6,
+        cross_length_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'meters',
+        entry_length: float | dict[str, Any] = 0.0,
+        entry_length_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'meters',
+        turn_rate: float | dict[str, Any] = 18.0,
+        turn_rate_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'seconds',
+        turn_ramp: float | dict[str, Any] = 0.3,
+        turn_ramp_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] | dict[str, Any] = 'seconds',
+        lift_height: float | dict[str, Any] = 1.0,
+        lift_height_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'meters',
+        lift_speed: float | dict[str, Any] = 0.5,
+        lift_speed_unit: Literal['base', 'mm/ms', 'mm/s', 'mm/min', 'mm/h', 'mm/day', 'mm/week', 'mm/month', 'mm/year', 'cm/ms', 'cm/s', 'cm/min', 'cm/h', 'cm/day', 'cm/week', 'cm/month', 'cm/year', 'm/ms', 'm/s', 'm/min', 'm/h', 'm/day', 'm/week', 'm/month', 'm/year', 'km/ms', 'km/s', 'km/min', 'km/h', 'km/day', 'km/week', 'km/month', 'km/year'] | dict[str, Any] = 'm/s',
+        return_home: bool | dict[str, Any] = True,
+        expose: bool | dict[str, Any] = False,
+    ) -> Block:
+        """Add a CONVEYOR_TRANSFER block. Conveyor transfer module that moves each load onto one of several exits: a pop-up transfer, a turntable or a lift, busy until the load reaches the next conveyor's photo-eye.
+
+        mechanism='popup': "popup" (a pop-up transfer: chains or rollers lift and carry the load sideways), "turntable" (turns the load to its exit) or "lift" (carries the load to another level).
+        exits=[]: The module's exits, in exit order: {"port": <name a link gives as its source_port>, "angle": <degrees from the entry heading, clockwise on screen: 0 straight on, 90 or -90 to a side>}. Links without a port take the exits in this order. Empty: one straight exit "out".
+        rule={}: Routing rule picking the exit, {"kind", "exits"?, "conditions"?, "limit"?, "attribute"?} as a Rule-mode DECIDE's; its exits default to the exits' ports. Empty: round robin over two or more exits, else the one exit. While every exit is at its limit the load waits on the module.
+        lift_time=0.1: A pop-up's lift time each way, up before a side or angled exit and down after its handshake; a straight exit has none.
+        lift_time_unit='seconds': Unit of `lift_time`: one of its quantity's units; "base" or absent means seconds, the unit its default was measured in.
+        transfer_speed=0.0: Speed of the chains or rollers that carry the load on the module. 0: the speed of the CONVEYOR feeding it.
+        transfer_speed_unit='m/s': Unit of `transfer_speed`: one of its quantity's units; "base" or absent means m/s, the unit its default was measured in.
+        cross_length=0.6: A pop-up's travel from the entry to the module edge on a side or angled exit, at transfer_speed.
+        cross_length_unit='meters': Unit of `cross_length`: one of its quantity's units; "base" or absent means meters, the unit its default was measured in.
+        entry_length=0.0: Travel from the entry to the load's position on the module, at transfer_speed, before it moves to its exit.
+        entry_length_unit='meters': Unit of `entry_length`: one of its quantity's units; "base" or absent means meters, the unit its default was measured in.
+        turn_rate=18.0: A turntable's turning speed in degrees per time unit (per second by default); a turn of a degrees takes a / turn_rate + turn_ramp, the shorter way.
+        turn_rate_unit='seconds': Unit of `turn_rate`: one of its quantity's units; "base" or absent means seconds, the unit its default was measured in.
+        turn_ramp=0.3: Time a turntable's turn adds to speed up and slow down.
+        turn_ramp_unit='seconds': Unit of `turn_ramp`: one of its quantity's units; "base" or absent means seconds, the unit its default was measured in.
+        lift_height=1.0: A lift's travel between its two levels; the lift travels it up and back on every exit, whatever its angle.
+        lift_height_unit='meters': Unit of `lift_height`: one of its quantity's units; "base" or absent means meters, the unit its default was measured in.
+        lift_speed=0.5: A lift's travel speed; each way takes lift_height / lift_speed.
+        lift_speed_unit='m/s': Unit of `lift_speed`: one of its quantity's units; "base" or absent means m/s, the unit its default was measured in.
+        return_home=True: A turntable turns back to its entry after each handshake, before the next load. False: it stays at the exit and turns back only once the next load waits.
+        expose=False: True: the module writes `<module>.state` as a model variable, read with VAR("<module>.state") in a HOLD condition or item code: 0 idle (or a load standing), 1 lifting (a pop-up's lift, a lift's travel), 2 transferring (the entry travel, a pop-up's cross, boarding the exit's piece until the handshake), 3 turning (a turntable).
         """
 
     def buffer(
@@ -1092,6 +1240,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1112,6 +1261,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1134,6 +1284,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1156,6 +1307,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1174,6 +1326,7 @@ class Level:
         position: list[Any] | None = None,
         layout_position: list[Any] | None = None,
         layout_rotation: float | None = None,
+        asset_3d: str | None = None,
         label_offset: list[Any] | None = None,
         counter_offsets: dict[str, Any] | None = None,
         queue_row: dict[str, Any] | None = None,
@@ -1234,6 +1387,7 @@ class Model(Level):
         energy_price: float | str = ...,
         entity_log_limit: int | None = ...,
         record_logs: bool = ...,
+        strict_checks: bool = ...,
         entity_waits: bool = ...,
         timeseries_points: int | None = ...,
         timeseries_interval: float | None = ...,
@@ -1269,6 +1423,7 @@ class Model(Level):
         energy_price: Money per kWh, a number or an expression, evaluated once at run start. Prices every resource/fleet's "power".
         entity_log_limit: Cap on retained entity-log rows.
         record_logs: Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants.
+        strict_checks: Stop the run on a conveyor check: an open port, overlapping or unsnapped pieces, a part handed to nothing or routed against its rule become errors with the same code. Off: they are warnings.
         entity_waits: Sum each entity's queue time over every seize into a "Total Wait" column of the entity log (what a tail goal on Total Wait reads). Off: no column.
         timeseries_points: How many samples the time-series OUTPUT sampler takes over a time-limited run (default 200).
         timeseries_interval: Fixed sampling interval for a draining run, which has no horizon to divide.
@@ -1471,16 +1626,18 @@ class Model(Level):
         color: str = ...,
         icon: str = ...,
         graphic: str = ...,
+        size: dict[str, Any] = ...,
         holding_cost: float = ...,
         holding_cost_time_unit: Literal['base', 'milliseconds', 'seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years'] = ...,
     ) -> Any:
-        """Add one entry to `entities` and return its name. Entity types: shape, colour, optional WIP holding cost.
+        """Add one entry to `entities` and return its name. Entity types: shape, colour, optional size and WIP holding cost.
 
         name: The entity type's name, the `e_type` a CREATE block gives its entities.
         shape: The shape the editor draws for these entities, such as "circle".
         color: The colour the editor draws these entities in, as a hex string such as "#1f77b4".
         icon: Path to an animation icon image.
         graphic: Inline SVG token (24 x 24 artboard), usually copied from a library's entity preset; checked by core/svgsafe before it is drawn.
+        size: Item size on a conveyor, in the model's length unit (simulation.length_unit); on a typed belt an item takes ceil((length + gap) / cell) cells.
         holding_cost: WIP cost per entity per base time unit.
         holding_cost_time_unit: Unit `holding_cost` is per.
         """
@@ -1749,6 +1906,74 @@ class Model(Level):
         payload_unit: Unit `payload_max` is in.
         payload_derate: Speed fraction at payload_max, linear from 1.0 at 0 kg.
         collaborative_speed: m/s; required when a block uses hrc "collaborative" or "separation".
+        """
+
+    def add_robot(
+        self,
+        *,
+        name: str = ...,
+        description: str = ...,
+        structure: str = ...,
+        params: dict[str, Any] = ...,
+        joints: list[Any] = ...,
+        axes: list[Any] = ...,
+        tool: dict[str, Any] = ...,
+        home: list[Any] = ...,
+        reach_m: float | None = ...,
+        payload_max: float | None = ...,
+        payload_unit: Literal['base', 'g', 'kg', 't'] = ...,
+        payload_derate: float | None = ...,
+        tcp_speed: float | None = ...,
+        speed_unit: Literal['base', 'mm/ms', 'mm/s', 'mm/min', 'mm/h', 'mm/day', 'mm/week', 'mm/month', 'mm/year', 'cm/ms', 'cm/s', 'cm/min', 'cm/h', 'cm/day', 'cm/week', 'cm/month', 'cm/year', 'm/ms', 'm/s', 'm/min', 'm/h', 'm/day', 'm/week', 'm/month', 'm/year', 'km/ms', 'km/s', 'km/min', 'km/h', 'km/day', 'km/week', 'km/month', 'km/year'] = ...,
+        tcp_accel: float | None = ...,
+        approximate: bool = ...,
+        source: str = ...,
+    ) -> Any:
+        """Add one entry to `robots` and return its name. Robots: a structure with its dimensions, or a joint chain, with each axis's range, speed and acceleration, and the tool frame; named by a MOTION block's `robot`.
+
+        name: The robot's name, the `robot` of a MOTION block.
+        description: What the robot is; the run does not read it.
+        structure: The structure template, or "chain" for a robot given by its joints.
+        params: The template's dimensions in metres (a template names the ones it needs).
+        joints: With structure "chain" only: the serial joints at the zero pose, each {name, type: revolute|prismatic, origin [m], axis, parent?, coupled?: {axis: factor}, passive?}.
+        axes: One per actuated axis, in the template's order.
+        tool: The tool frame (TCP) from the flange.
+        home: The rest pose, one value per axis; all zeros clipped into range when absent.
+        reach_m: The datasheet reach in metres, for comparison.
+        payload_max: The rated payload; null or absent = no payload derating.
+        payload_unit: Unit `payload_max` is in.
+        payload_derate: Axis speed fraction at payload_max, linear from 1.0 at 0 kg.
+        tcp_speed: Top tool speed along a straight-line move.
+        speed_unit: Unit `tcp_speed` is in.
+        tcp_accel: Top tool acceleration along a straight-line move, m/s^2.
+        approximate: True when the values are read from a public datasheet rather than the maker's model.
+        source: Where the values come from.
+        """
+
+    def add_pallet_pattern(
+        self,
+        *,
+        name: str = ...,
+        description: str = ...,
+        pallet: dict[str, Any] = ...,
+        item: dict[str, Any] = ...,
+        overhang: float | None = ...,
+        layers: dict[str, Any] = ...,
+        stack: list[Any] = ...,
+        sheet: dict[str, Any] | None = ...,
+        limits: dict[str, Any] = ...,
+    ) -> Any:
+        """Add one entry to `pallet_patterns` and return its name. Pallet patterns: the pallet, the item, layer layouts and how they stack, and the limits that close a pallet; named by a carrier BATCH's `pattern`.
+
+        name: The pattern's name, the `pattern` of a carrier BATCH.
+        description: What the pattern is; the run does not read it.
+        pallet: The pallet's footprint, deck height and tare.
+        item: The nominal item, used by the checks and the generator.
+        overhang: How far an item may pass the pallet's edge.
+        layers: Layer layouts by name, each a list of slots in load order.
+        stack: The layers from the deck up, repeated until a limit is reached.
+        sheet: A sheet between layers: its thickness and the time to place it (in the model's time unit), added before each layer after the first.
+        limits: The first reached closes the pallet; null = no limit. One of layers, items or height must be set.
         """
 
     def add_zone(

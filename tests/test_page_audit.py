@@ -93,7 +93,12 @@ def _cli(*args, cwd):
 
 @pytest.fixture(scope="module")
 def pages(tmp_path_factory):
-    """{name: path} of the six kinds of page (the package holds two pages: client and room)."""
+    return build_pages(tmp_path_factory)
+
+
+def build_pages(tmp_path_factory) -> dict:
+    """{name: path} of the six kinds of page (the package holds two pages: client and room);
+    `tests/test_onscreen_text.py` measures the same pages."""
     from nagasim import api, monitor, studypackage, studywriteup, viewer
     from nagasim.core import schema
     from nagasim.report import build_report

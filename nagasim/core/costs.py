@@ -99,16 +99,19 @@ def validate_fixed_costs_structured(layout: dict) -> list:
         at = f"/fixed_costs/{index}"
         if not isinstance(entry, dict):
             problems.append(problem("E_FIXED_COST_NAME", "fixed cost: each entry must be an object",
-                                    at, hint="{\"name\": \"Battery capex\", \"amount\": \"kwh * 600\"}"))
+                                    at, hint="{\"name\": \"Battery capex\", \"amount\": \"kwh * 600\"}",
+                                    fields={"case": "object"}))
             continue
         name = entry.get("name", "")
         if not isinstance(name, str) or not name.strip():
             problems.append(problem("E_FIXED_COST_NAME", "fixed cost: name must not be empty",
-                                    f"{at}/name", hint="give every fixed cost a unique name"))
+                                    f"{at}/name", hint="give every fixed cost a unique name",
+                                    fields={"case": "empty"}))
             continue
         if name in seen:
             problems.append(problem("E_FIXED_COST_NAME", f"duplicate fixed cost name: {name}",
-                                    f"{at}/name", hint="rename one of the two"))
+                                    f"{at}/name", hint="rename one of the two",
+                                    fields={"case": "dup", "name": name}))
         seen.add(name)
         amount = entry.get("amount", 0.0)
         if isinstance(amount, str):
@@ -121,12 +124,14 @@ def validate_fixed_costs_structured(layout: dict) -> list:
                 problems.append(problem(
                     "E_FIXED_COST_AMOUNT", f"fixed cost '{name}': {exc}", f"{at}/amount",
                     hint="the amount is an expression over variables and model data, "
-                         "evaluated once at run start"))
+                         "evaluated once at run start",
+                    fields={"case": "expression", "name": name}))
         elif not isinstance(amount, (int, float)) or isinstance(amount, bool):
             problems.append(problem(
                 "E_FIXED_COST_AMOUNT", f"fixed cost '{name}': \"amount\" must be a number or "
                                        f"an expression", f"{at}/amount",
-                hint="a number, or an expression like \"capacity_kwh * 600 * 0.08\""))
+                hint="a number, or an expression like \"capacity_kwh * 600 * 0.08\"",
+                fields={"case": "type", "name": name}))
     return problems
 
 
@@ -150,9 +155,11 @@ def validate_energy_price_structured(layout: dict, variables: set[str]) -> list:
         except ExpressionError as exc:
             return [problem("E_ENERGY_PRICE", f"simulation.energy_price: {exc}",
                             "/simulation/energy_price",
-                            hint="an expression over variables, evaluated once at run start")]
+                            hint="an expression over variables, evaluated once at run start",
+                            fields={"case": "expression"})]
     elif not isinstance(price, (int, float)) or isinstance(price, bool):
         return [problem(
             "E_ENERGY_PRICE", "simulation.energy_price must be a number or an expression",
-            "/simulation/energy_price", hint="money per kWh, e.g. 0.18")]
+            "/simulation/energy_price", hint="money per kWh, e.g. 0.18",
+            fields={"case": "type"})]
     return []

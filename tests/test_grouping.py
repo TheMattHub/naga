@@ -76,3 +76,36 @@ def test_a_plain_batch_and_separate_round_trip():
     g = Grouping(events)
     parts, (lot,) = _ids(events, "PART"), _ids(events, "LOT")
     assert g.path(parts[1], 2.0) == [(lot, 2)] and g.path(parts[1], 5.0) == []
+
+
+def _pattern_model(**kw):
+    from test_pallets_batch import model
+    return model(**kw)
+
+
+def _stack_load(m, t=0.5):
+    from nagasim.core.grouping import Grouping
+    recorder = TraceRecorder()
+    run_env(m, 100, subscribers=[recorder])
+    pallet = next(e.entity_id for e in recorder.events if e.e_type == "PALLET")
+    return Grouping(recorder.events).carrier_load(pallet, t, m)
+
+
+def test_the_carrier_load_carries_each_slots_layer_and_pose():
+    from nagasim.core import pallets
+    m = _pattern_model(member_time="0", unload={"member_time": "1"})
+    load = _stack_load(m)
+    want = pallets.slots(m["pallet_patterns"][0])
+    assert len(load["slots"]) == 8 and load["pattern"] == "P1" and load["layers"] == 2
+    assert [(r["layer"], r["pose"]) for r in load["slots"]] == [
+        (s.layer, [s.x, s.y, s.z, s.rotation]) for s in want]
+    assert load["item"] == {"length": 0.4, "width": 0.3, "height": 0.25}
+
+
+def test_an_expression_pattern_gives_no_pose_and_says_so():
+    load = _stack_load(_pattern_model(member_time="0", pattern='IF(1 > 0, "P1", "P1")', unload={"member_time": "1"}))
+    assert load["per_pallet"] and not any("pose" in r for r in load["slots"])
+    plain = _stack_load(_pattern_model(pattern=None, member_time="0", unload={"member_time": "1"}))
+    assert "per_pallet" not in plain and not any("pose" in r for r in plain["slots"])
+
+

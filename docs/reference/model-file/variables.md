@@ -47,7 +47,7 @@ m.add_variable(name='batch_size', initial=5)
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [PV + battery sizing and dispatch](../../gallery/energy.md), [PV + battery site (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md) and 7 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [PV + battery sizing and dispatch](../../gallery/energy.md), [PV + battery site (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md) and 8 more.
 
 Guides: [Digital twin](../../digital-twin.md), [Model file format](../../model-file-format.md), [Coming from Arena](../../coming-from/arena.md), [How do I stop a ratio dividing by zero?](../../how-to/recipes/safe-ratio.md), [Expressions and variables](../../modelling-guide/expressions-variables.md), [Semantic diff](../../semantic-diff.md).
 

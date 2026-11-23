@@ -187,7 +187,8 @@ class BaseProcess(ABC):
         if cached is None or cached[0] is not next_proc:
             # getattr, not next_proc.name: some tests terminate a chain with a bare
             # stub (order-recording only, no BaseProcess) that has no .name.
-            target_name = getattr(next_proc, "name", None)
+            # A hidden area link (D1369) reports its real target: it is no block of the model.
+            target_name = getattr(next_proc, "shown_name", None) or getattr(next_proc, "name", None)
             cached = self._forward_cache[index] = (next_proc, target_name, (self.name, target_name))
         target_name = cached[1]
         if target_name is not None:

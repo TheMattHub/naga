@@ -32,6 +32,7 @@ A crane's lift is any traced move with a duration between two blocks it serves. 
 | `blocks` | list of block |  |  |  | The blocks of the definition. |
 | `links` | list of link |  |  |  | The links between the blocks of the definition. |
 | `annotations` | list of annotation |  |  |  | The canvas notes of the definition; the engine ignores them. |
+| `code` | object |  |  |  | The item's own Python logic: a class with event hooks (on_entry, on_exit, on_timer, on_state, on_signal) that reads the instance's parameters. It runs only after a person has trusted this exact code on their computer. |
 
 A field of a nested object is described in the JSON Schema (`naga schema`).
 
@@ -45,7 +46,7 @@ In the Python builder `m.definition(name)` adds a definition and returns the can
 
 ## Used in
 
-Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 26 more.
+Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 27 more.
 
 Guides: [Model file format](../../model-file-format.md), [Submodels](../../modelling-guide/submodels.md), [Semantic diff](../../semantic-diff.md).
 

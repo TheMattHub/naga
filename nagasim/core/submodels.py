@@ -44,7 +44,9 @@ Flattening rules, as built
 
 3. LINK DELAYS. A rewired hop keeps the FIRST delay found along the path it
    replaced -- the outer link's own delay when it has one, otherwise the delay
-   of the inner hop that carried it.
+   of the inner hop that carried it. An area link's `capacity` (D1369, D1391) travels
+   with the delay it belongs to: from the hop the delay came from (a capacity on a hop with
+   no delay rides on only while no hop has given a delay, so its warning still shows).
 
 4. BRANCH ORDER. Links are emitted in layout order, and each rewiring expands
    in port order, so a source's branch indices are preserved; among an
@@ -224,10 +226,13 @@ import copy
 import re
 
 from nagasim.core import sections
+from nagasim.core.arealink import AREA_KEYS
 from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.expressions import LOOKUP_SECTION, ExpressionError, ExpressionScope, compile_expression
+from nagasim.core.network import rotate_offset
 from nagasim.core.problems import Problem, problem
 from nagasim.core.quantities import SECTION_FIELDS
+from nagasim.core.routing import uses_item_rule
 
 __all__ = ["SUBMODEL", "SUB_ENTRY", "SUB_EXIT", "PORT_TYPES", "ARG_KEY", "LITERAL_TYPES",
            "REFERS_SECTIONS", "RECORD_SECTIONS", "LOCALS_SECTIONS", "SubmodelError", "flatten",
@@ -343,6 +348,24 @@ class SubmodelError(ValueError):
 
 
 # -- small readers ----------------------------------------------------------
+def _area_of(link: dict) -> dict:
+    """An area link's fields as the link has them (D1369); {} for a plain link."""
+    return {key: copy.deepcopy(link[key]) for key in AREA_KEYS if key in link}
+
+
+def _prefix_belt_refs(params: dict, prefix: str, plain: set) -> None:
+    """A flattened CONVEYOR's `reverse_to` and its merges' `from` that name a block of its
+    own level, renamed as that block is (`<instance>/<name>`); the port "in" and anything
+    else are left as written, for validation and the run to judge."""
+    target = params.get("reverse_to")
+    if isinstance(target, str) and target.strip() in plain - {"in"}:
+        params["reverse_to"] = prefix + target.strip()
+    for merge in params.get("merges") or []:
+        source = merge.get("from") if isinstance(merge, dict) else None
+        if isinstance(source, str) and source.strip() in plain:
+            merge["from"] = prefix + source.strip()
+
+
 def _type(block: dict) -> str:
     return str(block.get("type", "")).upper()
 
@@ -415,12 +438,14 @@ def repeat_count(raw, locals_: dict) -> tuple[int | None, Problem | None]:
         if name not in locals_:
             return None, problem("E_SUBMODEL_ARG_UNKNOWN",
                                  f"repeat count: $arg '{name}' is not a parameter of this submodel",
-                                 hint=f"use one of: {', '.join(sorted(locals_)) or '(none)'}")
+                                 hint=f"use one of: {', '.join(sorted(locals_)) or '(none)'}",
+                                 fields={"case": "a7_repeat", "arg": name})
         value = locals_[name]
         if not isinstance(value, (bool, int, float)) or int(value) != value:
             return None, problem("E_SUBMODEL_ARG_TYPE",
                                  f"repeat count: $arg '{name}' is {value!r}, not an int",
-                                 hint="pass an int argument")
+                                 hint="pass an int argument",
+                                 fields={"case": "repeat", "arg": name, "value": value})
         raw = value
     elif isinstance(raw, str):
         try:
@@ -428,16 +453,19 @@ def repeat_count(raw, locals_: dict) -> tuple[int | None, Problem | None]:
         except ExpressionError as exc:
             return None, problem("E_SUBMODEL_REPEAT_COUNT", f"repeat count {raw!r}: {exc}",
                                  hint="an int, a {\"$arg\": ...} or an expression of the "
-                                      "definition's parameters")
+                                      "definition's parameters",
+                                 fields={"case": "eval", "raw": raw})
     if not isinstance(raw, (bool, int, float)) or int(raw) != raw:
         return None, problem("E_SUBMODEL_REPEAT_COUNT", f"repeat count {raw!r} is not an int",
                              hint="an int, a {\"$arg\": ...} or an expression of the "
-                                  "definition's parameters")
+                                  "definition's parameters",
+                             fields={"case": "int", "raw": raw})
     count = int(raw)
     if not 0 <= count <= MAX_REPEAT:
         return None, problem("E_SUBMODEL_REPEAT_COUNT",
                              f"repeat count {count} is outside 0..{MAX_REPEAT}",
-                             hint=f"use 0 to {MAX_REPEAT} copies")
+                             hint=f"use 0 to {MAX_REPEAT} copies",
+                             fields={"case": "range", "count": count, "max": MAX_REPEAT})
     return count, None
 
 
@@ -506,7 +534,8 @@ def stamp(definition: dict, locals_: dict, problems: list | None = None) -> tupl
             problems.append(problem(
                 "E_SUBMODEL_REPEAT_COUNT",
                 f"repeat group {index}: count {count} on blocks with no {INDEX} in their names",
-                hint=f"an optional group's count is 0 or 1; put {INDEX} in the names to repeat"))
+                hint=f"an optional group's count is 0 or 1; put {INDEX} in the names to repeat",
+                fields={"case": "names", "index": index, "count": count}))
             count = 1
         counts.append(count)
         for name in names or []:
@@ -660,7 +689,8 @@ def resolve_extends(definitions: dict, *, path: str = "/submodels",
                         "E_EXTENDS_UNKNOWN",
                         f"'{chain[-1]}' extends '{parent}', which does not exist",
                         f"{path}/{chain[-1]}/extends",
-                        hint=f"extend one of: {', '.join(sorted(definitions)) or '(none)'}"))
+                        hint=f"extend one of: {', '.join(sorted(definitions)) or '(none)'}",
+                        fields={"case": "unknown", "submodel": chain[-1], "parent": parent}))
                 chain = None
                 break
             if parent in chain:
@@ -670,7 +700,8 @@ def resolve_extends(definitions: dict, *, path: str = "/submodels",
                     problems.append(problem(
                         "E_EXTENDS_CYCLE", f"extends cycle: {' -> '.join(loop)}",
                         f"{path}/{parent}/extends",
-                        hint="a definition cannot extend itself, directly or through another"))
+                        hint="a definition cannot extend itself, directly or through another",
+                        fields={"case": "loop", "loop": " -> ".join(loop)}))
                 chain = None
                 break
             chain.append(parent)
@@ -737,11 +768,21 @@ class _Flattener:
         # Flattened instance name -> (definition, its locals, stamped blocks,
         # stamped links), made by `_prepare` (item 14).
         self._prepared: dict[str, tuple] = {}
+        # D1343: [x, y, rotation] on the floor plan of the placed instance being expanded (a
+        # nested one placed inside its parent's frame, #1981), stamped on its inner blocks as
+        # `instance_place` (a robot's base pose needs it after flattening); None outside one.
+        self._place: list | None = None
         # The copy number of the `{i}` clone being made, inherited by the
         # records it reaches (D841); None outside one.
         self._index: int | None = None
         # `{i}` templates (D841): (section, template name, pattern matching a
         # stamped name), in `_BY_REFERENCE` order; empty for every model without one.
+        # Item code (D1344): the flattened instance name whose blocks are being emitted when its
+        # definition carries `code`, else None; and the code of every such instance, handed to
+        # the engine as the layout's `item_code`. No fingerprint is carried: whoever runs it
+        # hashes the source itself.
+        self._item: str | None = None
+        self.item_code: dict[str, dict] = {}
         self._indexed = [(section, name, re.compile(
                               re.escape(name).replace(re.escape(INDEX), "([1-9][0-9]*)") + "$"))
                          for section in _BY_REFERENCE for name in self.templates[section]
@@ -758,8 +799,13 @@ class _Flattener:
             raise SubmodelError(self.problems)
 
         links = self._contract()        # also drops the port blocks from self.blocks
+        if self.problems:               # R53: a shared capacity copied onto several links
+            raise SubmodelError(self.problems)
         out = copy.deepcopy(self.layout)
         out.pop("submodels", None)
+        out.pop("item_code", None)      # only flattening writes it: one in the file is replaced
+        if self.item_code:
+            out["item_code"] = self.item_code
         out["blocks"] = self.blocks
         out["links"] = links
         templates = self._continuous_templates()
@@ -795,6 +841,9 @@ class _Flattener:
         instances; emit every link with instance endpoints redirected to the
         matching port block (contracted away in phase 2)."""
         instances = []
+        # The level's own blocks a belt's params name (`reverse_to`, a merge's `from`); an
+        # instance is left as written, so the run refuses it with its own code.
+        plain = {b.get("name") for b in blocks if _type(b) != SUBMODEL}
         # Each instance's locals and STAMPED lists (item 14), made before this
         # level's links: an instance's ports depend on its arguments.
         for block in blocks:
@@ -807,8 +856,18 @@ class _Flattener:
             params = self._resolve_arguments(block.get("params", {}), scope_locals,
                                              prefix + block["name"], _type(block))
             new["params"] = self._rewrite(params, prefix)
+            if prefix and _type(block) == "CONVEYOR":
+                _prefix_belt_refs(new["params"], prefix, plain)
             if scope_locals:
                 new["locals"] = dict(scope_locals)
+            new.pop("instance_place", None)         # flattening's own field, never kept (#1989)
+            if self._place is not None:
+                new["instance_place"] = list(self._place)
+            new.pop("item", None)                   # flattening's own field too
+            if self._item is not None and (
+                    _type(block) == "LOGIC" and new["params"].get("hook")
+                    or uses_item_rule(_type(block), new["params"])):     # D1359
+                new["item"] = self._item
             self.blocks.append(new)
 
         by_name = {b["name"]: b for b in blocks}
@@ -821,9 +880,15 @@ class _Flattener:
             if source is None or target is None:
                 continue        # the problem is already recorded
             entry = {"source": source, "target": target}
+            # A real block's exit/entry name (a belt's "d<k>") is kept for the run to read;
+            # an instance's port was resolved into the endpoint above.
+            for side, key in (("source", "source_port"), ("target", "target_port")):
+                if link.get(key) and _type(by_name[link[side]]) != SUBMODEL:
+                    entry[key] = link[key]
             delay = link.get("delay")
             if delay:
                 entry["delay"] = self._rewrite(copy.deepcopy(delay), prefix)
+            entry.update(_area_of(link))
             self.links.append(entry)
 
         # Instances last, so this level's own blocks and links read before the
@@ -860,8 +925,32 @@ class _Flattener:
         if source:
             self._state_sources.add(f"{name}/{source}")
         self._clone_scoped_records(name, blockless=not definition.get("blocks"))
-        self._expand(blocks, links, prefix=f"{name}/", scope_locals=inner_locals,
-                     stack=stack + (definition_name,))
+        outer_item = self._item
+        code = definition.get("code")
+        self._item = None
+        if isinstance(code, dict):
+            self._item = name
+            self.item_code[name] = {
+                "definition": definition_name, "class": code.get("class"), "source": code.get("source"),
+                "timer": code.get("timer"), "watch": list(code.get("watch") or []),
+                "signals": self._rewrite(list(code.get("signals") or []), f"{name}/"),
+                "locals": copy.deepcopy(inner_locals)}
+        outer, at = self._place, block.get("layout_position")
+        if isinstance(at, (list, tuple)) and len(at) == 2:
+            # #1979: a malformed place is left for validation to report (E_FIELD_TYPE), not raised.
+            try:
+                x, y, turn = float(at[0]), float(at[1]), float(block.get("layout_rotation") or 0.0)
+                if outer is not None:
+                    dx, dy = rotate_offset(x, y, outer[2])
+                    x, y, turn = outer[0] + dx, outer[1] + dy, outer[2] + turn
+                self._place = [x, y, turn]
+            except (TypeError, ValueError):
+                pass
+        try:
+            self._expand(blocks, links, prefix=f"{name}/", scope_locals=inner_locals,
+                         stack=stack + (definition_name,))
+        finally:
+            self._place, self._item = outer, outer_item
 
     def _endpoint(self, by_name: dict, prefix: str, link: dict, side: str,
                   at: str | None = None) -> str | None:
@@ -873,7 +962,8 @@ class _Flattener:
         if block is None:
             message = f"link {link.get('source')}->{link.get('target')}: unknown block '{raw}'"
             self.problems.append(message if at is None else problem(
-                "E_SUBMODEL", message, at, hint="fix the submodel section, then validate again"))
+                "E_SUBMODEL", message, at, hint="fix the submodel section, then validate again",
+                fields={"case": "a7_link"}))
             return None
         if _type(block) != SUBMODEL:
             return prefix + raw
@@ -895,7 +985,8 @@ class _Flattener:
                 f"'{block['params']['definition']}'",
                 f"{at}/{side}_port" if at else "", block=prefix + raw,
                 hint=f"this instance has: {', '.join(ports) or '(none)'}; delete the link "
-                     f"or change the instance's arguments"))
+                     f"or change the instance's arguments",
+                fields={"case": "flat", "link": f"{link.get('source')}->{link.get('target')}", "port": port, "port_side": port_side, "submodel": block["params"]["definition"]}))
             return None
         return f"{prefix}{raw}/{inner}"
 
@@ -908,26 +999,70 @@ class _Flattener:
         for link in self.links:
             out_edges.setdefault(link["source"], []).append(link)
 
-        def resolve(node: str, delay, seen: frozenset) -> list[tuple[str, dict | None]]:
+        hidden: dict = {}
+
+        def pick(delay, area: tuple, hop: dict):
+            # *area*: (the capacity group, the drawn link it came from), or ({}, None); the
+            # first delay wins and brings its own hop's capacity (D1391)
+            if delay:
+                capacity = hop.get("capacity", 0)
+                if hop.get("delay") and isinstance(capacity, int) and capacity > 0:
+                    hidden[id(hop)] = hop       # A2-R7: an area link a delay before hides
+                return delay, area
+            if hop.get("delay"):
+                return hop["delay"], (_area_of(hop), hop)
+            return None, area if area[0] else (_area_of(hop), hop)
+
+        def resolve(node: str, delay, area: tuple, seen: frozenset) -> list[tuple]:
             if node not in ports:
-                return [(node, delay)]
+                return [(node, delay, area)]
             if node in seen:        # a cycle through ports alone carries no entity
                 return []
             found = []
             for hop in out_edges.get(node, []):
-                found.extend(resolve(hop["target"], delay if delay else hop.get("delay"),
-                                     seen | {node}))
+                found.extend(resolve(hop["target"], *pick(delay, area, hop), seen | {node}))
             return found
 
-        final = []
+        final, copies = [], {}
         for link in self.links:
             if link["source"] in ports:
                 continue        # reached through the real source that feeds it
-            for target, delay in resolve(link["target"], link.get("delay"), frozenset()):
+            for target, delay, (area, origin) in resolve(link["target"],
+                                                         *pick(None, ({}, None), link),
+                                                         frozenset()):
+                if area:
+                    copies.setdefault(id(origin), [origin, 0])[1] += 1
                 entry = {"source": link["source"], "target": target}
+                if link.get("source_port"):
+                    entry["source_port"] = link["source_port"]
+                if link.get("target_port") and target == link["target"]:
+                    entry["target_port"] = link["target_port"]
                 if delay:
                     entry["delay"] = copy.deepcopy(delay)
+                entry.update(copy.deepcopy(area))
                 final.append(entry)
+        for origin, count in copies.values():
+            capacity = origin.get("capacity", 0)
+            if count > 1 and isinstance(capacity, int) and capacity > 0:
+                # R53: one drawn link's places would become `count` links' places each
+                label = f"link {origin['source']}->{origin['target']}"
+                self.problems.append(problem(
+                    "E_LINK_AREA", f"{label}: its capacity {capacity} would be copied onto "
+                    f"{count} links where a submodel port joins or splits the flow", "",
+                    hint="put the capacity on the links inside the submodel, or on one link "
+                         "that does not pass a port with several links",
+                    fields={"case": "port_fan", "where": label.removeprefix("link "), "count": count}))
+
+        for hop in hidden.values():
+            # A2-R7 (final review I4): the area link would lose its time and its places
+            # silently, so it is refused, as the old file's two time fields were
+            label = f"link {hop['source']}->{hop['target']}"
+            self.problems.append(problem(
+                "E_LINK_AREA", f"{label}: its delay and capacity would be lost behind the "
+                f"delay of the link before it, across a submodel port", "",
+                hint="keep one timed link on the way through the port: drop the outer link's "
+                     "delay or the inner link's",
+                fields={"case": "port_delay", "where": label.removeprefix("link ")}))
 
         self.blocks = [b for b in self.blocks if b["name"] not in ports]
         return final
@@ -986,7 +1121,8 @@ class _Flattener:
                 f"{label}: argument '{name}': no {kind.replace('_', ' ')} named '{value}'",
                 block=label,
                 hint=f"declare it in the model, or pick one of: "
-                     f"{', '.join(sorted(known)) or '(none)'}"))
+                     f"{', '.join(sorted(known)) or '(none)'}",
+                fields={"case": "reference", "name": name, "value": value}))
 
     # -- structural arguments (item 8) --------------------------------------
     def _resolve_arguments(self, value, locals_: dict, label: str, block_type: str | None,
@@ -1013,7 +1149,8 @@ class _Flattener:
                 f"{label}: {where}: $arg '{name}' is not a parameter of this submodel",
                 block=label,
                 hint=f"declare '{name}' in the definition's parameters, or use one of: "
-                     f"{', '.join(sorted(locals_)) or '(none)'}"))
+                     f"{', '.join(sorted(locals_)) or '(none)'}",
+                fields={"case": "a7_param", "arg": name}))
             return 0
         value = locals_[name]
         coerced = _coerce(value, target)
@@ -1022,7 +1159,8 @@ class _Flattener:
                 "E_SUBMODEL_ARG_TYPE",
                 f"{label}: {where}: $arg '{name}' is {value!r}, not a "
                 f"{getattr(target, '__name__', target)}",
-                block=label, hint=f"pass a {getattr(target, '__name__', target)} argument"))
+                block=label, hint=f"pass a {getattr(target, '__name__', target)} argument",
+                fields={"case": "param", "arg": name, "value": value}))
             return 0
         return coerced
 
@@ -1315,7 +1453,8 @@ class _Flattener:
                         f"{scope}: failure '{failure_name}' is on the repeated resource "
                         f"'{name}' but its own name has no {INDEX}",
                         block=scope, hint=f"rename it, e.g. '{failure_name} {INDEX}', so each "
-                                          f"copy gets its own failure"))
+                                          f"copy gets its own failure",
+                        fields={"case": "failure", "failure": failure_name, "name": name}))
                     continue
                 clone = self.clones["failures"][self._clone_record("failures", failure_name,
                                                                    scope)]

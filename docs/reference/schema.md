@@ -3,7 +3,7 @@
 
 # Model file format (generated)
 
-Current schema version: **30** (`nagasim/core/schema/migrate.py`). See [Model file format](../model-file-format.md) for the full field-by-field guide; this page is the generated top-level key list. `naga schema` prints the whole JSON Schema; a file saved by an older version is migrated forward when it is read.
+Current schema version: **32** (`nagasim/core/schema/migrate.py`). See [Model file format](../model-file-format.md) for the full field-by-field guide; this page is the generated top-level key list. `naga schema` prints the whole JSON Schema; a file saved by an older version is migrated forward when it is read.
 
 ## Top-level keys
 
@@ -11,7 +11,7 @@ Current schema version: **30** (`nagasim/core/schema/migrate.py`). See [Model fi
 |---|---|
 | `blocks` | Every block in the model: `name`, `type`, `position` (centre, scene units), `params`. |
 | `resources` | Named resources: capacity, queue discipline, optional ranking expression, capacity schedule, cost fields. |
-| `links` | Ordered list of `{source, target, delay?, source_port?, target_port?}`; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is). |
+| `links` | Ordered list of `{source, target, delay?, source_port?, target_port?, capacity?}`; array order is branch order, and several links may join the same pair of blocks (a link is identified by source, target and which of the parallel links it is). |
 | `scenarios` | Named parameter-override sets, run and compared by `nagasim.experiments`. |
 | `orders` | Released jobs with a due date, emitted by a CREATE block in "Orders" arrival mode. |
 | `resource_sets` | Named groups of resources with a selection rule, seized as one pseudo-resource. |
@@ -20,7 +20,7 @@ Current schema version: **30** (`nagasim/core/schema/migrate.py`). See [Model fi
 | `tables` | Named 1-D/2-D lookup tables read by TABLE("name", k1[, k2]) in any expression. |
 | `sequences` | Named routings: ordered steps through STATION blocks, walked by a ROUTE block. |
 | `variables` | Model-level variables, read and written by expressions; reset to `initial` each replication. |
-| `entities` | Entity types: shape, colour, optional WIP holding cost. |
+| `entities` | Entity types: shape, colour, optional size and WIP holding cost. |
 | `timeseries_inputs` | Named time-series profiles read by TS("name") in any expression. |
 | `levels` | Continuous quantities with bounds (battery energy, tank volume, an inventory position), read by LEVEL("name"). |
 | `flows` | Rate-based transfers between levels, re-evaluated at events. |
@@ -28,6 +28,8 @@ Current schema version: **30** (`nagasim/core/schema/migrate.py`). See [Model fi
 | `fixed_costs` | Costs of the scenario rather than of the run: capex (flagged `capex: true` for the investment case), or an annuity over a sized parameter. |
 | `fleets` | Pools of vehicles that carry entities on the network; a fleet is a resource under its own name. |
 | `motion_profiles` | How robots, people and mechanisms move: speed, acceleration, payload derating and a collaborative speed, named by a MOTION block's `profile`. |
+| `robots` | Robots: a structure with its dimensions, or a joint chain, with each axis's range, speed and acceleration, and the tool frame; named by a MOTION block's `robot`. |
+| `pallet_patterns` | Pallet patterns: the pallet, the item, layer layouts and how they stack, and the limits that close a pallet; named by a carrier BATCH's `pattern`. |
 | `zones` | Safety zones: a network node and a radius that a MOTION block's or a tending group's `zone.name` binds to; a worker inside slows the robot to its collaborative speed. |
 | `chargers` | Chargers and battery-swap stations at network nodes, used by fleets that declare a `battery`. |
 | `auxiliaries` | Named expressions read by AUX("name"), evaluated on read. |

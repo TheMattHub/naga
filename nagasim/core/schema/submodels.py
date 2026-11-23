@@ -5,7 +5,7 @@ flattened layout instead (see `prepare`), where the names carry the instance
 prefix."""
 from __future__ import annotations
 
-from nagasim.core import submodels
+from nagasim.core import itemlogic, submodels
 from nagasim.core.problems import Problem, problem
 
 
@@ -34,7 +34,8 @@ def _check_definition_cycles(definitions: dict, problems: list) -> None:
                 f"submodel definition cycle: {' -> '.join(path + [name])}",
                 f"/submodels/{name}",
                 hint="break the loop: a definition cannot instantiate itself, directly or through "
-                     "another definition"))
+                     "another definition",
+                fields={"case": "loop", "loop": " -> ".join(path + [name])}))
             return
         state[name] = "open"
         for ref in submodels.definition_references(definitions.get(name) or {}):
@@ -62,7 +63,8 @@ def _check_definition_terminals(def_name: str, definition: dict, problems: list)
             f"submodel '{def_name}': block '{name}' is a dead end: the definition "
             f"has no SUB_EXIT and this block is not a DISPOSE",
             f"/submodels/{def_name}/blocks/{index}", block=name,
-            hint="add a SUB_EXIT port and link this block to it, or end the flow in a DISPOSE"))
+            hint="add a SUB_EXIT port and link this block to it, or end the flow in a DISPOSE",
+            fields={"case": "dead", "submodel": def_name}))
 
 
 def _check_scoped_names(def_name: str, definition: dict, layout: dict,
@@ -91,7 +93,8 @@ def _check_scoped_names(def_name: str, definition: dict, layout: dict,
                     f"/submodels/{def_name}/blocks/{index}/params/{key}",
                     block=block.get("name"),
                     hint=f"declare a {' or '.join(s.replace('_', ' ') for s in sections)} named "
-                         f"'{bare}' at the top level; flattening clones it per instance"))
+                         f"'{bare}' at the top level; flattening clones it per instance",
+                    fields={"case": "name", "submodel": def_name, "value": value}))
 
 
 def _check_structural_arguments(def_name: str, definition: dict, problems: list) -> None:
@@ -116,12 +119,14 @@ def _check_structural_arguments(def_name: str, definition: dict, problems: list)
                 f"submodel '{def_name}': {block_name or 'scoped'}: $arg '{name}' is not a "
                 f"parameter of this definition",
                 f"{base}{path}", block=block_name,
-                hint=f"declare '{name}' in the definition's parameters; it has: {known}"))
+                hint=f"declare '{name}' in the definition's parameters; it has: {known}",
+                fields={"case": "a7_def", "submodel": def_name, "arg": name}))
 
 
 def _repeat_fault(def_name: str, message: str, path: str, hint: str, block=None) -> Problem:
     return problem("E_SUBMODEL_REPEAT", f"submodel '{def_name}': {message}", path,
-                   block=block, hint=hint)
+                   block=block, hint=hint,
+                   fields={"case": "group", "submodel": def_name})
 
 
 def _check_repeat(def_name: str, definition: dict, problems: list) -> None:
@@ -197,7 +202,8 @@ def _check_top_level_repeat(layout: dict, problems: list) -> None:
                 "E_SUBMODEL_REPEAT", f'{name}: {submodels.INDEX} and "$repeat" are only '
                                      f'allowed inside a submodel definition',
                 f"/blocks/{b}", block=name,
-                hint="move the block into a definition with a repeat group, or write it out"))
+                hint="move the block into a definition with a repeat group, or write it out",
+                fields={"case": "top"}))
 
 
 def _check_instances(blocks, links, definitions: dict, label: str,
@@ -218,7 +224,8 @@ def _check_instances(blocks, links, definitions: dict, label: str,
             problems.append(problem(
                 "E_UNKNOWN_SUBMODEL",
                 f"{label}: '{name}': unknown submodel definition '{def_name}'",
-                f"{at}/definition", block=name, hint=f"use one of: {known}"))
+                f"{at}/definition", block=name, hint=f"use one of: {known}",
+                fields={"case": "unknown", "submodel": def_name}))
             continue
         declared = {str(p.get("name", "")): p for p in definition.get("parameters", [])}
         arguments = params.get("arguments")
@@ -228,7 +235,8 @@ def _check_instances(blocks, links, definitions: dict, label: str,
             problems.append(problem(
                 "E_SUBMODEL_ARGUMENTS", f"{label}: '{name}': arguments must be an object",
                 f"{at}/arguments", block=name,
-                hint="\"arguments\" maps each declared parameter name to its value"))
+                hint="\"arguments\" maps each declared parameter name to its value",
+                fields={"case": "object"}))
             arguments = {}
         for key in arguments:
             if key not in declared:
@@ -236,7 +244,8 @@ def _check_instances(blocks, links, definitions: dict, label: str,
                     "E_SUBMODEL_ARGUMENT_UNKNOWN",
                     f"{label}: '{name}': unknown argument '{key}' for submodel '{def_name}'",
                     f"{at}/arguments/{key}", block=name,
-                    hint=f"'{def_name}' declares: {', '.join(declared) or '(no parameters)'}"))
+                    hint=f"'{def_name}' declares: {', '.join(declared) or '(no parameters)'}",
+                    fields={"case": "unknown", "key": key, "submodel": def_name}))
         for pname, spec in declared.items():
             if pname not in arguments and "default" not in spec:
                 problems.append(problem(
@@ -244,7 +253,8 @@ def _check_instances(blocks, links, definitions: dict, label: str,
                     f"{label}: '{name}': missing argument '{pname}' for submodel '{def_name}'",
                     f"{at}/arguments/{pname}", block=name,
                     hint=f"pass \"{pname}\" in this instance's arguments, or give the parameter "
-                         f"a default in the definition"))
+                         f"a default in the definition",
+                    fields={"case": "missing", "param": pname, "submodel": def_name}))
 
     for index, link in enumerate(links):
         if not isinstance(link, dict):
@@ -271,14 +281,16 @@ def _check_instances(blocks, links, definitions: dict, label: str,
                         f"'{def_name}' has {len(ports)} {port_side} ports",
                         f"{base}/links/{index}/{side}_port",
                         hint=f"set \"{side}_port\" to one of: "
-                             f"{', '.join(ports) or f'(none: add a {port_side} port to the definition)'}"))
+                             f"{', '.join(ports) or f'(none: add a {port_side} port to the definition)'}",
+                        fields={"case": "required", "link": arrow, "side": side, "n": len(ports), "port_side": port_side, "submodel": def_name}))
             elif port not in ports:
                 problems.append(problem(
                     "E_SUBMODEL_PORT_UNKNOWN",
                     f"{label}: link {arrow}: unknown {port_side} port '{port}' "
                     f"on submodel '{def_name}'",
                     f"{base}/links/{index}/{side}_port",
-                    hint=f"use one of: {', '.join(ports) or '(none)'}"))
+                    hint=f"use one of: {', '.join(ports) or '(none)'}",
+                    fields={"case": "link", "link": arrow, "port_side": port_side, "port": port, "submodel": def_name}))
 
 
 def validate_submodels_structured(layout: dict) -> list[Problem]:
@@ -291,7 +303,8 @@ def validate_submodels_structured(layout: dict) -> list[Problem]:
     for def_name in [n for n, d in definitions.items() if not isinstance(d, dict)]:
         problems.append(problem("E_SUBMODEL", f"submodel '{def_name}': a definition must be "
                                               "an object", f"/submodels/{def_name}",
-                                hint="give it \"parameters\", \"blocks\" and \"links\", or delete it"))
+                                hint="give it \"parameters\", \"blocks\" and \"links\", or delete it",
+                                fields={"case": "a7_object", "submodel": def_name}))
     definitions = {n: d for n, d in definitions.items() if isinstance(d, dict)}
 
     for index, block in enumerate(layout.get("blocks", [])):
@@ -302,10 +315,12 @@ def validate_submodels_structured(layout: dict) -> list[Problem]:
                 "E_SUBMODEL_SCOPE",
                 f"{name}: {btype} is only allowed inside a submodel definition",
                 f"/blocks/{index}/type", block=name,
-                hint="move it into a submodel definition, or delete it"))
+                hint="move it into a submodel definition, or delete it",
+                fields={"case": "scope", "kind": btype}))
 
     _check_definition_cycles(definitions, problems)
     _check_top_level_repeat(layout, problems)
+    variables = {str(v.get("name")) for v in layout.get("variables") or [] if isinstance(v, dict)}
 
     for def_name, definition in definitions.items():
         label = f"submodel '{def_name}'"
@@ -317,16 +332,21 @@ def validate_submodels_structured(layout: dict) -> list[Problem]:
                     problems.append(problem("E_SUBMODEL_PORT_NAME",
                                             f"{label}: a {side} port has no name", base,
                                             hint=f"give every SUB_{'ENTRY' if side == 'in' else 'EXIT'}"
-                                                 f" block a \"port\" name"))
+                                                 f" block a \"port\" name",
+                                            fields={"case": "name", "label": label, "side": side}))
                 elif port in seen:
                     problems.append(problem("E_DUPLICATE_SUBMODEL_PORT",
                                             f"{label}: duplicate {side} port name '{port}'", base,
-                                            hint="port names are unique per side: rename one"))
+                                            hint="port names are unique per side: rename one",
+                                            fields={"case": "twice", "label": label, "side": side, "port": port}))
                 seen.add(port)
         _check_definition_terminals(def_name, definition, problems)
         _check_scoped_names(def_name, definition, layout, problems)
         _check_structural_arguments(def_name, definition, problems)
         _check_repeat(def_name, definition, problems)
+        if definition.get("code") is not None:      # item code: parsed only, never run (D1344)
+            problems.extend(itemlogic.code_problems(def_name, definition["code"],
+                                                    definition.get("blocks", []), variables))
         _check_instances(definition.get("blocks", []), definition.get("links", []),
                          definitions, label, problems, base,
                          submodels.instance_locals(definition, {}))
@@ -352,5 +372,6 @@ def _library_clashes(layout: dict) -> list[Problem]:
                         "W_LIBRARY_ITEM_CLASH",
                         f"'{definition}' uses the model's own {section[:-1]} '{name}', "
                         f"which differs from the one its asset ships", f"/{section}",
-                        hint="rename one of them if they are meant to be different things"))
+                        hint="rename one of them if they are meant to be different things",
+                        fields={"kind": section[:-1], "name": name}))
     return out

@@ -95,16 +95,16 @@ _MODEL_ALTERNATIVES = {"study_step": ("layout", "patch")}
 # tests/test_ui_assistant_thread.py classes every offered tool, so a new tool without a class fails.
 ON_GUI = frozenset({
     "add_block", "auto_layout", "calibrate", "check_model_opens", "connect", "disconnect",
-    "propose_plugin_folder", "remove_blocks", "remove_node", "remove_record", "remove_segment",
+    "place_piece", "place_transfer", "propose_plugin_folder", "remove_blocks", "remove_node", "remove_record", "remove_segment",
     "reorder_branches", "resolve_data_bindings", "set_calendar", "set_entity_types",
-    "set_initial_state", "set_resources", "set_sd_settings", "set_simulation_settings",
+    "set_initial_state", "set_item_code", "set_layout", "set_resources", "set_sd_settings", "set_simulation_settings",
     "update_block", "upsert_node", "upsert_orders_from_csv", "upsert_record", "upsert_scenario",
     "upsert_segment", "upsert_table_from_csv", "upsert_timeseries_input_from_csv", "write_model"})
 OFF_GUI = frozenset({
-    "check_draft", "debug_inspect", "debug_run", "describe_block_type", "describe_distribution",
+    "check_draft", "check_layout", "debug_inspect", "debug_run", "describe_block_type", "describe_distribution",
     "evaluate_policy", "explain_kpi", "export", "find_tool", "fit_distribution", "fit_surrogate",
-    "forecast", "get_distance", "get_expression_help", "get_kpi_table", "get_model_format",
-    "get_model_json", "get_model_summary", "get_network", "get_plant_timeline", "get_record_schema",
+    "forecast", "generate_pallet_layer", "get_distance", "get_expression_help", "get_kpi_table", "get_model_format",
+    "get_model_json", "get_model_summary", "get_network", "get_ports", "get_plant_timeline", "get_record_schema",
     "get_twin_forecast", "get_twin_monitor", "get_twin_recommendations", "input_uncertainty",
     "investment_case", "list_block_types", "list_continuous", "list_distributions", "list_models",
     "list_records", "optimize", "run_facts", "run_loop_dominance", "run_model", "run_reality_checks",
@@ -549,15 +549,17 @@ class AssistantSession:
         self._tool_defs = tool_defs(names)
 
     def run_turn(self, user_text: str, *, label: str | None = None, on_text_delta=None,
-                 should_cancel=None) -> TurnResult:
+                 should_cancel=None, attachment: dict | None = None) -> TurnResult:
         """Run one user turn to completion (or cancellation, or the round cap): ask, execute
         any requested tools, feed results back, repeat. The whole turn is one undo step, named
         *label* when given (`turn_label`); an exception or an unusable reply anywhere in the
-        loop rolls every edit the turn made back out."""
+        loop rolls every edit the turn made back out. *attachment* ({"pdf": base64 text}) goes
+        with the user text to a provider that reads documents (`nagasim.llm`)."""
         summary = self.adapter.model_summary()
         start = len(self.history)       # where this turn's entries begin
         self.history.append({"role": "user", "text": f"[Current model]\n"
-                             f"{json.dumps(summary, separators=(',', ':'))}\n\n{user_text}"})
+                             f"{json.dumps(summary, separators=(',', ':'))}\n\n{user_text}",
+                             **({"attachment": attachment} if attachment else {})})
         tool_calls, text_out, notices = [], [], []
         rounds, hit_cap, cancelled, error = 0, False, False, None
         # Only a caller that names the turn passes a label: another adapter (the study room's)

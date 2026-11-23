@@ -7,7 +7,65 @@ from nagasim.core.expressions import ExpressionError, ExpressionScope, entity_ag
 
 log = logging.getLogger(__name__)
 
-__all__ = ["Assign", "SPEC"]
+__all__ = ["Assign", "SPEC", "apply_rows", "compile_rows"]
+
+
+def compile_rows(assignments) -> list:
+    """(target, expr, parsed target, closure) per assignment row. A bad target or expression
+    leaves its slot None and takes the original path in `apply_rows`, so the error is raised
+    per entity with its original message."""
+    rows = []
+    for row in assignments:
+        target, expr = row.get("target", ""), row.get("expr", "")
+        try:
+            parsed = parse_target(target)
+        except (ExpressionError, ValueError):
+            parsed = None
+        rows.append((target, expr, parsed, compiled_closure(expr) if parsed else None))
+    return rows
+
+
+def apply_rows(block, entity, rows, label: str) -> None:
+    """Run compiled assignment *rows* for *entity* in order, as *block*, then the effects a
+    variable write has (flow rates, agents, HOLD conditions). *label* opens an error message."""
+    ctx = block.ctx
+    wrote_variable = wrote_agent = False
+    scope = entity_scope(block, entity)
+    for target, expr, parsed, fn in rows:
+        try:
+            kind, name = parsed if parsed is not None else parse_target(target)
+            if kind == "self":      # an agent action's target (PHASE5 AB-2)
+                raise ExpressionError("self.<attribute> is only valid in an agent action")
+            value = fn(scope) if fn is not None else evaluate_expression(block, expr, entity)
+            if kind == "agent":     # H1: entity.agent.<attr>, the agent's own column
+                population, index = entity_agent(ExpressionScope(ctx=ctx, entity=entity))
+                ctx.agent_system.set_attr(population, index, name, value)
+                wrote_variable = wrote_agent = True
+            elif kind == "entity":
+                setattr(entity, name, value)      # e_type keeps its own setter
+                if name == "sequence":
+                    # Routing (PHASE4 A2): a new sequence always starts at
+                    # its first operation, so the step index resets with it.
+                    # Assign `entity.step` explicitly AFTER this one to
+                    # resume a routing part-way through.
+                    entity.step = 0
+            else:
+                ctx.variables[name] = value
+                wrote_variable = True
+                if ctx.watched or ctx.traced_variables or ctx.variable_hooks:   # a HOLD, a picture, an item
+                    ctx.wrote_variable(name)
+        except (ExpressionError, ValueError) as exc:
+            raise ExpressionError(f"{label}: {target} = {expr}: {exc}") from None
+    # A flow rate may read a model variable (PHASE4 D1), so writing one is
+    # one of the discrete events that re-evaluates the rates. The check
+    # costs one `is None` on a model with no levels, which is every model
+    # written before this existed.
+    if wrote_variable and ctx.level_system is not None:
+        ctx.level_system.trigger()
+    if wrote_agent:     # D129: settled now, so the next block sees the new state
+        ctx.agent_system.settle()
+    elif wrote_variable and ctx.agent_system is not None:   # PHASE5 AB-1: conditions
+        ctx.agent_system.trigger()
 
 
 class Assign(BaseProcess):
@@ -32,63 +90,17 @@ class Assign(BaseProcess):
         Keyed on the (target, expr) texts themselves, not on the list object:
         a replaced list, an edited dict and an appended item all change the key,
         so the plan cannot go stale however `assignments` is modified. The key
-        costs two dict reads per assignment, far less than a parse. A bad target
-        or expression leaves its slot None and takes the original path, so the
-        error is raised per entity with its original message."""
+        costs two dict reads per assignment, far less than a parse."""
         key = tuple((a.get("target", ""), a.get("expr", "")) for a in self.assignments)
         plan = self._plan
         if plan is None or plan[0] != key:
-            rows = []
-            for target, expr in key:
-                try:
-                    parsed = parse_target(target)
-                except (ExpressionError, ValueError):
-                    parsed = None
-                rows.append((target, expr, parsed, compiled_closure(expr) if parsed else None))
-            plan = self._plan = (key, rows)
+            plan = self._plan = (key, compile_rows({"target": t, "expr": e} for t, e in key))
         return plan[1]
 
     def self_process(self, entity):
-        wrote_variable = wrote_agent = False
-        scope = entity_scope(self, entity)
-        for target, expr, parsed, fn in self._rows():
-            try:
-                kind, name = parsed if parsed is not None else parse_target(target)
-                if kind == "self":      # an agent action's target (PHASE5 AB-2)
-                    raise ExpressionError("self.<attribute> is only valid in an agent action")
-                value = fn(scope) if fn is not None else evaluate_expression(self, expr, entity)
-                if kind == "agent":     # H1: entity.agent.<attr>, the agent's own column
-                    population, index = entity_agent(ExpressionScope(ctx=self.ctx, entity=entity))
-                    self.ctx.agent_system.set_attr(population, index, name, value)
-                    wrote_variable = wrote_agent = True
-                elif kind == "entity":
-                    setattr(entity, name, value)      # e_type keeps its own setter
-                    if name == "sequence":
-                        # Routing (PHASE4 A2): a new sequence always starts at
-                        # its first operation, so the step index resets with it.
-                        # Assign `entity.step` explicitly AFTER this one to
-                        # resume a routing part-way through.
-                        entity.step = 0
-                else:
-                    self.ctx.variables[name] = value
-                    wrote_variable = True
-                    if self.ctx.watched or self.ctx.traced_variables:   # a HOLD (O4), a picture (D608)
-                        self.ctx.wrote_variable(name)
-            except (ExpressionError, ValueError) as exc:
-                raise ExpressionError(f"Assign block '{self.name}': {target} = {expr}: {exc}") from None
-        # A flow rate may read a model variable (PHASE4 D1), so writing one is
-        # one of the discrete events that re-evaluates the rates. The check
-        # costs one `is None` on a model with no levels, which is every model
-        # written before this existed.
-        if wrote_variable and self.ctx.level_system is not None:
-            self.ctx.level_system.trigger()
-        if wrote_agent:     # D129: settled now, so the next block sees the new state
-            self.ctx.agent_system.settle()
-        elif wrote_variable and self.ctx.agent_system is not None:   # PHASE5 AB-1: conditions
-            self.ctx.agent_system.trigger()
+        apply_rows(self, entity, self._rows(), f"Assign block '{self.name}'")
         if self.ctx.debug:
             log.debug("Entity %s assigned %s at time %s.", entity.id, self.assignments, self.env.now)
-
         self.forward(entity, 0)
 
     def self_run(self, entity):

@@ -397,8 +397,8 @@ def _lead(folder: Path, study: dict) -> dict | None:
     """D1237, D1252: the deck's facts when an option is recommended (it leads the header, the
     chips and the Goals table, the Baseline its comparison); None without one."""
     from nagasim import studywriteup      # it builds on this module's helpers
-    if not study["versions"] or not study_mod.scenarios_meeting(study):
-        return None
+    if not study["versions"] or len(study_mod.scenarios_meeting(study)) != 1:
+        return None                     # D1348: two or more meeting every goal: none leads
     return studywriteup.facts(folder, study)
 
 
@@ -424,7 +424,7 @@ def _open_item(study: dict, folder: Path, study_id: str | None = None) -> str:
     if item is None:
         return ""
     why = f" ({_check_why(item, study, folder, study_id)})" if item["why"] else ""
-    return f"<b>Open:</b> {esc(item['title'])}{why}. "
+    return f"<b>Open:</b> {esc(item['title'])}{why}; "
 
 
 def _panel(pid: str, summary: str, body: str, opened: bool) -> str:
@@ -466,7 +466,7 @@ def _goals_panel(study: dict, goals: list[dict], folder: Path, study_id: str | N
     with_best = sum((g["option"] or {}).get("status") == "met" for g in lead["goals"]) if lead else 0
     summary = (f"Goals: {met} of {len(goals)} met"
                + (f" in the {pagefmt.REFERENCE}, {with_best} with {esc(best)}" if lead else "")
-               + f". Checklist: {esc(_tally(verdicts))}. "
+               + f"; Checklist: {esc(_tally(verdicts))}; "
                f"Validation: {esc(_validation_level(study) + _reported(study))}")
     # D1259: where the room draws the person's "I checked this" form, below the table so it has the
     # panel's width on a phone (the static page and the chat shell ignore the mark).
@@ -632,7 +632,7 @@ def _trust_panel(folder: Path, study: dict, steps: dict) -> str:
     rows = trust_rows(folder, study, steps)
     if not rows:
         return ""
-    return _panel("trust", "Can I trust this? Three uncertainties, kept apart",
+    return _panel("trust", "Can I trust this: three uncertainties, kept apart",
                   _table(["Uncertainty", "Basis"], [[esc(a), esc(b)] for a, b in rows]), False)
 
 

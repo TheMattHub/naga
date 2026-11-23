@@ -15,6 +15,7 @@ from nagasim.core import blocking, movers
 from nagasim.core import calendar as cal
 from nagasim.core import motion as timing
 from nagasim.core.battery import battery_of
+from nagasim.core.blocks.conveyor import exposed_variables
 from nagasim.core.initial_state import HOLDING_TYPES, KEYS, SECTION, SERVICE_TYPES, has_initial_state
 from nagasim.core.network import block_nodes, build_network
 from nagasim.core.orders import book_of as orders_book_of
@@ -60,7 +61,8 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
         return problems
     if not isinstance(state, dict):
         return [problem("E_INITIAL_BLOCK", "initial_state: must be an object", f"/{SECTION}",
-                        hint="use {} for no initial state")]
+                        hint="use {} for no initial state",
+                        fields={"case": "object"})]
     c = _setup(layout, state, problems)
     for check in (_check_keys, _check_levels, _check_clock, _check_schedule_offset,
                   _check_variables, _check_arrivals, _check_orders, _check_failures,
@@ -72,7 +74,8 @@ def validate_initial_state_structured(layout: dict) -> list[Problem]:
         return problems + [problem(
             "E_INITIAL_BLOCK", "initial_state: entities must be a list of objects, each "
             "naming its block", f"/{SECTION}/entities",
-            hint="one object per entry: {\"block\": \"<name>\", \"count\": 1, ...}")]
+            hint="one object per entry: {\"block\": \"<name>\", \"count\": 1, ...}",
+            fields={"case": "entities"})]
     for index, entry in enumerate(entries):
         _check_entry(c, index, entry)
     _validate_places(layout, state, c.blocks, c.sets, c.serving, c.waiting, c.start, problems)
@@ -143,7 +146,8 @@ def _check_keys(c) -> None:
         problems.append(problem(
             "E_INITIAL_KEY", f"initial_state: unknown key '{str(key)[:40]}'",
             f"/{SECTION}/{str(key)[:40]}",
-            hint=f"a newer engine may have written it; known: {', '.join(sorted(KEYS))}"))
+            hint=f"a newer engine may have written it; known: {', '.join(sorted(KEYS))}",
+            fields={"case": "key", "key": str(key)[:40]}))
 
 def _check_levels(c) -> None:
     """Levels (PHASE4 D1) a warm start sets."""
@@ -161,17 +165,20 @@ def _check_levels(c) -> None:
             problems.append(problem(
                 "E_CONVEYOR_WRITE", f"initial_state: '{name}' is a conveyor; its value cannot "
                 f"be set from initial_state.levels", f"/{SECTION}/levels/{name}",
-                hint="set the conveyor's own \"initial\" in \"levels\" instead"))
+                hint="set the conveyor's own \"initial\" in \"levels\" instead",
+                fields={"case": "a4_levels", "name": name}))
         elif name not in declared_levels:
             problems.append(problem(
                 "E_LEVEL_UNKNOWN", f"initial_state: unknown level '{name}'",
                 f"/{SECTION}/levels/{name}",
                 hint=f"declare it under \"levels\" first; declared: "
-                     f"{', '.join(sorted(str(v) for v in declared_levels)) or '(none)'}"))
+                     f"{', '.join(sorted(str(v) for v in declared_levels)) or '(none)'}",
+                fields={"case": "a4_state", "name": name}))
         elif not isinstance(value, (int, float)) or isinstance(value, bool):
             problems.append(problem(
                 "E_LEVEL_BOUNDS", f"initial_state: level '{name}' must start at a number",
-                f"/{SECTION}/levels/{name}", hint="a level's value is a number"))
+                f"/{SECTION}/levels/{name}", hint="a level's value is a number",
+                fields={"case": "a4_start", "name": name}))
 
 def _check_clock(c) -> None:
     """The clock the state was taken at."""
@@ -186,7 +193,8 @@ def _check_clock(c) -> None:
             problems.append(problem(
                 "E_INITIAL_CLOCK", "initial_state: clock must be a number >= 0 and before "
                 "the end of the run", f"/{SECTION}/clock",
-                hint="the model time the state was taken at, in the model's base time unit"))
+                hint="the model time the state was taken at, in the model's base time unit",
+                fields={"case": "clock"}))
 
 def _check_schedule_offset(c) -> None:
     """How far into its cycle the calendar is at time 0."""
@@ -198,7 +206,8 @@ def _check_schedule_offset(c) -> None:
             "initial_state: schedule_offset must be a number >= 0",
             f"/{SECTION}/schedule_offset",
             hint="how far into its own cycle the calendar already is at model time 0, "
-                 "in the model's base time unit"))
+                 "in the model's base time unit",
+            fields={"case": "offset"}))
 
 def _check_variables(c) -> None:
     """The variables a state writes."""
@@ -208,6 +217,9 @@ def _check_variables(c) -> None:
     declared_vars |= {t.get("variable") for l in layout.get("levels", []) or []
                       if isinstance(l, dict) for t in l.get("thresholds") or []
                       if isinstance(t, dict) and t.get("variable")}
+    # D1378: what an exposed belt or transfer writes; a state taken from a run holds it too
+    declared_vars |= {name for block in layout.get("blocks", []) or [] if isinstance(block, dict)
+                      for name in exposed_variables(block)}
 
     for name in (state.get("variables") or {}):
         if name not in declared_vars:
@@ -215,7 +227,8 @@ def _check_variables(c) -> None:
                 "E_INITIAL_VARIABLE", f"initial_state: unknown variable '{name}'",
                 f"/{SECTION}/variables/{name}",
                 hint=f"declare it under \"variables\" first; declared: "
-                     f"{', '.join(sorted(str(v) for v in declared_vars)) or '(none)'}"))
+                     f"{', '.join(sorted(str(v) for v in declared_vars)) or '(none)'}",
+                fields={"case": "unknown", "name": name}))
 
 def _check_arrivals(c) -> None:
     """Arrivals already made, and the ties between drawn ones (#474)."""
@@ -249,7 +262,8 @@ def _check_arrivals(c) -> None:
                 hint="count is the arrivals already made, at most 2**53 (#475: an exact float, "
                      "what a deterministic schedule's walk counts in); next is the absolute "
                      "time of the next one; scheduled is the time it was drawn at; rank, a "
-                     "whole number, orders the ones drawn for one instant at one instant"))
+                     "whole number, orders the ones drawn for one instant at one instant",
+                fields={"case": "count", "name": name}))
         elif drawn is not None:
             ties.setdefault((due, drawn), []).append((name, rank))
         times = spec.get("times") if isinstance(spec, dict) else None
@@ -268,7 +282,8 @@ def _check_arrivals(c) -> None:
                     f"the jittered times of its FixedSchedule still to come, in order, at or after "
                     f"the next time and the clock", f"/{SECTION}/arrivals/{name}/times",
                     hint="what `naga state take` writes for a timetable with a jitter; no more "
-                         "times than the schedule lists"))
+                         "times than the schedule lists",
+                    fields={"case": "times", "name": name}))
     for tied in ties.values():
         ranks = [rank for _name, rank in tied if rank is not None]
         # A rank on all of two or more, each its own, or on none (an older document: block
@@ -280,7 +295,8 @@ def _check_arrivals(c) -> None:
                     f"{len(tied) - 1} other(s) at one next and scheduled time; their ranks must "
                     f"be on all of them and different", f"/{SECTION}/arrivals/{name}/rank",
                     hint="rank orders two or more drawn for one instant at one instant: "
-                         "0, 1, ... within that group, or no rank on any of them"))
+                         "0, 1, ... within that group, or no rank on any of them",
+                    fields={"case": "tie", "name": name}))
 
 def _check_orders(c) -> None:
     """The order book and the counters of each order."""
@@ -293,7 +309,8 @@ def _check_orders(c) -> None:
         problems.append(problem(
             "E_INITIAL_ORDERS", "initial_state: order_book must be a list of orders, each "
             "\"held\" true or false", f"/{SECTION}/order_book",
-            hint="the orders section's shape, plus \"held\": true for an order held back"))
+            hint="the orders section's shape, plus \"held\": true for an order held back",
+            fields={"case": "book"}))
     ids = {str(o.get("id", "")) for o in orders_book_of(layout) if isinstance(o, dict)}
     orders = state.get("orders") or {}
     for name, spec in (orders.items() if isinstance(orders, dict) else [("", None)]):
@@ -310,7 +327,8 @@ def _check_orders(c) -> None:
                 f"with created and completed >= 0 and, once one is completed, completed_at "
                 f"before the clock", f"/{SECTION}/orders/{name}",
                 hint="the counters of its release and completion before the clock; a "
-                     "DUPLICATE's copies are completed for the order, never created by it"))
+                     "DUPLICATE's copies are completed for the order, never created by it",
+                fields={"case": "order", "name": name}))
 
 def _check_failures(c) -> None:
     """Failures a resource is in the middle of."""
@@ -332,7 +350,8 @@ def _check_failures(c) -> None:
                     f"/{SECTION}/resources/{name}/failures/{fname}",
                     hint=f"failures of '{name}': "
                          f"{', '.join(sorted(failing.get(name, ()))) or '(none)'}; times are "
-                         f"absolute and not before the clock"))
+                         f"absolute and not before the clock",
+                    fields={"case": "failure", "name": name, "failure": fname}))
 
 def _check_resources(c) -> None:
     """Resources: when one is down until, and that the model declares it."""
@@ -347,13 +366,15 @@ def _check_resources(c) -> None:
                 problems.append(problem(
                     "E_CALENDAR_DATE", f"initial_state: resource '{name}': {exc}",
                     f"/{SECTION}/resources/{name}/down_until",
-                    hint="write it as 2026-01-05T06:00:00, or use a number in the base unit"))
+                    hint="write it as 2026-01-05T06:00:00, or use a number in the base unit",
+                    fields={"case": "a4_down_until", "name": name}))
         if name not in declared_res:
             problems.append(problem(
                 "E_INITIAL_RESOURCE", f"initial_state: unknown resource '{name}'",
                 f"/{SECTION}/resources/{name}",
                 hint=f"declare it under \"resources\" first; declared: "
-                     f"{', '.join(sorted(str(r) for r in declared_res)) or '(none)'}"))
+                     f"{', '.join(sorted(str(r) for r in declared_res)) or '(none)'}",
+                fields={"case": "unknown", "name": name}))
 
 def _check_used_and_sets(c) -> None:
     """What had a report row before the clock, and where a resource set's cursor stands."""
@@ -368,7 +389,8 @@ def _check_used_and_sets(c) -> None:
         problems.append(problem(
             "E_INITIAL_RESOURCE", "initial_state: used must list resources, sets and stores of "
             "the model", f"/{SECTION}/used",
-            hint="the ones that had anything happen to them before the clock"))
+            hint="the ones that had anything happen to them before the clock",
+            fields={"case": "used"}))
     for name, spec in (state.get("resource_sets") or {}).items():
         cursor = spec.get("cursor") if isinstance(spec, dict) else None
         if name not in sets or not isinstance(cursor, int) or isinstance(cursor, bool) \
@@ -377,7 +399,8 @@ def _check_used_and_sets(c) -> None:
                 "E_INITIAL_SET", f"initial_state: resource set '{name}' must be a declared "
                 f"set with a cursor from -1 to its last member's index",
                 f"/{SECTION}/resource_sets/{name}",
-                hint="cursor is the index of the member a Cyclical set picked last"))
+                hint="cursor is the index of the member a Cyclical set picked last",
+                fields={"case": "cursor", "name": name}))
 
 def _check_blocks(c) -> None:
     """What a block carries across the clock: a changeover, a batch's due time, a conveyor's next entry."""
@@ -423,7 +446,8 @@ def _check_blocks(c) -> None:
                      "absolute times, due at or after the clock; left is a list, one time or "
                      "null per stop, divert and merge and one for the end, each at or before "
                      "the clock; frees lists when the loads moving out free their slots, "
-                     "at or after the clock"))
+                     "at or after the clock",
+                fields={"case": "carry", "name": name}))
 
 def _check_entry(c, index, entry) -> None:
     """One entry of `entities`."""
@@ -436,7 +460,8 @@ def _check_entry(c, index, entry) -> None:
             "E_INITIAL_BLOCK", f"initial_state: unknown block '{str(name)[:80]}'",
             f"{at}/block",
             hint="name a block of this model; a block inside a submodel is named "
-                 "\"<instance>/<inner>\" once flattened"))
+                 "\"<instance>/<inner>\" once flattened",
+            fields={"case": "unknown", "name": str(name)[:80]}))
         return
     btype = block.get("type", "").upper()
     # An entity on a link ARRIVES like any other: only one put inside needs a holder.
@@ -453,7 +478,8 @@ def _check_entry(c, index, entry) -> None:
             f"{at}/block", block=name,
             hint="an entity waiting at a TRANSFER for its level carries transfer.amount, "
                  "which a plant does not say" if btype == "TRANSFER"
-            else f"inject into one of: {', '.join(HOLDING_TYPES)}"))
+            else f"inject into one of: {', '.join(HOLDING_TYPES)}",
+            fields={"case": "type"}))
         return
 
     _check_attributes(c, entry, name, btype, riding, at)
@@ -473,14 +499,16 @@ def _check_attributes(c, entry, name, btype, riding, at) -> None:
             f"attributes an object of named values, none the engine's own and a cost a "
             f"number", f"{at}/attributes", block=name,
             hint="for example {\"priority\": 2}; not id, e_type, creation_time, req_params "
-                 "or a name starting with _"))
+                 "or a name starting with _",
+            fields={"case": "attributes"}))
     elif not riding and btype != "STATION" and c.transported(name) \
             and str((entry.get("attributes") or {}).get("station")) not in places:
         problems.append(problem(        # else the run fails when it gets there
             "E_INITIAL_BLOCK", f"initial_state: block '{name}': a TRANSPORT ahead leaves "
             f"from the station the entity is at, which attributes.station must name",
             f"{at}/attributes", block=name,
-            hint="the STATION (or its station alias) the entity last went through"))
+            hint="the STATION (or its station alias) the entity last went through",
+            fields={"case": "station"}))
 
 def _check_count_and_age(c, entry, name, at) -> int:
     """count and age of an entry; a bad count counts as 0."""
@@ -489,7 +517,8 @@ def _check_count_and_age(c, entry, name, at) -> int:
     if not isinstance(count, int) or isinstance(count, bool) or count < 0:
         problems.append(problem(
             "E_INITIAL_COUNT", f"initial_state: block '{name}': count must be an integer >= 0",
-            f"{at}/count", block=name, hint="use 0 to inject nothing"))
+            f"{at}/count", block=name, hint="use 0 to inject nothing",
+            fields={"case": "count"}))
         count = 0
 
     age = entry.get("age", 0)
@@ -497,7 +526,8 @@ def _check_count_and_age(c, entry, name, at) -> int:
         problems.append(problem(
             "E_INITIAL_AGE", f"initial_state: block '{name}': age must be a number >= 0",
             f"{at}/age", block=name,
-            hint="age is how long the entity has already been in the system, in base time units"))
+            hint="age is how long the entity has already been in the system, in base time units",
+            fields={"case": "age"}))
     return count
 
 def _check_in_service(c, entry, name, block, btype, count, at) -> int:
@@ -508,19 +538,22 @@ def _check_in_service(c, entry, name, block, btype, count, at) -> int:
         problems.append(problem(
             "E_INITIAL_IN_SERVICE",
             f"initial_state: block '{name}': in_service must be an integer >= 0",
-            f"{at}/in_service", block=name, hint="use 0 when every entity is waiting"))
+            f"{at}/in_service", block=name, hint="use 0 when every entity is waiting",
+            fields={"case": "integer"}))
         in_service = 0
     elif in_service and btype not in SERVICE_TYPES:
         problems.append(problem(
             "E_INITIAL_IN_SERVICE",
             f"initial_state: block '{name}': a {btype} has no service to be in the middle of",
             f"{at}/in_service", block=name,
-            hint=f"in_service applies to: {', '.join(SERVICE_TYPES)}"))
+            hint=f"in_service applies to: {', '.join(SERVICE_TYPES)}",
+            fields={"case": "no_service", "btype": btype}))
     elif in_service > count:
         problems.append(problem(
             "E_INITIAL_IN_SERVICE",
             f"initial_state: block '{name}': in_service {in_service} exceeds count {count}",
-            f"{at}/in_service", block=name, hint="in_service counts entities of this entry"))
+            f"{at}/in_service", block=name, hint="in_service counts entities of this entry",
+            fields={"case": "exceeds", "in_service": in_service, "count": count}))
     else:
         capacity = _capacity_of(layout, block)
         quantity = int((block.get("params") or {}).get("quantity", 1) or 1)
@@ -540,7 +573,8 @@ def _check_in_service(c, entry, name, block, btype, count, at) -> int:
                 f"initial_state: block '{name}': in_service {in_service} needs "
                 f"{in_service * quantity} units, above the resource's capacity {capacity}",
                 f"{at}/in_service", block=name,
-                hint="lower in_service, or raise the resource's capacity"))
+                hint="lower in_service, or raise the resource's capacity",
+                fields={"case": "capacity", "needed": in_service * quantity, "capacity": capacity}))
     return in_service
 
 def _check_transfer(c, entry, name, block, btype, count, in_service, at) -> None:
@@ -558,7 +592,8 @@ def _check_transfer(c, entry, name, block, btype, count, in_service, at) -> None
             f"entity waits for at a TRANSFER with wait, no more than its level can hold",
             f"{at}/transfer", block=name,
             hint="{\"amount\": 3.0}, a number > 0, as the TRANSFER evaluated it; one above "
-                 "the level's capacity less its minimum would wait for ever"))
+                 "the level's capacity less its minimum would wait for ever",
+            fields={"case": "transfer"}))
 
 def _check_cycle_and_member(c, entry, name, block, btype, in_service, at) -> None:
     """A MOTION's cycle, and the member of a set that serves."""
@@ -569,7 +604,8 @@ def _check_cycle_and_member(c, entry, name, block, btype, in_service, at) -> Non
         problems.append(problem(
             "E_INITIAL_CYCLE", f"initial_state: block '{name}': a cycle is the job in service "
             f"at a MOTION block", f"{at}/cycle", block=name,
-            hint="one entity with in_service 1 at a MOTION"))
+            hint="one entity with in_service 1 at a MOTION",
+            fields={"case": "cycle"}))
 
     member = entry.get("member")
     if member is not None and entry.get("held_by") is None and member not in sets.get(
@@ -577,7 +613,8 @@ def _check_cycle_and_member(c, entry, name, block, btype, in_service, at) -> Non
         problems.append(problem(
             "E_INITIAL_SET", f"initial_state: block '{name}': member '{member}' is not a "
             f"member of the resource set the block seizes", f"{at}/member", block=name,
-            hint="member names which resource of the set serves the jobs in service"))
+            hint="member names which resource of the set serves the jobs in service",
+            fields={"case": "member", "member": member}))
 
 def _check_holds_and_members(c, entry, name, block, count, at) -> None:
     """What an entity holds from an earlier block, the members of a formed batch, and what it must hold to go on."""
@@ -591,7 +628,8 @@ def _check_holds_and_members(c, entry, name, block, count, at) -> None:
             f"carrier BATCH cannot be put back: where its loading stood and its cut-off are not "
             f"carried", at, block=name,
             hint="start the state with the carrier before the BATCH (at its door SEIZE), or "
-                 "after it"))
+                 "after it",
+            fields={"case": "carrier", "carrier": carrier_type}))
     if entry.get("holds") is not None:
         _validate_holds(layout, entry, block, blocks, sets, start, serving, at, problems)
     if entry.get("members") is not None:
@@ -608,7 +646,8 @@ def _check_holds_and_members(c, entry, name, block, count, at) -> None:
             f"batches, so it is a formed batch and needs its members",
             f"{at}/members", block=name,
             hint="one record per member (e_type, age, attributes, holds); a plant names no "
-                 "batch's members, so a state from one cannot carry a formed batch"))
+                 "batch's members, so a state from one cannot carry a formed batch",
+            fields={"case": "formed"}))
     key = (name, entry.get("members") is not None)
     if count and key not in needs:      # one walk per block
         needs[key] = _needs(name, blocks, linked, batch=key[1])
@@ -619,7 +658,8 @@ def _check_holds_and_members(c, entry, name, block, count, at) -> None:
             f"'{released}' back at a block it reaches before any seizes it, and does not "
             f"hold it", f"{at}/holds", block=name,
             hint="a job before a block that releases a resource holds it from an earlier "
-                 "block: say so in holds"))
+                 "block: say so in holds",
+            fields={"case": "gives_back", "released": released}))
 
 def _check_times(c, entry, name, block, count, in_service, at) -> None:
     """remaining, ends, deadline, since and arrives of an entry."""
@@ -631,7 +671,8 @@ def _check_times(c, entry, name, block, count, in_service, at) -> None:
                 "E_INITIAL_REMAINING",
                 f"initial_state: block '{name}': remaining must be a list of numbers >= 0",
                 f"{at}/remaining", block=name,
-                hint="one remaining service time per in-service entity"))
+                hint="one remaining service time per in-service entity",
+                fields={"case": "remaining"}))
         elif len(remaining) > max(in_service, 0):
             problems.append(problem(
                 "E_INITIAL_REMAINING",
@@ -639,7 +680,8 @@ def _check_times(c, entry, name, block, count, in_service, at) -> None:
                 f"for {in_service} in-service entities",
                 f"{at}/remaining", block=name,
                 hint="remaining has at most in_service entries; the rest sample a fresh "
-                     "service time"))
+                     "service time",
+                fields={"case": "toomany", "n": len(remaining), "in_service": in_service}))
 
     # Absolute times (D232): the end of a service in progress, an arrival off a link.
     ends, arrives = entry.get("ends"), entry.get("arrives")
@@ -649,7 +691,8 @@ def _check_times(c, entry, name, block, count, in_service, at) -> None:
             "E_INITIAL_REMAINING",
             f"initial_state: block '{name}': ends must be a list of times at or after the "
             f"clock, at most one per in-service entity", f"{at}/ends", block=name,
-            hint="the absolute time each service in progress ends"))
+            hint="the absolute time each service in progress ends",
+            fields={"case": "ends"}))
     deadline = entry.get("deadline")
     if deadline is not None and not (is_finite_number(deadline) and deadline >= start
                                      and (block.get("params") or {}).get("renege_after")):
@@ -657,21 +700,24 @@ def _check_times(c, entry, name, block, count, in_service, at) -> None:
             "E_INITIAL_REMAINING",
             f"initial_state: block '{name}': deadline must be a time at or after the "
             f"clock, at a block with renege_after", f"{at}/deadline", block=name,
-            hint="the absolute time the entry's waiting entities give up"))
+            hint="the absolute time the entry's waiting entities give up",
+            fields={"case": "deadline"}))
     since = entry.get("since")
     if since is not None and not (is_finite_number(since) and since <= start):
         problems.append(problem(
             "E_INITIAL_REMAINING",
             f"initial_state: block '{name}': since must be a time at or before the clock",
             f"{at}/since", block=name,
-            hint="the absolute time the entry's waiting entities joined the queue"))
+            hint="the absolute time the entry's waiting entities joined the queue",
+            fields={"case": "since"}))
     if arrives is not None and not (is_finite_number(arrives) and arrives >= start and count == 1
                                     and not in_service):
         problems.append(problem(
             "E_INITIAL_REMAINING",
             f"initial_state: block '{name}': arrives must be a time at or after the clock, "
             f"on an entry of one entity that is not in service", f"{at}/arrives", block=name,
-            hint="the absolute time an entity on a link reaches the block"))
+            hint="the absolute time an entity on a link reaches the block",
+            fields={"case": "arrives"}))
 
 def _check_totals(c) -> None:
     """Consistency over the whole state: a plant is where it goes wrong, and the engine does not choose which observed entity to drop (D236)."""
@@ -683,7 +729,8 @@ def _check_totals(c) -> None:
                 "E_INITIAL_IN_SERVICE",
                 f"initial_state: {units} units of '{resource}' are in service over all "
                 f"entries, above its capacity {capacities[resource]}", f"/{SECTION}/entities",
-                hint="lower in_service, or raise the resource's capacity"))
+                hint="lower in_service, or raise the resource's capacity",
+                fields={"case": "total", "name": resource, "units": units, "capacity": capacities[resource]}))
     for name, spec in (state.get("resources") or {}).items():
         busy = (spec or {}).get("busy")
         if busy is not None and busy != serving.get(name, 0):
@@ -692,7 +739,8 @@ def _check_totals(c) -> None:
                 f"initial_state: resource '{name}' is reported busy with {busy} units, and the "
                 f"entities in service on it hold {serving.get(name, 0)}",
                 f"/{SECTION}/resources/{name}/busy",
-                hint="every busy unit needs an in_service entity at a block that seizes it"))
+                hint="every busy unit needs an in_service entity at a block that seizes it",
+                fields={"case": "busy", "name": name, "busy": busy, "held": serving.get(name, 0)}))
     for name, queued in waiting.items():
         room = places_of(blocks[name])
         if room and queued > room:
@@ -700,7 +748,8 @@ def _check_totals(c) -> None:
                 "E_INITIAL_QUEUE_CAPACITY",
                 f"initial_state: {queued} entities wait at '{name}', whose queue holds {room}",
                 f"/{SECTION}/entities", block=name,
-                hint="the state shows more than the queue can hold; check the observation"))
+                hint="the state shows more than the queue can hold; check the observation",
+                fields={"case": "queue", "queued": queued, "room": room}))
 
 def _check_warmup(c) -> None:
     """A warm start and a warm-up together."""
@@ -712,7 +761,8 @@ def _check_warmup(c) -> None:
             "the model sets both an initial state and a warm-up; the warm-up discards "
             "the history the initial state supplies",
             "/simulation/warmup",
-            hint="set simulation.warmup to 0 for a warm-started model"))
+            hint="set simulation.warmup to 0 for a warm-started model",
+            fields={"case": "warmup"}))
     return problems
 
 
@@ -745,7 +795,8 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
             f"optional since, units and, of a set, its member", f"{at}/holds",
             hint="one entity per entry; since is at or before the clock and not before the "
                  "entity was made (the clock less its age); not the resource its own block or "
-                 "the station in held_by seizes"))
+                 "the station in held_by seizes",
+            fields={"case": "holds", "name": entry.get("block")}))
         return
     for name, spec in holds.items():
         unit = spec.get("member") or name       # #448: two holds of one unit count twice
@@ -765,7 +816,8 @@ def _validate_holds(layout, entry, block, blocks, sets, start, serving, at, prob
             problems.append(problem(
                 "E_INITIAL_RESOURCE", f"initial_state: block '{entry['block']}': the entry "
                 f"holds '{name}', which no block after it releases", f"{at}/holds/{name}",
-                hint="a hold is given back by a RELEASE or a \"Delay Release\" further on"))
+                hint="a hold is given back by a RELEASE or a \"Delay Release\" further on",
+                fields={"case": "no_release", "where": entry["block"], "name": name}))
 
 
 def _successors(layout, blocks, jumps=True):
@@ -927,7 +979,8 @@ def _validate_members(layout, entry, blocks, sets, start, serving, at, problems,
             f"group it forms ({largest}), each with an optional e_type, age, attributes and "
             f"holds", f"{at}/members",
             hint="a member is at least as old as its batch; a batch inside a batch is not "
-                 "carried"))
+                 "carried",
+            fields={"case": "members", "name": name}))
         return
     splits = [n for n in blocking.stops(name, after, lambda n: _kind(
         blocks.get(n) or {}) == "SEPARATE", lambda n: True)]
@@ -942,7 +995,8 @@ def _validate_members(layout, entry, blocks, sets, start, serving, at, problems,
                 "E_INITIAL_RESOURCE", f"initial_state: block '{name}': member {index} gives "
                 f"'{x}' back after the batch splits, and does not hold it",
                 f"{at}/members/{index}/holds", block=name,
-                hint="a member holds what it took before it was batched: say so in its holds"))
+                hint="a member holds what it took before it was batched: say so in its holds",
+                fields={"case": "member_gives", "index": index, "resource": x}))
 
 
 def _same(value, expected) -> bool:
@@ -955,6 +1009,8 @@ def _fixed_seconds(layout, segment: dict, profile, slow: bool, time_unit) -> flo
     `sample_duration`). None when the model does not fix it: an expression (its draw is the
     state's, D444), or a move with no usable profile (the motion section's own problem)."""
     units = units_of(layout.get("simulation"))
+    if segment.get("kind") in timing.ROBOT_KINDS:
+        return None             # the plan's, compared by _validate_cycle (D1343)
     if segment.get("kind") == "move":
         try:
             return timing.move_seconds(profile, segment, slow) * base_factor("time", "seconds",
@@ -1043,8 +1099,15 @@ def _validate_cycle(layout, entry, block, start, at, problems) -> None:
         ok = (ok and is_finite_number(until) and start <= until <= start + times[stage] + eps
               and until - sum(times[:stage + 1]) >= made - eps)
         profile = timing.build_motion_profiles(layout).get(str(params.get("profile") or ""))
+        plan = timing.block_robot_plan(layout, block) if any(
+            s.get("kind") in timing.ROBOT_KINDS for s in segments) else None
+        to_base = base_factor("time", "seconds", units_of(layout.get("simulation")))
         for i, segment in enumerate(segments if ok else ()):
-            if times[i] is not None:
+            if times[i] is not None and segment.get("kind") in timing.ROBOT_KINDS:
+                # D1343: a robot move takes what the plan gives it, a constant
+                move = plan.moves.get(i) if plan is not None else None
+                ok = ok and move is not None and _same(times[i], move.seconds * to_base)
+            elif times[i] is not None:
                 fixed = _fixed_seconds(layout, segment, profile, i in slow, params.get("time_unit"))
                 ok = ok and (fixed is None or _same(times[i], fixed))
     if not ok:
@@ -1057,7 +1120,8 @@ def _validate_cycle(layout, entry, block, start, at, problems) -> None:
                  "profile's; slow lists the moves timed slowed; the job's age covers the "
                  "segments up to until (the cycle began after it was made); a plant's cycle "
                  "is the segment (stage) and when it began (since, at or before the clock); "
-                 "with no cycle the job runs a whole cycle drawn afresh"))
+                 "with no cycle the job runs a whole cycle drawn afresh",
+            fields={"case": "motion", "name": entry.get("block")}))
 
 
 def _room(layout, level) -> float:
@@ -1146,7 +1210,8 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                 "E_INITIAL_BLOCK", f"initial_state: block '{name}': place must be true or false, "
                 f"on waiting entities, and false only at a block that has places",
                 f"{at}/place", block=name,
-                hint="false says the entity waits for a place of a BUFFER or of a queue_capacity"))
+                hint="false says the entity waits for a place of a BUFFER or of a queue_capacity",
+                fields={"case": "place"}))
         if holder is None:
             continue
         known = isinstance(holder, str) and holder in blocks
@@ -1171,7 +1236,8 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                 f"with places, or a station that blocks after service, from which one waiting "
                 f"entity that has no place here can have come", f"{at}/held_by", block=name,
                 hint="the block that still holds the part: the buffer whose place it has, or "
-                     "the station that keeps its unit until the part is accepted"))
+                     "the station that keeps its unit until the part is accepted",
+                fields={"case": "holder"}))
             continue
         if buffer:
             waiting[holder] = waiting.get(holder, 0) + 1
@@ -1182,7 +1248,8 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
                 problems.append(problem(
                     "E_INITIAL_REMAINING", f"initial_state: block '{name}': held_since must be "
                     f"the time the part entered the belt in held_by, at or before the clock",
-                    f"{at}/held_since", block=name, hint="a belt's part has no member"))
+                    f"{at}/held_since", block=name, hint="a belt's part has no member",
+                    fields={"case": "belt_held"}))
             continue
         age = entry.get("age", 0)
         made = start - (age if is_finite_number(age) else 0.0) - 1e-9 * max(1.0, abs(start))
@@ -1190,12 +1257,14 @@ def _validate_places(layout, state, blocks, sets, serving, waiting, start, probl
             problems.append(problem(      # not before the part was made either (#460's class)
                 "E_INITIAL_REMAINING", f"initial_state: block '{name}': held_since must be a "
                 f"time at or before the clock, and after the part was made", f"{at}/held_since",
-                block=name, hint="the absolute time the station in held_by seized its unit"))
+                block=name, hint="the absolute time the station in held_by seized its unit",
+                fields={"case": "held"}))
         if member is not None and member not in sets.get(params.get("resource_name"), ()):
             problems.append(problem(
                 "E_INITIAL_SET", f"initial_state: block '{name}': member '{member}' is not a "
                 f"member of the resource set the station in held_by seizes", f"{at}/member",
-                block=name, hint="member names which resource of the set holds the part"))
+                block=name, hint="member names which resource of the set holds the part",
+                fields={"case": "member", "member": member}))
             continue
         resource = member if member is not None else params.get("resource_name")
         quantity = params.get("quantity", 1)
@@ -1314,7 +1383,8 @@ def _validate_fleets(layout, state, blocks, start, problems, serving) -> None:
 
     def bad(text, at, hint="see the state page of the documentation: fleets and vehicles"):
         problems.append(problem("E_INITIAL_FLEET", f"initial_state: {text}",
-                                f"/{SECTION}/{at}", hint=hint))
+                                f"/{SECTION}/{at}", hint=hint,
+                                fields={"case": "fleet"}))
 
     rows = state.get("tended")
     if rows is not None and not (isinstance(rows, list) and all(
@@ -1515,6 +1585,16 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
     pointed = {name for name, block in blocks.items() if kind(name) == "CONVEYOR"
                and any((block.get("params") or {}).get(field)
                        for field in ("stops", "diverts", "merges"))}
+    # D1347, D1343, D1356: no stage is read for a part on a belt with photo-eyes, a robot
+    # pick, zones or a release rule (D1357)
+    unread = {name for name, block in blocks.items() if kind(name) == "CONVEYOR" and (
+        (block.get("params") or {}).get("eyes") or (block.get("params") or {}).get("type")
+        or (block.get("params") or {}).get("zones")
+        or (block.get("params") or {}).get("release")
+        or any(isinstance(d, dict) and "rule" in d       # D1359
+               for d in (block.get("params") or {}).get("diverts") or [])
+        or any(isinstance(d, dict) and d.get("intercept")
+               for d in (block.get("params") or {}).get("diverts") or []))}
     for entry in state.get("entities") or []:
         block = blocks.get(entry.get("block")) if isinstance(entry, dict) \
             and isinstance(entry.get("block"), str) else None
@@ -1527,6 +1607,25 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
         if not isinstance(entry, dict):
             continue
         name, belt, holder = entry.get("block"), entry.get("belt"), entry.get("held_by")
+        # a part on such a belt, or one its end still hands over (held by it)
+        refused = name if isinstance(name, str) and name in unread else \
+            holder if isinstance(holder, str) and holder in unread else None
+        if refused is not None and (blocks[refused].get("params") or {}).get("type"):
+            # D1355: a documented limit, not a bug: a state has no words for an item's cells
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{refused[:80]}' is typed, and a state "
+                f"does not carry parts on a typed belt yet", f"/{SECTION}/entities/{index}",
+                block=refused, hint="start the part before the belt, or take the type off",
+                fields={"case": "typed"}))
+            continue
+        if refused is not None:
+            problems.append(problem(
+                "E_INITIAL_BELT", f"initial_state: belt '{refused[:80]}': a part on a belt with "
+                f"photo-eyes, a robot pick, zones or a release rule is not carried",
+                f"/{SECTION}/entities/{index}",
+                block=refused, hint="start the part before the belt",
+                fields={"case": "refuse"}))
+            continue
         if kind(holder) == "CONVEYOR" and holder not in pointed:    # handed over by its end
             on.setdefault(holder, []).append((entry.get("held_since"), "handover", None))
         if (isinstance(name, str) and name in pointed) or (belt is None
@@ -1552,7 +1651,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
                 f"one entity at an accumulating CONVEYOR with its belt stage, until for slot, "
                 f"ride and move, and entered for ride and after", f"/{SECTION}/entities/{index}",
                 hint=f"stage is one of: {', '.join(_BELT_STAGES)}; until is at or after the "
-                     f"clock, entered at or before it; stop needs the belt's exit_resource"))
+                     f"clock, entered at or before it; stop needs the belt's exit_resource",
+                fields={"case": "part", "name": str(name)[:80]}))
         elif stage != "cell":
             on.setdefault(name, []).append((entered, stage, until))
             if stage == "stop":
@@ -1567,7 +1667,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
                 "E_INITIAL_BELT", f"initial_state: belt '{name}': a part at its end stop "
                 f"'{stop}', which other jobs queue for, is not carried (D431)",
                 f"/{SECTION}/entities", block=name,
-                hint="take the state at another time"))
+                hint="take the state at another time",
+                fields={"case": "stop"}))
     if not on:
         return
     units = units_of(layout.get("simulation"))
@@ -1585,7 +1686,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
             problems.append(problem(
                 "E_INITIAL_BELT", f"initial_state: belt '{name}': one part is at its end and "
                 f"the others past the ride are packed behind it, in the order they entered",
-                at, block=name, hint="move, stop and a part handed over are at the end"))
+                at, block=name, hint="move, stop and a part handed over are at the end",
+                fields={"case": "end"}))
         geometry = geometry_of((blocks.get(name) or {}).get("params") or {}, units, network)
         if geometry is None:
             continue
@@ -1594,7 +1696,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
             problems.append(problem(
                 "E_INITIAL_QUEUE_CAPACITY", f"initial_state: {len(parts)} parts have a cell of "
                 f"belt '{name}', which has {cells}", at, block=name,
-                hint="the parts from slot on, and the one its end hands over, each have a cell"))
+                hint="the parts from slot on, and the one its end hands over, each have a cell",
+                fields={"case": "belt", "n": len(parts), "cells": cells}))
         spec = (state.get("blocks") or {}).get(name)
         if not _times_fit(parts, spec.get("next_entry") if isinstance(spec, dict) else None,
                           start, cells, gap, travel):
@@ -1603,7 +1706,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
                 f"ride lasts {travel:g}, the parts entered and board at least {gap:g} apart, "
                 f"and next_entry follows the last slot", at, block=name,
                 hint="ride ends at entered + the ride; a part past the ride entered at least "
-                     "the ride before the clock; move ends within one spacing of it"))
+                     "the ride before the clock; move ends within one spacing of it",
+                fields={"case": "times"}))
 
 
 def geometry_of(params: dict, units, network) -> tuple | None:
@@ -1688,7 +1792,8 @@ def _validate_points(layout, state, blocks, start, problems, pointed, queued, st
             f"/{SECTION}/entities/{index}", block=name,
             hint="a part on a belt with points: its stage is one of its point's kind, until "
                  "for a timed stage, entered once it is on the belt (see the state "
-                 "documentation)"))
+                 "documentation)",
+            fields={"case": "refuse"}))
 
     def count(key):
         counts[key] = counts.get(key, 0) + 1
@@ -1779,27 +1884,31 @@ def _validate_points(layout, state, blocks, start, problems, pointed, queued, st
             problems.append(problem(
                 "E_INITIAL_BELT", f"initial_state: belt '{name}': {n} parts at point {point}'s "
                 f"{what}, where one part is at a time (a door part waits behind a join)", at,
-                block=name, hint="one part acts at a stop or a divert, and one waits to merge"))
+                block=name, hint="one part acts at a stop or a divert, and one waits to merge",
+                fields={"case": "point", "n": n}))
     for name, resource in waits:
         if queued[resource] > 1:
             problems.append(problem(
                 "E_INITIAL_BELT", f"initial_state: belt '{name}': a part waiting at a stop for "
                 f"'{resource}', which other jobs queue for, is not carried (D431)", at,
-                block=name, hint="take the state at another time"))
+                block=name, hint="take the state at another time",
+                fields={"case": "waits"}))
     for (name, section), n in holding.items():
         places = geometry[name][1]
         if n > places[section]:
             problems.append(problem(
                 "E_INITIAL_BELT", f"initial_state: belt '{name}': {n} parts hold a place in "
                 f"section {section}, which has {places[section]}", at, block=name,
-                hint="a section holds ceil(its length / spacing) parts"))
+                hint="a section holds ceil(its length / spacing) parts",
+                fields={"case": "section", "n": n, "section": section, "room": places[section]}))
     for name, n in cells.items():
         geometry_cells = geometry_of((blocks[name].get("params") or {}), units, network)
         if geometry_cells is not None and n > geometry_cells[0]:
             problems.append(problem(
                 "E_INITIAL_QUEUE_CAPACITY", f"initial_state: {n} parts have a cell of belt "
                 f"'{name}', which has {geometry_cells[0]}", at, block=name,
-                hint="every part from entry on, and a part it hands over, has a cell"))
+                hint="every part from entry on, and a part it hands over, has a cell",
+                fields={"case": "belt", "n": n, "cells": geometry_cells[0]}))
 
 
 def _times_fit(parts, next_entry, start, cells, gap, travel) -> bool:

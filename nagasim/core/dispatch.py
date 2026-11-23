@@ -183,7 +183,7 @@ class Dispatcher:
 
     def _write(self, ctx, name: str, value: float) -> None:
         ctx.variables[name] = value
-        if ctx.watched or ctx.traced_variables:
+        if ctx.watched or ctx.traced_variables or ctx.variable_hooks:
             ctx.wrote_variable(name)
 
     def _settle(self, ctx) -> None:
@@ -396,8 +396,8 @@ def validate_dispatch(layout: dict, problems: list) -> None:
     optimal = [l for l in levels if isinstance(l.get("storage"), dict)
                and l["storage"].get("optimal")]
 
-    def bad(text, path="/dispatch", hint=None, code="E_DISPATCH"):
-        problems.append(problem(code, f"dispatch: {text}", path, hint=hint))
+    def bad(text, path="/dispatch", hint=None, code="E_DISPATCH", fields=None):
+        problems.append(problem(code, f"dispatch: {text}", path, hint=hint, fields=fields))
 
     if section is None:
         for level in optimal:
@@ -473,7 +473,8 @@ def validate_dispatch(layout: dict, problems: list) -> None:
         spec = level.get("storage")
         if isinstance(spec, dict) and not spec.get("optimal"):
             bad(f"storage '{level.get('name')}' keeps its own rule; the plan does not see it",
-                f"/levels/{level.get('name')}", code="W_DISPATCH_MIXED")
+                f"/levels/{level.get('name')}", code="W_DISPATCH_MIXED",
+                fields={"name": level.get("name")})
     _check_forecasts(layout, section, flows, problems)
 
 
@@ -498,4 +499,5 @@ def _check_forecasts(layout, section, flows, problems) -> None:
             problems.append(problem(
                 "W_DISPATCH_FORECAST",
                 f"dispatch: flow '{flow.get('name')}' reads model state, so the plan holds its "
-                "current rate over the horizon", f"/flows/{flow.get('name')}"))
+                "current rate over the horizon", f"/flows/{flow.get('name')}",
+                fields={"case": "forecast", "flow": flow.get('name')}))

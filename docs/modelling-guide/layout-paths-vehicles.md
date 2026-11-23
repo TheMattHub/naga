@@ -299,6 +299,21 @@ before the point once a merging part is ready, and go on after it has joined. Th
 `conveyor_merges` frame gives each merge's count, waits and waiting share, as the KPI keys
 `merge/<belt>/<index>/<column>`.
 
+**What makes a conveyor line slow.** A line built from typed, zoned, metered or reversible
+belts, transfer modules, routing rules and area links reports where its time goes, in frames
+that appear only when the model uses the feature. `conveyor_flow` gives each belt's dieback
+length (the mean belt length standing parts hold), its time full, its release rule's holds
+(the metering loss) and a reversible belt's backward share and reversals; `conveyor_zones`
+gives each zone's dieback time. `transfer_summary` splits a CONVEYOR_TRANSFER's busy share into
+its own motion (lifts, crossings and turns), the handshake wait (from the load boarding the next
+belt until its first eye fires, or until the load clears the entry when that belt has no eye),
+the rule hold and the blocked wait, and `route_holds` gives the holds of every routing rule, on
+a belt's divert group, a transfer or a DECIDE, with a row of zeros for one no load reached.
+`link_flow`
+gives each area link's parts, mean delay, time in the link, occupancy and time full. Each number is a KPI
+key a study can name, such as `conveyor/Line/Dieback Length`, `zone/Line/1/Dieback %`,
+`transfer/T1/Busy %`, `route/T1/0/Hold %` or `link/A -> B/Avg Occupancy`.
+
 A stop must not seize what the part already holds. A part that took `Op` at a SEIZE (or a
 PROCESS "Seize Delay", or as a belt's `exit_resource`) and reaches a stop naming `Op` before a
 RELEASE would ask for it twice, and the run stops with an error when it does. Validation warns

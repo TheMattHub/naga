@@ -12,6 +12,7 @@ One page per block type, from `nagasim/core/block_registry.py`: what it does, it
 | [BUFFER](buffer.md) | move | Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part. |
 | [CHARGE](charge.md) | work | Charges an entity (an electric vehicle, a battery pack) with the energy it needs at up to its own power, sharing a site power cap with every other entity at this block; it leaves when full or when its time is up. |
 | [CONVEYOR](conveyor.md) | move | Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full. |
+| [CONVEYOR_TRANSFER](conveyor-transfer.md) | move | Conveyor transfer module that moves each load onto one of several exits: a pop-up transfer, a turntable or a lift, busy until the load reaches the next conveyor's photo-eye. |
 | [CREATE](create.md) | source | Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule. |
 | [DECIDE](decide.md) | control | Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy. |
 | [DELAY](delay.md) | work | Pure waiting time (transit, curing, travel, a pause) that holds the entity for a sampled duration without using any machine, operator or other resource. |

@@ -49,7 +49,7 @@ def _compile_action(action: dict, names, cats=None, in_tick=False, py=None):
             def run(system, pop, i, scope):
                 ctx = system.env.ctx
                 ctx.variables[name] = value(scope)
-                if ctx.watched or ctx.traced_variables:   # a HOLD (O4), a picture (D608)
+                if ctx.watched or ctx.traced_variables or ctx.variable_hooks:   # a HOLD, a picture, an item
                     ctx.wrote_variable(name)
                 if ctx.level_system is not None:
                     ctx.level_system.trigger()

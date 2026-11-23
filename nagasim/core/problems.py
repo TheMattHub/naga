@@ -19,7 +19,7 @@ string form of a warning has always started with "warning: " and still does).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 __all__ = ["Problem", "PROBLEM_CODES", "problem"]
 
@@ -32,6 +32,10 @@ class Problem:
     path: str = ""            # JSON-pointer-like, e.g. "/blocks/3/params/dist_params/rate"
     block: str | None = None  # block name when the problem belongs to one
     hint: str | None = None   # concrete next action
+    # D1332: the values a screen's plain line (`plainlines.plain`) is filled from, by name;
+    # not compared (a Problem stays hashable and equal by what it says) and not in `as_dict`
+    # (an agent reads the full message, at the same bytes as before).
+    fields: dict | None = field(default=None, compare=False)
 
     def as_dict(self) -> dict:
         return {"code": self.code, "severity": self.severity, "message": self.message,
@@ -48,7 +52,8 @@ PROBLEM_CODES: dict[str, str] = {
     "W_AVAILABLE_IS_CAPACITY": "A balk_if or DECIDE condition reads AVAILABLE(), the capacity in force, not the free units (IDLE).",
     "W_UNKNOWN_KEY": "A key the model file format does not have, at any level the schema closes; the "
                      "hint names the nearest valid key. The document keeps it through load and save "
-                     "(D1193, D1220).",
+                     "(D1193, D1220). Also a key the run does not read where it stands: a link's "
+                     "capacity without a delay.",
     "W_WRITTEN_BY_NEWER": "The file was last saved by a newer nagasim than this one; sections this "
                           "build does not know are kept, but it may read others differently.",
     "E_PARAM_TYPE": "A param has the wrong Python type for its ParamSpec.",
@@ -354,7 +359,8 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SEPARATE_CARRIER_LINK": "A SEPARATE that keeps the carrier does not have exactly two "
                                "outgoing links (0 = the members, 1 = the carrier).",
     "E_SEPARATE_MEMBER_TIME": "A SEPARATE has a member_time but disposes of the carrier.",
-    "E_SEPARATE_RELEASE_ORDER": "A SEPARATE's release_order is not \"fifo\" or \"lifo\".",
+    "E_SEPARATE_RELEASE_ORDER": "A SEPARATE's release_order is not \"pattern\", \"fifo\" or "
+                                "\"lifo\".",
     "E_BATCH_MEMBER_TIME": "A BATCH has a member_time or a carrier_capacity but no carrier_type.",
     "E_BATCH_CARRIER_CAPACITY": "A carrier BATCH's carrier_capacity came out below 0 for a "
                                 "carrier (a run-time error).",
@@ -373,6 +379,10 @@ PROBLEM_CODES: dict[str, str] = {
                              "priority, so nothing can ever preempt anything.",
     # -- links and flow graph ----------------------------------------------
     "E_LINK_UNKNOWN_BLOCK": "A link names a block that does not exist.",
+    "E_LINK_AREA": "A link's time or capacity cannot be read as written: an old "
+                   "transfer_time the migration to schema 32 could not move into the delay "
+                   "(the link has a delay too), or a capacity a submodel port would copy onto "
+                   "several links.",
     "E_NO_CREATE": "The model has no CREATE block, so nothing ever arrives.",
     "E_NO_DISPOSE": "The model has no DISPOSE block, so nothing ever leaves.",
     "E_CREATE_NO_OUTPUT": "A CREATE block has no outgoing link.",
@@ -385,6 +395,22 @@ PROBLEM_CODES: dict[str, str] = {
     # -- controllable decisions (ROADMAP 3.7 A) ------------------------------
     "E_DECIDE_POLICY_NAME": "A Policy-mode DECIDE has an empty policy name.",
     "E_DECIDE_FALLBACK": "A Policy-mode DECIDE's fallback is not first/random/shortest.",
+    "W_ROUTE_RULE": "A routing rule (a divert's, a transfer's or a Rule-mode DECIDE's) has a condition per "
+                    "exit and no ELSE, so a part no condition takes stops the run, or it has a "
+                    "limit or is least_loaded while an exit leads to no CONVEYOR and names no "
+                    "target piece, so nothing is counted under way there; or a "
+                    "CONVEYOR_TRANSFER exit reaches its conveyor through a block that "
+                    "branches (no handshake at its eye), hands to a conveyor with no eye and "
+                    "a stop nearer its entry than the longest item, or counts a limit or "
+                    "least_loaded only until the handshake; or a merge joins a belt between "
+                    "the first and last divert of a rule group, so its parts are never routed; "
+                    "or a zoned belt has diverts, so its zone timing is not modelled behind "
+                    "the last divert or eye.",
+    "E_DECIDE_RULE": "A Rule-mode DECIDE's routing rule is not usable (an unknown kind, "
+                     "conditions that do not fit its exits, a limit that is not a whole number "
+                     ">= 0, no attribute name, a key it does not take), or it names a number of "
+                     "exits other than its outgoing links, or an exit names a target piece that "
+                     "is not a CONVEYOR its loads reach.",
     "E_DECIDE_QUEUE_EXPRS": "A Policy-mode DECIDE with fallback \"shortest\" needs one "
                             "queue_exprs entry per outgoing link.",
     "W_UNREACHABLE": "A block cannot be reached from any CREATE.",
@@ -516,6 +542,8 @@ PROBLEM_CODES: dict[str, str] = {
                    "pile rect out of order, keys without a source, an unknown field).",
     "W_WALL_CROSSING": "A path-network segment crosses a building wall where it has no opening "
                        "(D1034); walls never change routing, so movers would walk through it.",
+    "E_ASSET_3D": "A block's asset_3d is not \"library/asset\": lower-case letters, digits and "
+                  "underscores on each side of one slash. It only picks the 3D view's mesh.",
     # D1089: drawing only; neither changes a run.
     "E_QUEUE_ROW": "A block's queue_row is not {\"anchor\": [x, y], \"direction\": degrees}, "
                    "with x and y in -1..2 over the picture and 0 <= direction < 360.",
@@ -550,6 +578,12 @@ PROBLEM_CODES: dict[str, str] = {
     "E_SUBMODEL_REPEAT": "A definition's repeat group or {i} placeholder is malformed.",
     "E_SUBMODEL_REPEAT_COUNT": "A repeat count is not an int in 0..500, or an optional group's "
                                "count is above 1.",
+    "E_ITEM_CODE": "An item's code (a submodel definition's `code`) does not parse, lacks its class, "
+                   "gives a hook the wrong arguments, defines none of the five hooks, or is too long.",
+    "E_ITEM_HOOK": "An item's code is wired wrong: a LOGIC hook outside an item with code, a hook its "
+                   "class does not define, a timer or signals without their hook, a watched name "
+                   "that is not a variable, item code at the top of the file, or an \"item\" routing "
+                   "rule on a block outside an item with code.",
     # -- structural arguments (PHASE4 B6, ARCHITECTURE D59) -------------------
     "E_SUBMODEL_ARG_UNKNOWN": "A {\"$arg\": ...} names a parameter the definition does not declare.",
     "E_SUBMODEL_ARG_TYPE": "A {\"$arg\": ...} value does not fit the type its target declares.",
@@ -757,7 +791,7 @@ PROBLEM_CODES: dict[str, str] = {
     "E_MOTION_PROFILE_UNKNOWN": "A MOTION block names a motion profile the model does not declare.",
     "E_MOTION_SEGMENT": "A MOTION segment has an unknown kind or field, no distance/time, or a "
                         "negative value; or the cycle has no segments.",
-    "E_MOTION_PAYLOAD": "A move's payload_kg is above its profile's payload_max.",
+    "E_MOTION_PAYLOAD": "A move's payload_kg is above its profile's or robot's payload_max.",
     "E_MOTION_ZONE": "A MOTION block's hrc mode is unknown, or a separation zone names no network "
                      "node, has radius_m <= 0 or an unknown measure.",
     "E_MOTION_ZONE_UNKNOWN": "A MOTION block's zone names a zone the model does not declare "
@@ -767,6 +801,44 @@ PROBLEM_CODES: dict[str, str] = {
     "E_MOTION_PROFILE": "A motion profile has an empty/duplicate name, an unknown kind, speed or "
                         "accel <= 0, a bad payload_max/payload_derate/collaborative_speed, or "
                         "lacks the collaborative_speed an HRC block needs.",
+    # -- robots (P1 robotics, D1342-D1343) -------------------------------------
+    "E_ROBOT": "A robot has an empty or duplicate name, an unknown structure, missing dimensions, "
+               "or an axis without a valid range, speed or acceleration.",
+    "E_ROBOT_UNKNOWN": "A MOTION block, or a BATCH or SEPARATE that works by a pallet pattern, "
+                       "names a robot the model does not declare, or has robot moves and names "
+                       "none.",
+    "E_ROBOT_TARGET": "A robot move names no target of its block, a target is not a joint "
+                      "vector, a frame or a point on a block, or a pattern BATCH or SEPARATE "
+                      "defines the per-slot target slot or slot_above itself.",
+    "E_ROBOT_REACH": "A robot target is out of reach, outside an axis range, or tilted for a "
+                     "robot that cannot tilt.",
+    "E_ROBOT_SINGULAR": "A straight-line robot move passes a singular pose, where the joints "
+                        "would have to turn without limit.",
+    "E_ROBOT_LIN": "A straight-line robot move leaves the reach or changes the arm's "
+                   "configuration on the way.",
+    "E_ROBOT_MOVE_TIME": "A robot move given a time is faster than the axis speeds and "
+                         "accelerations allow.",
+    "E_ROBOT_INTERCEPT": "A robot pick from a moving belt is not the cycle's first move, not a "
+                         "ptp, not the cycle's only one, names no belt divert flagged for it, "
+                         "never reaches the part, meets it past the next point on the belt, or "
+                         "is planned per slot by a cycle that ends at the slot or places a "
+                         "layer at a time.",
+    # -- pallet patterns (D1346) ------------------------------------------------
+    "E_PALLET_SHAPE": "A pallet pattern has an empty or duplicate name, a missing or non-positive "
+                      "pallet or item dimension, a bad slot, a negative weight, sheet or "
+                      "overhang, a limit <= 0, or a stack entry naming an unknown layer or "
+                      "transform.",
+    "E_PALLET_OVERLAP": "Two slots of one pallet layer overlap, the items' rotations included.",
+    "E_PALLET_OVERHANG": "A slot of a pallet layer passes the pallet's edge by more than the "
+                         "pattern's overhang.",
+    "E_PALLET_EMPTY": "A pallet pattern can never fill a pallet: its stack is empty, no layer, "
+                      "item or height limit closes it, no slot fits under the limits, or the "
+                      "tare and one item already pass the weight limit.",
+    "E_PALLET_UNKNOWN": "A carrier BATCH names a pallet pattern the model does not declare, or a "
+                        "robot palletizes by a pattern chosen per pallet, which cannot be planned "
+                        "before the run.",
+    "E_PALLET_ITEM": "An item alone is heavier than its pallet's weight limit, so no pallet can "
+                     "ever take it.",
     # -- batteries and charging (automation sub-project 2, D164-D166) -----------
     "E_BATTERY": "A fleet's battery has a non-numeric capacity_kwh, a fraction outside 0-1, low >= target, "
                  "an unknown strategy, or lacks a field its strategy needs.",
@@ -811,20 +883,81 @@ PROBLEM_CODES: dict[str, str] = {
                            "horizon.",
     "E_TRAVEL_MODE": "A ROUTE/TRANSPORT travel mode is unknown, or needs a network the model "
                      "does not declare.",
-    "E_CONVEYOR_PARAM": "A CONVEYOR's length, speed or spacing is not a number > 0, or its "
-                        "endpoints name unknown nodes.",
+    "E_CONVEYOR_PARAM": "A CONVEYOR's type is not belt, roller, chain, pallet or mdr, or its "
+                        "length, speed or spacing is not a number > 0, or its gap or cell is "
+                        "negative, or its "
+                        "endpoints name unknown nodes, or its zones are not {count >= 1, "
+                        "release_delay >= 0} on an accumulating belt with no stop, merge or "
+                        "routing rule that can hold a part; or a CONVEYOR_TRANSFER's mechanism "
+                        "is not popup, turntable or lift, an exit is not {port, angle} or "
+                        "shares or holds a ':' in its port, a time, length or speed is negative "
+                        "(a turn_rate or lift_speed not > 0), or transfer_speed is 0 where a "
+                        "move needs it and no one CONVEYOR speed feeds the module; or a stop, "
+                        "divert, merge or eye of a belt with a path lies at or past the path's "
+                        "end, or a divert's angle is not a number above 0 and below 180.",
     "E_CONVEYOR_STOP": "A CONVEYOR stop is not {at, time, resource?}, its `at` is not between 0 "
                        "and the belt's length, its time is not a number >= 0 or an expression, "
                        "or its resource is not declared.",
     "E_CONVEYOR_DIVERT": "A CONVEYOR divert is not {at, condition, time?, when_full?}, its `at` "
                          "is off the belt or on another point, its condition is empty, its time "
                          "is not a number >= 0 or an expression, its when_full is not wait/pass, "
-                         "the belt has fewer links than 1 + diverts, or a \"pass\" divert's link "
-                         "does not go straight to a CONVEYOR, BUFFER or queue_capacity station.",
+                         "the belt has fewer links than 1 + diverts, a \"pass\" divert's link "
+                         "does not go straight to a CONVEYOR, BUFFER or queue_capacity station, "
+                         "or an intercept divert has a push time or when_full, a bad on_late, or "
+                         "a link that is not the robot picking from it, a divert's side is not "
+                         "left or right, or a link out of the belt names an exit that is not "
+                         "out or d<k>, or a routing rule is not usable, is not on the first "
+                         "divert of its rule_group along the belt, has an exit count other "
+                         "than its group's diverts, or sits beside a condition, a robot pick or "
+                         "when_full \"pass\", or a rule exit names a target piece that is "
+                         "not a CONVEYOR its loads reach; or a CONVEYOR_TRANSFER's links do not "
+                         "match its exits one to one (a port that is not one of its exits, or "
+                         "named twice), or its routing rule is not usable.",
+    "E_CONVEYOR_PATH": "A CONVEYOR's path has a piece that is not a straight or an arc, or it "
+                       "has a length or end nodes beside it.",
+    "E_CONVEYOR_RELEASE": "A CONVEYOR's release is not one of metering {gap or interval}, "
+                          "singulation {gap} or slug {count, timeout, time_unit?} with numbers "
+                          ">= 0, or the belt is not accumulating or has zones.",
+    "E_CONVEYOR_EYE": "A CONVEYOR photo-eye is not on the belt, shares its place with another "
+                      "point, has an edge other than front or back, or the belt's part_length is "
+                      "longer than its spacing.",
+    "E_CONVEYOR_REVERSE": "A reversible CONVEYOR has stops, diverts, robot picks, merges, "
+                          "photo-eyes, zones or a release rule, which only work one way, or "
+                          "its reverse_to is missing or names no exit of the belt, or a "
+                          "later piece of a reversible chain names one, or the chain is a ring.",
     "E_CONVEYOR_MERGE": "A CONVEYOR merge is not {at, from, priority?}, its `at` is off the belt "
                         "or on another point, its `from` is not a block linking to the belt or "
                         "is named twice, its priority is not belt/merge, or the belt is not "
                         "accumulating.",
+    "W_CONVEYOR_OPEN_PORT": "A conveyor piece on the floor (a CONVEYOR with a path, or a "
+                            "CONVEYOR_TRANSFER's exit) has a port no link joins: a belt's in, "
+                            "out or divert port d<k>, a transfer's exit port. An area link "
+                            "counts as a link. An error under simulation.strict_checks.",
+    "W_CONVEYOR_OVERLAP": "Two CONVEYORs with a path overlap on the floor plan, each piece a "
+                          "flat-ended strip its width across (an untyped belt is 0.8 m wide); "
+                          "two pieces that meet at a joint (port to port, a divert, a merge or "
+                          "one transfer) skip one belt width around it. The first 20 pairs are "
+                          "listed, then a count. An error under simulation.strict_checks.",
+    "W_CONVEYOR_SNAP": "A link joins two CONVEYORs with a path whose ports are more than 0.05 m "
+                       "or 5 degrees apart on the floor plan. An error under "
+                       "simulation.strict_checks.",
+    "W_CONVEYOR_HANDED_TO_NOTHING": "In the run, a part reached a CONVEYOR's end (or a "
+                                    "reversible belt's start) with no next block; it stands "
+                                    "there and the belt is blocked, so a run that drains ends "
+                                    "with a deadlock naming it. Warned once per belt; an error "
+                                    "that stops the run under simulation.strict_checks.",
+    "W_ROUTE_FORBIDDEN": "In the run, a part left a divert group or a CONVEYOR_TRANSFER by an "
+                         "exit its routing rule cannot choose for it at that moment (an "
+                         "attribute changed since the rule chose, or names no exit). Warned "
+                         "once per block; an error that stops the run under "
+                         "simulation.strict_checks.",
+    "W_ROUTE_HELD_AT_END": "At the end of a run that stopped at its time limit, a routing rule still "
+                           "holds a load because every exit was at its limit; if nothing under way "
+                           "there arrives, this is a deadlock (a cheap notice, not a proof).",
+    "W_REVERSED_HELD_AT_END": "At the end of a run that stopped at its time limit, a reversible "
+                              "CONVEYOR runs backward with a part held at its start; nothing "
+                              "boards it meanwhile, so if no signal turns it again this is a "
+                              "deadlock (a cheap notice, not a proof).",
     "W_CONVEYOR_STOP_HELD": "A CONVEYOR stop seizes a resource a part still holds when it gets "
                             "there (seized upstream, not yet released); the run stops with an "
                             "error when a part asks for it twice.",
@@ -907,7 +1040,8 @@ PROBLEM_CODES: dict[str, str] = {
 
 
 def problem(code: str, message: str, path: str = "", *,
-            block: str | None = None, hint: str | None = None) -> Problem:
-    """Build a Problem, deriving severity from the code prefix."""
+            block: str | None = None, hint: str | None = None, fields: dict | None = None) -> Problem:
+    """Build a Problem, deriving severity from the code prefix. *fields*: what the code's
+    plain line names (D1332, `nagasim.core.plainlines`)."""
     return Problem(code=code, severity="warning" if code.startswith("W_") else "error",
-                   message=message, path=path, block=block, hint=hint)
+                   message=message, path=path, block=block, hint=hint, fields=fields)

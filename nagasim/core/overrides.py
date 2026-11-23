@@ -65,7 +65,8 @@ def _fail(path: str, reason: str, hint: str = "") -> None:
     message = f"override path '{path}': {reason}"
     raise ModelValidationError([message], structured=[problem(
         "E_SCENARIO_OVERRIDE", message,
-        hint=hint or "a path names a record, then its field: resources.Server.capacity")])
+        hint=hint or "a path names a record, then its field: resources.Server.capacity",
+        fields={"case": "path"})])
 
 
 def _split_entry(section: str, entries: list, rest: str, path: str) -> tuple[dict, list[str]]:
@@ -288,7 +289,8 @@ def override_problems(layout: dict) -> list[Problem]:
                 said = exc.structured[0] if exc.structured else None
                 found.append(problem(
                     "W_SCENARIO_PATH", f"scenario '{scenario.get('name', i)}': {exc}",
-                    f"/scenarios/{i}/overrides/{j}/path", hint=said.hint if said else None))
+                    f"/scenarios/{i}/overrides/{j}/path", hint=said.hint if said else None,
+                    fields={"case": "path", "scenario": scenario.get('name', i)}))
     return found
 
 

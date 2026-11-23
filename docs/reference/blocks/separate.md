@@ -5,7 +5,7 @@
 
 Splits a batch, pallet or lot back into its individual parts, orders or customers, optionally copying the batch's attributes to each.
 
-Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty.
+Parameters ---------- mode : {'retain','all','specific'} - 'retain' children keep their own attributes - 'all' copy *all* parent attributes to each child - 'specific' copy only the names listed in *attrs* attrs : list[str] | str | None Comma-separated string or list used when *mode* == 'specific'. carrier : {'dispose','keep'} 'keep': the parent is a CARRIER (a truck) that lives on. Its members leave one at a time on exit 0, each after its own `member_time`, and the carrier leaves on exit 1 once it is empty. release_order : {'pattern','fifo','lifo'} 'pattern' (the default): a pallet loaded by a pallet pattern comes off top layer first, its slots in reverse order; any other carrier fifo.
 
 Family: group. Python builder: `m.separate(...)`.
 
@@ -35,7 +35,14 @@ With `carrier` set to `keep`, the batch is a vehicle that lives on, such as a tr
 | `carrier` | str | `'dispose'` |  |  |  | "dispose": the batch ends here and its parts leave together. "keep": the batch is a carrier (a truck) that lives on -- its members leave one at a time by the first link, each after member_time, and the carrier leaves by the SECOND link once it is empty. |
 | `member_time` | str | `''` |  | time | `member_time_unit` | Keep mode only: time for one member to come off, e.g. "2" or "TRIA(1, 2, 3)", evaluated for each member in its own scope when its turn starts. Empty = every member leaves in the same instant. |
 | `member_time_unit` | str | `'base'` |  |  |  | Unit `member_time` is expressed in: "base" (the model's own unit) or one of seconds/minutes/hours/days. |
-| `release_order` | str | `'fifo'` |  |  |  | Order the members leave in: "fifo" (the order they were loaded) or "lifo" (last loaded first off, a rear-door truck). |
+| `release_order` | str | `'pattern'` |  |  |  | Order the members leave in: "pattern" (a pallet loaded by a pallet pattern comes off top layer first, any other carrier as fifo), "fifo" (the order they were loaded) or "lifo" (last loaded first off, a rear-door truck). |
+| `place_per` | str | `'item'` |  |  |  | Keep mode, a pattern pallet: "item" unloads one member per member_time; "layer" a whole layer in one member_time. |
+| `pattern` | str | `''` |  |  |  | With a robot: the record of "pallet_patterns" its cycle is planned for, one cycle per slot; a pallet of another pattern is a run error. |
+| `robot` | str | `''` |  |  |  | Name of a record in "robots": with a pattern, each item's time is this robot's cycle to that item's own slot, and member_time is not used. Empty = member_time. |
+| `robot_at` | list | `[0, 0, 0]` |  |  |  | Where the robot stands, from this block (the pallet's place): [dx, dy, rotation] in the model's length unit and degrees, dx along the block's facing, dy toward the floor plan's +y side at rotation 0. |
+| `targets` | dict | `{}` |  |  |  | The robot's named targets, as on MOTION; "slot" (the item's pick on the pallet) and "slot_above" (approach higher) are given per slot and are not defined here. |
+| `segments` | list | `[]` |  |  |  | The robot's cycle, as on MOTION: ptp and lin moves to targets, with timed pick and place segments, every time in seconds. A move without its own payload_kg carries the pattern's item weight. |
+| `approach` | str | `''` |  | length |  | How far slot_above is over the slot, in the model's length unit. Empty = 0.3 m. |
 
 ## Statistics
 
@@ -53,10 +60,12 @@ A check of the model reports these about this block:
 | Code | Meaning |
 |---|---|
 | `E_INITIAL_BATCH` | A formed batch in initial_state does not fit the model: an entry that meets a SEPARATE has no members, or its members are not records of one batch the model can form. |
+| `E_ROBOT_TARGET` | A robot move names no target of its block, a target is not a joint vector, a frame or a point on a block, or a pattern BATCH or SEPARATE defines the per-slot target slot or slot_above itself. |
+| `E_ROBOT_UNKNOWN` | A MOTION block, or a BATCH or SEPARATE that works by a pallet pattern, names a robot the model does not declare, or has robot moves and names none. |
 | `E_SEPARATE_CARRIER` | A SEPARATE's carrier is not "dispose" or "keep". |
 | `E_SEPARATE_CARRIER_LINK` | A SEPARATE that keeps the carrier does not have exactly two outgoing links (0 = the members, 1 = the carrier). |
 | `E_SEPARATE_MEMBER_TIME` | A SEPARATE has a member_time but disposes of the carrier. |
-| `E_SEPARATE_RELEASE_ORDER` | A SEPARATE's release_order is not "fifo" or "lifo". |
+| `E_SEPARATE_RELEASE_ORDER` | A SEPARATE's release_order is not "pattern", "fifo" or "lifo". |
 
 ## Example
 

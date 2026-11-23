@@ -300,14 +300,16 @@ def validate_building(layout: dict, problems: list) -> None:
                 problems.append(problem(
                     "W_OPENING_OFF_WALL", f"building: opening {i} {reason}, so it cuts no wall",
                     f"/building/openings/{i}",
-                    hint="put it on a wall (the editor's Opening tool) or delete it"))
+                    hint="put it on a wall (the editor's Opening tool) or delete it",
+                    fields={"case": "off", "i": i, "reason": reason}))
         for index, a, b, at in wall_crossings(section, layout.get("network")):
             problems.append(problem(
                 "W_WALL_CROSSING",
                 f"network segment {a} -> {b} crosses a wall with no opening at "
                 f"({at[0]:.2f}, {at[1]:.2f}) m", f"/network/segments/{index}",
                 hint="add an opening (a door) where the path passes, or move the path; walls "
-                     "never change routing, so the run is not affected"))
+                     "never change routing, so the run is not affected",
+                fields={"case": "wall", "a": a, "b": b}))
 
 
 # ---------------------------------------------------------------- wall geometry (D1034)

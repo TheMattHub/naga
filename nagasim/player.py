@@ -785,10 +785,12 @@ function carrierLoad(grp, group, t, types) {
   if (changes && changes.length) { lifo = changes[Math.max(lastAt(changes, t), 0)][1] === 1; }
   members = groupLoad(grp, group, t);
   n = members.length;
+  var pat = grp && grp.pat ? own(grp.pat, String(group)) : undefined,
+      layers = pat ? pat.reduce(function (most, p) { return Math.max(most, p[0]); }, 0) : 0;
   return {group: group, order: lifo ? "lifo" : "fifo", slots: members.map(function (stay, k) {
-    var type = types && types[stay[5]];
+    var type = types && types[stay[5]], at = pat ? pat[stay[2] - 1] : undefined;
     return {slot: stay[2], entity: stay[0], type: type ? type.name : "", unloads: lifo ? n - k : k + 1,
-            inside: groupLoad(grp, stay[0], t).length};
+            inside: groupLoad(grp, stay[0], t).length, layer: at ? [at[0], layers] : null};
   })};
 }
 
@@ -1386,6 +1388,7 @@ function boot() {
     add("div", card, tr("player.holds", {id: load.group, n: slots.length, rule: rule}), "card-head");
     slots.forEach(function (row) {
       add("div", card, tr("player.holds_line", {k: row.unloads, slot: row.slot, id: row.entity, type: row.type}) +
+        (row.layer ? ", " + tr("player.layer", {k: row.layer[0], n: row.layer[1]}) : "") +
         (row.inside ? tr("player.holding", {n: row.inside}) : ""));
     });
     card.hidden = false;
@@ -1536,12 +1539,13 @@ function boot() {
     el("trust-box").hidden = !el("trust").children.length;
     /* The bottleneck of this recorded run, when anything waited. */
     clear(el("neck"));
-    el("neck").hidden = false;
+    /* #1965: one picture of a plant (the monitor's) is no recorded run: nothing to say of it. */
+    el("neck").hidden = !neck && times.length < 2;
     state.queues = [];
     /* S4-15: a recording cut at its event limit says so beside the clock, not only in a fold. */
     el("cut").hidden = !current.truncated;
     el("cut").textContent = current.truncated ? tr("player.cut", {t: fmt(duration())}) : "";
-    if (!neck) { add("span", el("neck"), tr("player.no_neck")); }
+    if (!neck && times.length > 1) { add("span", el("neck"), tr("player.no_neck")); }
     if (neck) {
       add("span", el("neck"), tr("player.neck", {name: scene.blocks[neck.block].label}), "callout-head");
       text = tr("player.neck_wait", {n: num(Math.round(neck.wait * 10) / 10)});

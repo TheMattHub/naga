@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 95 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 102 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -36,6 +36,12 @@ The 95 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `set_simulation_settings` |  | Set the model's default run settings; only the arguments you pass change. |
 | `set_sd_settings` |  | Turn on the system-dynamics step grid, change it, or remove it (dt null). |
 | `auto_layout` |  | Lay the model's blocks out left to right in a deterministic layered arrangement, one undo entry. |
+| `set_item_code` |  | Write the Python class a submodel definition runs (its item code), one undo step. |
+| `place_piece` |  | Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at (x, y) and travelling at *rotation*. |
+| `set_layout` |  | Place a block on the floor plan: its position and rotation, one undo entry. |
+| `place_transfer` |  | Add a CONVEYOR_TRANSFER (moves each load onto one of its exits) on the floor plan, in one undo entry. |
+| `get_ports` | yes | The ports of a belt piece or transfer module: each one's name, role (in/out), floor pose (x, y metres, heading as in set_layout) and `linked_to`, the "Block.port" ends it is linked to. |
+| `check_layout` | yes | Check the floor layout of belt pieces and transfer modules: open ports (W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP) and linked ports that do not meet (W_CONVEYOR_SNAP). |
 
 ## records
 
@@ -54,6 +60,7 @@ The 95 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under th
 | `upsert_segment` |  | Add a drivable segment between two nodes, or replace the one already joining that ordered pair. |
 | `remove_segment` |  | Delete one segment. |
 | `get_distance` | yes | Shortest path between two places on the model's network. |
+| `generate_pallet_layer` | yes | One layer of equal items on a pallet, as the slots of a pallet pattern. |
 | `upsert_orders_from_csv` |  | REPLACE (or extend) the model's orders from a CSV release list. |
 | `upsert_scenario` |  | Add or update a named scenario: a set of parameter overrides applied to the base model before a run. |
 

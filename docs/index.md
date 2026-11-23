@@ -62,7 +62,7 @@ law-check warnings, web pages to share (a replay and a viewer) and forecasts.
 
     Read the site as plain text, validate against the schema, call the tools.
 
-    [llms.txt](llms.txt), [llms-full.txt](https://thematthub.github.io/naga/llms-full.txt) (the whole site as one file), a Markdown copy of every page (its address with `.md`), the [JSON Schema](schema/model-v30.json) and the [agent tools](reference/tools.md)
+    [llms.txt](llms.txt), [llms-full.txt](https://thematthub.github.io/naga/llms-full.txt) (the whole site as one file), a Markdown copy of every page (its address with `.md`), the [JSON Schema](schema/model-v32.json) and the [agent tools](reference/tools.md)
 
 </div>
 

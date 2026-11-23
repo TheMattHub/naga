@@ -62,6 +62,7 @@ Read a plant, start a run from its state, calibrate and forecast.
 | [`naga plant`](twin.md#naga-plant) | map what a plant sends into an observed timeline: check, replay a log, watch |
 | [`naga twin`](twin.md#naga-twin) | an operational twin: monitor, forecast, compare, report |
 | [`naga approve`](twin.md#naga-approve) | approve a twin's recommendation (asks first) |
+| [`naga trust`](twin.md#naga-trust) | trust a model's item code on this computer (shows it, asks first) |
 | [`naga plc-write`](twin.md#naga-plc-write) | write approved setpoints to a soft PLC on this machine (dry-run unless --write) |
 | [`naga calibrate`](twin.md#naga-calibrate) | fit model parameters to observed KPIs |
 | [`naga forecast`](twin.md#naga-forecast) | short-horizon forecast with prediction bands |

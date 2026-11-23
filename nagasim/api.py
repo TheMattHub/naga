@@ -28,7 +28,8 @@ from nagasim import __version__
 from nagasim._cli import add_controllers_argument, add_model_argument, load_controllers, setup_cli
 from nagasim.core import initial_state, logic_authoring, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
-from nagasim.core.export import ARTIFACTS_KEY, concat_runs
+from nagasim.core.export import ARTIFACTS_KEY, PROBLEMS_KEY, concat_runs
+from nagasim.core.itemlogic import ItemCodeUntrusted
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.sim_runner import Pacer, run_single_simulation
 from nagasim.core.timeunits import UNITS, units_of
@@ -886,6 +887,9 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     results = frames_with_rows(frames, keep_empty)
     # E8: a plugin's objects, by run id; what it recorded as numbers is the "plugin_kpis" frame.
     results._artifacts = dict(kpi[ARTIFACTS_KEY] for _, kpi in collected if ARTIFACTS_KEY in kpi)
+    # D1389: the run-time warnings, unioned over the replications by (code, block).
+    results._run_problems = _union_problems(kpi[PROBLEMS_KEY][1] for _, kpi in collected
+                                            if PROBLEMS_KEY in kpi)
     # D906: what `Results.checks()` judges the run by; read_layout returns a
     # dict as given and re-reads a file path (already read once above).
     results._layout = schema.read_layout(path)
@@ -897,6 +901,16 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     if bindings is not None:
         results["data_inputs"] = bindings.frame()
     return results
+
+
+def _union_problems(lists) -> tuple:
+    """Each distinct run problem once over the replications (D1389): by code and block, the
+    first replication's text kept (a replication keeps one per code and block already)."""
+    found: dict = {}
+    for problems in lists:
+        for item in problems:
+            found.setdefault((item.code, item.block), item)
+    return tuple(found.values())
 
 
 def frames_with_rows(frames: dict, keep_empty: bool = False) -> Results:
@@ -1102,6 +1116,9 @@ def main(argv=None) -> int:
             raise       # only the --logic module's import is this command's to explain
         print(f"--logic: {exc}" if args.logic else str(exc))
         return 2
+    except ItemCodeUntrusted as exc:        # D1344: a person trusts it first, nothing ran
+        print(f"naga run: {exc}", file=sys.stderr)
+        return 1
     if results is None:         # cut short by should_stop: nothing to show
         print("naga run: stopped, no results", file=sys.stderr)
         return 1
@@ -1117,6 +1134,8 @@ def main(argv=None) -> int:
         if args.as_json:
             print(json.dumps(_json_safe({
                 "kpis": rows, "checks": found.as_dict(),
+                **({"problems": [p.as_dict() for p in results.run_problems]}
+                   if results.run_problems else {}),
                 "replications": None if target is None else {
                     "metric": target["metric"], "n": target["n"], "needed": needed}}),
                 indent=2, default=str))
@@ -1129,6 +1148,9 @@ def main(argv=None) -> int:
                 print(f"started from the state taken at {started.iloc[0]:g}")
             for line in found.lines():
                 print(f"WARN {line}")
+            for item in results.run_problems:            # D1389: what the run raised while running
+                # the code once: the kept message ends with it, as the log line does
+                print(f"WARN {item.code}: {item.message.removesuffix(f' ({item.code})')}")
             if target is not None:
                 print(f"replications for +/-5% on {target['metric']}: {needed}")
     if results.pace is not None:

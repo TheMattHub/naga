@@ -24,6 +24,7 @@ from nagasim.core.block_registry import BLOCK_REGISTRY
 from nagasim.core.distributions import DISTRIBUTION_REGISTRY
 from nagasim.core.document import ModelDocument
 from nagasim.core.expressions import FUNCTION_NOTES, FUNCTIONS
+from nagasim.core.timeunits import LENGTH_UNITS, UNITS
 
 from .core import (MAX_PROBLEMS, ToolError, _brief_problems, _document_args, _first_sentence,
                    _problems, tool, workspace)
@@ -256,6 +257,14 @@ def write_model(layout: dict, model: str | None = None, name: str | None = None)
     except schema_mod.ModelValidationError:
         raise
     except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:
+        # #2017: a unit this build does not know fails inside the migration's unit fill (a
+        # KeyError) once the model has a block; say which unit, like the floor tools (#2011)
+        sim = raw.get("simulation") if isinstance(raw.get("simulation"), dict) else {}
+        for what, known in (("length_unit", LENGTH_UNITS), ("time_unit", UNITS)):
+            if isinstance(sim.get(what), str) and sim[what] not in known:
+                raise ToolError("E_UNIT", f"simulation.{what} '{sim[what]}' is not a unit this "
+                                f"build knows", f"set simulation.{what} to one of: "
+                                f"{', '.join(known)}") from None
         raise ToolError("E_MODEL_SHAPE", f"the model could not be read: {type(exc).__name__}: {exc}",
                         "blocks and links are lists of objects, every block has a string name "
                         "and type; compare with get_model_format's example") from None

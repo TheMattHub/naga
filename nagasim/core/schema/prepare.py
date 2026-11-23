@@ -7,13 +7,14 @@ import itertools
 import json
 from pathlib import Path
 
-from nagasim.core import queuerow, sd, submodels
+from nagasim.core import itemlogic, queuerow, sd, submodels
+from nagasim.core.conveyor_checks import static_checks
 from nagasim.core.orders import ORDERS_MODE
 from nagasim.core.problems import Problem, problem
 from nagasim.core.schema.graph import long_name_problem, validate_graph_structured
 from nagasim.core.schema.layout import validate_layout_structured
 from nagasim.core.schema.migrate import migrate
-from nagasim.core.schema.shape import shape_problems, type_problems_unsaid
+from nagasim.core.schema.shape import asset_3d_problems, shape_problems, type_problems_unsaid
 from nagasim.core.schema.submodels import _library_clashes, validate_submodels_structured
 
 
@@ -48,7 +49,10 @@ def _prepare_structured(layout: dict) -> tuple[dict, list[Problem]]:
     flat, problems = _prepare_flat(layout)
     # Scenario paths on the layout as saved, like the queue rows: a submodel definition's
     # path resolves only before flattening (D1222).
-    problems += queuerow.problems(layout) + override_problems(layout)
+    # D1371: the conveyor floor checks read the top-level pieces as saved, where positions
+    # are floor positions (a submodel definition's are not)
+    problems += (queuerow.problems(layout) + override_problems(layout) + asset_3d_problems(layout)
+                 + static_checks(layout))
     return flat, problems + type_problems_unsaid(_top_level_problems(layout), problems)
 
 
@@ -57,12 +61,17 @@ def _top_level_problems(layout: dict) -> list[Problem]:
     so it is a warning with its nearest name, not an error; a file a newer nagasim saved is
     named."""
     from nagasim import __version__
-    found = shape_problems(layout)
+    # Only flattening writes `item_code`; one in the file as read is refused (D1344), so the
+    # unknown-key warning ("kept as it is") would say the opposite of what happens.
+    refused = itemlogic.top_level_problems(layout)
+    found = [p for p in shape_problems(layout)
+             if not (refused and p.code == "W_UNKNOWN_KEY" and p.path == "/item_code")] + refused
     info = layout.get("info")
     writer = info.get("written_by") if isinstance(info, dict) else None
     if isinstance(writer, str) and _version(writer) > _version(__version__):
         found.append(problem("W_WRITTEN_BY_NEWER", f"saved by nagasim {writer}, newer than this "
-                             f"{__version__}", "/info/written_by", hint="upgrade nagasim to read it as written"))
+                             f"{__version__}", "/info/written_by", hint="upgrade nagasim to read it as written",
+                             fields={"case": "newer", "writer": writer}))
     return found
 
 
@@ -94,7 +103,8 @@ def _prepare_flat(layout: dict) -> tuple[dict, list[Problem]]:
         return layout, problems + [
             found if isinstance(found, Problem)
             else problem("E_SUBMODEL", str(found), "/submodels",
-                         hint="fix the submodel section, then validate again")
+                         hint="fix the submodel section, then validate again",
+                         fields={"case": "a3_flatten"})
             for found in exc.items]
     flat = sd.expand(flat)
     # The flattened model has no instance block, only `instance/inner` ones, so an instance's own
@@ -206,6 +216,9 @@ def requires_run_length(layout: dict) -> bool:
     # A rate transition can cycle forever (S -> I -> S), and a pure agent model
     # keeps a wake-up at the horizon for its statistics (PHASE5 AB-1).
     if layout.get("populations"):
+        return True
+    # An item's timer ticks for ever (D1344).
+    if any(isinstance(code, dict) and code.get("timer") for code in (layout.get("item_code") or {}).values()):
         return True
     for schedule in layout.get("schedules", []):
         if schedule.get("kind") == "capacity" and schedule.get("repeat"):

@@ -95,6 +95,8 @@ class Results(dict):
     _artifacts: dict | None = None
     # D1321: the names of the frames `run_model` left out because they had no rows.
     _dropped: tuple = ()
+    # D1389: the run-time warnings, as Problems; see `run_problems`.
+    _run_problems: tuple = ()
 
     def __missing__(self, name):
         # D1321: a frame the run left empty is absent; say so rather than a bare KeyError.
@@ -119,6 +121,23 @@ class Results(dict):
             ``{run: {name: object}}``, one entry per replication that added one.
         """
         return self._artifacts or {}
+
+    @property
+    def run_problems(self) -> list:
+        """The warnings the run raised while running, as `Problem`s (code, message, hint, block).
+
+        A part handed to nothing, a part leaving by an exit its rule would not choose, and a
+        hold still open at the run's end. Each distinct problem (code, block) once; with
+        replications (and each scenario of `run_scenarios`), the union over them, the first
+        replication's text kept. Empty for a run that raised none, and for a Results built by
+        hand or loaded back. The log still says them, and `simulation.strict_checks` still stops
+        the run on the first two.
+
+        Returns
+        -------
+        list of nagasim.core.problems.Problem
+        """
+        return list(self._run_problems)
 
     def checks(self) -> RunChecks:
         """Return the law checks of this run, computed once and kept.

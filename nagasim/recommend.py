@@ -726,18 +726,18 @@ class Advisor:
         if doc is None:
             if path.exists():
                 self._warn("the ledger in this directory cannot be read as one: it starts "
-                           "again and nothing of it stands")
+                           "again and nothing of it stands", fields={"case": "ledger"})
             return
         if doc.get("model") != self.model_hash:
             self._warn("the ledger in this directory is of another model: it starts again "
-                       "and nothing of it stands")
+                       "and nothing of it stands", fields={"case": "ledger"})
             return
         counts = doc.get("counts") if isinstance(doc.get("counts"), dict) else {}
         day = doc.get("day") if isinstance(doc.get("day"), list) else ["", 0]
         if not (all(_count(counts.get(k, 0)) for k in _REPLY_COUNTS) and len(day) == 2
                 and isinstance(day[0], str) and _count(day[1])):
             self._warn("the ledger in this directory holds a count that is none: it starts "
-                       "again and nothing of it stands")
+                       "again and nothing of it stands", fields={"case": "ledger"})
             return
         found = doc.get("entries") if isinstance(doc.get("entries"), list) else []
         self._entries = [e for e in found if _sound(e)][-LIMITS["entries"]:]
@@ -762,12 +762,13 @@ class Advisor:
             self._unsaved = True            # written again at the next step
             self._say("ledger", problem(
                 "E_TWIN_OUTPUT", f"{LEDGER_FILE} could not be written ({exc})", "/recommend",
-                hint="check the result directory; a reader must open, read and close it"))
+                hint="check the result directory; a reader must open, read and close it",
+                fields={"case": "file", "name": LEDGER_FILE}))
         else:
             self._once.discard("ledger")
 
-    def _warn(self, text: str) -> None:
-        self._said.append(problem("W_TWIN_RECOMMEND", text, "/recommend"))
+    def _warn(self, text: str, fields=None) -> None:
+        self._said.append(problem("W_TWIN_RECOMMEND", text, "/recommend", fields=fields))
 
     def _say(self, key: str, found) -> None:
         """A problem of a lasting condition: once, until the condition has ended."""
@@ -790,7 +791,8 @@ class Advisor:
             text = json.dumps(doc, allow_nan=False)
             if len(text) > LIMITS["state_bytes"]:
                 self._warn(f"the state is over {LIMITS['state_bytes']} bytes and is not kept: "
-                           f"this set does not reproduce and none of it is delivered")
+                           f"this set does not reproduce and none of it is delivered",
+                           fields={"case": "state"})
                 return False
             if not path.exists():
                 twin.write_text(path, text)
@@ -808,7 +810,8 @@ class Advisor:
         except (OSError, ValueError, TypeError) as exc:
             self._say("states", problem(
                 "W_TWIN_RECOMMEND", f"a state could not be kept ({type(exc).__name__}): this "
-                f"set does not reproduce and none of it is delivered", "/recommend"))
+                f"set does not reproduce and none of it is delivered", "/recommend",
+                fields={"case": "state"}))
             return path.exists()
         self._once.discard("states")
         return True
@@ -869,7 +872,8 @@ class Advisor:
                 self._entry(standing["id"])["stands"], self._unsaved = False, True
                 self._warn(f"the action taken on '{standing['action']['target'][:80]}' no "
                            f"longer applies to the model ({type(exc).__name__}): it stands "
-                           f"no more")
+                           f"no more", fields={"case": "action",
+                                               "target": standing['action']['target'][:80]})
             else:
                 stand.append(standing)
         return model, stand
@@ -905,13 +909,14 @@ class Advisor:
             if compared is not None:
                 self._said.append(problem(
                     "W_TWIN_RECOMMEND", f"the candidates could not be compared "
-                    f"({type(compared).__name__})", "/recommend"))
+                    f"({type(compared).__name__})", "/recommend", fields={"case": "compare"}))
             return
         if compared["reason"] == "kpi":
             self._say("kpi", problem(
                 "E_RECOMMEND_KPI", f"the forecast has no KPI '{self.kpi}': nothing is "
                 f"compared", "/recommend", hint="name a KPI of the forecast's table; counted "
-                "throughput is timeseries/block/<name>/out/max of a block the mapping counts"))
+                "throughput is timeseries/block/<name>/out/max of a block the mapping counts",
+                fields={"case": "kpi", "kpi": self.kpi}))
         made = _stamp(pending.get("stamp"))
         made = self._wall() if made is None else made
         scenario = "Baseline" + ("" if not standing else " after " + ",".join(
@@ -1106,7 +1111,8 @@ class Advisor:
                 self._unsaved = True
                 self._say("day", problem(
                     "W_OUTBOX", f"over {LIMITS['day']} records were delivered today: the rest "
-                    f"is dropped until tomorrow (UTC)", "/outbox"))
+                    f"is dropped until tomorrow (UTC)", "/outbox",
+                    fields={"case": "day", "n": LIMITS["day"]}))
                 continue
             entry["attempts"], self._unsaved = entry["attempts"] + 1, True
             try:
@@ -1143,7 +1149,8 @@ class Advisor:
                                     f"{outbox.LIMITS['sink_bytes']} bytes: nothing more is "
                                     f"written to it"}[state], "/outbox",
             hint=None if state == "ok" else "a reader must open, read and close the file; "
-                                            "move or empty a file at its ceiling"))
+                                            "move or empty a file at its ceiling",
+            fields={"case": state}))
 
     # ------------------------------------------------------------ the result
     def document(self) -> dict:

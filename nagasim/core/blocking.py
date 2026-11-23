@@ -26,7 +26,9 @@ One mechanism, three pieces:
   it is physically on the belt, so a full or stopped belt blocks the machine
   feeding it instead of queueing invisibly. A belt whose transparent walk
   reaches another belt is itself such a machine (PHASE6 W3 M6, D115): its end
-  part stays on it, holding its cell, until the next belt takes it.
+  part stays on it, holding its cell, until the next belt takes it. A link with
+  a transfer time and a capacity (`core/arealink.py`, D1369) is a finite space
+  too, and a belt feeding it holds its end part the same way.
 
 Blocking is never a switch the user sets: a block holds its resource exactly
 when a finite space is statically reachable from it through transparent blocks
@@ -45,6 +47,7 @@ import logging
 
 import simpy
 
+from nagasim.core.conveyor_checks import keep_run_warning
 from nagasim.core.stats import TimeWeighted
 
 log = logging.getLogger(__name__)
@@ -52,7 +55,7 @@ log = logging.getLogger(__name__)
 __all__ = ["Space", "TRANSPARENT_TYPES", "accept", "arm", "holder_of", "analyse", "cycles", "gate", "placed",
            "hold_until_accepted", "layout_blocking_graph", "on_forward", "reserve",
            "drop_reservation", "hold_target", "resource_name_of", "check_deadlock",
-           "deadlock_at_end", "PROCESS_TYPES"]
+           "deadlock_at_end", "PROCESS_TYPES", "BELT_TYPES"]
 
 # Block types an entity crosses without ever leaving the machine that holds it:
 # they take no simulation time, hold nothing and have no space of their own.
@@ -63,6 +66,10 @@ TRANSPARENT_TYPES = ("ASSIGN", "RECORD", "DECIDE", "STATION", "LOGIC")
 # The block types that ARE a PROCESS at run time (D156): MOTION subclasses it
 # and differs only in its service, so every "is this a PROCESS" check reads this.
 PROCESS_TYPES = ("PROCESS", "MOTION")
+
+# The conveyor pieces that hold a part until the next piece takes it (D115): a belt, and a
+# transfer module (conveyor system A8), which is busy until its load's handshake.
+BELT_TYPES = ("CONVEYOR", "CONVEYOR_TRANSFER")
 
 _TOKEN = "_space_token"
 # (space, request): a place reserved before service, carried to that space.
@@ -123,6 +130,18 @@ class Space:
         self._granted()
         return request
 
+    def room_for(self, entity) -> bool:
+        """D1392: a place for *entity* now, nobody queueing for one (`take_now` takes it)."""
+        return self.content.level < self.capacity and not self.waiting
+
+    def take_now(self, entity):
+        """D1392: a place taken in this instant, when `room_for` says there is one: the
+        request to hand back to `give_back`."""
+        request = self._pool.request()
+        request.entity = entity
+        self._granted()
+        return request
+
     def occupy(self, entity) -> None:
         """A state puts *entity* back in a place it had (D382): taken at once and carried
         as a reservation, so `take` steps into it without a wait of its own."""
@@ -138,8 +157,12 @@ class Space:
         self.content.add(-1, self.env.now)
         self._sync()
 
+    def has_room(self) -> bool:
+        """The next part offered would get a place now (a typed belt's own rule, D1355)."""
+        return self.content.level < self.capacity
+
     def _sync(self) -> None:
-        self.full.set(1.0 if self.content.level >= self.capacity else 0.0, self.env.now)
+        self.full.set(0.0 if self.has_room() else 1.0, self.env.now)
 
     @property
     def waiting(self) -> int:
@@ -373,8 +396,9 @@ def layout_blocking_graph(blocks: list, out_links: dict) -> tuple[dict, set]:
 
     def is_space(name: str) -> bool:
         # A CONVEYOR's cells are a finite space too (PHASE4 T7): a full belt
-        # blocks the machine feeding it, exactly as a full buffer does.
-        if kind(name) in ("BUFFER", "CONVEYOR"):
+        # blocks the machine feeding it, exactly as a full buffer does; so is a
+        # CONVEYOR_TRANSFER's one place.
+        if kind(name) in ("BUFFER", *BELT_TYPES):
             return True
         return kind(name) in ("SEIZE", *PROCESS_TYPES) and _as_int(params(name).get("queue_capacity")) > 0
 
@@ -437,6 +461,13 @@ def analyse(ctx) -> None:
         # A CONVEYOR's cells are a space too, but a belt accepts a part only
         # once it is ON the belt (T7): reserving a cell is not offered.
         kind = getattr(getattr(target, "block", None), "block_type", "")
+        if getattr(target, "area_link", False):
+            # D1369: a place is reserved in a block, never across an area link
+            raise RuntimeError(
+                f"Block '{proc.name}': hold_until_space reserves a place in the next block, but "
+                f"its link to '{target.shown_name}' is an area link (a delay with a capacity), "
+                f"so no place is reserved across it; name the block in space_of or drop the "
+                f"link's capacity (E_HOLD_SPACE_TARGET).")
         if space is None or space.capacity <= 0 or kind not in ("BUFFER", "SEIZE", *PROCESS_TYPES):
             raise RuntimeError(
                 f"Block '{proc.name}': hold_until_space needs a downstream block with places "
@@ -468,16 +499,28 @@ def analyse(ctx) -> None:
         reached = stops(proc, successors, is_stop, is_transparent)
         if getattr(proc, "can_block", False) and any(is_space(t) or _picks(t) for t in reached):
             proc.block_after_service = True
-        elif _is_belt(proc) and any(_is_belt(t) for t in stops(
-                proc, lambda p: successors(p)[:1] if p is proc else successors(p),
-                is_stop, is_transparent)):
+        elif _is_belt(proc) and any(_takes_from_belt(t) for t in stops(
+                proc, lambda p: successors(p)[:1] if p is proc and _is_conveyor(p)
+                else successors(p), is_stop, is_transparent)):
             # Belt-to-belt back-pressure (PHASE6 W3 M6, D115): a belt's end is a
             # blocking station whose next space is the downstream belt's cells.
             # Only a BELT downstream turns it on, so a belt feeding a BUFFER or
             # a station keeps its free-running exit and its golden numbers. Its
             # END is link 0 alone: links 1.. are its diverts' (D852), which hand
             # over with the token anyway, and are in `reached` for the loop edges.
+            # A CONVEYOR_TRANSFER counts as a belt both ways, and every link of
+            # one is an exit.
             proc.block_after_service = True
+        if getattr(proc, "reversible", False):
+            # D1368: a reversible belt's start is an exit while it runs backward, link
+            # `exit_slots[False]`; it hands over with the token when a belt is that way too
+            back = proc.exit_slots[False]
+            # D1392: a later chain piece's start is a joint, no link (`exit_slots`)
+            starts = back is not None and any(_takes_from_belt(t) for t in stops(
+                proc, lambda p: successors(p)[back:back + 1] if p is proc else successors(p),
+                is_stop, is_transparent))
+            proc.exit_blocks = {True: proc.block_after_service, False: starts}
+            proc.block_after_service = proc.block_after_service or starts
         if is_space(proc) or proc.block_after_service or holds_first:
             nodes[proc.name] = proc
             kept = [t.name for t in reached if is_space(proc) or is_space(t)]
@@ -495,6 +538,19 @@ def analyse(ctx) -> None:
 
 
 def _is_belt(proc) -> bool:
+    """A conveyor piece for back-pressure: a CONVEYOR or a CONVEYOR_TRANSFER, each holding
+    its part until the next piece takes it."""
+    return getattr(getattr(proc, "block", None), "block_type", "") in BELT_TYPES
+
+
+def _takes_from_belt(proc) -> bool:
+    """A block a belt's end hands over to with the token: a conveyor piece, or an area link
+    with places (D1369), which a part enters only when one is free."""
+    return _is_belt(proc) or (getattr(proc, "area_link", False)
+                              and getattr(proc, "space", None) is not None)
+
+
+def _is_conveyor(proc) -> bool:
     return getattr(getattr(proc, "block", None), "block_type", "") == "CONVEYOR"
 
 
@@ -506,17 +562,68 @@ def _picks(proc) -> bool:
 
 
 # ------------------------------------------------------------------ deadlock
-def _stuck(proc) -> bool:
+def _stuck(proc, feeder: str = "", successor: str = "") -> bool:
+    """*proc* can take nothing from *feeder*, the block before it in the loop, and cannot let
+    its own part go to *successor*, the block after it."""
     space = getattr(proc, "space", None)
     # A stopped non-accumulating belt takes nothing on, free cells or not (D115), nor
-    # does a belt whose first section before a stop is full (D732). A part held at a stop
-    # is not stuck: its time ends, and a wait for the stop's resource is not a space's.
-    if (space is not None and space.content.level < space.capacity
-            and not getattr(proc, "stopped", False) and not getattr(proc, "entry_full", False)):
+    # does a belt whose first section before a stop is full (D732), a reversible belt whose
+    # start holds a part (R45), or a belt whose free cells *feeder* cannot use: a transfer
+    # waiting for its load to reach an eye here while that load stands short of it (R41).
+    # R56: those two count only while the part they hinge on waits for *successor*; one
+    # waiting for a block outside the loop may leave when that block frees. A part held at a
+    # stop is not stuck: its time ends, and a wait for the stop's resource is not a space's.
+    if (space is not None and space.has_room()
+            and not getattr(proc, "stopped", False) and not getattr(proc, "entry_full", False)
+            and not (getattr(proc, "entry_closed", False)
+                     and _hands_to(proc, proc.exit_slots[False], successor))
+            and not (feeder and hasattr(proc, "handshake_stands")
+                     and proc.handshake_stands(feeder) and _hands_to(proc, 0, successor))):
         return False
     if _blocks(proc) and not _held(proc):
         return False
+    if successor and _is_conveyor(proc) and not _belt_held_toward(proc, successor):
+        return False            # R60: its held part waits for a block outside the loop
     return True
+
+
+def _hands_to(proc, link: int, successor: str) -> bool:
+    """R56, R60: *proc*'s outgoing link *link* hands its part to *successor*, directly or
+    through transparent blocks with one link out each; no successor named: any block. Past a
+    branching block (a DECIDE, a block with several links out) where the part goes is its own
+    choice, so the loop is not counted closed there: a real deadlock through it is still named
+    when the run drains (`deadlock_at_end`)."""
+    if not successor:
+        return True
+    nexts = getattr(proc, "next_process", None) or []
+    piece, seen = (nexts[link] if link < len(nexts) else None), set()
+    while piece is not None and id(piece) not in seen:
+        seen.add(id(piece))
+        if getattr(piece, "name", None) == successor:
+            return True
+        if getattr(piece, "space", None) is not None or getattr(piece, "space_passthrough", False) \
+                or getattr(getattr(piece, "block", None), "block_type", "") not in TRANSPARENT_TYPES:
+            return False
+        outs = getattr(piece, "next_process", None) or []
+        if len(outs) != 1:
+            return False
+        piece = outs[0]
+    return False
+
+
+def _belt_held_toward(belt, successor: str) -> bool:
+    """R60: a held CONVEYOR waits for *successor*: its end part (or a reversible belt's part at
+    the exit it waits at) is handed to it as `_hands_to` reads. A part waiting at a divert, or
+    at an exit with no next block, keeps counting as before."""
+    if getattr(belt, "_divert_waits", 0) or getattr(belt, "dead_end", False):
+        return True
+    ride = getattr(belt, "_rev", None)
+    if ride is not None:
+        start = ride._start_waits
+        # D1392: a part at a chain joint waits for the piece it runs into
+        return bool(ride.joint_held(successor) or (start and _hands_to(belt, belt.exit_slots[False], successor))
+                    or (ride.waits > start and _hands_to(belt, belt.exit_slots[True], successor)))
+    return bool(getattr(belt, "_end_held", False)) and _hands_to(belt, 0, successor)
 
 
 def _held(proc) -> bool:
@@ -528,26 +635,91 @@ def _held(proc) -> bool:
 
 
 def _blocks(proc) -> bool:
-    """A station that can be blocked: after service, or before it (O4)."""
-    return getattr(proc, "block_after_service", False) or getattr(proc, "hold_until_space", False)
+    """A station that can be blocked: after service, or before it (O4), or a belt whose part
+    stands at an exit with no next block (R58)."""
+    return (getattr(proc, "block_after_service", False) or getattr(proc, "hold_until_space", False)
+            or getattr(proc, "dead_end", False))
 
 
 def check_deadlock(block) -> None:
     """Raise when the loop *block* just blocked on is closed end to end.
 
     Checked only at the instant a station blocks, and only for loops the
-    static analysis found, so a model with no loop pays nothing.
+    static analysis found, so a model with no loop pays nothing. #2019: read once the
+    instant's other events are done (an event of lower priority than SimPy's normal ones),
+    since a place freed later in the same instant can still let the loop turn.
     """
+    ctx = block.ctx
+    if not any(block.name in cycle for cycle in ctx.blocking_cycles):
+        return
+    pending = getattr(ctx, "_deadlock_checks", None)
+    if pending is None:
+        pending = set()
+        setattr(ctx, "_deadlock_checks", pending)
+    if block.name in pending:
+        return
+    pending.add(block.name)
+    env = block.env
+    event = env.event()
+    event._ok, event._value = True, None
+
+    def settled(_event):
+        pending.discard(block.name)
+        _check_deadlock_now(block)
+
+    event.callbacks.append(settled)
+    env.schedule(event, priority=_AFTER_THE_INSTANT)
+
+
+# SimPy's own events use priorities 0 (urgent) and 1 (normal); 2 sorts after both at one time
+_AFTER_THE_INSTANT = 2
+
+
+def _check_deadlock_now(block) -> None:
     ctx = block.ctx
     for cycle in ctx.blocking_cycles:
         if block.name not in cycle:
             continue
-        if all(_stuck(ctx.blocking_nodes[name]) for name in cycle if name in ctx.blocking_nodes):
-            chain = " -> ".join(cycle) + f" -> {cycle[0]}"
+        # each member with the blocks before and after it in the loop (R41, R56)
+        if all(_stuck(ctx.blocking_nodes[name], cycle[index - 1],
+                      cycle[(index + 1) % len(cycle)])
+               for index, name in enumerate(cycle) if name in ctx.blocking_nodes):
+            # names quoted: a hidden area link's name holds " -> " itself (D1369)
+            chain = " -> ".join(f"'{name}'" if " -> " in name else name
+                                for name in (*cycle, cycle[0]))
             raise RuntimeError(
                 f"deadlock at t={block.env.now:g}: every station and buffer in the loop "
                 f"{chain} is full or blocked, so nothing can move again. Give one of the "
                 f"buffers in the loop more places, or let one station leave without blocking.")
+
+
+def route_holds_at_end(ctx) -> None:
+    """R35: a run that ends at its time limit with a load still held by a routing rule names
+    each such hold and since when, as a warning: a routing deadlock in an open-ended run is
+    not drained, so `deadlock_at_end` never sees it (cheap, not a proof)."""
+    for name, holds in sorted(ctx.route_holds.items()):
+        if holds:
+            text = (f"Block '{name}' still holds {len(holds)} load(s) by its routing rule at the "
+                    f"run's end, the first since t={min(holds):g}: every exit was at its limit; "
+                    f"if nothing under way there arrives, this is a deadlock.")
+            log.warning("%s", text)
+            keep_run_warning(ctx, "W_ROUTE_HELD_AT_END", text, name)
+
+
+def reversed_holds_at_end(ctx) -> None:
+    """R45 (D1368): a run that ends at its time limit with a reversible belt running backward
+    and a part held at its start names the belt and since when, as a warning: nothing boards
+    a belt that runs backward, so if no signal turns it again the two may wait for ever, and
+    the queue is not drained, so `deadlock_at_end` never sees it (cheap, not a proof)."""
+    for name, belt in sorted(ctx.conveyors.items()):
+        ride = getattr(belt, "_rev", None)
+        found = ride.hold_at_end() if ride is not None else None
+        if found is not None:
+            text = (f"Belt '{name}' has run backward since t={found[0]:g} with a part held at its "
+                    f"start since t={found[1]:g}, waiting for the next block; nothing boards it "
+                    f"meanwhile. If no signal turns it again, this is a deadlock.")
+            log.warning("%s", text)
+            keep_run_warning(ctx, "W_REVERSED_HELD_AT_END", text, name)
 
 
 def deadlock_at_end(ctx) -> None:
@@ -559,6 +731,16 @@ def deadlock_at_end(ctx) -> None:
     stuck = [name for name, proc in ctx.blocking_nodes.items()
              if _blocks(proc)
              and getattr(proc, "blocked", None) is not None and _held(proc)]
+    # A7 (D1359): a load held by a routing rule; only a limit holds (R27), so every exit is full
+    routed = sorted(name for name, holds in ctx.route_holds.items() if holds)
+    if routed:
+        names = sorted(set(stuck) | set(routed))
+        why = ("every exit of its routing rule is full for, and no part under way there "
+               "arrives. Check the flow after those exits, or raise the rule's limit.")
+        raise RuntimeError(
+            f"deadlock at t={ctx.env.now:g}: nothing is left to happen but {', '.join(names)} "
+            f"{'is' if len(names) == 1 else 'are'} still blocked; {', '.join(routed)} "
+            f"{'holds' if len(routed) == 1 else 'hold'} a part {why}")
     if not stuck:
         return
     raise RuntimeError(

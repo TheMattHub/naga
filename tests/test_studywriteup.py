@@ -369,6 +369,28 @@ def test_goals_lead_with_the_recommended_option(nurse_study):
     assert "with Fourth nurse" not in plain and 'class="chip not_met"' in plain
 
 
+def test_d1348_two_options_that_meet_every_goal_are_both_named_and_neither_leads(tmp_path):
+    """D1348: with two options meeting every goal the write-up recommended the first in list
+    order; now both are named, the choice is left to the decision maker, and neither leads the
+    Goals table, the headline, the room's chips or the client page."""
+    from conftest import make_nurse_study
+    from nagasim import studypage
+
+    folder, st = make_nurse_study(tmp_path / "s")
+    kiosk = st["versions"][-1]["scenarios"]["Kiosk"]
+    kiosk["kpis"]["Nurse/Share waiting over 15"] = {"mean": 0.07, "ci_half_width": 0.01}
+    kiosk["goals"] = {"g1": "met"}
+    assert study_mod.scenarios_meeting(st) == ["Fourth nurse", "Kiosk"]
+    f = studywriteup.facts(folder, st)
+    assert "Fourth nurse and Kiosk meet" in f["verdict"] and "decision maker" in f["verdict"]
+    assert f["best"] == [] and f["tied"] == ["Fourth nurse", "Kiosk"]
+    assert all(g["option"] is None for g in f["goals"]) and studywriteup._headline(f) == ""
+    room = studypage.render(folder, st, study_id="s", in_room=True)
+    assert "with Fourth nurse" not in room and "decision maker" in room
+    client = studypage.render_client(folder, st, [])
+    assert "<th>Fourth nurse value</th>" not in client
+
+
 _GOAL = {"id": "g1", "text": "wait under 20", "kpi": "Wait", "high": 20}
 
 

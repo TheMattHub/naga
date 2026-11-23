@@ -36,13 +36,13 @@ def _codes(doc: dict) -> list[str]:
 
 # -- schema version and migration --------------------------------------------
 def test_v29_migration_adds_nothing_to_a_model_without_the_new_keys():
-    assert CURRENT_VERSION == 30          # v30 (D1193) adds no migration step either
+    assert CURRENT_VERSION == 32          # v30, v31 add no migration step; v32 moves only links
     raw = json.loads((Path(nagasim.__file__).parent / "models" / "ed_game.json").read_text("utf-8"))
     raw["schema_version"] = 28
     migrated = schema.migrate(raw)
     # Nothing but the version: the same file already marked v29 reads the same.
     assert migrated == schema.migrate({**raw, "schema_version": 29})
-    assert migrated["dashboard"] == raw["dashboard"] and migrated["schema_version"] == 30
+    assert migrated["dashboard"] == raw["dashboard"] and migrated["schema_version"] == CURRENT_VERSION
     assert "dashboard" not in schema.migrate({"schema_version": 28, "blocks": [], "links": []})
 
 

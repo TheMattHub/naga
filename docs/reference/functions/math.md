@@ -117,7 +117,7 @@ variadic, plain Python.
 
 Example: `min(3, 8, 5)` gives 3.
 
-Used in the bundled models Nagel-Schreckenberg traffic (ring), Berth: shore power, Biogas digester, holder and CHP, Biogas plant (library assets) and 7 more.
+Used in the bundled models Nagel-Schreckenberg traffic (ring), Berth: shore power, Biogas digester, holder and CHP, Biogas plant (library assets) and 8 more.
 
 ## MODULO
 

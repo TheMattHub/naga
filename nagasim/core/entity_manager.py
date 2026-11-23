@@ -1,5 +1,5 @@
 from nagasim.core.quantities import SECTION_FIELDS, param, to_base
-from nagasim.core.timeunits import ModelUnits
+from nagasim.core.timeunits import ModelUnits, conversion_factor
 import logging
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class EntityManager:
         self.entities.clear()
         self._preload_default_entities()
 
-    def register(self, name, shape="circle", color="BLACK", holding_cost=0.0):
+    def register(self, name, shape="circle", color="BLACK", holding_cost=0.0, size=None):
         #normalize name, shape, and color for safety
         name = name.upper()
         shape = shape.lower()
@@ -33,6 +33,10 @@ class EntityManager:
         # holding_cost (ROADMAP 2.2): money per model base time unit a live
         # entity of this type costs to hold (WIP cost), default 0.
         self.entities[name] = {"shape": shape, "color": color, "holding_cost": float(holding_cost)}
+        # Conveyor system A: {"length", "width", "height"} in metres, kept only when declared so an untouched model exports as before.
+        if size:
+            self.entities[name]["size"] = {k: float(size[k]) for k in ("length", "width", "height")
+                                           if size.get(k) is not None}
 
     def all(self):
         return self.entities
@@ -48,8 +52,15 @@ class EntityManager:
         fields = SECTION_FIELDS["entities"]
         for ent in entity_list:
             cost = to_base(param(fields, "holding_cost"), ent, units or ModelUnits(), fields)
+            # `size` is in the model's length unit, like a pallet pattern's (D1346); the
+            # engine works in metres.
+            to_m = conversion_factor("length", (units or ModelUnits()).length, "meters")
+            size = ent.get("size")
+            if size:
+                size = {k: v * to_m for k, v in size.items()
+                        if isinstance(v, (int, float)) and not isinstance(v, bool)}
             self.register(ent["name"], ent.get("shape", "circle"), ent.get("color", "BLACK"),
-                          cost if cost is not None else 0.0)
+                          cost if cost is not None else 0.0, size)
 
     def export_to_json(self):
         return [{"name": name.upper(), **props} for name, props in self.entities.items()]
