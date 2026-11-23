@@ -39,6 +39,7 @@ usage: naga run [-h] [--version] [--replications REPLICATIONS] [--seed SEED]
                 [--logic MODULE] [--controllers MODULE[:NAME]] [--pace FACTOR]
                 [--out OUT] [--report REPORT] [--export FORMAT:PATH]
                 [--player PATH] [--asked FILE] [--lang {en,it}] [--state FILE]
+                [--log-level {kpi,series,full,study,explore,replay}]
                 [--no-logs] [--raw] [--json] [--no-checks]
                 model
 
@@ -100,14 +101,22 @@ options:
   --state FILE          start from this state document (`naga state take`):
                         the run's clock starts where the state was taken and
                         its statistics cover the run from there
+  --log-level {kpi,series,full,study,explore,replay}
+                        what the run records: kpi (the summary frames), series
+                        (plus the time series), full (plus the per-event logs,
+                        the default), or a profile: study = kpi, explore =
+                        full, replay = full with the trace of the first
+                        replication recorded for --player and --export; a
+                        frame below the level is left out, not empty
   --no-logs             do not record the per-event entity/resource/store
                         logs: faster and much smaller on a long run, and every
                         summary statistic is unchanged -- only the three flat
-                        log sheets come back empty
+                        log sheets come back empty (not with --log-level,
+                        which leaves frames out instead)
   --raw                 print the per-replication system frame instead of the
                         summary
-  --json                print {kpis, checks, replications} as JSON instead of
-                        the summary
+  --json                print {kpis, checks, replications, log_level} as JSON
+                        instead of the summary
   --no-checks           skip the law checks (the WARN lines)
 ```
 

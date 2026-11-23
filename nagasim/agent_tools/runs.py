@@ -11,18 +11,32 @@ from typing import Literal
 
 from nagasim import api, experiments, explain, investment, laws, loopdominance, modelcheck, uncertainty
 from nagasim import optimize as optimize_mod
+from nagasim.core import loglevels
 from nagasim.core.schema import ModelValidationError
 from nagasim.exporters import EXPORTER_REGISTRY
 from nagasim.settings import trusted
 
 from .core import (
     MAX_ROWS, ToolError, _budget, _document_args, report as _progress, _edit_result, _finite, _digest, _open,
-    _records, _results_of, _rows, _runnable_layout, _upsert, note_asked, override_hint, recorded, tool,
-    workspace,
+    _records, _results_of, _rows, _runnable_layout, _upsert, not_recorded_error, note_asked, override_hint,
+    recorded, tool, workspace,
 )
 
 # Closed sets are Literals (D1219): the values are in the schema a client reads, not only in prose.
 Goal = Literal["min", "max"]
+# D1395: the run log levels and profiles, as `loglevels.NAMES` spells them (a test holds the two equal).
+LogLevel = Literal["kpi", "series", "full", "study", "explore", "replay"]
+_STUDY_LEVEL = "What each point records, as run_model's; default: the lowest that records the KPIs."
+
+
+def _check_study_level(log_level, kpis) -> None:
+    """E_NOT_RECORDED before any run when an explicit study *log_level* does not record one of
+    the KPIs it would judge (D1395): the engine keeps the caller's level, so a too-low one would
+    give the search NaN responses instead of the level to ask for."""
+    error = None if log_level is None else loglevels.unrecorded(kpis, log_level)
+    if error is not None:
+        raise not_recorded_error(error, hint="call the tool again with log_level='{needed}', "
+                                             "or leave it out")
 
 _document_args("run_model", model="Workspace name of the model to run.",
                replications="Independent replications; defaults to the model's own setting.",
@@ -32,7 +46,10 @@ _document_args("run_model", model="Workspace name of the model to run.",
                bind_data="Resolve series:/orders data bindings at run time first (default "
                          "false), like the UI/CLI's `--bind`. This does NOT write bulk data "
                          "into the model; it only affects this run.",
-               max_seconds="Wall-clock budget; the run stops cleanly and returns what finished.")
+               max_seconds="Wall-clock budget; the run stops cleanly and returns what finished.",
+               log_level="kpi (summary frames), series (+ timeseries, dashboard), full (+ the three "
+                         "logs); study = kpi, explore and replay = full. Default explore, unless the "
+                         "model file sets its own. A frame left out gives E_NOT_RECORDED.")
 
 
 _document_args("check_model_opens", model="Workspace name of the model to check.",
@@ -95,10 +112,10 @@ def propose_plugin_folder(model: str, folder: str) -> dict:
 @tool(returns={
     "model": str, "replications": int, "system": dict, "resources": dict, "user_stats": dict,
     "frames": list, "laws": dict, "entities": dict, "levels": dict, "queues": dict,
-    "bindings": dict, "agents": dict, "problems": list})
+    "bindings": dict, "agents": dict, "problems": list, "log_level": str})
 def run_model(model: str, replications: int | None = None, run_length: float | None = None,
               warmup: float | None = None, seed: int = 0, bind_data: bool = False,
-              max_seconds: float | None = None) -> dict:
+              max_seconds: float | None = None, log_level: LogLevel | None = None) -> dict:
     """Run (simulate) a model over its replications and return a COMPACT KPI digest -- never
     the raw frames.
 
@@ -114,7 +131,8 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     could not resolve is counted in "bindings" ({"problems", "first"}). Use
     `resolve_data_bindings` first to preview what a binding would read.
 
-    The full frames stay in the workspace: page them out with `get_kpi_table`.
+    The full frames stay in the workspace: page them out with `get_kpi_table`; kpi `log_level` is
+    faster.
 
     "laws" are the operational-law checks and guardrails (utilisation, offered load, Little, flow
     conservation, censoring, initial bias) -- warnings, never failures; a partial one names why
@@ -127,7 +145,14 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     """
     ws = workspace()
     doc = ws.document(model)
+    # The level is applied here, not by run_model's argument, so the layout the laws judge below
+    # is the one that ran and its own checks are reused (D906). No level asked: explore, unless the
+    # model file sets its own level or record_logs, which then stands.
     layout = _runnable_layout(doc, model)
+    if log_level is None and not loglevels.model_sets_own(layout):
+        log_level = "explore"
+    if log_level is not None:
+        layout = loglevels.apply_level(layout, log_level)
     base_dir = doc.path.parent if doc.path is not None else ws.root
     try:
         results = api.run_model(layout, replications=replications, seed=seed, warmup=warmup,
@@ -143,7 +168,8 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
                         "raise max_seconds, or lower replications/run_length")
     ws.results[model] = results
     digest = _digest(results)
-    digest.update({"model": model, "frames": sorted(results), "laws": _run_laws(layout, results, warmup)})
+    digest.update({"model": model, "frames": sorted(results), "laws": _run_laws(layout, results, warmup),
+                   "log_level": results.log_level})
     if bind_data and (bound := _binding_problems(results)):
         digest["bindings"] = bound
     if results.run_problems:         # D1389: only when the run raised some, so no digest grows
@@ -190,7 +216,7 @@ _document_args("get_kpi_table", model="Workspace name of a model that has been r
                limit="Rows to return (at most 200).")
 
 
-@tool(read_only=True, returns={
+@tool(read_only=True, reads_frames=tuple(loglevels.FRAME_LEVEL), returns={
     "model": str, "frame": str, "total": int, "offset": int, "count": int, "rows": list,
     "has_more": bool, "next_offset": int | None})
 def get_kpi_table(model: str, frame: str, offset: int = 0, limit: int = 50) -> dict:
@@ -202,6 +228,9 @@ def get_kpi_table(model: str, frame: str, offset: int = 0, limit: int = 50) -> d
     """
     results = _results_of(model)
     data = results.get(frame)
+    if data is None and (missing := not_recorded_error(
+            results, frame, hint="re-run run_model with log_level='{needed}'")) is not None:
+        raise missing               # D1395: left out by the run's level, never an empty table
     if data is None and frame in getattr(results, "_dropped", ()):
         import pandas as pd             # D1321: a frame with no rows is left out of the results
         data = pd.DataFrame()
@@ -603,7 +632,8 @@ _document_args("optimize", model="Workspace name of the model.",
                objectives="[[\"<kpi key>\", \"min\"|\"max\"], ...] for \"optuna-nsga2\" (at least two).",
                confirm_top="How many of the best points the final statistical confirmation "
                            "compares (default 3).",
-               max_seconds="Wall-clock budget.")
+               max_seconds="Wall-clock budget.",
+               log_level=_STUDY_LEVEL)
 
 
 @tool(returns={
@@ -614,7 +644,8 @@ def optimize(model: str, factors: list[dict], response: str, goal: Goal = "min",
              constraints: list[list] | None = None, budget: int = 120,
              replications_per_point: int = 5, run_length: float | None = None,
              seed: int = 0, max_seconds: float | None = None, method: Literal["auto", "optuna", "optuna-gp", "optuna-nsga2"] = "auto",
-             objectives: list[list] | None = None, confirm_top: int = 3) -> dict:
+             objectives: list[list] | None = None, confirm_top: int = 3,
+             log_level: LogLevel | None = None) -> dict:
     """Search model parameters for the setting that minimises or maximises one KPI within a
     replication budget, then confirm the winner statistically.
 
@@ -639,6 +670,8 @@ def optimize(model: str, factors: list[dict], response: str, goal: Goal = "min",
         raise ToolError("E_BAD_FACTOR", str(exc),
                         "a factor is {\"path\", \"kind\", \"low\", \"high\"} or "
                         "{\"path\", \"kind\": \"categorical\", \"levels\": [...]}") from None
+    _check_study_level(log_level, [response, *(c[0] for c in constraints or ()),
+                                   *(o[0] for o in objectives or ())])
     stop = _budget(max_seconds)         # one budget: the search and its law batch
     result = optimize_mod.optimize(doc.to_layout(), specs, response=response, goal=goal,
                                    constraints=[tuple(c) for c in (constraints or ())],
@@ -646,7 +679,8 @@ def optimize(model: str, factors: list[dict], response: str, goal: Goal = "min",
                                    replications_per_point=int(replications_per_point),
                                    run_length=run_length, seed=seed, method=method,
                                    objectives=[tuple(o) for o in (objectives or ())],
-                                   select_top=int(confirm_top), should_stop=stop, on_progress=_progress)
+                                   select_top=int(confirm_top), should_stop=stop, on_progress=_progress,
+                                   log_level=log_level)
     history = _records(result.history.tail(20),
                        {"point": "Point", "mean": ("Mean", _finite), "feasibility": "Feasibility"})
     out = {"model": model, "best": result.best, "best_mean": _finite(result.best_mean),
@@ -674,17 +708,18 @@ _document_args("calibrate", model="Workspace name of the model to calibrate.",
                method="\"optimize\" (default): search for the best point. \"abc\": rejection "
                       "ABC as well, a posterior range per factor.",
                accept="abc only: share of prior samples accepted (default 0.05, at least 20).",
-               max_seconds="Wall-clock budget.")
+               max_seconds="Wall-clock budget.",
+               log_level=_STUDY_LEVEL)
 
 
-@tool(returns={
+@tool(reads_frames=("timeseries",), returns={
     "model": str, "best": dict, "objective": float, "passed": bool, "budget_used": int,
     "converged": bool, "overrides": list, "targets": list, "laws": dict, "method": str,
     "samples": int, "accepted": int, "abc_tolerance": float, "posterior": list, "notes": list})
 def calibrate(model: str, targets: list[dict], factors: list[dict], budget: int = 120,
               replications_per_point: int = 5, seed: int = 0, apply: bool = False,
               method: Literal["optimize", "abc"] = "optimize", accept: float = 0.05,
-              max_seconds: float | None = None) -> dict:
+              max_seconds: float | None = None, log_level: LogLevel | None = None) -> dict:
     """Tune model parameters until the model reproduces measured KPIs.
 
     Give what the real system did (`targets`) and which parameters may move
@@ -711,11 +746,13 @@ def calibrate(model: str, targets: list[dict], factors: list[dict], budget: int 
     except TypeError as exc:
         raise ToolError("E_BAD_FACTOR", str(exc),
                         "a factor is {\"path\", \"kind\", \"low\", \"high\"}") from None
+    _check_study_level(log_level, [t["kpi"] if "kpi" in t else f"timeseries/{t.get('series')}"
+                                   for t in targets if isinstance(t, dict)])
     stop = _budget(max_seconds)         # one budget: the search and its law batch
     result = calibrate_mod.calibrate(doc.to_layout(), targets, specs, budget=int(budget),
                                      replications_per_point=int(replications_per_point),
                                      seed=seed, method=method, accept=float(accept),
-                                     should_stop=stop, on_progress=_progress)
+                                     should_stop=stop, on_progress=_progress, log_level=log_level)
     rows = _records(result.table, {
         "kpi": "KPI", "observed": ("Observed", _finite), "simulated": ("Simulated", _finite),
         "lb": ("LB", _finite), "ub": ("UB", _finite), "error": ("Error", _finite),
@@ -757,7 +794,7 @@ _document_args("forecast", model="Workspace name of the model to forecast.",
                max_seconds="Wall-clock budget.")
 
 
-@tool(returns={
+@tool(reads_frames=("timeseries",), returns={
     "model": str, "horizon": float, "replications": int, "kpis": list, "events": list,
     "series": list, "laws": dict})
 def forecast(model: str, horizon: float, replications: int = 100, events: list[dict] | None = None,
@@ -893,7 +930,8 @@ _document_args("fit_surrogate", model="Workspace name of the model.",
                            "ranking and selection on common random numbers); 0 (default) "
                            "fits only. Refused when the surface shows lack of fit.",
                goal="\"min\" or \"max\": the direction the suggestions and their "
-                    "confirmation look for (with confirm_top).")
+                    "confirmation look for (with confirm_top).",
+               log_level=_STUDY_LEVEL)
 
 
 @tool(returns={
@@ -903,7 +941,7 @@ _document_args("fit_surrogate", model="Workspace name of the model.",
 def fit_surrogate(model: str, factors: list[dict], response: str, design: str = "full:2",
                   kind: str = "quadratic", replications: int = 5, run_length: float | None = None,
                   seed: int = 0, max_seconds: float | None = None, confirm_top: int = 0,
-                  goal: Goal = "min") -> dict:
+                  goal: Goal = "min", log_level: LogLevel | None = None) -> dict:
     """Run a design of experiments and fit a response-surface surrogate over it
     -- a fast stand-in for the simulation, for optimisation or
     what-if exploration without spending more replications.
@@ -934,13 +972,15 @@ def fit_surrogate(model: str, factors: list[dict], response: str, design: str = 
                         "{\"path\", \"kind\": \"categorical\", \"levels\": [...]}") from None
     if goal not in ("min", "max"):
         raise ToolError("E_BAD_GOAL", f"goal must be \"min\" or \"max\", not {goal!r}", "use min or max")
+    _check_study_level(log_level, [response])
     stop = _budget(max_seconds)         # one budget: the design, the confirmation, its laws
     design_frame = build_design(design, specs, seed)
     layout = doc.to_layout()
     design_result = optimize_mod.run_design(layout, specs, design_frame,
                                             responses=[response], replications=int(replications),
                                             seed=int(seed), run_length=run_length,
-                                            should_stop=stop, on_progress=_progress)
+                                            should_stop=stop, on_progress=_progress,
+                                            log_level=log_level)
     model_fit = surrogate_mod.fit_surrogate(design_result, response, kind=kind)
     coefficients = [{"term": t, "coefficient": _finite(c), "std_error": _finite(s)}
                     for t, c, s in zip(model_fit.terms, model_fit.coef, model_fit.se)]

@@ -1,6 +1,8 @@
 from nagasim.core.graph_model import GraphModel
 from nagasim.core.context import build_context
-from nagasim.core.export import plugin_outputs
+from nagasim.core.conveyor_checks import keep_run_warning
+from nagasim.core.export import LIVE_KEY, plugin_outputs
+from nagasim.core.stats import created_in_window
 from nagasim.core.outputs import calc_kpis
 from nagasim.core import blocking, costs, initial_state, timeseries
 from nagasim.core.base_process import BaseProcess
@@ -396,6 +398,10 @@ def setup_run(layout_path, *, seed: int, run_len: float, warmup: float,
                                           env.ctx.timeseries_points, env.ctx.timeseries_interval)
     if interval > 0:
         env.ctx.sampler = timeseries.Sampler(env, interval, warmup)
+    elif env.ctx.log_level == "series":       # D1395: the result says why it has no series
+        keep_run_warning(env.ctx, "W_SAMPLES_NOTHING", "the model samples nothing: level series "
+                         "records no time series (simulation.timeseries_points is 0, or the run "
+                         "has no length and no timeseries_interval)", "")
     return env, model
 
 def run_single_simulation(layout_path, *, seed: int, run_len: float, warmup: float,
@@ -417,6 +423,11 @@ def run_single_simulation(layout_path, *, seed: int, run_len: float, warmup: flo
     # forces it), so this can never collide with another Run in the same
     # concatenated result.
     run_id = 0 if env.ctx.deterministic else seed
-    kpis = calc_kpis(env, warmup=max(warmup, env.ctx.clock), run_id=run_id)
+    report_from = max(warmup, env.ctx.clock)
+    kpis = calc_kpis(env, warmup=report_from, run_id=run_id)
     kpis.update(plugin_outputs(env.ctx, run_id))      # E8: nothing for a model without plugins
+    if env.ctx.log_level in ("kpi", "series"):        # D1395: no entity log to count them from
+        kpis[LIVE_KEY] = (run_id, sum(1 for e in env.ctx.all_entities
+                                      if e.deletion_time is None and getattr(e, "in_batch", None) is None
+                                      and created_in_window(e, report_from)))
     return kpis

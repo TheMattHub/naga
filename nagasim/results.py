@@ -26,6 +26,7 @@ from typing import NamedTuple
 
 import pandas as pd
 
+from nagasim.core.loglevels import NotRecordedError, key_level, message, rank
 from nagasim.core.stats import ci95
 from nagasim.core.suggest import did_you_mean
 from nagasim.runchecks import RunChecks
@@ -97,8 +98,58 @@ class Results(dict):
     _dropped: tuple = ()
     # D1389: the run-time warnings, as Problems; see `run_problems`.
     _run_problems: tuple = ()
+    # D1395: the level the run recorded at ("kpi", "series", "full"; None for a Results built by
+    # hand), what that level left out ({frame or "frame.column": level needed}), and below a
+    # named full level the per-replication count of entities still inside ({run: count}).
+    log_level: str | None = None
+    _not_recorded: dict = {}
+    live_at_end: dict | None = None
+
+    def not_recorded(self, name: str) -> NotRecordedError | None:
+        """Return the error for data this run's log level did not record (D1395).
+
+        Parameters
+        ----------
+        name : str
+            A frame (``"entity_log"``), a ``"frame.column"`` or a KPI key
+            (``"resource/Server/Queue Len P95"``, ``"timeseries/system/WIP/max"``).
+
+        Returns
+        -------
+        NotRecordedError or None
+            The error whose message names the level to re-run at, or None when the
+            run recorded *name* (or it never existed, or no level was named).
+
+        See Also
+        --------
+        nagasim.api.run_model : Its ``log_level`` argument sets the level.
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> import nagasim
+        >>> from nagasim import api
+        >>> path = Path(nagasim.__file__).parent / "models" / "single_server.json"
+        >>> results = api.run_model(str(path), run_length=200, seed=0, log_level="kpi")
+        >>> results.log_level
+        'kpi'
+        >>> print(results.not_recorded("entity_log"))
+        'entity_log' was not recorded: this run was at level kpi; re-run with log_level='full'
+        >>> results.not_recorded("system") is None
+        True
+        """
+        missing = self._not_recorded
+        if not missing:
+            return None
+        need = missing.get(name)
+        if need is None and "/" in str(name):           # a KPI key: the level that records it
+            level = key_level(name)
+            need = level if rank(level) > rank(self.log_level) else None
+        return None if need is None else NotRecordedError.of(name, self.log_level, need)
 
     def __missing__(self, name):
+        if (error := self.not_recorded(name)) is not None:
+            raise error
         # D1321: a frame the run left empty is absent; say so rather than a bare KeyError.
         if name in self._dropped:
             raise KeyError(f"{name!r} has no rows in this run, so run_model left it out; test with "
@@ -295,6 +346,8 @@ class Results(dict):
         table = self.kpis()
         hit = table.loc[table["metric"] == key, "mean"]
         if hit.empty:
+            if (error := self.not_recorded(key)) is not None:
+                raise error
             raise _unknown_key(key, table["metric"])
         return float(hit.iloc[0])
 
@@ -337,6 +390,8 @@ class Results(dict):
         flat = flatten_kpis(self)
         values = flat.loc[flat["KPI"] == key, "Value"]
         if values.empty:
+            if (error := self.not_recorded(key)) is not None:      # D1395, as `kpi`
+                raise error
             raise _unknown_key(key, flat["KPI"].unique())
         st = ci95(values)
         return Interval(float(st["mean"]), float(st["ub"] - st["mean"]),
@@ -434,6 +489,17 @@ class Results(dict):
         flat = flatten_kpis(self)
         values = flat.loc[flat["KPI"] == key, "Value"]
         if values.empty:
+            # D1395: a KPI or a series the run's level left out names the level to re-run at.
+            error = self.not_recorded(key)
+            if error is None and (need := self._not_recorded.get("timeseries")):
+                # A key near a KPI the run has may be a misspelling (review M1) or a series the
+                # level left out ("system/WIP" is near "system/Avg WIP"): say both.
+                near = did_you_mean(key, flat["KPI"].unique())
+                line = message(key, self.log_level, need)
+                error = (KeyError(f"{key!r} is not a KPI key in these results; {near} If it is a "
+                                  f"time series: {line}") if near else NotRecordedError.of(key, self.log_level, need))
+            if error is not None:
+                raise error
             series = [] if ts is None or ts.empty else list(ts["Series"].unique())
             raise _unknown_key(key, [*flat["KPI"].unique(), *series], "a KPI key or a timeseries series")
         st = ci95(values)

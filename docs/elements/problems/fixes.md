@@ -346,6 +346,8 @@ E_TABLE_UNKNOWN: Declare the table under `tables`, or correct the name in the `T
 E_TABLE_VALUE: Make every cell in the table's `values` a number, and make `default` a number or drop it. Text such as `"5"` is not accepted.
 E_TIME_UNIT: Set the named `time_unit` (or rate unit key) to one of the known time units, such as `minutes` or `hours`. A block or record field may also take `base`, the model's own unit.
 E_TRANSFER_MODE: Set the TRANSFER block's or the agent transfer action's `mode` to `remove` or `add`.
+E_LOG_LEVEL: Set `simulation.log_level` to one of the levels `kpi`, `series` or `full`, or to a profile: `study`, `explore` or `replay`. Remove it to let `record_logs` and `timeseries_points` decide.
+W_SAMPLES_NOTHING: Give the run a length or set `simulation.timeseries_points` above 0 so the series level has something to record, or run at level `kpi`, which records the same summary frames.
 E_UNIT: Set the unit key, such as `simulation.length_unit` or a field's unit, to one of its quantity's units. A record field may also take `base`; the hint names the quantity.
 E_UNIT_MISMATCH: Correct the `unit` of the level, flow or auxiliary, or the expression, so expected and found units agree. Or set `simulation.sd.units` to `warn` to report it as a warning only.
 E_UNIT_TIME: Write the rate in the model's base time unit, or correct the record's `unit` so the time scales match. Or set `simulation.sd.units` to `warn` to report it as a warning only.

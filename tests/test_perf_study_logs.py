@@ -124,6 +124,25 @@ def test_a_study_naming_a_log_kpi_gets_real_values_equal_to_a_logs_on_run():
     assert all(LOG_KPI not in point for point in silent.values.values())
 
 
+SERIES_KPI = "timeseries/system/WIP/max"
+
+
+def test_a_study_naming_a_series_peak_gets_real_values_equal_to_a_full_run():
+    """D1395 (plan Task 3): a `timeseries/<series>/max` KPI runs the study at series and its
+    values are the full run's; optimize finds the same best point on either."""
+    default = _run([SERIES_KPI])
+    full = _run([SERIES_KPI], log_level="full")
+    values = _table(default, SERIES_KPI)
+    assert default.log_level == "series" and np.isfinite(np.concatenate(values)).all()
+    assert values == _table(full, SERIES_KPI)
+    common = dict(response=SERIES_KPI, budget=12, replications_per_point=2, seed=5,
+                  run_length=300, warmup=30)
+    searched = optimize.optimize(api.load_layout(SINGLE_SERVER), [CAPACITY], **common)
+    again = optimize.optimize(api.load_layout(SINGLE_SERVER), [CAPACITY], log_level="full", **common)
+    assert np.isfinite(searched.best_mean) and searched.best == again.best
+    assert searched.best_mean == again.best_mean
+
+
 def test_a_model_with_logs_off_still_gets_a_requested_log_kpi():
     quiet = api.with_run_setting(api.load_layout(SINGLE_SERVER), "record_logs", False)
     result = optimize.run_design(quiet, [CAPACITY], _design(), responses=[LOG_KPI],

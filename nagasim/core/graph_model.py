@@ -18,6 +18,7 @@ from nagasim.core.network import block_nodes, build_network, normalise_rotation
 from nagasim.core.orders import build_orders
 from nagasim.core.resource_manager import PlanGates
 from nagasim.core.initial_state import schedule_offset
+from nagasim.core.loglevels import named_level, switches
 from nagasim.core.timeseries_inputs import build_series_table
 from nagasim.core.calendar import model_calendar, run_horizon
 from nagasim.core.schedules import build_schedule
@@ -139,6 +140,12 @@ class GraphModel:
         # never from these logs, so what is lost is the three flat frames and
         # nothing else.
         env.ctx.record_logs = bool(sim_settings.get("record_logs", True))
+        # D1395: a named run log level beats the two switches above (`loglevels.apply_level`
+        # writes them too; a model that names only its level is honoured here).
+        env.ctx.log_level = named_level(sim_settings)
+        if env.ctx.log_level is not None:
+            for key, value in switches(env.ctx.log_level).items():
+                setattr(env.ctx, key, value)
         env.ctx.entity_waits = bool(sim_settings.get("entity_waits", False))    # D1232
         env.ctx.strict_checks = sim_settings.get("strict_checks", False) is True   # D1371
 

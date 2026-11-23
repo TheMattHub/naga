@@ -5,7 +5,7 @@ from nagasim import api, experiments
 from nagasim.core.export import concat_runs
 import math
 import numpy as np
-from nagasim.core import schema
+from nagasim.core import loglevels, schema
 import weakref
 
 # ---------------------------------------------------------------- evaluation
@@ -26,21 +26,29 @@ def _consecutive(seeds) -> list[tuple[int, int]]:
     return blocks
 
 
-def study_layout(layout, kpis=(), record_logs=None) -> dict:
-    """*layout* with `simulation.record_logs` settled for a study: the ONE place
-    every study entry point (optimize, DOE, selection, sobol, tornado,
-    calibrate) resolves it.
+def study_layout(layout, kpis=(), record_logs=None, log_level=None) -> dict:
+    """*layout* with its run log level settled for a study: the ONE place every
+    study entry point (optimize, DOE, selection, sobol, tornado, calibrate)
+    resolves it (D1395).
 
-    An explicit *record_logs* from the caller wins. Otherwise the per-event logs
-    are off (PHASE4 T7: they cost 10-14% of a run, 9x the KPI computation and
-    most of the result a worker sends back) unless one of the *kpis* the study
-    names is computed from them (`experiments.needs_event_logs`) -- a study
-    never gets a silently empty column. That overrides a model that has the
-    logs off itself, because the study's need is the more specific request.
+    An explicit *log_level* or *record_logs* from the caller wins. Otherwise the
+    study runs at the lowest level that records every one of its *kpis*
+    (`loglevels.needed_level`): kpi for plain KPIs, with the per-event
+    logs and the sampler off (A1 of the log-levels plan: 12-21% of a queueing
+    run's calls, and the sampler alone 19% of many short replications), series
+    for a `timeseries/...` KPI, full for a log-derived one or a tail goal -- a
+    study never gets a silently empty column. The study is a caller, so its level
+    beats the model's own `simulation.log_level` and switches.
     """
-    if record_logs is None:
-        record_logs = experiments.needs_event_logs(kpis)
-    return api.with_run_setting(layout, "record_logs", bool(record_logs))
+    if log_level is not None:
+        if record_logs is not None:
+            raise ValueError("give record_logs or log_level, not both")
+        return loglevels.apply_level(layout, loglevels.resolve(log_level))
+    if record_logs is not None:
+        out = api.with_run_setting(layout, "record_logs", bool(record_logs))
+        out["simulation"].pop("log_level", None)        # the caller's switch beats the model's level
+        return out
+    return loglevels.apply_level(layout, loglevels.needed_level(kpis))
 
 
 def _candidate_layout(layout, overrides) -> dict:
@@ -66,6 +74,24 @@ def _values_from_frames(frames, extra=None, seed=None) -> dict[str, dict[int, fl
     if seed is not None and "system/Deterministic" in values:
         values = {kpi: {int(seed): v for v in by_seed.values()} for kpi, by_seed in values.items()}
     return values
+
+
+def _is_series_extreme(key) -> bool:
+    return isinstance(key, str) and key.startswith("timeseries/") and key.endswith(("/max", "/min"))
+
+
+def _with_series_extremes(extra=None):
+    """*extra* plus each sampled series' per-replication max and min
+    (`forecast.series_extreme_kpis`), so a study can name `timeseries/<series>/max` as its
+    response or a constraint; `needed_level` runs such a study at series."""
+    def both(frames) -> dict[str, dict[int, float]]:
+        from nagasim import forecast     # late: forecast builds on experiments, as this does
+        out = dict(extra(frames)) if extra is not None else {}
+        flat = forecast.series_extreme_kpis(frames)
+        for run, kpi, value in zip(flat["Run"], flat["KPI"], flat["Value"]):
+            out.setdefault(kpi, {})[int(run)] = float(value)
+        return out
+    return both
 
 
 def _evaluate_point(layout, overrides, seeds, *, run_length=None, warmup=None, workers=1,
@@ -201,18 +227,26 @@ class _Evaluator:
     """
 
     def __init__(self, layout, *, run_length=None, warmup=None, workers=1, budget=None,
-                 extra=None, pool=None, record_logs=None, kpis=(), logic=None, controllers=None):
+                 extra=None, pool=None, record_logs=None, kpis=(), logic=None, controllers=None,
+                 log_level=None):
         # Imported (and checked importable for workers) before the first run,
         # so a bad caller module fails at once, not on the first design point.
         api._logic_module(logic, workers)
         api._check_controllers(controllers, workers, pool)
         self.logic = logic
         self.controllers = controllers
-        self.layout = study_layout(layout, kpis, record_logs)
+        self.layout = study_layout(layout, kpis, record_logs, log_level)
+        self.log_level = loglevels.label_of(self.layout.get("simulation"))   # D1395
+        # Checked against the first point, under a named level only: a legacy record_logs=False
+        # study keeps today's NaN values (O4).
+        self._asked = ([k for k in kpis if isinstance(k, str)]
+                       if loglevels.named_level(self.layout.get("simulation")) else [])
         self.run_length = run_length
         self.warmup = warmup
         self.workers = workers
         self.budget = budget
+        if any(_is_series_extreme(k) for k in kpis):
+            extra = _with_series_extremes(extra)    # D1395: a timeseries/.../max KPI is a value
         self.extra = extra          # see `_evaluate_point`
         self.used = 0
         self.deterministic = None
@@ -314,7 +348,19 @@ class _Evaluator:
         for key, seeds in priced:
             if key in settled:
                 out[key] = self._held(key, seeds)
+                self._check_recorded(out[key])
         return complete
+
+    def _check_recorded(self, values) -> None:
+        """Raise `NotRecordedError` when a KPI the study asked for is missing from a point
+        because the caller's level does not record it (D1395): the line names the level to
+        re-run at, where the lookup would say "unknown response KPI". The caller's level
+        still wins (`study_layout`); this only says why its KPI is absent. Once, on the
+        first point."""
+        asked, self._asked = self._asked, []
+        error = loglevels.unrecorded([key for key in asked if key not in values], self.log_level)
+        if error is not None:
+            raise error
 
     def values(self, key, overrides, seeds) -> dict[str, np.ndarray]:
         """{KPI: values in *seeds* order}; runs only the seeds not already held

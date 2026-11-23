@@ -31,6 +31,7 @@ from nagasim.core.orders import validate_orders_structured
 from nagasim.core.problems import Problem, problem
 from nagasim.core.resource_manager import validate_resources_structured
 from nagasim.core.schedules import validate_schedules_structured
+from nagasim.core.loglevels import NAMES as LOG_LEVEL_NAMES
 from nagasim.core.schema.common import (_check_deterministic_mean, _check_dist_param_keys, _check_expression, _dist_hint,
                                         _known_distributions, _link_pairs)
 from nagasim.core.schema.sections_validation import (_validate_assertions, _validate_dashboard,
@@ -200,6 +201,13 @@ def _validate_simulation(layout: dict, problems: list) -> None:
             problems.append(problem(code, f"simulation: unknown {key} '{unit}'",
                                     f"/simulation/{key}", hint=f"one of: {', '.join(table)}",
                                     fields={"case": "model", "unit": unit}))
+    # D1395: a run log level is one of the levels or profiles.
+    level = sim.get("log_level")
+    if level is not None and level not in LOG_LEVEL_NAMES:
+        problems.append(problem("E_LOG_LEVEL", f"simulation: log_level must be one of "
+                                f"{', '.join(LOG_LEVEL_NAMES)}; got {level!r}", "/simulation/log_level",
+                                hint=f"one of: {', '.join(LOG_LEVEL_NAMES)}",
+                                fields={"case": "unknown", "level": level}))
     # #1720: a warm-up that reaches the run's end leaves only zeros to report.
     limit, warmup = sim.get("time_limit"), sim.get("warmup")
     if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (limit, warmup)) \

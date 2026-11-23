@@ -40,7 +40,8 @@ def test_json_shape(capsys):
     code, out = run(capsys, SINGLE, *QUICK, "--json")
     doc = json.loads(out.out)
     assert code == 0
-    assert set(doc) == {"kpis", "checks", "replications"}
+    assert set(doc) == {"kpis", "checks", "replications", "log_level"}
+    assert doc["log_level"] == "full"       # D1395: a plain run records full
     assert {"passed", "partial"} <= set(doc["checks"])
     assert doc["kpis"][0].keys() == {"metric", "key", "mean", "half_width", "ci95", "n"}
     assert doc["replications"]["metric"] == "Avg Throughput Time"

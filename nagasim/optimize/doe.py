@@ -23,6 +23,7 @@ class DesignResult:
     crn: bool = True
     replications: int = 0
     completed: bool = True
+    log_level: str | None = None        # D1395: the level every point ran at
 
     @property
     def factor_names(self) -> list[str]:
@@ -123,7 +124,7 @@ class DesignResult:
 def run_design(layout, factors, design, *, responses=None, replications: int = 5, seed: int = 0,
                crn: bool = True, workers: int = 1, run_length=None, warmup=None,
                on_progress=None, should_stop=None, evaluator=None, pool=None,
-               record_logs=None, logic=None, controllers=None) -> DesignResult:
+               record_logs=None, logic=None, controllers=None, log_level=None) -> DesignResult:
     """Run every point of *design* and collect *responses*.
 
     *design* is a frame from `full_factorial` / `latin_hypercube` /
@@ -132,14 +133,16 @@ def run_design(layout, factors, design, *, responses=None, replications: int = 5
 
     With *crn* (the default) every point runs on the SAME seeds, so the effect
     estimates are paired and the shared sampling noise cancels; without it each
-    point gets its own disjoint seed block.
+    point gets its own disjoint seed block. *log_level* (D1395) is the level every point
+    runs at; by default the lowest that records *responses*.
     """
     base = load_layout(layout)
     factors = list(factors)
     points = design.reset_index(drop=True)
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
                                         workers=workers, pool=pool, record_logs=record_logs, logic=logic,
-                                        controllers=controllers, kpis=responses or ())
+                                        controllers=controllers, kpis=responses or (),
+                                        log_level=log_level)
     total = len(points) * replications
     values: dict[int, dict] = {}
     seeds: dict[int, list[int]] = {}
@@ -183,5 +186,6 @@ def run_design(layout, factors, design, *, responses=None, replications: int = 5
     applied = pd.DataFrame({name: column[:len(values)] for name, column in coerced.items()},
                            columns=[f.name for f in factors])
     return DesignResult(factors=factors, design=applied, values=values, responses=list(responses),
-                        seeds=seeds, crn=crn, replications=replications, completed=completed)
+                        seeds=seeds, crn=crn, replications=replications, completed=completed,
+                        log_level=getattr(evaluator, "log_level", None))
 

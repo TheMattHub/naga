@@ -65,10 +65,15 @@ def _write_html(results, path, *, layout=None, title=None, **_):
 
 
 def _write_json(results, path, *, layout=None, **_):
-    """All nine frames as records, one JSON object keyed by frame name."""
+    """All nine frames as records, one JSON object keyed by frame name, plus "not_recorded"
+    ({frame: level needed}) when the run's level left frames out (D1395)."""
     payload = {name: df.to_dict(orient="records")
                for name, df in with_datetimes(results, layout).items()
                if isinstance(df, pd.DataFrame)}
+    missing = {name: need for name, need in (getattr(results, "_not_recorded", None) or {}).items()
+               if "." not in name}         # frames only; a left-out column is not a frame
+    if missing:
+        payload["not_recorded"] = missing
     Path(path).write_text(_json.dumps(payload, indent=2, default=str))
     return Path(path)
 

@@ -2198,7 +2198,7 @@
     "read_only": true
   },
   {
-    "description": "Run (simulate) a model over its replications and return a COMPACT KPI digest -- never\nthe raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications; `run_to_precision`\nfinds how many. One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it; a binding it\ncould not resolve is counted in \"bindings\" ({\"problems\", \"first\"}). Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`.\n\n\"laws\" are the operational-law checks and guardrails (utilisation, offered load, Little, flow\nconservation, censoring, initial bias) -- warnings, never failures; a partial one names why\nits numbers cannot be read at face value. Only when the model has them: \"entities\" (per\nentity type, when there are several: Avg Time, Total Completed), \"levels\" (Average, Final,\nTime Empty %, Time Full %), \"queues\" (per block: Balked, Reneged) and \"agents\" (per\npopulation/state: Avg Count), in the same {mean, ci_half_width} form. \"problems\" is present\nonly when the run raised warnings while running (a part handed to nothing, a part leaving by\nan exit its rule would not choose, a hold still open at the end): code, message, hint, block.",
+    "description": "Run (simulate) a model over its replications and return a COMPACT KPI digest -- never\nthe raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications; `run_to_precision`\nfinds how many. One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it; a binding it\ncould not resolve is counted in \"bindings\" ({\"problems\", \"first\"}). Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`; kpi `log_level` is\nfaster.\n\n\"laws\" are the operational-law checks and guardrails (utilisation, offered load, Little, flow\nconservation, censoring, initial bias) -- warnings, never failures; a partial one names why\nits numbers cannot be read at face value. Only when the model has them: \"entities\" (per\nentity type, when there are several: Avg Time, Total Completed), \"levels\" (Average, Final,\nTime Empty %, Time Full %), \"queues\" (per block: Balked, Reneged) and \"agents\" (per\npopulation/state: Avg Count), in the same {mean, ci_half_width} form. \"problems\" is present\nonly when the run raised warnings while running (a part handed to nothing, a part leaving by\nan exit its rule would not choose, a hold still open at the end): code, message, hint, block.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2206,6 +2206,22 @@
           "default": false,
           "description": "Resolve series:/orders data bindings at run time first (default false), like the UI/CLI's `--bind`. This does NOT write bulk data into the model; it only affects this run.",
           "type": "boolean"
+        },
+        "log_level": {
+          "description": "kpi (summary frames), series (+ timeseries, dashboard), full (+ the three logs); study = kpi, explore and replay = full. Default explore, unless the model file sets its own. A frame left out gives E_NOT_RECORDED.",
+          "enum": [
+            "kpi",
+            "series",
+            "full",
+            "study",
+            "explore",
+            "replay",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "max_seconds": {
           "description": "Wall-clock budget; the run stops cleanly and returns what finished.",
@@ -2270,6 +2286,9 @@
         },
         "levels": {
           "type": "object"
+        },
+        "log_level": {
+          "type": "string"
         },
         "model": {
           "type": "string"
@@ -2876,6 +2895,22 @@
           ],
           "type": "string"
         },
+        "log_level": {
+          "description": "What each point records, as run_model's; default: the lowest that records the KPIs.",
+          "enum": [
+            "kpi",
+            "series",
+            "full",
+            "study",
+            "explore",
+            "replay",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "max_seconds": {
           "description": "Wall-clock budget.",
           "type": [
@@ -3138,6 +3173,22 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "log_level": {
+          "description": "What each point records, as run_model's; default: the lowest that records the KPIs.",
+          "enum": [
+            "kpi",
+            "series",
+            "full",
+            "study",
+            "explore",
+            "replay",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "max_seconds": {
           "description": "Wall-clock budget.",
@@ -3682,6 +3733,22 @@
           "default": "quadratic",
           "description": "\"linear\", \"quadratic\", \"auto\" (picks by CV RMSE), or -- only if scikit-learn is installed -- \"gp\"/\"forest\".",
           "type": "string"
+        },
+        "log_level": {
+          "description": "What each point records, as run_model's; default: the lowest that records the KPIs.",
+          "enum": [
+            "kpi",
+            "series",
+            "full",
+            "study",
+            "explore",
+            "replay",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "max_seconds": {
           "description": "Wall-clock budget for the whole design and its confirmation.",

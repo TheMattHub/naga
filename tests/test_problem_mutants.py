@@ -185,6 +185,7 @@ MUTANTS = {
     "E_VARIABLE_UNKNOWN": _set("blocks.1.params.dist_params", {"rate": 'VAR("ghost")'}),
     "E_EXPRESSION": _set("blocks.1.params.dist_params", {"rate": "1 +* 2"}),
     "E_TIMESERIES_COUNTS": _set("simulation.timeseries_counts", ["ghost"]),
+    "E_LOG_LEVEL": _set("simulation.log_level", "verbose"),
     "E_FAILURE_NAME": _add("failures", {"name": "", "resources": ["Server"],
                                         "uptime": {"distribution": "Exponential", "dist_params": {"rate": 0.01}},
                                         "downtime": {"distribution": "Exponential", "dist_params": {"rate": 0.1}}}),
@@ -411,6 +412,7 @@ WITHOUT_A_MUTANT = {
 # R59: codes only a run raises, which the reach finds through a block class its checks read;
 # no model edit makes the panel show them, so a run test is their proof (named per code).
 RUN_ONLY = {
+    "W_SAMPLES_NOTHING": "tests/test_log_levels.py::test_a_series_run_of_a_model_that_samples_nothing_says_so",
     "W_CONVEYOR_HANDED_TO_NOTHING": "tests/test_conveyor_checks.py::test_a_part_handed_to_nothing_holds_its_belt_blocked",
     "W_ROUTE_FORBIDDEN": "tests/test_conveyor_checks.py::test_a_part_leaving_by_an_exit_its_rule_would_not_choose_now_is_warned",
     "W_ROUTE_HELD_AT_END": "tests/test_run_problems.py::test_a_run_warning_is_in_the_api_result_once",

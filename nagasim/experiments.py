@@ -33,8 +33,8 @@ from scipy import stats as sp_stats
 from nagasim import api
 from nagasim._cli import add_model_argument, setup_cli
 from nagasim.core import schema
+from nagasim.core import loglevels
 from nagasim.core.export import PROBLEMS_KEY, concat_runs
-from nagasim.core.outputs import LOG_DERIVED_COLUMNS
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.stats import ci95, paired_diff_ci, welch_diff_ci
 from nagasim.results import Results
@@ -270,15 +270,9 @@ def needs_event_logs(kpis) -> bool:
     Keys are spelled as `flatten_kpis` writes them, plus the raw log columns a
     calibration target names (`entity_log/Throughput Time`). The column is the
     last `/`-separated part, because an object name may itself contain a `/`.
+    Kept for one release (D1395): `loglevels.needed_level` is the rule now.
     """
-    frames = {prefix: frame for frame, _col, prefix in _OBJECT_FRAMES}
-    for kpi in kpis:
-        prefix, _, rest = str(kpi).partition("/")
-        if prefix in ("entity_log", "resource_log", "store_log"):
-            return True
-        if rest.rpartition("/")[2] in LOG_DERIVED_COLUMNS.get(frames.get(prefix), ()):
-            return True
-    return False
+    return loglevels.needed_level(kpis) == "full"
 
 
 def statistic(name: str):
@@ -347,6 +341,7 @@ class ExperimentResult:
     warmups: dict[str, float] = field(default_factory=dict)   # the warm-up each scenario ran with (#1760)
     crn: bool = True
     completed: bool = True
+    log_level: str | None = None        # D1395: the lowest level of its scenarios (what every one recorded)
 
     @property
     def scenarios(self) -> list[str]:
@@ -508,7 +503,8 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
                   run_length: float | None = None, warmup: float | None = None, crn: bool = True,
                   workers: int | str = 1, on_progress=None, should_stop=None,
                   pool=None, baseline: bool = True, logic=None,
-                  controllers: dict | None = None, keep_empty: bool = False) -> ExperimentResult:
+                  controllers: dict | None = None, keep_empty: bool = False,
+                  log_level: str | None = None) -> ExperimentResult:
     """Run every named scenario (all of them by default) and return the results.
 
     Parameters
@@ -553,6 +549,9 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
     keep_empty : bool, default False
         Also keep each scenario's frames with no rows, as `nagasim.api.run_model` (D1328):
         by default only frames with rows are kept, plus ``"system"`` always.
+    log_level : str, optional
+        The run log level of every scenario, as `nagasim.api.run_model` takes it (D1395).
+        None keeps each scenario's own settings.
 
     Returns
     -------
@@ -587,6 +586,9 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
     if replications is None:
         replications = int(base.get("simulation", {}).get("replications") or 1)
     layouts = _scenario_layouts(base, scenario_names, baseline)
+    if log_level is not None:       # D1395: every scenario at the caller's level
+        level = loglevels.resolve(log_level)
+        layouts = {name: loglevels.apply_level(candidate, level) for name, candidate in layouts.items()}
     # Tasks go straight to the pool, so the "model never ends on its own" guard
     # that `run_model` used to apply per scenario is applied here instead --
     # per scenario, each with its OWN simulation.time_limit and warmup unless
@@ -645,6 +647,11 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
             result.completed = False        # stopped, or nothing to report
             break
         frames = api.frames_with_rows(concat_runs([kpi for _, kpi in pairs]), keep_empty)   # D1328
+        api.label(frames, layouts[name].get("simulation"))                                   # D1395
+        # The lowest level of the scenarios: what every one of them recorded.
+        result.log_level = min((lvl for lvl in (result.log_level, frames.log_level) if lvl),
+                               key=loglevels.rank, default=None)
+        frames.live_at_end = api.live_counts(kpi for _, kpi in pairs)
         # D906: what `checks()` judges the scenario by, as `api.run_model` sets them for a run.
         frames._layout, frames._warmup = layouts[name], float(windows[name][1] or 0)
         # D1389 (final review M2): the scenario's run-time warnings, as a run's
@@ -691,6 +698,16 @@ def study_kpi_name(key: str) -> str:
     return rest if frame in _BARE_FRAMES and rest else key
 
 
+def _raise_not_recorded(results, key) -> None:
+    """Raise the `NotRecordedError` of the first of *results* (Results) whose named level did not
+    record *key* (D1395), so an unknown-KPI answer names the level to re-run at instead of the
+    nearest recorded key. A legacy logs-off run names no level and raises nothing here."""
+    for res in results:
+        error = res.not_recorded(key) if hasattr(res, "not_recorded") else None
+        if error is not None:
+            raise error
+
+
 def resolve_kpis(layout, kpis, scenario_names=None, *, seed: int = 0, run_length: float | None = None,
                  warmup: float | None = None, should_stop=None) -> dict[str, str] | None:
     """{asked: results key} for *kpis* (None stays None), learned from one replication of the
@@ -707,6 +724,8 @@ def resolve_kpis(layout, kpis, scenario_names=None, *, seed: int = 0, run_length
     found = {k: match_kpi(k, known) for k in kpis}
     unknown = [k for k, v in found.items() if v is None]
     if unknown:
+        for key in unknown:
+            _raise_not_recorded(probe.results.values(), key)
         tails = {}
         for full in sorted(known):
             tails.setdefault(full.partition("/")[2], full)
@@ -729,6 +748,11 @@ def paired_until_clear(layout, overrides: list[dict], kpis: list[str] | None = N
     """
     base = schema.load_layout(layout)
     base["scenarios"] = [{"name": WHAT_IF, "overrides": list(overrides)}]
+    # D1395: a KPI the model's own level does not record is said before any run; without it the
+    # doubling would run to the cap and return an empty table.
+    named = loglevels.named_level(base.get("simulation"))
+    if named and (error := loglevels.unrecorded(kpis or (), named)) is not None:
+        raise error
     n = max(2, start)
     # ponytail: each doubling reruns from replication 0 (same seeds, so the
     # first n results repeat) -- about 2x the final cost, instead of threading
@@ -860,6 +884,7 @@ def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: 
     if stop is None:            # a step that always pays must not run forever
         stop = level + MAX_SIZING_STEPS * step
     runs: dict = {}         # level -> long KPI frame (Run, KPI, Value) of the seeds run so far
+    ran: list = []          # the last arm's Results, which says what its level did not record
 
     def ensure(value, n: int) -> bool:
         have = runs.get(value)
@@ -874,12 +899,14 @@ def size_capacity(layout, path: str, *, kpi: str, goal: str = "min", statistic: 
         if not result.completed:
             return False
         flat = flatten_kpis(result.results[_SIZING])
+        ran[:] = [result.results[_SIZING]]
         runs[value] = flat if have is None else pd.concat([have, flat], ignore_index=True)
         return True
 
     def values(value, key: str, n: int) -> np.ndarray:
         found = _series(runs[value], key)[:n]
         if not found.size:
+            _raise_not_recorded(ran, key)
             raise ValueError(f"unknown KPI: {key!r}")
         return found
 
@@ -972,8 +999,15 @@ def record_scenarios(layout, result: ExperimentResult, *, run_length: float | No
 
 
 # ---------------------------------------------------------------- precision
-def _merge(a: dict, b: dict) -> dict:
-    return {key: pd.concat([a[key], b[key]], ignore_index=True) for key in a}
+def _merge(a: dict, b: dict) -> Results:
+    """*a*'s frames with *b*'s replications appended. A Results that keeps the level both ran at
+    (D1395), so a lookup on the merged run still says what was not recorded."""
+    merged = Results({key: pd.concat([a[key], b[key]], ignore_index=True) for key in a})
+    merged.log_level = getattr(a, "log_level", None)
+    merged._not_recorded = getattr(a, "_not_recorded", {})
+    live = {**(getattr(a, "live_at_end", None) or {}), **(getattr(b, "live_at_end", None) or {})}
+    merged.live_at_end = live or None
+    return merged
 
 
 def run_until_precision(layout, kpi: str, *, relative: float | None = 0.05,
@@ -1055,6 +1089,7 @@ def run_until_precision(layout, kpi: str, *, relative: float | None = 0.05,
     while results is not None:
         values = _series(flatten_kpis(results), kpi)
         if values.size == 0:
+            _raise_not_recorded([results], kpi)
             raise ValueError(f"unknown KPI: {kpi!r}")
         stat = ci95(values, confidence)
         mean, half = stat["mean"], stat["ub"] - stat["mean"]
@@ -1102,6 +1137,8 @@ def _throughput_series(source) -> tuple[np.ndarray, np.ndarray]:
     Replications are truncated to the shortest one so every averaged point has
     the same number of contributors.
     """
+    if isinstance(source, Results) and (error := source.not_recorded("entity_log")) is not None:
+        raise error             # D1395: below full there is no log, which is not "no exits"
     log_df = source.get("entity_log") if isinstance(source, dict) else source   # absent when empty (D1321)
     if log_df is None or len(log_df) == 0:
         return np.array([]), np.array([])

@@ -28,7 +28,8 @@ from nagasim import __version__
 from nagasim._cli import add_controllers_argument, add_model_argument, load_controllers, setup_cli
 from nagasim.core import initial_state, logic_authoring, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
-from nagasim.core.export import ARTIFACTS_KEY, PROBLEMS_KEY, concat_runs
+from nagasim.core import loglevels
+from nagasim.core.export import ARTIFACTS_KEY, LIVE_KEY, PROBLEMS_KEY, concat_runs
 from nagasim.core.itemlogic import ItemCodeUntrusted
 from nagasim.core.schema import ModelValidationError
 from nagasim.core.sim_runner import Pacer, run_single_simulation
@@ -653,7 +654,7 @@ def run_model(
     feed: Any = None, controllers: dict | None = None, pool: Any = None,
     logic: str | ModuleType | None = None, record_logs: bool | None = None,
     deterministic: bool | None = None, pace: float | None = None,
-    keep_empty: bool = False) -> Results: ...
+    keep_empty: bool = False, log_level: str | None = None) -> Results: ...
 @overload
 def run_model(
     path: str | os.PathLike[str] | dict[str, Any], *, replications: int | None = None,
@@ -663,14 +664,15 @@ def run_model(
     feed: Any = None, controllers: dict | None = None, pool: Any = None,
     logic: str | ModuleType | None = None, record_logs: bool | None = None,
     deterministic: bool | None = None, pace: float | None = None,
-    keep_empty: bool = False) -> Results | None: ...
+    keep_empty: bool = False, log_level: str | None = None) -> Results | None: ...
 def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: float | None = None,
               run_length: float | None = None, workers: int | str = 1, on_progress=None,
               should_stop=None, trace=None, bind_data: bool = False, base_dir=None,
               network=None, confine_to=None, feed=None,
               controllers: dict | None = None, pool=None,
               logic: str | ModuleType | None = None, record_logs: bool | None = None, deterministic: bool | None = None,
-              pace: float | None = None, keep_empty: bool = False) -> Results | None:
+              pace: float | None = None, keep_empty: bool = False,
+              log_level: str | None = None) -> Results | None:
     """Run replications of a model and return its KPI frames.
 
     Replication ``r`` is seeded with ``seed + r``, so a run is reproducible.
@@ -751,6 +753,14 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
         that have rows come back, plus ``"system"`` always and ``"data_inputs"``
         when *bind_data* asked for it. True returns every frame the engine
         builds, each with its columns; the KPI reference generator uses it.
+    log_level : str, optional
+        What the run records (D1395): ``"kpi"`` (the summary frames only), ``"series"`` (plus
+        ``"timeseries"`` and ``"dashboard"``) or ``"full"`` (plus the entity, resource and store
+        logs), or a profile: ``"study"`` (kpi), ``"explore"`` and ``"replay"`` (full). It beats the
+        model's own ``simulation.log_level``, ``record_logs`` and ``timeseries_points`` (never
+        raising the latter). A frame it leaves out raises `NotRecordedError` naming the level to
+        re-run at. None (the default) keeps the model's settings: full unless it says otherwise.
+        Not together with *record_logs*.
 
     Returns
     -------
@@ -804,11 +814,18 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     _check_controllers(controllers, workers)
     logic_module, logic_name = _logic_module(logic, workers)
 
-    if record_logs is not None:
+    if log_level is not None:
+        # D1395: a level is a name for record_logs and timeseries_points, applied in one place.
+        if record_logs is not None:
+            raise ValueError("give record_logs or log_level, not both")
+        path = loglevels.apply_level(path, loglevels.resolve(log_level))
+    elif record_logs is not None:
         # PHASE4 T7. A run setting, so it travels to a worker with the layout
         # and no task shape changes: `simulation.record_logs` is read once per
-        # replication, exactly like `entity_log_limit`.
+        # replication, exactly like `entity_log_limit`. The caller's switch beats a level the
+        # model names (D1395: the caller is the more specific request).
         path = with_run_setting(path, "record_logs", bool(record_logs))
+        path["simulation"].pop("log_level", None)
 
     if deterministic is not None:
         # PHASE6 W4 P1, D119: same pattern as record_logs above.
@@ -885,6 +902,7 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     # (all-NaN rows still count); judged after the concatenation, as a frame empty in one
     # replication can have rows in another. "system" is kept whatever it holds.
     results = frames_with_rows(frames, keep_empty)
+    results.live_at_end = live_counts(kpi for _, kpi in collected)
     # E8: a plugin's objects, by run id; what it recorded as numbers is the "plugin_kpis" frame.
     results._artifacts = dict(kpi[ARTIFACTS_KEY] for _, kpi in collected if ARTIFACTS_KEY in kpi)
     # D1389: the run-time warnings, unioned over the replications by (code, block).
@@ -894,6 +912,7 @@ def run_model(path, *, replications: int | None = None, seed: int = 0, warmup: f
     # dict as given and re-reads a file path (already read once above).
     results._layout = schema.read_layout(path)
     results._warmup = warmup
+    label(results, results._layout.get("simulation"))      # D1395
     if pacer is not None:
         results.pace = pacer.summary()
         log.info("Paced at %gx: %d late events, max lag %.3f s", pacer.pace,
@@ -911,6 +930,41 @@ def _union_problems(lists) -> tuple:
         for item in problems:
             found.setdefault((item.code, item.block), item)
     return tuple(found.values())
+
+
+def label(results: Results, sim_settings) -> Results:
+    """*results* with the level it was recorded at (D1395): the named level, else the one its two
+    switches amount to; with a named level, what it left out is listed so a lookup says which
+    level to re-run at."""
+    named = loglevels.named_level(sim_settings)
+    results.log_level = loglevels.label_of(sim_settings)
+    results._not_recorded = loglevels.not_recorded(named) if named else {}
+    return results
+
+
+def session_results(frames: dict, layout) -> Results:
+    """A `SimSession.finish()` dict (a game, a replayed game) as a labelled Results, as
+    `run_model` gives one (D1395): a model that names its own level below full then says what
+    its run did not record instead of a bare KeyError. The session lives in core, which
+    imports nothing above it, so its callers label it here."""
+    frames = dict(frames)
+    live = frames.pop(LIVE_KEY, None)
+    results = Results(frames)
+    if live is not None:
+        results.live_at_end = dict([live])
+    sim = (layout.get("simulation") if isinstance(layout, dict) else None) or {}
+    # The law checks read the layout (its own warm-up when _warmup is None): without it a
+    # game would show no law warnings in Problems.
+    results._layout = layout
+    results._warmup = None
+    return label(results, sim)
+
+
+def live_counts(collected) -> dict | None:
+    """The per-replication count of entities still inside, gathered from the replications' KPI
+    dicts (D1395), or None when no replication carried one (no named level below full)."""
+    found = dict(kpi[LIVE_KEY] for kpi in collected if LIVE_KEY in kpi)
+    return found or None
 
 
 def frames_with_rows(frames: dict, keep_empty: bool = False) -> Results:
@@ -1055,17 +1109,29 @@ def main(argv=None) -> int:
                         help="start from this state document (`naga state take`): "
                              "the run's clock starts where the state was taken and its "
                              "statistics cover the run from there")
+    parser.add_argument("--log-level", choices=loglevels.NAMES, default=None,
+                        help="what the run records: kpi (the summary frames), series "
+                             "(plus the time series), full (plus the per-event logs, the "
+                             "default), or a profile: study = kpi, explore = full, replay = full "
+                             "with the trace of the first replication recorded for --player and "
+                             "--export; a frame below the level is left out, not empty")
     parser.add_argument("--no-logs", action="store_true",
                         help="do not record the per-event entity/resource/store logs: "
                              "faster and much smaller on a long run, and every summary statistic "
-                             "is unchanged -- only the three flat log sheets come back empty")
+                             "is unchanged -- only the three flat log sheets come back empty "
+                             "(not with --log-level, which leaves frames out instead)")
     parser.add_argument("--raw", action="store_true",
                         help="print the per-replication system frame instead of the summary")
     parser.add_argument("--json", action="store_true", dest="as_json",
-                        help="print {kpis, checks, replications} as JSON instead of the summary")
+                        help="print {kpis, checks, replications, log_level} as JSON instead of the "
+                             "summary")
     parser.add_argument("--no-checks", action="store_true",
                         help="skip the law checks (the WARN lines)")
     args = parser.parse_args(argv)
+    if args.no_logs and args.log_level:
+        print("--no-logs and --log-level both set what the run records: give one of them")
+        return 2
+    level = args.log_level      # --no-logs stays the legacy switch, no level named (O4)
 
     try:        # imported before the run, so a bad module costs no run (as `naga doe` does)
         controllers = load_controllers(args.controllers)
@@ -1104,12 +1170,14 @@ def main(argv=None) -> int:
         except netguard.GuardError as exc:
             print(f"--asked: {exc.code}: {exc.message}")
             return 2
-    # D201: an exporter drawn from the run's trace needs the first replication recorded.
-    recorder = TraceRecorder() if _needs_trace(exports) else None
+    # D201: an exporter drawn from the run's trace needs the first replication recorded; the
+    # replay profile records it whatever the exports (D1395, O2).
+    recorder = TraceRecorder() if _needs_trace(exports) or level == "replay" else None
     try:
         results = run_model(model, replications=args.replications, seed=args.seed,
                             warmup=args.warmup, run_length=args.run_length, workers=args.workers,
-                            record_logs=False if args.no_logs else None, trace=recorder,
+                            record_logs=False if args.no_logs else None, log_level=level,
+                            trace=recorder,
                             pace=args.pace, logic=args.logic, controllers=controllers)
     except (logic_authoring.LogicClassNotFound, ImportError) as exc:
         if isinstance(exc, ImportError) and not args.logic:
@@ -1133,7 +1201,7 @@ def main(argv=None) -> int:
         found = RunChecks((), note="skipped") if args.no_checks else results.checks()
         if args.as_json:
             print(json.dumps(_json_safe({
-                "kpis": rows, "checks": found.as_dict(),
+                "kpis": rows, "checks": found.as_dict(), "log_level": results.log_level,
                 **({"problems": [p.as_dict() for p in results.run_problems]}
                    if results.run_problems else {}),
                 "replications": None if target is None else {
@@ -1157,6 +1225,11 @@ def main(argv=None) -> int:
         print(f"paced at {results.pace['paced']:g}x: {results.pace['late_events']} late events, "
               f"max lag {results.pace['max_lag_s']:.3f} s",
               file=sys.stderr if args.as_json else sys.stdout)
+    # Last, and only for a NAMED level below full (it left something out): a legacy --no-logs or
+    # record_logs: false run prints what it printed before levels existed (O4).
+    if not (args.as_json or args.raw) and results._not_recorded:
+        out = "the per-event logs" + (" and the time series" if "timeseries" in results._not_recorded else "")
+        print(f"recorded at level {results.log_level}: {out} left out (--log-level full records them)")
     layout = model if isinstance(model, dict) else None
     for spec in exports:
         try:

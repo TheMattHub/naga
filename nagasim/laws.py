@@ -157,8 +157,12 @@ def _resource_checks(layout: dict, results, span: dict) -> list[dict]:
 
 def _inside(results, runs: int) -> np.ndarray | None:
     """Per replication, entities created in the window still inside at the end (not batched),
-    from the entity log; None when the log was not kept."""
+    from the entity log; None when the log was not kept. Below a named full level there is no
+    log, and the run's own count stands in for it (`Results.live_at_end`, D1395)."""
     log = results.get("entity_log")
+    live = getattr(results, "live_at_end", None)
+    if (log is None or log.empty) and live:
+        return np.asarray([live[k] for k in sorted(live)], dtype=float) if len(live) == runs else None
     if log is None or log.empty or "Run" not in log:
         return None
     live = log[log["Exited At"].isna() & log["In Batch"].isna()]

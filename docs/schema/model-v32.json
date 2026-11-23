@@ -16572,6 +16572,18 @@
           "x-quantity": "count",
           "minimum": 0
         },
+        "log_level": {
+          "type": "string",
+          "enum": [
+            "kpi",
+            "series",
+            "full",
+            "study",
+            "explore",
+            "replay"
+          ],
+          "description": "What a run records (D1395): kpi (summaries only), series (plus the time series and dashboard), full (plus the entity, resource and store logs), or a profile: study (kpi), explore and replay (full). Beats record_logs and timeseries_points; a caller's level beats it. Absent: those two settings decide."
+        },
         "record_logs": {
           "type": "boolean",
           "default": true,

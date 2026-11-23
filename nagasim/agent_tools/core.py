@@ -29,6 +29,7 @@ from pathlib import Path
 
 from nagasim import experiments, mdlimport, netguard, nextoptions, sdimport
 from nagasim.core import schema as schema_mod, suggest
+from nagasim.core.loglevels import NotRecordedError
 from nagasim.core.agents import PYTHON_CONSENT, PythonRefused
 from nagasim.core.document import ModelDocument
 from nagasim.core.itemlogic import ItemCodeUntrusted
@@ -325,6 +326,11 @@ class ToolSpec:
     read_only: bool
     origin: str = ""          # the module that defined the tool; never part of tool_schemas()
     output_schema: dict | None = None   # JSON Schema of a successful answer, from `@tool(returns=...)`
+    # D1395: the level-gated results frames (`loglevels.FRAME_LEVEL`) the tool reads, held to its
+    # source by tests/test_agent_tool_levels.py; `raw` is the undecorated function that test reads.
+    # Neither is part of tool_schemas().
+    reads_frames: tuple = ()
+    raw: typing.Callable | None = None
 
 
 TOOLS: dict[str, ToolSpec] = {}
@@ -510,10 +516,11 @@ def argument_error(tool_name: str, kwargs: dict) -> ToolError | None:
     return None
 
 
-def tool(read_only: bool = False, returns: dict | None = None):
+def tool(read_only: bool = False, returns: dict | None = None, reads_frames: tuple = ()):
     """Register a function as a tool: wrap it so it never raises, derive its
     input schema from the signature, keep the docstring as the description and
-    *returns* ({key: type}, the keys a successful answer may carry) as its output schema."""
+    *returns* ({key: type}, the keys a successful answer may carry) as its output schema.
+    *reads_frames* names the level-gated results frames it reads (D1395)."""
 
     def decorate(fn):
         schema = _input_schema(fn)
@@ -541,6 +548,8 @@ def tool(read_only: bool = False, returns: dict | None = None):
                 return ToolError("E_INVALID_MODEL", "; ".join(exc.problems),
                                  "fix the scenario's overrides: " + override_hint(exc)
                                  if scenario else invalid_model_hint(exc.structured)).as_dict()
+            except NotRecordedError as exc:     # D1395: before KeyError, whose subclass it is
+                return not_recorded_error(exc).as_dict()
             except (ValueError, KeyError, TypeError, OSError) as exc:
                 return ToolError(f"E_{type(exc).__name__.upper()}", str(exc),
                                  "check the arguments against this tool's input schema").as_dict()
@@ -555,7 +564,8 @@ def tool(read_only: bool = False, returns: dict | None = None):
                                       description=inspect.getdoc(fn) or "",
                                       input_schema=schema, read_only=read_only,
                                       origin=fn.__module__,
-                                      output_schema=None if returns is None else _output_schema(returns))
+                                      output_schema=None if returns is None else _output_schema(returns),
+                                      reads_frames=tuple(reads_frames), raw=fn)
         return safe
 
     return decorate
@@ -738,6 +748,23 @@ def _records(frame, cols: dict) -> list[dict]:
             rec[key] = row[column] if transform is None else transform(row[column])
         out.append(rec)
     return out
+
+
+# The hint of an E_NOT_RECORDED whose tool is not known (the wrapper's backstop).
+RUN_AT = ("run at log_level='{needed}': the tool's log_level argument where it has one, "
+          "else the model's simulation.log_level")
+
+
+def not_recorded_error(source, name: str | None = None, hint: str = RUN_AT) -> ToolError | None:
+    """THE E_NOT_RECORDED (D1395), or None when the data was recorded: *source* is a
+    NotRecordedError, or a Results asked for *name* (a frame or KPI key). The message is the
+    engine's one line; *hint* is formatted with the level `needed`. Never an empty table or a
+    silent zero."""
+    error = source if isinstance(source, NotRecordedError) else (
+        source.not_recorded(name) if hasattr(source, "not_recorded") else None)
+    if error is None:
+        return None
+    return ToolError("E_NOT_RECORDED", str(error), hint.format(needed=error.needed or "full"))
 
 
 def _results_of(name: str):

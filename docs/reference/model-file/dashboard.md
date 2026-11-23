@@ -53,7 +53,7 @@ m = nb.Model(dashboard={'widgets': [{'name': 'clock', 'kind': 'kpi', 'title': 'M
 
 Bundled models: [Machine agent with repair](../../gallery/agent-based.md), [Berth: shore power](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md) and 3 more.
 
-Guides: [Sharing a model: the browser viewer](../../sharing-a-model.md).
+Guides: [Experiments](../../experiments.md), [Sharing a model: the browser viewer](../../sharing-a-model.md).
 
 ## See also
 

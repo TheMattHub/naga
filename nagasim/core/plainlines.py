@@ -413,6 +413,7 @@ PLAIN: dict[str, str | dict[str, str]] = {
                      "locked": "Background locked must be true or false",
                      "units": "Background units per metre must be above 0 or empty"},
     "E_WARMUP_PAST_END": {"past": "Warm-up {warmup} reaches the run length {limit}"},
+    "E_LOG_LEVEL": {"unknown": "Log level {level} is not a level or profile"},
     "E_TIMESERIES_COUNTS": {"list": "Counted blocks must be a list of different names",
                             "unknown": "Counted block {name} is not in the model"},
     "E_DISTRIBUTION_MISSING": {"link": "{where}: delay has no distribution",
@@ -454,6 +455,7 @@ PLAIN: dict[str, str | dict[str, str]] = {
     # run guards (A11): logged by the run, reached here through the CONVEYOR class
     "W_CONVEYOR_HANDED_TO_NOTHING": "A part reached a belt exit with no next block",
     "W_ROUTE_FORBIDDEN": "A part left by an exit its rule would not choose now",
+    "W_SAMPLES_NOTHING": "Level series, but the model samples nothing",
     "W_ROUTE_HELD_AT_END": "A routing rule still holds a load at the run's end",
     "W_REVERSED_HELD_AT_END": "A belt runs backward with a part held at its start",
     "W_CONVEYOR_STOP_HELD": {"held": "Block {block}: stop {index} seizes {resource}, already held"},

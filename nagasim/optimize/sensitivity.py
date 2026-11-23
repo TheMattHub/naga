@@ -35,7 +35,7 @@ def sensitivity(layout, factors, n: int, seed: int = 0, quantiles=(0.05, 0.5, 0.
             break
         candidate = _candidate_layout(base, overrides_for(factors, row.to_dict()))
         results = api.run_model(candidate, replications=1, seed=seed, run_length=run_length,
-                                warmup=warmup, record_logs=False, logic=logic, controllers=controllers)
+                                warmup=warmup, log_level="series", logic=logic, controllers=controllers)
         if results is not None and results.get("timeseries") is not None:
             frame = results["timeseries"].copy()
             frame["Run"] = i     # disambiguates points; bands() does not key on it

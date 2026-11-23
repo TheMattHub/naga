@@ -292,7 +292,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 ## Problem codes
 
-- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 513 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 515 codes that a check of a model can report, from nagasim/core/problems.py.
 - [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
 - [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
 - [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.

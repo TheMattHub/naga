@@ -367,7 +367,9 @@ def _check_one(base: dict, entry: dict, *, seed: int, run_length, warmup) -> dic
         raise ValueError(f"reality check '{name}': {exc}") from None
     layout = experiments.apply_overrides(base, _overrides(name, entry.get("inputs")))
     layout = _with_probe(layout, constraint_text, mode, lo, hi)
-    results = api.run_model(layout, replications=1, seed=seed, run_length=run_length, warmup=warmup)
+    # D1395: a reality check reads the sampled series only, never a per-event log.
+    results = api.run_model(layout, replications=1, seed=seed, run_length=run_length, warmup=warmup,
+                            log_level="series")
     if results is None:
         raise ValueError(f"reality check '{name}': the run produced no result")
     df = results.get("timeseries")

@@ -55,6 +55,9 @@ RUN_HINTS = {
     "W_ROUTE_HELD_AT_END": "check the flow after the exits of the rule, or raise its limit",
     "W_REVERSED_HELD_AT_END": "check what the belt's next block waits for, and the signal that turns "
                               "the belt again",
+    # D1395, not a conveyor code: the one run notice of a log level, kept by the same channel.
+    "W_SAMPLES_NOTHING": "give the model a run length or simulation.timeseries_points, or run at "
+                         "level kpi",
 }
 
 

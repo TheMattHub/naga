@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Added:
+
+- Run log levels: a run records at `kpi` (the summary frames), `series` (plus the time series) or `full` (plus the three per-event logs), or a profile, `study` (kpi), `explore` or `replay` (full). Give it as `run_model(..., log_level=)`, `simulation.log_level` in the model file or `naga run --log-level`; `optimize`, `run_design` and `calibrate` and the agent tools `run_model`, `optimize`, `calibrate` and `fit_surrogate` take it too. `Results.log_level` names the level, and a frame or KPI the level left out raises `NotRecordedError` (a KeyError) naming the level to re-run at; the agent tools answer `E_NOT_RECORDED`.
+- A study response or constraint `timeseries/<series>/max` or `/min` gets each replication's peak or low.
+
+Changed:
+
+- Studies, DOE and optimisation run at the lowest level that records their KPIs (kpi for plain KPIs). A run with no level records full, as before, and a legacy `record_logs=False` run keeps its frames.
+- `forecast(...).results` is a series run: its `entity_log` no longer holds the live entities at the end, and the ten queue and store snapshot columns, which were empty, are left out.
+
 ## 0.21.0 (2026-11-17)
 
 0.21.0 makes answers readable and results lean. A study's write-up, control room and slides open with Yes, No or Not clear yet, judged from each goal's 95% interval, explain the terms they use, and write "not valid" with the reason in place of a number a law check refuses. A person can record their own check that the model matches reality, and validation checks the whole model, naming the nearest valid key. Breaking: `run_model` and `run_scenarios` return only the result frames that have rows, and MCP tools answer with typed structured content.

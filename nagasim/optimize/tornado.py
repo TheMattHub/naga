@@ -57,6 +57,8 @@ def tornado(layout, factors, kpi: str, seed: int = 0, replications: int = 1,
     seeds = list(range(seed, seed + max(int(replications), 1)))
     # only what was given, so a test's stand-in for `_evaluate_point` need not take them
     policy = {k: v for k, v in (("logic", logic), ("controllers", controllers)) if v is not None}
+    if any(evaluation._is_series_extreme(k) for k in keys):
+        policy["extra"] = evaluation._with_series_extremes()    # D1395, as the evaluator does
     point = {f.name: f.from_unit(0.5) for f in factors}
     base_overrides = overrides_for(factors, point)
 

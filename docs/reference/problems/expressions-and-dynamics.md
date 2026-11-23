@@ -58,6 +58,7 @@ Expressions and variables, tables and time series, levels, flows, conversions, c
 | <span id="e_level_name"></span>`E_LEVEL_NAME` | error | A level has an empty or duplicate name. On screen: "A level has no name" / "Level {name} is defined twice" | [`levels`](../model-file/levels.md) |
 | <span id="e_level_threshold"></span>`E_LEVEL_THRESHOLD` | error | A level threshold has no numeric value, or an unknown direction. On screen: "Level {name}: a threshold is not valid" | [`levels`](../model-file/levels.md) |
 | <span id="e_level_unknown"></span>`E_LEVEL_UNKNOWN` | error | A LEVEL("name") call, a TRANSFER block or an agent's transfer action names a level the model does not declare. On screen: "Agent type {agent}: {where}: unknown level {level}" / "Block {block}: unknown level {level}" / "Initial state: unknown level {name}" / "{block}: no level named {name}" | [TRANSFER](../blocks/transfer.md), [`levels`](../model-file/levels.md) |
+| <span id="e_log_level"></span>`E_LOG_LEVEL` | error | simulation.log_level names no run log level or profile. On screen: "Log level {level} is not a level or profile" | [`levels`](../model-file/levels.md) |
 | <span id="e_loop_grid"></span>`E_LOOP_GRID` | error | Loop dominance needs the SD step grid (simulation.sd) and the model has none. | -- |
 | <span id="e_power_unknown"></span>`E_POWER_UNKNOWN` | error | A POWER("name") call names no declared resource, fleet or charger. On screen: "{block}: no resource, fleet or charger named {name}" | -- |
 | <span id="e_reality_check_input"></span>`E_REALITY_CHECK_INPUT` | error | A reality check's "inputs" is not an object of override path: value, or one of its paths is empty. On screen: "Reality check {name}: each input needs a path and a value" | [`reality_checks`](../model-file/reality_checks.md) |
@@ -169,6 +170,7 @@ Each code with the usual remedy:
 - `E_LEVEL_NAME`: Give every entry in `levels` a non-empty `name`, and rename one of any two levels that share a name.
 - `E_LEVEL_THRESHOLD`: Give each entry in the level's `thresholds` a numeric `value`, a `direction` of `falling`, `rising` or `both`, and a numeric `cost` if any.
 - `E_LEVEL_UNKNOWN`: Declare the level in the `levels` section, or correct the name in the `LEVEL("...")` call, the TRANSFER's `level`, the agent's transfer action or `initial_state.levels`.
+- `E_LOG_LEVEL`: Set `simulation.log_level` to one of the levels `kpi`, `series` or `full`, or to a profile: `study`, `explore` or `replay`. Remove it to let `record_logs` and `timeseries_points` decide.
 - `E_LOOP_GRID`: Add the system-dynamics grid before asking for loop dominance, for example `"simulation": {"sd": {"dt": 0.25, "method": "euler"}}`.
 - `E_POWER_UNKNOWN`: Declare the name in `resources`, `fleets` or `chargers`, or correct the name in the `POWER("...")` call. Names are case sensitive.
 - `E_REALITY_CHECK_INPUT`: Set the reality check's `inputs` to an object of override path to value, such as `{"auxiliaries.Workforce.expr": "0"}`, with no empty path.

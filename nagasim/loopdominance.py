@@ -121,7 +121,7 @@ def _run(layout: dict, stateful: list, seed: int, samples: int, run_len: float) 
     run["auxiliaries"] = list(layout["auxiliaries"]) + [
         {"name": _PROBE + name, "expr": f"DELAY({json.dumps(name)})"} for name in stateful]
     run["simulation"] = {**(layout.get("simulation") or {}), "timeseries_points": samples}
-    results = api.run_model(run, replications=1, seed=seed, run_length=run_len, record_logs=False)
+    results = api.run_model(run, replications=1, seed=seed, run_length=run_len, log_level="series")
     frame = None if results is None else results.get("timeseries")
     if frame is None or frame.empty:
         raise ValueError("loop dominance: the run produced no timeseries")

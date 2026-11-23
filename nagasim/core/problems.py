@@ -745,6 +745,7 @@ PROBLEM_CODES: dict[str, str] = {
                    "Raised as ModelRunError with the block's name; fix that block's parameters.",
     "E_WARMUP_PAST_END": "The warm-up is as long as the run or longer, so nothing after it is "
                          "observed and every result is zero.",
+    "E_LOG_LEVEL": "simulation.log_level names no run log level or profile (D1395).",
     "W_INITIAL_STATE_WARMUP": "Both an initial state and a warm-up are set; warm-up discards the "
                               "very history the initial state supplies.",
     # -- path network, movers and conveyors (PHASE4 E1, ARCHITECTURE D68) -----
@@ -951,6 +952,8 @@ PROBLEM_CODES: dict[str, str] = {
                          "attribute changed since the rule chose, or names no exit). Warned "
                          "once per block; an error that stops the run under "
                          "simulation.strict_checks.",
+    "W_SAMPLES_NOTHING": "A run at log level series samples nothing: the model's "
+                         "timeseries_points is 0, or the run has no length to divide (D1395).",
     "W_ROUTE_HELD_AT_END": "At the end of a run that stopped at its time limit, a routing rule still "
                            "holds a load because every exit was at its limit; if nothing under way "
                            "there arrives, this is a deadlock (a cheap notice, not a proof).",

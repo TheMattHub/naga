@@ -959,6 +959,15 @@ def build_report(layout: dict, results: dict, *, experiment=None, design=None, o
     queue_charts, overflow = _queue_charts(timeseries_mean, calendar)
     overflow_note = (f'<p class="note">Also queued: {esc(", ".join(overflow))}</p>'
                      if overflow else "")
+    # D1395: a chart the run's level did not record says so in one line, not by its absence.
+    missing = [name for name in ("entity_log", "timeseries")
+               if name in (getattr(results, "_not_recorded", None) or {})]
+    if missing and forecast is not None:
+        # A forecast takes no level, so its reader cannot re-run it at another one.
+        overflow_note += (f'<p class="note">A forecast does not record {esc(", ".join(missing))}.</p>')
+    elif missing:
+        overflow_note += (f'<p class="note">Not recorded at level {esc(str(results.log_level))}: '
+                          f'{esc(", ".join(missing))}; re-run at level full for every chart.</p>')
 
     def section(name: str, headers: list[str], rows: list) -> str:
         # D1239: a section with nothing in it is left out, not printed as "No data".

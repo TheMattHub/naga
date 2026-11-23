@@ -18,4 +18,5 @@ Python reference for `nagasim.results.Results`.
         - frame
         - plot
         - to_excel
+        - not_recorded
       inherited_members: true

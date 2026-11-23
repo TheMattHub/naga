@@ -197,6 +197,12 @@ def _tails(s: dict, digest: dict, results, layout: dict, where: str = "") -> lis
         x = g.get("share_above")
         if x is None or not g.get("kpi"):
             continue
+        # D1395: a run below full has no log to rebuild the waits from; say which level to use.
+        frame = "entity_log" if g["kpi"] == TOTAL_WAIT else "resource_log"
+        missing = results.not_recorded(frame) if hasattr(results, "not_recorded") else None
+        if missing is not None:
+            why.append(f"goal {g.get('id')}{where}: {missing}, so the share over {x:g} is not verified")
+            continue
         if g["kpi"] == TOTAL_WAIT:
             shares = total_wait_shares(results, x)
             if shares is None:
@@ -870,7 +876,7 @@ def study_add_input(study: str, name: str, path: str | None = None, text: str | 
     return {"input": f"inputs/{name}"}
 
 
-@tool(returns={
+@tool(reads_frames=("entity_log", "resource_log"), returns={
     "id": str, "kind": str, "verdict": str, "checks": list, "changes": list, "kpis": dict,
     "replications": int, "precision": dict, "precision_note": str, "sufficiency": str,
     "next_step": str, "problems": list, "options": list, "room_url": str, "page": str,
@@ -1052,7 +1058,7 @@ def study_validate(study: str, kind: Literal["queue_formula"] = "queue_formula")
     ws = workspace()
     try:
         results = api.run_model(layout, replications=10, seed=0, run_length=length, warmup=0.1 * length,
-                                record_logs=False, network=ws.network, confine_to=ws.root,
+                                log_level="kpi", network=ws.network, confine_to=ws.root,
                                 on_progress=report)     # D1262: the dock's Stop lands at a progress point
     except RuntimeError as exc:
         raise ToolError("E_RUN_FAILED", str(exc), "fix the model with study_step") from exc

@@ -1744,7 +1744,8 @@ API = ("nagasim.api.run_model", "nagasim.experiments.run_scenarios",
 # `link` is Level's, which Model inherits. The `add_*` and block methods are made at run time
 # from the registries, so they have no source to read; `_builders` writes them instead.
 API_MEMBERS = {"nagasim.build.Model": ("run", "to_dict", "save", "definition", "link"),
-               "nagasim.results.Results": ("kpi", "interval", "kpis", "checks", "frame", "plot", "to_excel"),
+               "nagasim.results.Results": ("kpi", "interval", "kpis", "checks", "frame", "plot", "to_excel",
+                                           "not_recorded"),
                "nagasim.core.session.SimSession": ("advance", "pending", "snapshot", "set_variable",
                                                    "set_constant", "set_capacity", "set_probs", "decide",
                                                    "apply_control", "finish"),

@@ -17,6 +17,7 @@ from functools import lru_cache
 from nagasim.core import blocking, bottleneck, queuerow
 from nagasim.core.expressions import ExpressionError
 from nagasim.core.levels import visible
+from nagasim.core.loglevels import LOG_DERIVED_COLUMNS
 from nagasim.core.resource_manager import ENERGY_STATES
 from nagasim.core.stats import _t_quantile, ci95, created_in_window
 from nagasim.core.timeunits import factor
@@ -122,23 +123,36 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
         env.ctx.level_system.sync(t1)
         env.ctx.level_system.settle()   # the levels sync folds lazily (D1097)
 
-    ent_sum, ent_log   = summarize_entities(env, warmup=warmup, run_id=run_id)
+    # D1395: a NAMED level below full builds none of the three logs (not even the live rows a
+    # plain record_logs=False run keeps) and drops the columns computed from them; at kpi the
+    # time series are not built either. A run that names no level is exactly as before.
+    level = env.ctx.log_level
+    logs = level is None or level == "full"
+    ent_sum, ent_log   = summarize_entities(env, warmup=warmup, run_id=run_id, log=logs)
     res_sum, res_log   = summarize_resources(env, warmup=warmup, run_id=run_id)
     sto_sum, sto_log   = summarize_stores(env, warmup=warmup, sim_time=sim_time, run_id=run_id)
     sys_sum            = summarize_system(env, warmup=warmup, run_id=run_id)
     usr_sum            = summarize_user_stats(env, warmup=warmup, run_id=run_id)
-    ts_sum             = summarize_timeseries(env, run_id=run_id)   # already carries "Run"
-    dash_sum           = summarize_dashboard(env, run_id=run_id)    # PHASE6 G1
     agt_attr, agt_log  = summarize_agent_attributes(env, warmup=warmup, run_id=run_id)
+    series = {} if level == "kpi" else {
+        "timeseries": summarize_timeseries(env, run_id=run_id),   # already carries "Run"
+        # PHASE6 G1 (D132), same "EMPTY with fixed columns" rule once more:
+        # empty for a model with no dashboard section.
+        "dashboard": summarize_dashboard(env, run_id=run_id)}
+    if not logs:
+        res_sum = res_sum.drop(columns=[c for c in LOG_DERIVED_COLUMNS["resource_summary"]
+                                        if c in res_sum.columns])
+        sto_sum = sto_sum.drop(columns=[c for c in LOG_DERIVED_COLUMNS["store_summary"]
+                                        if c in sto_sum.columns])
 
     # -- tag logs with the replication index: a non-empty frame already got
     # its trailing "Run" from `_frame` (D690), an empty one gets it here --
     if run_id is not None:
-        for df in (ent_log, res_log, sto_log, sys_sum):
+        for df in ((ent_log, res_log, sto_log, sys_sum) if logs else (sys_sum,)):
             if "Run" not in df.columns:
                 df["Run"] = run_id
 
-    return {
+    frames = {
         "system":   sys_sum,
         "entity_summary": ent_sum,
         "entity_log":     ent_log,
@@ -239,11 +253,13 @@ def calc_kpis(env, *, warmup: float = 0.0, run_id: Optional[int] = None) -> dict
         # for a model with no agent attributes.
         "agent_attributes": agt_attr,
         "agent_attribute_log": agt_log,
-        "timeseries":       ts_sum,
-        # PHASE6 G1 (D132), same "EMPTY with fixed columns" rule once more:
-        # empty for a model with no dashboard section.
-        "dashboard":        dash_sum,
+        "timeseries":       series.get("timeseries"),
+        "dashboard":        series.get("dashboard"),
     }
+    # The frames a named level does not record are left out, never handed back empty (D1395);
+    # removed here so every frame keeps its place in the dict (the workbook's sheet order).
+    return {name: frame for name, frame in frames.items()
+            if frame is not None and (logs or name not in _LOG_FRAME_NAMES)}
 
 def consumed_entities(env, warmup: float):
     """Entities a batch still represents at report time (`in_batch` set).
@@ -328,18 +344,10 @@ _ENTITY_LOG_COLS = ["Entity ID", "Type", "Created At", "Exited At", "Throughput 
 _ENTITY_LOG_DTYPES = {"In Batch": np.dtype(object), "Exited At": np.dtype("float64"),
                       "Throughput Time": np.dtype("float64")}
 
-# The summary columns whose value is computed FROM the per-event log (the
-# queue-length / store-size snapshots) and so is blank or different with
-# `record_logs` off. Everything else comes from the run's collectors. Kept here,
-# next to `summarize_resources` / `summarize_stores` which compute them, and
-# held to the code by tests/test_perf_study_logs.py (exactly these columns
-# differ between a logs-on and a logs-off run). A study that names one of them
-# keeps the logs on (`experiments.needs_event_logs`).
-LOG_DERIVED_COLUMNS = {
-    "resource_summary": frozenset({"Queue Length Mode", "Queue Length Mode %", "Queue Len P95",
-                                   "Queue Len P99", "Queue Len Std"}),
-    "store_summary": frozenset({"Mode Size", "Mode Size %", "P95 Size", "P99 Size", "Std Size"}),
-}
+# LOG_DERIVED_COLUMNS (imported above): the summary columns `summarize_resources` /
+# `summarize_stores` compute FROM the per-event logs. Defined in `core.loglevels`, which
+# schema validation imports without pandas (D1395).
+_LOG_FRAME_NAMES = frozenset({"entity_log", "resource_log", "store_log"})
 
 
 # ---------- costing (ROADMAP 2.2) -----------------------------------------
@@ -394,7 +402,7 @@ def entity_cost_asof(entity, ctx, t_end: float) -> tuple[float, float]:
     return entity.cost + pending_r + pending_h, entity._holding_cost + pending_h
 
 # ---------- the four summarize_* functions (actual kpi calculation) ----
-def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None):
+def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None, log: bool = True):
     """Per-type summary and the flat per-entity log (ROADMAP 2.5, DEVLOG #62):
     the by-type numbers come from `entity_totals` (exact, streamed at Dispose,
     unaffected by `entity_log_limit`); the flat log is one row per entity
@@ -415,7 +423,7 @@ def summarize_entities(env, *, warmup: float = 0.0, run_id: Optional[int] = None
 
     records = []
     waits = ctx.entity_waits        # D1232: the Total Wait column only when the run asked
-    for e in ctx.all_entities:
+    for e in (ctx.all_entities if log else ()):     # D1395: no log below a named full
         is_completed = e.deletion_time is not None and e.deletion_time >= warmup
         is_created = created_in_window(e, warmup) and getattr(e, "in_batch", None) is None
         is_consumed = (getattr(e, "in_batch", None) is not None

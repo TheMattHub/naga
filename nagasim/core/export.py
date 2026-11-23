@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 __all__ = ["write_sheet", "concat_runs", "calendar_of", "with_datetimes",
            "export_workbook", "export_csv_folder", "plugin_outputs", "ARTIFACTS_KEY",
-           "PROBLEMS_KEY"]
+           "PROBLEMS_KEY", "LIVE_KEY"]
 
 # The per-replication entry carrying a plugin's artifacts (E8): `(run id, {name: object})`, not
 # a frame, so `concat_runs` leaves it out and `api.run_model` gathers it into `Results.artifacts`.
@@ -29,6 +29,10 @@ ARTIFACTS_KEY = "plugin_artifacts"
 # D1389: likewise the run-time warnings of a replication, `(run id, [Problem])`, gathered into
 # `Results.run_problems`.
 PROBLEMS_KEY = "run_problems"
+# D1395: likewise, below a named full level (no entity log), `(run id, count)` of the entities
+# created in the window and still inside, not batched, gathered into `Results.live_at_end`: the
+# one number of the live rows `laws` reads.
+LIVE_KEY = "live_at_end"
 
 
 def plugin_outputs(ctx, run_id) -> dict:
@@ -240,6 +244,10 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
     *layout*, when given and carrying a calendar, adds the wall-clock datetime
     columns (PHASE4 T10)."""
     calendar = calendar_of(layout)
+    # D1395: what the run's level left out gets no sheet, and one sheet says so.
+    skipped = {name: need for name, need in (getattr(results, "_not_recorded", None) or {}).items()
+               if "." not in name}
+    level = getattr(results, "log_level", None)
     results = with_datetimes(results, calendar=calendar)
     sys_df = results["system"]
     # D1321: run_model leaves a frame with no rows out; its sheet is still written, empty.
@@ -319,8 +327,9 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
         # Across-replication mean only (ROADMAP 1.7): the full per-sample-time
         # frame can be large, so it stays out of the workbook; CSV export
         # writes the "timeseries" key in full instead.
-        write_sheet(wr, with_datetimes({"timeseries": timeseries_mean(results)},
-                                       calendar=calendar)["timeseries"], "Time Series")
+        if "timeseries" not in skipped:
+            write_sheet(wr, with_datetimes({"timeseries": timeseries_mean(results)},
+                                           calendar=calendar)["timeseries"], "Time Series")
         # Orders and due dates (PHASE4 A3): two sheets only when the model has
         # them, so a workbook exported from a model without orders is exactly
         # the 10-sheet one it has always been.
@@ -365,7 +374,11 @@ def export_workbook(results: dict[str, pd.DataFrame], out_path, layout: dict | N
                 write_sheet(wr, frame, sheet)
         for key, sheet in (("entity_log", "Entities"), ("resource_log", "Resources"),
                            ("store_log", "Stores")):
-            write_sheet(wr, results.get(key, pd.DataFrame()), sheet, format_percent=False)
+            if key not in skipped:
+                write_sheet(wr, results.get(key, pd.DataFrame()), sheet, format_percent=False)
+        if skipped:
+            write_sheet(wr, pd.DataFrame({"Frame": list(skipped), "Recorded at": level,
+                                          "Re-run at": list(skipped.values())}), "Not recorded")
 
     log.info(f"Experiment exported to {out_path}")
     return out_path

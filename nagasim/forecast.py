@@ -74,6 +74,13 @@ _OPS = {">": np.greater, ">=": np.greater_equal, "<": np.less, "<=": np.less_equ
 _DEFAULT_SERIES_PREFIXES = ("system/",)
 
 
+def _require_series(results) -> None:
+    """D1395: a run below level series has no time series to read, which is not "no samples"."""
+    error = results.not_recorded("timeseries") if hasattr(results, "not_recorded") else None
+    if error is not None:
+        raise error
+
+
 def series_extreme_kpis(results: dict) -> pd.DataFrame:
     """Per replication, the max and min each sampled series reached, as
     `timeseries/<series>/max` and `/min` rows in `flatten_kpis`' own
@@ -84,6 +91,7 @@ def series_extreme_kpis(results: dict) -> pd.DataFrame:
     of extra KPI rows nobody asked for. A forecast is the one place a peak is
     the question.
     """
+    _require_series(results)
     df = results.get("timeseries")
     if df is None or df.empty:
         return pd.DataFrame(columns=["Run", "KPI", "Value"])
@@ -182,6 +190,7 @@ def bands(results: dict, quantiles: tuple) -> pd.DataFrame:
     CRN run per design point) instead of a forecast's Monte Carlo ones -- the
     band is just an empirical quantile of *results["timeseries"]* either way.
     """
+    _require_series(results)
     df = results.get("timeseries")
     if df is None or df.empty:
         return pd.DataFrame(columns=BAND_COLUMNS)
@@ -313,9 +322,9 @@ def forecast(layout, *, horizon: float, replications: int = 100, kpis=None, even
                             warmup=0.0, workers=workers, on_progress=on_progress,
                             should_stop=should_stop, bind_data=bind_data, base_dir=base_dir,
                             network=network, confine_to=confine_to,
-                            # PHASE4 T7: a forecast reads the summary frames, the
+                            # PHASE4 T7, D1395: a forecast reads the summary frames, the
                             # order frame and the time series -- never a per-event log.
-                            record_logs=False)
+                            log_level="series")
     if results is None:
         raise ValueError("the forecast produced no completed replication")
 

@@ -13,6 +13,59 @@ Every summary KPI comes with a 95% confidence interval across replications
 (Student-t, `ddof=1`) -- read the interval, not just the mean; a narrow one earned by too few
 replications is worse than a wide one that is honest about it.
 
+## Run log levels
+
+A run records at one of three levels, so a study does not pay for data nobody reads. The level
+decides which frames the run builds:
+
+- `kpi`: the summary frames only (counters, means, utilisation, throughput, every
+  `..._summary` frame). The cheapest, and what studies use.
+- `series`: plus the sampled `timeseries` and `dashboard` frames.
+- `full`: plus the per-event `entity_log`, `resource_log` and `store_log`. The default.
+
+Three profiles name a level for a purpose: `study` is `kpi`, `explore` and `replay` are `full`
+(`replay` also records the first replication's trace for `naga run --player` and `--export`).
+Give the level as `log_level=` to `run_model`, `run_scenarios`, `optimize`, `run_design` and
+`calibrate`, as `--log-level` to `naga run`, or as `simulation.log_level` in the model file. On a queueing model
+`kpi` makes 12-21% fewer Python calls than `full` and keeps every summary number bit-identical.
+
+```python
+from pathlib import Path
+
+import nagasim
+from nagasim import api
+
+path = str(Path(nagasim.__file__).parent / "models" / "single_server.json")
+quick = api.run_model(path, replications=3, run_length=200, seed=0, log_level="kpi")
+print(quick.log_level)                          # kpi
+print(quick.kpi("system/Avg Throughput Time"))  # the same number a full run gives
+try:
+    quick["entity_log"]
+except KeyError as error:                       # NotRecordedError, a KeyError
+    print(error)
+```
+
+A frame the level did not record is left out, never handed back empty, and asking for it says
+which level to re-run at: `'entity_log' was not recorded: this run was at level kpi; re-run with
+log_level='full'`. The same line comes from `results.kpi`, `results.interval` and
+`results.plot` for a KPI or a series the level left out, such as the queue-length percentiles
+(computed from the resource log) at `kpi`. An agent tool answers with the code `E_NOT_RECORDED`
+and the same hint, and every result carries its level as `results.log_level`.
+
+The first level named wins. A level you pass beats the model's own `simulation.log_level`, which
+beats its `record_logs` and `timeseries_points`; a level never samples more often than the model
+asks. With no level anywhere a run records `full`, exactly as before levels existed, and a model
+that switches its own logs off (`record_logs: false`) keeps today's frames. The agent's
+`run_model` tool explores by default, but a model that sets `log_level` or `record_logs` itself
+keeps its own setting.
+
+Studies run at `kpi` unless a KPI they name needs more. DOE, optimisation, selection, Sobol,
+tornado and calibration pick the lowest level that records every response:
+`timeseries/<series>/max` raises them to `series`, a log-derived column (`Queue Len P95`) or a
+tail goal to `full`. A forecast, a reality check, loop dominance and sensitivity bands run at
+`series`. One check is lost at `kpi`: the initial-bias check of `results.checks()` needs the entity
+log, so a `kpi` study does not get its warm-up caveat; run one replication at `full` to see it.
+
 ## Warm-up and the MSER suggestion
 
 Warm-up is a **scheduled statistics reset**, not a post-hoc filter: at `t = warmup`, every

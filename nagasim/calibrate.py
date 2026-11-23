@@ -72,6 +72,7 @@ import pandas as pd
 from scipy import stats as sp_stats
 
 from nagasim import api, experiments, inputfit, optimize as optimize_mod
+from nagasim.core import loglevels
 from nagasim._cli import add_logic_argument, add_model_argument, logic_import_error, setup_cli
 from nagasim.core import schema
 from nagasim.core.stats import ci95
@@ -176,6 +177,9 @@ def series_residuals(results, target: SeriesTarget) -> pd.DataFrame:
     """Per replication and data point: Run, Time, Data, Model (the series
     interpolated at the data time), Residual (Model - Data), Weight. One
     replication's payoff is `sum(Weight * Residual**2)` over its rows."""
+    error = results.not_recorded("timeseries") if hasattr(results, "not_recorded") else None
+    if error is not None:
+        raise error                 # D1395: the run's level left the series out
     df = results.get("timeseries")
     if df is None or df.empty:
         raise ValueError("series targets need the timeseries frame: sampling is off "
@@ -258,10 +262,11 @@ def _ks_by_run(frames, column: str, observed_sample) -> dict[int, float]:
     return out
 
 
-def _extra_kpis(targets: list):
+def _extra_kpis(targets: list, named: dict | None = None):
     """The evaluator's `extra` hook: per replication, the KS statistic of each
     distributional target, the payoff of each series target, plus the weighted
-    objective every target feeds."""
+    objective every target feeds. *named* is {"level": the evaluator's named level or None},
+    filled once the evaluator is made: a target its level does not record says so (D1395)."""
 
     def extra(frames) -> dict[str, dict[int, float]]:
         flat = experiments.flatten_kpis(frames)
@@ -296,6 +301,9 @@ def _extra_kpis(targets: list):
                 else:
                     simulated = by_kpi.get(target.kpi, {}).get(run)
                     if simulated is None:
+                        level = (named or {}).get("level")
+                        if level and (error := loglevels.unrecorded([target.kpi], level)):
+                            raise error
                         raise ValueError(f"unknown calibration KPI: {target.kpi!r}")
                     error = _relative_error(simulated, target.observed)
                 total += target.weight * error * error
@@ -354,7 +362,7 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
               seed: int = 0, workers: int = 1, run_length=None, warmup=None,
               confidence: float = 0.95, evaluator=None, on_progress=None,
               should_stop=None, record_logs=None, method: str = "optimize",
-              accept: float = ABC_ACCEPT, logic=None) -> CalibrationResult:
+              accept: float = ABC_ACCEPT, logic=None, log_level=None) -> CalibrationResult:
     """Tune factors until the model reproduces observed targets.
 
     Every target's term is summed into one objective, which `nagasim.optimize`
@@ -394,6 +402,8 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
         As in `nagasim.api.run_model`.
     record_logs : bool, optional
         As in `nagasim.api.run_model`.
+    log_level : str, optional
+        The level every point runs at (D1395); by default the lowest that records the targets.
     method : {"optimize", "abc"}, default "optimize"
         "optimize" searches for the best point; "abc" draws a posterior sample
         by rejection ABC as well (`samples`, `posterior`, `tolerance`).
@@ -433,10 +443,14 @@ def calibrate(layout, targets, factors, *, budget: int = 200, replications_per_p
         raise ValueError("calibrate needs at least one target")
     factors = list(factors)
 
+    named: dict = {}
     evaluator = evaluator or optimize_mod._Evaluator(
         base, run_length=run_length, warmup=warmup, workers=workers, budget=int(budget),
-        extra=_extra_kpis(wanted), record_logs=record_logs, logic=logic,
-        kpis=[t.kpi for t in wanted if isinstance(t, CalibrationTarget)])
+        extra=_extra_kpis(wanted, named), record_logs=record_logs, logic=logic, log_level=log_level,
+        # D1395: a series target needs the sampler, so it counts as a `timeseries/` KPI.
+        kpis=[t.kpi for t in wanted if isinstance(t, CalibrationTarget)]
+        + [f"timeseries/{t.series}" for t in wanted if isinstance(t, SeriesTarget)])
+    named["level"] = loglevels.named_level(getattr(evaluator, "layout", {}).get("simulation"))
     if method == "abc":
         return _calibrate_abc(base, wanted, factors, evaluator, budget=int(budget),
                               replications_per_point=int(replications_per_point), seed=seed,

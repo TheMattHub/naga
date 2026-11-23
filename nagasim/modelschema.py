@@ -34,6 +34,7 @@ import json
 from pathlib import Path
 
 from nagasim.core.block_registry import BLOCK_REGISTRY
+from nagasim.core.loglevels import NAMES as LOG_LEVEL_NAMES
 from nagasim.core.blocks.create import ARRIVAL_MODES
 from nagasim.core.blocks.transfer_piece import MECHANISMS as TRANSFER_MECHANISMS
 from nagasim.core.calendar import WEEKDAYS
@@ -3193,6 +3194,13 @@ def _defs() -> dict:
                                                 "Prices every resource/fleet's \"power\"."},
                 "entity_log_limit": {"type": ["integer", "null"],
                                      "description": "Cap on retained entity-log rows."},
+                "log_level": {"type": "string", "enum": list(LOG_LEVEL_NAMES),
+                              "description": "What a run records (D1395): kpi (summaries only), "
+                                             "series (plus the time series and dashboard), full "
+                                             "(plus the entity, resource and store logs), or a "
+                                             "profile: study (kpi), explore and replay (full). "
+                                             "Beats record_logs and timeseries_points; a caller's "
+                                             "level beats it. Absent: those two settings decide."},
                 "record_logs": {"type": "boolean", "default": True,
                                 "description": "Record the per-EVENT entity/resource/store logs "
                                                ". False returns the three flat log "

@@ -179,7 +179,7 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
              evaluator=None, warm_start_points: list[dict] | None = None,
              pool=None, min_improvement: float = _MIN_IMPROVEMENT,
              record_logs=None, objectives=None, logic=None, controllers=None,
-             statistic: str = "mean", penalties=(), holdout: int = 0,
+             log_level=None, statistic: str = "mean", penalties=(), holdout: int = 0,
              holdout_seed: int | None = None, baseline: bool = False) -> OptimizationResult:
     """Search the factor space for the best response within a replication budget.
 
@@ -274,6 +274,9 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
         significant gain is a success".
     record_logs : bool, optional
         As in `nagasim.api.run_model`.
+    log_level : str, optional
+        The level every point runs at (D1395); by default the lowest that records the
+        response, the constraints, the objectives and the penalties.
     statistic : str, default "mean"
         The objective's statistic over a point's replications: ``"mean"``, or a
         percentile such as ``"p95"`` to optimise the tail (a makespan that must hold
@@ -350,6 +353,7 @@ def optimize(layout, factors, *, response: str, goal: str = "min", constraints=(
     evaluator = evaluator or _Evaluator(base, run_length=run_length, warmup=warmup,
                                         workers=workers, budget=int(budget), pool=pool,
                                         record_logs=record_logs, logic=logic, controllers=controllers,
+                                        log_level=log_level,
                                         kpis=[response, *(c[0] for c in constraints),
                                               *(o[0] for o in (objectives or ())),
                                               *(k for k, _w in penalties)])

@@ -1386,6 +1386,7 @@ class Model(Level):
         currency: str = ...,
         energy_price: float | str = ...,
         entity_log_limit: int | None = ...,
+        log_level: str = ...,
         record_logs: bool = ...,
         strict_checks: bool = ...,
         entity_waits: bool = ...,
@@ -1422,6 +1423,7 @@ class Model(Level):
         currency: Cost label only; never enters the arithmetic.
         energy_price: Money per kWh, a number or an expression, evaluated once at run start. Prices every resource/fleet's "power".
         entity_log_limit: Cap on retained entity-log rows.
+        log_level: What a run records (D1395): kpi (summaries only), series (plus the time series and dashboard), full (plus the entity, resource and store logs), or a profile: study (kpi), explore and replay (full). Beats record_logs and timeseries_points; a caller's level beats it. Absent: those two settings decide.
         record_logs: Record the per-EVENT entity/resource/store logs . False returns the three flat log frames empty and leaves every summary statistic exact -- what a big study wants.
         strict_checks: Stop the run on a conveyor check: an open port, overlapping or unsnapped pieces, a part handed to nothing or routed against its rule become errors with the same code. Off: they are warnings.
         entity_waits: Sum each entity's queue time over every seize into a "Total Wait" column of the entity log (what a tail goal on Total Wait reads). Off: no column.
@@ -2271,6 +2273,7 @@ class Model(Level):
         deterministic: Any = ...,
         pace: Any = ...,
         keep_empty: Any = ...,
+        log_level: Any = ...,
     ) -> Results:
         """Run the model; `nagasim.api.run_model` with its options by name.
         """
