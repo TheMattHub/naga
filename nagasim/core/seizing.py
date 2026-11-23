@@ -17,7 +17,7 @@ import logging
 
 from nagasim.core import blocking
 from nagasim.core.expressions import ExpressionError, compile_expression
-from nagasim.core.resource_manager import ResourceSet
+from nagasim.core.resource_manager import LoggedSimpyResource, ResourceSet, _Resource
 from nagasim.core.stats import Tally
 from nagasim.core.block_spec import QUEUE_PARAMS
 from nagasim.core.quantities import field_factor, param, scaled
@@ -26,7 +26,7 @@ from nagasim.core.utils import timeout_at
 
 log = logging.getLogger(__name__)
 
-__all__ = ["acquire", "acquire_worker", "release", "QueueBehaviour", "balks", "patience_of", "leave",
+__all__ = ["acquire", "acquire_plain", "plain_target", "acquire_worker", "release", "QueueBehaviour", "balks", "patience_of", "leave",
            "preempt_release", "ON_PREEMPT_MODES", "LEAVE_OUTPUT", "QUEUEING_BLOCK_TYPES"]
 
 # The blocks that queue for a resource, and so carry the queue behaviours.
@@ -240,7 +240,7 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
     asked = block.env.now
     if since is not None:
         entity._since = None
-    if block.ctx.bus.has_subscribers:   # D383: when it asked, for a state (not when it arrived:
+    if block.ctx.bus._subscribers:      # D383: when it asked, for a state (not when it arrived:
         entity._asked = block.env.now if since is None else since   # a place may come first)
     if isinstance(target, ResourceSet):
         member, requests = yield from _acquire_from_set(block, target, quantity, priority, scope,
@@ -249,11 +249,20 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
         granted = member is not None
     else:
         member = target
-        # D857: more than one unit is granted all at once, so a waiting seize holds nothing.
-        requests = target.request_units(quantity, priority=priority,
-                                        rank=target.rank_for(scope, since), preempt=preempt,
-                                        charged=not resumed, scope=scope, since=since)
-        _as_of(target, requests, since if held_since is None else held_since)
+        # The no-op cases are tested here, not called to find out (speed review A): FIFO's
+        # rank is 0, one unit is one plain request, and only a warm start re-keys it.
+        rank = 0 if target.discipline == "FIFO" else target.rank_for(scope, since)
+        if quantity == 1:
+            requests = [target.request(priority=priority, rank=rank, preempt=preempt,
+                                       charged=not resumed, scope=scope, since=since)]
+        else:
+            # D857: more than one unit is granted all at once, so a waiting seize holds nothing.
+            requests = target.request_units(quantity, priority=priority, rank=rank,
+                                            preempt=preempt, charged=not resumed, scope=scope,
+                                            since=since)
+        as_of = since if held_since is None else held_since
+        if as_of is not None:
+            _as_of(target, requests, as_of)
         if patience is None:
             # Waited for here, not in `_wait`: the usual seize has no patience
             # and does not need a second generator to yield through.
@@ -285,15 +294,66 @@ def acquire(block, entity, target_name, quantity=1, priority=0, *,
         "set": target if isinstance(target, ResourceSet) else None,
         "seized_at": block.env.now,   # ROADMAP 2.2: start of the busy-cost holding period
     }
-    if not resumed:
+    if not resumed and getattr(member, "cost_per_use", 0.0):
         _accrue_usage_cost(block, entity, member, len(requests))
     if block.ctx.debug:
         log.debug("Entity %s acquired '%s' at time %s.", entity.id, member.name, block.env.now)
-    block.emit("entity_seized", entity=entity, resource=member.name, value=len(requests))  # units (#748)
+    if block.ctx.bus._subscribers:      # as `emit`, before the keywords are built
+        block.emit("entity_seized", entity=entity, resource=member.name, value=len(requests))  # units (#748)
     if block.space_aware:
         # D169: the station holds the part, but a cobot still placing it
         # finishes its cycle before the job starts.
         yield from blocking.placed(entity)
+    return True
+
+
+def plain_target(block):
+    """The resource *block* (a PROCESS) may seize down `acquire_plain`, or None for the full
+    path (speed review B). Plain: one unit of a resource (not a set), FIFO, on SimPy's own
+    core (no rerank, no fleet dispatch), with no patience, no preemption by this block, no
+    finite space in the model and no POWER() reader. Asked once per block, at its first
+    entity: the space, the level system and the plan gates are all set up by then. A
+    warm-started entity and a resumed job take the full path on their own (`_since`,
+    `resumed`)."""
+    ctx = block.ctx
+    target = ctx.resource_manager.resolve(block.resource_name)
+    system = ctx.level_system
+    if (type(target) is not LoggedSimpyResource
+            or type(target._core) is not _Resource or target.discipline != "FIFO"
+            or block.quantity != 1 or block.renege_after or block.preempt or block.space_aware
+            or (system is not None and system.reads_power)):
+        return None
+    return target
+
+
+def acquire_plain(block, entity, target_name, resource, priority):
+    """Generator: `acquire` for a plain resource (`plain_target`) and an entity that is not
+    warm-started. The same request, collectors, record in `req_params`, costs and events in
+    the same order; only the options `acquire` tests for, and their calls, are left out.
+    Always returns True: with no patience the entity waits until it is served."""
+    if target_name in getattr(entity, "req_params", {}):
+        raise RuntimeError(f"Entity {entity.id} already requested resource '{target_name}'.")
+    ctx = block.ctx
+    env = block.env
+    asked = env.now
+    if ctx.bus._subscribers:
+        entity._queued = next(ctx.queue_seq)      # #349
+        entity._asked = asked                     # D383
+    request = resource.request_plain(priority)
+    yield request
+    now = env.now
+    if ctx.entity_waits:      # D1232
+        entity._total_wait = getattr(entity, "_total_wait", 0.0) + now - asked
+    if not hasattr(entity, "req_params"):
+        entity.req_params = {}
+    entity.req_params[target_name] = {"resource": resource, "requests": [request], "set": None,
+                                      "seized_at": now}
+    if resource.cost_per_use:
+        _accrue_usage_cost(block, entity, resource, 1)
+    if ctx.debug:
+        log.debug("Entity %s acquired '%s' at time %s.", entity.id, resource.name, now)
+    if ctx.bus._subscribers:
+        block.emit("entity_seized", entity=entity, resource=resource.name, value=1)
     return True
 
 
@@ -504,7 +564,9 @@ def release(block, entity, target_name):
         return
 
     member = info["resource"]
-    _accrue_busy_cost(block, entity, member, len(info["requests"]), info.get("seized_at", block.env.now))
+    if getattr(member, "cost_busy", 0.0):       # tested here, not called to find out (review A)
+        _accrue_busy_cost(block, entity, member, len(info["requests"]),
+                          info.get("seized_at", block.env.now))
     mover = info.get("mover")
     if mover is not None:
         # A worker (W3-M3): its fleet puts it back among the idle and parks it.
@@ -516,8 +578,9 @@ def release(block, entity, target_name):
             member.release(request)
         if info["set"] is not None:
             info["set"].released(len(info["requests"]))
-        block.emit("entity_released", entity=entity, resource=member.name,
-                   value=len(info["requests"]))   # units (#748)
+        if block.ctx.bus._subscribers:
+            block.emit("entity_released", entity=entity, resource=member.name,
+                       value=len(info["requests"]))   # units (#748)
     if block.ctx.debug:
         log.debug("Entity %s released resource '%s' at time %s.", entity.id, member.name, block.env.now)
 

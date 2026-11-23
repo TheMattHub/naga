@@ -39,11 +39,12 @@ force is tracked in the `available` collector.
 import bisect
 import math
 from bisect import insort_right
+from collections import deque
 from operator import attrgetter
 
 import numpy as np
 import simpy
-from simpy.resources.resource import PriorityRequest, Preempted, SortedQueue
+from simpy.resources.resource import PriorityRequest, Preempted
 
 from nagasim.core.base_process import deterministic_hash
 from nagasim.core.distributions import StochasticDistribution
@@ -314,17 +315,58 @@ class ResourceManager:
 _request_key = attrgetter("key")
 
 
-class _InsortQueue(SortedQueue):
-    """SimPy's sorted wait queue, inserting by bisection. `SortedQueue.append`
-    appends and re-sorts the whole list on every request, which makes a
-    congested resource quadratic in its queue length. The list is always
-    sorted, `sort` is stable and `insort_right` places an equal key after its
-    equals, so the order is the same."""
+class _InsortQueue(deque):
+    """SimPy's sorted wait queue, held in a deque so a grant takes the head in O(1)
+    (speed review C): a list's `pop(0)` moves every waiter behind it, so a long queue
+    cost O(n) per grant. Insertion bisects (`SortedQueue.append` re-sorts on every
+    request): `insort_right` places an equal key after its equals, so the order is
+    SimPy's. The two fast paths give bisection's own place in a key-sorted queue
+    (every re-key re-inserts or re-sorts), without its probes into the deque's middle.
+    A NaN rank (a ranking expression with a missing value) leaves the queue unsorted,
+    where the fast paths would not give bisection's place, so the queue then becomes a
+    `_BisectQueue` for good. Reads stay C-level: `len`, iteration, `in`, `remove`, `index`."""
+
+    __slots__ = ()
 
     def append(self, item) -> None:
-        if self.maxlen is not None and len(self) >= self.maxlen:
-            raise RuntimeError("Cannot append event. Queue is full.")
+        key = item.key
+        # a NaN priority, or rank in Naga's (priority, rank); inline, not `math.isnan`: a
+        # call on every request
+        p = key[0]
+        if p != p or (p.__class__ is tuple and p[-1] != p[-1]):
+            self.__class__ = _BisectQueue
+            insort_right(self, item, key=_request_key)
+        elif not self or not key < self[-1].key:        # FIFO: after the last
+            _deque_append(self, item)
+        elif key < self[0].key:                         # a blocker: ahead of everyone
+            _deque_appendleft(self, item)
+        else:
+            insort_right(self, item, key=_request_key)
+
+    def sort(self, key=None, reverse=False) -> None:
+        """`list.sort` for the rerank discipline: stable, so equal keys keep their order."""
+        items = sorted(self, key=key, reverse=reverse)
+        self.clear()
+        self.extend(items)
+        for item in items:          # a rerank can write a NaN rank without an append
+            p = item.key[0]
+            if p != p or (p.__class__ is tuple and p[-1] != p[-1]):
+                self.__class__ = _BisectQueue
+                break
+
+
+class _BisectQueue(_InsortQueue):
+    """An `_InsortQueue` that has held a NaN rank: no longer key-sorted, so every request
+    bisects, as SimPy's list did (the same order as before review C, however meaningless)."""
+
+    __slots__ = ()
+
+    def append(self, item) -> None:
         insort_right(self, item, key=_request_key)
+
+
+_deque_append = deque.append
+_deque_appendleft = deque.appendleft
 
 
 class _Group(list):
@@ -351,6 +393,25 @@ class _Resource(simpy.PreemptiveResource):
     """The SimPy resource every engine resource is built on."""
 
     PutQueue = _InsortQueue
+
+    def _trigger_put(self, get_event):
+        """SimPy's own loop (BaseResource._trigger_put, 4.1), with the granted request
+        taken by `del queue[idx]` instead of `pop(idx)` (review C): on the deque the head
+        goes in O(1) with no Python frame, and on a list queue (`_DispatchResource`) it is
+        `pop(idx)` itself. Our own copy, so it does not change with SimPy's version."""
+        queue = self.put_queue
+        idx = 0
+        while idx < len(queue):
+            put_event = queue[idx]
+            proceed = self._do_put(put_event)
+            if not put_event.triggered:
+                idx += 1
+            elif queue[idx] is not put_event:
+                raise RuntimeError("Put queue invariant violated")
+            else:
+                del queue[idx]
+            if not proceed:
+                break
 
     def _do_put(self, event):
         group = getattr(event, "group", None)
@@ -496,6 +557,11 @@ class LoggedSimpyResource:
         # unchanged; only who hands out the units differs.
         resolved_cls = core_cls or (_RerankResource if self.rerank else _Resource)
         self._core = resolved_cls(env, capacity)
+        # SimPy's `request`/`release` are BoundClass descriptors that build a bound method on
+        # every access; bound once here, as `BoundClass.bind_early` would for the class's own
+        # names (speed review A). The same classes are called, with the same arguments.
+        self._core_request = self._core.request
+        self._core_release = self._core.release
         if self.rerank:
             self._core.rank_of = self.rank_for
         # Snapshot log (packed, D1061) feeds the flat Excel log sheet only; KPIs come from
@@ -578,7 +644,7 @@ class LoggedSimpyResource:
         before every grant. *group*: the `_Group` of a seize of more than one unit
         (`request_units`), granted whole or not at all.
         """
-        req = (self._core.request(priority=(priority, rank), preempt=preempt) if group is None
+        req = (self._core_request(priority=(priority, rank), preempt=preempt) if group is None
                else _GroupRequest(self._core, (priority, rank), preempt, group))
         if self.rerank and scope is not None:
             req.rerank_scope = scope
@@ -591,7 +657,27 @@ class LoggedSimpyResource:
             self._uncounted.add(req)
         if not charged:
             self._uncharged.add(req)
-        self.log_usage(t, event_type="request")
+        ctx = self.env.ctx
+        if ctx.record_logs or ctx.watched:
+            self.log_usage(t, event_type="request")
+        else:                   # all `log_usage` would do (speed review A)
+            self.log_events += 1
+        req.callbacks.append(self._on_granted)
+        return req
+
+    def request_plain(self, priority):
+        """`request(priority)` of one FIFO unit with no set, patience, preemption or warm
+        start (speed review B, `seizing.acquire_plain`): the same SimPy request, collectors
+        and grant callback, with none of the options tested."""
+        req = PriorityRequest(self._core, (priority, 0), False)
+        t = self.env.now
+        self._enqueued[req] = t
+        self.queue_len.add(1, t)
+        ctx = self.env.ctx
+        if ctx.record_logs or ctx.watched:
+            self.log_usage(t, event_type="request")
+        else:
+            self.log_events += 1
         req.callbacks.append(self._on_granted)
         return req
 
@@ -606,9 +692,16 @@ class LoggedSimpyResource:
 
     def _seized(self, req) -> None:
         """Count one grant, unless this request is a preempted job resuming."""
-        self.busy.add(1, self.env.now)
-        self._notify_bottleneck(self.env.now)
-        self.env.ctx.wake_power()
+        t = self.env.now
+        self.busy.add(1, t)
+        # The two hooks are tested here, not called to find out (speed review A): most
+        # models track no bottleneck and read no POWER().
+        ctx = self.env.ctx
+        if ctx.bottleneck_tracker is not None:
+            self._notify_bottleneck(t)
+        system = ctx.level_system
+        if system is not None and system.reads_power:
+            ctx.wake_power()
         # `if self._uncharged` keeps the common model (no preemption anywhere)
         # off the set lookup entirely.
         if self._uncharged and req in self._uncharged:
@@ -619,7 +712,7 @@ class LoggedSimpyResource:
 
     def _on_granted(self, req):
         t = self.env.now
-        if req in self._uncounted:
+        if self._uncounted and req in self._uncounted:
             self._uncounted.discard(req)
             self._seized(req)
             self.log_usage(t, event_type="seize")
@@ -630,19 +723,31 @@ class LoggedSimpyResource:
         self.queue_len.add(-1, t)
         self._seized(req)
         self.wait.add(t - enqueued_at)
-        self.log_usage(t, event_type="seize")
+        ctx = self.env.ctx
+        if ctx.record_logs or ctx.watched:
+            self.log_usage(t, event_type="seize")
+        else:
+            self.log_events += 1
 
     def release(self, req):
         t = self.env.now
-        self._uncounted.discard(req)
+        if self._uncounted:
+            self._uncounted.discard(req)
+        ctx = self.env.ctx
         if self._enqueued.pop(req, None) is not None:
             self.queue_len.add(-1, t)      # cancelled before it was ever granted
         else:
             self.busy.add(-1, t)
-            self._notify_bottleneck(t)
-            self.env.ctx.wake_power()
-        result = self._core.release(req)
-        self.log_usage(t, event_type="release")
+            if ctx.bottleneck_tracker is not None:      # the hooks tested, as in `_seized`
+                self._notify_bottleneck(t)
+            system = ctx.level_system
+            if system is not None and system.reads_power:
+                ctx.wake_power()
+        result = self._core_release(req)
+        if ctx.record_logs or ctx.watched:
+            self.log_usage(t, event_type="release")
+        else:
+            self.log_events += 1
         return result
 
     def serve_without_unit(self, req):
@@ -924,7 +1029,7 @@ class ResourceSet:
         self.queue_len = TimeWeighted(env.now)
         self.busy = TimeWeighted(env.now)
         self.wait = Tally()
-        self._open = []            # enqueue times of entities still waiting
+        self._open = deque()       # enqueue times of entities still waiting, in order
 
     def __repr__(self):
         return (f"<ResourceSet name='{self.name}', rule={self.rule}, "
@@ -1002,7 +1107,11 @@ class ResourceSet:
         self.queue_len.add(1, t)
         if since is not None:       # a warm-started entity's wait began then
             t = since
-        bisect.insort(self._open, t)        # `_close` bisects: an earlier `since` goes in place (#351)
+        waits = self._open
+        if not waits or not t < waits[-1]:
+            waits.append(t)                 # bisection's own place, without its probes
+        else:
+            bisect.insort(waits, t)         # `_close` bisects: an earlier `since` goes in place (#351)
         self.log_usage(self.env.now, event_type="request")
         return t
 
@@ -1030,6 +1139,9 @@ class ResourceSet:
         entry is found by bisection, not by a scan of everyone waiting; equal
         times are interchangeable, so which of them goes does not matter."""
         waits = self._open
+        if waits and waits[0] == enqueued_at:
+            waits.popleft()                 # first come, first served: O(1) on the deque
+            return
         index = bisect.bisect_left(waits, enqueued_at)
         if index < len(waits) and waits[index] == enqueued_at:
             del waits[index]

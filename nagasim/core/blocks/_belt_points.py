@@ -11,6 +11,11 @@ from nagasim.core.stats import Tally, TimeWeighted
 
 
 _EPS = 1e-9
+# A2 task 2: how far short of a part's last arrived place a walk's term must be before the walk
+# stops there (`Conveyor._ahead_due`, and the belt index's test of a leaf): far above the places'
+# float error, far below any length, so the stop never rests on the `_EPS` edge where the terms'
+# own rounding decides
+_BOUND_MARGIN = 1e-6
 # R20: a typed belt's cell when `cell` is unset, in metres whatever the model's length unit.
 _DEFAULT_CELL = 0.01
 

@@ -72,7 +72,14 @@ class TimeWeighted:
         self.last_t = t
 
     def set(self, level: float, t: float) -> None:
-        self._advance(t)
+        # `_advance` written out, as in `add` (speed review A): Avg WIP sets this on every
+        # entity created and disposed.
+        dt = t - self.last_t
+        if dt > 0:
+            self.integral += self.level * dt
+            if self.level > self._max:
+                self._max = self.level
+            self.last_t = t
         self.level = level
 
     def add(self, delta: float, t: float) -> None:
@@ -340,18 +347,26 @@ def account_and_retain(ctx, entity) -> None:
     """
     # Before the warm-up filter below: an order's completion is a fact about
     # the order, and `account_due_date` applies the window test itself.
-    account_due_date(ctx, entity)
+    # Speed review E: called only when it has something to do, on its own two early-return
+    # tests (no orders, no due date), since a due date may be set at run time by an ASSIGN.
+    if ctx.orders or getattr(entity, "due_date", None) is not None:
+        account_due_date(ctx, entity)
     if ctx.plan_gates is not None:          # PHASE6 W4 P4, D122
         ctx.plan_gates.drop(entity)
 
     warmup = ctx.warmup
     created = created_in_window(entity, warmup)
-    completed = entity.deletion_time is not None and entity.deletion_time >= warmup
+    deleted = entity.deletion_time
+    completed = deleted is not None and deleted >= warmup
     if not created and not completed:
         _drop(ctx, entity)
         return
 
-    acc = ctx.entity_stats.setdefault(entity.e_type, EntityTypeStats())
+    # Not `setdefault(type, EntityTypeStats())`: that built and threw away an accumulator,
+    # with its two series, for every entity after a type's first (speed review E).
+    acc = ctx.entity_stats.get(entity.e_type)
+    if acc is None:
+        acc = ctx.entity_stats[entity.e_type] = EntityTypeStats()
     if created:
         acc.created += 1
     if completed:

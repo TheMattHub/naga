@@ -19,16 +19,24 @@ reading the statistic included, the minimum over the repeats, in one process, on
 after the other. Customers per second divides the expected number of arrivals, the same for
 every library, by that time.
 """
-import argparse
-import gc
-import json
-import os
-import platform
-import sys
-import time
-from datetime import date
-from importlib import import_module
+import importlib.util
 from pathlib import Path
+
+# First, before nagasim loads: the shipped registries only, never a plugin folder this machine's
+# user trusted (tools/_isolate.py). Loaded by file path so tools/ never joins sys.path.
+_spec = importlib.util.spec_from_file_location(
+    "_isolate", Path(__file__).resolve().parents[1] / "tools" / "_isolate.py")
+_spec.loader.exec_module(importlib.util.module_from_spec(_spec))
+
+import argparse  # noqa: E402
+import gc  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import platform  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+from datetime import date  # noqa: E402
+from importlib import import_module  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 

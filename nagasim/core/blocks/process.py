@@ -35,8 +35,9 @@ from nagasim.core.blocks._common import evaluate_expression
 from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.expressions import ExpressionError
 from nagasim.core.quantities import field_factor, param, scaled
-from nagasim.core.seizing import (ON_PREEMPT_MODES, QueueBehaviour, acquire, acquire_worker,
-                                  balks, leave, patience_of, preempt_release, release)
+from nagasim.core.seizing import (ON_PREEMPT_MODES, QueueBehaviour, acquire, acquire_plain,
+                                  acquire_worker, balks, leave, patience_of, plain_target,
+                                  preempt_release, release)
 from nagasim.core.stats import TimeWeighted
 
 log = logging.getLogger(__name__)
@@ -44,6 +45,8 @@ log = logging.getLogger(__name__)
 __all__ = ["Process", "SPEC"]
 
 ACTIONS = ("Seize Delay Release", "Seize Delay", "Delay Release", "Delay")
+
+_UNDECIDED = object()       # `Process._plain` before the block's first entity
 
 # Where a changeover cost lands in `cost_summary` when the block names no
 # category of its own.
@@ -106,6 +109,9 @@ class Process(QueueBehaviour, BaseProcess):
         self.worker_skill = ""
         self.node = ""
         self.worker_when_blocked = WORKER_BLOCKED_MODES[0]
+        # The resource this block seizes down `seizing.acquire_plain`, or None for the full
+        # path (speed review B); decided at the first entity (`plain_target`).
+        self._plain = _UNDECIDED
 
     @property
     def space_passthrough(self) -> bool:
@@ -154,7 +160,12 @@ class Process(QueueBehaviour, BaseProcess):
                 # A finite input queue (PHASE4 T5): take a place first, which is
                 # what frees whatever machine is still holding this part.
                 slot = yield from self.space.take(entity)
-            if self.resource_name and not (yield from acquire(
+            plain = self._plain
+            if plain is _UNDECIDED:
+                plain = self._plain = plain_target(self) if self.resource_name else None
+            if plain is not None and entity._since is None:
+                yield from acquire_plain(self, entity, self.resource_name, plain, self.priority)
+            elif self.resource_name and not (yield from acquire(
                     self, entity, self.resource_name, self.quantity, self.priority,
                     patience=patience_of(self, entity) if self.renege_after else None,
                     preempt=self.preempt)):
@@ -173,9 +184,15 @@ class Process(QueueBehaviour, BaseProcess):
             # D114: the machine first, then the worker, so none idles waiting.
             yield from acquire_worker(self, entity, self.priority)
 
-        self.active_entity = entity
+        # `active_entity` and `remove_active_entity` written out (speed review A): a
+        # PROCESS has no `_resource`, so the setter's capacity check never applies.
+        active = self._active_entity
+        active.append(entity)
         yield from self._serve(entity)
-        self.remove_active_entity(entity)
+        try:
+            active.remove(entity)
+        except ValueError:
+            pass
         worker = bool(self.worker_fleet) and self.action != "Seize Delay"
         stays = worker and self.worker_when_blocked == "stays"
         # A part with a reserved place is accepted downstream on arrival, so a
@@ -391,6 +408,7 @@ class Process(QueueBehaviour, BaseProcess):
                          self.setup_cost_category or _DEFAULT_SETUP_CATEGORY)
 
         self.set_queue_params(param_dict)
+        self._plain = _UNDECIDED        # the params decide it: asked again at the next entity
         self.preempt = bool(param_dict.get("preempt", False))
         self.on_preempt = param_dict.get("on_preempt", ON_PREEMPT_MODES[0])
         self.resample = bool(param_dict.get("resample", False))

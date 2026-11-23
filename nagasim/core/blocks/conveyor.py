@@ -147,6 +147,9 @@ from nagasim.core.arealink import real_target
 from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, ParamSpec
 from nagasim.core.blocks._belt_release import BeltRelease
+from nagasim.core.blocks import _belt_ahead
+from nagasim.core.blocks._belt_ahead import _ARR as _LEAF_ARRIVED, _FIRST as _LEAF_FIRST, \
+    _FULL as _LEAF_FULL, _STALE as _LEAF_STALE, AheadIndex
 from nagasim.core.blocks._belt_reverse import ReverseRide
 from nagasim.core.blocks._belt_zones import BeltZones
 from nagasim.core.blocks._common import evaluate_expression
@@ -180,14 +183,9 @@ _FAR = 1e9                              # a gone part's ride: past any belt
 # arrive, `packed` or `due`, names the place it heads for, an upper bound)
 _ARRIVED = frozenset(("dwell", "wait", "blocked", "stop", "handover", "divert", "push",
                       "merge"))
-# A2 task 2: how far short of a part's last arrived place a walk's term must be before the walk
-# stops there: far above the places' float error, far below any length, so the stop never rests
-# on the `_EPS` edge where the terms' own rounding decides
-_BOUND_MARGIN = 1e-6
-
 from nagasim.core.blocks._belt_points import (  # noqa: E402,F401 (R37: moved, still importable here)
-    _EPS, _DEFAULT_CELL, DivertSpec, _divert_params, _Stop, _Divert, _MeetPoint, _Eye,
-    _Merge, _MergeEntry, _Left, _Section, _CellSection, _CellSpace, zone_hold_delay,
+    _EPS, _BOUND_MARGIN, _DEFAULT_CELL, DivertSpec, _divert_params, _Stop, _Divert, _MeetPoint,
+    _Eye, _Merge, _MergeEntry, _Left, _Section, _CellSection, _CellSpace, zone_hold_delay,
     write_exposed, _stage_reach, _stage_x)
 
 
@@ -351,7 +349,8 @@ class Conveyor(BaseProcess):
         # order (`_seq`: a part boards last; a merged one between the part it lands behind and
         # the next), the part itself, the event a part waiting behind it waits on (#2014) or
         # None, True while it stands where it arrived (`_ARRIVED`), the place it last arrived
-        # at or None (A2 task 2: its nose is no nearer since)]
+        # at or None (A2 task 2: its nose is no nearer since), and for the walk's index
+        # (`_ahead`, speed review D) its leaf or None, its offset in it and its place in it]
         self._parts: dict = {}
         self._seq = 0.0
         self._dieback_extra = 0.0
@@ -362,6 +361,9 @@ class Conveyor(BaseProcess):
         # a wait forward: the parts beyond it then need its length less)
         self._gone: list = []
         self._order: list = []          # `_parts`' records in belt order (`_ahead_due`)
+        # speed review D: the index `_ahead_due` steps over runs of plainly clear parts by;
+        # decided at the first part (only on a belt that walks), None once lengths turn mixed
+        self._ahead = False
         self._reshaped = None
         # R65: 1 while the release rule holds the end part (D1357), for `Release Hold %`
         self.release_held = TimeWeighted(env.now)
@@ -1057,12 +1059,18 @@ class Conveyor(BaseProcess):
                 self._seq += 1.0
                 rec = self._parts[entity.id] = [self._occ(entity), entered, 0.0,
                                                 0.0, 0.0, None, 0.0, self._seq, entity, None,
-                                                False, None]
-                bisect.insort(self._order, rec, key=_SEQ)
+                                                False, None, None, 0.0, 0]
+                self._order_add(rec)
+            arrived = rec[10]
             rec[3:7] = [self.env.now, x0, x1, duration]
             rec[10] = stage in _ARRIVED
             if rec[10]:
                 rec[11] = x0
+            leaf = rec[12]
+            if leaf is not None:                # speed review D: its leaf's summary is stale
+                leaf[_LEAF_STALE] = True
+                if rec[10] != arrived:
+                    leaf[_LEAF_ARRIVED] += 1 if rec[10] else -1
             if rec[9] is not None:
                 watch, rec[9] = rec[9], None
                 watch.succeed()
@@ -1091,12 +1099,36 @@ class Conveyor(BaseProcess):
             self._seq = max(self._seq, seq)
         old = self._parts.get(entity.id)
         if old is not None:                     # never reached: a part gets on once
-            self._order.remove(old)
+            self._order_drop(old, self._order.index(old))
         rec = self._parts[entity.id] = [self._occ(entity), entered, start, entered, start,
-                                        start, 0.0, seq, entity, None, False, None]
-        bisect.insort(self._order, rec, key=_SEQ)
+                                        start, 0.0, seq, entity, None, False, None, None, 0.0, 0]
+        self._order_add(rec)
         if self._nose_eyes:
             self._eye_levels(seq)
+
+    def _order_add(self, rec) -> None:
+        """*rec* joins the belt order (and the walk's index, speed review D)."""
+        order = self._order
+        bisect.insort(order, rec, key=_SEQ)
+        idx = self._ahead
+        if idx is False:
+            idx = self._ahead = AheadIndex(self.speed) if self._sections or self._nose_eyes \
+                else None
+        if idx is None:
+            return
+        if not idx.accepts(rec[0], len(order)):
+            # lengths the walk could not sum out of its order: the plain walk from now on
+            self._ahead = None
+            for other in order:
+                other[12] = None
+            return
+        idx.added(order, bisect.bisect_left(order, rec[7], key=_SEQ), rec)
+
+    def _order_drop(self, rec, at: int) -> None:
+        """*rec*, at *at* in the belt order, leaves it."""
+        if rec[12] is not None:
+            self._ahead.removed(self._order, at, rec)
+        del self._order[at]
 
     def _join_seq(self, ahead) -> float:
         """The place in belt order of a part merged behind the part with id *ahead* (-1: none,
@@ -1114,10 +1146,9 @@ class Conveyor(BaseProcess):
         self._eye_rows.pop(entity.id, None)
         if rec is not None:
             at = bisect.bisect_left(self._order, rec[7], key=_SEQ)
-            if at < len(self._order) and self._order[at] is rec:
-                del self._order[at]
-            else:                               # never reached: one record per place
-                self._order.remove(rec)
+            if not (at < len(self._order) and self._order[at] is rec):
+                at = self._order.index(rec)     # never reached: one record per place
+            self._order_drop(rec, at)
         if self._covering and not self._nose_eyes:
             # D1379: off the belt, its body covers no eye here (an eye nearer the end than the
             # part's length clears as the part leaves)
@@ -1187,7 +1218,7 @@ class Conveyor(BaseProcess):
         # of the belt order) and reads `_stage_reach` inline; the same terms in the same order,
         # so the same floats (`test_a2_2_...` holds it to the `_stage_reach` walk)
         items = self._order
-        i = bisect.bisect_left(items, seq, key=_SEQ) - 1
+        i = start = bisect.bisect_left(items, seq, key=_SEQ) - 1
         g = len(gone) - 1 if gone else -1
         due, by, lengths = now, None, 0.0
         # A2 task 2: the walk also stops at a part that once arrived (`rec[11]`) at least
@@ -1195,14 +1226,54 @@ class Conveyor(BaseProcess):
         # parts beyond it are past their terms now. Not on a belt with merges, where a merging
         # part can still land on a part (#2012, #2016 with priority "merge")
         bounded = not self._merges
+        # speed review D: the walk steps over a leaf of the index (a run of parts next to each
+        # other in belt order) when the index shows each of its terms plainly holds, the
+        # lengths summed as the walk would have summed them. `edge` is where the next leaf
+        # begins, going on; -1 when the index is off or paused (it did not pay: the walk is
+        # then the plain one). The first leaf is walked part by part when it holds the
+        # waiting part or a part behind it
+        edge, idx = -1, self._ahead or None
+        if idx is not None:
+            if idx.pause:
+                idx.pause -= 1
+                idx = None
+            elif idx.score < 0:
+                idx.pause, idx.score, idx = _belt_ahead._PAUSE, _belt_ahead._SCORE_CAP, None
+            elif i >= 0:
+                idx.score -= _belt_ahead._CALL_COST
+                leaf = items[i][12]
+                if leaf is None:
+                    pass
+                elif i + 1 < len(items) and items[i + 1][12] is leaf:
+                    if not leaf[_LEAF_FULL]:        # its front: [14] counts places in a leaf
+                        edge = i - (items[i][14] - leaf[_LEAF_FIRST]) - 1
+                else:
+                    edge = i
         while True:
             # a gone part first at a tie in belt place: the stable sort the walk merged them by
             if g >= 0 and (i < 0 or gone[g][7] >= items[i][7]):
                 rec = gone[g]
                 g -= 1
                 z = y + lengths + rec[0]            # gone: it takes no place of its own
-            elif i >= 0:
+            elif i > edge:
                 rec = items[i]
+                i -= 1
+                lengths += rec[0]
+                z = y + lengths
+            elif i >= 0:                            # the back of a leaf
+                rec = items[i]
+                leaf = rec[12]
+                bottom = i - leaf[0] + 1
+                edge = bottom - 1
+                # (a leaf with a part standing where it arrived ends the walk)
+                if not leaf[_LEAF_ARRIVED] and \
+                        _belt_ahead._MIN_SKIP <= leaf[0] <= _belt_ahead._MAX_SKIP and \
+                        (g < 0 or gone[g][7] < items[bottom][7]):
+                    after = idx.clear(items, bottom, i, leaf, y, lengths, start - bottom + 1, now,
+                                      strict, bounded)
+                    if after is not None:
+                        i, lengths = edge, after
+                        continue
                 i -= 1
                 lengths += rec[0]
                 z = y + lengths
@@ -2415,8 +2486,8 @@ class Conveyor(BaseProcess):
             rec = self._parts[entity.id] = [self._occ(entity),
                                             now if entered is None else float(entered), 0.0,
                                             now, x0, x1, duration, self._seq, entity, None,
-                                            False, None]
-            bisect.insort(self._order, rec, key=_SEQ)
+                                            False, None, None, 0.0, 0]
+            self._order_add(rec)
             passed.append((entity.id, section))
         for merge in self._merges:
             merge.passers.clear()

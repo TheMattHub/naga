@@ -44,9 +44,13 @@ class Dispose(BaseProcess):
             entity.finished = True
             if self.ctx.debug:
                 log.debug("Entity %s has been disposed at time %s.", entity.id, self.env.now)
-            tending.cobot_of(self, entity)     # D169: a cobot that stayed with it is freed
-            free_held(self, entity)            # D837: and a vehicle a TRANSPORT kept
-            end_routes(self.ctx, entity)       # R34: a rule counting it under way lets it go
+            # The three hooks are tested here, not called to find out (speed review A).
+            if getattr(entity, tending._COBOT, None) is not None:
+                tending.cobot_of(self, entity)     # D169: a cobot that stayed with it is freed
+            if getattr(entity, "req_params", None):
+                free_held(self, entity)            # D837: and a vehicle a TRANSPORT kept
+            if self.ctx.route_ends:
+                end_routes(self.ctx, entity)       # R34: a rule counting it under way lets it go
 
     def _finish(self, entity):
             entity.deletion_time = self.env.now

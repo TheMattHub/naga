@@ -275,7 +275,7 @@ def test_reneging_works_with_a_resource_set_a_schedule_and_the_warm_up(make_mode
     run_layout(env, layout_with_set, run_len=40)
     team = env.ctx.resource_manager.resolve("Team")
     assert isinstance(team, ResourceSet)
-    assert team.queue_len.level == 0 and team._open == []
+    assert team.queue_len.level == 0 and list(team._open) == []
     for member in team.members:
         assert member._enqueued == {} and member._uncounted == set()
 

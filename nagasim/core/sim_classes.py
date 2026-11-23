@@ -124,6 +124,13 @@ _IN_SLOTS = frozenset({"_id", "_e_type", "_creation_time", "_deletion_time", "_t
                        "cost", "_holding_cost", "_auto_cost", "in_batch",
                        "initial", "agent"}) | frozenset(_STALE)
 _DEFAULTS = {"_resource": None, "finished": True, **dict.fromkeys(_STALE)}
+# Speed review E: what `EntityRecord.of` would otherwise work out again for every disposed entity.
+# `_OUTSIDE` maps an attribute-key shape (the keys in order) to its keys outside the slots, so the
+# shape is an exact test: an entity with one attribute more or less has another shape. `_TYPE_NAMES`
+# holds the interned type names. Both are bounded; past the bound the work is done uncached.
+_OUTSIDE: dict = {}
+_TYPE_NAMES: dict = {}
+_CACHE_BOUND = 512
 
 
 class EntityRecord:
@@ -145,25 +152,50 @@ class EntityRecord:
 
     @classmethod
     def of(cls, entity) -> "EntityRecord":
+        # This runs once per disposed entity with logs on (speed review E), so it reads the
+        # attribute dict straight, not through the properties, which only return those same
+        # entries (no class derives from Entity), and looks up the keys outside the slots
+        # by the dict's key shape instead of a set difference per entity.
+        attrs = entity.__dict__
         record = cls()
-        record._id = entity.id
-        record.e_type = sys.intern(entity.e_type)
-        record.creation_time = entity.creation_time
-        record.deletion_time = entity.deletion_time
-        record.cost = entity.cost
-        record._holding_cost = entity._holding_cost
-        record.initial = getattr(entity, "initial", False)
-        record.agent = getattr(entity, "agent", None)
-        # Only the few keys outside the slots are looked at (a set difference in
-        # C, #1561): this runs once per disposed entity.
-        attrs = vars(entity)
-        default_name = f"Entity {record._id}"
-        kept = {key for key in attrs.keys() - _IN_SLOTS
-                if not (key in _DEFAULTS and attrs[key] is _DEFAULTS[key])
-                and not (key == "name" and attrs[key] == default_name)
-                and not (key == "batch_elems" and type(attrs[key]) is list and not attrs[key])}
-        # In the entity's own attribute order, as before.
-        record._extra = {key: value for key, value in attrs.items() if key in kept} if kept else None
+        record_id = record._id = attrs["_id"]
+        e_type = attrs["_e_type"]
+        try:
+            record.e_type = _TYPE_NAMES[e_type]
+        except KeyError:
+            record.e_type = sys.intern(e_type)
+            if len(_TYPE_NAMES) < _CACHE_BOUND:
+                _TYPE_NAMES[e_type] = record.e_type
+        record.creation_time = attrs["_creation_time"]
+        record.deletion_time = attrs["_deletion_time"]
+        record.cost = attrs["cost"]
+        record._holding_cost = attrs["_holding_cost"]
+        record.initial = attrs["initial"] if "initial" in attrs else False
+        record.agent = attrs["agent"] if "agent" in attrs else None
+        shape = tuple(attrs)
+        try:
+            outside = _OUTSIDE[shape]
+        except KeyError:
+            outside = tuple(key for key in shape if key not in _IN_SLOTS)
+            if len(_OUTSIDE) < _CACHE_BOUND:
+                _OUTSIDE[shape] = outside
+        # Kept: what differs from what `__getattr__` gives back, in the entity's own order.
+        extra = None
+        for key in outside:
+            value = attrs[key]
+            if key in _DEFAULTS:
+                if value is _DEFAULTS[key]:
+                    continue
+            elif key == "name":
+                if value == f"Entity {record_id}":
+                    continue
+            elif key == "batch_elems":
+                if type(value) is list and not value:
+                    continue
+            if extra is None:
+                extra = {}
+            extra[key] = value
+        record._extra = extra
         return record
 
     def __getattr__(self, name):

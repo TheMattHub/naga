@@ -45,13 +45,13 @@ def test_set_open_waits_are_removed_by_value_in_order(env):
     team.enqueue()
     env.run(until=2)
     team.enqueue()
-    assert team._open == [0, 0, 1, 2]
+    assert list(team._open) == [0, 0, 1, 2]
     team.left(1)
-    assert team._open == [0, 0, 2]
+    assert list(team._open) == [0, 0, 2]
     team.granted(0, 1)
-    assert team._open == [0, 2]
+    assert list(team._open) == [0, 2]
     team.left(1.5)                      # not waiting: nothing to remove
-    assert team._open == [0, 2]
+    assert list(team._open) == [0, 2]
     assert team.open_waits(3.0) == [3.0, 1.0]
 
 

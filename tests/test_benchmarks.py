@@ -52,3 +52,28 @@ def test_every_implementation_runs_and_agrees_with_theory():
                           text=True, timeout=300, env={**os.environ, "PYTHONPATH": str(ROOT)})
     assert done.returncode == 0, done.stdout + done.stderr
     assert done.stdout.count("| Naga, logs and sampler off |") == 4
+
+
+@pytest.mark.slow       # two processes that import the engine
+def test_the_comparison_never_loads_the_users_trusted_plugins(tmp_path, monkeypatch):
+    """Speed review step 1: `compare.py` imports `tools/_isolate.py` before the engine, so a timed
+    Naga run loads the shipped registries only, not a plugin folder the machine's user trusted."""
+    from nagasim.settings import trusted
+    profile, folder, marker = tmp_path / "profile", tmp_path / "plug", tmp_path / "ran.txt"
+    monkeypatch.setenv("NAGASIM_USER_DIR", str(profile / "Naga"))
+    folder.mkdir()
+    (folder / "mark.py").write_text(f"open({str(marker)!r}, 'a').write('x')\nNAGASIM_BLOCKS = []\n",
+                                    encoding="utf-8")
+    trusted.add("plugin_folder", folder)
+    env = {k: v for k, v in os.environ.items() if k not in ("NAGASIM_USER_DIR", "NAGASIM_PLUGIN_PATH")}
+    env.update(APPDATA=str(profile), XDG_DATA_HOME=str(profile), PYTHONPATH=f"{BENCH}{os.pathsep}{ROOT}")
+    run = ("import runpy, sys; runpy.run_path(sys.argv[1]); import with_naga; "
+           "with_naga.run([(1, 1.25, {})], 20, 2, 1, lean=True)")
+    plain = "from nagasim import plugins; plugins.load_plugins()"
+    assert subprocess.run([sys.executable, "-c", plain], env=env, timeout=120).returncode == 0
+    assert marker.exists()                  # the profile is live: an engine run would load it
+    marker.unlink()
+    done = subprocess.run([sys.executable, "-c", run, str(BENCH / "compare.py")], env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert not marker.exists()

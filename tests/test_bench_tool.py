@@ -19,3 +19,17 @@ def test_run_one_reports_split_timings(monkeypatch):
         assert key in r
     assert r["kpi_seconds"] > 0 and r["events"] > 0
     assert abs(r["total_seconds"] - r["run_seconds"] - r["kpi_seconds"]) < 1e-9
+
+
+def test_call_counts_are_the_same_on_a_second_run(monkeypatch):
+    """tools/bench_calls.py (speed review 2026-11-23): the counts it ranks and proves by repeat
+    exactly for one seed, phases included, and they come from the raw profiler entries. They hold
+    because the tool keeps the garbage collector off while it profiles: a collection inside the
+    profile closes an earlier run's suspended processes, each close a call."""
+    import bench_calls
+    monkeypatch.setitem(bench.MODELS, "tiny", lambda: bench._overloaded_single_server(50.0))
+    bench_calls.profile("tiny", top=3)
+    first, second = bench_calls.profile("tiny", top=3), bench_calls.profile("tiny", top=3)
+    assert first["calls"] == second["calls"] > 0 and first["phases"] == second["phases"]
+    assert first["calls"] == sum(p["calls"] for p in first["phases"].values())
+    assert first["events"] > 0 and first["entities"] > 0
