@@ -61,11 +61,12 @@ def test_items_limit_stops_mid_layer():
 
 def test_mirrors_turn_the_rotation_too():
     record = pattern(stack=[{"layer": "A", "transform": "mirror_x"}], **{"limits.layers": 1})
-    assert [(s.x, s.y, s.rotation) for s in slots(record)] == pytest.approx(
-        [(0.2, 0, 180), (-0.2, 0, 90)])
+    # Flat lists: pytest.approx refuses nested tuples from pytest 8.4 on (naga CI).
+    assert [v for s in slots(record) for v in (s.x, s.y, s.rotation)] == pytest.approx(
+        [0.2, 0, 180, -0.2, 0, 90])
     record = pattern(stack=[{"layer": "A", "transform": "mirror_y"}], **{"limits.layers": 1})
-    assert [(s.x, s.y, s.rotation) for s in slots(record)] == pytest.approx(
-        [(-0.2, 0, 0), (0.2, 0, 270)])
+    assert [v for s in slots(record) for v in (s.x, s.y, s.rotation)] == pytest.approx(
+        [-0.2, 0, 0, 0.2, 0, 270])
 
 
 def test_a_valid_pattern_has_no_problem():
