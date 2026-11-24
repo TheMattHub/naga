@@ -36,8 +36,8 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -61,19 +61,19 @@ jobs:
       PYTHONUTF8: "1"
       NAGASIM_VIEWER_RUNTIME: ${{ github.workspace }}/.viewer-runtime
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: pyproject.toml
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - name: Install (core only)
         run: pip install -e . pytest
       - name: The pinned browser runtime, from the cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .viewer-runtime
           key: viewer-runtime-${{ hashFiles('nagasim/viewer_runtime.py') }}
@@ -104,8 +104,8 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip

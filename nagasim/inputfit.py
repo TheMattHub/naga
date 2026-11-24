@@ -128,6 +128,15 @@ def load_column(path, column: str | None = None) -> LoadResult:
 
 
 # ============================================================ description
+def _skewness(values, mean: float) -> float:
+    """The sample skewness, NaN for under three values or a sample whose spread is within float
+    noise of its mean: there scipy's moments lose all precision (it warns so) and the number is
+    noise, as a deterministic model's replications are (#2044)."""
+    if values.size < 3 or float(np.ptp(values)) <= 1e-12 * max(abs(mean), 1e-300):
+        return float("nan")
+    return float(sstats.skew(values))
+
+
 def describe(values) -> dict:
     """Summary statistics and modelling flags (ROADMAP 1.8) for a 1-D sample."""
     values = np.asarray(values, dtype=float)
@@ -148,7 +157,7 @@ def describe(values) -> dict:
         "min": float(np.min(values)),
         "max": float(np.max(values)),
         "q1": float(q1), "q2": float(q2), "q3": float(q3),
-        "skewness": float(sstats.skew(values)) if n > 2 else float("nan"),
+        "skewness": _skewness(values, mean),
         "negative_values": bool(np.any(values < 0)),
         "zeros": bool(np.any(values == 0)),
         "integers_only": bool(np.allclose(values, np.round(values))),

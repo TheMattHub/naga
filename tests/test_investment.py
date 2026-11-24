@@ -96,7 +96,7 @@ def test_the_table_equals_the_hand_values():
     assert robot["NPV"] == pytest.approx(npv(50_000, 96_000, 5, 0.08))
     assert robot["ROI %"] == pytest.approx(100 * (5 * 96_000 - 50_000) / 50_000)
     # One replication: no interval (Review Focus 5).
-    assert frame[["Saving CI Low", "Saving CI High", "NPV CI Low", "NPV CI High"]].isna().all(None)
+    assert frame[["Saving CI Low", "Saving CI High", "NPV CI Low", "NPV CI High"]].isna().all(axis=None)
 
 
 def test_the_margin_values_the_extra_parts_of_a_faster_scenario():
