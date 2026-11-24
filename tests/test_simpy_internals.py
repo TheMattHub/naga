@@ -31,22 +31,24 @@ def test_the_simpy_internals_the_engine_reads_are_there():
 # the fingerprint, and checks the digest 63/63 (docs/RECIPES.md, "Upgrade SimPy").
 _COPIES = {
     "Environment.step": ("nagasim/core/sim_runner.py (_step_until)",
-                         {"6ac0d04dcd2c": "4.1.2"}),
+                         {"17d877492f5a": "4.1.2"}),
     "Environment.peek": ("nagasim/core/sim_runner.py (_step_until)",
-                         {"5bbb676a47b5": "4.1.2"}),
+                         {"f7da1cc85d80": "4.1.2"}),
     "Resource._do_put": ("nagasim/core/resource_manager.py (_Resource._do_put)",
-                         {"d2c3f6f9ec23": "4.1.2"}),
+                         {"5a1cce7c8f84": "4.1.2"}),
     "Resource._do_get": ("nagasim/core/resource_manager.py (_Resource._trigger_get)",
-                         {"276135330ef1": "4.1.2"}),
+                         {"55a2bdb830ff": "4.1.2"}),
     "BaseResource._trigger_put": ("nagasim/core/resource_manager.py (_Resource._trigger_put)",
-                                  {"c6072a662af8": "4.1.2"}),
+                                  {"19f1c099b093": "4.1.2"}),
     "BaseResource._trigger_get": ("nagasim/core/resource_manager.py (_Resource._trigger_get)",
-                                  {"b3f1c13d6739": "4.1.2"}),
+                                  {"1d2ed01c9623": "4.1.2"}),
 }
 
 
 def _fingerprint(fn) -> str:
-    """The function's syntax tree without its docstring: comments and layout are not behaviour."""
+    """The function's syntax tree without its docstring: comments and layout are not behaviour.
+    Hashed as `ast.unparse` text, not `ast.dump`, whose output differs between Python versions
+    (#2043: 3.11, 3.13 and 3.14 gave other hashes than 3.12; unparse agrees on all four)."""
     import ast
     import hashlib
     import inspect
@@ -55,7 +57,7 @@ def _fingerprint(fn) -> str:
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and ast.get_docstring(node):
             node.body = node.body[1:]
-    return hashlib.sha256(ast.dump(tree).encode()).hexdigest()[:12]
+    return hashlib.sha256(ast.unparse(tree).encode()).hexdigest()[:12]
 
 
 def test_every_copied_simpy_function_is_one_the_copy_was_reviewed_against():
