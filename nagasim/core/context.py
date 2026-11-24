@@ -47,21 +47,23 @@ class EntityIndex:
         self._env = env
         self.wip = TimeWeighted(env.now, len(self._items))
 
+    # Speed review R5: an `Entity`'s id read from its field, not its property; the flat log
+    # also holds `EntityRecord`s (D1061), which keep `id` as a slot.
     def append(self, entity) -> None:
-        self._items[entity.id] = entity
+        self._items[entity._id if type(entity) is Entity else entity.id] = entity
         if self.wip is not None:
-            self.wip.set(len(self._items), self._env.now)
+            self.wip.set(len(self._items), self._env._now)     # no property (speed review R3)
 
     def remove(self, entity) -> None:
         try:
-            del self._items[entity.id]
+            del self._items[entity._id if type(entity) is Entity else entity.id]
         except KeyError:
             raise ValueError(f"{entity!r} not in this collection") from None
         if self.wip is not None:
-            self.wip.set(len(self._items), self._env.now)
+            self.wip.set(len(self._items), self._env._now)
 
     def __contains__(self, entity) -> bool:
-        return entity.id in self._items
+        return (entity._id if type(entity) is Entity else entity.id) in self._items
 
     def __iter__(self):
         return iter(self._items.values())

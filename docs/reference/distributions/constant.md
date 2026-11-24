@@ -40,7 +40,7 @@ nb.Constant(value=5)
 
 ## Used in
 
-Bundled models: [Biogas digester, holder and CHP](../../gallery/energy.md), [Chance-based branching (DECIDE)](../../gallery/teaching.md).
+Bundled models: [Biogas digester, holder and CHP](../../gallery/energy.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md), [Chance-based branching (DECIDE)](../../gallery/teaching.md).
 
 Guides: [Python API](../../python-api.md), [How do I write a plugin block?](../../goals/write-a-plugin-block.md), [How do I model handling times with an occasional very long one?](../../how-to/recipes/lognormal-tail.md), [How do I run arrivals from a fixed timetable?](../../how-to/recipes/timetable-arrivals.md), [How do I model a machine that wears out?](../../how-to/recipes/weibull-wear-out.md), [Model file format](../../model-file-format.md).
 

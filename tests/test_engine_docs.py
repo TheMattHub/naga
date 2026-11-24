@@ -369,26 +369,24 @@ SITE_LEAK = re.compile("|".join(["Matteo" "Brunetti", "Arena" "Py", "Strata" "ge
 
 
 @pytest.fixture(scope="module")
-def built_site(tmp_path_factory):
-    """The site built (strict) from a fresh export when this repository can make one, from
-    the engine repository itself otherwise (that is what the export is)."""
+def built_site(tmp_path_factory, request):
+    """The site built (strict) from a fresh export when this repository can make one (the
+    session's one export and build, `engine_site` in conftest), from the engine repository
+    itself otherwise (that is what the export is)."""
     pytest.importorskip("mkdocs")
     pytest.importorskip("material")
-    root = tmp_path_factory.mktemp("site")
     if (ROOT / "tools" / "export_engine.py").is_file():
-        export_engine = importlib.import_module("tools.export_engine")
-        assert export_engine.export(root / "naga") == []
-        source = root / "naga"
-    else:
-        source = ROOT
+        return request.getfixturevalue("engine_site")
+    root = tmp_path_factory.mktemp("site")
     done = subprocess.run([sys.executable, "-m", "mkdocs", "build", "--strict", "-d", str(root / "out")],
-                          cwd=str(source), capture_output=True, text=True, timeout=600)
+                          cwd=str(ROOT), capture_output=True, text=True, timeout=600)
     assert done.returncode == 0, done.stdout + done.stderr
     return root / "out", root
 
 
 @pytest.mark.slow
 @pytest.mark.docs
+@pytest.mark.xdist_group("engine_export")
 def test_the_built_site_has_markdown_copies_and_llms_full(built_site):
     site, root = built_site
     _config, nav = gen.site_nav()

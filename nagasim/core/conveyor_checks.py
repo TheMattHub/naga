@@ -27,7 +27,7 @@ from nagasim.core import conveyor_path
 from nagasim.core.errors import ModelRunError
 from nagasim.core.problems import Problem, problem
 
-__all__ = ["STRICT_CODES", "RUN_HINTS", "static_checks", "run_warning", "keep_run_warning", "route_taken", "UNTYPED_WIDTH_M"]
+__all__ = ["STRICT_CODES", "RUN_HINTS", "static_checks", "open_ports", "floor_piece", "run_warning", "keep_run_warning", "route_taken", "UNTYPED_WIDTH_M"]
 
 log = logging.getLogger(__name__)
 
@@ -112,26 +112,48 @@ def static_checks(layout: dict) -> list[Problem]:
     """W_CONVEYOR_OPEN_PORT, W_CONVEYOR_OVERLAP and W_CONVEYOR_SNAP of the floor pieces among the
     layout's top-level blocks (a submodel definition's positions are not floor positions), as
     errors under `strict_checks`. Nothing to do, and no cost, for a model with no floor piece."""
-    blocks = layout.get("blocks") if isinstance(layout, dict) else None
-    if not isinstance(blocks, list):
-        return []
-    floor = {}
-    for index, block in enumerate(blocks):
-        if not isinstance(block, dict) or not isinstance(block.get("name"), str):
-            continue
-        kind = str(block.get("type", "")).upper()
-        params = block.get("params") if isinstance(block.get("params"), dict) else {}
-        if (kind == "CONVEYOR" and params.get("path")) or kind == "CONVEYOR_TRANSFER":
-            floor[block["name"]] = (index, block, kind, params)
+    floor, links = _floor(layout)
     if not floor:
         return []
-    links = [k for k in layout.get("links") or [] if isinstance(k, dict)]
     pieces = _pieces(layout, floor)
     found = (_open_ports(floor, links) + _snaps(pieces, floor, links)
              + _overlaps(pieces, floor, links))
     if _strict(layout):
         found = [replace(p, severity="error") for p in found]
     return found
+
+
+def floor_piece(kind: str, params) -> bool:
+    """Whether a block of type *kind* with *params* is a floor piece, one with ports and joins:
+    a CONVEYOR with a `path`, or a CONVEYOR_TRANSFER. A CONVEYOR timed by its `length` alone is
+    not (#2035); the checks, the editor and its moves all read this one rule."""
+    kind = str(kind or "").upper()
+    return (kind == "CONVEYOR" and bool((params or {}).get("path")))         or kind == "CONVEYOR_TRANSFER"
+
+
+def _floor(layout: dict) -> tuple[dict, list]:
+    """(name -> (index, block, kind, params) of each floor piece among the layout's top-level
+    blocks, the layout's link dicts)."""
+    blocks = layout.get("blocks") if isinstance(layout, dict) else None
+    if not isinstance(blocks, list):
+        return {}, []
+    floor = {}
+    for index, block in enumerate(blocks):
+        if not isinstance(block, dict) or not isinstance(block.get("name"), str):
+            continue
+        kind = str(block.get("type", "")).upper()
+        params = block.get("params") if isinstance(block.get("params"), dict) else {}
+        if floor_piece(kind, params):
+            floor[block["name"]] = (index, block, kind, params)
+    return floor, [k for k in layout.get("links") or [] if isinstance(k, dict)]
+
+
+def open_ports(layout: dict) -> list[tuple[str, str]]:
+    """(block, port) of every open port of the layout's floor pieces, in the order
+    W_CONVEYOR_OPEN_PORT lists them: the one rule, for a caller that must not run the other
+    checks (the editor indexes them once per gesture, plan B Task 4)."""
+    floor, links = _floor(layout)
+    return list(_open_pairs(floor, links))
 
 
 def _pieces(layout: dict, floor: dict) -> dict:
@@ -154,20 +176,8 @@ def _pieces(layout: dict, floor: dict) -> dict:
         ports = {p.name: p for p in conveyor_path.ports(name, start, segments, diverts)}
         kind_name = params.get("type")
         width = TYPES[kind_name].width if kind_name in TYPES else UNTYPED_WIDTH_M
-        out[name] = (index, ports, _polyline(start, segments), width)
+        out[name] = (index, ports, conveyor_path.path_polyline(start, segments, _ARC_STEP_DEG), width)
     return out
-
-
-def _polyline(start, segments) -> list:
-    """The path's points, entry to end: a straight's ends, an arc's chords."""
-    points, pose = [(start.x, start.y)], conveyor_path.Pose(*start)
-    for seg in segments:
-        steps = 1 if seg.kind == "straight" else max(1, math.ceil(seg.angle / _ARC_STEP_DEG))
-        for k in range(1, steps + 1):
-            p = conveyor_path.pose_at(pose, [seg], seg.length * k / steps)
-            points.append((p.x, p.y))
-        pose = conveyor_path.pose_at(pose, [seg], seg.length)
-    return points
 
 
 def _out_ports(names: list, outgoing: list, reverse_to: str = "") -> dict:
@@ -200,8 +210,9 @@ def _exits(block: dict, params: dict) -> tuple[list, str]:
     return names, reverse_to
 
 
-def _open_ports(floor: dict, links: list) -> list:
-    found, outgoing, incoming = [], {}, {}
+def _open_pairs(floor: dict, links: list):
+    """Yield (name, port) of each open port, block by block in layout order."""
+    outgoing, incoming = {}, {}
     for link in links:
         outgoing.setdefault(link.get("source"), []).append(link)
         incoming.setdefault(link.get("target"), []).append(link)
@@ -217,15 +228,21 @@ def _open_ports(floor: dict, links: list) -> list:
             if "in" not in ports:
                 ports.insert(0, "in")
         for port in ports:
-            if port in linked:
-                continue
-            what = "Belt" if kind == "CONVEYOR" else "Transfer"
-            found.append(problem(
-                "W_CONVEYOR_OPEN_PORT", f"{what} {name}: port '{port}' is open, no link "
-                f"joins it", f"/blocks/{index}", block=name,
-                hint="snap the next piece to it or draw a link from it; between areas a link "
-                     "with a delay counts",
-                fields={"case": "belt" if what == "Belt" else "transfer", "port": port}))
+            if port not in linked:
+                yield name, port
+
+
+def _open_ports(floor: dict, links: list) -> list:
+    found = []
+    for name, port in _open_pairs(floor, links):
+        index, block, kind, _params = floor[name]
+        what = "Belt" if kind == "CONVEYOR" else "Transfer"
+        found.append(problem(
+            "W_CONVEYOR_OPEN_PORT", f"{what} {name}: port '{port}' is open, no link "
+            f"joins it", f"/blocks/{index}", block=name,
+            hint="snap the next piece to it or draw a link from it; between areas a link "
+                 "with a delay counts",
+            fields={"case": "belt" if what == "Belt" else "transfer", "port": port}))
     return found
 
 

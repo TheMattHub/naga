@@ -57,7 +57,7 @@ m.add_resource(name='Server', capacity=2, discipline='FIFO')
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 31 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas digester, holder and CHP](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md) and 32 more.
 
 Guides: [Model file format](../../model-file-format.md), [Coming from SimPy](../../coming-from/simpy.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md), [Digital twin](../../digital-twin.md) and 5 more.
 

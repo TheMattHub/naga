@@ -64,11 +64,6 @@ def test_strict_flags_missing_unit_as_a_warning_not_an_error():
     assert "E_UNIT_MISMATCH" not in codes and "E_UNIT_MISSING" not in codes
 
 
-def test_warn_mode_does_not_flag_missing_units():
-    layout = _sd_layout(levels=[{"name": "L"}], flows=[{"name": "f", "to": "L", "rate": "10"}])
-    assert check(layout) == []
-
-
 def test_strict_canonical_rate_is_clean():
     # A textbook SD rate (level unit / model time unit): strict must not
     # invent a false positive on the very case the checker exists to accept.

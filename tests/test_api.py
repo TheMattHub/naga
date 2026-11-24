@@ -38,7 +38,10 @@ def test_run_model_returns_the_frames_with_rows_per_replication(curated_results)
     # D1321: only the frames with rows come back ("system" always); the rest of
     # KEYS are named in `_dropped`, so nothing is lost without a trace.
     # a belt with points; a photo-eye's frame too (D1347), only when a model has one
-    extra = {"conveyor_stops", "conveyor_diverts", "conveyor_merges", "conveyor_eyes"}
+    # and the conveyor system's frames (plan A), only when a model has zoned or metered belts, transfers,
+    # route holds or area links (the bundled conveyor_line, D1417)
+    extra = {"conveyor_stops", "conveyor_diverts", "conveyor_merges", "conveyor_eyes",
+             "conveyor_flow", "conveyor_zones", "transfer_summary", "route_holds", "link_flow"}
     for path, results in curated_results.items():
         assert "system" in results, path.stem
         empty = sorted(name for name, frame in results.items() if frame.empty and name != "system")

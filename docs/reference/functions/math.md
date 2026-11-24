@@ -71,7 +71,7 @@ a when c else b; only the branch taken is evaluated.
 
 Example: `IF(3 > 2, 10, 20)` gives 10.
 
-Used in the bundled models Boids flock (continuous, heading), Nagel-Schreckenberg traffic (ring), Schelling segregation (grid), Sugarscape with regrowth (grid, patches) and 3 more.
+Used in the bundled models Boids flock (continuous, heading), Nagel-Schreckenberg traffic (ring), Schelling segregation (grid), Sugarscape with regrowth (grid, patches) and 4 more.
 
 ## int
 

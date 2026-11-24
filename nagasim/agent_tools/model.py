@@ -7,8 +7,10 @@ package.
 """
 from __future__ import annotations
 
-from nagasim.core import conveyor_checks, conveyor_path, document, layout_tools
-from nagasim.core.blocks import conveyor
+import math
+from collections import Counter
+
+from nagasim.core import conveyor_checks, conveyor_path, floor, layout_tools
 from nagasim.core.conveyor_types import TYPES
 from nagasim.core.timeunits import LENGTH_UNITS, UNITS, units_of
 
@@ -400,15 +402,6 @@ def set_item_code(model: str, definition: str, source: str, class_name: str,
                                       "problems": [plainlines.plain(p) for p in mine]})
 
 
-def _belt_ports(doc, name: str) -> list:
-    """The ports of block *name* (a CONVEYOR), laid out from its floor-plan pose."""
-    block = doc.blocks[name]
-    return conveyor.belt_ports({"name": name, "params": block.params,
-                                "layout_position": block.layout_position,
-                                "layout_rotation": block.layout_rotation},
-                               units_of(doc.simulation))
-
-
 def _model_units(doc):
     """The model's units, or E_UNIT when its time or length unit is one this build does not
     know (#2011: `write_model` keeps a draft with a bad unit so its errors can be listed, and
@@ -437,23 +430,20 @@ _document_args("place_piece",
                        "\"X.left\"): the piece starts at that port, facing its way, and the two "
                        "are linked.",
                speed="Belt speed, model length per time unit; default: the type's datasheet speed "
-                     "(untyped: block default).")
+                     "(untyped: block default).",
+               gap="With snap_to: metres of floor between the port and the piece's entry, along "
+                   "the port's heading; above 0 it needs a delay (an area link).",
+               delay="With snap_to: the link's transfer delay, as connect takes it; required "
+                     "when gap is above 0.",
+               capacity="With snap_to: parts the delayed link holds at once, as connect takes "
+                        "it; 0 = no limit. Needs delay.")
+
+_PATH_HINT = ("segments: [{\"straight\": 2.0}, "
+              "{\"arc\": {\"radius\": 1.0, \"angle\": 90, \"turn\": \"left\"}}]")
 
 
-@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float})
-def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: float = 0.0,
-                y: float = 0.0, rotation: float = 0.0, snap_to: str = "",
-                speed: float | None = None) -> dict:
-    """Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at
-    (x, y) and travelling at *rotation*.
-
-    With *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that
-    port, facing its way, and a link with `source_port` / `target_port` is added, so no
-    coordinates are computed by hand. One undo entry. Segment lengths and radii are in the
-    model's length unit.
-    """
-    doc, before = _open(model)
-    _model_units(doc)
+def _piece_kind(type: str, speed, segments) -> str:
+    """The conveyor type of a new belt piece, or the ToolError for a bad type, speed or path."""
     if speed is not None and (isinstance(speed, bool) or not isinstance(speed, (int, float))
                               or not speed > 0):
         raise ToolError("E_PLACE_SPEED", f"speed {speed!r} is not a number above 0",
@@ -465,28 +455,160 @@ def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: 
     try:
         conveyor_path.parse_path(segments)
     except ValueError as exc:
-        raise ToolError("E_PLACE_PATH", str(exc), "segments: [{\"straight\": 2.0}, "
-                        "{\"arc\": {\"radius\": 1.0, \"angle\": 90, \"turn\": \"left\"}}]")
+        raise ToolError("E_PLACE_PATH", str(exc), _PATH_HINT)
+    return kind
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) \
+        and math.isfinite(value)
+
+
+def _merge_hint(trunk_params: dict) -> str:
+    """The hint for a refused merge point: no `at` helps on a trunk that is zoned, reversible or
+    not accumulating (the engine refuses a merge there), so say what to change instead."""
+    if (trunk_params.get("zones") or trunk_params.get("reversible")
+            or trunk_params.get("accumulating") is False):
+        return ("no `at` works on this trunk: merge into another belt, or remove its zones or "
+                "reversible flag, or make it accumulating")
+    return "pick another at, strictly inside the trunk and off its other points"
+
+
+def _gap_link(snap_to: str, gap, delay, capacity):
+    """(gap, delay, capacity) of `place_piece`'s link, checked, or the E_PLACE_GAP saying why
+    not. A gap needs a delay: an undelayed link between pieces that do not touch would move
+    parts across the gap in no time (plan B: a delayed link is never a joint)."""
+    if not _is_number(gap) or gap < 0:
+        raise ToolError("E_PLACE_GAP", f"gap {gap!r} is not a number of metres of 0 or more",
+                        "give the gap in metres, or leave it at 0")
+    if (gap > 0 or delay is not None or capacity is not None) and not snap_to:
+        raise ToolError("E_PLACE_GAP", "gap, delay and capacity set the snapped link, and no "
+                        "snap_to is given", "give snap_to \"<block>.<port>\" of the belt end "
+                        "the piece follows")
+    if capacity is not None and not delay:
+        raise ToolError("E_PLACE_GAP", "capacity limits a delayed link, and no delay is given",
+                        "give delay too, or leave capacity out")
+    if gap > 0 and not delay:
+        raise ToolError("E_PLACE_GAP", f"a gap of {gap:g} m needs a delay to carry parts "
+                        "across it", "give delay, e.g. {\"distribution\": \"Constant\", "
+                        "\"dist_params\": {\"value\": 2}}")
+    if capacity is not None and (not isinstance(capacity, int) or isinstance(capacity, bool)
+                                 or capacity < 0):
+        raise ToolError("E_PLACE_GAP", f"capacity {capacity!r} is not a whole number of 0 or "
+                        "more", "give the parts the link holds at once; 0 = no limit")
+    return float(gap), (_duration(delay, "delay") if delay else None), capacity
+
+
+@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float})
+def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: float = 0.0,
+                y: float = 0.0, rotation: float = 0.0, snap_to: str = "",
+                speed: float | None = None, gap: float = 0.0, delay: dict | None = None,
+                capacity: int | None = None) -> dict:
+    """Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at
+    (x, y) and travelling at *rotation*.
+
+    With *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that
+    port, facing its way, and a link with `source_port` / `target_port` is added, so no
+    coordinates are computed by hand. One undo entry. Segment lengths and radii are in the
+    model's length unit.
+    """
+    doc, before = _open(model)
+    _model_units(doc)
+    kind = _piece_kind(type, speed, segments)
+    gap, delay, capacity = _gap_link(snap_to, gap, delay, capacity)
     source = None
     if snap_to:
         source = _snap_port(doc, model, snap_to)
         x, y, rotation = source.pose
+        x += gap * math.cos(math.radians(rotation))
+        y += gap * math.sin(math.radians(rotation))
     x, y = round(float(x), 6), round(float(y), 6)
     with doc.transaction():
-        created = doc.add_block("CONVEYOR", (200.0 + 220.0 * len(doc.blocks), 300.0), name)
-        params = {**doc.blocks[created].params, "path": segments}
-        if kind:
-            # Written at creation so the file shows it (D1298), in the datasheet's own unit so a
-            # later change of the model's time unit leaves the belt's speed as it is (I1).
-            params.update(type=kind, speed=TYPES[kind].speed, speed_unit="m/s")
-        if speed is not None:
-            params.update(speed=float(speed), speed_unit="base")
-        doc.set_params(created, params)
-        doc.set_layout_positions({created: (x, y)})
-        doc.set_layout_rotations({created: rotation})     # folded into [0, 360) (D74)
-        if source is not None:
-            ours = next(p for p in _belt_ports(doc, created) if p.name == "in")
-            document.connect_ports(doc, source, ours)
+        created = floor.add_belt_piece(doc, segments, kind, (x, y, rotation), source, speed,
+                                          name)
+        if delay:
+            doc.set_link_delay(source.block, created, delay)
+        if capacity is not None:
+            doc.set_link_area(source.block, created, {"capacity": capacity})
+    return _edit_result(doc, before, {
+        "block": created, "layout_position": [x, y],
+        "layout_rotation": doc.blocks[created].layout_rotation})
+
+
+_document_args("place_feeder",
+               model="Workspace name of the model to edit.",
+               name="Name of the new feeder belt.",
+               segments="The feeder's pieces, entry to end, in the model's length unit, as "
+                        "place_piece takes them; its end lands on the trunk.",
+               trunk="The CONVEYOR (drawn on the floor) the feeder merges into.",
+               at="Where on the trunk, from its entry, in the trunk's length unit (the merge "
+                  "entry's `at`).",
+               side="\"left\" or \"right\" of the trunk's direction of travel: the "
+                    "side the feeder comes from.",
+               angle="Degrees between the trunk's travel there and the feeder's, in (0, 90]: 90 "
+                     "is square on, less leans the feeder downstream, as a divert's angle.",
+               type="Conveyor type of the feeder, as place_piece takes it.",
+               speed="Feeder speed, as place_piece takes it.")
+
+
+@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float})
+def place_feeder(model: str, name: str, segments: list[dict], trunk: str, at: float,
+                 side: str = "left", angle: float = 90.0, type: str = "",
+                 speed: float | None = None) -> dict:
+    """Add a belt piece whose end merges into belt *trunk*'s side at *at*: a CONVEYOR placed so
+    that its path ends on the trunk's centreline there, plus the trunk's merge entry and the
+    link from the feeder, in one undo entry.
+
+    The start pose is solved from *segments*, so no coordinates are computed by hand.
+    """
+    doc, before = _open(model)
+    units = _model_units(doc)
+    found = floor.floor_geometry(doc, trunk)
+    if found is None:
+        names = [n for n, b in doc.blocks.items() if b.type == "CONVEYOR"
+                 and floor.floor_geometry(doc, n) is not None]
+        raise ToolError("E_UNKNOWN_BLOCK", f"no CONVEYOR named '{trunk}' is drawn on the floor "
+                        f"of model '{model}'", f"belts: {', '.join(names[:5]) or '(none)'}")
+    kind = _piece_kind(type, speed, segments)
+    if name in doc.blocks:
+        raise ToolError("E_PLACE_NAME", f"a block named '{name}' already exists in model "
+                        f"'{model}'", "give the feeder a name no block has")
+    if not segments:
+        raise ToolError("E_PLACE_PATH", "a feeder needs at least one segment", _PATH_HINT)
+    if not _is_number(angle) or not 0.0 < angle <= 90.0:
+        raise ToolError("E_PLACE_ANGLE", f"angle {angle!r} is not above 0 and at most 90",
+                        "90 is square on; less leans the feeder downstream")
+    if side not in ("left", "right"):
+        raise ToolError("E_PLACE_ANGLE", f"side {side!r} is not \"left\" or \"right\"",
+                        "the side of the trunk's travel the feeder comes from")
+    if not _is_number(at):
+        raise ToolError("E_PLACE_MERGE", f"at {at!r} is not a number", "a distance from the "
+                        "trunk's entry, in its length unit")
+    reason = floor.point_refusal(doc, trunk, "merges", float(at), source=name or None)
+    if reason is not None:
+        raise ToolError("E_PLACE_MERGE", reason, _merge_hint(doc.blocks[trunk].params or {}))
+    there = floor.merge_point(doc, trunk, float(at))
+    # The feeder travels *angle* off the trunk's tangent, towards it from *side*: from the left
+    # its heading is the trunk's plus the angle (a left divert's exit, leaving the trunk, is
+    # the trunk's minus it).
+    heading = there.heading + (angle if side == "left" else -angle)
+    # Its path laid from the origin heading 0 ends at (ex, ey, eh): turn it by heading - eh and
+    # shift it so that end lands on the merge point.
+    from nagasim.core.blocks.conveyor import belt_geometry
+    _origin, own, _ = belt_geometry({"params": {"path": segments}}, units)
+    end = conveyor_path.end_pose(conveyor_path.Pose(0.0, 0.0, 0.0), own)
+    h0 = heading - end.heading
+    c, s = math.cos(math.radians(h0)), math.sin(math.radians(h0))
+    x = round(there.x - (end.x * c - end.y * s), 6)
+    y = round(there.y - (end.x * s + end.y * c), 6)
+    with doc.transaction():
+        created = floor.add_belt_piece(doc, segments, kind, (x, y, round(h0, 6)), None,
+                                          speed, name)
+        params = doc.blocks[trunk].params or {}
+        doc.set_params(trunk, {**params, "merges": list(params.get("merges") or [])
+                               + [{"at": float(at), "from": created}]})
+        # No target port: a merge's link enters at the merge point, not "in" (as the editor).
+        doc.add_link(created, trunk, source_port="out")
     return _edit_result(doc, before, {
         "block": created, "layout_position": [x, y],
         "layout_rotation": doc.blocks[created].layout_rotation})
@@ -501,35 +623,42 @@ _document_args("set_layout",
                         "way from its entry.")
 
 
-@tool(returns={**EDIT, "block": str})
+@tool(returns={**EDIT, "block": str, "dropped_links": list, "dropped_merges": list})
 def set_layout(model: str, block: str, x: float, y: float, rotation: float) -> dict:
     """Place a block on the floor plan: its position and rotation, one undo entry. Cosmetic for
-    most blocks; a CONVEYOR's path starts from this pose."""
+    most blocks; a CONVEYOR's path starts from this pose. A belt piece or transfer moves as in
+    the editor: the joins and merges it no longer meets are dropped and listed."""
     doc, before = _open(model)
     if block not in doc.blocks:
         raise ToolError("E_UNKNOWN_BLOCK", f"no block named '{block}' in model '{model}'",
                         f"blocks: {', '.join(doc.blocks) or '(none)'}")
+    piece = conveyor_checks.floor_piece(doc.blocks[block].type, doc.blocks[block].params)
+    links_before, merges_before = Counter(_link_pairs(doc)), _merge_rows(doc)
     with doc.transaction():
-        doc.set_layout_positions({block: (float(x), float(y))})
-        doc.set_layout_rotations({block: float(rotation)})
-    return _edit_result(doc, before, {"block": block})
+        # The editor's one move rule (O10), without capture as a nudge: the pose is the agent's.
+        floor.move_floor(doc, {block: (float(x), float(y))}, {block: float(rotation)})
+    if not piece:
+        return _edit_result(doc, before, {"block": block})
+    # Read off the file, not off the rule's steps: a join dropped and made again at the same
+    # ports is no change. A dropped merge's feeder link is listed with its merge only.
+    merges_after = _merge_rows(doc)
+    merges = [m for m in merges_before if m not in merges_after]
+    gone = {(m["from"], m["trunk"]) for m in merges}
+    lost = links_before - Counter(_link_pairs(doc))
+    return _edit_result(doc, before, {
+        "block": block, "dropped_merges": merges,
+        "dropped_links": [f"{s} -> {t}" for (s, t), n in lost.items() if (s, t) not in gone
+                          for _ in range(n)]})
 
 
-def _transfer_ports(name: str, position, rotation, params: dict) -> list:
-    """A CONVEYOR_TRANSFER's ports as `conveyor_path.Port`s: "in" and one out port per exit
-    (`conveyor_path.exit_names`). It has no footprint, so each pose is the module's position;
-    "in" heads along the module's rotation, an exit that heading turned by the exit's angle. The
-    one rule of `get_ports` and of `snap_to` on an exit."""
-    x, y = position or (0.0, 0.0)
-    heading = float(rotation or 0.0)
-    angles = {str(e.get("port")): float(e.get("angle", 0.0))
-              for e in params.get("exits") or [] if isinstance(e, dict)}
-    names = conveyor_path.exit_names({"type": "CONVEYOR_TRANSFER", "params": params})
-    return [conveyor_path.Port(name, "in", conveyor_path.Pose(float(x), float(y), heading % 360.0),
-                               "in")] + [
-        conveyor_path.Port(name, port, conveyor_path.Pose(
-            float(x), float(y), (heading + angles.get(port, 0.0)) % 360.0), "out")
-        for port in names]
+def _link_pairs(doc) -> list[tuple[str, str]]:
+    return [(link.source, link.target) for link in doc.link_records()]
+
+
+def _merge_rows(doc) -> list[dict]:
+    return [{"trunk": name, "from": m.get("from"), "at": m.get("at")}
+            for name, b in doc.blocks.items() if b.type == "CONVEYOR"
+            for m in (b.params or {}).get("merges") or [] if isinstance(m, dict)]
 
 
 def _snap_port(doc, model: str, snap_to: str):
@@ -543,11 +672,8 @@ def _snap_port(doc, model: str, snap_to: str):
         raise ToolError("E_UNKNOWN_BLOCK", f"snap_to: no block named '{block}' in model "
                         f"'{model}'", form)
     kind = doc.blocks[block].type
-    if kind == "CONVEYOR":
-        ports = _belt_ports(doc, block)
-    elif kind == "CONVEYOR_TRANSFER":
-        entry = doc.blocks[block]
-        ports = _transfer_ports(block, entry.layout_position, entry.layout_rotation, entry.params)
+    if kind in ("CONVEYOR", "CONVEYOR_TRANSFER"):
+        ports = floor.piece_ports(doc, block)
     else:
         raise ToolError("E_UNKNOWN_BLOCK", f"snap_to: block '{block}' is a {kind}, not a "
                         "CONVEYOR or CONVEYOR_TRANSFER", form)
@@ -605,15 +731,7 @@ def place_transfer(model: str, name: str, mechanism: str = "popup", exits: list[
         source = _snap_port(doc, model, snap_to)
         x, y, rotation = source.pose
     x, y = round(float(x), 6), round(float(y), 6)
-    with doc.transaction():
-        created = doc.add_block("CONVEYOR_TRANSFER", (200.0 + 220.0 * len(doc.blocks), 300.0), name)
-        doc.set_params(created, {**doc.blocks[created].params, "mechanism": kind,
-                                 "exits": [{"port": e["port"].strip(), "angle": float(e["angle"])}
-                                           for e in listed]})
-        doc.set_layout_positions({created: (x, y)})
-        doc.set_layout_rotations({created: rotation})
-        if source is not None:
-            doc.add_link(source.block, created, source_port=source.name)
+    created = floor.add_transfer_piece(doc, kind, listed, (x, y, rotation), source, name)
     return _edit_result(doc, before, {
         "block": created, "layout_position": [x, y],
         "layout_rotation": doc.blocks[created].layout_rotation})
@@ -651,6 +769,7 @@ def get_ports(model: str, block: str) -> dict:
     links = [k for k in layout.get("links") or [] if isinstance(k, dict)]
     taken = conveyor_checks.exit_links(entry, [k for k in links if k.get("source") == block])
     merges = {m.get("from") for m in params.get("merges") or [] if isinstance(m, dict)}
+    by_name = {b.get("name"): b.get("params") or {} for b in layout["blocks"]}
     feeders = sorted(f"{k['source']}.{k.get('source_port') or 'out'}" for k in links
                      if k.get("target") == block and k.get("source") not in merges
                      and k.get("target_port") in (None, "", "in"))
@@ -659,11 +778,18 @@ def get_ports(model: str, block: str) -> dict:
         if role == "in":
             return feeders
         link = taken.get(port)
-        return [f"{link['target']}.{link.get('target_port') or 'in'}"] if link else []
+        if not link:
+            return []
+        # A merge link enters the trunk's side at a point, not at its "in" (D1423).
+        merge = next((m for m in by_name.get(link["target"], {}).get("merges") or []
+                      if isinstance(m, dict) and m.get("from") == block), None)
+        if merge is not None:
+            return [f"{link['target']} (merge at {merge.get('at')})"]
+        return [f"{link['target']}.{link.get('target_port') or 'in'}"]
 
-    found = (_belt_ports(doc, block) if kind == "CONVEYOR" else
-             _transfer_ports(block, entry.get("layout_position"), entry.get("layout_rotation"),
-                             params))
+    found = (floor.piece_ports(doc, block) if kind == "CONVEYOR" else
+             conveyor_path.transfer_ports(block, entry.get("layout_position"),
+                                          entry.get("layout_rotation"), params))
     return {"block": block, "type": kind, "ports": [
         {"name": p.name, "role": p.role, "x": round(p.pose.x, 6), "y": round(p.pose.y, 6),
          "heading": round(p.pose.heading, 6) % 360.0, "linked_to": joined(p.name, p.role)}

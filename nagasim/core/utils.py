@@ -92,13 +92,15 @@ class ResourceLog:
         self._kinds = []          # code -> (event_type, time is int)
         self._head = 0            # index of the oldest row once the log is full
 
-    def add(self, time, in_use: int, queue_length: int, event_type=None) -> None:
+    def add(self, time, in_use: int, queue_length: int, event_type=None) -> bool:
         """Log one row. Lean on purpose (#1561): this runs on every request,
-        seize and release."""
+        seize and release. True when the log was full (`maxlen` rows), so the row
+        replaced the oldest: what a caller's truncation flag reads (speed review R9)."""
         is_int = type(time) is int
-        code = self._codes[is_int].get(event_type)
+        codes = self._codes[is_int]
+        code = codes[event_type] if event_type in codes else None      # no `get` call (R9)
         if code is None:
-            code = self._codes[is_int][event_type] = len(self._kinds)
+            code = codes[event_type] = len(self._kinds)
             self._kinds.append((event_type, is_int))
         times = self._time
         maxlen = self.maxlen
@@ -117,9 +119,9 @@ class ResourceLog:
                 for a in arrays:
                     del a[n:]
                 raise
-            return
+            return False
         if not maxlen:
-            return
+            return False
         i = self._head              # full: overwrite the oldest row
         old = times[i], self._in_use[i], self._queue[i], self._code[i]
         try:
@@ -128,6 +130,7 @@ class ResourceLog:
             times[i], self._in_use[i], self._queue[i], self._code[i] = old
             raise
         self._head = (i + 1) % maxlen
+        return True
 
     def append(self, snapshot: ResourceSnapshot) -> None:
         self.add(snapshot.time, snapshot.in_use, snapshot.queue_length, snapshot.event_type)

@@ -11,7 +11,8 @@ def spawn_entity(ctx, e_type=None, attrs=None, creation_time=None) -> "Entity":
     """A new entity registered with the run: the one path CREATE, an initial
     state snapshot and an agent's `enter` action (PHASE5 AB-2) all take."""
     entity = Entity(next(ctx.entity_ids))
-    entity.creation_time = ctx.now if creation_time is None else creation_time
+    # The field, not the property's setter (speed review R5): a plain store either way
+    entity._creation_time = ctx.now if creation_time is None else creation_time
     if e_type:
         entity.e_type = e_type
     for key, value in (attrs or {}).items():

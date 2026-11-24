@@ -95,9 +95,9 @@ _MODEL_ALTERNATIVES = {"study_step": ("layout", "patch")}
 # tests/test_ui_assistant_thread.py classes every offered tool, so a new tool without a class fails.
 ON_GUI = frozenset({
     "add_block", "auto_layout", "calibrate", "check_model_opens", "connect", "disconnect",
-    "place_piece", "place_transfer", "propose_plugin_folder", "remove_blocks", "remove_node", "remove_record", "remove_segment",
+    "place_feeder", "place_piece", "place_transfer", "propose_plugin_folder", "remove_blocks", "remove_node", "remove_record", "remove_segment",
     "reorder_branches", "resolve_data_bindings", "set_calendar", "set_entity_types",
-    "set_initial_state", "set_item_code", "set_layout", "set_resources", "set_sd_settings", "set_simulation_settings",
+    "set_initial_state", "set_item_code", "set_layout", "set_model_info", "set_resources", "set_sd_settings", "set_simulation_settings",
     "update_block", "upsert_node", "upsert_orders_from_csv", "upsert_record", "upsert_scenario",
     "upsert_segment", "upsert_table_from_csv", "upsert_timeseries_input_from_csv", "write_model"})
 OFF_GUI = frozenset({

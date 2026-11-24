@@ -33,7 +33,7 @@ def _node22() -> bool:
         return False
 
 
-pytestmark = [pytest.mark.slow,
+pytestmark = [pytest.mark.slow, pytest.mark.xdist_group("audit_pages"),
               pytest.mark.skipif(not (_node22() and BROWSERS), reason="node 22 and Chrome or Edge are needed")]
 
 # What the page shows, measured in the page. Text: every element with a text node of its own that
@@ -92,8 +92,8 @@ def _cli(*args, cwd):
 
 
 @pytest.fixture(scope="module")
-def pages(tmp_path_factory):
-    return build_pages(tmp_path_factory)
+def pages(audit_pages):
+    return audit_pages
 
 
 def build_pages(tmp_path_factory) -> dict:

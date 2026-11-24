@@ -45,7 +45,7 @@ uniform [0, 1), sampled from the calling block's own rng.
 
 Example: `RAND()` gives 0.8133.
 
-Used in the bundled models Container terminal: electrification, Container terminal: quay to yard, Make-to-order line (library assets), Priority jobs with rework and 1 more.
+Used in the bundled models Conveyor line with a sorter, a transfer and a two-way chain, Container terminal: electrification, Container terminal: quay to yard, Make-to-order line (library assets) and 2 more.
 
 ## TRIA
 

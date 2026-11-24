@@ -159,9 +159,12 @@ def profile(name, top=25):
             row[2] = round(row[2] + entry.inlinetime, 4)
             row[3] = round(row[3] + entry.totaltime, 4)
         out["phases"][key] = {"calls": calls, "primitive": primitive}
-    out["entities"] = sum(v[0] for k, v in fn.items() if k.startswith("nagasim/core/sim_classes.py")
-                          and k.endswith("(__init__)") and ":31(" in k) or None
-    out["events"] = sum(v[0] for k, v in fn.items() if k.startswith("simpy/core.py") and k.endswith("(step)"))
+    from nagasim.core.sim_classes import Entity      # its line, not a fixed one: edits move it
+    line = Entity.__init__.__code__.co_firstlineno
+    out["entities"] = fn.get(f"nagasim/core/sim_classes.py:{line}(__init__)", [0])[0] or None
+    # One heap pop per processed event, whether SimPy's `step` or the engine's own copy of it
+    # (speed review R1) pops it; the same count as `step` calls on a tree before R1.
+    out["events"] = fn.get("~:0(<built-in method _heapq.heappop>)", [0])[0]
     out["calls"] = sum(p["calls"] for p in out["phases"].values())
     out["primitive"] = sum(p["primitive"] for p in out["phases"].values())
     out["top_tottime"] = sorted(fn, key=lambda k: -fn[k][2])[:top]

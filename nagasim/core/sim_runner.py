@@ -11,8 +11,12 @@ from nagasim.core.schema import read_layout
 import math
 import logging
 import time
+from heapq import heappop
 
+import simpy
+from simpy.core import StopSimulation
 from simpy.events import URGENT
+
 
 # Events processed at ONE timestamp before the run is declared stuck (DEVLOG #88).
 # A big legitimate burst (100k entities through ten zero-time blocks) stays well under it.
@@ -248,12 +252,21 @@ def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None =
     stalled_at, stalled_events = env.now, 0
     peek, step = env.peek, env.step
     ctx, inf = env.ctx, math.inf
+    # Speed review R1: SimPy 4.1's `peek` and `step` written out below (two calls per event),
+    # unless the environment's class or this instance replaces either (a test wraps `step`).
+    own = vars(env)
+    queue = env._queue if (type(env).step is simpy.Environment.step
+                           and type(env).peek is simpy.Environment.peek
+                           and "step" not in own and "peek" not in own) else None
     sampler = getattr(ctx, "sampler", None)     # getattr: a stub context has none
     next_tick = inf if sampler is None else sampler.next_tick
     if pacer is not None:
         pacer.begin(env.now)
     while True:
-        t = peek()                  # once per event: this loop runs for every one
+        if queue is None:
+            t = peek()              # once per event: this loop runs for every one
+        else:
+            t = queue[0][0] if queue else inf
         if next_tick < t and (next_tick <= limit or t == inf):
             # The sampler's turn (ROADMAP 1.7; never without one, `next_tick`
             # is then inf): every event up to the tick is done. A sample is
@@ -280,14 +293,33 @@ def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None =
         if should_stop is not None and should_stop():
             interrupted = True
             break
-        step()                      # the clock is at t from here on
+        if queue is None:
+            step()                  # the clock is at t from here on
+        else:
+            # `Environment.step` of SimPy 4.1.2, verbatim (the queue is not empty: t < inf);
+            # `tests/test_simpy_internals.py` fails on a SimPy whose step differs (D1398)
+            env._now, _, _, event = heappop(queue)
+            callbacks, event.callbacks = event.callbacks, None
+            try:
+                for callback in callbacks:
+                    callback(event)
+            except StopSimulation:
+                # The callbacks left run when the simulation resumes
+                event.callbacks = callbacks[callbacks.index(callback) + 1:]
+                env.schedule(event, -1)     # EventPriority(-1), a NewType of int
+                raise
+            if not event._ok and not hasattr(event, "_defused"):
+                exc = type(event._value)(*event._value.args)
+                exc.__cause__ = event._value
+                raise exc
         # "Not advancing" includes creeping: a loop that moves time by a rounding
         # error per event (1e-13) never sits AT one timestamp, yet never gets
         # anywhere either (DEVLOG #106). Real models do not schedule events a
         # billionth of a time unit apart five million times in a row.
         # `t != stalled_at` first: most events share their instant with the one
-        # before, and that skips the arithmetic.
-        if t != stalled_at and t - stalled_at > STALL_TIME_EPSILON * max(1.0, abs(t)):
+        # before, and that skips the arithmetic. `max(1.0, abs(t))` written out (R1).
+        if t != stalled_at and t - stalled_at > STALL_TIME_EPSILON * (
+                t if t > 1.0 else -t if t < -1.0 else 1.0):
             stalled_at, stalled_events = t, 0
         else:
             stalled_events += 1

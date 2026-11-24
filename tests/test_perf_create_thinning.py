@@ -85,3 +85,23 @@ def test_a_rejected_candidate_costs_no_event():
     arrivals, candidates = _thinning_by_hand(0, points)
     assert arrivals and candidates > 3000
     assert steps - baseline < candidates / 10
+
+
+def test_the_inline_schedule_read_matches_value_at_with_repeat_and_an_offset(monkeypatch):
+    """Speed review R10: the thinning loop reads a plain Schedule's rate itself. With `repeat`
+    and a negative offset (the fold below zero, `at += cycle_length`), every arrival time is
+    the one `Schedule.value_at` gives (the read turned off by hiding the plain type)."""
+    from nagasim.core.blocks import create as create_module
+    from nagasim.core.sim_runner import setup_run, step_until
+
+    def arrivals():
+        doc = _model(points=[[3.0, 6.0], [2.0, 0.5], [4.0, 3.0]])
+        doc["schedules"][0]["repeat"] = True
+        doc["simulation"] = {"time_limit": 60, "warmup": 0, "replications": 1, "record_logs": True}
+        env, _model_ = setup_run(doc, seed=4, run_len=60, warmup=0.0)
+        env.ctx.schedules["day"].offset = -7.3      # before the first arrival is drawn
+        step_until(env, 60)
+        return [e.creation_time for e in env.ctx.all_entities if e.e_type == "N"]
+    inline = arrivals()
+    monkeypatch.setattr(create_module, "Schedule", type("NotPlain", (), {}))
+    assert len(inline) > 50 and arrivals() == inline

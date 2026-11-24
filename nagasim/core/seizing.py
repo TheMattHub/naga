@@ -335,13 +335,13 @@ def acquire_plain(block, entity, target_name, resource, priority):
         raise RuntimeError(f"Entity {entity.id} already requested resource '{target_name}'.")
     ctx = block.ctx
     env = block.env
-    asked = env.now
+    asked = env._now      # the clock without the property (speed review R3)
     if ctx.bus._subscribers:
         entity._queued = next(ctx.queue_seq)      # #349
         entity._asked = asked                     # D383
     request = resource.request_plain(priority)
     yield request
-    now = env.now
+    now = env._now
     if ctx.entity_waits:      # D1232
         entity._total_wait = getattr(entity, "_total_wait", 0.0) + now - asked
     if not hasattr(entity, "req_params"):

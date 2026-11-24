@@ -73,6 +73,18 @@ def parse_path(raw) -> list[Segment]:
     return out
 
 
+def length_decimals(factor: float) -> int:
+    """Decimals of a length or point written in a belt's unit (*factor* metres per unit): the
+    finer of 0.01 of the unit and 0.01 m, so 2 in m and mm, 5 in km (the editor's and
+    `insert_block_on_link`'s one rule, conveyor plan B)."""
+    return max(2, math.ceil(math.log10(factor) + 2 - 1e-9))
+
+
+def round_length(value: float, factor: float) -> float:
+    """*value* in a belt's unit rounded by `length_decimals`."""
+    return round(value, length_decimals(factor))
+
+
 def path_length(segments) -> float:
     return float(sum(seg.length for seg in segments))
 
@@ -361,3 +373,31 @@ def belt_exit_targets(layout: dict, by_name: dict) -> dict[str, list]:
     belts = {name: n for name, n in _belt_diverts(layout).items() if name in by_name}
     return {name: [ordered[i]["target"] for i in at]
             for name, at in _links_by_belt(ordered, belts).items()}
+
+
+def transfer_ports(name: str, position, rotation, params: dict) -> list[Port]:
+    """A CONVEYOR_TRANSFER's ports: "in" and one out port per exit (`exit_names`). It has no
+    footprint, so each pose is the module's position; "in" heads along the module's rotation,
+    an exit that heading turned by the exit's angle. The one rule of `get_ports`, of `snap_to`
+    on an exit and of the editor."""
+    x, y = position or (0.0, 0.0)
+    heading = float(rotation or 0.0)
+    angles = {str(e.get("port")): float(e.get("angle", 0.0))
+              for e in params.get("exits") or [] if isinstance(e, dict)}
+    names = exit_names({"type": "CONVEYOR_TRANSFER", "params": params})
+    return [Port(name, "in", Pose(float(x), float(y), heading % 360.0), "in")] + [
+        Port(name, port, Pose(float(x), float(y), (heading + angles.get(port, 0.0)) % 360.0),
+             "out")
+        for port in names]
+
+
+def path_polyline(start: Pose, segments, step_deg: float = 10.0) -> list[tuple[float, float]]:
+    """The path's points, entry to end: a straight's ends, an arc's chords of at most *step_deg*."""
+    points, pose = [(start.x, start.y)], Pose(*start)
+    for seg in segments:
+        steps = 1 if seg.kind == "straight" else max(1, math.ceil(seg.angle / step_deg))
+        for k in range(1, steps + 1):
+            p = pose_at(pose, [seg], seg.length * k / steps)
+            points.append((p.x, p.y))
+        pose = pose_at(pose, [seg], seg.length)
+    return points

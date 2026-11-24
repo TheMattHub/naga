@@ -376,7 +376,7 @@
     "read_only": false
   },
   {
-    "description": "Write a model in the workspace to disk as JSON.\n\nCall it once the model validates. A model created with `new_model` has no\npath of its own, so the first save needs one.",
+    "description": "Write a model in the workspace to disk as JSON.\n\nCall it once the model validates. A model created with `new_model` has no\npath of its own, so the first save needs one. short=True writes the `naga fmt` form,\nfor a file a person will read or diff, or one to ship; it loads as the same model.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -390,6 +390,11 @@
             "string",
             "null"
           ]
+        },
+        "short": {
+          "default": false,
+          "description": "Write the short `naga fmt` form.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -6200,6 +6205,25 @@
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "capacity": {
+          "description": "With snap_to: parts the delayed link holds at once, as connect takes it; 0 = no limit. Needs delay.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "delay": {
+          "description": "With snap_to: the link's transfer delay, as connect takes it; required when gap is above 0.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "gap": {
+          "default": 0.0,
+          "description": "With snap_to: metres of floor between the port and the piece's entry, along the port's heading; above 0 it needs a delay (an area link).",
+          "type": "number"
+        },
         "model": {
           "description": "Workspace name of the model to edit.",
           "type": "string"
@@ -6256,6 +6280,98 @@
       "type": "object"
     },
     "name": "place_piece",
+    "output_schema": {
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "layout_position": {
+          "type": "array"
+        },
+        "layout_rotation": {
+          "type": "number"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
+    "description": "Add a belt piece whose end merges into belt *trunk*'s side at *at*: a CONVEYOR placed so\nthat its path ends on the trunk's centreline there, plus the trunk's merge entry and the\nlink from the feeder, in one undo entry.\n\nThe start pose is solved from *segments*, so no coordinates are computed by hand.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "default": 90.0,
+          "description": "Degrees between the trunk's travel there and the feeder's, in (0, 90]: 90 is square on, less leans the feeder downstream, as a divert's angle.",
+          "type": "number"
+        },
+        "at": {
+          "description": "Where on the trunk, from its entry, in the trunk's length unit (the merge entry's `at`).",
+          "type": "number"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the new feeder belt.",
+          "type": "string"
+        },
+        "segments": {
+          "description": "The feeder's pieces, entry to end, in the model's length unit, as place_piece takes them; its end lands on the trunk.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "side": {
+          "default": "left",
+          "description": "\"left\" or \"right\" of the trunk's direction of travel: the side the feeder comes from.",
+          "type": "string"
+        },
+        "speed": {
+          "description": "Feeder speed, as place_piece takes it.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "trunk": {
+          "description": "The CONVEYOR (drawn on the floor) the feeder merges into.",
+          "type": "string"
+        },
+        "type": {
+          "default": "",
+          "description": "Conveyor type of the feeder, as place_piece takes it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "name",
+        "segments",
+        "trunk",
+        "at"
+      ],
+      "type": "object"
+    },
+    "name": "place_feeder",
     "output_schema": {
       "properties": {
         "block": {
@@ -6449,7 +6565,7 @@
     "read_only": true
   },
   {
-    "description": "Place a block on the floor plan: its position and rotation, one undo entry. Cosmetic for\nmost blocks; a CONVEYOR's path starts from this pose.",
+    "description": "Place a block on the floor plan: its position and rotation, one undo entry. Cosmetic for\nmost blocks; a CONVEYOR's path starts from this pose. A belt piece or transfer moves as in\nthe editor: the joins and merges it no longer meets are dropped and listed.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -6489,6 +6605,85 @@
         "block": {
           "type": "string"
         },
+        "dropped_links": {
+          "type": "array"
+        },
+        "dropped_merges": {
+          "type": "array"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
+    "description": "Write the model's info text, one undo step.\n\nLeave an argument out to keep it; \"\" removes it. Each value is at most 2,000 characters.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "author": {
+          "description": "Author.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "category": {
+          "description": "Gallery category.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "description": "What the model is.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        },
+        "notes": {
+          "description": "Free notes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "Title.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "set_model_info",
+    "output_schema": {
+      "properties": {
         "errors": {
           "type": "integer"
         },

@@ -28,29 +28,31 @@ def _text(frame) -> list:
 
 @pytest.mark.slow
 @pytest.mark.parametrize("seed, reps", [(0, 1), (7, 2)])
-def test_every_bundled_model_is_identical_below_full_outside_the_declared_frames(seed, reps):
-    differ = {}
-    for path in sorted(MODELS.glob("*.json")):
-        full = api.run_model(str(path), seed=seed, replications=reps, keep_empty=True)
-        for level in ("kpi", "series"):
-            low = api.run_model(str(path), seed=seed, replications=reps, keep_empty=True,
-                                log_level=level)
-            gone = loglevels.not_recorded(level)
-            for name, frame in full.items():
-                if name in gone:
-                    assert name not in low, (path.stem, level, name)
-                    continue
-                if not isinstance(frame, pd.DataFrame):
-                    continue
-                kept = frame.drop(columns=[c for c in frame.columns if f"{name}.{c}" in gone])
-                if _text(kept) != _text(low[name]):
-                    differ.setdefault(path.stem, []).append((level, name))
-            # The live count stands for the live rows of the full log, replication by replication.
-            log = full["entity_log"]
-            live = log[log["Exited At"].isna() & log["In Batch"].isna()].groupby("Run").size()
-            if low.live_at_end != {run: int(live.get(run, 0)) for run in low.live_at_end}                     or sorted(low.live_at_end) != sorted(full["system"]["Run"].unique()):
-                differ.setdefault(path.stem, []).append((level, "live_at_end"))
-    assert differ == {}
+@pytest.mark.parametrize("path", sorted(MODELS.glob("*.json")), ids=lambda p: p.stem)
+def test_every_bundled_model_is_identical_below_full_outside_the_declared_frames(path, seed, reps):
+    # One case per model: as one loop it was a single ~500 s test that no xdist worker could share.
+    differ = []
+    full = api.run_model(str(path), seed=seed, replications=reps, keep_empty=True)
+    for level in ("kpi", "series"):
+        low = api.run_model(str(path), seed=seed, replications=reps, keep_empty=True,
+                            log_level=level)
+        gone = loglevels.not_recorded(level)
+        for name, frame in full.items():
+            if name in gone:
+                assert name not in low, (path.stem, level, name)
+                continue
+            if not isinstance(frame, pd.DataFrame):
+                continue
+            kept = frame.drop(columns=[c for c in frame.columns if f"{name}.{c}" in gone])
+            if _text(kept) != _text(low[name]):
+                differ.append((level, name))
+        # The live count stands for the live rows of the full log, replication by replication.
+        log = full["entity_log"]
+        live = log[log["Exited At"].isna() & log["In Batch"].isna()].groupby("Run").size()
+        if (low.live_at_end != {run: int(live.get(run, 0)) for run in low.live_at_end}
+                or sorted(low.live_at_end) != sorted(full["system"]["Run"].unique())):
+            differ.append((level, "live_at_end"))
+    assert differ == []
 
 
 def test_a_series_run_of_a_model_that_samples_nothing_says_so():

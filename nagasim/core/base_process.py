@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from nagasim.core import blocking
+from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.expressions import ExpressionScope
 from nagasim.core.timeunits import base_factor
 import numpy as np
@@ -132,12 +133,24 @@ class BaseProcess(ABC):
         # ROADMAP 2.5: skip building an ExpressionScope for the common case (a
         # plain numeric distribution needs no entity/ctx/variable lookup) --
         # confirmed hot by profiling tools/bench.py's mm1_100k benchmark.
-        scope = self.expression_scope(entity, extra) if getattr(dist, "needs_scope", True) else None
         # PHASE6 W4 P1, D119: every duration-bearing distribution goes through
         # this one helper, so this is the single choke point that substitutes
         # a distribution's mean for a random draw in deterministic mode.
-        value = dist.sample(self.rng, scope=scope, deterministic=self.ctx.deterministic)
-        unit = getattr(dist, "time_unit", "base")
+        deterministic = self.ctx.deterministic
+        if type(dist) is StochasticDistribution:
+            # Speed review R8: its attributes read directly, and an ordinary draw with plain
+            # params calls the sampler as `StochasticDistribution.sample`'s first branch does.
+            unit = dist.time_unit
+            if not deterministic and not dist.needs_scope and dist._sampler is not None:
+                value = dist._sampler(self.rng, dist.params, current=None, scope=None,
+                                      state=dist._state)
+            else:
+                scope = self.expression_scope(entity, extra) if dist.needs_scope else None
+                value = dist.sample(self.rng, scope=scope, deterministic=deterministic)
+        else:
+            scope = self.expression_scope(entity, extra) if getattr(dist, "needs_scope", True) else None
+            value = dist.sample(self.rng, scope=scope, deterministic=deterministic)
+            unit = getattr(dist, "time_unit", "base")
         if unit != "base" and unit != self.ctx.time_unit:
             value *= base_factor("time", unit, self.ctx.units)
         if value < 0:
@@ -183,7 +196,9 @@ class BaseProcess(ABC):
         # The target's name and the counter key, kept per output: building the
         # tuple for every move showed in profiles. Checked against the target
         # itself, so a `next_process` rewired later is simply looked up again.
-        cached = self._forward_cache.get(index)
+        # Subscripts and `in`, not `dict.get`/`len` (speed review R7): this runs on every move.
+        cache = self._forward_cache
+        cached = cache[index] if index in cache else None
         if cached is None or cached[0] is not next_proc:
             # getattr, not next_proc.name: some tests terminate a chain with a bare
             # stub (order-recording only, no BaseProcess) that has no .name.
@@ -197,8 +212,14 @@ class BaseProcess(ABC):
             # and `svgcharts.sankey`. Reset at warm-up (sim_runner.reset_statistics).
             counts = self.ctx.link_flow_counts
             key = cached[2]
-            counts[key] = counts.get(key, 0) + 1
-        delay = self.link_delays[index] if index < len(self.link_delays) else None
+            if key in counts:
+                counts[key] += 1
+            else:
+                counts[key] = 1
+        try:        # a block's graph appends one entry per link, so the index is there
+            delay = self.link_delays[index]
+        except IndexError:
+            delay = None
         if delay is None:
             if self.ctx.bus._subscribers:         # as `emit`, before the keywords are built
                 self.emit("entity_moved", entity=entity, next_index=index, target=target_name)

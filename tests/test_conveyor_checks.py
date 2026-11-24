@@ -260,6 +260,7 @@ def test_snapped_rows_of_pieces_are_quiet():
         ("W_CONVEYOR_OVERLAP", "r1p20", "r2p20")]          # its two snaps break too
 
 
+@pytest.mark.slow
 @pytest.mark.perf
 def test_two_thousand_pieces_check_in_under_a_second():
     """20 lines of 100 pieces: the grid keeps the overlap check near linear (R59: a wall-clock

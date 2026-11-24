@@ -74,7 +74,10 @@ class _SnapshotDeque(deque):
     """The resource log before D1061: a deque of `ResourceSnapshot` objects."""
 
     def add(self, time, in_use, queue_length, event_type=None):
+        # True when full, as `ResourceLog.add` says since speed review R9 (the caller's flag)
+        full = bool(self.maxlen) and len(self) >= self.maxlen
         self.append(ResourceSnapshot(time, in_use, queue_length, event_type))
+        return full
 
     def columns(self):
         """What the readers take since the snapshot path left `calc_kpis`."""
@@ -105,3 +108,14 @@ def test_compact_logs_give_the_frames_and_kpis_of_the_plain_containers(monkeypat
     for name in new:
         pd.testing.assert_frame_equal(new[name], old[name], check_exact=True, obj=name)
     assert len(new["resource_log"]) == 40       # the cap held; the entity log adds the live entities
+
+
+def test_a_log_add_says_whether_the_log_was_full():
+    """Speed review R9: `log_usage` sets `log_truncated` from what `add` returns, which must
+    be the test it replaced, `maxlen and len(log) >= maxlen`, before the row."""
+    from nagasim.core.utils import ResourceLog
+    for maxlen in (None, 0, 1, 3):
+        log = ResourceLog(maxlen=maxlen)
+        for i in range(7):
+            before = bool(log.maxlen and len(log) >= log.maxlen)
+            assert log.add(float(i), 1, 0, "seize" if i % 2 else None) is before

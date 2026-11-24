@@ -4,7 +4,8 @@ import pytest
 
 from nagasim import agent_tools as T
 from nagasim.core import conveyor_path as cp
-from nagasim.core.document import ModelDocument, connect_ports
+from nagasim.core.document import ModelDocument
+from nagasim.core.floor import connect_ports
 
 from conftest import create, delay, dispose, layout, problem_codes
 from nagasim import api

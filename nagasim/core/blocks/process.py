@@ -35,9 +35,11 @@ from nagasim.core.blocks._common import evaluate_expression
 from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.expressions import ExpressionError
 from nagasim.core.quantities import field_factor, param, scaled
-from nagasim.core.seizing import (ON_PREEMPT_MODES, QueueBehaviour, acquire, acquire_plain,
-                                  acquire_worker, balks, leave, patience_of, plain_target,
-                                  preempt_release, release)
+from nagasim.core.seizing import (ON_PREEMPT_MODES, QueueBehaviour, _accrue_busy_cost,
+                                  _accrue_usage_cost, acquire, acquire_plain, acquire_worker,
+                                  balks, leave, patience_of, plain_target, preempt_release,
+                                  release)
+from nagasim.core.seizing import log as _seize_log
 from nagasim.core.stats import TimeWeighted
 
 log = logging.getLogger(__name__)
@@ -112,6 +114,9 @@ class Process(QueueBehaviour, BaseProcess):
         # The resource this block seizes down `seizing.acquire_plain`, or None for the full
         # path (speed review B); decided at the first entity (`plain_target`).
         self._plain = _UNDECIDED
+        # Whether a visit runs as the one generator `_visit_plain` (speed review R4); decided
+        # at the first entity that is not warm-started (`_plain_visit`).
+        self._visit = _UNDECIDED
 
     @property
     def space_passthrough(self) -> bool:
@@ -141,6 +146,7 @@ class Process(QueueBehaviour, BaseProcess):
         self._action = value
         self.seizes = value.startswith("Seize")
         self.releases = value.endswith("Release")
+        self._visit = _UNDECIDED        # the one-generator visit (R4) is asked again
 
     def self_process(self, entity):
         if self.seizes or self.releases:
@@ -155,7 +161,8 @@ class Process(QueueBehaviour, BaseProcess):
             if self.balk_if and entity._since is None and balks(self, entity):
                 leave(self, entity, "balk")
                 return
-            joined_at = self.env.now if entity._since is None else entity._since
+            # `_now`: the clock without the property, here and below (speed review R3)
+            joined_at = self.env._now if entity._since is None else entity._since
             if self.space is not None:
                 # A finite input queue (PHASE4 T5): take a place first, which is
                 # what frees whatever machine is still holding this part.
@@ -225,40 +232,55 @@ class Process(QueueBehaviour, BaseProcess):
         preemption resume loop. MOTION (D156) overrides only this method, so
         seizing, workers, blocking and release stay this block's code."""
         service = self.sample_duration(self.delay, entity)
-        remaining = service
+        started = None          # set once the SERVICE itself starts
+        try:
+            # Inside the try since DEVLOG #105: a preemption landing during
+            # the CHANGEOVER used to escape as an uncaught simpy.Interrupt
+            # and crash the whole run. Since PHASE4 T7 the setup phase obeys
+            # `on_preempt` like the service does: "resume" keeps the minutes
+            # already spent changing over, "restart" pays the whole
+            # changeover again (ARCHITECTURE D55).
+            if (self.setup or self.setup_cost) and self.seizes:
+                yield from self._changeover(entity)
+            started = self.env._now
+            entity._ends = started + service        # D235: what a state reads
+            yield self.env.timeout(service)
+        except simpy.Interrupt:
+            yield from self._preempted(entity, service, service, started)
+
+    def _preempted(self, entity, service, remaining, started):
+        """The service after a preemption (the loop `_serve` ran until review R4, from its
+        `except`): the unit is given back, seized again, and the job resumed or restarted,
+        as often as it is preempted. *started* is None when the interrupt came during the
+        changeover."""
         while True:
-            started = None          # set once the SERVICE itself starts
+            entity._ends = None
+            # Preempted: a higher-priority entity took the unit. "resume"
+            # keeps the time already served, "restart" charges the SAME
+            # sample again (the job did not change, only its luck) -- or,
+            # with `resample` (PHASE5 O4), a fresh draw from this block's
+            # own stream. An interrupt during the changeover leaves
+            # `remaining` alone -- the service had not started.
+            if started is not None:
+                if self.on_preempt != "restart":
+                    remaining = max(remaining - (self.env.now - started), 0.0)
+                elif self.resample:
+                    remaining = service = self.sample_duration(self.delay, entity)
+                else:
+                    remaining = service
+            preempt_release(self, entity, self.resource_name)
+            yield from acquire(self, entity, self.resource_name, self.quantity,
+                               self.priority, preempt=self.preempt, resumed=True)
+            started = None
             try:
-                # Inside the try since DEVLOG #105: a preemption landing during
-                # the CHANGEOVER used to escape as an uncaught simpy.Interrupt
-                # and crash the whole run. Since PHASE4 T7 the setup phase obeys
-                # `on_preempt` like the service does: "resume" keeps the minutes
-                # already spent changing over, "restart" pays the whole
-                # changeover again (ARCHITECTURE D55).
                 if (self.setup or self.setup_cost) and self.seizes:
                     yield from self._changeover(entity)
-                started = self.env.now
-                entity._ends = started + remaining      # D235: what a state reads
+                started = self.env._now
+                entity._ends = started + remaining
                 yield self.env.timeout(remaining)
-                break
+                return
             except simpy.Interrupt:
-                entity._ends = None
-                # Preempted: a higher-priority entity took the unit. "resume"
-                # keeps the time already served, "restart" charges the SAME
-                # sample again (the job did not change, only its luck) -- or,
-                # with `resample` (PHASE5 O4), a fresh draw from this block's
-                # own stream. An interrupt during the changeover leaves
-                # `remaining` alone -- the service had not started.
-                if started is not None:
-                    if self.on_preempt != "restart":
-                        remaining = max(remaining - (self.env.now - started), 0.0)
-                    elif self.resample:
-                        remaining = service = self.sample_duration(self.delay, entity)
-                    else:
-                        remaining = service
-                preempt_release(self, entity, self.resource_name)
-                yield from acquire(self, entity, self.resource_name, self.quantity,
-                                   self.priority, preempt=self.preempt, resumed=True)
+                continue
 
     def _changeover(self, entity):
         """Charge the setup time when this block's resource switches jobs.
@@ -351,7 +373,103 @@ class Process(QueueBehaviour, BaseProcess):
             info["setup"] = info.get("setup", 0.0) + duration
 
     def self_run(self, entity):
+        if entity._since is None:
+            visit = self._visit
+            if visit is _UNDECIDED:
+                visit = self._visit = self._plain_visit()
+            if visit:
+                return self.env.process(self._visit_plain(entity))
         return self.env.process(self.self_process(entity))
+
+    def _plain_visit(self) -> bool:
+        """Whether this block's visits may run as `_visit_plain` (speed review R4): a Seize
+        Delay Release on a plain resource (`plain_target`), with no balking, finite space,
+        blocking, worker or changeover, and `self_process`/`_serve` not overridden (MOTION
+        overrides `_serve`)."""
+        if (type(self).self_process is not Process.self_process
+                or type(self)._serve is not Process._serve
+                or not (self.seizes and self.releases) or not self.resource_name
+                or self.worker_fleet or self.balk_if or self.space is not None
+                or self.hold_until_space or self.block_after_service
+                or self.setup or self.setup_cost):
+            return False
+        plain = self._plain
+        if plain is _UNDECIDED:
+            plain = self._plain = plain_target(self)
+        return plain is not None
+
+    def _visit_plain(self, entity):
+        """One visit as one generator (speed review R4): `self_process` for the blocks
+        `_plain_visit` admits, with `seizing.acquire_plain`, the first service attempt of
+        `_serve` and `seizing.release` written out. The same statements in the same order,
+        so the same request, collectors, record, costs, events and draws; a preemption by
+        another block's request goes on in `_preempted`, as in `_serve`."""
+        env, ctx = self.env, self.ctx
+        resource, target_name = self._plain, self.resource_name
+        # -- seizing.acquire_plain
+        attrs = entity.__dict__          # `req_params` is an instance attribute or absent
+        held = attrs["req_params"] if "req_params" in attrs else None
+        if held is not None and target_name in held:
+            raise RuntimeError(f"Entity {entity.id} already requested resource '{target_name}'.")
+        asked = env._now
+        if ctx.bus._subscribers:
+            entity._queued = next(ctx.queue_seq)      # #349
+            entity._asked = asked                     # D383
+        request = resource.request_plain(self.priority)
+        yield request
+        now = env._now
+        if ctx.entity_waits:      # D1232
+            entity._total_wait = getattr(entity, "_total_wait", 0.0) + now - asked
+        held = attrs["req_params"] if "req_params" in attrs else None
+        if held is None:
+            held = entity.req_params = {}
+        held[target_name] = {"resource": resource, "requests": [request], "set": None,
+                             "seized_at": now}
+        if resource.cost_per_use:
+            _accrue_usage_cost(self, entity, resource, 1)
+        if ctx.debug:       # seizing's logger, as `acquire_plain` and `release` log through
+            _seize_log.debug("Entity %s acquired '%s' at time %s.", entity.id, resource.name, now)
+        if ctx.bus._subscribers:
+            self.emit("entity_seized", entity=entity, resource=resource.name, value=1)
+        # -- self_process and the first attempt of _serve
+        active = self._active_entity
+        active.append(entity)
+        service = self.sample_duration(self.delay, entity)
+        try:
+            started = env._now
+            entity._ends = started + service        # D235: what a state reads
+            yield env.timeout(service)
+        except simpy.Interrupt:
+            yield from self._preempted(entity, service, service, started)
+        try:
+            active.remove(entity)
+        except ValueError:
+            pass
+        # -- seizing.release written out for a hold of the plain shape (the four keys
+        # `acquire_plain` writes, no set), which a job seized again after a preemption also has:
+        # the full `acquire` writes the same record. Anything else (no hold, a set, a vehicle,
+        # a worker, a schedule-log row or its setup share) goes through `seizing.release`.
+        held = attrs["req_params"] if "req_params" in attrs else None
+        info = held.get(target_name) if held is not None else None
+        if (ctx.schedule_log is not None or info is None or info["set"] is not None
+                or len(info) != 4):
+            release(self, entity, target_name)
+        else:
+            member, units = info["resource"], info["requests"]
+            if member.cost_busy:
+                _accrue_busy_cost(self, entity, member, len(units), info["seized_at"])
+            for unit in units:
+                member.release(unit)
+            if ctx.bus._subscribers:
+                self.emit("entity_released", entity=entity, resource=member.name,
+                          value=len(units))   # units (#748)
+            if ctx.debug:
+                _seize_log.debug("Entity %s released resource '%s' at time %s.", entity.id,
+                          member.name, env.now)
+            del held[target_name]
+            if not held:
+                del entity.req_params
+        self.forward(entity, 0)
 
     def get_params_dict(self):
         return {
@@ -409,6 +527,7 @@ class Process(QueueBehaviour, BaseProcess):
 
         self.set_queue_params(param_dict)
         self._plain = _UNDECIDED        # the params decide it: asked again at the next entity
+        self._visit = _UNDECIDED
         self.preempt = bool(param_dict.get("preempt", False))
         self.on_preempt = param_dict.get("on_preempt", ON_PREEMPT_MODES[0])
         self.resample = bool(param_dict.get("resample", False))

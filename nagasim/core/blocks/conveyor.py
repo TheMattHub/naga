@@ -3028,6 +3028,12 @@ def _start_pose(position, rotation) -> Pose:
     return Pose(float(x), float(y), normalise_rotation(rotation))
 
 
+def length_factor(params: dict, units) -> float:
+    """Metres per unit of a CONVEYOR's `length_unit` in *params* (the model's unit when they set
+    none): the one factor for the floor geometry, the agent tools and the editor."""
+    return field_factor(param(SPEC, "length"), params, units, SPEC.params)
+
+
 def belt_geometry(block: dict, units) -> tuple[Pose, list, list]:
     """A CONVEYOR block dict's floor geometry: (start pose, segments, diverts), with the
     segments' lengths and radii and the diverts' `at` in metres, the floor plan's unit. A belt
@@ -3041,7 +3047,7 @@ def belt_geometry(block: dict, units) -> tuple[Pose, list, list]:
     if not path and isinstance(length, (int, float)) and not isinstance(length, bool) and length > 0:
         path = [{"straight": float(length)}]
     # `length`, the path and the diverts' `at` are in the belt's length_unit; the floor is metres.
-    factor = field_factor(param(SPEC, "length"), params, units, SPEC.params)
+    factor = length_factor(params, units)
     segments = [conveyor_path.Segment(seg.kind, seg.length * factor, seg.radius * factor,
                                       seg.angle, seg.turn)
                 for seg in parse_path(path)]

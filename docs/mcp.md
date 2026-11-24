@@ -65,7 +65,7 @@ and `find_tool` is in every profile, so an assistant can always search for the r
 | Profile | Tools | For |
 |---|---|---|
 | `compact` | 10 | Write a whole model file, run it, save it. |
-| `build` | 46 | Make and change a model: blocks and links, records, reference, validation, a picture. |
+| `build` | 48 | Make and change a model: blocks and links, records, reference, validation, a picture. |
 | `run` | 22 | Run a finished model: scenarios, what-if, precision, reality checks, the run debugger. |
 | `study` | 33 | A decision study (`study_*`) and the searches behind it: `optimize`, `calibrate`, `evaluate_policy`. |
 | `twin` | 14 | A live twin: data bindings, initial state, forecast, plant timeline, recommendations. |

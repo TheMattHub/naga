@@ -181,9 +181,17 @@ def test_a_paused_run_leaves_no_stop_event_in_the_queue_on_any_simpy():
     env.run(until=3)
     # What SimPy itself does: 5 before 4.1.2, 3 from it on. The engine depends on neither.
     assert env.peek() in (3, 5)
-    called = [path.name for path in Path(nagasim.__file__).parent.rglob("*.py")
-              if re.search(r"\benv\.run\(|StopSimulation", path.read_text(encoding="utf-8"))]
+    sources = {path: path.read_text(encoding="utf-8")
+               for path in Path(nagasim.__file__).parent.rglob("*.py")}
+    called = [path.name for path, text in sources.items() if re.search(r"\benv\.run\(", text)]
     assert called == []         # a first call of it is a reason to read this test again
+    # Only the step loop's verbatim copy of SimPy 4.1.2's `step` (D1398) names StopSimulation,
+    # to catch and re-raise it as SimPy does; nothing in the engine raises one.
+    named = sorted(path.name for path, text in sources.items() if "StopSimulation" in text)
+    assert named == ["sim_runner.py"]
+    runner = next(text for path, text in sources.items() if path.name == "sim_runner.py")
+    uses = [line for line in runner.splitlines() if "StopSimulation" in line]
+    assert all("import StopSimulation" in u or "except StopSimulation:" in u for u in uses), uses
 
     c = create("c", distribution="Exponential", dist_params={"rate": 0.2})
     p, d = process("p", value=0.25, distribution="Exponential"), dispose("d")

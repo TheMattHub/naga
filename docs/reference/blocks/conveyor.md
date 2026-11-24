@@ -111,7 +111,7 @@ print(results["conveyor_summary"].round(2).to_string(index=False))
 
 ## Used in
 
-Bundled models: [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Palletizing line](../../gallery/manufacturing.md).
+Bundled models: [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Palletizing line](../../gallery/manufacturing.md).
 
 Guides: [How do I move parts along a belt?](../../how-to/recipes/belt-transit.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Motion cycles](../../modelling-guide/motion.md) and 1 more.
 

@@ -54,7 +54,7 @@ In the Python builder `a >> b` adds a link, and `m.link(a, b, delay=...)` adds o
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 34 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md) and 35 more.
 
 Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from SimPy](../../coming-from/simpy.md), [Model file format](../../model-file-format.md), [Submodels](../../modelling-guide/submodels.md), [Semantic diff](../../semantic-diff.md), [Quick start](../../quickstart.md).
 

@@ -20,13 +20,15 @@ pytestmark = pytest.mark.perf
 RUN = 2_000.0
 # Calls per station visit while stepping (arrivals and disposals included), and SimPy events
 # per visit. Measured 2026-11-23 on this model: 220.6 calls before review A+B (4cf802a8), 185.1
-# after, 181.56 after reviews E and C (garbage collector held off); 5.50 events on all. The
-# budget fails on two more calls per visit.
-CALLS_PER_VISIT = 183.0
+# after, 181.56 after reviews E and C (garbage collector held off); 5.50 events on all.
+# Round 2 (2026-11-24, R1-R10): 104.66 lean, and with logs on (the default) 222.90 before it
+# and 134.94 after. Each budget fails on two more calls per visit.
+CALLS_PER_VISIT = 106.5
+CALLS_PER_VISIT_LOGGED = 136.9
 EVENTS_PER_VISIT = 5.51
 
 
-def _tandem():
+def _tandem(logs=False):
     c = create("c", distribution="Exponential", dist_params={"rate": 1.0})
     p1 = process("p1", resource="S1", value=1.25, distribution="Exponential")
     p2 = process("p2", resource="S2", value=1.1, distribution="Exponential")
@@ -35,12 +37,12 @@ def _tandem():
     return layout(blocks, chain(*blocks),
                   resources=[{"name": "S1", "capacity": 1}, {"name": "S2", "capacity": 1}],
                   simulation={"time_limit": RUN, "warmup": 0, "replications": 1,
-                              "record_logs": False, "timeseries_points": 0})
+                              "record_logs": logs, "timeseries_points": 200 if logs else 0})
 
 
-def _count():
-    setup_run(_tandem(), seed=0, run_len=50.0, warmup=0.0)       # imports and caches first
-    env, model = setup_run(_tandem(), seed=0, run_len=RUN, warmup=0.0)
+def _count(logs=False):
+    setup_run(_tandem(logs), seed=0, run_len=50.0, warmup=0.0)       # imports and caches first
+    env, model = setup_run(_tandem(logs), seed=0, run_len=RUN, warmup=0.0)
     # As `tools/bench_calls.py`: a collection inside the profile would close the processes of
     # an earlier run (this file's or another test's in the worker), each close a counted call
     collecting = gc.isenabled()
@@ -56,9 +58,9 @@ def _count():
             gc.enable()
     entries = profiler.getstats()
     calls = sum(entry.callcount for entry in entries)
+    # One heap pop per processed event (the step loop pops them itself since review R1)
     events = sum(entry.callcount for entry in entries
-                 if not isinstance(entry.code, str) and entry.code.co_name == "step"
-                 and entry.code.co_filename.replace("\\", "/").endswith("simpy/core.py"))
+                 if isinstance(entry.code, str) and "_heapq.heappop" in entry.code)
     visits = sum(env.ctx.resource_manager.get(name).seize_count for name in ("S1", "S2"))
     return calls, events, visits
 
@@ -70,3 +72,12 @@ def test_a_plain_visit_stays_within_its_call_budget():
     assert visits > 3_000
     assert events / visits <= EVENTS_PER_VISIT, "a plain visit schedules more SimPy events"
     assert calls / visits <= CALLS_PER_VISIT, f"{calls / visits:.2f} calls per visit"
+
+
+@pytest.mark.skipif(sys.version_info[:2] != (3, 12), reason="call budgets measured on 3.12")
+def test_a_logged_visit_stays_within_its_call_budget():
+    """Logs and the sampler on, as a run records by default (round 2, R9)."""
+    calls, events, visits = _count(logs=True)
+    assert visits > 3_000
+    assert events / visits <= EVENTS_PER_VISIT, "a plain visit schedules more SimPy events"
+    assert calls / visits <= CALLS_PER_VISIT_LOGGED, f"{calls / visits:.2f} calls per visit"

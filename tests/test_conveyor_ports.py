@@ -242,3 +242,124 @@ def test_set_layout_writes_position_and_rotation(ws):
     assert math.isclose(a["layout_position"][0], 4.5, abs_tol=1e-9)
     assert math.isclose(a["layout_position"][1], -2.0, abs_tol=1e-9)
     assert math.isclose(a["layout_rotation"], 30.0, abs_tol=1e-9)
+
+
+# -- shared ports and placement (conveyor plan B, task 1) --------------------------------------
+
+EXITS = [{"port": "left", "angle": -90}, {"port": "straight", "angle": 0}]
+
+
+def test_transfer_ports_are_the_tools_ports(ws):
+    """A transfer at (2, 0), rotation 0, exits left -90 and straight 0: in (2,0,0), left (2,0,270),
+    straight (2,0,0); `get_ports` on the same model lists the same poses."""
+    ok(T.call("new_model", name="m"))
+    ok(T.call("place_transfer", model="m", name="X", exits=EXITS, x=2.0, y=0.0, rotation=0.0))
+    entry = block_of("m", "X")
+    ps = cp.transfer_ports("X", entry["layout_position"], entry.get("layout_rotation", 0.0),
+                           entry["params"])
+    assert [(p.name, p.role) for p in ps] == [("in", "in"), ("left", "out"), ("straight", "out")]
+    near(by_name(ps, "in").pose, 2, 0, 0)
+    near(by_name(ps, "left").pose, 2, 0, 270)
+    near(by_name(ps, "straight").pose, 2, 0, 0)
+    listed = ok(T.call("get_ports", model="m", block="X"))["ports"]
+    for p in ps:
+        row = next(r for r in listed if r["name"] == p.name)
+        assert (row["x"], row["y"], row["role"]) == (p.pose.x, p.pose.y, p.role)
+        assert cp.same_angle(row["heading"], p.pose.heading)
+
+
+def _doc_of(model):
+    from nagasim.core.document import ModelDocument
+    return ModelDocument(layout_of(model))
+
+
+def _comparable(model_layout):
+    blocks = {b["name"]: (b["type"], b["params"], b.get("position"), b.get("layout_position"),
+                          b.get("layout_rotation", 0.0))
+              for b in model_layout["blocks"]}
+    links = sorted((lk["source"], lk["target"], lk.get("source_port"), lk.get("target_port"))
+                   for lk in model_layout["links"])
+    return blocks, links
+
+
+def test_add_belt_piece_matches_place_piece(ws):
+    """The tool's write and the shared helper's write give the same layout, block for block and
+    link for link: a roller piece B snapped to A.out."""
+    from nagasim.core import floor as D
+    ok(T.call("new_model", name="m"))
+    ok(T.call("place_piece", model="m", name="A", segments=[{"straight": 3.0}],
+              x=1.0, y=2.0, rotation=90.0))
+    copy = _doc_of("m")
+    ok(T.call("place_piece", model="m", name="B", segments=[{"straight": 2.0}], type="roller",
+              snap_to="A.out"))
+    source = next(p for p in D.piece_ports(copy, "A") if p.name == "out")
+    D.add_belt_piece(copy, [{"straight": 2.0}], "roller", source=source, name="B",
+                     position=None)
+    assert _comparable(copy.to_layout()) == _comparable(layout_of("m"))
+
+
+def test_add_belt_piece_position_speed_and_pose(ws):
+    """An explicit schematic position and a speed are kept; the pose is the layout pose."""
+    from nagasim.core import floor as D
+    doc = _doc_of(_new("m"))
+    name = D.add_belt_piece(doc, [{"straight": 1.5}], pose=(4.0, 5.0, 450.0), speed=0.8,
+                            name="P", position=(10.0, 20.0))
+    b = doc.blocks[name]
+    assert tuple(b.position) == (10.0, 20.0)
+    assert b.params["path"] == [{"straight": 1.5}] and b.params["speed"] == 0.8
+    assert tuple(b.layout_position) == (4.0, 5.0) and cp.same_angle(b.layout_rotation, 90.0)
+
+
+def _new(name):
+    ok(T.call("new_model", name=name))
+    return name
+
+
+def test_add_transfer_piece_matches_place_transfer(ws):
+    from nagasim.core import floor as D
+    ok(T.call("new_model", name="m"))
+    ok(T.call("place_piece", model="m", name="A", segments=[{"straight": 3.0}]))
+    copy = _doc_of("m")
+    ok(T.call("place_transfer", model="m", name="X", mechanism="turntable", exits=EXITS,
+              snap_to="A.out"))
+    source = next(p for p in D.piece_ports(copy, "A") if p.name == "out")
+    D.add_transfer_piece(copy, "turntable", EXITS, source=source, name="X")
+    assert _comparable(copy.to_layout()) == _comparable(layout_of("m"))
+
+
+def test_add_transfer_piece_default_exit_and_position_match_place_transfer(ws):
+    """No exits given: the helper's default exit equals the tool's; an explicit schematic
+    position is kept."""
+    from nagasim.core import floor as D
+    ok(T.call("new_model", name="m"))
+    ok(T.call("place_piece", model="m", name="A", segments=[{"straight": 3.0}]))
+    copy = _doc_of("m")
+    ok(T.call("place_transfer", model="m", name="X", snap_to="A.out"))
+    source = next(p for p in D.piece_ports(copy, "A") if p.name == "out")
+    D.add_transfer_piece(copy, source=source, name="X")
+    assert _comparable(copy.to_layout()) == _comparable(layout_of("m"))
+    name = D.add_transfer_piece(copy, name="Y", position=(30.0, 40.0))
+    assert tuple(copy.blocks[name].position) == (30.0, 40.0)
+
+
+def test_piece_ports_by_block_type(ws):
+    from nagasim.core import floor as D
+    ok(T.call("new_model", name="m"))
+    ok(T.call("place_piece", model="m", name="A", segments=[{"straight": 3.0}]))
+    ok(T.call("place_transfer", model="m", name="X", exits=EXITS, x=1.0, y=1.0))
+    doc = _doc_of("m")
+    assert {p.name for p in D.piece_ports(doc, "A")} == {"in", "out"}
+    assert {p.name for p in D.piece_ports(doc, "X")} == {"in", "left", "straight"}
+    doc.add_block("DELAY", (0, 0), "dl")
+    assert D.piece_ports(doc, "dl") == []
+
+
+def test_path_polyline_straight_and_arc():
+    """A 2 m straight is its two ends; a 90 deg left arc of radius 1 from (0,0) east, in 10 deg
+    chords, ends at (1, -1) (left is north on screen, -y)."""
+    assert cp.path_polyline(cp.Pose(0, 0, 0), cp.parse_path([{"straight": 2.0}])) == [(0, 0), (2, 0)]
+    pts = cp.path_polyline(cp.Pose(0, 0, 0), cp.parse_path(
+        [{"arc": {"radius": 1.0, "angle": 90, "turn": "left"}}]))
+    assert len(pts) == 10
+    assert math.isclose(pts[-1][0], 1.0, abs_tol=1e-9) and math.isclose(pts[-1][1], -1.0,
+                                                                          abs_tol=1e-9)

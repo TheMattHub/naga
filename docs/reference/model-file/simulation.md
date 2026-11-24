@@ -61,7 +61,7 @@ m = nb.Model(simulation={'time_limit': 480, 'warmup': 60, 'replications': 10, 't
 
 ## Used in
 
-Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 56 more.
+Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 57 more.
 
 Guides: [Agent-based modelling](../../agent-based-modelling.md), [Coming from SimPy](../../coming-from/simpy.md), [Python API](../../python-api.md), [Model file format](../../model-file-format.md), [Dates and calendars](../../modelling-guide/dates-and-calendars.md), [Quick start](../../quickstart.md) and 1 more.
 

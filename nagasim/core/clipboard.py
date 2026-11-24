@@ -10,7 +10,7 @@ import copy
 
 from nagasim.core import submodels
 from nagasim.core.arealink import AREA_KEYS
-from nagasim.core.document import ModelDocument
+from nagasim.core.document import ModelDocument, follow_names
 
 __all__ = ["copy_selection", "paste_fragment"]
 
@@ -45,6 +45,9 @@ def copy_selection(doc: ModelDocument, block_names, annotation_ids=()) -> dict:
             **({"counter_offsets": {k: list(v) for k, v in b.counter_offsets.items()}}
                if b.counter_offsets else {}),
             **({"queue_row": copy.deepcopy(b.queue_row)} if b.queue_row else {}),     # D1089
+            # #2037: the floor pose, so a pasted piece is drawn and joined as its original.
+            **({"layout_position": list(b.layout_position)} if b.layout_position else {}),
+            **({"layout_rotation": b.layout_rotation} if b.layout_rotation else {}),
         })
     links = []
     for link in doc.link_records():
@@ -52,6 +55,7 @@ def copy_selection(doc: ModelDocument, block_names, annotation_ids=()) -> dict:
         # are copied, in order.
         if link.source in name_set and link.target in name_set:
             entry = {"source": link.source, "target": link.target}
+            entry.update(copy.deepcopy(link.ports))        # #2037: the exit a link leaves by
             if link.delay:
                 entry["delay"] = copy.deepcopy(link.delay)
             entry.update(copy.deepcopy(link.area))         # D1369
@@ -90,10 +94,14 @@ def _definitions_of(doc: ModelDocument, blocks: list[dict]) -> dict:
     return found
 
 
-def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40)) -> list[str]:
+def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40),
+                   floor_offset=(1.0, 1.0)) -> list[str]:
     """Paste a fragment from copy_selection into doc as one undo step. Blocks
     get new, auto-generated names (unique even for a same-document paste);
-    internal links are recreated between the new names. Annotations get new,
+    internal links are recreated between the new names, with their ports, and
+    the names the blocks route by follow the copies (`follow_names`). A floor
+    pose is kept, moved by *floor_offset* metres (the model's top level only:
+    a definition's blocks have no floor). Annotations get new,
     auto-generated ids the same way. Returns the new block names, in
     fragment["blocks"] order (annotations are not included in the return
     value -- callers that need their ids can read doc.annotations after)."""
@@ -119,8 +127,6 @@ def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40)) -> list[
             name_map[entry["name"]] = new_name
             if "description" in entry:
                 doc.set_description(new_name, entry["description"])
-            if entry.get("params"):
-                doc.set_params(new_name, entry["params"])
             if entry.get("label_offset"):
                 doc.set_label_offsets({new_name: entry["label_offset"]})
             if entry.get("counter_offsets"):
@@ -128,12 +134,31 @@ def paste_fragment(doc: ModelDocument, fragment: dict, offset=(40, 40)) -> list[
             if entry.get("queue_row"):
                 doc.set_queue_rows({new_name: entry["queue_row"]})
             new_names.append(new_name)
+        # Params once every name is known: a name inside the fragment follows its copy.
+        floor = isinstance(doc, ModelDocument)
+        places, turns = {}, {}
+        for entry in fragment.get("blocks", []):
+            new_name = name_map[entry["name"]]
+            if entry.get("params"):
+                doc.set_params(new_name, follow_names(entry["type"], entry["params"], name_map,
+                                                      keep=name_map))
+            place = entry.get("layout_position")
+            if floor and isinstance(place, (list, tuple)) and len(place) == 2:
+                places[new_name] = (round(place[0] + floor_offset[0], 6),
+                                    round(place[1] + floor_offset[1], 6))
+                if entry.get("layout_rotation"):
+                    turns[new_name] = entry["layout_rotation"]
+        if places:
+            doc.set_layout_positions(places)
+        if turns:
+            doc.set_layout_rotations(turns)
 
         for entry in fragment.get("links", []):
             src = name_map.get(entry["source"])
             tgt = name_map.get(entry["target"])
             if src and tgt:
-                index = doc.add_link(src, tgt)
+                index = doc.add_link(src, tgt, source_port=entry.get("source_port"),
+                                     target_port=entry.get("target_port"))
                 if entry.get("delay"):
                     doc.set_link_delay(src, tgt, entry["delay"], index=index)
                 area = {k: entry[k] for k in AREA_KEYS if k in entry}

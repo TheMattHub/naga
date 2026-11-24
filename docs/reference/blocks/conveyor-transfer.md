@@ -108,6 +108,8 @@ conveyor_3       18      16
 
 ## Used in
 
+Bundled models: [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md).
+
 Guides: [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md).
 
 ## See also

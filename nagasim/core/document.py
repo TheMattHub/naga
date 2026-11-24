@@ -33,7 +33,7 @@ from nagasim.core.timeunits import convert, units_of
 
 log = logging.getLogger(__name__)
 
-__all__ = ["ModelDocument", "EditLocked", "BlockData", "LinkData", "DefinitionView"]
+__all__ = ["ModelDocument", "EditLocked", "BlockData", "LinkData", "DefinitionView", "follow_names"]
 
 _MAX_UNDO_DEPTH = 100
 # Every simulation default `schema.migrate` sets, so a new model saves what a
@@ -236,6 +236,48 @@ class EditLocked(RuntimeError):
     """An edit was refused because the document is locked (`ModelDocument.edit_lock`)."""
 
 
+def follow_names(block_type: str, params: dict, names: dict, keep=None) -> dict:
+    """*params* of a block of *block_type* with the block names it routes by renamed through
+    *names* (old -> new): a CONVEYOR's `merges[].from` and `reverse_to`, and the target of each
+    rule exit "port:target" (a block's `rule`, each divert's). With *keep* (a paste: the names
+    copied), a merge from a block outside it is dropped, its link not being copied; the other
+    names outside it stay as written. The same dict when nothing changes (#2037, #2039)."""
+    if not isinstance(params, dict):
+        return params
+
+    def exits_of(rule):
+        exits = rule.get("exits") if isinstance(rule, dict) else None
+        if not isinstance(exits, list):
+            return rule
+        renamed = []
+        for spec in exits:
+            port, colon, target = spec.partition(":") if isinstance(spec, str) else ("", "", "")
+            renamed.append(f"{port}:{names[target]}" if colon and target in names else spec)
+        return rule if renamed == exits else {**rule, "exits": renamed}
+
+    out = dict(params)
+    out["rule"] = exits_of(params.get("rule"))
+    diverts = params.get("diverts")
+    if isinstance(diverts, list):
+        out["diverts"] = [{**d, "rule": exits_of(d["rule"])} if isinstance(d, dict)
+                          and isinstance(d.get("rule"), dict) else d for d in diverts]
+    if str(block_type).upper() == "CONVEYOR":
+        merges = params.get("merges")
+        if isinstance(merges, list):
+            out["merges"] = [
+                {**m, "from": names[m["from"]]} if isinstance(m, dict) and m.get("from") in names
+                else m for m in merges
+                if keep is None or not (isinstance(m, dict) and isinstance(m.get("from"), str)
+                                        and m["from"] not in keep)]
+        # "in" is a port keyword (D1368), never a block's name.
+        target = params.get("reverse_to")
+        if isinstance(target, str) and target != "in" and target in names:
+            out["reverse_to"] = names[target]
+    if "rule" not in params:
+        out.pop("rule")
+    return params if out == params else out
+
+
 class ModelDocument:
     """An in-memory model, edited only through this API.
 
@@ -324,7 +366,7 @@ class ModelDocument:
         doc.dirty = bool(renames)
         return doc
 
-    def save(self, path=None, *, written_by: bool = True) -> None:
+    def save(self, path=None, *, written_by: bool = True, short: bool = False) -> None:
         target = Path(path) if path is not None else self.path
         if target is None:
             raise ValueError("ModelDocument.save: no path given and the document has no path")
@@ -335,11 +377,15 @@ class ModelDocument:
         if written_by:      # D1193; a bundled file skips it (it ships with its own version)
             out["info"] = {**(out.get("info") or {}), "written_by": __version__}
         text = json.dumps(out, indent=2)
+        if short:       # the `naga fmt` form (D471-D474); the round trip gives it what a file read gives it
+            from nagasim import modelfmt
+            text = modelfmt.dumps(modelfmt.minimal(json.loads(text)))
         # D920: written next to the target, then swapped in by one os.replace, so a
         # crash or a full disk mid-write leaves the old file whole, never half of each.
         temp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
         try:
-            with open(temp, "w", encoding="utf-8") as handle:
+            # LF for the short form, so its bytes are `naga fmt`'s on every platform
+            with open(temp, "w", encoding="utf-8", newline="\n" if short else None) as handle:
                 handle.write(text)
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -590,6 +636,19 @@ class ModelDocument:
         self.dirty = True
         self._notify("links", action="area", src=src, tgt=tgt, index=index, scope=scope)
 
+    def set_link_extra(self, src: str, tgt: str, extra: dict | None, *, scope: str = "",
+                       index: int = 0) -> None:
+        """Set a link's unknown keys, kept verbatim (D1220); None or {} clears them. A move
+        that drops a join and makes it again carries them over (#2042). One undo step."""
+        link = self._require_link("set_link_extra", src, tgt, index, scope)
+        extra = copy.deepcopy(extra) or None
+        if link.extra == extra:
+            return
+        self._push_undo(f"Edit link {src} -> {tgt}")
+        link.extra = extra
+        self.dirty = True
+        self._notify("links", action="extra", src=src, tgt=tgt, index=index, scope=scope)
+
     def link_ports(self, src: str, tgt: str, *, scope: str = "", index: int = 0) -> dict:
         """`{"source_port"?, "target_port"?}` of a link into/out of a SUBMODEL
         instance (ROADMAP 2.3 part B); empty when the link needs no port."""
@@ -839,11 +898,15 @@ class ModelDocument:
                          else "Delete link" if count == 1 else f"Delete {count} items")
         with self.transaction(label=default_label):
             self._push_undo()
+            gone_pairs = {(link.source, link.target) for i, link in enumerate(level.links)
+                          if i in positions or link.source in name_set
+                          or link.target in name_set}
             for n in names:
                 del level.blocks[n]
             level.links = [link for i, link in enumerate(level.links)
                            if i not in positions
                            and link.source not in name_set and link.target not in name_set]
+            self._drop_orphan_merges(name_set, gone_pairs, scope)
             self.dirty = True
             if link_keys:
                 self._notify("links", action="remove", keys=link_keys, scope=scope)
@@ -874,8 +937,33 @@ class ModelDocument:
                 link.source = new
             if link.target == old:
                 link.target = new
+        for key, block in level.blocks.items():
+            # #2030, #2039: a merge's feeder, a reverse_to and a rule exit's target name a block;
+            # the name follows it.
+            params = follow_names(block.type, block.params, {old: new})
+            if params is not block.params:
+                level.blocks[key] = dataclasses.replace(block, params=params)
         self.dirty = True
         self._notify("blocks", action="rename", old=old, new=new, scope=scope)
+
+    def _drop_orphan_merges(self, gone_blocks: set, gone_pairs: set, scope: str) -> None:
+        """#2030: the CONVEYOR merges a removal leaves without their feeder: one whose `from`
+        block was removed, or whose last link from it to the belt was. Dropped in the caller's
+        transaction, so a merges entry and its link never part (E_CONVEYOR_MERGE a7_source).
+        A merge that was already broken is left for validation to report."""
+        level = self._level(scope)
+        linked = {(link.source, link.target) for link in level.links}
+
+        def orphan(trunk, merge):
+            source = merge.get("from") if isinstance(merge, dict) else None
+            return isinstance(source, str) and (
+                source in gone_blocks
+                or ((source, trunk) in gone_pairs and (source, trunk) not in linked))
+        for trunk, block in list(level.blocks.items()):
+            merges = block.params.get("merges") if block.type == "CONVEYOR" else None
+            if isinstance(merges, list) and any(orphan(trunk, m) for m in merges):
+                self.set_params(trunk, {**block.params, "merges": [
+                    m for m in merges if not orphan(trunk, m)]}, scope=scope)
 
     def move_blocks(self, positions: dict, *, scope: str = "", label: str | None = None) -> None:
         level = self._level(scope)
@@ -1149,10 +1237,12 @@ class ModelDocument:
         position = self._link_at(src, tgt, index, scope)
         if position < 0:
             return
-        self._push_undo(f"Delete link {src} -> {tgt}")
-        del level.links[position]
-        self.dirty = True
-        self._notify("links", action="remove", src=src, tgt=tgt, index=index, scope=scope)
+        with self.transaction(f"Delete link {src} -> {tgt}"):
+            self._push_undo(f"Delete link {src} -> {tgt}")
+            del level.links[position]
+            self.dirty = True
+            self._notify("links", action="remove", src=src, tgt=tgt, index=index, scope=scope)
+            self._drop_orphan_merges(set(), {(src, tgt)}, scope)
 
     def reorder_link(self, src: str, old_index: int, new_index: int, *, scope: str = "") -> None:
         """Move the old_index-th outgoing link of *src* to new_index, both
@@ -2070,7 +2160,11 @@ class ModelDocument:
     # {"description", "author", "notes"}, every key optional; shown in the
     # report header and File > "Model information...".
     def set_info(self, **kwargs) -> None:
+        # A key given as "" or None is removed (an empty field is no field); one not given stays.
         updated = {**self.info, **kwargs}
+        for key, value in kwargs.items():
+            if value is None or value == "":
+                updated.pop(key, None)
         if updated == self.info:
             return
         self._push_undo("Edit model info")
@@ -2299,12 +2393,3 @@ class DefinitionView:
 
     def background_abs_path(self):
         return None
-
-
-def connect_ports(document: Document, out_port, in_port) -> None:
-    """Link *out_port* to *in_port* (`conveyor_path.Port`s): a link from the out port's block to
-    the in port's block carrying `source_port` and `target_port`."""
-    if out_port.role != "out" or in_port.role != "in":
-        raise ValueError("connect_ports: join an out port to an in port")
-    document.add_link(out_port.block, in_port.block,
-                      source_port=out_port.name, target_port=in_port.name)

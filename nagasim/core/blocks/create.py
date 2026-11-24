@@ -1,6 +1,7 @@
 import dataclasses
 import logging
 import math
+from bisect import bisect_right
 
 from nagasim.core.agents import AgentRef
 from nagasim.core.base_process import BaseProcess
@@ -8,6 +9,7 @@ from nagasim.core.block_spec import BlockSpec, DIST_PARAMS, ParamSpec
 from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.orders import ORDERS_MODE
 from nagasim.core.quantities import param, to_base
+from nagasim.core.schedules import Schedule
 from nagasim.core.sim_classes import spawn_entity
 from nagasim.core.utils import timeout_at
 
@@ -104,7 +106,8 @@ class Create(BaseProcess):
                     yield self.pending
                 else:
                     iat = self.sample_duration(self.time_between_arrivals)  # inter-arrival time
-                    self.next_at, self.scheduled_at = self.env.now + iat, self.env.now
+                    now = self.env._now      # the clock without the property (speed review R3)
+                    self.next_at, self.scheduled_at = now + iat, now
                     self.pending = self.env.timeout(iat)
                     yield self.pending
 
@@ -142,9 +145,24 @@ class Create(BaseProcess):
             return (yield from self._fluid_arrival(schedule))
         t = self.env.now
         rejected = 0
+        # `Schedule.value_at` and `_index_at` written out for a plain Schedule (speed review
+        # R10): four calls per candidate, and a busy schedule draws several per arrival. The
+        # attributes are read per candidate, as the method reads them.
+        plain = type(schedule) is Schedule
         while True:
             t += float(self.rng.exponential(1.0 / max_rate))
-            if self.rng.random() * max_rate <= schedule.value_at(t):
+            if plain:
+                at = t + schedule.offset
+                if schedule.repeat:
+                    at = math.fmod(at, schedule.cycle_length)
+                    if at < 0:
+                        at += schedule.cycle_length
+                values = schedule.values
+                index, last = bisect_right(schedule.bounds, at), len(values) - 1
+                rate = values[index if index < last else last]
+            else:
+                rate = schedule.value_at(t)
+            if self.rng.random() * max_rate <= rate:
                 yield timeout_at(self.env, t)   # absolute: now + (t - now) can miss t (#341)
                 return True
             rejected += 1
@@ -233,7 +251,8 @@ class Create(BaseProcess):
             if self.population:
                 self._spawn_agent(entity)
             self.created_entities += 1
-            self.emit("entity_created", entity=entity)
+            if self.ctx.bus._subscribers:      # as `emit`, tested here (speed review R7)
+                self.emit("entity_created", entity=entity)
             if self.ctx.debug:
                 log.debug("Entity %s has been created at time %s.", entity.id, self.env.now)
             self.forward(entity, 0)

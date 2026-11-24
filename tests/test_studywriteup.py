@@ -12,7 +12,7 @@ import nagasim.agent_tools.study_writeup  # noqa: F401  registers the tools
 from nagasim import study as study_mod, studywriteup
 
 # D1244: every successful tool answer here is checked against its tool's output schema.
-pytestmark = pytest.mark.usefixtures("answers_match_schemas")
+pytestmark = [pytest.mark.usefixtures("answers_match_schemas"), pytest.mark.xdist_group("test_studywriteup")]
 
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 KPI = "Avg Throughput Time"

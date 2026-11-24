@@ -255,6 +255,7 @@ def _packed(parts, eyes, expose):
     return model(blocks, links, ["R"])
 
 
+@pytest.mark.slow
 @pytest.mark.perf
 def test_expose_on_a_packed_belt_with_many_eyes_runs_in_seconds():
     """120 parts every 0.5 s onto a 100 m belt with 20 exposed eyes, the end letting one go every

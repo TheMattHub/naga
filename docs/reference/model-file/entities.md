@@ -50,7 +50,7 @@ m.add_entity(name='Order', shape='square', color='#1f77b4')
 
 ## Used in
 
-Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md), [Container terminal: electrification](../../gallery/logistics.md) and 32 more.
+Bundled models: [Berth: shore power](../../gallery/energy.md), [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Supply line: order-rate management game](../../gallery/games.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md), [Hub day: electrifying the ground support equipment](../../gallery/logistics.md) and 33 more.
 
 Guides: [Digital twin](../../digital-twin.md), [Model file format](../../model-file-format.md), [Entities and attributes](../../modelling-guide/entities-attributes.md), [Semantic diff](../../semantic-diff.md).
 

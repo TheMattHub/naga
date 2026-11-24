@@ -24,7 +24,7 @@ from nagasim import api, experiments
 NEW = {"conveyor_flow", "conveyor_zones", "transfer_summary", "route_holds", "link_flow"}
 
 
-def run(doc, time_limit, replications=1, warmup=0.0):
+def run(doc, time_limit, replications=1, warmup=0.0, **options):
     """Run *doc* to *time_limit*, which is the window's end: a CREATE whose first part comes
     after it keeps the run from draining sooner (a drained run's window ends at the drain)."""
     doc["simulation"].update({"time_limit": time_limit, "warmup": warmup,
@@ -32,7 +32,7 @@ def run(doc, time_limit, replications=1, warmup=0.0):
     doc["blocks"] += [create(name="clock", e_type="CLOCK", max_arrivals=1, start_time=1e6),
                       dispose(name="clock_out")]
     doc["links"].append({"source": "clock", "target": "clock_out"})
-    return api.run_model(doc, replications=replications)
+    return api.run_model(doc, replications=replications, **options)
 
 
 def row(results, frame, key, value):

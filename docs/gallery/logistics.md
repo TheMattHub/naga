@@ -3,7 +3,7 @@
 
 # Logistics
 
-7 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
+8 of the bundled models. The numbers are from a run made when this page was generated: see [how](index.md#how-the-numbers-are-made).
 
 ## Belt with stops, a divert and a merge
 
@@ -44,6 +44,65 @@ flowchart LR
 | `system/Avg Throughput Time` | 3.12 | 1.6 |
 | `system/Avg Queue Length` | 0.72 | 0.12 |
 | `system/Avg Resource Usage %` | 60.1 | 2 |
+
+## Conveyor line with a sorter, a transfer and a two-way chain
+
+A carton line laid out as conveyor pieces on the floor: a curved infeed with a scanner eye and a label stop, a zoned accumulation belt, a metering belt, a sorter whose angled divert sends one carton in five to a quality desk and whose merge takes them back, a pop-up transfer sharing the cartons between two lines, a timed link to the packing area and a two-way chain that runs backward to hand cartons to rework. Every number is invented for teaching.
+
+```console
+naga run conveyor_line
+```
+
+```mermaid
+flowchart LR
+    b0["Cartons arrive (CREATE)"]
+    b1["Infeed (CONVEYOR)"]
+    b2["Accumulation (CONVEYOR)"]
+    b3["Metering (CONVEYOR)"]
+    b4["Sorter (CONVEYOR)"]
+    b5["Main line (CONVEYOR)"]
+    b6["QA lane (CONVEYOR)"]
+    b7["QA check (PROCESS)"]
+    b8["QA return (CONVEYOR)"]
+    b9["Transfer (CONVEYOR_TRANSFER)"]
+    b10["Line A (CONVEYOR)"]
+    b11["Packing (CONVEYOR)"]
+    b12["Pack station (PROCESS)"]
+    b13["Shipped (DISPOSE)"]
+    b14["Line B (CONVEYOR)"]
+    b15["Two-way 1 (CONVEYOR)"]
+    b16["Two-way 2 (CONVEYOR)"]
+    b17["Dispatched (DISPOSE)"]
+    b18["Rework (DISPOSE)"]
+    b0 --> b1
+    b1 --> b2
+    b2 --> b3
+    b3 --> b4
+    b4 --> b5
+    b4 --> b6
+    b6 --> b7
+    b8 --> b5
+    b7 --> b8
+    b5 --> b9
+    b9 --> b10
+    b10 --> b11
+    b11 --> b12
+    b12 --> b13
+    b9 --> b14
+    b14 --> b15
+    b15 --> b16
+    b16 --> b17
+    b15 --> b18
+```
+
+3 replications, seed 0:
+
+| KPI | Mean | 95% half-width |
+|---|---|---|
+| `system/Total Entities Completed` | 262 | 5.2 |
+| `system/Avg Throughput Time` | 121 | 2.6 |
+| `system/Avg Queue Length` | 0.209 | 0.15 |
+| `system/Avg Resource Usage %` | 40.6 | 8.9 |
 
 ## Hub day: electrifying the ground support equipment
 

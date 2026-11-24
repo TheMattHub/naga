@@ -982,26 +982,57 @@ def import_event_log(path: str, name: str | None = None, routing: Literal["auto"
 
 _document_args("save_model",
                model="Workspace name of the model to save.",
-               path="Destination path under the workspace root; defaults to where it was opened.")
+               path="Destination path under the workspace root; defaults to where it was opened.",
+               short="Write the short `naga fmt` form.")
 
 
 @tool(returns={"ok": bool, "path": str, "errors": int, "warnings": int})
-def save_model(model: str, path: str | None = None) -> dict:
+def save_model(model: str, path: str | None = None, short: bool = False) -> dict:
     """Write a model in the workspace to disk as JSON.
 
     Call it once the model validates. A model created with `new_model` has no
-    path of its own, so the first save needs one.
+    path of its own, so the first save needs one. short=True writes the `naga fmt` form,
+    for a file a person will read or diff, or one to ship; it loads as the same model.
     """
     doc = _WORKSPACE.document(model)
     target = _WORKSPACE.resolve(path) if path else doc.path
     if target is None:
         raise ToolError("E_NO_PATH", f"model '{model}' has never been saved",
                         "pass a path, e.g. save_model(model=..., path='mymodel.json')")
-    doc.save(_WORKSPACE.resolve(target))
+    doc.save(_WORKSPACE.resolve(target), short=bool(short))
     problems = _problems(doc)
     return {"ok": True, "path": str(doc.path),
             "errors": sum(1 for p in problems if p.severity == "error"),
             "warnings": sum(1 for p in problems if p.severity == "warning")}
+
+
+_INFO_MAX = 2000
+
+_document_args("set_model_info",
+               model="Workspace name of the model to edit.",
+               title="Title.", category="Gallery category.", description="What the model is.",
+               author="Author.", notes="Free notes.")
+
+
+@tool(returns=EDIT)
+def set_model_info(model: str, title: str | None = None, category: str | None = None,
+                   description: str | None = None, author: str | None = None,
+                   notes: str | None = None) -> dict:
+    """Write the model's info text, one undo step.
+
+    Leave an argument out to keep it; "" removes it. Each value is at most 2,000 characters.
+    """
+    given = {"title": title, "category": category, "description": description,
+             "author": author, "notes": notes}
+    given = {k: v for k, v in given.items() if v is not None}
+    for key, value in given.items():
+        if not isinstance(value, str) or len(value) > _INFO_MAX:
+            raise ToolError("E_INFO", f"'{key}' must be text of at most {_INFO_MAX} characters",
+                            "pass a shorter string, or \"\" to remove the key"
+                            if isinstance(value, str) else "pass text, or \"\" to remove the key")
+    doc, before = _open(model)
+    doc.set_info(**given)
+    return _edit_result(doc, before)
 
 
 @tool(read_only=True, returns={"open": list, "files": list, "root": str})

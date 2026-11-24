@@ -1,7 +1,9 @@
 """Speed review A+B (2026-11-23): a PROCESS on a plain resource seizes down
 `seizing.acquire_plain`; every other seize takes the full `acquire`. Each feature that
 rules the short path out is shown to take the full path, and every model gives the same
-results whichever path it takes (`_full_path_only` forces the full one)."""
+results whichever path it takes (`_full_path_only` forces the full one). Since review R4
+(2026-11-24) a plain Seize Delay Release visit runs as the one generator
+`Process._visit_plain`, which writes `acquire_plain` out: the spy counts either."""
 import pandas as pd
 import pytest
 
@@ -123,6 +125,32 @@ def _costs():
                              "cost_per_use": 0.5}])
 
 
+def _preempted_plain():
+    """R4: "lo" (plain, does not preempt) is preempted by "hi" often: unlike `_preempt`,
+    "hi" is not overloaded, so a "lo" job is in service when an urgent one arrives."""
+    hi = process("hi", value=2.0, distribution="Exponential", priority=0, preempt=True)
+    lo = process("lo", value=1.0, distribution="Exponential", priority=1)
+    c1 = create("c1", distribution="Exponential", dist_params={"rate": 0.3})
+    c2 = create("c2", distribution="Exponential", dist_params={"rate": 0.5})
+    d = dispose("d")
+    return layout([c1, c2, hi, lo, d], [*chain(c1, hi, d), *chain(c2, lo, d)],
+                  resources=[{"name": "Server", "capacity": 1}], simulation=dict(RUN))
+
+
+def _schedule_log():
+    """R4: a hold the schedule log records is released down `seizing.release`."""
+    return _line(outputs={"schedule": True})
+
+
+def _seize_delay():
+    """R4: a Seize Delay (released by a later block) keeps `self_process`."""
+    doc = _tandem()
+    doc["blocks"][1]["params"]["action"] = "Seize Delay"
+    doc["blocks"][2]["params"].update(action="Delay Release", resource_name="S1")
+    doc["resources"] = [{"name": "S1", "capacity": 1}]
+    return doc
+
+
 # The feature, and the blocks it keeps on the full path. "lo" shares the preempted resource
 # but does not preempt: its request is the plain one, and a job of it that is preempted
 # resumes down the full path (`Process._serve`).
@@ -131,7 +159,8 @@ FULL_PATH = {"set": (_set, {"p"}), "multi_unit": (_multi_unit, {"p"}), "lifo": (
              "space": (_space, {"p1", "p2"}), "power": (_power, {"p"}),
              "warm_start": (_warm_start, {"p"}), "worker_only": (_worker_only, {"p"})}
 SHORT_PATH = {"plain": _line, "tandem": _tandem, "schedule": _schedule, "failure": _failure,
-              "logs_off": _logs_off, "costs": _costs}
+              "logs_off": _logs_off, "costs": _costs, "schedule_log": _schedule_log,
+              "seize_delay": _seize_delay, "preempted_plain": _preempted_plain}
 
 
 def _run(doc):
@@ -147,13 +176,23 @@ def _same(a, b):
             assert a[key] == b[key], key
 
 
-def _spy(monkeypatch):
+def _spy(monkeypatch, visits=None):
+    """The blocks that seized down the short path; *visits*, when given, collects the
+    blocks whose visits ran as `_visit_plain` (R4)."""
     taken = set()
+    visit_plain = process_module.Process._visit_plain
 
     def spy(block, *args, **kwargs):
         taken.add(block.name)
         return seizing.acquire_plain(block, *args, **kwargs)
+
+    def visit_spy(block, entity):
+        taken.add(block.name)
+        if visits is not None:
+            visits.add(block.name)
+        return visit_plain(block, entity)
     monkeypatch.setattr(process_module, "acquire_plain", spy)
+    monkeypatch.setattr(process_module.Process, "_visit_plain", visit_spy)
     return taken
 
 
@@ -193,12 +232,18 @@ def test_the_schedule_and_failure_cases_drive_their_resource(name):
 
 @pytest.mark.parametrize("name", sorted({**FULL_PATH, **SHORT_PATH}))
 def test_both_paths_give_the_same_results(name, monkeypatch):
+    """Three runs: the one-generator visit (R4), `acquire_plain` inside `self_process` (the
+    visit turned off), and the full path; every frame the same in all three."""
     doc = SHORT_PATH[name] if name in SHORT_PATH else FULL_PATH[name][0]
     short = _run(doc())
+    with monkeypatch.context() as patch:
+        patch.setattr(process_module.Process, "_plain_visit", lambda self: False)
+        plain = _run(doc())
     taken = _full_path_only(monkeypatch)
     full = _run(doc())
     assert not taken
     _same(short, full)
+    _same(plain, full)
 
 
 def test_a_watched_run_gives_the_same_events_on_both_paths(monkeypatch):
@@ -217,3 +262,57 @@ def test_a_watched_run_gives_the_same_events_on_both_paths(monkeypatch):
     taken = _full_path_only(monkeypatch)
     assert events() == short and any(e[0] == "entity_seized" for e in short)
     assert not taken
+
+
+def test_a_plain_seize_delay_release_runs_as_one_generator(monkeypatch):
+    """R4: the plain tandem's visits are `_visit_plain`; a Seize Delay is not."""
+    visits = set()
+    _spy(monkeypatch, visits)
+    _run(_tandem())
+    assert visits == {"p1", "p2"}
+    visits.clear()
+    _run(_seize_delay())
+    assert not visits
+
+
+def test_a_preempted_plain_holder_resumes_from_the_one_generator(monkeypatch):
+    """R4: "lo" does not preempt, so its visits are `_visit_plain`, and "hi" preempts them;
+    `test_both_paths_give_the_same_results[preempted_plain]` holds the frames to the full
+    path."""
+    visits = set()
+    _spy(monkeypatch, visits)
+    from nagasim.core.sim_runner import setup_run, step_until
+    env, model = setup_run(_preempted_plain(), seed=3, run_len=60, warmup=0.0)
+    step_until(env, 60)
+    lo = next(b for b in env.ctx.process_list if b.name == "lo")
+    assert "lo" in visits and "hi" not in visits and lo.preempted_count > 0
+
+
+# Review I4: every PROCESS parameter is classified, so a new option must decide its path.
+# Full path only: a value other than the default sends the block's visits down `self_process`
+# and the full `acquire`; each is tested by `_plain_visit` or `plain_target`, as the attribute
+# named here. Plain-path safe: read the same way by `_visit_plain` and `self_process`, or only
+# meaningful with a full-path option set.
+FULL_PATH_ONLY = {"action": "self.seizes", "quantity": "block.quantity", "setup": "self.setup",
+                  "setup_cost": "self.setup_cost", "balk_if": "self.balk_if",
+                  "renege_after": "block.renege_after", "preempt": "block.preempt",
+                  "queue_capacity": "self.space", "hold_until_space": "self.hold_until_space",
+                  "worker_fleet": "self.worker_fleet"}
+PLAIN_PATH_SAFE = {"distribution", "dist_params", "time_unit", "priority", "resource_name",
+                   "setup_unit", "setup_key", "initial_key", "setup_cost_category",
+                   "renege_time_unit", "space_of", "worker_skill", "node", "worker_when_blocked",
+                   "on_preempt", "resample"}
+
+
+def test_every_process_param_has_decided_its_path():
+    import inspect
+    names = [spec.name for spec in process_module.SPEC.params]
+    unclassified = set(names) - set(FULL_PATH_ONLY) - PLAIN_PATH_SAFE
+    assert not unclassified, (f"PROCESS params {sorted(unclassified)}: add each to FULL_PATH_ONLY "
+                              f"(and test it in Process._plain_visit) or to PLAIN_PATH_SAFE")
+    assert not set(FULL_PATH_ONLY) & PLAIN_PATH_SAFE
+    assert set(FULL_PATH_ONLY) | PLAIN_PATH_SAFE == set(names), "a classified name is no param"
+    deciders = (inspect.getsource(process_module.Process._plain_visit)
+                + inspect.getsource(seizing.plain_target))
+    for name, attribute in FULL_PATH_ONLY.items():
+        assert attribute in deciders, f"{name}: {attribute} is not tested by the path decision"

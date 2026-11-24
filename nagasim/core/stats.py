@@ -13,7 +13,7 @@ from functools import lru_cache
 import numpy as np
 # scipy.stats is imported where it is used: it costs about 1.5 s and most commands never need it (D1228).
 
-from nagasim.core.sim_classes import EntityRecord
+from nagasim.core.sim_classes import Entity, EntityRecord
 
 __all__ = ["TimeWeighted", "Tally", "Counter", "UserStat", "USER_STAT_KINDS", "RECORD_KINDS", "ci95",
            "paired_diff_ci", "welch_diff_ci", "wilson_interval", "quantile_interval", "EntityTypeStats",
@@ -355,23 +355,31 @@ def account_and_retain(ctx, entity) -> None:
         ctx.plan_gates.drop(entity)
 
     warmup = ctx.warmup
-    created = created_in_window(entity, warmup)
-    deleted = entity.deletion_time
+    if type(entity) is Entity:
+        # Speed review R5: the fields the properties read, and `created_in_window` written out
+        born, deleted, e_type = entity._creation_time, entity._deletion_time, entity._e_type
+        created = born is not None and max(born, 0.0) >= warmup
+    else:
+        created = created_in_window(entity, warmup)
+        deleted, e_type = entity.deletion_time, None
     completed = deleted is not None and deleted >= warmup
     if not created and not completed:
         _drop(ctx, entity)
         return
 
+    if e_type is None:
+        e_type = entity.e_type
     # Not `setdefault(type, EntityTypeStats())`: that built and threw away an accumulator,
     # with its two series, for every entity after a type's first (speed review E).
-    acc = ctx.entity_stats.get(entity.e_type)
+    acc = ctx.entity_stats.get(e_type)
     if acc is None:
-        acc = ctx.entity_stats[entity.e_type] = EntityTypeStats()
+        acc = ctx.entity_stats[e_type] = EntityTypeStats()
     if created:
         acc.created += 1
     if completed:
         acc.completed += 1
-        acc.times.append(entity.throughput_time)
+        acc.times.append(entity._throughput_time if type(entity) is Entity
+                         else entity.throughput_time)
         acc.costs.append(entity.cost)
         acc.holding_sum += entity._holding_cost
         acc.assigned_sum += entity.cost - entity._auto_cost

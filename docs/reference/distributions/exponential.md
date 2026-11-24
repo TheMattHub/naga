@@ -42,7 +42,7 @@ An expression has its own call for it: `EXPO(mean)`.
 
 ## Used in
 
-Bundled models: [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Robot cell against manual assembly](../../gallery/manufacturing.md), [Job shop (Jackson network)](../../gallery/manufacturing.md) and 19 more.
+Bundled models: [Biogas plant (library assets)](../../gallery/energy.md), [Emergency department: staffing game](../../gallery/games.md), [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Robot cell against manual assembly](../../gallery/manufacturing.md) and 20 more.
 
 Guides: [Python API](../../python-api.md), [Quick start](../../quickstart.md), [Coming from salabim](../../coming-from/salabim.md), [Coming from SimPy](../../coming-from/simpy.md), [How do I fit input distributions from data?](../../goals/fit-input-distributions.md), [Use with an agent](../../mcp.md) and 25 more.
 

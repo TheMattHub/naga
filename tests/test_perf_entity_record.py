@@ -156,3 +156,23 @@ def test_disposal_makes_few_calls_per_entity(fresh_caches):
     assert "account_due_date" not in rows               # no orders, no due dates
     assert rows["of callees"] <= 20                     # cache misses only: a few shapes, one type
     assert (rows["account_and_retain callees"] + rows["of callees"]) / disposed < 12        # 11 now; the per-entity throwaway accumulator would make it 12
+
+
+def test_an_aged_warm_started_entity_counts_as_created_on_both_record_paths(monkeypatch):
+    """Speed review R5: `account_and_retain` reads an Entity's fields and writes
+    `created_in_window` out, clamp included: a warm-started entity's creation time is minus
+    its age, and it still counts as created at t=0. The frames equal those of the general path
+    (the Entity type hidden from `stats`)."""
+    from conftest import chain, create, dispose, layout, process
+    c = create("c", start_time=1000)
+    p, d = process("p", value=1.5), dispose("d")
+    doc = layout([c, p, d], chain(c, p, d), resources=[{"name": "Server", "capacity": 1}],
+                 simulation={"time_limit": 20, "warmup": 0, "replications": 1},
+                 initial_state={"entities": [{"block": "p", "count": 3, "age": 4.0}]})
+    fast = api.run_model(doc, seed=2)
+    assert fast["entity_summary"]["Total Created"].sum() == 3
+    monkeypatch.setattr(stats, "Entity", type("NotPlain", (), {}))
+    slow = api.run_model(doc, seed=2)
+    for key, frame in fast.items():
+        if isinstance(frame, pd.DataFrame):
+            pd.testing.assert_frame_equal(frame, slow[key], check_exact=True, obj=key)

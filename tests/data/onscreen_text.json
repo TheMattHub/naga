@@ -17,8 +17,8 @@
     },
     "dialogs": {
       "multi": 1,
-      "units": 155,
-      "words": 664
+      "units": 160,
+      "words": 682
     },
     "mes twin": {
       "multi": 0,
@@ -47,13 +47,13 @@
     },
     "properties": {
       "multi": 0,
-      "units": 449,
-      "words": 703
+      "units": 445,
+      "words": 699
     },
     "results": {
       "multi": 0,
-      "units": 232,
-      "words": 616
+      "units": 254,
+      "words": 669
     },
     "window": {
       "multi": 0,

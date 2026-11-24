@@ -1,0 +1,255 @@
+{
+  "$schema": "https://thematthub.github.io/naga/schema/model-v32.json",
+  "schema_version": 32,
+  "blocks": [
+    {
+      "name": "Cartons arrive",
+      "type": "CREATE",
+      "position": [200.0, 300.0],
+      "params": {
+        "e_type": "CARTON",
+        "distribution": "Exponential",
+        "dist_params": {"rate": 0.1},
+        "max_arrivals": 280
+      }
+    },
+    {
+      "name": "Infeed",
+      "type": "CONVEYOR",
+      "position": [400.0, 300.0],
+      "layout_position": [0.0, 0.0],
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "stops": [{"at": 3.0, "time": 2.0}],
+        "eyes": [{"at": 1.0, "assign": [{"target": "entity.qa", "expr": "IF(RAND() < 0.2, 1, 0)"}]}],
+        "path": [
+          {"straight": 4.0},
+          {"arc": {"radius": 1.0, "angle": 90, "turn": "right"}},
+          {"straight": 1.0}
+        ],
+        "type": "roller"
+      }
+    },
+    {
+      "name": "Accumulation",
+      "type": "CONVEYOR",
+      "position": [600.0, 300.0],
+      "layout_position": [5.0, 2.0],
+      "layout_rotation": 90.0,
+      "params": {
+        "speed": 0.5,
+        "spacing": 1.0,
+        "path": [{"straight": 4.0}],
+        "type": "mdr",
+        "zones": {"count": 4, "release_delay": 0.5}
+      }
+    },
+    {
+      "name": "Metering",
+      "type": "CONVEYOR",
+      "position": [800.0, 300.0],
+      "layout_position": [5.0, 6.0],
+      "layout_rotation": 90.0,
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "path": [{"arc": {"radius": 1.0, "angle": 90, "turn": "left"}}, {"straight": 2.0}],
+        "type": "belt",
+        "release": {"metering": {"gap": 0.5}}
+      }
+    },
+    {
+      "name": "Sorter",
+      "type": "CONVEYOR",
+      "position": [1000.0, 300.0],
+      "layout_position": [8.0, 7.0],
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "diverts": [
+          {"at": 2.0, "condition": "entity.qa == 1", "time": 1.0, "side": "right", "angle": 45}
+        ],
+        "path": [{"straight": 6.0}],
+        "type": "belt"
+      }
+    },
+    {
+      "name": "Main line",
+      "type": "CONVEYOR",
+      "position": [1800.0, 300.0],
+      "layout_position": [14.0, 7.0],
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "merges": [{"at": 3.0, "from": "QA return"}],
+        "path": [{"straight": 6.0}],
+        "type": "belt"
+      }
+    },
+    {
+      "name": "QA lane",
+      "type": "CONVEYOR",
+      "position": [1200.0, 300.0],
+      "layout_position": [10.0, 7.0],
+      "layout_rotation": 45.0,
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "path": [
+          {"straight": 2.5},
+          {"arc": {"radius": 1.0, "angle": 45, "turn": "left"}},
+          {"straight": 1.0}
+        ],
+        "type": "roller"
+      }
+    },
+    {
+      "name": "QA check",
+      "type": "PROCESS",
+      "position": [1400.0, 300.0],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {"low": 15.0, "mode": 20.0, "high": 30.0},
+        "resource_name": "Inspector"
+      }
+    },
+    {
+      "name": "QA return",
+      "type": "CONVEYOR",
+      "position": [1600.0, 300.0],
+      "layout_position": [16.0, 9.06066],
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "eyes": [
+          {"at": 0.5, "edge": "front", "signal": "gate"},
+          {"at": 0.5, "edge": "back", "signal": "gate"}
+        ],
+        "path": [{"arc": {"radius": 1.0, "angle": 90, "turn": "left"}}, {"straight": 1.06066}],
+        "type": "roller"
+      }
+    },
+    {
+      "name": "Transfer",
+      "type": "CONVEYOR_TRANSFER",
+      "position": [2000.0, 300.0],
+      "layout_position": [20.0, 7.0],
+      "params": {
+        "exits": [{"port": "left", "angle": -90.0}, {"port": "straight", "angle": 0.0}],
+        "rule": {"kind": "round_robin", "limit": 4}
+      }
+    },
+    {
+      "name": "Line A",
+      "type": "CONVEYOR",
+      "position": [2200.0, 300.0],
+      "layout_position": [20.0, 7.0],
+      "params": {"speed": 0.33, "spacing": 1.0, "path": [{"straight": 4.0}], "type": "roller"}
+    },
+    {
+      "name": "Packing",
+      "type": "CONVEYOR",
+      "position": [2400.0, 300.0],
+      "layout_position": [28.0, 7.0],
+      "params": {"speed": 0.33, "spacing": 1.0, "path": [{"straight": 3.0}], "type": "belt"}
+    },
+    {
+      "name": "Pack station",
+      "type": "PROCESS",
+      "position": [2600.0, 300.0],
+      "params": {
+        "distribution": "Triangular",
+        "dist_params": {"low": 6.0, "mode": 8.0, "high": 12.0},
+        "resource_name": "Packer"
+      }
+    },
+    {"name": "Shipped", "type": "DISPOSE", "position": [2800.0, 300.0]},
+    {
+      "name": "Line B",
+      "type": "CONVEYOR",
+      "position": [2200.0, 400.0],
+      "layout_position": [20.0, 7.0],
+      "layout_rotation": 270.0,
+      "params": {"speed": 0.33, "spacing": 1.0, "path": [{"straight": 3.0}], "type": "roller"}
+    },
+    {
+      "name": "Two-way 1",
+      "type": "CONVEYOR",
+      "position": [2400.0, 400.0],
+      "layout_position": [20.0, 4.0],
+      "layout_rotation": 270.0,
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "path": [{"straight": 2.0}],
+        "type": "roller",
+        "reversible": true,
+        "reverse_signal": "gate",
+        "reverse_to": "Rework"
+      }
+    },
+    {
+      "name": "Two-way 2",
+      "type": "CONVEYOR",
+      "position": [2600.0, 400.0],
+      "layout_position": [20.0, 2.0],
+      "layout_rotation": 270.0,
+      "params": {
+        "speed": 0.33,
+        "spacing": 1.0,
+        "path": [{"straight": 2.0}],
+        "type": "roller",
+        "reversible": true
+      }
+    },
+    {"name": "Dispatched", "type": "DISPOSE", "position": [2800.0, 400.0]},
+    {"name": "Rework", "type": "DISPOSE", "position": [2600.0, 500.0]}
+  ],
+  "links": [
+    {"source": "Cartons arrive", "target": "Infeed"},
+    {"source": "Infeed", "target": "Accumulation", "source_port": "out", "target_port": "in"},
+    {"source": "Accumulation", "target": "Metering", "source_port": "out", "target_port": "in"},
+    {"source": "Metering", "target": "Sorter", "source_port": "out", "target_port": "in"},
+    {"source": "Sorter", "target": "Main line", "source_port": "out", "target_port": "in"},
+    {"source": "Sorter", "target": "QA lane", "source_port": "d0", "target_port": "in"},
+    {"source": "QA lane", "target": "QA check"},
+    {"source": "QA return", "target": "Main line", "source_port": "out"},
+    {"source": "QA check", "target": "QA return"},
+    {"source": "Main line", "target": "Transfer", "source_port": "out"},
+    {"source": "Transfer", "target": "Line A", "source_port": "straight", "target_port": "in"},
+    {
+      "source": "Line A",
+      "target": "Packing",
+      "delay": {"distribution": "Constant", "dist_params": {"value": 20.0}, "time_unit": "seconds"},
+      "source_port": "out",
+      "target_port": "in",
+      "capacity": 4
+    },
+    {"source": "Packing", "target": "Pack station"},
+    {"source": "Pack station", "target": "Shipped"},
+    {"source": "Transfer", "target": "Line B", "source_port": "left", "target_port": "in"},
+    {"source": "Line B", "target": "Two-way 1", "source_port": "out", "target_port": "in"},
+    {"source": "Two-way 1", "target": "Two-way 2", "source_port": "out", "target_port": "in"},
+    {"source": "Two-way 2", "target": "Dispatched"},
+    {"source": "Two-way 1", "target": "Rework"}
+  ],
+  "resources": [{"name": "Inspector", "capacity": 1}, {"name": "Packer", "capacity": 1}],
+  "entities": [
+    {
+      "name": "CARTON",
+      "shape": "box",
+      "color": "#c8a165",
+      "size": {"length": 0.4, "width": 0.3, "height": 0.25}
+    }
+  ],
+  "info": {
+    "title": "Conveyor line with a sorter, a transfer and a two-way chain",
+    "category": "Logistics",
+    "description": "A carton line laid out as conveyor pieces on the floor: a curved infeed with a scanner eye and a label stop, a zoned accumulation belt, a metering belt, a sorter whose angled divert sends one carton in five to a quality desk and whose merge takes them back, a pop-up transfer sharing the cartons between two lines, a timed link to the packing area and a two-way chain that runs backward to hand cartons to rework. Every number is invented for teaching.",
+    "author": "Naga",
+    "notes": "Times in seconds, lengths in metres, belt speeds from the conveyor types."
+  },
+  "simulation": {"time_limit": 4000, "warmup": 300, "replications": 3, "time_unit": "seconds"},
+  "outputs": {}
+}

@@ -6,6 +6,7 @@ from nagasim.core.blocks._routing import end_routes
 from nagasim.core.block_spec import BlockSpec, DIST_PARAMS, ParamSpec
 from nagasim.core.distributions import StochasticDistribution
 from nagasim.core.movers import free_held
+from nagasim.core.sim_classes import Entity
 from nagasim.core.stats import account_and_retain
 
 log = logging.getLogger(__name__)
@@ -53,9 +54,18 @@ class Dispose(BaseProcess):
                 end_routes(self.ctx, entity)       # R34: a rule counting it under way lets it go
 
     def _finish(self, entity):
-            entity.deletion_time = self.env.now
+            # The fields, not the properties, of an `Entity` (speed review R5); the clock
+            # without the property (R3). The same values the property pair stores and reads.
+            plain = type(entity) is Entity
+            if plain:
+                now = entity._deletion_time = self.env._now
+            else:
+                entity.deletion_time = self.env._now
             try:
-                entity.throughput_time = entity.deletion_time - entity.creation_time
+                if plain:
+                    entity._throughput_time = now - entity._creation_time
+                else:
+                    entity.throughput_time = entity.deletion_time - entity.creation_time
             except:
                     log.warning(f"Error in throughput_time of entity {entity}")
 
@@ -64,7 +74,8 @@ class Dispose(BaseProcess):
                 self._remove_agent_of(entity)
             self.ctx.live_entities.remove(entity)
             self.disposed_entities += 1
-            self.emit("entity_disposed", entity=entity)
+            if self.ctx.bus._subscribers:      # as `emit`, tested here (speed review R7)
+                self.emit("entity_disposed", entity=entity)
             account_and_retain(self.ctx, entity)   # ROADMAP 2.5, DEVLOG #62
 
             if self.ctx.debug:
@@ -97,7 +108,7 @@ class Dispose(BaseProcess):
         the system when warm-up ends is billed only from that point on."""
         # Looked up once per entity type: the types and their rates are loaded
         # with the model and nothing changes them during a run.
-        e_type = entity.e_type
+        e_type = entity._e_type if type(entity) is Entity else entity.e_type     # R5
         rate = self._holding_rates.get(e_type)
         if rate is None:
             rate = self._holding_rates[e_type] = (

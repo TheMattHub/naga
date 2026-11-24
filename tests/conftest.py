@@ -37,6 +37,63 @@ import pytest
 from nagasim.core.schema import validate_model_structured
 
 
+def pytest_configure(config):
+    """A module whose tests share an expensive module fixture (a walk, a set of pages) carries
+    `pytest.mark.xdist_group`; under xdist's default `--dist load` every worker handed one of its
+    tests built that fixture again (about 1,700 s of the slow set's setup, 2026-11-24 review).
+    `loadgroup` keeps such a module on one worker and is `load` for every other test."""
+    if getattr(config.option, "dist", None) == "load":
+        config.option.dist = "loadgroup"
+    # A worker re-parses the command line (so it reads `load`) and decides on the group suffix
+    # before this hook runs; the controller's choice reaches it through workerinput.
+    if getattr(config, "workerinput", {}).get("naga_loadgroup"):
+        config.option.loadgroup = True
+
+
+@pytest.hookimpl(optionalhook=True)          # an xdist hook: the engine clone may run without xdist
+def pytest_configure_node(node):
+    node.workerinput["naga_loadgroup"] = node.config.option.dist == "loadgroup"
+
+
+@pytest.fixture(scope="session")
+def audit_pages(tmp_path_factory):
+    """`test_page_audit.build_pages` once for its module and `test_onscreen_text` (both in the
+    xdist group "audit_pages"); each test reads the pages and writes only under its own tmp_path."""
+    import test_page_audit
+    return test_page_audit.build_pages(tmp_path_factory)
+
+
+@pytest.fixture(scope="session")
+def engine_export(tmp_path_factory):
+    """ONE fresh export of the engine (`tools/export_engine.py`) for the tests that check it:
+    test_docs' fresh-export test, test_engine_docs' `built_site` and test_repo_status' export
+    check, all in the xdist group "engine_export" (Matteo, 2026-11-24). Read-only: a test that
+    builds, commits or runs anything in it works on a copy."""
+    import importlib
+    if not (Path(__file__).resolve().parents[1] / "tools" / "export_engine.py").is_file():
+        pytest.skip("no tools/export_engine.py: this is the engine repository itself")
+    export_engine = importlib.import_module("tools.export_engine")
+    target = tmp_path_factory.mktemp("engine_export") / "naga"
+    assert export_engine.export(target) == []
+    return target
+
+
+@pytest.fixture(scope="session")
+def engine_site(engine_export, tmp_path_factory):
+    """The export copied once and its site built strict into `out` beside the copy: (out, root),
+    the copy at root / "naga"."""
+    import shutil
+    import subprocess
+    pytest.importorskip("mkdocs")
+    pytest.importorskip("material")
+    root = tmp_path_factory.mktemp("engine_site")
+    shutil.copytree(engine_export, root / "naga")
+    done = subprocess.run([sys.executable, "-m", "mkdocs", "build", "--strict", "-d", str(root / "out")],
+                          cwd=str(root / "naga"), capture_output=True, text=True, timeout=600)
+    assert done.returncode == 0, done.stdout + done.stderr
+    return root / "out", root
+
+
 def pytest_sessionstart(session):
     """A run in a linked worktree that imports the main checkout's packages (the editable install)
     tests old code; stop at once and say how to fix it (S7-14)."""

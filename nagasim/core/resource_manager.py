@@ -44,6 +44,7 @@ from operator import attrgetter
 
 import numpy as np
 import simpy
+from simpy.events import PENDING
 from simpy.resources.resource import PriorityRequest, Preempted
 
 from nagasim.core.base_process import deterministic_hash
@@ -404,7 +405,7 @@ class _Resource(simpy.PreemptiveResource):
         while idx < len(queue):
             put_event = queue[idx]
             proceed = self._do_put(put_event)
-            if not put_event.triggered:
+            if put_event._value is PENDING:     # `not triggered`, without the property (R2)
                 idx += 1
             elif queue[idx] is not put_event:
                 raise RuntimeError("Put queue invariant violated")
@@ -414,20 +415,42 @@ class _Resource(simpy.PreemptiveResource):
                 break
 
     def _do_put(self, event):
-        group = getattr(event, "group", None)
-        if group is not None:
-            return self._put_group(event, group)
+        # Only a `_GroupRequest` has a group (speed review R2: tested by type, no getattr)
+        if event.__class__ is _GroupRequest:
+            return self._put_group(event, event.group)
+        users = self.users
         # SimPy's own choice of the job to preempt, but for holders of EQUAL key: SimPy
         # leaves that tie to its implementation, and 4.1.2 changed it (`sorted()[-1]`,
         # the last granted, became `max()`, the first). Decided here, as the last
         # granted, so a result does not depend on the SimPy version (#363).
-        if len(self.users) >= self.capacity and event.preempt:
-            victim = max(reversed(self.users), key=_request_key)
+        if event.preempt and len(users) >= self._capacity:
+            victim = max(reversed(users), key=_request_key)
             if victim.key > event.key:
-                self.users.remove(victim)
+                users.remove(victim)
                 victim.proc.interrupt(Preempted(by=event.proc, usage_since=victim.usage_since,
                                                 resource=self))
-        return simpy.Resource._do_put(self, event)
+        # `simpy.Resource._do_put` of SimPy 4.1 written out (R2): `_capacity` and `_now`
+        # without their properties; `succeed` itself, so a triggered request still raises.
+        if len(users) < self._capacity:
+            users.append(event)
+            event.usage_since = self._env._now
+            event.succeed()
+        return None
+
+    def _trigger_get(self, put_event):
+        """SimPy's own loop (BaseResource._trigger_get, 4.1) with `Resource._do_get` written
+        out and `triggered` read as `_value` (speed review R2). `_do_get` returns None, so
+        SimPy's loop serves the head only and stops."""
+        queue = self.get_queue
+        if queue:
+            get_event = queue[0]
+            try:
+                self.users.remove(get_event.request)
+            except ValueError:
+                pass
+            get_event.succeed()
+            if get_event._value is not PENDING and queue.pop(0) != get_event:
+                raise RuntimeError("Get queue invariant violated")
 
     def _put_group(self, event, group):
         """D856: grant the whole group when its units are free, else nothing. Returning
@@ -670,9 +693,18 @@ class LoggedSimpyResource:
         start (speed review B, `seizing.acquire_plain`): the same SimPy request, collectors
         and grant callback, with none of the options tested."""
         req = PriorityRequest(self._core, (priority, 0), False)
-        t = self.env.now
+        t = self.env._now         # the clock without the property (speed review R3)
         self._enqueued[req] = t
-        self.queue_len.add(1, t)
+        # `self.queue_len.add(1, t)` written out, as in `_on_granted` and `release` (speed
+        # review R6): the same statements as `TimeWeighted.add`, in the same order.
+        q = self.queue_len
+        level, dt = q.level, t - q.last_t
+        if dt > 0:
+            q.integral += level * dt
+            if level > q._max:
+                q._max = level
+            q.last_t = t
+        q.level = level + 1
         ctx = self.env.ctx
         if ctx.record_logs or ctx.watched:
             self.log_usage(t, event_type="request")
@@ -690,9 +722,8 @@ class LoggedSimpyResource:
         group = _Group(quantity)
         return [self.request(group=group, **kwargs) for _ in range(quantity)]
 
-    def _seized(self, req) -> None:
-        """Count one grant, unless this request is a preempted job resuming."""
-        t = self.env.now
+    def _seized(self, req, t) -> None:
+        """Count one grant at *t* (the clock), unless this request is a preempted job resuming."""
         self.busy.add(1, t)
         # The two hooks are tested here, not called to find out (speed review A): most
         # models track no bottleneck and read no POWER().
@@ -711,33 +742,70 @@ class LoggedSimpyResource:
         self.seize_count += 1
 
     def _on_granted(self, req):
-        t = self.env.now
+        t = self.env._now
         if self._uncounted and req in self._uncounted:
             self._uncounted.discard(req)
-            self._seized(req)
+            self._seized(req, t)
             self.log_usage(t, event_type="seize")
             return
-        enqueued_at = self._enqueued.pop(req, None)
-        if enqueued_at is None:      # already accounted for (released while queued)
+        enqueued = self._enqueued
+        if req not in enqueued:      # already accounted for (released while queued)
             return
-        self.queue_len.add(-1, t)
-        self._seized(req)
-        self.wait.add(t - enqueued_at)
+        enqueued_at = enqueued[req]
+        del enqueued[req]
+        # `queue_len.add(-1, t)`, `_seized(req, t)` (its `busy.add(1, t)` too) and
+        # `wait.add(...)` written out (speed review R6): the same statements, the same order.
+        q = self.queue_len
+        level, dt = q.level, t - q.last_t
+        if dt > 0:
+            q.integral += level * dt
+            if level > q._max:
+                q._max = level
+            q.last_t = t
+        q.level = level - 1
+        q = self.busy
+        level, dt = q.level, t - q.last_t
+        if dt > 0:
+            q.integral += level * dt
+            if level > q._max:
+                q._max = level
+            q.last_t = t
+        q.level = level + 1
         ctx = self.env.ctx
+        if ctx.bottleneck_tracker is not None:
+            self._notify_bottleneck(t)
+        system = ctx.level_system
+        if system is not None and system.reads_power:
+            ctx.wake_power()
+        if self._uncharged and req in self._uncharged:
+            self._uncharged.discard(req)
+            req.resumed_grant = True    # what `cancel` reads to take no seize back (D860)
+        else:
+            self.seize_count += 1
+        self.wait.values.append(float(t - enqueued_at))
         if ctx.record_logs or ctx.watched:
             self.log_usage(t, event_type="seize")
         else:
             self.log_events += 1
 
     def release(self, req):
-        t = self.env.now
+        t = self.env._now
         if self._uncounted:
             self._uncounted.discard(req)
         ctx = self.env.ctx
-        if self._enqueued.pop(req, None) is not None:
+        enqueued = self._enqueued
+        if req in enqueued:
+            del enqueued[req]
             self.queue_len.add(-1, t)      # cancelled before it was ever granted
         else:
-            self.busy.add(-1, t)
+            q = self.busy                  # `busy.add(-1, t)` written out (speed review R6)
+            level, dt = q.level, t - q.last_t
+            if dt > 0:
+                q.integral += level * dt
+                if level > q._max:
+                    q._max = level
+                q.last_t = t
+            q.level = level - 1
             if ctx.bottleneck_tracker is not None:      # the hooks tested, as in `_seized`
                 self._notify_bottleneck(t)
             system = ctx.level_system
@@ -970,19 +1038,24 @@ class LoggedSimpyResource:
         # seize, and the keyword call plus two property chains cost more than
         # the append. Same record, same truncation rule; *time* is `env.now`
         # at every caller.
-        buffer = self.log
-        if buffer.maxlen and len(buffer) >= buffer.maxlen:
-            self.log_truncated = True
         core = self._core
-        if self._blockers:
+        blockers = self._blockers
+        if blockers:
             # `in_service` and `waiting`, with the blockers counted once
-            # instead of once in each.
-            pending = self._pending_blockers
-            in_use = len(core.users) - (len(self._blockers) - pending)
+            # instead of once in each. `_pending_blockers` written out (speed review R9):
+            # the same count, without the property, the generator and `triggered`.
+            pending = 0
+            for req in blockers:
+                if req._value is PENDING:
+                    pending += 1
+            in_use = len(core.users) - (len(blockers) - pending)
             waiting = len(core.put_queue) - pending
         else:                          # no schedule or failure: SimPy's counts are the entities
             in_use, waiting = len(core.users), len(core.put_queue)
-        buffer.add(time, in_use, waiting, event_type)
+        # The log says whether it was full (`maxlen` rows), instead of a `len` through its
+        # Python `__len__` first (speed review R9); the flag is the same.
+        if self.log.add(time, in_use, waiting, event_type):
+            self.log_truncated = True
 
     def open_waits(self, t_end):
         """Waits of requests still queued at *t_end* (censored observations).
@@ -1156,11 +1229,10 @@ class ResourceSet:
         if not self.env.ctx.record_logs:
             return                      # PHASE4 T7
         # Written out, as in `LoggedSimpyResource.log_usage`: same record, same
-        # truncation rule; *time* is `env.now` at every caller.
-        buffer = self.log
-        if buffer.maxlen and len(buffer) >= buffer.maxlen:
+        # truncation rule (the log says whether it was full, R9); *time* is `env.now` at
+        # every caller.
+        if self.log.add(time, self.count, int(self.queue_len.level), event_type):
             self.log_truncated = True
-        buffer.add(time, self.count, int(self.queue_len.level), event_type)
 
     def open_waits(self, t_end):
         return [max(t_end - t, 0.0) for t in self._open]
