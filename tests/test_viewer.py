@@ -1283,7 +1283,10 @@ def test_853_a_saved_scenario_can_be_removed_and_the_legend_names_what_is_drawn(
         hidden, _click("save"), _click("save"), _TABS, hidden,
         _tab("Saved 1"), _click("remove"), _TABS, hidden, _click("save"), _TABS,
         {"eval": "location.reload(); 1"},
-        {"eval": "new Promise(function (done) { setTimeout(function () { done(1); }, 2500); })"},
+        # The tabs, not a fixed 2.5 s: a CI runner re-parses the page slower (#2045).
+        {"eval": "new Promise(function (done) { var t0 = Date.now(); (function poll() {"
+                 " if ((document.readyState !== 'loading' && document.querySelectorAll('.tab').length)"
+                 " || Date.now() - t0 > 60000) { done(1); } else { setTimeout(poll, 100); } })(); })"},
         _TABS])
     first, _a, _b, saved, on_saved, _pick, _remove, removed, after, _c, again, _r, _w, reloaded = out["answers"]
     assert first == "true,true,false"                           # the author's run: no baseline beside it
