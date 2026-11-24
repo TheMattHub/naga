@@ -67,8 +67,10 @@ const LOCAL = /^(file|data|blob|about|edge|chrome|devtools):/;
     await send("Network.enable"); await send("Log.enable");
     await send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
     await send("Page.navigate", { url: "file:///" + path.resolve(page).replace(/\\/g, "/") });
-    // The page's own markup is there before the first step (its 40 MB of data follow it).
-    for (let i = 0; i < 300 && (await value("!!(document.body && (document.getElementById('status') || document.getElementById('view') || document.readyState === 'complete'))")) !== true; i += 1) {
+    // The first step runs once the page is parsed: its script builds the tabs and wires the
+    // buttons at DOMContentLoaded, after the 40 MB of embedded data. Waiting only for the
+    // first elements let a step on a slow runner read buttons not yet parsed (#2045).
+    for (let i = 0; i < 1200 && (await value("!!document.body && document.readyState !== 'loading'")) !== true; i += 1) {
       await new Promise(r => setTimeout(r, 100));
     }
     for (const step of JSON.parse(steps)) {
