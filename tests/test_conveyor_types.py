@@ -65,6 +65,16 @@ def test_types_table_has_the_five_types_and_fields():
         assert entry.gap >= 0
 
 
+def test_belt_roller_and_mdr_stand_at_knuckle_height():
+    """D1434 (owner choice, not a vendor value): these three tops are 0.762 m (30 in), the
+    knuckle height for loading by hand, not the vendors' 0.152 m minimum elevation. Chain
+    (Interroll TOC mid) and pallet (TOR) keep their datasheet heights."""
+    for kind in ("belt", "roller", "mdr"):
+        assert conveyor_types.TYPES[kind].height == 0.762
+    assert conveyor_types.TYPES["chain"].height == 0.775
+    assert conveyor_types.TYPES["pallet"].height == 0.095
+
+
 def test_cell_from_item_size():
     """Entity type CASE has size.length 0.41; typed belt, length 3.0, gap 0. Superseded by
     the owner decision of Task 2b (D1355, owner-approved values): cell_length is the default

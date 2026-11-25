@@ -1,10 +1,10 @@
 {
-  "date": "2026-11-23",
+  "date": "2026-11-24",
   "quick": false,
   "python": "3.12.4",
   "machine": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel, 20 logical CPUs, Windows 11",
   "versions": {
-    "SimPy": "4.1.1",
+    "SimPy": "4.1.2",
     "salabim": "26.0.8",
     "Ciw": "3.2.7",
     "Naga": "0.21.0"
@@ -24,32 +24,32 @@
         "SimPy": {
           "mean": 3.9958139060674585,
           "ci95": 0.17421985100245424,
-          "seconds": 0.609375,
-          "customers_per_second": 164102.5641025641
+          "seconds": 0.65625,
+          "customers_per_second": 152380.95238095237
         },
         "salabim": {
           "mean": 3.9958139060674585,
           "ci95": 0.17421985100245424,
-          "seconds": 15.78125,
-          "customers_per_second": 6336.633663366337
+          "seconds": 17.140625,
+          "customers_per_second": 5834.092980856883
         },
         "Ciw": {
           "mean": 4.315453051510906,
           "ci95": 0.3415858531195017,
-          "seconds": 1.0,
-          "customers_per_second": 100000.0
+          "seconds": 1.078125,
+          "customers_per_second": 92753.62318840579
         },
         "Naga": {
           "mean": 3.98148,
           "ci95": 0.2211400652685191,
-          "seconds": 3.0,
-          "customers_per_second": 33333.333333333336
+          "seconds": 2.890625,
+          "customers_per_second": 34594.59459459459
         },
         "Naga, logs and sampler off": {
           "mean": 3.98148,
           "ci95": 0.2211400652685191,
-          "seconds": 2.078125,
-          "customers_per_second": 48120.3007518797
+          "seconds": 1.9375,
+          "customers_per_second": 51612.903225806454
         }
       }
     },
@@ -60,32 +60,32 @@
         "SimPy": {
           "mean": 6.100560440293472,
           "ci95": 0.3570115590484057,
-          "seconds": 0.625,
-          "customers_per_second": 160000.0
+          "seconds": 0.671875,
+          "customers_per_second": 148837.2093023256
         },
         "salabim": {
           "mean": 6.100560440293472,
           "ci95": 0.3570115590484057,
-          "seconds": 15.953125,
-          "customers_per_second": 6268.364348677767
+          "seconds": 17.1875,
+          "customers_per_second": 5818.181818181818
         },
         "Ciw": {
           "mean": 6.049231391217597,
           "ci95": 0.3799473080379637,
-          "seconds": 1.0625,
-          "customers_per_second": 94117.64705882352
+          "seconds": 1.125,
+          "customers_per_second": 88888.88888888889
         },
         "Naga": {
           "mean": 5.9433,
           "ci95": 0.32722107313833687,
-          "seconds": 3.046875,
-          "customers_per_second": 32820.51282051282
+          "seconds": 2.90625,
+          "customers_per_second": 34408.602150537634
         },
         "Naga, logs and sampler off": {
           "mean": 5.9433,
           "ci95": 0.32722107313833687,
-          "seconds": 2.125,
-          "customers_per_second": 47058.82352941176
+          "seconds": 2.015625,
+          "customers_per_second": 49612.40310077519
         }
       }
     },
@@ -96,32 +96,32 @@
         "SimPy": {
           "mean": 7.418107038135702,
           "ci95": 0.4572492982690262,
-          "seconds": 1.421875,
-          "customers_per_second": 70329.67032967033
+          "seconds": 1.484375,
+          "customers_per_second": 67368.42105263157
         },
         "salabim": {
           "mean": 6.929561251361624,
           "ci95": 0.3858921853546156,
-          "seconds": 20.234375,
-          "customers_per_second": 4942.084942084942
+          "seconds": 21.8125,
+          "customers_per_second": 4584.5272206303725
         },
         "Ciw": {
           "mean": 6.98772690123622,
           "ci95": 0.39883444678842117,
-          "seconds": 2.90625,
-          "customers_per_second": 34408.602150537634
+          "seconds": 3.171875,
+          "customers_per_second": 31527.093596059112
         },
         "Naga": {
           "mean": 7.03073,
           "ci95": 0.23339284754326883,
-          "seconds": 6.578125,
-          "customers_per_second": 15201.900237529691
+          "seconds": 6.171875,
+          "customers_per_second": 16202.531645569621
         },
         "Naga, logs and sampler off": {
           "mean": 7.03073,
           "ci95": 0.23339284754326883,
-          "seconds": 4.71875,
-          "customers_per_second": 21192.052980132452
+          "seconds": 4.328125,
+          "customers_per_second": 23104.693140794225
         }
       }
     },
@@ -132,32 +132,32 @@
         "SimPy": {
           "mean": 8.456755241277012,
           "ci95": 0.3529620316529564,
-          "seconds": 1.328125,
-          "customers_per_second": 75294.11764705883
+          "seconds": 1.40625,
+          "customers_per_second": 71111.11111111111
         },
         "salabim": {
           "mean": 8.494519634723595,
           "ci95": 0.256818361138003,
-          "seconds": 21.140625,
-          "customers_per_second": 4730.229120473023
+          "seconds": 22.109375,
+          "customers_per_second": 4522.968197879859
         },
         "Ciw": {
           "mean": 8.47428454238123,
           "ci95": 0.34163903906996285,
-          "seconds": 2.953125,
-          "customers_per_second": 33862.43386243386
+          "seconds": 3.015625,
+          "customers_per_second": 33160.62176165803
         },
         "Naga": {
           "mean": 8.34827,
           "ci95": 0.20803766967450565,
-          "seconds": 6.828125,
-          "customers_per_second": 14645.308924485125
+          "seconds": 6.28125,
+          "customers_per_second": 15920.39800995025
         },
         "Naga, logs and sampler off": {
           "mean": 8.34827,
           "ci95": 0.20803766967450565,
-          "seconds": 4.921875,
-          "customers_per_second": 20317.460317460318
+          "seconds": 4.546875,
+          "customers_per_second": 21993.12714776632
         }
       }
     }

@@ -218,9 +218,11 @@ class TapeWriter:
         self._lamps = lamps
         self._node_blocks = playback.node_blocks(layout)
         self._colors = playback.state_colors(layout)
+        # A palette name or a #rrggbb (what set_entity_types writes, #2053), else black: the
+        # same rule as the editor's `entity_color`, mirrored there because it returns QColor names.
         self._styles = {str(row.get("name", "")).upper():
                         (str(row.get("shape", "circle")).lower(),
-                         cp.COLORS.get(str(row.get("color", "BLACK")).upper(), cp.BLACK).lower())
+                         playback._hex_color(row.get("color")) or cp.BLACK.lower())
                         for row in layout.get("entities") or []}
         self._capacities = {str(level.get("name", "")): level.get("capacity")
                             for level in layout.get("levels") or []}

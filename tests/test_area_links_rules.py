@@ -335,17 +335,36 @@ def test_a_state_refuses_an_area_link():
     assert state.refused_kind(_burst_doc()) == "an area link"
 
 
-def test_playback_draws_a_part_in_a_link_at_its_target():
-    """Parts in the link (0-10, the third 10-20) are drawn at dispose_1, the link's target;
-    replay never meets the hidden process's name."""
+def test_playback_draws_a_part_in_a_link_in_transit_to_its_target():
+    """D1455 (#2061): parts riding the link (0-10, the third 10-20) are in transit from create_1
+    to dispose_1, the link's target. Replay never meets the hidden process's name. (Where the
+    third is while it waits for a place is #2062.)"""
     recorder = TraceRecorder()
     api.run_model(_burst_doc(), replications=1, trace=recorder)
     assert not [e for e in recorder.events if "link" in str(getattr(e, "block", ""))
                 or "link" in str(getattr(e, "target", "") or "")]
     timeline = Timeline(recorder.events)
-    for t in (5.0, 15.0):
-        placed = timeline.state_at(t)["entities"]
-        assert placed and {block for block, _e_type in placed.values()} == {"dispose_1"}
+    state = timeline.state_at(5.0)
+    assert [(src, dst) for src, dst, *_rest in state["in_transit"].values()] == [("create_1", "dispose_1")] * 2
+    state = timeline.state_at(15.0)
+    assert len(state["in_transit"]) == 1 and state["entities"] == {}
+
+
+def test_a_timeline_appended_in_chunks_answers_as_one_built_at_once():
+    """`Timeline.append` adds an area link's ride (`link_transit`) as an arrival too, so a
+    timeline fed in chunks answers every `state_at` as one built from all events at once."""
+    recorder = TraceRecorder()
+    api.run_model(_burst_doc(), replications=1, trace=recorder)
+    events = recorder.events
+    assert any(e.kind == "link_transit" for e in events)
+    whole = Timeline(events)
+    for size in (1, 2, 3):
+        chunked = Timeline(events[:size])
+        for at in range(size, len(events), size):
+            chunked.append(events[at:at + size])
+        for t in (0.0, 5.0, 10.0, 15.0, 20.0, 25.0):
+            a, b = whole.state_at(t), chunked.state_at(t)
+            assert (a["entities"], a["counts"], a["in_transit"]) == (b["entities"], b["counts"], b["in_transit"]), (size, t)
 
 
 def test_the_hidden_link_adds_no_row_to_the_existing_frames():

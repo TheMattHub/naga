@@ -217,6 +217,8 @@ def _refuse_kinds(session) -> None:
             raise _unsupported("a conveyor with a release rule", f"'{belt.name}'")
         if belt.reversible:     # D1368: nor a part's place and direction on a reversible belt
             raise _unsupported("a reversible conveyor", f"'{belt.name}'")
+        if belt.one_load:       # D1439: nor when a one-load piece clears and whose turn is next
+            raise _unsupported("a one-load conveyor", f"'{belt.name}'")
         if any(divert.rule is not None for divert in belt.diverts):
             # D1359: nor the loads a routing rule counts under way
             raise _unsupported("a routing rule", f"conveyor '{belt.name}'")

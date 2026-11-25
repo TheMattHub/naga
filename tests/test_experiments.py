@@ -365,20 +365,21 @@ def test_cancelling_a_pool_run_returns_the_replications_that_finished(worker_poo
     """`should_stop` is polled once per WAVE (after each `wait`), and a wave can
     hand back several finished replications at once, so "stop on the second
     poll" let all six through on a warm pool (the race the DEVLOG had flagged).
-    Stopping on the FIRST poll with far more replications than two workers can
-    finish before the first `wait` wakes up is deterministic: at least one is
-    back, the rest are dropped."""
-    seen = []
+    Since D1294 `wait` also wakes on a tick while a worker has yet to report, so on
+    a cold pool the first poll can come before anything finished (#2047): stop at
+    the first poll after a replication is back, with far more replications than
+    two workers finish in one wave. At least one is back, the rest are dropped."""
+    done = []
 
     def should_stop():
-        seen.append(1)
-        return True
+        return bool(done)
 
     results = api.run_model(str(SINGLE_SERVER), replications=40, run_length=400, warmup=0,
-                            workers=2, pool=worker_pool, should_stop=should_stop)
+                            workers=2, pool=worker_pool, should_stop=should_stop,
+                            on_progress=lambda count, total: done.append(count))
     assert results is not None
     runs = set(results["system"].loc[results["system"]["Metric"] == "Run", "Value"])
-    assert 0 < len(runs) < 40 and len(seen) == 1
+    assert 0 < len(runs) < 40 and len(runs) == len(done)
 
 
 @pytest.mark.slow

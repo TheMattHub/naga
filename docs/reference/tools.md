@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 104 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 105 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -65,6 +65,12 @@ The 104 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under t
 | `generate_pallet_layer` | yes | One layer of equal items on a pallet, as the slots of a pallet pattern. |
 | `upsert_orders_from_csv` |  | REPLACE (or extend) the model's orders from a CSV release list. |
 | `upsert_scenario` |  | Add or update a named scenario: a set of parameter overrides applied to the base model before a run. |
+
+## batch
+
+| Tool | Reads | What it does |
+|---|---|---|
+| `apply_edits` |  | Apply a list of model edits in one call, as one undo entry; use it for any large build. |
 
 ## runs
 

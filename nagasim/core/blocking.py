@@ -573,7 +573,12 @@ def _stuck(proc, feeder: str = "", successor: str = "") -> bool:
     # R56: those two count only while the part they hinge on waits for *successor*; one
     # waiting for a block outside the loop may leave when that block frees. A part held at a
     # stop is not stuck: its time ends, and a wait for the stop's resource is not a space's.
+    # D1440: a one-load piece whose load is held toward *successor* takes nothing on either;
+    # its free cells are no room, and its boarding waiters are not in `space.waiting`.
+    one_load = getattr(proc, "_one_load", None)
     if (space is not None and space.has_room()
+            and not (one_load is not None and one_load.busy
+                     and _belt_held_toward(proc, successor))
             and not getattr(proc, "stopped", False) and not getattr(proc, "entry_full", False)
             and not (getattr(proc, "entry_closed", False)
                      and _hands_to(proc, proc.exit_slots[False], successor))

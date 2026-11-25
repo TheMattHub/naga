@@ -4008,6 +4008,20 @@
                   "default": "",
                   "description": "Exit of a reversible belt for parts leaving at its start: the target block of one of its links, or \"in\" (the link whose source_port is \"in\"); not a conveyor feeding this belt, since nothing boards a belt by its end. In a chain, only the first piece names it: a later piece hands back to the one before."
                 },
+                "one_load": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "True: the piece carries one load at a time, as a short divert or merge piece does. A load boards, at the start or at a merge, only once the piece is clear, which is when the load ahead has left, by the end or by a divert, and its tail is past the piece's end: its leave time plus (the length, less the place it left by, plus its occupied length) over the speed. Loads waiting at the start and at merges take turns in belt order; a merge with priority \"merge\" boards first only at the very first boarding (with several, the first by at). Not with zones, reversible, a divert with intercept or a release slug of count above 1."
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": false,
+                  "description": "True: the piece carries one load at a time, as a short divert or merge piece does. A load boards, at the start or at a merge, only once the piece is clear, which is when the load ahead has left, by the end or by a divert, and its tail is past the piece's end: its leave time plus (the length, less the place it left by, plus its occupied length) over the speed. Loads waiting at the start and at merges take turns in belt order; a merge with priority \"merge\" boards first only at the very first boarding (with several, the first by at). Not with zones, reversible, a divert with intercept or a release slug of count above 1."
+                },
                 "part_length": {
                   "anyOf": [
                     {

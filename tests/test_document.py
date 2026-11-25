@@ -781,3 +781,58 @@ def test_counter_offsets_through_a_submodel_definition_view():
     view.set_counter_offsets({member: {"out": (1, 2)}})
     assert view.blocks[member].counter_offsets == {"out": (1.0, 2.0)}
     assert inner not in doc.blocks                        # the instance was left alone
+
+
+def _nested_scope_fixture(savepoint):
+    doc = ModelDocument()
+    seen = []
+    doc.subscribe(lambda kind, **info: seen.append((kind, info.get("name"))))
+    with doc.transaction("turn"):
+        a = doc.add_block("CREATE", (0, 0))
+        try:
+            with doc.transaction(savepoint=savepoint):
+                b = doc.add_block("DISPOSE", (100, 0))
+                raise ValueError("boom")
+        except ValueError:
+            pass
+    return doc, a, b, seen
+
+
+def test_nested_savepoint_rolls_back_only_its_own_edits():
+    doc, a, b, seen = _nested_scope_fixture(True)
+    assert a in doc.blocks and b not in doc.blocks
+    assert not any(name == b for _kind, name in seen) and any(name == a for _kind, name in seen)
+    doc.undo()
+    assert a not in doc.blocks and not doc.can_undo
+
+
+def test_nested_savepoint_rollback_restores_dirty():
+    """M9: a rolled-back nested scope changed nothing, so it must not leave the model unsaved."""
+    doc = ModelDocument()
+    with doc.transaction("turn"):
+        doc.dirty = False
+        with pytest.raises(ValueError):
+            with doc.transaction(savepoint=True):
+                doc.add_block("DISPOSE", (0, 0))
+                raise ValueError("boom")
+        assert doc.dirty is False and not doc.blocks
+
+
+def test_nested_without_savepoint_unchanged():
+    doc, a, b, _seen = _nested_scope_fixture(False)
+    assert a in doc.blocks and b in doc.blocks
+
+
+def test_outer_savepoint_is_plain_transaction():
+    doc = ModelDocument()
+    with doc.transaction(savepoint=True):
+        a = doc.add_block("CREATE", (0, 0))
+        doc.add_block("DISPOSE", (100, 0))
+    assert len(doc.blocks) == 2
+    doc.undo()
+    assert not doc.blocks and not doc.can_undo
+    with pytest.raises(ValueError):
+        with doc.transaction(savepoint=True):
+            doc.add_block("CREATE", (0, 0))
+            raise ValueError("x")
+    assert not doc.blocks and not doc.can_undo

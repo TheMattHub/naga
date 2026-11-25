@@ -7,8 +7,7 @@ and roller pitch are the type's defaults for the layout and the 3D view.
 
 Sources, all read 2026-11-21 (one value picked inside each vendor range, a common mid value):
 - belt: Hytrol Model TA slider bed, https://www.cisco-eagle.com/uploads/Hytrol-Spec-Belt/Model-TA.pdf
-  "BELT SPEED - Constant 65 FPM." (0.33 m/s); 24 in belt (0.61 m); "Minimum elevation 6 in."
-  (0.152 m); slider bed, no rollers (pitch 0).
+  "BELT SPEED - Constant 65 FPM." (0.33 m/s); 24 in belt (0.61 m); slider bed, no rollers (pitch 0).
 - roller: Hytrol 190-NSP, https://www.cisco-eagle.com/uploads/Hytrol-Spec-LiveRoller/190-NSP-Specs.pdf
   "Constant 65 FPM." (0.33 m/s); 21 in between rails (0.533 m); "spaced every 3 in." (0.0762 m).
 - chain: Interroll PM 9720, https://www.interroll.com/fileadmin/products/product_data/PM-9720/PM9720_EN.pdf
@@ -28,9 +27,13 @@ Fields no vendor page states, each marked in the table:
 - gap, every type: no vendor value: 0 (the pallet sheet says only "installed very close to each other").
 - belt zone_length: no vendor value: the Hytrol 190-E24EZ 24 in zone, 0.61 m.
 - roller zone_length (not zoned): no vendor value: the same Hytrol 24 in zone, 0.61 m.
-- roller height: no vendor value: Hytrol 199-CRR "Minimum elevation top of rollers is 6 in." (0.152 m).
+- belt, roller and mdr height: not a vendor value but an owner choice (D1434): 0.762 m (30 in), the
+  knuckle height for loading cartons by hand. The vendors' minimum elevation (6 in, 0.152 m) drew these
+  lines 15 cm off the floor. Sources: Cisco-Eagle, "How to Use Conveyors to Increase Warehouse
+  Ergonomics", https://www.cisco-eagle.com/blog/2017/12/07/conveyors-and-ergonomics (about 30 in as the
+  average knuckle-height target); CCOHS, "Conveyors - Ergonomics",
+  https://www.ccohs.ca/oshanswers/ergonomics/conveyor_ergonomics.html (65-120 cm suits most of the workforce).
 - chain and pallet zone_length: no vendor value: the module length, its lower end, 1.0 m.
-- mdr height: no vendor value: the same Hytrol 0.152 m.
 """
 from __future__ import annotations
 
@@ -47,14 +50,14 @@ class ConveyorType(NamedTuple):
 
 
 TYPES: dict[str, ConveyorType] = {
-    "belt": ConveyorType(speed=0.33, width=0.61, height=0.152, zone_length=0.61,
+    "belt": ConveyorType(speed=0.33, width=0.61, height=0.762, zone_length=0.61,
                          roller_pitch=0.0, gap=0.0),
-    "roller": ConveyorType(speed=0.33, width=0.533, height=0.152, zone_length=0.61,
+    "roller": ConveyorType(speed=0.33, width=0.533, height=0.762, zone_length=0.61,
                            roller_pitch=0.0762, gap=0.0),
     "chain": ConveyorType(speed=0.3, width=1.012, height=0.775, zone_length=1.0,
                           roller_pitch=0.0, gap=0.0),
     "pallet": ConveyorType(speed=0.22, width=1.06, height=0.095, zone_length=1.0,
                            roller_pitch=0.1905, gap=0.0),
-    "mdr": ConveyorType(speed=0.5, width=0.62, height=0.152, zone_length=0.61,
+    "mdr": ConveyorType(speed=0.5, width=0.62, height=0.762, zone_length=0.61,
                         roller_pitch=0.09, gap=0.0),
 }

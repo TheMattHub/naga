@@ -1586,11 +1586,12 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
                and any((block.get("params") or {}).get(field)
                        for field in ("stops", "diverts", "merges"))}
     # D1347, D1343, D1356: no stage is read for a part on a belt with photo-eyes, a robot
-    # pick, zones or a release rule (D1357)
+    # pick, zones, a release rule (D1357) or one load at a time (D1439: the gate is not carried)
     unread = {name for name, block in blocks.items() if kind(name) == "CONVEYOR" and (
         (block.get("params") or {}).get("eyes") or (block.get("params") or {}).get("type")
         or (block.get("params") or {}).get("zones")
         or (block.get("params") or {}).get("release")
+        or (block.get("params") or {}).get("one_load")
         or any(isinstance(d, dict) and "rule" in d       # D1359
                for d in (block.get("params") or {}).get("diverts") or [])
         or any(isinstance(d, dict) and d.get("intercept")
@@ -1621,7 +1622,8 @@ def _validate_belts(layout, state, blocks, start, problems) -> None:
         if refused is not None:
             problems.append(problem(
                 "E_INITIAL_BELT", f"initial_state: belt '{refused[:80]}': a part on a belt with "
-                f"photo-eyes, a robot pick, zones or a release rule is not carried",
+                f"photo-eyes, a robot pick, zones, a release rule or one load at a time (one_load) "
+                f"is not carried",
                 f"/{SECTION}/entities/{index}",
                 block=refused, hint="start the part before the belt",
                 fields={"case": "refuse"}))

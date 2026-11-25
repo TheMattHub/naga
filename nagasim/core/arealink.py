@@ -135,6 +135,13 @@ class AreaLink(BaseProcess):
         return getattr(self.next_process[0], "name", None)
 
     @property
+    def _branch(self) -> int:
+        """The source's outgoing branch this link sits at (its `entity_moved` branch), so
+        playback draws the transit along that link; looked up, as the splice may come late."""
+        nexts = getattr(self.source, "next_process", None) or []
+        return next((i for i, proc in enumerate(nexts) if proc is self), -1)
+
+    @property
     def held_downstream(self) -> bool:
         """Every part in the link waits for the target (none still in transit): the link
         cannot free a place by itself, which is what the deadlock check asks."""
@@ -155,7 +162,13 @@ class AreaLink(BaseProcess):
         yield from blocking.placed(entity)
         entered = self.env.now
         self.inside.add(1, entered)
-        yield self.env.timeout(self._draw(entity))
+        delay = self._draw(entity)
+        # #2061: the source reported the move to the target when it forwarded the part (that
+        # `entity_moved` feeds run results, so it stays); this trace-only event says the part
+        # rides the link for its delay from now, which playback draws as a transit.
+        self.source.emit("link_transit", entity=entity, target=self.shown_name, duration=delay,
+                         next_index=self._branch)
+        yield self.env.timeout(delay)
         token = blocking.arm(self, entity)
         self._hand_on(entity)
         if not token.triggered:

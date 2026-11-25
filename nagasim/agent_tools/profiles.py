@@ -25,7 +25,7 @@ COMPACT = COMPACT_TOOL_NAMES | {"open_model", "get_model_json", "save_model", "c
 # Make and change a model: whole-file or block by block, reference, validation, a picture.
 BUILD = COMPACT | {
     "new_model", "list_models", "get_model_summary", "undo", "redo", "import_sd_model",
-    "add_block", "remove_blocks", "connect", "disconnect", "reorder_branches",
+    "apply_edits", "add_block", "remove_blocks", "connect", "disconnect", "reorder_branches",
     "set_resources", "set_calendar", "set_entity_types", "set_simulation_settings",
     "set_sd_settings", "set_item_code", "set_model_info", "auto_layout", "place_piece", "place_feeder", "place_transfer", "get_ports", "check_layout", "set_layout", "get_record_schema", "list_records",
     "upsert_record", "remove_record", "generate_pallet_layer", "list_block_types",

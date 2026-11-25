@@ -4,22 +4,33 @@
 
 Added:
 
+- Agent tool `apply_edits` applies a list of model edits in one call, as one undo step and with one validation, so a build of thousands of pieces stays linear; the first failing edit stops it and nothing is applied.
 - Run log levels: a run records at `kpi` (the summary frames), `series` (plus the time series) or `full` (plus the three per-event logs), or a profile, `study` (kpi), `explore` or `replay` (full). Give it as `run_model(..., log_level=)`, `simulation.log_level` in the model file or `naga run --log-level`; `optimize`, `run_design` and `calibrate` and the agent tools `run_model`, `optimize`, `calibrate` and `fit_surrogate` take it too. `Results.log_level` names the level, and a frame or KPI the level left out raises `NotRecordedError` (a KeyError) naming the level to re-run at; the agent tools answer `E_NOT_RECORDED`.
 - A study response or constraint `timeseries/<series>/max` or `/min` gets each replication's peak or low.
-- Conveyor lines on the floor: a CONVEYOR with a `path` of straight and arc pieces has the ports `in`, `out` and `d<k>`, and links name them with `source_port` and `target_port`. A belt `type` (`belt`, `roller`, `chain`, `pallet`, `mdr`) sets datasheet defaults, and an entity type's `size` makes an item take its own length on a typed belt. Belts gain `zones` (zero-pressure accumulation), `release` rules (metering, singulation, slug), routing rules with a `limit` per exit, divert `angle`, reversible belts that turn as one chain, and the CONVEYOR_TRANSFER block (`popup`, `turntable`, `lift`). The bundled model `conveyor_line` shows a line built this way.
+- Conveyor lines on the floor: a CONVEYOR with a `path` of straight and arc pieces has the ports `in`, `out` and `d<k>`, and links name them with `source_port` and `target_port`. A belt `type` (`belt`, `roller`, `chain`, `pallet`, `mdr`) sets datasheet defaults (`belt`, `roller` and `mdr` stand 0.762 m, the knuckle height for loading by hand), and an entity type's `size` makes an item take its own length on a typed belt. Belts gain `zones` (zero-pressure accumulation), `release` rules (metering, singulation, slug), routing rules with a `limit` per exit, divert `angle`, reversible belts that turn as one chain, and the CONVEYOR_TRANSFER block (`popup`, `turntable`, `lift`). The bundled model `conveyor_line` shows a line built this way.
 - Area links: a link may carry a `delay` and a `capacity` in place of drawn conveyors, reported in the `link_flow` frame.
 - Conveyor checks and results: `W_CONVEYOR_OPEN_PORT`, `W_CONVEYOR_OVERLAP` and `W_CONVEYOR_SNAP` on the floor, two run guards, and `simulation.strict_checks` to make them errors; run warnings reach `Results.run_problems`. The frames `conveyor_flow`, `conveyor_zones`, `transfer_summary`, `route_holds` and `link_flow` appear only when a model uses the feature. `expose: true` writes a belt's or a transfer's state as variables (`VAR("B1.running")`).
 - Agent tools for floor lines: `place_piece` (with `snap_to`, and `gap`, `delay`, `capacity` for an area link), `place_transfer`, `place_feeder` (a belt whose end merges into a trunk's side), `get_ports` and `check_layout`. `set_layout` moves a floor piece by one rule: it unlinks the joins that no longer meet and lists what it dropped.
 - Agent tools `set_model_info` (a model's title, category, description, author and notes) and `save_model(short=True)` (the short file form the bundled models use; the default stays long).
 - Python: `nagasim.core.floor` holds the floor pieces' rules (ports, open ports, a merge point, adding a piece, the move rule), as free functions over a `ModelDocument`.
+- A CONVEYOR piece with `one_load` carries one load at a time and clears when the load's tail is past its end, which gives the divert's clearing time and the merge belt's one zone.
 
 Changed:
 
+- `W_CONVEYOR_OVERLAP` no longer flags two branches of one belt that cross only where both leave it, as the stubs of a left-right divert do; branches that run side by side beyond that are still flagged.
+- Parallel runs on Linux start their workers from a fork server preloaded with the engine, not by fork: forking a parent that runs threads could deadlock and warned of it on Python 3.12-3.13. A start method the caller set is kept.
 - Studies, DOE and optimisation run at the lowest level that records their KPIs (kpi for plain KPIs). A run with no level records full, as before, and a legacy `record_logs=False` run keeps its frames.
 - `forecast(...).results` is a series run: its `entity_log` no longer holds the live entities at the end, and the ten queue and store snapshot columns, which were empty, are left out.
 - Breaking for readers of results: in the `link_flow` frame the column `Transfer Time` is now `Avg Delay`, and a link with capacity 0 has no row, since such a link is instant (model schema 32). A link's old `transfer_time` migrates to `delay`.
 - Faster runs: a plain visit makes about 42% fewer calls, with results identical. The engine now needs SimPy 4.1.2 or later (below 5), since it follows 4.1.2's own put and get code.
 - Python: `Resource.queue` is a `collections.deque`, so it cannot be sliced; use `list(resource.queue)`.
+
+Fixed:
+
+- A failed or error-answering edit inside an assistant turn now undoes only itself, not the half-edit it left in the turn.
+- Playback keeps a part on the belt it moves to: the last belt's "off", written after the next belt's first stage, took it off the new belt, so the parts on zoned and metering belts were missing from `Timeline.state_at()["belts"]`. Older traces read right too.
+- An area link writes a `link_transit` trace event as a part enters it, and playback shows the part in transit along the link for its delay instead of at the target. A trace without the event reads as before.
+- The HTML player (and the video's tape) draws an entity type's colour given as `#rrggbb`, as `set_entity_types` writes it; it drew black, since only palette names were read.
 
 ## 0.21.0 (2026-11-17)
 

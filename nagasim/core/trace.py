@@ -53,6 +53,9 @@ _RECORDED_EVENTS = {
     "belt_stage",
     # D1347: a CONVEYOR photo-eye fired for a part (`state` the edge, `value` the eye's index).
     "eye",
+    # #2061: a part enters an area link (D1369) and rides it for `duration` from `block` (the
+    # source) to `target`; its `entity_moved` came with zero duration when it was forwarded.
+    "link_transit",
 }
 _AGENT_EVENTS = ("agent_state", "agent_moved", "agent_removed", "agent_linked", "agent_unlinked")
 

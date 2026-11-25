@@ -94,7 +94,7 @@ _MODEL_ALTERNATIVES = {"study_step": ("layout", "patch")}
 # the copy, which `run_tool` refuses (E_NOT_APPLIED). A product classes its own extra tools.
 # tests/test_ui_assistant_thread.py classes every offered tool, so a new tool without a class fails.
 ON_GUI = frozenset({
-    "add_block", "auto_layout", "calibrate", "check_model_opens", "connect", "disconnect",
+    "add_block", "apply_edits", "auto_layout", "calibrate", "check_model_opens", "connect", "disconnect",
     "place_feeder", "place_piece", "place_transfer", "propose_plugin_folder", "remove_blocks", "remove_node", "remove_record", "remove_segment",
     "reorder_branches", "resolve_data_bindings", "set_calendar", "set_entity_types",
     "set_initial_state", "set_item_code", "set_layout", "set_model_info", "set_resources", "set_sd_settings", "set_simulation_settings",
@@ -126,6 +126,14 @@ def _stop_point(should_cancel):
         if should_cancel():
             raise _Stopped
     return sink
+
+
+class _ToolFailed(Exception):
+    """Carries a tool's error answer out of its savepoint scope (see `WorkspaceAdapter._call`)."""
+
+    def __init__(self, answer: dict):
+        super().__init__("tool answered an error")
+        self.answer = answer
 
 
 _CANCELLED = agent_tools.ToolError(
@@ -378,7 +386,7 @@ class WorkspaceAdapter:
         try:
             # D186; a hint names only the tools offered here (#1773).
             with agent_tools.python_consent_dropped(), agent_tools.core.offering(self.offered), stops:
-                answer = agent_tools.call(name, **arguments)
+                answer = self._call(name, arguments, document)
         except _Stopped:
             # A stopped study step has written no version; what it put in the workspace (its
             # slot's model, a partial run's results) goes too, so a later call sees the earlier state.
@@ -403,6 +411,24 @@ class WorkspaceAdapter:
             return agent_tools.ToolError(
                 "E_LIVE_MODEL", f"'{self.MODEL_ID}' is the model open in the editor; nothing replaced it",
                 "edit the open model itself, or open the file under another name").as_dict()
+        return answer
+
+    def _call(self, name: str, arguments: dict, document: ModelDocument | None):
+        """`agent_tools.call`, and on the live model inside a turn a failed edit undoes itself.
+        #2065: a tool's own transaction only nests in the turn's, so one that edited and then
+        failed (or answered an error) left its half-edit in the turn. The savepoint is here, once
+        per call, and never in `core.call` or the tools, so a batch pays this snapshot and its own, not one per edit."""
+        if (document is not None or self._cm is None
+                or agent_tools.TOOLS[name].read_only):
+            return agent_tools.call(name, **arguments)
+        try:
+            with self.document.transaction(savepoint=True):
+                answer = agent_tools.call(name, **arguments)
+                if isinstance(answer, dict) and "error" in answer:
+                    # An error answer raises nothing, so raise to roll back; caught just outside.
+                    raise _ToolFailed(answer)
+        except _ToolFailed as failed:
+            return failed.answer
         return answer
 
     def _other_model(self, name: str, arguments: dict):

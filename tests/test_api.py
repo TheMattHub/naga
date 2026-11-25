@@ -462,3 +462,38 @@ def test_the_first_pages_modules_load_on_first_use_and_import_stays_light():
             "assert callable(nagasim.optimize.tornado)\n")
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
     assert done.returncode == 0, done.stderr
+
+
+class _FakeContext:
+    def __init__(self, name):
+        self.name, self.preload = name, None
+
+    def set_forkserver_preload(self, modules):
+        self.preload = list(modules)
+
+
+@pytest.mark.parametrize("set_method,methods,expected,preload", [
+    (None, ["fork", "spawn", "forkserver"], "forkserver", ["nagasim.api"]),   # Linux 3.11-3.13
+    (None, ["forkserver", "fork", "spawn"], "forkserver", ["nagasim.api"]),   # Linux 3.14
+    (None, ["spawn", "fork", "forkserver"], None, None),                      # macOS: its default
+    (None, ["spawn"], None, None),                                            # Windows
+    ("fork", ["fork", "spawn", "forkserver"], None, None),                    # the caller chose
+])
+def test_a_pool_on_linux_forks_from_a_preloaded_server(monkeypatch, set_method, methods, expected,
+                                                        preload):
+    """D1425: forking a parent that runs threads (the editor, an MCP server) can deadlock, and
+    Python warns of it; a fork server preloaded with the engine is safe and starts workers about
+    as cheaply as fork. A start method the caller set, and spawn platforms, are left alone."""
+    made = []
+
+    def get_context(method=None):
+        made.append(_FakeContext(method))
+        return made[-1]
+
+    monkeypatch.setattr(api.multiprocessing, "get_start_method", lambda allow_none=False: set_method)
+    monkeypatch.setattr(api.multiprocessing, "get_all_start_methods", lambda: methods)
+    monkeypatch.setattr(api.multiprocessing, "get_context", get_context)
+    context = api._pool_context()
+    assert (context.name, context.preload) == (expected, preload)
+    assert api.pool_setup_cost() == (api._FORK_SETUP_COST if expected or set_method == "fork"
+                                     else api._SPAWN_SETUP_COST)

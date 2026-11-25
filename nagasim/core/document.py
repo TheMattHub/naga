@@ -694,7 +694,7 @@ class ModelDocument:
 
     # -- grouped undo -------------------------------------------------------
     @contextlib.contextmanager
-    def transaction(self, label: str | None = None):
+    def transaction(self, label: str | None = None, *, savepoint: bool = False):
         """Group every mutation inside the block into ONE undo snapshot and ONE
         batch of listener notifications, delivered when the outermost
         transaction exits. Nested use (a transaction opened while one is
@@ -703,11 +703,26 @@ class ModelDocument:
         ignored, exactly like its own snapshot would be. An exception inside
         rolls the document back to its pre-transaction state (no undo
         snapshot, no notifications) and re-raises.
+
+        ``savepoint=True`` on a nested scope also rolls back, on an exception,
+        just that scope's edits and the events they queued, then re-raises; the
+        outer transaction carries on and may catch it. Why: a batch inside the
+        assistant's per-turn transaction must undo only itself, not the turn.
+        On the outermost scope it is a plain transaction.
         """
         if self._tx_depth > 0:
+            pre = self.to_layout() if savepoint else None
+            was_dirty = self.dirty
+            n_events = len(self._tx_events)
             self._tx_depth += 1
             try:
                 yield
+            except BaseException:
+                if savepoint:
+                    self._reset_from_layout(pre)
+                    self.dirty = was_dirty    # nothing changed, so nothing to save
+                    del self._tx_events[n_events:]
+                raise
             finally:
                 self._tx_depth -= 1
             return

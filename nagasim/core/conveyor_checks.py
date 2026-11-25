@@ -312,7 +312,10 @@ def _joints(pieces: dict, floor: dict, links: list) -> dict:
     D1388: a branch at a divert `angle` a leaves the trunk's edge only after its centreline is
     1 / sin(a) times as far along, so both of its cuts stretch by 1 / sin(a): the width against
     the trunk, and against the neighbours (h_trunk + h_branch |cos a|) / sin a, h the half
-    widths, where its near corner leaves their band (A2-R7); at 90 they are as before."""
+    widths, where its near corner leaves their band (A2-R7); at 90 they are as before.
+
+    #2048: two branches of one trunk are compared only past each one's run over the trunk's
+    footprint, h_trunk / sin a along it, where a left-right divert's stubs cross by design."""
     found: dict = {}
     at_module: dict = {}            # transfer -> [(belt, cut its start)]
     neighbours: dict = {}           # belt -> the belts joined to its in or out port
@@ -357,17 +360,31 @@ def _joints(pieces: dict, floor: dict, links: list) -> dict:
         for i, (a, a_end) in enumerate(members):
             for b, b_end in members[i + 1:]:
                 cut(a, a_end, b, b_end)
+    over_trunk: dict = {}           # trunk -> [(branch, its run over the trunk's footprint)]
     for trunk, branch, stretch in branches:
         # A2-R7 (final review I3): the branch's near corner leaves the trunk's neighbours'
         # band only (h_trunk + h_branch |cos a|) / sin a along it; h_trunk at 90 (R62)
         cos = math.sqrt(max(0.0, 1.0 - 1.0 / stretch ** 2))
         mouth = (width(trunk) / 2.0 + width(branch) / 2.0 * cos) * stretch
+        over_trunk.setdefault(trunk, []).append((branch, width(trunk) / 2.0 * stretch))
         for other in neighbours.get(trunk, ()):
             if other == branch:
                 continue
             cuts = found.setdefault(frozenset((branch, other)), {branch: [0.0, 0.0],
                                                                  other: [0.0, 0.0]})
             cuts[branch][0] = max(cuts[branch][0], mouth)
+    # #2048: two branches of one trunk (a left-right divert's stubs) start on its centreline,
+    # so they may cross where both still run over the trunk's own footprint. Each is compared
+    # with the other only past that run, h_trunk / sin a along it, not past its whole mouth:
+    # two branches that touch beyond the trunk's edge are still an overlap.
+    for members in over_trunk.values():
+        for i, (a, run_a) in enumerate(members):
+            for b, run_b in members[i + 1:]:
+                if a == b:
+                    continue
+                cuts = found.setdefault(frozenset((a, b)), {a: [0.0, 0.0], b: [0.0, 0.0]})
+                cuts[a][0] = max(cuts[a][0], run_a)
+                cuts[b][0] = max(cuts[b][0], run_b)
     return found
 
 

@@ -70,6 +70,11 @@ def _attribute(events, view: str) -> list:
     return out
 
 
+# The events that put a part in transit until t + duration: a delayed link's move, and an
+# area link's ride after its zero-duration move (#2061).
+_TRANSITS = ("entity_moved", "link_transit")
+
+
 class Timeline:
     """Block occupancy over simulated time, rebuilt from a `TraceEvent` list.
 
@@ -136,7 +141,7 @@ class Timeline:
         # it is precomputed here and replayed on its own sorted cursor.
         self._arrivals = sorted(
             ((e.t + e.duration, e.entity_id, e.e_type, e.target) for e in self._events
-             if e.kind == "entity_moved" and e.target and e.duration > 0
+             if e.kind in _TRANSITS and e.target and e.duration > 0
              and e.target != e.block),
             key=lambda a: a[0])
         self._arrival_times = [a[0] for a in self._arrivals]
@@ -191,15 +196,15 @@ class Timeline:
         for e in events:
             self._events.append(e)
             self._times.append(e.t)
+            if e.kind in _TRANSITS and e.target and e.target != e.block and e.duration > 0:
+                # Later than every arrival already applied (e.t > the cursor's time), so it
+                # lands after the arrival cursor; an area link's ride (#2061) arrives as well.
+                arrival = (e.t + e.duration, e.entity_id, e.e_type, e.target)
+                insort_right(self._arrivals, arrival, key=lambda a: a[0])
+                insort_right(self._arrival_times, arrival[0])
             if e.kind == "entity_moved" and e.target and e.target != e.block:
                 self._moves.append((e.entity_id, e.e_type, e.block, e.target, e.t, e.branch))
                 self._move_times.append(e.t)
-                if e.duration > 0:
-                    # Later than every arrival already applied (e.t > the
-                    # cursor's time), so it lands after the arrival cursor.
-                    arrival = (e.t + e.duration, e.entity_id, e.e_type, e.target)
-                    insort_right(self._arrivals, arrival, key=lambda a: a[0])
-                    insort_right(self._arrival_times, arrival[0])
             elif e.kind == "entity_created":
                 self._created_times.append(e.t)
             elif e.kind == "entity_disposed":
@@ -572,6 +577,14 @@ class Timeline:
             self._variables[e.resource] = e.value
         elif e.kind == "belt_stage":
             self._belt_stage(e)
+        elif e.kind == "link_transit":
+            # #2061: the part entered an area link (D1369). Its `entity_moved` put it in the
+            # target at once; it rides the link for `duration` first, as a delayed link's part.
+            if (e.duration > 0 and e.target != e.block
+                    and self._entities.get(e.entity_id, ("",))[0] == e.target):
+                self._leave(e.entity_id)
+                self._in_transit[e.entity_id] = (e.block, e.target, e.t, e.duration, e.e_type,
+                                                 (), e.branch, e.duration)
         elif e.kind == "tend":
             self._tends[(e.target, e.entity_id)] = (e.t, e.duration, e.resource, e.state)
         elif e.kind == "agent_moved":
@@ -696,7 +709,10 @@ class Timeline:
         """D734: a part's new stage on a belt; "off" takes it off. R46: "turn" (value 1 forward,
         0 backward) turns the belt's rows round, nearest the new exit first."""
         if e.state == "off":
-            self._off_belt(e.entity_id)
+            # #2060: a handover writes the next belt's first stage before this belt's "off",
+            # so an "off" only takes the part off the belt it names, not the one it is on now.
+            if not e.block or self._belt_of.get(e.entity_id) == e.block:
+                self._off_belt(e.entity_id)
             return
         if e.state == "turn":
             back = not e.value

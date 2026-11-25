@@ -41,6 +41,7 @@ themselves grouped as:
                     simulation/SD settings, `auto_layout`
 * `records.py`   -- the generic record tools, the path network, scenarios and
                     the CSV importers
+* `batch.py`     -- `apply_edits`: many model edits in one call and one undo entry
 * `runs.py`      -- `run_model` and every study built on it (scenarios,
                     precision, reality checks, loop dominance, warm-up,
                     optimize, calibrate, forecast, policy evaluation, surrogate
@@ -68,7 +69,7 @@ from nagasim.plugins import load_plugins
 
 from .core import (ToolError, ToolSpec, Workspace, TOOLS, call, drop_python_consent,
                    python_consent_dropped, tool, tool_schemas, use_workspace, workspace)
-from . import core, model, records, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup, view, discover, draftcheck  # noqa: F401 -- import order is registration order
+from . import core, model, records, batch, runs, data, reference, wholemodel, debug, study, study_sensitivity, study_extensions, study_anim, study_writeup, view, discover, draftcheck  # noqa: F401 -- import order is registration order
 # Re-exported on purpose: tests read these three directly.
 from .core import _ARG_DOCS
 from .data import _BINDABLE

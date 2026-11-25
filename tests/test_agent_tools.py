@@ -260,6 +260,7 @@ def test_tool_names_are_snake_case_verbs():
     verbs = ("list", "describe", "get", "new", "open", "save", "write", "add", "update", "remove",
              "connect", "disconnect", "reorder", "set", "upsert", "auto", "validate", "run",
              "suggest", "optimize", "fit", "export", "undo", "redo",
+             "apply",           # apply_edits: the name plan F3 gives the batch (D1451)
              "resolve", "calibrate", "forecast", "evaluate", "place", "install", "import",
              "investment",      # investment_case: the name the CLI and spec use
              "debug",           # debug_run, debug_inspect: the names the 7.5 spec uses

@@ -97,6 +97,7 @@ monitored, and the state or forecast that needs it is refused by name, never sta
 - a conveyor with zones
 - a conveyor with a release rule
 - a reversible conveyor
+- a one-load conveyor
 - a routing rule
 - an area link
 - blocking before service

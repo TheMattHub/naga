@@ -321,6 +321,46 @@ def test_a_single_free_running_belt_is_unaffected_by_the_m6_change():
     assert entities["Avg Time"] == pytest.approx(7.5)
 
 
+# -- Spec section 5, Merge: a side merge (what place_feeder makes) --------------
+
+def _side_merge_exits(priority=None, one_load=False):
+    """A 1.5 m merge belt at 0.5 m/s with a side merge 0.2 m from its start; the main feed and
+    the side feed each put a 0.41 m box on every 0.82 s (the belt's cell time), so both inputs
+    are saturated. *one_load* makes the merge belt carry one load at a time (plan F1, #2055).
+    Returns [(type, exit time)] in exit order."""
+    from test_conveyor_types import sized
+    spec = {"at": 0.2, "from": "side"}
+    if priority:
+        spec["priority"] = priority
+    merge = belt("merge", 1.5, 0.5, 0.41)
+    merge["params"].update({"type": "belt", "merges": [spec]})
+    if one_load:
+        # only when set: a belt without it writes no key, and files must stay as they were
+        merge["params"]["one_load"] = True
+    blocks = [create(name="main", e_type="MAIN", max_arrivals=8, dist_params={"value": 0.82},
+                     start_time=0), merge, dispose(),
+              create(name="side", e_type="SIDE", max_arrivals=8, dist_params={"value": 0.82},
+                     start_time=0)]
+    links = [{"source": "main", "target": "merge"}, {"source": "side", "target": "merge"},
+             {"source": "merge", "target": "dispose_1"}]
+    doc = layout(blocks, links)
+    doc["entities"] = [sized("MAIN", 0.41), sized("SIDE", 0.41)]
+    log = api.run_model(doc, replications=1)["entity_log"].sort_values("Exited At")
+    return list(zip(log["Type"], log["Exited At"]))
+
+
+@pytest.mark.parametrize("one_load", [False, True])
+@pytest.mark.parametrize("priority", [None, "merge"])
+def test_a_side_merges_saturated_inputs_alternate(priority, one_load):
+    """Spec section 5, Merge: "inputs alternate fairly". With the main and the side feed both
+    saturated, the side merge gives each input every second box once the belt is full: the
+    first four exits are the start-up (the first boxes ride free), and exits 5 to 12 then
+    alternate MAIN, SIDE, MAIN, SIDE ... (checked for both priorities). On a one-load merge
+    belt the inputs take turns from the first boarding (plan F1 ruling 4)."""
+    kinds = [kind for kind, _t in _side_merge_exits(priority, one_load)][4:12]
+    assert kinds in (["MAIN", "SIDE"] * 4, ["SIDE", "MAIN"] * 4), kinds
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-v"]))

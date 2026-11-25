@@ -146,6 +146,7 @@ import simpy
 from nagasim.core.arealink import real_target
 from nagasim.core.base_process import BaseProcess
 from nagasim.core.block_spec import BlockSpec, ParamSpec
+from nagasim.core.blocks._belt_one_load import BeltOneLoad
 from nagasim.core.blocks._belt_release import BeltRelease
 from nagasim.core.blocks import _belt_ahead
 from nagasim.core.blocks._belt_ahead import _ARR as _LEAF_ARRIVED, _FIRST as _LEAF_FIRST, \
@@ -258,6 +259,9 @@ class Conveyor(BaseProcess):
         self._rev = None
         self._signal_hooked = False
         self._exit_slots = None
+        # D1439: as declared; the gate is built with the params, fresh per build
+        self.one_load = False
+        self._one_load = None
         # D1392: the reversible pieces linked straight to its start and from its end, which
         # reverse with it as one chain (`chain_to`, at load)
         self.chain_prev = None
@@ -477,6 +481,15 @@ class Conveyor(BaseProcess):
         accumulating belt the cells of each section between two of them (D732, D851). A
         point off the belt, or two at one place, is refused."""
         length = self._length = self.belt_length
+        if self.one_load:
+            # D1439 (ruling 5): each of these lets several loads share the piece by design
+            found = [key for key, has in (
+                ("zones", self._zone_count), ("reversible", self.reversible),
+                ("a divert with intercept", any(d.intercept for d in self.diverts)),
+                ("a release slug with count > 1", self._slug_n > 1)) if has]
+            if found:
+                raise RuntimeError(f"Conveyor '{self.name}': one_load cannot be combined with "
+                                   f"{', '.join(found)} (E_CONVEYOR_PARAM).")
         self._stops, self._sections = [], []
         for index, (at, time, resource) in enumerate(sorted(self.stops, key=lambda s: s[0])):
             self._stops.append(_Stop(self.env, index, at, time, resource))
@@ -853,6 +866,8 @@ class Conveyor(BaseProcess):
         queues for (on a typed belt, *entity*'s cells), a first section with room, a running
         belt and an entry slot due. What an upstream divert in "pass" mode reads (D852)."""
         space, now = self.space, self.env.now
+        if self._one_load is not None and not self._one_load.free_now():
+            return False                # D1440: a load is on the piece or waits to board
         cells = self.cells_of(entity) if entity is not None else 1
         if space.content.level + cells > space.capacity or space.waiting or self.entry_full:
             return False
@@ -1174,6 +1189,8 @@ class Conveyor(BaseProcess):
                 reshaped.succeed()
         if self._nose_eyes:
             self._eye_levels(rec[7] if rec is not None else None)
+        if self._one_load is not None:
+            self._one_load.left(entity, x)
 
     # -- #2014: a part never moves through the part ahead ----------------------------
     # Every rule above (a point's queue, a section's places and lag, the entry slot) times a
@@ -1418,6 +1435,8 @@ class Conveyor(BaseProcess):
         # A free cell on the belt. The upstream machine is NOT released yet:
         # the part is only off it once it is physically on the belt, which is
         # after the stopped-belt wait and the entry rhythm below (PHASE4 T7).
+        if self._one_load is not None:
+            yield from self._one_load.wait(entity, -1)
         cell = yield from self.space.take(entity, accepts=False)
         yield from self._enter(entity, cell)
 
@@ -2170,6 +2189,8 @@ class Conveyor(BaseProcess):
         entity._ready = ready                   # its merge wait counts from then (a state)
         if stage == "cell":
             entity._belt = ("cell", None, None, merge.slot)
+            if self._one_load is not None:
+                yield from self._one_load.wait(entity, index)
             cell = yield from self.space.take(entity, accepts=False)
             door = merge.door.request()
             stage = "door"
@@ -2669,7 +2690,7 @@ class Conveyor(BaseProcess):
             if key[:-len("_unit")] in out:
                 out[key] = unit
         # D1368, D1378: only when set, as written (R39)
-        for key in ("reversible", "reverse_signal", "reverse_to", "expose"):
+        for key in ("reversible", "reverse_signal", "reverse_to", "expose", "one_load"):
             if getattr(self, key):
                 out[key] = getattr(self, key)
         return out
@@ -2760,6 +2781,13 @@ class Conveyor(BaseProcess):
         self.reverse_signal = str(param_dict.get("reverse_signal", "") or "").strip()
         self.reverse_to = str(param_dict.get("reverse_to", "") or "").strip()
         self.expose = param_dict.get("expose", False) is True
+        one_load = param_dict.get("one_load", False)
+        if not isinstance(one_load, bool):
+            # a "true" text would otherwise read as false
+            raise ValueError(f"Conveyor '{self.name}': one_load must be true or false, not "
+                             f"{one_load!r} (E_CONVEYOR_PARAM).")
+        self.one_load = one_load
+        self._one_load = BeltOneLoad(self) if one_load else None
         if self.expose:
             self._seed_exposed()
         self._space = None
@@ -2960,6 +2988,18 @@ SPEC = BlockSpec(
                               "since nothing boards a belt by its end. In a chain, only the "
                               "first piece names it: a later piece hands back to the one "
                               "before."),
+        # D1439, D1440: a divert or merge piece that carries one load at a time
+        ParamSpec("one_load", bool, False, quantity="none",
+                  description="True: the piece carries one load at a time, as a short divert "
+                              "or merge piece does. A load boards, at the start or at a merge, "
+                              "only once the piece is clear, which is when the load ahead has "
+                              "left, by the end or by a divert, and its tail is past the "
+                              "piece's end: its leave time plus (the length, less the place it "
+                              "left by, plus its occupied length) over the speed. Loads waiting "
+                              "at the start and at merges take turns in belt order; a merge "
+                              "with priority \"merge\" boards first only at the very first "
+                              "boarding (with several, the first by at). Not with zones, reversible, a divert with intercept "
+                              "or a release slug of count above 1."),
         ParamSpec("part_length", float, 0.0,
                   description="Length of one part along the belt, which a back-edge eye reads. "
                               "0: the spacing, or a typed belt's type zone length. On an "

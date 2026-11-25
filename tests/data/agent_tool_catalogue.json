@@ -2455,6 +2455,58 @@
     "read_only": false
   },
   {
+    "description": "Apply a list of model edits in one call, as one undo entry; use it for any large build.\n\nEach edit is {\"tool\": name, \"args\": {...}}: the tool's own arguments, `model` left out.\nAtomic: the first edit that fails stops the batch, nothing is applied, and the error names\nthat edit, counted from 0. The answer is the usual edit answer for the whole batch, plus\n\"applied\" and \"added\" (the blocks created, in order, named as created).\n\nBatchable: add_block, update_block, remove_blocks, connect, disconnect, reorder_branches,\nset_resources, set_calendar, set_entity_types, set_simulation_settings, set_sd_settings,\nset_model_info, auto_layout, place_piece, place_feeder, place_transfer, upsert_record,\nremove_record. Also the path network and scenarios: upsert_node, remove_node,\nupsert_segment, remove_segment, upsert_scenario. At most 1,000 edits per call.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "edits": {
+          "description": "The edits in order, each {\"tool\": \"<tool name>\", \"args\": {...}} as that tool takes them; at most 1,000.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "model": {
+          "description": "Workspace name of the model to edit.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "edits"
+      ],
+      "type": "object"
+    },
+    "name": "apply_edits",
+    "output_schema": {
+      "properties": {
+        "added": {
+          "type": "array"
+        },
+        "applied": {
+          "type": "integer"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
     "description": "Run the model's scenarios (the options) and compare them against the baseline with\nconfidence intervals and a significance verdict: which option is better, and whether the\ndifference is significant.\n\nThis is the consultancy answer: for each KPI and scenario you get the\nscenario's own mean with its CI, the DIFFERENCE against the baseline with\nits own CI, and whether that difference interval excludes zero\n(\"significant\"). A non-significant difference means \"not distinguishable at\nthis replication count\", not \"no difference\".\n\n\"laws\" are each scenario's law checks, {scenario: {\"passed\", \"partial\"}}, as run_model gives\nthem for one run: a partial law makes it not valid, no result to compare; censoring or\ninitial bias alone may bias it low, so a difference is not verified.",
     "input_schema": {
       "additionalProperties": false,

@@ -685,6 +685,32 @@ def test_a_disposed_part_is_off_its_belt():
     assert Timeline(events).state_at(3.0)["belts"] == {}
 
 
+def test_the_last_belts_off_after_a_handover_leaves_the_part_on_the_next_belt():
+    """#2060: a handover writes the next belt's first stage, then the last belt's "off", in one
+    instant. The "off" names the belt it leaves, so the part stays on the next one."""
+    events = [created(0, 1, "a"), belt_stage(0, 1, "ride", 0.0, 4.0, 4.0, block="a"),
+              moved(4, 1, "a", "b"), belt_stage(4, 1, "handover", 4.0, block="a"),
+              belt_stage(4, 1, "ride", 0.0, 2.0, 2.0, block="b"),
+              belt_stage(4, 1, "off", 4.0, block="a")]
+    assert Timeline(events).state_at(5.0)["belts"] == {"b": [(1, 1.0, "ride")]}
+
+
+def test_an_area_links_part_is_in_transit_for_its_delay():
+    """#2061: an area link's part is moved to the target at once, then `link_transit` says it
+    rides the link for its delay: in transit until then, in the target after; a trace from
+    before the event keeps it in the target from the move."""
+    ride = TraceEvent(t=3.0, kind="link_transit", entity_id=1, e_type="A", block="a",
+                      target="b", duration=4.0, branch=0)
+    base = [created(0, 1, "a"), moved(2, 1, "a", "b")]
+    timeline = Timeline(base + [ride])
+    assert timeline.state_at(2.5)["entities"] == {1: ("b", "A")}    # still at a's end: no ride yet
+    state = timeline.state_at(5.0)
+    assert state["entities"] == {} and state["in_transit"][1][:2] == ("a", "b")
+    assert state["in_transit"][1][2] == pytest.approx(0.5)
+    assert timeline.state_at(7.5)["entities"] == {1: ("b", "A")} and timeline.state_at(7.5)["in_transit"] == {}
+    assert Timeline(base).state_at(5.0)["entities"] == {1: ("b", "A")}
+
+
 # -- departures per exit (Phase 13 B1, D753) --------------------------------
 
 def _branch_move(t, eid, block, target, branch):

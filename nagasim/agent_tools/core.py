@@ -620,10 +620,18 @@ def _problems(doc: ModelDocument) -> list[schema_mod.Problem]:
     return doc.problems() + logic_problems(doc.to_layout())
 
 
+# D1451: set by `apply_edits` while its edits run. Each edit then skips the two whole-model
+# validations of `_open`/`_edit_result` (what made a large build quadratic); the batch validates
+# once before and once after. A ContextVar, like `_OFFERED`: it belongs to the call's thread.
+_DEFERRED = contextvars.ContextVar("nagasim_agent_deferred", default=False)
+
+
 def _open(model: str) -> tuple[ModelDocument, list]:
     """The document a mutating tool edits and its problems before the edit --
     the first line of every such tool (`_edit_result` reports what changed)."""
     doc = _WORKSPACE.document(model)
+    if _DEFERRED.get():
+        return doc, []
     return doc, _problems(doc)
 
 
@@ -650,6 +658,8 @@ def _brief_problems(problems) -> list[dict]:
 def _edit_result(doc: ModelDocument, before: list, extra: dict | None = None) -> dict:
     """The answer every mutating tool gives: what the edit broke, what it
     fixed, and where the model stands now."""
+    if _DEFERRED.get():
+        return {"ok": True, **(extra or {})}
     after = _problems(doc)
     before_keys = {p.message for p in before}
     after_keys = {p.message for p in after}

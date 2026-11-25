@@ -1137,6 +1137,7 @@ class Level:
         reversible: bool | dict[str, Any] = False,
         reverse_signal: str | dict[str, Any] = '',
         reverse_to: str | dict[str, Any] = '',
+        one_load: bool | dict[str, Any] = False,
         part_length: float | dict[str, Any] = 0.0,
         part_length_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'base',
         expose: bool | dict[str, Any] = False,
@@ -1168,6 +1169,7 @@ class Level:
         reversible=False: True: the belt can run backward during a run, turned by `reverse_signal` or by item code (item.reverse). Each part on it then rides back the distance it has travelled and leaves at the start by `reverse_to`; nothing gets on until it runs forward again. Reversible belts linked end to start, with nothing between them, are one chain that turns as one: a part crosses each joint the way the chain runs. A reversible belt has no stops, diverts, merges, photo-eyes, zones or release rule.
         reverse_signal='': Signal that turns a reversible belt each time it is raised (forward, backward, forward...), with its whole chain. Empty: only item code turns it.
         reverse_to='': Exit of a reversible belt for parts leaving at its start: the target block of one of its links, or "in" (the link whose source_port is "in"); not a conveyor feeding this belt, since nothing boards a belt by its end. In a chain, only the first piece names it: a later piece hands back to the one before.
+        one_load=False: True: the piece carries one load at a time, as a short divert or merge piece does. A load boards, at the start or at a merge, only once the piece is clear, which is when the load ahead has left, by the end or by a divert, and its tail is past the piece's end: its leave time plus (the length, less the place it left by, plus its occupied length) over the speed. Loads waiting at the start and at merges take turns in belt order; a merge with priority "merge" boards first only at the very first boarding (with several, the first by at). Not with zones, reversible, a divert with intercept or a release slug of count above 1.
         part_length=0.0: Length of one part along the belt, which a back-edge eye reads. 0: the spacing, or a typed belt's type zone length. On an untyped belt it is no longer than the spacing.
         part_length_unit='base': Unit of `part_length`: "base" (the model's) or one of its quantity's units.
         expose=False: True: the belt writes its state as model variables, read with VAR("<belt>.running") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts).

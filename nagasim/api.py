@@ -129,10 +129,29 @@ def pool_setup_cost() -> float:
     method = multiprocessing.get_start_method(allow_none=True)
     if method is None:
         # The platform's default is the first one listed. Asked, not assumed from the
-        # system: Linux forks up to Python 3.13 and uses a fork server from 3.14, whose
-        # workers import everything again as spawned ones do (#364).
-        method = multiprocessing.get_all_start_methods()[0]
+        # system (#364). Where it is fork or a fork server (Linux), `new_pool` uses a fork
+        # server preloaded with the engine, whose workers import nothing again (D1425).
+        default = multiprocessing.get_all_start_methods()[0]
+        method = "fork" if default in _FORKING else default
     return _FORK_SETUP_COST if method == "fork" else _SPAWN_SETUP_COST
+
+
+_FORKING = ("fork", "forkserver")
+
+
+def _pool_context():
+    """The start method of `new_pool`'s workers. On Linux a fork server preloaded with the
+    engine (D1425): plain fork copies a parent that may run threads (the editor, an MCP
+    server), which can deadlock and which Python warns of from 3.12, while workers forked from
+    the single-threaded, preloaded server start about as cheaply. A method the caller set, and
+    the spawn platforms (Windows, macOS), keep their own."""
+    if multiprocessing.get_start_method(allow_none=True) is not None:
+        return multiprocessing.get_context()
+    if multiprocessing.get_all_start_methods()[0] not in _FORKING:
+        return multiprocessing.get_context()
+    context = multiprocessing.get_context("forkserver")
+    context.set_forkserver_preload(["nagasim.api"])
+    return context
 
 
 def auto_workers(elapsed: float, remaining: int, cpus: int | None = None,
@@ -405,7 +424,7 @@ def new_pool(workers: int) -> ProcessPoolExecutor:
     optimisers: a `ProcessPoolExecutor` whose workers report they are up, so a worker that
     never starts ends the run with an error after a deadline instead of hanging it. A plain
     `ProcessPoolExecutor` works too but has no such check. Use it as a context manager."""
-    context = multiprocessing.get_context()
+    context = _pool_context()
     signal = context.Semaphore(0)
     pool = ProcessPoolExecutor(max_workers=workers, mp_context=context,
                                initializer=_worker_started, initargs=(signal,))
