@@ -3,7 +3,7 @@
 
 # Problem codes
 
-The 515 codes that a check of a model can report, from `nagasim/core/problems.py`. Each problem a check finds carries a `code`, a `severity`, a `message`, a `path` into the file, the `block` when there is one, and a `hint`: `naga validate --json` and the `validate_model` agent tool return them. A code starting `E_` is an error that stops a run; one starting `W_` is a warning that does not. Before 1.0 new codes are added and a message may be reworded, so match on the code and not on the text (see [Stability](../../stability.md)).
+The 517 codes that a check of a model can report, from `nagasim/core/problems.py`. Each problem a check finds carries a `code`, a `severity`, a `message`, a `path` into the file, the `block` when there is one, and a `hint`: `naga validate --json` and the `validate_model` agent tool return them. A code starting `E_` is an error that stops a run; one starting `W_` is a warning that does not. Before 1.0 new codes are added and a message may be reworded, so match on the code and not on the text (see [Stability](../../stability.md)).
 
 A screen shows a code's short line ("On screen" below), filled from the problem's own values; a code without one shows the first clause of its message. The code, the whole message and the hint show on hover.
 
@@ -13,7 +13,7 @@ A screen shows a code's short line ("On screen" below), filled from the problem'
 | [Submodels and libraries](submodels-and-libraries.md) | 41 | Submodel definitions and instances, asset libraries and catalogues. |
 | [Data, live feeds and the twin](data-and-twin.md) | 123 | Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES. |
 | [Networks, fleets and automation](network-and-automation.md) | 48 | Path networks, fleets, workers, motion, batteries and chargers, the investment case and the dispatch plan. |
-| [Expressions, stocks and flows](expressions-and-dynamics.md) | 111 | Expressions and variables, tables and time series, levels, flows, conversions, conveyors, delays, subscripts and units. |
+| [Expressions, stocks and flows](expressions-and-dynamics.md) | 113 | Expressions and variables, tables and time series, levels, flows, conversions, conveyors, delays, subscripts and units. |
 | [Resources and time](resources-and-time.md) | 32 | Resources and sets, schedules, failures, calendars and arrivals. |
 | [Scenarios, checks and the editor](scenarios-and-checks.md) | 32 | Scenarios, assertions, path checks, dashboards, annotations, cranes and piles drawn in playback, and the file version. |
 | [Blocks, links and routing](blocks-and-flow.md) | 104 | Blocks and their parameters, distributions, links, decisions, queues, routings and orders. |

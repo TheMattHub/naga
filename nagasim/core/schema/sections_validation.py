@@ -14,6 +14,7 @@ from dataclasses import replace
 
 from nagasim.core.blocks.route import TRAVEL_MODES
 from nagasim.core.blocks.transfer_piece import MECHANISMS as TRANSFER_MECHANISMS
+from nagasim.core import conveyor_look
 from nagasim.core.conveyor_path import parse_path, path_length
 from nagasim.core.conveyor_types import TYPES as CONVEYOR_TYPES
 from nagasim.core.expressions import (ExpressionError, ExpressionScope, compile_expression,
@@ -1079,7 +1080,8 @@ def _check_belt_path(problems: list, name: str, params: dict, at: str, path, len
             fields={"case": "piece"}))
     if total is not None:
         _check_points_on_path(problems, name, params, at, total)
-    if (isinstance(length, (int, float)) and not isinstance(length, bool) and length > 0)             or any(ends):
+    if ((isinstance(length, (int, float)) and not isinstance(length, bool) and length > 0)
+            or any(ends)):
         problems.append(problem(
             "E_CONVEYOR_PATH", f"{name}: a belt with a path takes its length from the path",
             f"{at}/path", block=name,
@@ -1125,7 +1127,8 @@ def _check_belt_diverts(problems: list, name: str, params: dict, at: str) -> Non
                 hint="an expression read as the part reaches it, e.g. entity.lane == 2",
                 fields={"case": "a2_condition", "index": index}))
         time = divert.get("time", 0)
-        if not (isinstance(time, str) and time.strip())                 and not (is_finite_number(time) and time >= 0):
+        if (not (isinstance(time, str) and time.strip())
+                and not (is_finite_number(time) and time >= 0)):
             problems.append(problem(
                 "E_CONVEYOR_DIVERT", f"{name}: divert {index} time must be a number >= 0 or "
                 f"an expression", f"{where}/time", block=name,
@@ -1314,7 +1317,8 @@ def _check_belt_eyes(problems: list, name: str, params: dict, at: str) -> None:
         place = eye.get("at")
         on_belt = is_finite_number(place) and place > 0 and (not known or place < length)
         # A typed belt's item lengths come from the entity types, which the engine checks.
-        if edge == "back" and on_belt and same_unit and is_finite_number(back)                 and not params.get("type"):
+        if (edge == "back" and on_belt and same_unit and is_finite_number(back)
+                and not params.get("type")):
             place += back       # the front's place when the back clears `at`
             if known and place >= length - 1e-9:
                 problems.append(problem(
@@ -1736,6 +1740,7 @@ def _validate_travel(layout: dict, problems: list, nodes: set, fleets: set) -> N
             _check_belt_zones(problems, name, params, at)
             _check_belt_release(problems, name, params, at)
             _check_belt_reverse(problems, name, params, at)
+            problems.extend(conveyor_look.look_problems(name, params, at))
 
     if not gantry_fleets:
         for entry in layout.get("sequences", []) or []:

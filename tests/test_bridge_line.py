@@ -145,6 +145,20 @@ def test_the_built_line_checks_clean_under_strict_checks(full_line):
     assert static_checks(full_line) == []
 
 
+def test_a_short_pallet_warns_on_every_pallet_piece_after_its_create(full_line):
+    """The 0.41 m box reaches the pallet rollers only batched onto a pallet, so it is never
+    warned there (D1481). A pallet shortened to 0.5 m (< 3 x 0.1905 = 0.5715 m) warns on the
+    two pieces before each palletizer and the two after it: 12."""
+    import copy
+    from nagasim.core.conveyor_checks import roller_pitch_problems
+    doc = copy.deepcopy(full_line)
+    for row in doc["entities"]:
+        if row["name"].upper() == "PALLET":
+            row["size"]["length"] = 0.5
+    assert sorted(p.block for p in roller_pitch_problems(doc)) == sorted(
+        f"L{n} {belt}" for n in (1, 2, 3) for belt in ("Pallet in", "Station", "Wrap", "Out"))
+
+
 def test_the_builder_writes_the_same_file_twice(tmp_path):
     from tools.build_bridge_line import build
     first = build(tmp_path / "a", wrap_s=70.0).read_bytes()

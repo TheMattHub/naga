@@ -191,7 +191,7 @@ from nagasim.core.blocks._belt_points import (  # noqa: E402,F401 (R37: moved, s
 
 
 class Conveyor(BaseProcess):
-    """Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full."""
+    """Belt that carries parts end to end at a set speed, holds a limited number, and blocks the machine before it when full."""
 
     # The token rides through (PHASE4 T7): a belt accepts the part when it is
     # physically on it, not when it is offered -- so a full or stopped belt
@@ -614,7 +614,8 @@ class Conveyor(BaseProcess):
         members = self.chain_members()
         # D1392: one hook per signal and chain, so one raise turns the chain once
         earlier = members[:members.index(self)]
-        if self.reverse_signal and not self._signal_hooked                 and all(m.reverse_signal != self.reverse_signal for m in earlier):
+        if (self.reverse_signal and not self._signal_hooked
+                and all(m.reverse_signal != self.reverse_signal for m in earlier)):
             self.ctx.signal_hooks.setdefault(self.reverse_signal, []).append(
                 self._reverse_signalled)
             self._signal_hooked = True
@@ -3017,6 +3018,19 @@ SPEC = BlockSpec(
                               "firings so far) and `eye<k>.blocked` (1 while a part's body "
                               "lies across eye k, front edge to back edge; not on a belt with "
                               "both zones and diverts)."),
+        ParamSpec("look", dict, {}, quantity="none",
+                  description="How a typed belt looks, only the settings that differ from its "
+                              "type's. Dimensions are in metres: width, height (the top of the "
+                              "conveying surface), leg_spacing (0: no legs), guide_left and "
+                              "guide_right (guide height above the top, 0: none), "
+                              "roller_pitch, roller_diameter, pulley_diameter and "
+                              "strand_spacing. Choices: frame_color, drive_side, guide_style, "
+                              "roller_finish and belt_kind. chain_strands is a count. "
+                              "`openings` is a list of {side: left, right or both, start, end}: "
+                              "gaps in the side guides, in the unit of `length`."),
+        ParamSpec("look_set", list, [], quantity="none",
+                  description="The names of the look settings kept on this piece alone when a "
+                              "change spreads along its line of pieces. Never `openings`."),
     ),
     factory=lambda env, block: Conveyor(env, block),
     family="move",

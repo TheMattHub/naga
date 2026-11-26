@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from typing import Literal
 
-from nagasim.core import conveyor_checks, conveyor_path, floor, layout_tools
+from nagasim.core import conveyor_checks, conveyor_look, conveyor_path, floor, layout_tools
 from nagasim.core.conveyor_types import TYPES
 from nagasim.core.timeunits import LENGTH_UNITS, UNITS, units_of
 
@@ -49,32 +50,71 @@ def add_block(model: str, type: str, name: str | None = None, params: dict | Non
     return _edit_result(doc, before, {"block": created})
 
 
+_LOOK_DOC = ("Conveyor look fields to set, sizes in metres: width, height, frame_color, "
+             "leg_spacing, drive_side, guide_left and guide_right [0: none], guide_style, "
+             "roller_pitch, roller_diameter, roller_finish, belt_kind, pulley_diameter, "
+             "chain_strands, strand_spacing; openings [{side, start, end}] in the belt's length "
+             "unit.")
+_SCOPE_DOC = ("\"chain\": the look spreads along the piece's line (place_piece: the line it "
+              "joins), skipping other pieces' fields set by hand; \"piece\": this piece only, "
+              "kept by hand until reset. Openings never spread.")
+
 _document_args("update_block",
                model="Workspace name of the model to edit.",
                name="Current name of the block to change.",
                params="Parameters to merge into the block's existing params.",
                description="New canvas label.",
                position="New [x, y] centre.",
-               new_name="Rename the block to this; every link follows the rename.")
+               new_name="Rename the block to this; every link follows the rename.",
+               look=_LOOK_DOC,
+               scope=_SCOPE_DOC,
+               reset="Look fields of this piece only to put back in line: each takes the nearest "
+                     "value upstream not set by hand, else downstream, else the default.")
+
+_LOOK_RETURNS = {"look_changed": (list, "pieces the look changed"),
+                 "look_skipped": (dict, "piece -> fields it keeps by hand")}
 
 
-@tool(returns={**EDIT, "block": str})
+def _look(doc, name: str, look, scope: str, reset) -> dict:
+    """Apply a look write inside the caller's transaction: the answer's two look keys, or
+    E_LOOK naming the refused fields (the transaction then rolls the whole call back)."""
+    if look is None and not reset:
+        return {}
+    try:
+        done = conveyor_look.apply_look(doc, name, look, scope, reset or ())
+    except ValueError as exc:
+        fields = conveyor_look.fields_of(doc.blocks[name].params.get("type"))
+        raise ToolError("E_LOOK", str(exc), f"settings: {', '.join(fields)}, openings"
+                        if fields else "only a CONVEYOR with a type has a look")
+    return {"look_changed": done.changed, "look_skipped": done.skipped}
+
+
+@tool(returns={**EDIT, "block": str, **_LOOK_RETURNS})
 def update_block(model: str, name: str, params: dict | None = None,
                  description: str | None = None, position: list[float] | None = None,
-                 new_name: str | None = None) -> dict:
+                 new_name: str | None = None, look: dict | None = None,
+                 scope: Literal["chain", "piece"] = "chain",
+                 reset: list[str] | None = None) -> dict:
     """Change an existing block: merge parameters, rename it, move it, or
     relabel it -- all as one undo entry.
 
     `params` MERGES rather than replaces, so you can set one value without
-    restating the rest. Renaming rewires every link automatically.
+    restating the rest. Renaming rewires every link automatically. A conveyor's look
+    is set with `look`, never in `params`; `get_ports` reads it back. Batch a large
+    build through `apply_edits`.
     """
     doc, before = _open(model)
     if name not in doc.blocks:
         raise ToolError("E_UNKNOWN_BLOCK", f"no block named '{name}' in model '{model}'",
                         f"blocks: {', '.join(doc.blocks) or '(none)'}")
+    # A shallow merge would replace the openings and skip the spreading.
+    inside = [k for k in ("look", "look_set") if k in (params or {})]
+    if inside:
+        raise ToolError("E_LOOK", f"{', '.join(inside)} cannot be set inside params",
+                        "set looks with look=..., scope=...")
     final = name
     with doc.transaction():
-        if params:
+        if params:      # first: a type change decides which look fields exist
             doc.set_params(name, {**doc.blocks[name].params, **params})
         if description is not None:
             doc.set_description(name, description)
@@ -83,7 +123,8 @@ def update_block(model: str, name: str, params: dict | None = None,
         if new_name and new_name != name:
             doc.rename_block(name, new_name)
             final = new_name
-    return _edit_result(doc, before, {"block": final})
+        extra = _look(doc, final, look, scope, reset)     # after the rename: the answer names it
+    return _edit_result(doc, before, {"block": final, **extra})
 
 
 _document_args("remove_blocks",
@@ -436,7 +477,9 @@ _document_args("place_piece",
                delay="With snap_to: the link's transfer delay, as connect takes it; required "
                      "when gap is above 0.",
                capacity="With snap_to: parts the delayed link holds at once, as connect takes "
-                        "it; 0 = no limit. Needs delay.")
+                        "it; 0 = no limit. Needs delay.",
+               look=_LOOK_DOC,
+               scope=_SCOPE_DOC)
 
 _PATH_HINT = ("segments: [{\"straight\": 2.0}, "
               "{\"arc\": {\"radius\": 1.0, \"angle\": 90, \"turn\": \"left\"}}]")
@@ -499,18 +542,21 @@ def _gap_link(snap_to: str, gap, delay, capacity):
     return float(gap), (_duration(delay, "delay") if delay else None), capacity
 
 
-@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float})
+@tool(returns={**EDIT, "block": str, "layout_position": list, "layout_rotation": float,
+               **_LOOK_RETURNS})
 def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: float = 0.0,
                 y: float = 0.0, rotation: float = 0.0, snap_to: str = "",
                 speed: float | None = None, gap: float = 0.0, delay: dict | None = None,
-                capacity: int | None = None) -> dict:
+                capacity: int | None = None, look: dict | None = None,
+                scope: Literal["chain", "piece"] = "chain") -> dict:
     """Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at
     (x, y) and travelling at *rotation*.
 
     With *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that
     port, facing its way, and a link with `source_port` / `target_port` is added, so no
     coordinates are computed by hand. One undo entry. Segment lengths and radii are in the
-    model's length unit.
+    model's length unit. A snapped piece takes the look of the piece it snaps to, then *look*.
+    Batch a large build through `apply_edits`.
     """
     doc, before = _open(model)
     _model_units(doc)
@@ -530,9 +576,10 @@ def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: 
             doc.set_link_delay(source.block, created, delay)
         if capacity is not None:
             doc.set_link_area(source.block, created, {"capacity": capacity})
+        extra = _look(doc, created, look, scope, None)
     return _edit_result(doc, before, {
         "block": created, "layout_position": [x, y],
-        "layout_rotation": doc.blocks[created].layout_rotation})
+        "layout_rotation": doc.blocks[created].layout_rotation, **extra})
 
 
 _document_args("place_feeder",
@@ -742,7 +789,8 @@ _document_args("get_ports",
                block="Name of a CONVEYOR or CONVEYOR_TRANSFER.")
 
 
-@tool(read_only=True, returns={"block": str, "type": str, "ports": list})
+@tool(read_only=True, returns={"block": str, "type": str, "ports": list, "look": dict,
+                               "look_set": list, "chain": list})
 def get_ports(model: str, block: str) -> dict:
     """The ports of a belt piece or transfer module: each one's name, role (in/out), floor
     pose (x, y metres, heading as in set_layout) and `linked_to`, the "Block.port" ends it is
@@ -750,7 +798,9 @@ def get_ports(model: str, block: str) -> dict:
 
     A belt has "in", "out" and "d<k>" (divert k's exit); a pose faces the way a part leaves. A
     transfer has no footprint: an exit's pose is the module's position, heading = entry plus
-    the exit's angle. Pass an out port to `place_piece` as snap_to.
+    the exit's angle. Pass an out port to `place_piece` as snap_to. A belt's answer also holds
+    `look`, every field resolved; `look_set`, the fields set by hand; and `chain`, the pieces a
+    look spreads along.
     """
     doc = workspace().document(model)
     _model_units(doc)
@@ -790,18 +840,24 @@ def get_ports(model: str, block: str) -> dict:
     found = (floor.piece_ports(doc, block) if kind == "CONVEYOR" else
              conveyor_path.transfer_ports(block, entry.get("layout_position"),
                                           entry.get("layout_rotation"), params))
-    return {"block": block, "type": kind, "ports": [
+    out = {"block": block, "type": kind, "ports": [
         {"name": p.name, "role": p.role, "x": round(p.pose.x, 6), "y": round(p.pose.y, 6),
          "heading": round(p.pose.heading, 6) % 360.0, "linked_to": joined(p.name, p.role)}
         for p in found]}
+    if kind == "CONVEYOR":
+        own = doc.blocks[block].params
+        out.update(look=conveyor_look.look_of(own), look_set=conveyor_look.look_set_of(own),
+                   chain=conveyor_look.chain_of(doc, block))
+    return out
 
 
 @tool(read_only=True, returns={"model": str, "ok": bool, "warnings": int, "problems": list,
                                "lines": list})
 def check_layout(model: str) -> dict:
     """Check the floor layout of belt pieces and transfer modules: open ports
-    (W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP) and linked ports that do not meet
-    (W_CONVEYOR_SNAP).
+    (W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP), linked ports that do not meet
+    (W_CONVEYOR_SNAP) and items under three roller pitches long (W_CONVEYOR_ROLLER_PITCH,
+    never an error).
 
     The same problems `validate_model` lists for them (errors under `strict_checks`), with a
     plain sentence each in `lines`. `ok` is true when there are none.

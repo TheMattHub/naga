@@ -942,7 +942,8 @@ def study_step(study: str, layout: dict | None = None, note: str | None = None, 
     with _study_errors():
         layout, layout_notes = studyinput.normalise_layout(layout)
     notes += layout_notes
-    if any(g.get("kpi") == TOTAL_WAIT and g.get("share_above") is not None for g in s["goals"])             and isinstance(layout, dict) and not (layout.get("simulation") or {}).get("entity_waits"):
+    if (any(g.get("kpi") == TOTAL_WAIT and g.get("share_above") is not None for g in s["goals"])
+            and isinstance(layout, dict) and not (layout.get("simulation") or {}).get("entity_waits")):
         # D1232: only a run that asks keeps each entity's total wait; recorded in the version's
         # model, so a rerun of it reads the same column.
         layout = {**layout, "simulation": {**(layout.get("simulation") or {}), "entity_waits": True}}

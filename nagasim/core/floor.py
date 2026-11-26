@@ -65,8 +65,35 @@ def floor_geometry(document: Document, name: str):
 
 
 def length_factor(document: Document, params: dict) -> float:
-    """Metres per unit of a CONVEYOR's `length_unit` in *params* (the model's unit when they
-    set none)."""
+    """Metres per length unit of one conveyor piece.
+
+    A piece's path, part lengths and stored guide openings are in its `length_unit`, else the
+    model's (`simulation.length_unit`); multiply by this to get metres.
+
+    Parameters
+    ----------
+    document : ModelDocument
+        The model, `ModelDocument.load(path)`.
+    params : dict
+        The CONVEYOR block's params.
+
+    Returns
+    -------
+    float
+        Metres per unit: 1.0 in a metre model, 0.001 in a millimetre one.
+
+    See Also
+    --------
+    nagasim.appearance.look_of : Takes this factor to give openings in metres.
+    nagasim.appearance.piece_length_m : A piece's length already in metres.
+
+    Examples
+    --------
+    >>> from nagasim.appearance import length_factor
+    >>> from nagasim.appearance import ModelDocument
+    >>> length_factor(ModelDocument({"simulation": {"length_unit": "millimeters"}}), {})
+    0.001
+    """
     from nagasim.core.blocks import conveyor
     return conveyor.length_factor(params, units_of(document.simulation))
 
@@ -296,10 +323,10 @@ def relink(document: Document, moved, dropped=()) -> int:
 
 def belt_width_m(params: dict) -> float:
     """A belt's real width: its type's, else the untyped width the engine checks with."""
+    from nagasim.core import conveyor_look
     from nagasim.core.conveyor_checks import UNTYPED_WIDTH_M
-    from nagasim.core.conveyor_types import TYPES
-    kind = (params or {}).get("type")
-    return TYPES[kind].width if kind in TYPES else UNTYPED_WIDTH_M
+    width = conveyor_look.width_m(params or {})
+    return UNTYPED_WIDTH_M if width is None else width
 
 
 def meets(end, point, width_m: float) -> bool:
@@ -439,6 +466,7 @@ def add_belt_piece(document: Document, segments: list[dict], kind: str = "", pos
     origin) and, with *source* (an out `Port`), a
     link from it to the new piece's "in". *position* is the schematic spot (None: the next free
     one). The caller validates; `place_piece` and the editor share this write."""
+    from nagasim.core import conveyor_look
     from nagasim.core.conveyor_types import TYPES
     x, y, heading = _floor_pose(pose, source)
     with document.transaction():
@@ -448,6 +476,12 @@ def add_belt_piece(document: Document, segments: list[dict], kind: str = "", pos
             # Written at creation so the file shows it (D1298), in the datasheet's own unit so a
             # later change of the model's time unit leaves the belt's speed as it is (I1).
             params.update(type=kind, speed=TYPES[kind].speed, speed_unit="m/s")
+            if source is not None and document.blocks.get(source.block) is not None \
+                    and document.blocks[source.block].type == "CONVEYOR" \
+                    and document.blocks[source.block].params.get("type") == kind:
+                shared = conveyor_look.inherit(document.blocks[source.block].params)
+                if shared["look"]:                    # D1475: a snapped piece takes the look
+                    params.update(shared)
         if speed is not None:
             params.update(speed=float(speed), speed_unit="base")
         document.set_params(created, params)

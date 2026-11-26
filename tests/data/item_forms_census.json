@@ -1,0 +1,1478 @@
+{
+ "abm_boids_flock.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "abm_classics.nagalib.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "abm_nagel_schreckenberg.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "abm_schelling_segregation.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "abm_sir_small_world.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "abm_sugarscape_lite.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "abm_wolf_sheep.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents.nagalib.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents_bass_diffusion_agents.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents_machine_repair.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents_network_courier.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents_random_walker.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents_server_utilization.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "agents_sir_agents.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "airport.nagalib.json": {
+  "FLIGHT": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "automation.nagalib.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "automation_cell.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "automation_floor.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "belt_points.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "berth_shore_power.json": {
+  "SHIP": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "biogas.nagalib.json": {
+  "BIO_BATCH": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "BIO_TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "biogas_digester_demo.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "biogas_plant_library.json": {
+  "BIO_TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "bridge_line.json": {
+  "BOX": [
+   "carton",
+   [
+    0.41,
+    0.31,
+    0.3
+   ],
+   null
+  ],
+  "PALLET": [
+   "pallet",
+   [
+    1.2,
+    0.8,
+    0.144
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "bridge_line_wrap70.json": {
+  "BOX": [
+   "carton",
+   [
+    0.41,
+    0.31,
+    0.3
+   ],
+   null
+  ],
+  "PALLET": [
+   "pallet",
+   [
+    1.2,
+    0.8,
+    0.144
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "call_centre_day.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "clinic_library.json": {
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "clinic_twin.json": {
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "container_terminals.nagalib.json": {
+  "CONTAINER_20": [
+   "container",
+   [
+    6.058,
+    2.438,
+    2.591
+   ],
+   null
+  ],
+  "CONTAINER_40": [
+   "container",
+   [
+    12.192,
+    2.438,
+    2.591
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "conveyor_line.json": {
+  "CARTON": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "decide_routing.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "demo.nagalib.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "ed_bedside_scan.json": {
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "ed_game.json": {
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "REVIEW": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "ed_patient_agents.json": {
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "energy.nagalib.json": {
+  "EV": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "energy_heat_and_ev.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "energy_pv_battery.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "energy_site_library.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "gse_electrification.json": {
+  "FLIGHT": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "healthcare.nagalib.json": {
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "PATIENT_STRETCHER": [
+   "prop",
+   [
+    2.1,
+    0.95,
+    1.15
+   ],
+   "healthcare/ed_stretcher.glb"
+  ],
+  "PATIENT_WHEELCHAIR": [
+   "prop",
+   [
+    1.14,
+    0.674,
+    0.94
+   ],
+   "healthcare/wheelchair.glb"
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "hold_on_store.json": {
+  "CASE": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "PACK": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "hold_signal_flow.json": {
+  "A": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "B": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "C": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "D": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "DRONE": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "E": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "F": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "ROBOT": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "VAN": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "WORKER": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "impatient_customers.json": {
+  "CUSTOMER": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "ESCALATION": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "inventory_sS.json": {
+  "AGENT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "CUSTOMER": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "job_shop_jackson.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "job_shop_routed.json": {
+  "BRACKET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "SHAFT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "WIDGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "line_with_buffers.json": {
+  "PART": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "logistics.nagalib.json": {
+  "LONG_BUNDLE": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "ORDER": [
+   "disc",
+   null,
+   null
+  ],
+  "OUTBOUND_TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "PALLET": [
+   "pallet",
+   [
+    1.2,
+    0.8,
+    0.144
+   ],
+   null
+  ],
+  "PARCEL": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "TOTE": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "TRUCKLOAD": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "machine_with_breakdowns.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "manufacturing.nagalib.json": {
+  "MFG COMPONENT A": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "MFG COMPONENT B": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "MFG LOAD": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "MFG ORDER": [
+   "disc",
+   null,
+   null
+  ],
+  "MFG PART": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "MFG PRODUCT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "mes_twin_shop.json": {
+  "BRACKET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "WIDGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "mfg_line_library.json": {
+  "MFG LOAD": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "order_due_dates.json": {
+  "GADGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "WIDGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "order_priority_shop.json": {
+  "GADGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "WIDGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "palletizing_line.json": {
+  "PALLET": [
+   "pallet",
+   [
+    1.2,
+    0.8,
+    0.144
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "parallel_routing_policy.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "priority_rework.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd.nagalib.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_bass_diffusion.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_inventory_delay3.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_population.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_sir.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_supply_game.json": {
+  "ORDER_REVIEW": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_training_pipeline.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "sd_workforce_delay1.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "services.nagalib.json": {
+  "CALL": [
+   "disc",
+   null,
+   null
+  ],
+  "CUSTOMER": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "DOCUMENT": [
+   "disc",
+   null,
+   null
+  ],
+  "PATIENT": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "single_server.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "single_server_general.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "supply_chain_library.json": {
+  "CUSTOMER": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "SCM_ORDER": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "supplychain.nagalib.json": {
+  "CUSTOMER": [
+   "person",
+   [
+    0.3,
+    0.5,
+    1.7
+   ],
+   null
+  ],
+  "SCM_ORDER": [
+   "disc",
+   null,
+   null
+  ],
+  "SHIPMENT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "table_process_times.json": {
+  "GADGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "WIDGET": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "tank_fill_and_drain.json": {
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "terminal_electrification.json": {
+  "CONTAINER_40": [
+   "container",
+   [
+    12.192,
+    2.438,
+    2.591
+   ],
+   null
+  ],
+  "EXPORT_40": [
+   "container",
+   [
+    12.192,
+    2.438,
+    2.591
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "terminal_quay_to_yard.json": {
+  "CONTAINER_40": [
+   "container",
+   [
+    12.192,
+    2.438,
+    2.591
+   ],
+   null
+  ],
+  "EXPORT_40": [
+   "container",
+   [
+    12.192,
+    2.438,
+    2.591
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "turnaround_workload.json": {
+  "FLIGHT": [
+   "disc",
+   null,
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "two_cell_line.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "two_teller_set.json": {
+  "DEFAULT": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "warehouse_forklifts.json": {
+  "BULK": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "FAST MOVER": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ },
+ "warehouse_library.json": {
+  "BULK": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "FAST MOVER": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "ORDER": [
+   "disc",
+   null,
+   null
+  ],
+  "PALLET": [
+   "pallet",
+   [
+    1.2,
+    0.8,
+    0.144
+   ],
+   null
+  ],
+  "TRUCK": [
+   "vehicle",
+   [
+    2.4,
+    1.08,
+    1.8
+   ],
+   null
+  ],
+  "TRUCKLOAD": [
+   "carton",
+   [
+    0.4,
+    0.3,
+    0.25
+   ],
+   null
+  ],
+  "fallback": [
+   0.4,
+   0.3,
+   0.25
+  ]
+ }
+}

@@ -251,8 +251,9 @@ def _place_of(block: dict, nodes: dict, length_unit: str) -> Place | None:
     length = params.get("length")
     unit = str(params.get("length_unit") or "base")
     try:
-        length = float(length) * conversion_factor(
-            "length", length_unit if unit == "base" else unit, "meters") if is_finite_number(length)             and length > 0 else None
+        length = (float(length) * conversion_factor(
+            "length", length_unit if unit == "base" else unit, "meters") if is_finite_number(length)
+                    and length > 0 else None)
     except (KeyError, ValueError):
         length = None
     return Place(float(world[0]) * to_m, float(world[1]) * to_m, rotation, length)

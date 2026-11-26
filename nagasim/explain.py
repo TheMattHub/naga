@@ -215,7 +215,8 @@ def rows_of(table: dict, kpi: str, blocks: dict | None = None) -> dict:
                      + ("" if coverage <= 1 else
                         ": they count waits of entities still in the system at the end, "
                         f"which the KPI does not, so there is no '{REST}' row"))
-    if s["ranked"] and len(rows) > 1 and None not in (rows[0]["lb"], rows[1]["ub"])             and rows[1]["ub"] >= rows[0]["lb"]:
+    if (s["ranked"] and len(rows) > 1 and None not in (rows[0]["lb"], rows[1]["ub"])
+            and rows[1]["ub"] >= rows[0]["lb"]):
         notes.append("the top two rows are not separated at this number of replications (#859)")
     if not rows:
         summary = "no rows"

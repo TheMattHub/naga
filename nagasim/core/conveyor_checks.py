@@ -10,6 +10,9 @@ each into an error with the same code, which stops the run (D1371).
   - W_CONVEYOR_OPEN_PORT: a port no link joins.
   - W_CONVEYOR_OVERLAP: two belts' paths closer than half their widths, unless joined.
   - W_CONVEYOR_SNAP: two linked ports more than 0.05 m or 5 degrees apart.
+  - W_CONVEYOR_ROLLER_PITCH: a sized item type reaches a roller piece as itself and is under
+    three of its roller pitches long (any roller piece, with or without a path; never an error,
+    D1481).
 * **Run guards** (`run_warning`, a coded log warning once per block and code):
   - W_CONVEYOR_HANDED_TO_NOTHING: a part reaches an end with no next block; it stands there.
   - W_ROUTE_FORBIDDEN: a part takes an exit its rule cannot choose now (`route_taken`).
@@ -23,11 +26,11 @@ import logging
 import math
 from dataclasses import replace
 
-from nagasim.core import conveyor_path
+from nagasim.core import conveyor_look, conveyor_path
 from nagasim.core.errors import ModelRunError
 from nagasim.core.problems import Problem, problem
 
-__all__ = ["STRICT_CODES", "RUN_HINTS", "static_checks", "open_ports", "floor_piece", "run_warning", "keep_run_warning", "route_taken", "UNTYPED_WIDTH_M"]
+__all__ = ["STRICT_CODES", "RUN_HINTS", "static_checks", "roller_pitch_problems", "open_ports", "floor_piece", "run_warning", "keep_run_warning", "route_taken", "UNTYPED_WIDTH_M"]
 
 log = logging.getLogger(__name__)
 
@@ -113,14 +116,127 @@ def static_checks(layout: dict) -> list[Problem]:
     layout's top-level blocks (a submodel definition's positions are not floor positions), as
     errors under `strict_checks`. Nothing to do, and no cost, for a model with no floor piece."""
     floor, links = _floor(layout)
-    if not floor:
+    found = []
+    if floor:
+        pieces = _pieces(layout, floor)
+        found = (_open_ports(floor, links) + _snaps(pieces, floor, links)
+                 + _overlaps(pieces, floor, links))
+        if _strict(layout):
+            found = [replace(p, severity="error") for p in found]
+    # After the strict rewrite: a pitch advice is never an error (D1481). It reads the links
+    # and sizes, not the floor, so it runs for a belt with no path too.
+    return found + roller_pitch_problems(layout)
+
+
+def roller_pitch_problems(layout: dict) -> list[Problem]:
+    """W_CONVEYOR_ROLLER_PITCH: a roller-type piece (`ROLLER_TYPES`) that an item type with a
+    `size` reaches as itself, where the type's length is under three of the piece's roller
+    pitches (fewer than three rollers under an item). The walk follows the links from every
+    CREATE with the travelling type: a BATCH, or an ASSIGN or eye that writes a quoted type to
+    `entity.e_type`, carries the type it states on; a SEPARATE, a MATCH with `batch_option`, a
+    SUBMODEL and a type written by an expression end the walk (`_type_leaving`). One problem
+    per (piece, type); belt and chain pieces and unsized types are not checked. Never an
+    error."""
+    blocks = layout.get("blocks") if isinstance(layout, dict) else None
+    if not isinstance(blocks, list):
         return []
-    pieces = _pieces(layout, floor)
-    found = (_open_ports(floor, links) + _snaps(pieces, floor, links)
-             + _overlaps(pieces, floor, links))
-    if _strict(layout):
-        found = [replace(p, severity="error") for p in found]
+    from nagasim.core.timeunits import conversion_factor, units_of
+    entities = layout.get("entities")
+    try:
+        to_m = conversion_factor("length", units_of(layout.get("simulation")).length, "meters")
+    except (KeyError, ValueError, TypeError):
+        return []                           # an unknown unit is E_UNIT's to report
+    lengths = {}                            # TYPE -> length along travel, metres
+    for row in entities if isinstance(entities, list) else []:
+        size = row.get("size") if isinstance(row, dict) else None
+        length = size.get("length") if isinstance(size, dict) else None
+        if (isinstance(row.get("name"), str) and isinstance(length, (int, float))
+                and not isinstance(length, bool) and length > 0):
+            lengths[row["name"].upper()] = length * to_m
+    if not lengths:
+        return []
+    by_name, onward = {}, {}
+    for index, block in enumerate(blocks):
+        if isinstance(block, dict) and isinstance(block.get("name"), str):
+            by_name[block["name"]] = (index, block)
+    for link in layout.get("links") or []:
+        if isinstance(link, dict):
+            onward.setdefault(link.get("source"), []).append(link.get("target"))
+    reached = {}                            # piece name -> the types that reach it, in order
+    # Every CREATE starts a walk, sized or not: an unsized box batched onto a sized pallet still
+    # brings the pallet. The state is (block, type): a block that states a new type carries it on.
+    seen, todo = set(), []
+    for _index, block in by_name.values():
+        if str(block.get("type", "")).upper() == "CREATE":
+            params = block.get("params") if isinstance(block.get("params"), dict) else {}
+            kind = str(params.get("e_type") or "DEFAULT").upper()
+            todo.extend((t, kind) for t in onward.get(block["name"], []) if t in by_name)
+    while todo:
+        name, kind = todo.pop()
+        if (name, kind) in seen:
+            continue
+        seen.add((name, kind))
+        if kind in lengths and kind not in reached.setdefault(name, []):
+            reached[name].append(kind)
+        leaves = _type_leaving(by_name[name][1], kind)
+        if leaves is not None:
+            todo.extend((t, leaves) for t in onward.get(name, []) if t in by_name)
+    found = []
+    for name, kinds in sorted(reached.items(), key=lambda kv: by_name[kv[0]][0]):
+        index, block = by_name[name]
+        params = block.get("params") if isinstance(block.get("params"), dict) else {}
+        if (str(block.get("type", "")).upper() != "CONVEYOR"
+                or params.get("type") not in conveyor_look.ROLLER_TYPES):
+            continue
+        pitch = conveyor_look.look_of(params).get("roller_pitch")
+        if not isinstance(pitch, (int, float)) or pitch <= 0:
+            continue
+        for kind in kinds:
+            if lengths[kind] < 3 * pitch:
+                found.append(problem(
+                    "W_CONVEYOR_ROLLER_PITCH", f"Belt {name}: item type {kind} is "
+                    f"{lengths[kind]:.4g} m long, under three rollers ({3 * pitch:.4g} m)",
+                    f"/blocks/{index}", block=name,
+                    hint="use a shorter roller_pitch in the piece's look, or a longer item size",
+                    fields={"case": "roller_pitch", "entity_type": kind}))
     return found
+
+
+def _quoted(expr) -> str | None:
+    """The text of *expr* when it is one quoted string with no quote or escape inside, else
+    None: the one assignment value the walk reads without evaluating an expression."""
+    text = str(expr).strip()
+    inner = text[1:-1]
+    if (len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'"
+            and not any(c in inner for c in "\"'\\")):
+        return inner
+    return None
+
+
+def _type_leaving(block: dict, kind: str):
+    """The item type that leaves *block* when *kind* arrives, or None where the walk stops: a
+    block that splits or merges loads in a way its params do not state (SEPARATE, MATCH with
+    `batch_option`, a SUBMODEL's inside) or that sets the type by an expression."""
+    btype = str(block.get("type", "")).upper()
+    params = block.get("params") if isinstance(block.get("params"), dict) else {}
+    if btype in ("SEPARATE", "SUBMODEL") or (btype == "MATCH" and params.get("batch_option")):
+        return None
+    if btype == "BATCH":
+        carrier = str(params.get("carrier_type", "") or "").strip()
+        return (carrier or str(params.get("batched_entity_type", "BATCH") or "BATCH")).upper()
+    rows = []
+    if btype == "ASSIGN":
+        rows = params.get("assignments") or []
+    elif btype == "CONVEYOR":
+        for eye in params.get("eyes") or []:
+            rows += (eye.get("assign") or []) if isinstance(eye, dict) else []
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and str(row.get("target", "")).strip() == "entity.e_type":
+            literal = _quoted(row.get("expr", ""))
+            if literal is None:
+                return None
+            kind = literal.upper()
+    return kind
 
 
 def floor_piece(kind: str, params) -> bool:
@@ -128,7 +244,8 @@ def floor_piece(kind: str, params) -> bool:
     a CONVEYOR with a `path`, or a CONVEYOR_TRANSFER. A CONVEYOR timed by its `length` alone is
     not (#2035); the checks, the editor and its moves all read this one rule."""
     kind = str(kind or "").upper()
-    return (kind == "CONVEYOR" and bool((params or {}).get("path")))         or kind == "CONVEYOR_TRANSFER"
+    return (kind == "CONVEYOR" and bool((params or {}).get("path"))
+            or kind == "CONVEYOR_TRANSFER")
 
 
 def _floor(layout: dict) -> tuple[dict, list]:
@@ -174,8 +291,9 @@ def _pieces(layout: dict, floor: dict) -> dict:
         if not segments:
             continue
         ports = {p.name: p for p in conveyor_path.ports(name, start, segments, diverts)}
-        kind_name = params.get("type")
-        width = TYPES[kind_name].width if kind_name in TYPES else UNTYPED_WIDTH_M
+        width = conveyor_look.width_m(params)
+        if width is None:
+            width = UNTYPED_WIDTH_M
         out[name] = (index, ports, conveyor_path.path_polyline(start, segments, _ARC_STEP_DEG), width)
     return out
 
@@ -283,7 +401,8 @@ def _snaps(pieces: dict, floor: dict, links: list) -> list:
 def _merge_sources(params: dict) -> set:
     """The blocks a belt's merges take parts from (their links enter at the merge, not "in")."""
     merges = params.get("merges")
-    return {m.get("from") for m in merges if isinstance(m, dict)}         if isinstance(merges, list) else set()
+    return ({m.get("from") for m in merges if isinstance(m, dict)}
+            if isinstance(merges, list) else set())
 
 
 def _branch_stretch(params: dict, port) -> float:

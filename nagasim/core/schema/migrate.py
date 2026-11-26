@@ -219,7 +219,8 @@ def migrate(layout: dict) -> dict:
     # the old field inside a current one, and the move is idempotent.
     for link in migrated.get("links") or [] if isinstance(migrated.get("links"), list) else ():
         _migrate_link_time(link)
-    for definition in (migrated.get("submodels") or {}).values()             if isinstance(migrated.get("submodels"), dict) else ():
+    for definition in ((migrated.get("submodels") or {}).values()
+                       if isinstance(migrated.get("submodels"), dict) else ()):
         if isinstance(definition, dict) and isinstance(definition.get("links"), list):
             for link in definition["links"]:
                 _migrate_link_time(link)

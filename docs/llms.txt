@@ -159,7 +159,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [BATCH](https://thematthub.github.io/naga/reference/blocks/batch.html): Groups parts or orders into batches, pallets or lots of a set size, or after a maximum wait, and sends the batch on as one entity.
 - [BUFFER](https://thematthub.github.io/naga/reference/blocks/buffer.html): Finite storage of waiting places between two machines or stations; when all places are taken the upstream machine stays blocked, holding its finished part.
 - [CHARGE](https://thematthub.github.io/naga/reference/blocks/charge.html): Charges an entity (an electric vehicle, a battery pack) with the energy it needs at up to its own power, sharing a site power cap with every other entity at this block; it leaves when full or when its time is up.
-- [CONVEYOR](https://thematthub.github.io/naga/reference/blocks/conveyor.html): Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
+- [CONVEYOR](https://thematthub.github.io/naga/reference/blocks/conveyor.html): Belt that carries parts end to end at a set speed, holds a limited number, and blocks the machine before it when full.
 - [CONVEYOR_TRANSFER](https://thematthub.github.io/naga/reference/blocks/conveyor-transfer.html): Conveyor transfer module that moves each load onto one of several exits: a pop-up transfer, a turntable or a lift, busy until the load reaches the next conveyor's photo-eye.
 - [CREATE](https://thematthub.github.io/naga/reference/blocks/create.html): Source of arrivals: creates parts, orders, customers or jobs at random intervals or on an hourly arrival schedule.
 - [DECIDE](https://thematthub.github.io/naga/reference/blocks/decide.html): Routing decision: sends each part, order or customer down one of several links by percentage chance, by a condition (rework, type, size) or by a policy.
@@ -292,7 +292,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 ## Problem codes
 
-- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 515 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 517 codes that a check of a model can report, from nagasim/core/problems.py.
 - [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
 - [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
 - [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.
@@ -305,12 +305,31 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 ## Reference
 
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
+- [Appearance](https://thematthub.github.io/naga/appearance.html): This page is for a developer who wants to draw a Naga model in another tool, such as a game engine, a CAD viewer or a web renderer.
 - [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 105 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 
 - [Python entry points](https://thematthub.github.io/naga/reference/api/index.html): The functions and classes a script calls most.
 - [run_model](https://thematthub.github.io/naga/reference/api/run_model.html): Python reference for nagasim.api.run_model.
+- [look_of](https://thematthub.github.io/naga/reference/api/look_of.html): Python reference for nagasim.appearance.look_of.
+- [exit_openings](https://thematthub.github.io/naga/reference/api/exit_openings.html): Python reference for nagasim.appearance.exit_openings.
+- [material](https://thematthub.github.io/naga/reference/api/material.html): Python reference for nagasim.appearance.material.
+- [forms_of](https://thematthub.github.io/naga/reference/api/forms_of.html): Python reference for nagasim.appearance.forms_of.
+- [piece_start](https://thematthub.github.io/naga/reference/api/piece_start.html): Python reference for nagasim.appearance.piece_start.
+- [piece_segments](https://thematthub.github.io/naga/reference/api/piece_segments.html): Python reference for nagasim.appearance.piece_segments.
+- [piece_pose](https://thematthub.github.io/naga/reference/api/piece_pose.html): Python reference for nagasim.appearance.piece_pose.
+- [piece_length_m](https://thematthub.github.io/naga/reference/api/piece_length_m.html): Python reference for nagasim.appearance.piece_length_m.
+- [length_factor](https://thematthub.github.io/naga/reference/api/length_factor.html): Python reference for nagasim.appearance.length_factor.
+- [guide_runs](https://thematthub.github.io/naga/reference/api/guide_runs.html): Python reference for nagasim.appearance.guide_runs.
+- [guide_material](https://thematthub.github.io/naga/reference/api/guide_material.html): Python reference for nagasim.appearance.guide_material.
+- [fields_of](https://thematthub.github.io/naga/reference/api/fields_of.html): Python reference for nagasim.appearance.fields_of.
+- [default](https://thematthub.github.io/naga/reference/api/default.html): Python reference for nagasim.appearance.default.
+- [srgb](https://thematthub.github.io/naga/reference/api/srgb.html): Python reference for nagasim.appearance.srgb.
+- [linear_rgb](https://thematthub.github.io/naga/reference/api/linear_rgb.html): Python reference for nagasim.appearance.linear_rgb.
+- [is_hex](https://thematthub.github.io/naga/reference/api/is_hex.html): Python reference for nagasim.appearance.is_hex.
+- [form_of](https://thematthub.github.io/naga/reference/api/form_of.html): Python reference for nagasim.appearance.form_of.
+- [default_carton_size](https://thematthub.github.io/naga/reference/api/default_carton_size.html): Python reference for nagasim.appearance.default_carton_size.
 - [run_scenarios](https://thematthub.github.io/naga/reference/api/run_scenarios.html): Python reference for nagasim.experiments.run_scenarios.
 - [run_until_precision](https://thematthub.github.io/naga/reference/api/run_until_precision.html): Python reference for nagasim.experiments.run_until_precision.
 - [suggest_warmup](https://thematthub.github.io/naga/reference/api/suggest_warmup.html): Python reference for nagasim.experiments.suggest_warmup.

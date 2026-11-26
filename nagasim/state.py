@@ -1065,7 +1065,8 @@ def from_plant(layout, seen: dict, *, name: str | None = None):
                                                                    step[1] >= entity["since"]) \
                     and sum(e["block"] == name and e["serving"] for e in entities) == 1:
                 out["cycle"] = {"stage": step[0], "since": step[1]}     # D464
-            elif kind == "MOTION" and step and step[1] <= clock and entity["since"] is not None                     and step[1] < entity["since"]:
+            elif (kind == "MOTION" and step and step[1] <= clock and entity["since"] is not None
+                    and step[1] < entity["since"]):
                 problems.append(problem(      # M2: said, not dropped silently
                     "W_STATE_NOT_COVERED", f"the step of MOTION '{name}' predates its job: "
                     f"the job runs a whole cycle afresh", f"/{initial_state.SECTION}/entities",

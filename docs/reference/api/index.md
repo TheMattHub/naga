@@ -33,3 +33,21 @@ The functions and classes a script calls most. Each page is its docstring: param
 | [`nagasim.twin.forecast_from_state`](forecast_from_state.md) | The default runner: *horizon* from the clock the model's state starts at. |
 | [`nagasim.twin.read_result`](read_result.md) | The latest result a twin wrote into *directory*. |
 | [`nagasim.investment.investment_case`](investment_case.md) | One row per scenario of *result*, the baseline first (COLUMNS). |
+| [`nagasim.appearance.look_of`](look_of.md) | Provisional. Everything needed to draw one conveyor piece: each look field of its type, resolved. |
+| [`nagasim.appearance.exit_openings`](exit_openings.md) | Provisional. The gaps a piece's side exits cut in its guides, which the file never stores. |
+| [`nagasim.appearance.material`](material.md) | Provisional. The material that one look value paints, as the reference drawing draws it. |
+| [`nagasim.appearance.forms_of`](forms_of.md) | Provisional. The form and drawn size of every entity type in a model. |
+| [`nagasim.appearance.piece_start`](piece_start.md) | Provisional. Where a conveyor piece starts on the floor: its position and heading. |
+| [`nagasim.appearance.piece_segments`](piece_segments.md) | Provisional. A conveyor piece's path as straight and arc segments, in metres. |
+| [`nagasim.appearance.piece_pose`](piece_pose.md) | Provisional. The pose on a conveyor piece's centreline at a distance along its path. |
+| [`nagasim.appearance.piece_length_m`](piece_length_m.md) | Provisional. A conveyor piece's length along its path, in metres. |
+| [`nagasim.appearance.length_factor`](length_factor.md) | Provisional. Metres per length unit of one conveyor piece. |
+| [`nagasim.appearance.guide_runs`](guide_runs.md) | Provisional. The stretches of one side guide that stand: [0, *length*] minus that side's openings. |
+| [`nagasim.appearance.guide_material`](guide_material.md) | Provisional. The material of a piece's side guides; use it rather than the raw `MATERIALS` entry. |
+| [`nagasim.appearance.fields_of`](fields_of.md) | Provisional. The look fields a conveyor type takes, in the order an editor lists them. |
+| [`nagasim.appearance.default`](default.md) | Provisional. The value of a look field that a piece does not set. |
+| [`nagasim.appearance.srgb`](srgb.md) | Provisional. The sRGB channels of a colour `#RRGGBB`, each 0 to 1. |
+| [`nagasim.appearance.linear_rgb`](linear_rgb.md) | Provisional. sRGB channels to linear ones, as a glTF base colour takes them. |
+| [`nagasim.appearance.is_hex`](is_hex.md) | Provisional. Whether *value* is a colour `#RRGGBB`: six hex digits, either case, nothing around them. |
+| [`nagasim.appearance.form_of`](form_of.md) | Provisional. The form one entity type draws as, from its name and icon; one of `FORMS`. |
+| [`nagasim.appearance.default_carton_size`](default_carton_size.md) | Provisional. The size of a carton whose type declares none, in metres (length, width, height). |

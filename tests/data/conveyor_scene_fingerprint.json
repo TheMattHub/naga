@@ -1,0 +1,65 @@
+{
+ "belt_points.json": {
+  "boxes_h": "44136fa355b3678a",
+  "bufs_h": "4f53cda18c2baa0c",
+  "glb": "63963d9d49ec1e43",
+  "meshes": 0,
+  "rides_h": "44136fa355b3678a",
+  "rows": 0,
+  "rows_h": "4f53cda18c2baa0c"
+ },
+ "bridge_line.json": {
+  "boxes_h": "b214a3d423ea624b",
+  "bufs_h": "09e0ba3b3e461d92",
+  "glb": "4a686e34b64a0ee8",
+  "meshes": 58,
+  "rides_h": "8f18d886070933c6",
+  "rows": 397,
+  "rows_h": "741d65e75af5be29"
+ },
+ "bridge_line_wrap70.json": {
+  "boxes_h": "b214a3d423ea624b",
+  "bufs_h": "09e0ba3b3e461d92",
+  "glb": "4a686e34b64a0ee8",
+  "meshes": 58,
+  "rides_h": "8f18d886070933c6",
+  "rows": 397,
+  "rows_h": "741d65e75af5be29"
+ },
+ "conveyor_line.json": {
+  "boxes_h": "ad80296739aa76fe",
+  "bufs_h": "766866db0b054488",
+  "glb": "95f6576d4edde25c",
+  "meshes": 85,
+  "rides_h": "d849df456ab8a897",
+  "rows": 754,
+  "rows_h": "1fb9be6c5ddf4bd4"
+ },
+ "palletizing_line.json": {
+  "boxes_h": "44136fa355b3678a",
+  "bufs_h": "4f53cda18c2baa0c",
+  "glb": "43b95fb6688f916b",
+  "meshes": 0,
+  "rides_h": "44136fa355b3678a",
+  "rows": 0,
+  "rows_h": "4f53cda18c2baa0c"
+ },
+ "warehouse_forklifts.json": {
+  "boxes_h": "44136fa355b3678a",
+  "bufs_h": "4f53cda18c2baa0c",
+  "glb": "8d2561f3a349a943",
+  "meshes": 0,
+  "rides_h": "44136fa355b3678a",
+  "rows": 0,
+  "rows_h": "4f53cda18c2baa0c"
+ },
+ "warehouse_library.json": {
+  "boxes_h": "44136fa355b3678a",
+  "bufs_h": "4f53cda18c2baa0c",
+  "glb": "5e449028148c1ee0",
+  "meshes": 0,
+  "rides_h": "44136fa355b3678a",
+  "rows": 0,
+  "rows_h": "4f53cda18c2baa0c"
+ }
+}

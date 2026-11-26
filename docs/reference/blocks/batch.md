@@ -98,7 +98,7 @@ print(int(results.kpi("system/Total Entities Completed")), "completed: 30 parts 
 
 Bundled models: [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Automation floor (robot cells, AMR, palletiser)](../../gallery/manufacturing.md), [Make-to-order line (library assets)](../../gallery/manufacturing.md), [Palletizing line](../../gallery/manufacturing.md), [HOLD on a store's contents](../../gallery/teaching.md).
 
-Guides: [Digital twin](../../digital-twin.md), [How do I pack parts on a pallet and unpack them later?](../../how-to/recipes/unpack-pallet.md), [Batching and matching](../../modelling-guide/batching-matching.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md) and 8 more.
+Guides: [Digital twin](../../digital-twin.md), [How do I pack parts on a pallet and unpack them later?](../../how-to/recipes/unpack-pallet.md), [Batching and matching](../../modelling-guide/batching-matching.md), [Appearance](../../appearance.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md) and 9 more.
 
 ## See also
 

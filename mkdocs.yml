@@ -322,10 +322,29 @@ nav:
           - Scenarios, checks and the editor: reference/problems/scenarios-and-checks.md
           - Blocks, links and routing: reference/problems/blocks-and-flow.md
       - Model file format: model-file-format.md
+      - Appearance: appearance.md
       - Agent tools: reference/tools.md
       - Python API:
           - reference/api/index.md
           - run_model: reference/api/run_model.md
+          - look_of: reference/api/look_of.md
+          - exit_openings: reference/api/exit_openings.md
+          - material: reference/api/material.md
+          - forms_of: reference/api/forms_of.md
+          - piece_start: reference/api/piece_start.md
+          - piece_segments: reference/api/piece_segments.md
+          - piece_pose: reference/api/piece_pose.md
+          - piece_length_m: reference/api/piece_length_m.md
+          - length_factor: reference/api/length_factor.md
+          - guide_runs: reference/api/guide_runs.md
+          - guide_material: reference/api/guide_material.md
+          - fields_of: reference/api/fields_of.md
+          - default: reference/api/default.md
+          - srgb: reference/api/srgb.md
+          - linear_rgb: reference/api/linear_rgb.md
+          - is_hex: reference/api/is_hex.md
+          - form_of: reference/api/form_of.md
+          - default_carton_size: reference/api/default_carton_size.md
           - run_scenarios: reference/api/run_scenarios.md
           - run_until_precision: reference/api/run_until_precision.md
           - suggest_warmup: reference/api/suggest_warmup.md

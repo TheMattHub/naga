@@ -266,7 +266,8 @@ def dependency_graph(layout: dict, probe: bool = True) -> tuple[set, dict, dict]
                     for raw_name in text_refs.get(func, ()):
                         # A flattened element ("Pop[north]") is a node under
                         # its own name; only an unflattened read maps to its base.
-                        name = raw_name if (origin_section, raw_name) in nodes                             else split_name(raw_name)[0]
+                        name = (raw_name if (origin_section, raw_name) in nodes
+                                else split_name(raw_name)[0])
                         origin = (origin_section, name)
                         if origin == target or origin not in nodes:
                             continue

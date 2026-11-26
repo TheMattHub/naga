@@ -1171,7 +1171,8 @@ class Mapper:
             # reading: not an earlier one (this mapper is told the past itself and counts
             # it) and not one later than the stated age. Judged once, at the first value.
             before = self._carried.pop(signal["block"], None)
-            held = self._counters[signal["block"]] = before if before is not None                 and before[4] <= t <= before[4] + self._carry_age else [cell, 0, t, 0, t]
+            held = self._counters[signal["block"]] = (before if before is not None
+                    and before[4] <= t <= before[4] + self._carry_age else [cell, 0, t, 0, t])
         step, roll = cell - held[0], signal.get("rollover")
         if step < 0 and roll and max(cell, held[0]) < roll:
             step += roll

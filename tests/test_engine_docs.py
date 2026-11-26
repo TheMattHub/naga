@@ -824,3 +824,11 @@ def test_s1_15_quickstart_notebook_uses_the_builder():
     assert "ModelDocument" not in text and "Qt editor" not in text and "Naga" + " Studio" not in text      # the export rewrites the literal
     assert "nagasim import build" in text and "examples.path" in text
     assert "Path(nagasim.__file__)" not in text
+
+
+def test_the_appearance_tables_are_the_generators(tmp_path):
+    """The Appearance page's three tables are read from the code, not typed."""
+    page = tmp_path / "appearance.md"
+    shutil.copyfile(gen.APPEARANCE_PAGE, page)
+    gen.gen_appearance_tables(page)
+    assert _same(page, gen.APPEARANCE_PAGE), REGENERATE

@@ -71,7 +71,7 @@ print(int(results.kpi("system/Total Entities Completed")), "entities completed a
 
 Bundled models: [Delay, seize/release and signal HOLD](../../gallery/teaching.md).
 
-Guides: [Resources, sets and queue disciplines](../../modelling-guide/resources-queues.md), [Agent-based modelling](../../agent-based-modelling.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md), [Coming from SimPy](../../coming-from/simpy.md), [Continuous quantities: levels, flows and time-series inputs](../../modelling-guide/continuous-quantities.md).
+Guides: [Resources, sets and queue disciplines](../../modelling-guide/resources-queues.md), [Agent-based modelling](../../agent-based-modelling.md), [Appearance](../../appearance.md), [Coming from Arena](../../coming-from/arena.md), [Coming from salabim](../../coming-from/salabim.md), [Coming from SimPy](../../coming-from/simpy.md) and 1 more.
 
 ## See also
 

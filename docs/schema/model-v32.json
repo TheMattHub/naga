@@ -3371,7 +3371,7 @@
         },
         {
           "title": "CONVEYOR",
-          "description": "Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.",
+          "description": "Belt that carries parts end to end at a set speed, holds a limited number, and blocks the machine before it when full.",
           "type": "object",
           "properties": {
             "name": {
@@ -4075,6 +4075,214 @@
                   ],
                   "default": false,
                   "description": "True: the belt writes its state as model variables, read with VAR(\"<belt>.running\") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts)."
+                },
+                "look": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "width": {
+                          "type": "number",
+                          "minimum": 0.1,
+                          "maximum": 3.0,
+                          "description": "Metres, from 0.1 to 3, for belt, roller, chain, pallet, mdr."
+                        },
+                        "height": {
+                          "type": "number",
+                          "minimum": 0.095,
+                          "maximum": 3.0,
+                          "description": "Metres, from the frame's 0.1 (a lower type: its own height, 0.095 on a pallet) to 3, for belt, roller, chain, pallet, mdr."
+                        },
+                        "frame_color": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "steel",
+                                "grey",
+                                "blue",
+                                "green",
+                                "yellow",
+                                "orange"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^#[0-9A-Fa-f]{6}$"
+                            }
+                          ],
+                          "description": "Choice or a colour #RRGGBB, for belt, roller, chain, pallet, mdr."
+                        },
+                        "leg_spacing": {
+                          "anyOf": [
+                            {
+                              "const": 0
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0.5,
+                              "maximum": 10.0
+                            }
+                          ],
+                          "description": "Metres, 0 for none or from 0.5 to 10, for belt, roller, chain, pallet, mdr."
+                        },
+                        "drive_side": {
+                          "type": "string",
+                          "enum": [
+                            "under",
+                            "left",
+                            "right",
+                            "none"
+                          ],
+                          "description": "Choice for belt, roller, chain, pallet."
+                        },
+                        "guide_left": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1.5,
+                          "description": "Metres, 0 to 1.5, for belt, roller, chain, pallet, mdr."
+                        },
+                        "guide_right": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1.5,
+                          "description": "Metres, 0 to 1.5, for belt, roller, chain, pallet, mdr."
+                        },
+                        "guide_style": {
+                          "type": "string",
+                          "enum": [
+                            "round",
+                            "flat",
+                            "panel"
+                          ],
+                          "description": "Choice for belt, roller, chain, pallet, mdr."
+                        },
+                        "roller_pitch": {
+                          "type": "number",
+                          "minimum": 0.03,
+                          "maximum": 1.0,
+                          "description": "Metres, from 0.03 to 1, for roller, mdr, pallet."
+                        },
+                        "roller_diameter": {
+                          "type": "number",
+                          "minimum": 0.02,
+                          "maximum": 0.3,
+                          "description": "Metres, from 0.02 to 0.3, for roller, mdr, pallet."
+                        },
+                        "roller_finish": {
+                          "type": "string",
+                          "enum": [
+                            "zinc",
+                            "grey",
+                            "blue_sleeve"
+                          ],
+                          "description": "Choice for roller, mdr, pallet."
+                        },
+                        "belt_kind": {
+                          "type": "string",
+                          "enum": [
+                            "black_rubber",
+                            "green_pvc",
+                            "white_food",
+                            "plastic_modular"
+                          ],
+                          "description": "Choice for belt."
+                        },
+                        "pulley_diameter": {
+                          "type": "number",
+                          "minimum": 0.03,
+                          "maximum": 0.5,
+                          "description": "Metres, from 0.03 to 0.5, for belt."
+                        },
+                        "chain_strands": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 6,
+                          "description": "Count, for chain."
+                        },
+                        "strand_spacing": {
+                          "type": "number",
+                          "minimum": 0.05,
+                          "maximum": 1.5,
+                          "description": "Metres, from 0.05 to 1.5, for chain."
+                        },
+                        "openings": {
+                          "type": "array",
+                          "description": "Gaps in the side guides, in the belt's length unit.",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "side": {
+                                "type": "string",
+                                "enum": [
+                                  "left",
+                                  "right",
+                                  "both"
+                                ]
+                              },
+                              "start": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": [
+                              "side",
+                              "start",
+                              "end"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "How a typed belt looks, only the settings that differ from its type's. Dimensions are in metres: width, height (the top of the conveying surface), leg_spacing (0: no legs), guide_left and guide_right (guide height above the top, 0: none), roller_pitch, roller_diameter, pulley_diameter and strand_spacing. Choices: frame_color, drive_side, guide_style, roller_finish and belt_kind. chain_strands is a count. `openings` is a list of {side: left, right or both, start, end}: gaps in the side guides, in the unit of `length`.",
+                      "default": {}
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": {},
+                  "description": "How a typed belt looks, only the settings that differ from its type's. Dimensions are in metres: width, height (the top of the conveying surface), leg_spacing (0: no legs), guide_left and guide_right (guide height above the top, 0: none), roller_pitch, roller_diameter, pulley_diameter and strand_spacing. Choices: frame_color, drive_side, guide_style, roller_finish and belt_kind. chain_strands is a count. `openings` is a list of {side: left, right or both, start, end}: gaps in the side guides, in the unit of `length`."
+                },
+                "look_set": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "width",
+                          "height",
+                          "frame_color",
+                          "leg_spacing",
+                          "drive_side",
+                          "guide_left",
+                          "guide_right",
+                          "guide_style",
+                          "roller_pitch",
+                          "roller_diameter",
+                          "roller_finish",
+                          "belt_kind",
+                          "pulley_diameter",
+                          "chain_strands",
+                          "strand_spacing"
+                        ]
+                      },
+                      "description": "The names of the look settings kept on this piece alone when a change spreads along its line of pieces. Never `openings`.",
+                      "default": []
+                    },
+                    {
+                      "$ref": "#/$defs/structural_argument"
+                    }
+                  ],
+                  "default": [],
+                  "description": "The names of the look settings kept on this piece alone when a change spreads along its line of pieces. Never `openings`."
                 }
               },
               "required": [

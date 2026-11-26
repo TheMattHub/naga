@@ -43,7 +43,7 @@ The 105 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under t
 | `set_layout` |  | Place a block on the floor plan: its position and rotation, one undo entry. |
 | `place_transfer` |  | Add a CONVEYOR_TRANSFER (moves each load onto one of its exits) on the floor plan, in one undo entry. |
 | `get_ports` | yes | The ports of a belt piece or transfer module: each one's name, role (in/out), floor pose (x, y metres, heading as in set_layout) and `linked_to`, the "Block.port" ends it is linked to. |
-| `check_layout` | yes | Check the floor layout of belt pieces and transfer modules: open ports (W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP) and linked ports that do not meet (W_CONVEYOR_SNAP). |
+| `check_layout` | yes | Check the floor layout of belt pieces and transfer modules: open ports (W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP), linked ports that do not meet (W_CONVEYOR_SNAP) and items under three roller pitches long (W_CONVEYOR_ROLLER_PITCH, never an error). |
 
 ## records
 

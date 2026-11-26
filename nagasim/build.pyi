@@ -1141,8 +1141,10 @@ class Level:
         part_length: float | dict[str, Any] = 0.0,
         part_length_unit: Literal['base', 'millimeters', 'centimeters', 'meters', 'kilometers'] | dict[str, Any] = 'base',
         expose: bool | dict[str, Any] = False,
+        look: dict[str, Any] = ...,
+        look_set: list[Any] | dict[str, Any] = ...,
     ) -> Block:
-        """Add a CONVEYOR block. Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
+        """Add a CONVEYOR block. Belt that carries parts end to end at a set speed, holds a limited number, and blocks the machine before it when full.
 
         length=0.0: Belt length in layout units. 0 takes the network distance between `from_node` and `to_node`.
         length_unit='base': Unit of `length`: "base" (the model's) or one of its quantity's units.
@@ -1173,6 +1175,8 @@ class Level:
         part_length=0.0: Length of one part along the belt, which a back-edge eye reads. 0: the spacing, or a typed belt's type zone length. On an untyped belt it is no longer than the spacing.
         part_length_unit='base': Unit of `part_length`: "base" (the model's) or one of its quantity's units.
         expose=False: True: the belt writes its state as model variables, read with VAR("<belt>.running") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts).
+        look={}: How a typed belt looks, only the settings that differ from its type's. Dimensions are in metres: width, height (the top of the conveying surface), leg_spacing (0: no legs), guide_left and guide_right (guide height above the top, 0: none), roller_pitch, roller_diameter, pulley_diameter and strand_spacing. Choices: frame_color, drive_side, guide_style, roller_finish and belt_kind. chain_strands is a count. `openings` is a list of {side: left, right or both, start, end}: gaps in the side guides, in the unit of `length`.
+        look_set=[]: The names of the look settings kept on this piece alone when a change spreads along its line of pieces. Never `openings`.
         """
 
     def conveyor_transfer(

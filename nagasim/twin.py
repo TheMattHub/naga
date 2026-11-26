@@ -427,7 +427,8 @@ class Cycle:
         carry = getattr(source, "carry", None)
         last = None if carry is None or self.out_dir is None else _read(
             self.out_dir / RESULT_FILE, KIND, LIMITS["result_bytes"])
-        if last is not None and isinstance(last.get("model"), dict)                 and last["model"].get("hash") == getattr(source, "model_hash", None):
+        if (last is not None and isinstance(last.get("model"), dict)
+                and last["model"].get("hash") == getattr(source, "model_hash", None)):
             try:
                 carry(last.get("readings"), self.horizon)
             except Exception as exc:        # as `observe`: no step is lost to a file

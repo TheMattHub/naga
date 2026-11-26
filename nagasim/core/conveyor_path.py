@@ -144,7 +144,8 @@ def divert_angle(divert) -> float:
     (0, 180), 90 by default. Anything else reads as 90, so the floor checks of a model whose
     angle validation refuses still see a usable pose and never divide by sin 0."""
     angle = divert.get("angle", 90.0) if isinstance(divert, dict) else 90.0
-    if isinstance(angle, bool) or not isinstance(angle, (int, float))             or not math.isfinite(angle) or not 0.0 < angle < 180.0:
+    if (isinstance(angle, bool) or not isinstance(angle, (int, float))
+            or not math.isfinite(angle) or not 0.0 < angle < 180.0):
         return 90.0
     return float(angle)
 

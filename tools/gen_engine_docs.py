@@ -1737,7 +1737,15 @@ API = ("nagasim.api.run_model", "nagasim.experiments.run_scenarios",
        "nagasim.laws.checks", "nagasim.state.take", "nagasim.state.start",
        "nagasim.uncertainty.input_uncertainty", "nagasim.uncertainty.input_uncertainty_frame",
        "nagasim.twin.forecast_from_state",
-       "nagasim.twin.read_result", "nagasim.investment.investment_case")
+       "nagasim.twin.read_result", "nagasim.investment.investment_case",
+       *(f"nagasim.appearance.{name}" for name in (
+           "look_of", "exit_openings", "material", "forms_of", "piece_start", "piece_segments",
+           "piece_pose", "piece_length_m", "length_factor", "guide_runs", "guide_material",
+           "fields_of", "default", "srgb", "linear_rgb", "is_hex", "form_of",
+           "default_carton_size")))
+# The entry points that may change between minor versions until a second tool uses them; their
+# index rows and pages say so (the module docstring says it once for all).
+PROVISIONAL = "nagasim.appearance."
 
 
 # The members a class page lists, in this order (an entry point that is not here lists none).
@@ -1792,15 +1800,163 @@ def gen_api(out: Path) -> None:
         tree = ast.parse(inspect.getsource(defined_in))
         node = next(n for n in tree.body if getattr(n, "name", None) == name)
         doc = " ".join((ast.get_docstring(node) or "").split(chr(10) * 2, 1)[0].split())
+        if dotted.startswith(PROVISIONAL):
+            doc = "Provisional. " + doc
         lines.append(f"| [`{dotted}`]({name}.md) | {doc.replace('|', chr(92) + '|')} |")
         members = API_MEMBERS.get(dotted)
         listed = (["      members:", *(f"        - {m}" for m in members),
                    "      inherited_members: true"] if members else ["      members: false"])
         _write(out / "api", f"{name}.md",
-               [f"# {name}", "", f"Python reference for `{dotted}`.", "", f"::: {dotted}", "    options:", "      heading_level: 2",
+               [f"# {name}", "", f"Python reference for `{dotted}`."
+                + (" Provisional: it may change between minor versions, see "
+                   "[Appearance](../../appearance.md)." if dotted.startswith(PROVISIONAL) else ""),
+                "", f"::: {dotted}", "    options:", "      heading_level: 2",
                 "      show_root_heading: false", "      show_root_toc_entry: false", *listed,
                 *(_builders() if dotted == "nagasim.build.Model" else [])])
     _write(out / "api", "index.md", lines)
+
+
+# ------------------------------------------------------------------ appearance page
+#
+# The Appearance page's three tables (look fields, materials, item forms) are read from the
+# code between two markers; the prose around them is typed.
+
+APPEARANCE_PAGE = DOCS / "appearance.md"
+APPEARANCE_START = "<!-- appearance-tables:start -->"
+APPEARANCE_END = "<!-- appearance-tables:end -->"
+_PAINTS = {"frame_color": "the rails, end plates, legs, guide posts and panel guides",
+           "belt_kind": "the belt bed, pulley and end plates",
+           "roller_finish": "the roller tubes",
+           "guide_style": "the round and flat guide rails"}
+_MEASURES = {"width": "across the outer faces of the side rails",
+             "height": "from the floor to the top of the conveying surface and of the rails, which are "
+                       "{rail} m high (a pallet's {pallet} m)",
+             "frame_color": "the frame's finish: rails, end plates, legs and guide posts",
+             "leg_spacing": "between legs along the path; 0 is no legs",
+             "drive_side": "where the drive hangs, seen along the flow; left and right at the height "
+                           "of under",
+             "guide_left": "the left guide's top above the conveying surface; 0 is no guide",
+             "guide_right": "the right guide's top above the conveying surface; 0 is no guide",
+             "guide_style": "a round or flat rail on posts, or a panel up from the rail",
+             "roller_pitch": "between roller centres along the path; the first is half a pitch in",
+             "roller_diameter": "a roller tube's diameter; its top is on the conveying surface",
+             "roller_finish": "the roller tubes' finish",
+             "belt_kind": "the belt's surface",
+             "pulley_diameter": "the end pulley's diameter",
+             "chain_strands": "the chain strands across the piece",
+             "strand_spacing": "between neighbouring strand centres, centred on the piece"}
+
+
+def _num(value) -> str:
+    return f"{value:g}" if isinstance(value, float) else str(value)
+
+
+def _look_rows() -> list[list[str]]:
+    from nagasim.core import conveyor_look as cl
+    from nagasim.core.conveyor_types import TYPES
+
+    kinds = list(TYPES)
+    shown = ("belt", "roller", "chain", "pallet", "mdr")
+    rows = []
+    for field, (shape, types) in cl._FIELDS.items():
+        unit = {"choice": "name", "integer": "count"}.get(shape, "metres")
+        cells = []
+        for kind in shown:
+            if kind not in types:
+                cells.append("-")
+                continue
+            value = cl.default(kind, field)
+            raised = cl.default(kind, field, {"height": 0.6})
+            cell = _num(value)
+            if raised != value:
+                cell += f" ({_num(raised)} above {_num(cl.RAISED_PALLET_M)} m height)"
+            cells.append(cell)
+        if shape == "choice":
+            allowed = ", ".join(cl.choices(types[0], field))
+            odd = [k for k in types if cl.choices(k, field) != cl.choices(types[0], field)]
+            if field == "frame_color":
+                allowed += ", or a colour #RRGGBB"
+            if odd:
+                allowed += f" ({odd[0]}: " + ", ".join(cl.choices(odd[0], field)) + ")"
+        elif shape == "integer":
+            allowed = f"1 to {cl.MAX_STRANDS}"
+        else:
+            low, high = cl._BOUNDS[field]
+            zero = "0 or " if field in cl._ZERO_OK and low > 0 else ""
+            allowed = f"{zero}{_num(low)} to {_num(high)}"
+            if field == "height":
+                lows = {k: max(low, min(TYPES[k].height, cl.FRAME_HEIGHT_M)) for k in types}
+                base = max(lows.values())
+                allowed = f"{_num(base)} to {_num(high)}"
+                for k, v in lows.items():
+                    if v != base:
+                        allowed += f" ({k}: {_num(v)} to {_num(high)})"
+        has = "all" if len(types) == len(kinds) else ", ".join(types)
+        measures = _MEASURES[field].format(rail=_num(cl.FRAME_HEIGHT_M),
+                                           pallet=_num(min(TYPES["pallet"].height, cl.FRAME_HEIGHT_M)))
+        rows.append([f"`{field}`", unit, measures, has, *cells, allowed])
+    return rows
+
+
+def _material_rows() -> list[list[str]]:
+    from nagasim.core.look_materials import MATERIALS, POST_CAP
+
+    rows = []
+    for field, values in MATERIALS.items():
+        for name, m in values.items():
+            if field == "guide_style" and name == "panel":
+                rows.append([f"`{field}`", f"`{name}`", "-", "-", "-", "the frame's material"])
+            else:
+                rows.append([f"`{field}`", f"`{name}`", f"`{m.color}`", _num(m.metallic),
+                             _num(m.roughness), _PAINTS[field]])
+    rows.append(["`POST_CAP`", "-", f"`{POST_CAP.color}`", _num(POST_CAP.metallic),
+                 _num(POST_CAP.roughness), "the cap on top of each guide post, whatever the look"])
+    return rows
+
+
+def _form_rows() -> list[list[str]]:
+    from nagasim.core import entity_forms as ef
+
+    def dims(size) -> str:
+        return " x ".join(_num(d) for d in size)
+
+    def icons(form) -> str:
+        names = [i for i, f in ef._ICON_FORMS.items() if f == form]
+        return f"the icon {', '.join(names)}" if names else ""
+
+    def words(vocabulary) -> str:
+        return "a name word " + ", ".join(sorted(vocabulary))
+
+    def join(*parts) -> str:
+        return "; ".join(p for p in parts if p)
+
+    return [
+        ["`carton`", dims(ef.DEFAULT_CARTON_M) + " (shrunk to the shortest belt part, not below "
+         f"{_num(ef.MIN_CARTON_M)} long)", join(icons("carton"), "else the default")],
+        ["`container`", " or ".join(f"{dims(s)} ({n} ft)" for n, s in ef.CONTAINER_M.items()),
+         join(words(ef.CONTAINER_WORDS),
+              "20, 40 or 45 beside one of " + ", ".join(sorted(ef.ISO_FLOW_WORDS)))],
+        ["`pallet`", dims(ef.EPAL_M), "a BATCH carrier with a pattern; PALLET in the name"],
+        ["`person`", dims(ef.PERSON_M), join(icons("person"), words(ef.PERSON_WORDS))],
+        ["`vehicle`", dims(ef.VEHICLE_M), join(icons("vehicle"), words(ef.VEHICLE_WORDS))],
+        ["`disc`", "none (a sized disc is a carton)", join(icons("disc"), words(ef.INFO_WORDS))],
+        ["`prop`", "; ".join(f"{n}: {dims(s)}" for n, s in ef.PROP_M.items()),
+         "a name word " + ", ".join(sorted(ef.PROP_WORDS)) + ", checked before the person words"],
+    ]
+
+
+def gen_appearance_tables(page: Path = APPEARANCE_PAGE) -> None:
+    """Replace the text between the table markers of the Appearance page with the three tables."""
+    look = _table(["Field", "Unit", "What it measures", "Types", "belt", "roller", "chain",
+                   "pallet", "mdr", "Allowed values"], _look_rows())
+    material = _table(["Field", "Value", "Colour", "Metallic", "Roughness", "What it paints"],
+                      _material_rows())
+    forms = _table(["Form", "Default size in metres (length x width x height)", "When it is chosen"],
+                   _form_rows())
+    block = "\n".join([APPEARANCE_START, "", *look, "", *material, "", *forms, "", APPEARANCE_END])
+    text = page.read_text(encoding="utf-8")
+    start, end = text.index(APPEARANCE_START), text.index(APPEARANCE_END) + len(APPEARANCE_END)
+    page.write_text(text[:start] + block + text[end:], encoding="utf-8")
 
 
 REFERENCE = (gen_blocks, gen_distributions, gen_expressions, gen_kpis, gen_cli, gen_schema,
@@ -3151,6 +3307,7 @@ def main() -> None:
     gen_model_schema(DOCS / "schema")
     for generate in REFERENCE:
         generate(DOCS / "reference")
+    gen_appearance_tables()
     gen_gallery(DOCS / "gallery")
     gen_reference_models(DOCS / "validation")
     gen_worked_examples(DOCS / "worked-examples")

@@ -486,7 +486,8 @@ class _Resource(simpy.PreemptiveResource):
                 group = getattr(unit, "group", None)
                 # Only the units still held count: a 1-unit preemption may already have taken
                 # one of a group job's units before its Interrupt was delivered.
-                job = [u for u in self.users if getattr(u, "group", None) is group] if group                     else [unit]
+                job = ([u for u in self.users if getattr(u, "group", None) is group] if group
+                       else [unit])
                 jobs[id(group) if group else id(unit)] = (unit.key, index, job)
         taken, freed = [], 0
         for _key, _index, job in sorted(jobs.values(), key=lambda j: (j[0], j[1]), reverse=True):

@@ -270,7 +270,8 @@ def _check_rate_units(problems: list, layout: dict) -> None:
                 hint="a 0.9.x model gave them per the base time unit",
                 fields={"case": "flow", "name": entry.get('name'), "unit": unit, "base": base}))
     for index, entry in enumerate(layout.get("conversions") or []):
-        if isinstance(entry, dict) and "/" not in str(entry.get("name"))                 and conv_per.get(str(entry.get("name"))) not in (None, 1.0):
+        if (isinstance(entry, dict) and "/" not in str(entry.get("name"))
+                and conv_per.get(str(entry.get("name"))) not in (None, 1.0)):
             problems.append(problem(
                 "W_RATE_UNIT_CHANGED",
                 f"conversion '{entry.get('name')}': since 0.10.0 its CONV() and reported "

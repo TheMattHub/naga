@@ -1536,7 +1536,8 @@ def summarize_buffers(env, *, warmup: float = 0.0,
     _, t1 = observed_window(env, warmup)
     rows = []
     for name, node in nodes.items():
-        if name in env.ctx.conveyors or node.block.block_type == "CONVEYOR_TRANSFER"                 or getattr(node, "area_link", False):
+        if (name in env.ctx.conveyors or node.block.block_type == "CONVEYOR_TRANSFER"
+                or getattr(node, "area_link", False)):
             # a belt's cells report in conveyor_summary (T7); a transfer is no buffer, nor is
             # an area link a block (D1369: its numbers would go in a frame of their own, R3)
             continue

@@ -148,6 +148,14 @@ def _param_schema(param, unit_quantity: str | None = None) -> dict:
                                                       "clockwise on screen: 0 straight on, "
                                                       "90 or -90 to a side."}},
                          "required": ["port", "angle"], "additionalProperties": False}}
+    elif param.name == "look" and param.type is dict:       # CONVEYOR's (D1470)
+        from nagasim.core.conveyor_look import look_schema
+        out = look_schema()
+        out["description"] = param.description or out["description"]
+    elif param.name == "look_set" and param.type is list:
+        from nagasim.core.conveyor_look import look_set_schema
+        out = look_set_schema()
+        out["description"] = param.description or out["description"]
     elif param.name == "mechanism" and param.type is str:   # CONVEYOR_TRANSFER's (A8)
         out = {"type": "string", "enum": list(TRANSFER_MECHANISMS)}
     elif param.name == "rule" and param.type is dict:       # a routing rule (D1358, D1359)

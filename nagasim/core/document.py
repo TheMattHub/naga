@@ -24,7 +24,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
-from nagasim.core import network, schema, sections, submodels
+from nagasim.core import conveyor_look, network, schema, sections, submodels
 from nagasim.core.arealink import AREA_KEYS
 from nagasim.core.block_registry import BLOCK_REGISTRY, PLUGIN_BLOCK_TYPES
 from nagasim.core.expressions import ExpressionError, compile_expression
@@ -278,6 +278,17 @@ def follow_names(block_type: str, params: dict, names: dict, keep=None) -> dict:
     return params if out == params else out
 
 
+def _saved_params(block) -> dict:
+    """The block's params for a save; an empty conveyor look is left out, so a file of an
+    untouched model stays byte-same (D1475)."""
+    params = copy.deepcopy(block.params)
+    if block.type == "CONVEYOR":
+        for key in ("look", "look_set"):
+            if key in params and not params[key]:
+                del params[key]
+    return params
+
+
 class ModelDocument:
     """An in-memory model, edited only through this API.
 
@@ -445,7 +456,7 @@ class ModelDocument:
                     if b.counter_offsets else {}),
                  # Same rule for a turned queue row (D1089).
                  **({"queue_row": copy.deepcopy(b.queue_row)} if b.queue_row else {}),
-                 "params": copy.deepcopy(b.params),
+                 "params": _saved_params(b),
                  **copy.deepcopy(b.extra or {})}
                 for b in self._level(scope).blocks.values()]
 
@@ -1190,6 +1201,9 @@ class ModelDocument:
         level = self._level(scope)
         if name not in level.blocks:
             raise ValueError(f"unknown block: {name}")
+        if level.blocks[name].type == "CONVEYOR":
+            # D1475: every writer stores one form; the stored params tell a type change
+            params = conveyor_look.tidy(params, level.blocks[name].params)
         if level.blocks[name].params == params:
             return
         self._push_undo(f"Edit {name}")

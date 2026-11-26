@@ -628,7 +628,7 @@
     "read_only": false
   },
   {
-    "description": "Change an existing block: merge parameters, rename it, move it, or\nrelabel it -- all as one undo entry.\n\n`params` MERGES rather than replaces, so you can set one value without\nrestating the rest. Renaming rewires every link automatically.",
+    "description": "Change an existing block: merge parameters, rename it, move it, or\nrelabel it -- all as one undo entry.\n\n`params` MERGES rather than replaces, so you can set one value without\nrestating the rest. Renaming rewires every link automatically. A conveyor's look\nis set with `look`, never in `params`; `get_ports` reads it back. Batch a large\nbuild through `apply_edits`.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -636,6 +636,13 @@
           "description": "New canvas label.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "look": {
+          "description": "Conveyor look fields to set, sizes in metres: width, height, frame_color, leg_spacing, drive_side, guide_left and guide_right [0: none], guide_style, roller_pitch, roller_diameter, roller_finish, belt_kind, pulley_diameter, chain_strands, strand_spacing; openings [{side, start, end}] in the belt's length unit.",
+          "type": [
+            "object",
             "null"
           ]
         },
@@ -670,6 +677,25 @@
             "array",
             "null"
           ]
+        },
+        "reset": {
+          "description": "Look fields of this piece only to put back in line: each takes the nearest value upstream not set by hand, else downstream, else the default.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "scope": {
+          "default": "chain",
+          "description": "\"chain\": the look spreads along the piece's line (place_piece: the line it joins), skipping other pieces' fields set by hand; \"piece\": this piece only, kept by hand until reset. Openings never spread.",
+          "enum": [
+            "chain",
+            "piece"
+          ],
+          "type": "string"
         }
       },
       "required": [
@@ -692,6 +718,14 @@
         },
         "introduced": {
           "type": "array"
+        },
+        "look_changed": {
+          "description": "pieces the look changed",
+          "type": "array"
+        },
+        "look_skipped": {
+          "description": "piece -> fields it keeps by hand",
+          "type": "object"
         },
         "ok": {
           "type": "boolean"
@@ -2455,7 +2489,7 @@
     "read_only": false
   },
   {
-    "description": "Apply a list of model edits in one call, as one undo entry; use it for any large build.\n\nEach edit is {\"tool\": name, \"args\": {...}}: the tool's own arguments, `model` left out.\nAtomic: the first edit that fails stops the batch, nothing is applied, and the error names\nthat edit, counted from 0. The answer is the usual edit answer for the whole batch, plus\n\"applied\" and \"added\" (the blocks created, in order, named as created).\n\nBatchable: add_block, update_block, remove_blocks, connect, disconnect, reorder_branches,\nset_resources, set_calendar, set_entity_types, set_simulation_settings, set_sd_settings,\nset_model_info, auto_layout, place_piece, place_feeder, place_transfer, upsert_record,\nremove_record. Also the path network and scenarios: upsert_node, remove_node,\nupsert_segment, remove_segment, upsert_scenario. At most 1,000 edits per call.",
+    "description": "Apply a list of model edits in one call, as one undo entry; use it for any large build.\n\nEach edit is {\"tool\": name, \"args\": {...}}: the tool's own arguments, `model` left out.\nAtomic: the first edit that fails stops the batch, nothing is applied, and the error names\nthat edit, counted from 0. The answer is the usual edit answer for the whole batch, plus\n\"applied\" and \"added\" (the blocks created, in order, named as created). A look write's\nchanged and skipped pieces are in \"looks\", by edit index.\n\nBatchable: add_block, update_block, remove_blocks, connect, disconnect, reorder_branches,\nset_resources, set_calendar, set_entity_types, set_simulation_settings, set_sd_settings,\nset_model_info, auto_layout, place_piece, place_feeder, place_transfer, upsert_record,\nremove_record. Also the path network and scenarios: upsert_node, remove_node,\nupsert_segment, remove_segment, upsert_scenario. At most 1,000 edits per call.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2494,6 +2528,10 @@
         },
         "introduced": {
           "type": "array"
+        },
+        "looks": {
+          "description": "edit index -> look_changed, look_skipped",
+          "type": "object"
         },
         "ok": {
           "type": "boolean"
@@ -6253,7 +6291,7 @@
     "read_only": true
   },
   {
-    "description": "Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at\n(x, y) and travelling at *rotation*.\n\nWith *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that\nport, facing its way, and a link with `source_port` / `target_port` is added, so no\ncoordinates are computed by hand. One undo entry. Segment lengths and radii are in the\nmodel's length unit.",
+    "description": "Add one belt piece on the floor plan: a CONVEYOR whose `path` is *segments*, starting at\n(x, y) and travelling at *rotation*.\n\nWith *snap_to* (\"A.out\", \"A.d0\", or a transfer exit \"X.left\") the piece starts at that\nport, facing its way, and a link with `source_port` / `target_port` is added, so no\ncoordinates are computed by hand. One undo entry. Segment lengths and radii are in the\nmodel's length unit. A snapped piece takes the look of the piece it snaps to, then *look*.\nBatch a large build through `apply_edits`.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -6276,6 +6314,13 @@
           "description": "With snap_to: metres of floor between the port and the piece's entry, along the port's heading; above 0 it needs a delay (an area link).",
           "type": "number"
         },
+        "look": {
+          "description": "Conveyor look fields to set, sizes in metres: width, height, frame_color, leg_spacing, drive_side, guide_left and guide_right [0: none], guide_style, roller_pitch, roller_diameter, roller_finish, belt_kind, pulley_diameter, chain_strands, strand_spacing; openings [{side, start, end}] in the belt's length unit.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "model": {
           "description": "Workspace name of the model to edit.",
           "type": "string"
@@ -6288,6 +6333,15 @@
           "default": 0.0,
           "description": "Direction of travel at the entry, degrees clockwise on screen (0 east, 90 south), like set_layout; ignored with snap_to.",
           "type": "number"
+        },
+        "scope": {
+          "default": "chain",
+          "description": "\"chain\": the look spreads along the piece's line (place_piece: the line it joins), skipping other pieces' fields set by hand; \"piece\": this piece only, kept by hand until reset. Openings never spread.",
+          "enum": [
+            "chain",
+            "piece"
+          ],
+          "type": "string"
         },
         "segments": {
           "description": "The belt's pieces, entry to end (the CONVEYOR `path` param): {\"straight\": length} or {\"arc\": {\"radius\": r, \"angle\": degrees, \"turn\": \"left\"|\"right\"}}.",
@@ -6351,6 +6405,14 @@
         },
         "layout_rotation": {
           "type": "number"
+        },
+        "look_changed": {
+          "description": "pieces the look changed",
+          "type": "array"
+        },
+        "look_skipped": {
+          "description": "piece -> fields it keeps by hand",
+          "type": "object"
         },
         "ok": {
           "type": "boolean"
@@ -6543,7 +6605,7 @@
     "read_only": false
   },
   {
-    "description": "The ports of a belt piece or transfer module: each one's name, role (in/out), floor\npose (x, y metres, heading as in set_layout) and `linked_to`, the \"Block.port\" ends it is\nlinked to.\n\nA belt has \"in\", \"out\" and \"d<k>\" (divert k's exit); a pose faces the way a part leaves. A\ntransfer has no footprint: an exit's pose is the module's position, heading = entry plus\nthe exit's angle. Pass an out port to `place_piece` as snap_to.",
+    "description": "The ports of a belt piece or transfer module: each one's name, role (in/out), floor\npose (x, y metres, heading as in set_layout) and `linked_to`, the \"Block.port\" ends it is\nlinked to.\n\nA belt has \"in\", \"out\" and \"d<k>\" (divert k's exit); a pose faces the way a part leaves. A\ntransfer has no footprint: an exit's pose is the module's position, heading = entry plus\nthe exit's angle. Pass an out port to `place_piece` as snap_to. A belt's answer also holds\n`look`, every field resolved; `look_set`, the fields set by hand; and `chain`, the pieces a\nlook spreads along.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -6568,6 +6630,15 @@
         "block": {
           "type": "string"
         },
+        "chain": {
+          "type": "array"
+        },
+        "look": {
+          "type": "object"
+        },
+        "look_set": {
+          "type": "array"
+        },
         "ports": {
           "type": "array"
         },
@@ -6580,7 +6651,7 @@
     "read_only": true
   },
   {
-    "description": "Check the floor layout of belt pieces and transfer modules: open ports\n(W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP) and linked ports that do not meet\n(W_CONVEYOR_SNAP).\n\nThe same problems `validate_model` lists for them (errors under `strict_checks`), with a\nplain sentence each in `lines`. `ok` is true when there are none.",
+    "description": "Check the floor layout of belt pieces and transfer modules: open ports\n(W_CONVEYOR_OPEN_PORT), overlaps (W_CONVEYOR_OVERLAP), linked ports that do not meet\n(W_CONVEYOR_SNAP) and items under three roller pitches long (W_CONVEYOR_ROLLER_PITCH,\nnever an error).\n\nThe same problems `validate_model` lists for them (errors under `strict_checks`), with a\nplain sentence each in `lines`. `ok` is true when there are none.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

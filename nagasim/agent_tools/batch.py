@@ -99,7 +99,8 @@ def _with_limit(fn):
     return fn
 
 
-@tool(returns={**EDIT, "applied": int, "added": list})
+@tool(returns={**EDIT, "applied": int, "added": list,
+               "looks": (dict, "edit index -> look_changed, look_skipped")})
 @_with_limit
 def apply_edits(model: str, edits: list[dict]) -> dict:
     """Apply a list of model edits in one call, as one undo entry; use it for any large build.
@@ -107,7 +108,8 @@ def apply_edits(model: str, edits: list[dict]) -> dict:
     Each edit is {"tool": name, "args": {...}}: the tool's own arguments, `model` left out.
     Atomic: the first edit that fails stops the batch, nothing is applied, and the error names
     that edit, counted from 0. The answer is the usual edit answer for the whole batch, plus
-    "applied" and "added" (the blocks created, in order, named as created).
+    "applied" and "added" (the blocks created, in order, named as created). A look write's
+    changed and skipped pieces are in "looks", by edit index.
 
     Batchable: add_block, update_block, remove_blocks, connect, disconnect, reorder_branches,
     set_resources, set_calendar, set_entity_types, set_simulation_settings, set_sd_settings,
@@ -118,6 +120,7 @@ def apply_edits(model: str, edits: list[dict]) -> dict:
     steps = _checked(model, edits)
     doc, before = _open(model)
     added: list[str] = []
+    looks: dict[str, dict] = {}
     token = core._DEFERRED.set(True)
     try:
         # A savepoint: inside the assistant's open turn, a failure undoes only this batch (D1453).
@@ -127,6 +130,9 @@ def apply_edits(model: str, edits: list[dict]) -> dict:
                 answer = core.call(name, model=model, **args)
                 if "error" in answer:
                     raise _EditFailed(i, sent, answer["error"])
+                # The spec's tool answer names the pieces a look write skipped; keep it per edit.
+                if answer.get("look_changed") or answer.get("look_skipped"):
+                    looks[str(i)] = {k: answer[k] for k in ("look_changed", "look_skipped")}
                 # A new block is appended to the dict, so the created names are its last ones;
                 # a count, not a name diff, so a rename is not taken for a creation.
                 grown = len(doc.blocks) - count
@@ -136,4 +142,5 @@ def apply_edits(model: str, edits: list[dict]) -> dict:
         return _refusal(failed.index, failed.name, failed.error)
     finally:
         core._DEFERRED.reset(token)
-    return _edit_result(doc, before, {"applied": len(steps), "added": added})
+    return _edit_result(doc, before, {"applied": len(steps), "added": added,
+                                      **({"looks": looks} if looks else {})})

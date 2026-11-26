@@ -323,7 +323,13 @@ MUTANTS = {
                                     {"source": "added", "target": "dispose_1"})),
     # a piece linked to process_1 whose end (2, 0) is not process_1's entry (0, 0)
     "W_CONVEYOR_SNAP": _all(_floor_belt(), _insert("CONVEYOR", _FLOOR_PIECE)),
+    # an item 0.1 m long on a roller piece: under three rollers (3 x 0.0762 m)
+    "W_CONVEYOR_ROLLER_PITCH": _all(_set("entities.0.size", {"length": 0.1}),
+                                    _insert("CONVEYOR", {"type": "roller", "length": 2.0,
+                                                         "speed": 1.0, "spacing": 1.0})),
     "E_CONVEYOR_PATH": _belt_cell(path=[{"straight": -1}]),
+    # a look on an untyped piece (D1470)
+    "E_CONVEYOR_LOOK": _belt_cell(look={"width": 0.8}),
     "E_CONVEYOR_RELEASE": _belt_cell(release={"metering": {"gap": 0.4}, "slug": {"count": 2, "timeout": 5.0}}),
     "E_CONVEYOR_PARAM": _belt_cell(zones={"count": 2}, stops=[{"at": 5.0, "time": 1.0}]),
     "E_CONVEYOR_REVERSE": _belt_cell(reversible=True, stops=[{"at": 5.0, "time": 1.0}]),

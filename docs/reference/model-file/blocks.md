@@ -71,7 +71,7 @@ arrive >> leave        # links the two blocks
 
 Bundled models: [Boids flock (continuous, heading)](../../gallery/agent-based.md), [Nagel-Schreckenberg traffic (ring)](../../gallery/agent-based.md), [Schelling segregation (grid)](../../gallery/agent-based.md), [SIR on a small-world network](../../gallery/agent-based.md), [Sugarscape with regrowth (grid, patches)](../../gallery/agent-based.md), [Wolf-Sheep predation with grass (grid)](../../gallery/agent-based.md) and 53 more.
 
-Guides: [Submodels](../../modelling-guide/submodels.md), [Model file format](../../model-file-format.md), [A plant as a timeline](../../plant-timeline.md), [Semantic diff](../../semantic-diff.md), [Coming from SimPy](../../coming-from/simpy.md), [Quick start](../../quickstart.md).
+Guides: [Submodels](../../modelling-guide/submodels.md), [Model file format](../../model-file-format.md), [A plant as a timeline](../../plant-timeline.md), [Semantic diff](../../semantic-diff.md), [Appearance](../../appearance.md), [Coming from SimPy](../../coming-from/simpy.md) and 1 more.
 
 ## See also
 

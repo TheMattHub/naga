@@ -688,7 +688,8 @@ def next_step(study: dict, folder: Path | None = None) -> str:
     if last and last.get("scenario_error"):     # a scenario of the decision did not run (#1729)
         text = f"{last['scenario_error']} Then: {text}"
     status = (last or {}).get("precision") or {}
-    if last and status and not all(v["met"] for v in status.values())             and (last.get("replications") or 0) >= PRECISION[study["size"]]["cap"]:
+    if (last and status and not all(v["met"] for v in status.values())
+            and (last.get("replications") or 0) >= PRECISION[study["size"]]["cap"]):
         return f"{text} The replication cap stopped the precision target. {cap_hint(status)}"
     return text
 

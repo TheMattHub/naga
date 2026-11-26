@@ -425,7 +425,8 @@ class _Type:
         self.params = {str(k): v for k, v in (entry.get("parameters") or {}).items()}
         names = set(variables) | set(self.params)
         # Python behaviour (PHASE6 A7, D105): consent-gated, compiled once per run.
-        py = (self.name, _load_python(self.name, entry["python"])) if entry.get("python")             else None
+        py = ((self.name, _load_python(self.name, entry["python"])) if entry.get("python")
+              else None)
         self.py_params = MappingProxyType(dict(self.params))
         # Space and movement (AB-3): validation already refused a bad space,
         # so this only ever runs on one that passed it.

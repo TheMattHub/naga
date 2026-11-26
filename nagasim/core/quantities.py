@@ -480,7 +480,8 @@ def check_bounds(layout: dict, problems: list) -> None:
         for j, record in enumerate(_records(layout, key)):
             for spec in fields:
                 value = record.get(spec.name)
-                if spec.min is None and spec.max is None or isinstance(value, bool)                         or not isinstance(value, (int, float)) or value != value:
+                if (spec.min is None and spec.max is None or isinstance(value, bool)
+                        or not isinstance(value, (int, float)) or value != value):
                     continue
                 if spec.min is not None and (value <= spec.min if spec.min_exclusive
                                              else value < spec.min):

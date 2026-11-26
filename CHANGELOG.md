@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Appearance format: a conveyor look's colours are the engine's material table, item forms are in the engine, and `nagasim.appearance` (provisional) gives an outside renderer `look_of`, `material`, `forms_of`, the colour helpers and a piece's place on the floor (`piece_start`, `piece_segments`, `piece_pose`, `piece_length_m`); `frame_color` also takes `#RRGGBB`, and every coloured frame, named or `#RRGGBB`, is drawn as paint; a pallet line above 0.2 m gets legs every 1.5 m by default and its drive hangs beside the frame (D1482-D1492). Existing raised pallet lines (above 0.2 m) now get legs by default, and "This piece only" keeps an explicit `leg_spacing`.
+- A conveyor's look is a setting of its own (D1470-D1481): width, height, frame colour, belt kind, roller pitch, diameter and finish, legs, drive side, side guides with openings, chain strands and belt pulley, set for a whole line or one piece in Properties or by `update_block`, drawn in 2D and 3D, and never read by the timing; an item shorter than three roller pitches raises the warning `W_CONVEYOR_ROLLER_PITCH`. An untouched file keeps its bytes and its results.
 Added:
 
 - Agent tool `apply_edits` applies a list of model edits in one call, as one undo step and with one validation, so a build of thousands of pieces stays linear; the first failing edit stops it and nothing is applied.

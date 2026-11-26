@@ -259,9 +259,11 @@ def test_batchable_is_model_edits_only():
     # 2026-11-25). The brief guessed {block, layout_position, layout_rotation, name}; the real set
     # is these: each is the echo of the edit's own result, none a side effect on anything but the
     # document. A tool that adds another key must be looked at, not silently batched.
+    # look_changed and look_skipped (update_block, place_piece, D1476) say which pieces a look
+    # write touched; a batch carries them per edit in `looks`, and get_ports reads the same back.
     echo = {"block", "calendar", "entities", "index", "layout_position", "layout_rotation", "link",
-            "moved", "node", "order", "record", "removed", "resources", "scenario", "sd",
-            "section", "segment", "simulation"}
+            "look_changed", "look_skipped", "moved", "node", "order", "record", "removed",
+            "resources", "scenario", "sd", "section", "segment", "simulation"}
     for name in sorted(batch.BATCHABLE):
         spec = core.TOOLS[name]
         assert not spec.read_only, name

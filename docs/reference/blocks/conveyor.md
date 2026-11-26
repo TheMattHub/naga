@@ -3,7 +3,7 @@
 
 # CONVEYOR
 
-Conveyor belt that carries parts from one end to the other at a set speed, holds a limited number, and blocks the machine before it when full.
+Belt that carries parts end to end at a set speed, holds a limited number, and blocks the machine before it when full.
 
 Family: move. Python builder: `m.conveyor(...)`.
 
@@ -59,6 +59,8 @@ With `accumulating` on, a blocked part stops at the end and the parts behind pac
 | `part_length` | float | `0.0` |  | length | `part_length_unit` | Length of one part along the belt, which a back-edge eye reads. 0: the spacing, or a typed belt's type zone length. On an untyped belt it is no longer than the spacing. |
 | `part_length_unit` | str | `'base'` |  |  |  | Unit of `part_length`: "base" (the model's) or one of its quantity's units. |
 | `expose` | bool | `False` |  |  |  | True: the belt writes its state as model variables, read with VAR("<belt>.running") in a HOLD condition or item code: `running` (0 only while a non-accumulating belt stands for a part held at the exit it runs to), `forward` on a reversible belt (0 while it runs backward), `eye<k>.count` (eye k's firings so far) and `eye<k>.blocked` (1 while a part's body lies across eye k, front edge to back edge; not on a belt with both zones and diverts). |
+| `look` | dict | `{}` |  |  |  | How a typed belt looks, only the settings that differ from its type's. Dimensions are in metres: width, height (the top of the conveying surface), leg_spacing (0: no legs), guide_left and guide_right (guide height above the top, 0: none), roller_pitch, roller_diameter, pulley_diameter and strand_spacing. Choices: frame_color, drive_side, guide_style, roller_finish and belt_kind. chain_strands is a count. `openings` is a list of {side: left, right or both, start, end}: gaps in the side guides, in the unit of `length`. |
+| `look_set` | list | `[]` |  |  |  | The names of the look settings kept on this piece alone when a change spreads along its line of pieces. Never `openings`. |
 
 ## Statistics
 
@@ -77,6 +79,7 @@ A check of the model reports these about this block:
 |---|---|
 | `E_CONVEYOR_DIVERT` | A CONVEYOR divert is not {at, condition, time?, when_full?}, its `at` is off the belt or on another point, its condition is empty, its time is not a number >= 0 or an expression, its when_full is not wait/pass, the belt has fewer links than 1 + diverts, a "pass" divert's link does not go straight to a CONVEYOR, BUFFER or queue_capacity station, or an intercept divert has a push time or when_full, a bad on_late, or a link that is not the robot picking from it, a divert's side is not left or right, or a link out of the belt names an exit that is not out or d<k>, or a routing rule is not usable, is not on the first divert of its rule_group along the belt, has an exit count other than its group's diverts, or sits beside a condition, a robot pick or when_full "pass", or a rule exit names a target piece that is not a CONVEYOR its loads reach; or a CONVEYOR_TRANSFER's links do not match its exits one to one (a port that is not one of its exits, or named twice), or its routing rule is not usable. |
 | `E_CONVEYOR_EYE` | A CONVEYOR photo-eye is not on the belt, shares its place with another point, has an edge other than front or back, or the belt's part_length is longer than its spacing. |
+| `E_CONVEYOR_LOOK` | A CONVEYOR's look or look_set has a setting its type lacks, a value out of range or not on its list, rollers thicker than their pitch, rollers or pulleys taller than its height, chain strands that do not fit the width, a bad opening, or any setting on an untyped conveyor. |
 | `E_CONVEYOR_MERGE` | A CONVEYOR merge is not {at, from, priority?}, its `at` is off the belt or on another point, its `from` is not a block linking to the belt or is named twice, its priority is not belt/merge, or the belt is not accumulating. |
 | `E_CONVEYOR_PARAM` | A CONVEYOR's type is not belt, roller, chain, pallet or mdr, or its length, speed or spacing is not a number > 0, or its gap or cell is negative, or its endpoints name unknown nodes, or its zones are not {count >= 1, release_delay >= 0} on an accumulating belt with no stop, merge or routing rule that can hold a part; or a CONVEYOR_TRANSFER's mechanism is not popup, turntable or lift, an exit is not {port, angle} or shares or holds a ':' in its port, a time, length or speed is negative (a turn_rate or lift_speed not > 0), or transfer_speed is 0 where a move needs it and no one CONVEYOR speed feeds the module; or a stop, divert, merge or eye of a belt with a path lies at or past the path's end, or a divert's angle is not a number above 0 and below 180. |
 | `E_CONVEYOR_PATH` | A CONVEYOR's path has a piece that is not a straight or an arc, or it has a length or end nodes beside it. |
@@ -87,6 +90,7 @@ A check of the model reports these about this block:
 | `E_INITIAL_BELT` | A part on a belt in initial_state does not fit the model: not one entity at an accumulating CONVEYOR, a stage it does not have, a time on the wrong side of the clock, or more than one part at the belt's end. |
 | `W_CONVEYOR_HANDED_TO_NOTHING` | In the run, a part reached a CONVEYOR's end (or a reversible belt's start) with no next block; it stands there and the belt is blocked, so a run that drains ends with a deadlock naming it. Warned once per belt; an error that stops the run under simulation.strict_checks. |
 | `W_CONVEYOR_OPEN_PORT` | A conveyor piece on the floor (a CONVEYOR with a path, or a CONVEYOR_TRANSFER's exit) has a port no link joins: a belt's in, out or divert port d<k>, a transfer's exit port. An area link counts as a link. An error under simulation.strict_checks. |
+| `W_CONVEYOR_ROLLER_PITCH` | An item type with a size reaches a roller, mdr or pallet CONVEYOR as itself and is shorter than three of that piece's roller pitches, so fewer than three rollers carry it. Never an error, also under simulation.strict_checks. |
 | `W_CONVEYOR_STOP_HELD` | A CONVEYOR stop seizes a resource a part still holds when it gets there (seized upstream, not yet released); the run stops with an error when a part asks for it twice. |
 | `W_REVERSED_HELD_AT_END` | At the end of a run that stopped at its time limit, a reversible CONVEYOR runs backward with a part held at its start; nothing boards it meanwhile, so if no signal turns it again this is a deadlock (a cheap notice, not a proof). |
 | `W_ROUTE_RULE` | A routing rule (a divert's, a transfer's or a Rule-mode DECIDE's) has a condition per exit and no ELSE, so a part no condition takes stops the run, or it has a limit or is least_loaded while an exit leads to no CONVEYOR and names no target piece, so nothing is counted under way there; or a CONVEYOR_TRANSFER exit reaches its conveyor through a block that branches (no handshake at its eye), hands to a conveyor with no eye and a stop nearer its entry than the longest item, or counts a limit or least_loaded only until the handshake; or a merge joins a belt between the first and last divert of a rule group, so its parts are never routed; or a zoned belt has diverts, so its zone timing is not modelled behind the last divert or eye. |
@@ -114,7 +118,7 @@ print(results["conveyor_summary"].round(2).to_string(index=False))
 
 Bundled models: [Belt with stops, a divert and a merge](../../gallery/logistics.md), [Conveyor line with a sorter, a transfer and a two-way chain](../../gallery/logistics.md), [Warehouse with forklifts (floor plan)](../../gallery/logistics.md), [Order-driven warehouse (library assets)](../../gallery/logistics.md), [Palletizing line](../../gallery/manufacturing.md).
 
-Guides: [How do I move parts along a belt?](../../how-to/recipes/belt-transit.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md), [Motion cycles](../../modelling-guide/motion.md) and 1 more.
+Guides: [Appearance](../../appearance.md), [How do I move parts along a belt?](../../how-to/recipes/belt-transit.md), [Coming from AnyLogic](../../coming-from/anylogic.md), [Coming from Arena](../../coming-from/arena.md), [Finite buffers and blocking after service](../../modelling-guide/finite-buffers.md), [Layout, paths and vehicles](../../modelling-guide/layout-paths-vehicles.md) and 2 more.
 
 ## See also
 

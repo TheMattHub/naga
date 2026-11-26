@@ -914,6 +914,10 @@ PROBLEM_CODES: dict[str, str] = {
                          "not a CONVEYOR its loads reach; or a CONVEYOR_TRANSFER's links do not "
                          "match its exits one to one (a port that is not one of its exits, or "
                          "named twice), or its routing rule is not usable.",
+    "E_CONVEYOR_LOOK": "A CONVEYOR's look or look_set has a setting its type lacks, a value "
+                       "out of range or not on its list, rollers thicker than their pitch, "
+                       "rollers or pulleys taller than its height, chain strands that do not "
+                       "fit the width, a bad opening, or any setting on an untyped conveyor.",
     "E_CONVEYOR_PATH": "A CONVEYOR's path has a piece that is not a straight or an arc, or it "
                        "has a length or end nodes beside it.",
     "E_CONVEYOR_RELEASE": "A CONVEYOR's release is not one of metering {gap or interval}, "
@@ -942,6 +946,10 @@ PROBLEM_CODES: dict[str, str] = {
     "W_CONVEYOR_SNAP": "A link joins two CONVEYORs with a path whose ports are more than 0.05 m "
                        "or 5 degrees apart on the floor plan. An error under "
                        "simulation.strict_checks.",
+    "W_CONVEYOR_ROLLER_PITCH": "An item type with a size reaches a roller, mdr or pallet "
+                               "CONVEYOR as itself and is shorter than three of that piece's roller "
+                               "pitches, so fewer than three rollers carry it. Never an error, "
+                               "also under simulation.strict_checks.",
     "W_CONVEYOR_HANDED_TO_NOTHING": "In the run, a part reached a CONVEYOR's end (or a "
                                     "reversible belt's start) with no next block; it stands "
                                     "there and the belt is blocked, so a run that drains ends "
