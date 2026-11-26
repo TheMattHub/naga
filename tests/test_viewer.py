@@ -1571,7 +1571,8 @@ def test_live_a_small_page_runs_a_model_on_the_real_cdn(tmp_path):
         pytest.skip("cdn.jsdelivr.net cannot be reached")
     page = tmp_path / "small.html"
     made = viewer.build_viewer(MODELS / "single_server.json", page, runtime=RUNTIME, pyodide="cdn")
-    assert made["bytes"] < 3.5e6          # 2.9 MB: the engine, the recording, the notices
+    # 3.51 MB at f97340c4 (the engine with plans H-I's look modules, the recording, the notices)
+    assert made["bytes"] < 3.8e6
     out = _drive(BROWSERS[0], page, tmp_path, [READY, _set(2), _click("run"), RAN, _text("record"),
                                                _text("versions")])
     ready, _value, _clicked, ran, record, versions = out["answers"]
