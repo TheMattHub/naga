@@ -426,7 +426,7 @@
             }
           },
           "additionalProperties": false,
-          "description": "The 3D view pauses playback before drawing more than limit items (default 20000); the 2D canvas skips a frame's new moves past limit_2d tokens (default 50000). On by default."
+          "description": "The 3D view pauses playback before drawing more than limit items (default 20000); the 2D canvas skips a frame's new moves past limit_2d tokens (default 5000). On by default."
         },
         "layers": {
           "type": "object",

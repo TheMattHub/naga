@@ -41,7 +41,7 @@ _VIEW_SETTINGS = re.compile(r"/view/(queue_display|draw_guard|layers)(/.*)?"
 # bad one (final review M1); `nagasim.core.document` re-exports them.
 QUEUE_DISPLAYS = ("compact", "tall")
 # D1526: limit_2d bounds the 2D canvas's sliding tokens; a 2D token is lighter than a 3D item.
-DRAW_GUARD = {"on": True, "limit": 20000, "limit_2d": 50000}
+DRAW_GUARD = {"on": True, "limit": 20000, "limit_2d": 5000}
 VIEW_SETTINGS = ("queue_display", "draw_guard", "layers")
 # D1512: the kinds of drawn object the 3D view shows or hides; a block's `layer` names a user
 # layer (D1513). `view.layers` maps either to a bool, a missing name being shown (D1516).
@@ -84,7 +84,7 @@ def view_setting_problems(layout: dict) -> list[Problem]:
 def view_settings(view: dict | None) -> dict:
     """`{"queue_display", "draw_guard": {"on", "limit", "limit_2d"}, "layers": {name: bool}}` of a
     `view` section, absent keys at their defaults, so a model saved before them opens compact with
-    the guard on at 20,000 (3D) and 50,000 (2D) and every layer shown (a name missing from `layers` is shown).
+    the guard on at 20,000 (3D) and 5,000 (2D, D1533) and every layer shown (a name missing from `layers` is shown).
     Total (checkpoint I3): a value `set_view_settings` would refuse is read as its default, each
     key on its own, so a bad file opens and draws; `view_setting_faults` names what was replaced."""
     return _read_view(view)[0]

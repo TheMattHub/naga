@@ -3481,7 +3481,7 @@ _FILLED_DESCRIPTIONS = {
                          "default) or tall (layers without limit).",
         "draw_guard": "The 3D view pauses playback before drawing more than limit items "
                       "(default 20000); the 2D canvas skips a frame's new moves past limit_2d "
-                      "tokens (default 50000). On by default.",
+                      "tokens (default 5000). On by default.",
         "layers": "Which 3D layers show: a kind (equipment, tiles, names, pads, items, floor, "
                   "building, network) or a block's user layer, to true or false; missing is shown."},
 }

@@ -12,7 +12,7 @@ from nagasim.core.document import ModelDocument, view_settings
 MODELS = Path(__file__).resolve().parents[1] / "nagasim" / "models"
 
 
-def _guard(on=True, limit=20000, limit_2d=50000) -> dict:
+def _guard(on=True, limit=20000, limit_2d=5000) -> dict:
     """A whole draw guard; plan M (D1526) added the 2D limit."""
     return {"on": on, "limit": limit, "limit_2d": limit_2d}
 

@@ -29,7 +29,7 @@ A crane's lift is any traced move with a duration between two blocks it serves. 
 | `layout` | boolean |  |  |  | Whether the editor was in layout mode. |
 | `view_3d` | boolean |  |  |  | Whether the 3D view was on. |
 | `queue_display` | choice |  |  |  | How the 3D view stacks waiting items: compact (per-form limits, the default) or tall (layers without limit). One of `compact`, `tall`. |
-| `draw_guard` | object |  |  |  | The 3D view pauses playback before drawing more than limit items (default 20000); the 2D canvas skips a frame's new moves past limit_2d tokens (default 50000). On by default. |
+| `draw_guard` | object |  |  |  | The 3D view pauses playback before drawing more than limit items (default 20000); the 2D canvas skips a frame's new moves past limit_2d tokens (default 5000). On by default. |
 | `layers` | object |  |  |  | Which 3D layers show: a kind (equipment, tiles, names, pads, items, floor, building, network) or a block's user layer, to true or false; missing is shown. |
 | `canvases` | object |  |  |  | The zoom and centre of each canvas tab. |
 
