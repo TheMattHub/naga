@@ -9,7 +9,7 @@ from .core import ToolError, _document_args, tool, workspace
 
 FORMATS = ("png", "svg", "text")
 
-_document_args("view_model", model="Workspace name of the model.",
+_document_args("view_model", model="Workspace model name.",
                format="png (an image, the default), svg (drawing source) or text (a list of blocks and links).")
 
 

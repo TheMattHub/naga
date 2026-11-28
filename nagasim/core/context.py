@@ -304,6 +304,11 @@ class SimulationContext:
     # warned once.
     strict_checks: bool = False
     run_warned: set = field(default_factory=set)
+    # D1529-D1531 (`simulation.queue_limit`): the limit when it is on, else None; the run then
+    # reads `queue_gauges` [(name, reader)] every 4,096 events (`core/queuelimit.py`).
+    queue_limit: int | None = None
+    queue_gauges: list = field(default_factory=list)
+    queue_countdown: int = 0        # events left to the next read, kept across session chunks
     # D1389: the run-time warnings as Problems, once each by (code, block, case); they leave
     # the replication with its KPIs (`export.PROBLEMS_KEY`) and reach `Results.run_problems`.
     run_problems: dict = field(default_factory=dict)

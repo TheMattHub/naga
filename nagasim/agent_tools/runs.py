@@ -19,7 +19,7 @@ from nagasim.settings import trusted
 from .core import (
     MAX_ROWS, ToolError, _budget, _document_args, report as _progress, _edit_result, _finite, _digest, _open,
     _records, _results_of, _rows, _runnable_layout, _upsert, not_recorded_error, note_asked, override_hint,
-    recorded, tool, workspace,
+    recorded, run_failed, tool, workspace,
 )
 
 # Closed sets are Literals (D1219): the values are in the schema a client reads, not only in prose.
@@ -38,7 +38,7 @@ def _check_study_level(log_level, kpis) -> None:
         raise not_recorded_error(error, hint="call the tool again with log_level='{needed}', "
                                              "or leave it out")
 
-_document_args("run_model", model="Workspace name of the model to run.",
+_document_args("run_model", model="Workspace model name.",
                replications="Independent replications; defaults to the model's own setting.",
                run_length="Run length in base time units; defaults to the model's own setting.",
                warmup="Warm-up time before statistics start; defaults to the model's own setting.",
@@ -109,7 +109,7 @@ def propose_plugin_folder(model: str, folder: str) -> dict:
     return {"model": model, "folder": str(path), "state": "proposed", "enabled": False}
 
 
-@tool(returns={
+@tool(logged=True, returns={
     "model": str, "replications": int, "system": dict, "resources": dict, "user_stats": dict,
     "frames": list, "laws": dict, "entities": dict, "levels": dict, "queues": dict,
     "bindings": dict, "agents": dict, "problems": list, "log_level": str})
@@ -122,16 +122,16 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     Validate first: a model with errors will not run. Every KPI comes back as a
     mean with the half-width of its 95% confidence interval over replications;
     a half-width near the mean means you need more replications; `run_to_precision`
-    finds how many. One replication gives no interval at all (null).
+    finds how many. One replication gives no interval (null).
 
     `bind_data=true` resolves the model's `series:` (time-series input) and
-    `orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,
+    `orders` data bindings at RUN TIME, as the UI/CLI's `--bind` does,
     within this workspace's own network permission and file confinement --
     there is no permission argument here, only whether to use it; a binding it
     could not resolve is counted in "bindings" ({"problems", "first"}). Use
     `resolve_data_bindings` first to preview what a binding would read.
 
-    The full frames stay in the workspace: page them out with `get_kpi_table`; kpi `log_level` is
+    Page the full frames, kept in the workspace, with `get_kpi_table`; kpi `log_level` is
     faster.
 
     "laws" are the operational-law checks and guardrails (utilisation, offered load, Little, flow
@@ -139,9 +139,9 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     its numbers cannot be read at face value. Only when the model has them: "entities" (per
     entity type, when there are several: Avg Time, Total Completed), "levels" (Average, Final,
     Time Empty %, Time Full %), "queues" (per block: Balked, Reneged) and "agents" (per
-    population/state: Avg Count), in the same {mean, ci_half_width} form. "problems" is present
-    only when the run raised warnings while running (a part handed to nothing, a part leaving by
-    an exit its rule would not choose, a hold still open at the end): code, message, hint, block.
+    population/state: Avg Count), in the same {mean, ci_half_width} form. "problems" (only when
+    the run raised some: a part handed to nothing, an exit its rule would not choose, a hold open
+    at the end): code, message, hint, block. "log" lists what the run logged, repeats counted.
     """
     ws = workspace()
     doc = ws.document(model)
@@ -162,7 +162,7 @@ def run_model(model: str, replications: int | None = None, run_length: float | N
     except RuntimeError as exc:
         # DEVLOG #411: a model error found only while running (the blocks raise
         # RuntimeError) must reach the agent as an answer, not undo its turn.
-        raise ToolError("E_RUN_FAILED", str(exc), "it validated but failed while running: fix what the message names and run again") from exc
+        raise run_failed(exc, "it validated but failed while running: fix what the message names and run again") from exc
     if results is None:
         raise ToolError("E_NO_RESULTS", "the run produced no completed replication",
                         "raise max_seconds, or lower replications/run_length")
@@ -261,7 +261,7 @@ def _kpi_errors():
                         else "name a KPI from run_model's digest or get_kpi_table", exc.nearest) from None
 
 
-_document_args("run_scenarios", model="Workspace name of the model to run.",
+_document_args("run_scenarios", model="Workspace model name.",
                scenarios="Scenario names to run; omit for all of them plus Baseline.",
                kpis="KPI keys to report, e.g. [\"system/Avg Throughput Time\"]; omit for the "
                     "system KPIs.",
@@ -274,8 +274,8 @@ _document_args("run_scenarios", model="Workspace name of the model to run.",
                max_seconds="Wall-clock budget for the whole sweep.")
 
 
-@tool(returns={"model": str, "scenarios": list, "crn": bool, "comparison": list, "completed": bool,
-               "laws": dict})
+@tool(logged=True, returns={"model": str, "scenarios": list, "crn": bool, "comparison": list,
+                            "completed": bool, "laws": dict, "problems": dict})
 def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str] | None = None,
                   replications: int | None = None, run_length: float | None = None,
                   warmup: float | None = None, seed: int = 0, crn: bool = True,
@@ -292,7 +292,8 @@ def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str
 
     "laws" are each scenario's law checks, {scenario: {"passed", "partial"}}, as run_model gives
     them for one run: a partial law makes it not valid, no result to compare; censoring or
-    initial bias alone may bias it low, so a difference is not verified.
+    initial bias alone may bias it low, so a difference is not verified. "problems" (per
+    scenario) and "log" as in run_model.
     """
     doc = workspace().document(model)
     stop = _budget(max_seconds)
@@ -313,11 +314,17 @@ def run_scenarios(model: str, scenarios: list[str] | None = None, kpis: list[str
         "replications_needed": ("Replications Needed", _finite), "crn_ratio": ("CRN Ratio", _finite),
     })
     laws_of = {name: {"passed": c.passed, "partial": list(c.partial)} for name, c in result.checks().items()}
-    return {"model": model, "scenarios": result.scenarios, "crn": result.crn,
-            "completed": result.completed, "comparison": rows, "laws": laws_of}
+    reply = {"model": model, "scenarios": result.scenarios, "crn": result.crn,
+             "completed": result.completed, "comparison": rows, "laws": laws_of}
+    # D1521: each scenario's run-time warnings, as run_model's `problems`; only when some had any.
+    found = {name: [p.as_dict() for p in res.run_problems] for name, res in result.results.items()
+             if res.run_problems}
+    if found:
+        reply["problems"] = found
+    return reply
 
 
-_document_args("what_if", model="Workspace name of the model.",
+_document_args("what_if", model="Workspace model name.",
                overrides="Scenario-style overrides, e.g. [{\"path\": \"resources.Server.capacity\", "
                          "\"value\": 2}]; nothing is saved to the model.",
                kpis="KPI keys to judge; omit for the system KPIs.",
@@ -365,7 +372,7 @@ def what_if(model: str, overrides: list[dict], kpis: list[str] | None = None, go
     return {"model": model, **out, **({"input_note": note} if note else {})}
 
 
-_document_args("explain_kpi", model="Workspace name of the model.",
+_document_args("explain_kpi", model="Workspace model name.",
                kpi="The KPI to explain: \"system/Avg Throughput Time\", \"system/Avg WIP\", "
                    "\"system/Avg WIP (Little)\", \"system/Throughput (per time unit)\" or one "
                    "resource's \"resource/<name>/<metric>\".",
@@ -467,7 +474,7 @@ def investment_case(model: str, replications: int | None = None, seed: int = 0) 
     return {"model": model, "settings": investment.investment_settings(layout), "table": rows}
 
 
-_document_args("run_to_precision", model="Workspace name of the model to run.",
+_document_args("run_to_precision", model="Workspace model name.",
                kpi="The KPI key to target, e.g. \"system/Avg Throughput Time\".",
                relative="Target half-width as a fraction of the mean (default 0.05 = 5%).",
                absolute="Target half-width in the KPI's own units; overrides `relative`.",
@@ -505,7 +512,7 @@ def run_to_precision(model: str, kpi: str, relative: float = 0.05,
                                for k, v in report.items()}}
 
 
-_document_args("run_reality_checks", model="Workspace name of the model to run.",
+_document_args("run_reality_checks", model="Workspace model name.",
                run_length="Run length in base time units; defaults to the model's own setting.",
                warmup="Warm-up time before statistics start; defaults to the model's own setting.",
                seed="Seed shared by every check's deterministic run (CRN across checks).",
@@ -589,7 +596,7 @@ def run_loop_dominance(model: str, run_length: float | None = None, seed: int = 
             "warnings": [p.as_dict() for p in result["problems"]]}
 
 
-_document_args("suggest_warmup", model="Workspace name of the model.",
+_document_args("suggest_warmup", model="Workspace model name.",
                replications="Replications to run for the estimate.",
                run_length="Run length in base time units.",
                max_seconds="Wall-clock budget.")
@@ -616,7 +623,7 @@ def suggest_warmup(model: str, replications: int = 5, run_length: float | None =
             "reliable": bool(suggestion.reliable), "observations": int(suggestion.index)}
 
 
-_document_args("optimize", model="Workspace name of the model.",
+_document_args("optimize", model="Workspace model name.",
                factors="[{\"path\": \"resources.Server.capacity\", \"kind\": \"integer\", "
                        "\"low\": 1, \"high\": 5}], kind is continuous/integer/categorical.",
                response="KPI key to optimise, e.g. \"system/Avg Throughput Time\".",
@@ -880,7 +887,7 @@ def export(model: str, format: str, path: str) -> dict:
     return {"ok": True, "format": format, "path": str(target)}
 
 
-_document_args("evaluate_policy", model="Workspace name of the model.",
+_document_args("evaluate_policy", model="Workspace model name.",
                policy="Decision-point name -- must match a Policy-mode DECIDE's `policy` param.",
                controller="Built-in controller to evaluate: \"random\", \"shortest\" or \"roundrobin\".",
                episodes="Independent episodes to average over; episode i uses seed + i.",
@@ -914,7 +921,7 @@ def evaluate_policy(model: str, policy: str, controller: str, episodes: int = 20
             "returns": [_finite(v) for v in result["returns"][:MAX_ROWS]]}
 
 
-_document_args("fit_surrogate", model="Workspace name of the model.",
+_document_args("fit_surrogate", model="Workspace model name.",
                factors="[{\"path\": \"resources.Server.capacity\", \"kind\": \"integer\", "
                        "\"low\": 1, \"high\": 5}], same shape as the `optimize` tool's factors.",
                response="KPI key to fit a surface for, e.g. \"system/Avg Throughput Time\".",

@@ -314,7 +314,26 @@ def _block_variant(type_name: str, spec) -> dict:
                                                        "(default) or when its timed move out ends "
                                                        "(a lift that holds its spot)."},
                               "label": {"type": "string",
-                                        "description": "The counter's name, e.g. 'Exit'."}},
+                                        "description": "The counter's name, e.g. 'Exit'."},
+                              # D1507: display only, like anchor and direction.
+                              # Final review M3: the bounds `queuerow.count_at_problem` holds.
+                              "count_at": {"type": "array",
+                                           "prefixItems": [{"type": "number", "minimum": -1000,
+                                                            "maximum": 1000}] * 2
+                                           + [{"type": "number", "minimum": 0, "maximum": 1000}],
+                                           "items": False, "minItems": 3, "maxItems": 3,
+                                           "description": "The 3D count label's offset, [dx, dz, "
+                                                          "h] in metres from its place on the "
+                                                          "floor: along the block's edge, "
+                                                          "outward, and a height (above 0 "
+                                                          "raises it)."},
+                              # D1517: display only; the bounds `queuerow.cell_problem` holds.
+                              "cell": {"type": "array",
+                                       "items": {"type": "number", "exclusiveMinimum": 0,
+                                                 "maximum": 1000},
+                                       "minItems": 3, "maxItems": 3,
+                                       "description": "The 3D pad cell, [w, d, h] in metres, "
+                                                      "over the block's own."}},
                           "description": "A placed asset's own queue row: where its waiting "
                                          "entities line up past its seats, over the picture's "
                                          "queue_anchor and queue_direction, so a row can be "
@@ -322,6 +341,10 @@ def _block_variant(type_name: str, spec) -> dict:
                                          "asset's own row. It never changes a run; with "
                                          "slots the run counts the arrivals that find them "
                                          "full (the slot_summary frame)."},
+            # D1513: display only, like asset_3d.
+            "layer": {"type": "string",
+                      "description": "The block's user layer, which the 3D view shows or hides "
+                                     "as one (view.layers). Display only."},
             "locals": _LOCALS,
             # D1343: written by flattening, like `locals`.
             "instance_place": {"type": "array", "items": {"type": "number"}, "minItems": 3,
@@ -3220,6 +3243,16 @@ def _defs() -> dict:
                                                  "handed to nothing or routed against its rule "
                                                  "become errors with the same code. Off: "
                                                  "they are warnings."},
+                "queue_limit": {"type": "object",
+                                "description": "Stop a run when one queue holds more than "
+                                               "length entities: it saves run time on a model "
+                                               "whose queue grows without bound. Absent or on "
+                                               "false: no limit; a bad value warns, reads as off.",
+                                "properties": {
+                                    "on": {"type": "boolean", "default": False},
+                                    "length": {"type": "integer", "minimum": 1,
+                                               "default": 100000}},
+                                "additionalProperties": False},
                 "entity_waits": {"type": "boolean", "default": False,
                                  "description": "Sum each entity's queue time over every "
                                                 "seize into a \"Total Wait\" column of the "
@@ -3443,7 +3476,14 @@ _FILLED_DESCRIPTIONS = {
         "tab": "The editor tab in front when the file was saved.",
         "layout": "Whether the editor was in layout mode.",
         "view_3d": "Whether the 3D view was on.",
-        "canvases": "The zoom and centre of each canvas tab."},
+        "canvases": "The zoom and centre of each canvas tab.",
+        "queue_display": "How the 3D view stacks waiting items: compact (per-form limits, the "
+                         "default) or tall (layers without limit).",
+        "draw_guard": "The 3D view pauses playback before drawing more than limit items "
+                      "(default 20000); the 2D canvas skips a frame's new moves past limit_2d "
+                      "tokens (default 50000). On by default.",
+        "layers": "Which 3D layers show: a kind (equipment, tiles, names, pads, items, floor, "
+                  "building, network) or a block's user layer, to true or false; missing is shown."},
 }
 
 
@@ -3599,6 +3639,16 @@ def build_json_schema() -> dict:
                 "tab": {"enum": ["process", "stock_and_flow", "statechart"]},
                 "layout": {"type": "boolean"},
                 "view_3d": {"type": "boolean"},
+                # Model display settings (D1504, D1506): unlike the keys above, an edit, not a save.
+                "queue_display": {"enum": ["compact", "tall"]},
+                "draw_guard": {"type": "object",
+                               "properties": {"on": {"type": "boolean"},
+                                              "limit": {"type": "integer", "minimum": 1,
+                                                        "maximum": 2_000_000_000},
+                                              "limit_2d": {"type": "integer", "minimum": 1,
+                                                           "maximum": 2_000_000_000}},
+                               "additionalProperties": False},
+                "layers": {"type": "object", "additionalProperties": {"type": "boolean"}},
                 "canvases": {
                     "type": "object",
                     "propertyNames": {"enum": ["process", "stock_and_flow", "statechart"]},

@@ -88,7 +88,7 @@ def _checked(model: str, edits: list) -> list[tuple[str, str, dict]]:
 
 
 _document_args("apply_edits",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                edits='The edits in order, each {"tool": "<tool name>", "args": {...}} as that tool '
                      f'takes them; at most {MAX_EDITS:,}.')
 

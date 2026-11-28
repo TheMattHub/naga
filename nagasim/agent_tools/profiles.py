@@ -27,7 +27,7 @@ BUILD = COMPACT | {
     "new_model", "list_models", "get_model_summary", "undo", "redo", "import_sd_model",
     "apply_edits", "add_block", "remove_blocks", "connect", "disconnect", "reorder_branches",
     "set_resources", "set_calendar", "set_entity_types", "set_simulation_settings",
-    "set_sd_settings", "set_item_code", "set_model_info", "auto_layout", "place_piece", "place_feeder", "place_transfer", "get_ports", "check_layout", "set_layout", "get_record_schema", "list_records",
+    "set_sd_settings", "set_item_code", "set_model_info", "set_view", "auto_layout", "place_piece", "place_feeder", "place_transfer", "get_ports", "check_layout", "set_layout", "get_record_schema", "list_records",
     "upsert_record", "remove_record", "generate_pallet_layer", "list_block_types",
     "describe_block_type", "list_distributions", "describe_distribution", "get_expression_help",
     "validate_model", "check_draft", "view_model"}

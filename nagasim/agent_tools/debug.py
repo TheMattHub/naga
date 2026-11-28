@@ -19,7 +19,7 @@ from nagasim.core.session import SimSession
 from nagasim.core.trace import TraceRecorder
 from nagasim.factscli import run as record_facts
 
-from .core import ToolError, _budget, _document_args, _runnable_layout, tool, workspace
+from .core import ToolError, _budget, run_failed, _document_args, _runnable_layout, tool, workspace
 
 # An agent pays for every token of an answer: a stop on a busy block can hit hundreds
 # of times in one step, a queue can hold thousands of entities and a batch arriving
@@ -377,7 +377,7 @@ def debug_inspect(model: str, block: str | None = None, entity: int | None = Non
     return _json_safe(out)
 
 
-_document_args("run_facts", model="Workspace name of the model to run.",
+_document_args("run_facts", model="Workspace model name.",
                seed="Seed of the replication.",
                run_length="Model time to run to; omit for the model's own run length.")
 
@@ -406,5 +406,5 @@ def run_facts(model: str, seed: int = 0, run_length: float | None = None) -> dic
         answer = record_facts(layout, seed=seed, run_length=run_length)
     except RuntimeError as exc:
         # As run_model (#411): a model error found only while running is an answer.
-        raise ToolError("E_RUN_FAILED", str(exc), "it validated but failed while running: fix what the message names and run again") from exc
+        raise run_failed(exc, "it validated but failed while running: fix what the message names and run again") from exc
     return _json_safe({"model": model, **answer})

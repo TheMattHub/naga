@@ -149,7 +149,7 @@ def get_expression_help() -> dict:
     }
 
 
-@tool(read_only=True, returns={
+@tool(read_only=True, logged=True, returns={
     "model": str, "ok": bool, "errors": int, "warnings": int, "requires_run_length": bool,
     "problems": list, "truncated": float})
 def validate_model(model: str) -> dict:
@@ -159,7 +159,8 @@ def validate_model(model: str) -> dict:
     Call this after each batch of edits and ALWAYS before running. Errors stop a
     run; warnings (code prefix W_) do not, but usually point at a modelling
     mistake. `requires_run_length` tells you whether the model can drain on its
-    own -- if it is true and the run length is 0, a run will be refused.
+    own -- if it is true and the run length is 0, a run will be refused. "log": what
+    validating logged.
     """
     doc = workspace().document(model)
     layout = doc.to_layout()

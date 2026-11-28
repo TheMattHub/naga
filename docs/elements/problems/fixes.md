@@ -429,6 +429,7 @@ E_PATH_CHECK_RULE: Make `path_checks` a list of objects whose `rule` is `order`,
 E_SCENARIO_GOAL: Write the scenario's `goal` as text of at most 500 characters, such as one sentence naming the question it answers.
 E_SCENARIO_NAME: Give the scenario a non-empty `name` in the `scenarios` section. Names must be unique within the section.
 W_BACKGROUND_MISSING: Put the image at the `background.path` the model names, or correct the path. A relative path is read from the model file's folder.
+W_VIEW_SETTING: Set the 3D display again in the editor (View > Queue display (3D), View > Draw guard...) or with the `set_view` tool, or remove the key from `view`. `queue_display` is "compact" or "tall"; `draw_guard` is `{"on": true or false, "limit": 1 to 2000000000}`. A block's `queue_row.count_at` is `[dx, dz, h]` in metres, each within 1000, `h` 0 or more: set it in the block's Properties (Count label) or with `update_block`, or remove it.
 # Blocks, links and routing
 E_BATCH_CARRIER_CAPACITY: Make the BATCH's `carrier_capacity` expression return 0 or more for every carrier. Check the carrier attributes it reads, or wrap it in `max(0, ...)`.
 E_BATCH_MEMBER_TIME: Set the BATCH's `carrier_type` to the carrier's entity type, or clear `member_time` and `carrier_capacity`. Both apply only to a carrier BATCH.

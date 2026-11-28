@@ -148,6 +148,11 @@ class GraphModel:
                 setattr(env.ctx, key, value)
         env.ctx.entity_waits = bool(sim_settings.get("entity_waits", False))    # D1232
         env.ctx.strict_checks = sim_settings.get("strict_checks", False) is True   # D1371
+        # D1529: None when absent, off or bad (validation warns W_QUEUE_LIMIT_SETTING).
+        # Imported only when the key is there, so `import nagasim` stays at 950 modules.
+        if sim_settings.get("queue_limit") is not None:
+            from nagasim.core import queuelimit
+            env.ctx.queue_limit = queuelimit.read_setting(sim_settings)[0]
 
         # Deterministic run mode (PHASE6 W4 P1, ARCHITECTURE D119): read once
         # here, same pattern as record_logs above. `core/base_process.py`'s
@@ -366,6 +371,11 @@ class GraphModel:
         # is accepted, and remember the loops that could deadlock. A model with
         # no finite space returns from this immediately.
         blocking.analyse(env.ctx)
+        # D1530: the queue limit's gauges, once every block, fleet and charger is built.
+        env.ctx.queue_gauges = []
+        if env.ctx.queue_limit is not None:
+            from nagasim.core import queuelimit
+            queuelimit.register(env.ctx, block_map.values())
 
         # Item code (D1344): refused whole here, before any of it loads, unless every
         # fingerprint is trusted on this computer; one dict lookup for every other model.

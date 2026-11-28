@@ -65,7 +65,7 @@ and `find_tool` is in every profile, so an assistant can always search for the r
 | Profile | Tools | For |
 |---|---|---|
 | `compact` | 10 | Write a whole model file, run it, save it. |
-| `build` | 49 | Make and change a model: blocks and links, records, reference, validation, a picture. |
+| `build` | 50 | Make and change a model: blocks and links, records, reference, validation, a picture. |
 | `run` | 22 | Run a finished model: scenarios, what-if, precision, reality checks, the run debugger. |
 | `study` | 33 | A decision study (`study_*`) and the searches behind it: `optimize`, `calibrate`, `evaluate_policy`. |
 | `twin` | 14 | A live twin: data bindings, initial state, forecast, plant timeline, recommendations. |
@@ -98,6 +98,12 @@ Every flag of `naga mcp` is set by the person who starts the server; no tool arg
   the text gets the summary, not the answer.
 - **A result is a digest.** `run_model` returns the system KPIs with their confidence-interval
   half-widths and a summary per resource; `get_kpi_table` pages a whole frame on request.
+- **A run or load answer carries its log.** `run_model`, `run_scenarios`, `open_model`,
+  `validate_model` and the model imports add `log` when the call logged a warning or an error:
+  `{level, source, message, count}`, repeats folded, at most 20 with `log_truncated`. A refusal
+  carries it too. `count` counts the records the calling process saw, so a warning repeated in
+  every replication can count higher inline than from a process pool, which sends each distinct
+  record back once per run.
 - **A long call reports its progress.** A client that sends a progress token gets progress
   notifications from `run_model`, `run_scenarios`, `run_to_precision`, `forecast`, `optimize`,
   `calibrate`, `fit_surrogate`, `study_step` and `study_validate`.

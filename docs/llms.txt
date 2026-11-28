@@ -288,11 +288,11 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 - [assertions](https://thematthub.github.io/naga/reference/model-file/assertions.html): Model assertions: a KPI, a comparison operator/value and a replication/confidence budget, checked by naga check.
 - [path_checks](https://thematthub.github.io/naga/reference/model-file/path_checks.html): Entity-path checks: rules on the blocks each entity visits (order, never, at most N times, always), checked by naga check on one traced replication.
 - [dashboard](https://thematthub.github.io/naga/reference/model-file/dashboard.html): Dashboard widgets: kpi/gauge/line/bar over the model's own expressions, sampled at the same instants as the timeseries sampler.
-- [view](https://thematthub.github.io/naga/reference/model-file/view.html): Editor view state: the canvas tab in front, layout/3D, zoom and centre per tab; written on save, ignored by the engine.
+- [view](https://thematthub.github.io/naga/reference/model-file/view.html): Editor view state: the canvas tab in front, layout/3D, zoom and centre per tab, written on save; and the 3D display settings (queue display, draw guard), set as edits.
 
 ## Problem codes
 
-- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 517 codes that a check of a model can report, from nagasim/core/problems.py.
+- [Problem codes](https://thematthub.github.io/naga/reference/problems/index.html): The 520 codes that a check of a model can report, from nagasim/core/problems.py.
 - [Agents](https://thematthub.github.io/naga/reference/problems/agents.html): Agent types, populations and their messages.
 - [Submodels and libraries](https://thematthub.github.io/naga/reference/problems/submodels-and-libraries.html): Submodel definitions and instances, asset libraries and catalogues.
 - [Data, live feeds and the twin](https://thematthub.github.io/naga/reference/problems/data-and-twin.html): Data sources and bindings, network access limits, live feeds, warm starts, saved states, plant mappings, the twin cycle and the MES.
@@ -306,7 +306,7 @@ The whole site as one file: llms-full.txt. Every page has a Markdown copy at its
 
 - [Model file format](https://thematthub.github.io/naga/model-file-format.html): A model is one JSON file with a schema_version.
 - [Appearance](https://thematthub.github.io/naga/appearance.html): This page is for a developer who wants to draw a Naga model in another tool, such as a game engine, a CAD viewer or a web renderer.
-- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 105 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
+- [Agent tools](https://thematthub.github.io/naga/reference/tools.html): The 106 tools of nagasim.agent_tools.TOOLS, which naga mcp publishes under the same names.
 
 ## Python API
 

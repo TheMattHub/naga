@@ -30,14 +30,14 @@ from nagasim.core.schema import ModelValidationError
 from nagasim.twin import write_json, write_text
 
 from .core import (SLOTS, ToolError, _PROGRESS, _digest, _document_args, call, override_hint, report,
-                   reporting, tool, workspace)
+                   reporting, run_failed, tool, workspace)
 
 # The study's closed sets as enums in the schema (D1219), from the constants the study checks.
 Mode = Literal[MODES]
 Size = Literal[tuple(SIZES)]
 from .runs import _run_laws
 
-_ID = "Study folder relative to the workspace root (the id study_start returned)."
+_ID = "Study id from study_start (a folder in the workspace)."
 _CH = "Keys to record in the same call, with the shapes of study_update's changes."
 _document_args("study_start", question="The decision or question the study answers, in the person's words.",
                study="Folder for the study; omit to use naga-studies/<short name of the question>.",
@@ -1062,7 +1062,7 @@ def study_validate(study: str, kind: Literal["queue_formula"] = "queue_formula")
                                 log_level="kpi", network=ws.network, confine_to=ws.root,
                                 on_progress=report)     # D1262: the dock's Stop lands at a progress point
     except RuntimeError as exc:
-        raise ToolError("E_RUN_FAILED", str(exc), "fix the model with study_step") from exc
+        raise run_failed(exc, "fix the model with study_step") from exc
     res = layout["resources"][0]["name"]
     wait = kpi_mean(_digest(results), f"{res}/Time in Queue Avg") if results is not None else None
     if wait is None:

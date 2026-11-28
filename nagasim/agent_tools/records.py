@@ -29,7 +29,7 @@ RECORD_TOOL_SECTIONS = tuple(s.name for s in sections.SECTIONS
                              if s.record or s.name == "orders")
 _SECTIONS_HINT = ("one of: " + ", ".join(RECORD_TOOL_SECTIONS) + ". Blocks, links, the network, "
                   "scenarios and the simulation settings have their own tools.")
-_RECORD_DOC = {"model": "Workspace name of the model.",
+_RECORD_DOC = {"model": "Workspace model name.",
                "section": "Record section, e.g. \"resources\", \"tables\", \"levels\", "
                           "\"agent_types\", \"orders\" (get_record_schema lists them all)."}
 
@@ -173,7 +173,7 @@ def remove_record(model: str, section: str, key: str) -> dict:
     return _edit_result(doc, before, {"section": section, "removed": key})
 
 
-_document_args("upsert_table_from_csv", model="Workspace name of the model to edit.",
+_document_args("upsert_table_from_csv", model="Workspace model name.",
                name="Table name to create or replace.",
                path="CSV file under the workspace root.",
                key_mode="Lookup mode for the row keys: exact, step or linear.",
@@ -207,7 +207,7 @@ def upsert_table_from_csv(model: str, name: str, path: str, key_mode: LookupMode
 
 
 # ---------------------------------------------------------------- PHASE4 D1/D2
-_document_args("list_continuous", model="Workspace name of the model to inspect.")
+_document_args("list_continuous", model="Workspace model name.")
 
 
 @tool(read_only=True, returns={
@@ -244,7 +244,7 @@ def list_continuous(model: str) -> dict:
     }
 
 
-_document_args("upsert_timeseries_input_from_csv", model="Workspace name of the model to edit.",
+_document_args("upsert_timeseries_input_from_csv", model="Workspace model name.",
                name="Series name to create or replace.",
                path="CSV file under the workspace root, two columns: time and value.",
                interpolation="step or linear.",
@@ -275,7 +275,7 @@ def upsert_timeseries_input_from_csv(model: str, name: str, path: str,
 
 
 # -- path network, movers and conveyors (PHASE4 E1, ARCHITECTURE D68) -------
-_document_args("get_network", model="Workspace name of the model to inspect.")
+_document_args("get_network", model="Workspace model name.")
 
 
 @tool(read_only=True, returns={
@@ -306,7 +306,7 @@ def get_network(model: str) -> dict:
             "unreachable": [list(pair) for pair in unreachable]}
 
 
-_document_args("upsert_node", model="Workspace name of the model to edit.",
+_document_args("upsert_node", model="Workspace model name.",
                name="Node name; a STATION's `node` param, a fleet's `home` and "
                     "DISTANCE(\"...\", ...) all address it by this.",
                x="Layout x coordinate (metres once the background declares a scale).",
@@ -326,7 +326,7 @@ def upsert_node(model: str, name: str, x: float, y: float) -> dict:
     return _edit_result(doc, before, {"node": name})
 
 
-_document_args("remove_node", model="Workspace name of the model to edit.",
+_document_args("remove_node", model="Workspace model name.",
                name="Node to delete; every segment touching it goes with it.")
 
 
@@ -341,7 +341,7 @@ def remove_node(model: str, name: str) -> dict:
     return _edit_result(doc, before, {"removed": name})
 
 
-_document_args("upsert_segment", model="Workspace name of the model to edit.",
+_document_args("upsert_segment", model="Workspace model name.",
                source="Node the segment starts at.",
                target="Node it ends at.",
                length="Length in layout units. Omit for the straight-line distance times the "
@@ -369,7 +369,7 @@ def upsert_segment(model: str, source: str, target: str, length: float | None = 
     return _edit_result(doc, before, {"segment": f"{source}->{target}"})
 
 
-_document_args("remove_segment", model="Workspace name of the model to edit.",
+_document_args("remove_segment", model="Workspace model name.",
                source="Node the segment starts at.", target="Node it ends at.")
 
 
@@ -383,7 +383,7 @@ def remove_segment(model: str, source: str, target: str) -> dict:
     return _edit_result(doc, before, {"removed": f"{source}->{target}"})
 
 
-_document_args("get_distance", model="Workspace name of the model to inspect.",
+_document_args("get_distance", model="Workspace model name.",
                source="A node, a STATION block or a station alias.",
                target="Where the trip ends, named the same way.")
 
@@ -450,7 +450,7 @@ def generate_pallet_layer(pallet_length: float, pallet_width: float, item_length
                         "give the sizes as numbers > 0 and overhang and gap as numbers >= 0")
 
 
-_document_args("upsert_orders_from_csv", model="Workspace name of the model to edit.",
+_document_args("upsert_orders_from_csv", model="Workspace model name.",
                path="CSV file to read, inside the workspace root.",
                replace="True (default) replaces the whole order book; False merges by id.")
 
@@ -485,7 +485,7 @@ def upsert_orders_from_csv(model: str, path: str, replace: bool = True) -> dict:
     return _edit_result(doc, before, {"orders": len(doc.orders)})
 
 
-_document_args("upsert_scenario", model="Workspace name of the model to edit.",
+_document_args("upsert_scenario", model="Workspace model name.",
                name="Scenario name; \"Baseline\" is implicit and always present.",
                overrides="[{\"path\": \"resources.Server.capacity\", \"value\": 2}, ...].",
                description="Free-text note about what this scenario represents.",

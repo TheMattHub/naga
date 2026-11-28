@@ -130,7 +130,7 @@ def _apply_override(doc: ModelDocument, override: dict) -> None:
                         "failures, tables or simulation settings")
 
 
-_document_args("set_initial_state", model="Workspace name of the model to edit.",
+_document_args("set_initial_state", model="Workspace model name.",
                entities="[{\"block\", \"count\", \"e_type\"?, \"age\"?, \"in_service\"?, "
                         "\"remaining\"?, \"attributes\"?}] -- entities already in each block.",
                variables="{name: value} the run starts from.",
@@ -216,7 +216,7 @@ def fit_distribution(path: str | None = None, values: list[float] | None = None,
     }
 
 
-_document_args("input_uncertainty", model="Workspace name of the model.",
+_document_args("input_uncertainty", model="Workspace model name.",
                inputs="One entry per input whose data is uncertain: {\"path\": a block's "
                       "\"...params.distribution\" field, or \"schedules.<name>.points\" of an "
                       "arrival schedule; \"data\": a CSV/TSV/XLSX file under the workspace root; "

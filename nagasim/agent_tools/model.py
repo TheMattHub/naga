@@ -11,15 +11,16 @@ import math
 from collections import Counter
 from typing import Literal
 
-from nagasim.core import conveyor_checks, conveyor_look, conveyor_path, floor, layout_tools
+from nagasim.core import conveyor_checks, conveyor_look, conveyor_path, floor, layout_tools, queuerow
 from nagasim.core.conveyor_types import TYPES
+from nagasim.core.schema.shape import LAYER_KINDS
 from nagasim.core.timeunits import LENGTH_UNITS, UNITS, units_of
 
 from .core import (EDIT, ToolError, _document_args, _duration, _edit_result, _open, _problem_dicts,
                    _problems, tool, workspace)
 
 _document_args("add_block",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                type="Block type, e.g. \"CREATE\", \"PROCESS\", \"DISPOSE\" (see list_block_types).",
                name="Block name; auto-generated (create_1, process_2, ...) when omitted.",
                params="Parameter values to set on the block; the type's defaults fill the rest.",
@@ -60,15 +61,18 @@ _SCOPE_DOC = ("\"chain\": the look spreads along the piece's line (place_piece: 
               "kept by hand until reset. Openings never spread.")
 
 _document_args("update_block",
-               model="Workspace name of the model to edit.",
-               name="Current name of the block to change.",
-               params="Parameters to merge into the block's existing params.",
+               model="Workspace model name.",
+               name="The block's current name.",
+               params="Parameters to merge in.",
                description="New canvas label.",
                position="New [x, y] centre.",
-               new_name="Rename the block to this; every link follows the rename.",
+               new_name="New name; every link follows.",
                look=_LOOK_DOC,
+               queue_row="Keys merged into its queue_row, null drops one; count_at [dx, dz, h] m "
+                         "moves the 3D count label, cell [w, d, h] m sizes the pad.",
+               layer='3D user layer; "" clears.',
                scope=_SCOPE_DOC,
-               reset="Look fields of this piece only to put back in line: each takes the nearest "
+               reset="Look fields of this piece to put back in line: each takes the nearest "
                      "value upstream not set by hand, else downstream, else the default.")
 
 _LOOK_RETURNS = {"look_changed": (list, "pieces the look changed"),
@@ -94,13 +98,13 @@ def update_block(model: str, name: str, params: dict | None = None,
                  description: str | None = None, position: list[float] | None = None,
                  new_name: str | None = None, look: dict | None = None,
                  scope: Literal["chain", "piece"] = "chain",
-                 reset: list[str] | None = None) -> dict:
-    """Change an existing block: merge parameters, rename it, move it, or
-    relabel it -- all as one undo entry.
+                 reset: list[str] | None = None, queue_row: dict | None = None,
+                 layer: str | None = None) -> dict:
+    """Change a block as one undo entry: merge params, rename, move, relabel,
+    or set its look, queue row or layer.
 
-    `params` MERGES rather than replaces, so you can set one value without
-    restating the rest. Renaming rewires every link automatically. A conveyor's look
-    is set with `look`, never in `params`; `get_ports` reads it back. Batch a large
+    `params` MERGES, so set one value without restating the rest. A conveyor's
+    look goes in `look`, never `params`; `get_ports` reads it. Batch a large
     build through `apply_edits`.
     """
     doc, before = _open(model)
@@ -112,6 +116,19 @@ def update_block(model: str, name: str, params: dict | None = None,
     if inside:
         raise ToolError("E_LOOK", f"{', '.join(inside)} cannot be set inside params",
                         "set looks with look=..., scope=...")
+    row = None
+    if queue_row is not None:
+        # D1508: checked before any write, since `set_queue_rows` skips a refused row silently.
+        row = {**(doc.blocks[name].queue_row or {}), **queue_row}
+        row = {k: v for k, v in row.items() if v is not None}
+        reason = queuerow.edit_problem(row) if row else None
+        if reason:
+            raise ToolError("E_QUEUE_ROW", f"{name}: queue_row {reason}",
+                            "e.g. {\"count_at\": [0, 0.5, 0]}; null drops a key")
+    # The Properties Layer field's rule (D1513): a kind's name would share the kind's toggle.
+    if isinstance(layer, str) and layer.strip().lower() in LAYER_KINDS:
+        raise ToolError("E_BAD_ARGUMENT", f"layer '{layer}' names a 3D kind",
+                        f"pick another name; kinds: {', '.join(LAYER_KINDS)}")
     final = name
     with doc.transaction():
         if params:      # first: a type change decides which look fields exist
@@ -123,12 +140,18 @@ def update_block(model: str, name: str, params: dict | None = None,
         if new_name and new_name != name:
             doc.rename_block(name, new_name)
             final = new_name
+        if queue_row is not None:
+            doc.set_queue_rows({final: row or None})
+        # D1516: None keeps the layer, since an MCP client sends an omitted argument as its
+        # default; "" clears it.
+        if layer is not None:
+            doc.set_layers({final: layer})
         extra = _look(doc, final, look, scope, reset)     # after the rename: the answer names it
     return _edit_result(doc, before, {"block": final, **extra})
 
 
 _document_args("remove_blocks",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                names="Block names to delete; their links go with them.")
 
 
@@ -147,7 +170,7 @@ def remove_blocks(model: str, names: list[str]) -> dict:
 
 
 _document_args("connect",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                source="Name of the block the entity leaves.",
                target="Name of the block the entity arrives at.",
                source_port="Out port name: a SUBMODEL instance's port, or a CONVEYOR's exit (\"out\", \"d<k>\").",
@@ -184,7 +207,7 @@ def connect(model: str, source: str, target: str, source_port: str | None = None
     return _edit_result(doc, before, {"link": f"{source} -> {target}", "index": index})
 
 
-_document_args("disconnect", model="Workspace name of the model to edit.",
+_document_args("disconnect", model="Workspace model name.",
                source="Source block of the link to remove.",
                target="Target block of the link to remove.",
                index="Which of several parallel links between the pair, 0 first; "
@@ -212,7 +235,7 @@ def disconnect(model: str, source: str, target: str, index: int | None = None) -
     return _edit_result(doc, before)
 
 
-_document_args("reorder_branches", model="Workspace name of the model to edit.",
+_document_args("reorder_branches", model="Workspace model name.",
                source="The branching block (a DECIDE or LOGIC).",
                order="Its target block names in the branch order you want, branch 0 first.")
 
@@ -241,7 +264,7 @@ def reorder_branches(model: str, source: str, order: list[str]) -> dict:
     return _edit_result(doc, before, {"order": list(order)})
 
 
-_document_args("set_resources", model="Workspace name of the model to edit.",
+_document_args("set_resources", model="Workspace model name.",
                resources="The complete resource list, each {\"name\", \"capacity\", "
                          "\"discipline\", cost fields...}.")
 
@@ -259,7 +282,7 @@ def set_resources(model: str, resources: list[dict]) -> dict:
     return _edit_result(doc, before, {"resources": [r.get("name") for r in doc.resources]})
 
 
-_document_args("set_calendar", model="Workspace name of the model to edit.",
+_document_args("set_calendar", model="Workspace model name.",
                start="ISO 8601 instant model time 0 stands for, e.g. \"2026-01-05T06:00:00\". "
                      "With no offset it is read in `timezone`, never in local time. "
                      "Pass null to remove the calendar.",
@@ -292,7 +315,7 @@ def set_calendar(model: str, start: str | None = None, timezone: str = "UTC",
     return _edit_result(doc, before, {"calendar": doc.simulation.get("calendar")})
 
 
-_document_args("set_entity_types", model="Workspace name of the model to edit.",
+_document_args("set_entity_types", model="Workspace model name.",
                entities="The complete entity-type list, each {\"name\", \"shape\"?, \"color\"?, "
                         "\"holding_cost\"?}.")
 
@@ -310,26 +333,27 @@ def set_entity_types(model: str, entities: list[dict]) -> dict:
     return _edit_result(doc, before, {"entities": [e.get("name") for e in doc.entities]})
 
 
-_document_args("set_simulation_settings", model="Workspace name of the model to edit.",
-               run_length="Run length in base time units; 0/null means \"until the model drains\". "
-                          "With a calendar you can set an end DATE instead, with set_calendar.",
-               warmup="Time at which statistics are reset.",
-               replications="How many independent replications a run does by default.",
+_document_args("set_simulation_settings", model="Workspace model name.",
+               run_length="Run length in base time units; 0/null: until the model drains. "
+                          "With a calendar, set_calendar can set an end DATE instead.",
+               warmup="Statistics reset time.",
+               replications="Default replications per run.",
                time_unit="The model's BASE unit: seconds, minutes, hours or days.",
-               currency="Cost label only; never enters the arithmetic.",
-               strict_checks="true: conveyor floor checks and run guards are errors, not warnings.")
+               currency="Cost label only.",
+               strict_checks="true: conveyor checks and run guards are errors, not warnings.",
+               queue_limit="Stop a run when a queue passes this length; 0: off.")
 
 
 @tool(returns={**EDIT, "simulation": dict})
 def set_simulation_settings(model: str, run_length: float | None = None,
                             warmup: float | None = None, replications: int | None = None,
                             time_unit: str | None = None, currency: str | None = None,
-                            strict_checks: bool | None = None) -> dict:
+                            strict_checks: bool | None = None,
+                            queue_limit: int | None = None) -> dict:
     """Set the model's default run settings; only the arguments you pass change.
 
-    ALWAYS set a run length for a model that cannot drain on its own -- one with
-    an endless CREATE (max_arrivals 0), a failure, or a repeating capacity
-    schedule. Without it a run raises rather than hanging.
+    ALWAYS set a run length for a model that cannot drain (an endless CREATE, a
+    failure, a repeating schedule); without one a run raises.
     """
     doc, before = _open(model)
     changes = {}
@@ -345,12 +369,17 @@ def set_simulation_settings(model: str, run_length: float | None = None,
         changes["currency"] = currency
     if strict_checks is not None:
         changes["strict_checks"] = bool(strict_checks)
+    if queue_limit is not None:     # D1529: a bad length is written as given, so it warns
+        if queue_limit:
+            changes["queue_limit"] = {"on": True, "length": queue_limit}
+        elif doc.simulation.get("queue_limit") is not None:     # 0 = off: no key, nothing to write
+            changes["queue_limit"] = {**(doc.simulation.get("queue_limit") or {}), "on": False}
     if changes:
         doc.set_simulation(**changes)
     return _edit_result(doc, before, {"simulation": doc.simulation})
 
 
-_document_args("set_sd_settings", model="Workspace name of the model to edit.",
+_document_args("set_sd_settings", model="Workspace model name.",
                dt="Step of the system-dynamics grid, > 0; null removes the grid.",
                method="euler (Stella/Vensim default) or rk4 (fourth order; no random draws "
                       "in a dynamic rate).",
@@ -395,7 +424,7 @@ def auto_layout(model: str) -> dict:
     return _edit_result(doc, before, {"moved": len(positions)})
 
 
-_document_args("set_item_code", model="Workspace name of the model to edit.",
+_document_args("set_item_code", model="Workspace model name.",
                definition="Name of the submodel definition whose code this is.",
                source="The whole Python source: a module defining the class.",
                class_name="The class in source the item runs, one instance per placed item.",
@@ -457,7 +486,7 @@ def _model_units(doc):
 
 
 _document_args("place_piece",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                name="Name of the new belt piece.",
                segments="The belt's pieces, entry to end (the CONVEYOR `path` param): {\"straight\": length} or {\"arc\": "
                     "{\"radius\": r, \"angle\": degrees, \"turn\": \"left\"|\"right\"}}.",
@@ -583,7 +612,7 @@ def place_piece(model: str, name: str, segments: list[dict], type: str = "", x: 
 
 
 _document_args("place_feeder",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                name="Name of the new feeder belt.",
                segments="The feeder's pieces, entry to end, in the model's length unit, as "
                         "place_piece takes them; its end lands on the trunk.",
@@ -662,7 +691,7 @@ def place_feeder(model: str, name: str, segments: list[dict], trunk: str, at: fl
 
 
 _document_args("set_layout",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                block="Name of the block to place.",
                x="Floor-plan x, in metres.",
                y="Floor-plan y (south is +y), in metres.",
@@ -733,7 +762,7 @@ def _snap_port(doc, model: str, snap_to: str):
 
 
 _document_args("place_transfer",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                name="Name of the new transfer module.",
                mechanism="\"popup\" (default), \"turntable\" or \"lift\".",
                exits="The module's exits, in exit order: [{\"port\": name, \"angle\": degrees from "
@@ -785,7 +814,7 @@ def place_transfer(model: str, name: str, mechanism: str = "popup", exits: list[
 
 
 _document_args("get_ports",
-               model="Workspace name of the model.",
+               model="Workspace model name.",
                block="Name of a CONVEYOR or CONVEYOR_TRANSFER.")
 
 

@@ -639,7 +639,8 @@ def run_scenarios(layout, scenario_names=None, *, replications: int | None = Non
                                  workers=workers if isinstance(workers, int) else 1,
                                  on_progress=on_progress, should_stop=should_stop, total=total,
                                  controllers=controllers,
-                                 logic=logic_module if pool is None and workers == 1 else logic_name)
+                                 logic=logic_module if pool is None and workers == 1 else logic_name,
+                                 name_stops=True)        # I1: a stop names its scenario
 
     for name in layouts:
         pairs = collected.get(name) or []

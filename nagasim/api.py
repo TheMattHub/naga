@@ -29,6 +29,7 @@ from nagasim._cli import add_controllers_argument, add_model_argument, load_cont
 from nagasim.core import initial_state, logic_authoring, schema
 from nagasim.core.calendar import CalendarError, model_calendar, run_horizon
 from nagasim.core import loglevels
+from nagasim.core.errors import ModelRunError
 from nagasim.core.export import ARTIFACTS_KEY, LIVE_KEY, PROBLEMS_KEY, concat_runs
 from nagasim.core.itemlogic import ItemCodeUntrusted
 from nagasim.core.schema import ModelValidationError
@@ -456,7 +457,7 @@ def scenario_pool(workers: int | str):
 
 def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop=None,
              done: int = 0, total: int | None = None, controllers=None,
-             logic: str | None = None) -> dict[object, list]:
+             logic: str | None = None, name_stops: bool = False) -> dict[object, list]:
     """Run many `(tag, layout, seed, run_length, warmup)` TASKS on one pool.
 
     The seam the whole studies layer parallelises through (PHASE4 T3). A task
@@ -479,8 +480,14 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
     Serial (`pool is None`) it is also polled inside a run, as before.
 
     *logic*: the dotted name of the caller's LOGIC module (see `run_model`); serial, the
-    module itself will do.
+    module itself will do. *name_stops*: a run that stops on E_QUEUE_LIMIT is re-raised with
+    "scenario '<tag>': " in front of its message (the tags are scenario names).
     """
+    def named(exc, tag):
+        if name_stops and getattr(exc, "code", None) == "E_QUEUE_LIMIT" and not str(exc).startswith("scenario "):
+            exc.args = (f"scenario '{tag}': {exc}",) + exc.args[1:]
+        return exc
+
     jobs = iter(jobs)
     collected: dict[object, list] = {}
     count = done
@@ -492,9 +499,12 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
             if should_stop is not None and should_stop():
                 break
             collected.setdefault(tag, [])
-            kpi = run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warm,
-                                        should_stop=should_stop, controllers=controllers,
-                                        logic_module=logic_module)
+            try:
+                kpi = run_single_simulation(layout, seed=seed, run_len=run_len, warmup=warm,
+                                            should_stop=should_stop, controllers=controllers,
+                                            logic_module=logic_module)
+            except ModelRunError as exc:
+                raise named(exc, tag)
             if kpi is None:                    # cut short mid-replication
                 break
             collected[tag].append((seed, kpi))
@@ -539,7 +549,10 @@ def run_jobs(jobs, *, pool=None, workers: int = 1, on_progress=None, should_stop
                     raise _not_started(_SPAWN_DEADLINE)
                 for future in finished:
                     tag, seed = futures.pop(future)
-                    kpi, logged = future.result()
+                    try:
+                        kpi, logged = future.result()
+                    except ModelRunError as exc:
+                        raise named(exc, tag)
                     for record in logged:
                         # Every replication repeats the model's load-time warnings: once is enough.
                         if record not in relogged:

@@ -718,6 +718,10 @@ PLAIN: dict[str, str | dict[str, str]] = {
     "E_ASSET_3D": {"form": "Block {block}: the 3D asset {value} is not written library/asset"},
     "E_QUEUE_ROW": {"row": "Block {block}: queue row {reason}"},
     "W_QUEUE_ROW_CROSSING": {"crossing": "The queue row of {name} runs through {other}"},
+    "W_VIEW_SETTING": {"default": "View setting {setting} is not valid; the view uses {default}",
+                       "count_at": "Block {block}: 3D count label offset is not valid; none is used",
+                       "cell": "Block {block}: 3D pad cell is not valid; its own is used",
+                       "layer": "Block {block}: 3D layer is not text; it is on no layer"},
     # -- the graph, submodels and expressions (modeller; D1334) --------------------------
     "W_LONG_NAME": {"long": "Block {block}: name is {n} characters, too long to draw"},
     "E_NO_CREATE": {"missing": "The model has no CREATE block"},
@@ -1010,6 +1014,8 @@ PLAIN: dict[str, str | dict[str, str]] = {
     "E_CANDIDATES": "The candidate actions are not valid",
     "E_MES_READ": "The MES data cannot be read",
     "E_RUN_BLOCK": "A block failed during the run",
+    "E_QUEUE_LIMIT": "A queue passed the model's queue limit, so the run stopped",
+    "W_QUEUE_LIMIT_SETTING": "The queue limit setting is not valid, so it is off",
 }
 
 

@@ -281,6 +281,8 @@ MUTANTS = {
     "E_FIELD_RANGE": _set("resources.0.capacity", -1),
     "E_FIELD_TYPE": _set("resources.0.capacity", "two"),
     "W_UNKNOWN_KEY": _set("entities.0.cost", 1),
+    "W_VIEW_SETTING": _set("view.queue_display", "huge"),     # checkpoint I3 (plan K1)
+    "W_QUEUE_LIMIT_SETTING": _set("simulation.queue_limit", {"on": "yes"}),     # D1529
     "W_QUEUE_LEAVE_LINK_UNUSED": _all(_add("blocks", {"name": "dispose_2", "type": "DISPOSE", "position": [840, 480]}),
                                       _add("links", {"source": "process_1", "target": "dispose_2"})),
     "W_UNREACHABLE": _all(_add("blocks", {"name": "spare", "type": "DELAY", "position": [520, 480],

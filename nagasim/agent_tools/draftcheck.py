@@ -16,7 +16,7 @@ from nagasim.core.document import ModelDocument
 from nagasim.core.stats import ci95
 from nagasim.core.trace import TraceRecorder
 
-from .core import ToolError, _document_args, _finite, _runnable_layout, tool, workspace
+from .core import ToolError, run_failed, _document_args, _finite, _runnable_layout, tool, workspace
 
 REL = 0.10          # a fitted draft is not exact: the draft's mean may sit this far from the source
 MIN_CASES = 30      # fewer source cases cannot tell a right draft from a wrong one
@@ -116,7 +116,7 @@ def check_draft(model: str, source: str | None = None, max_seconds: float = 20) 
     try:
         seen, first, seeds = _draft_values(layout, time.monotonic() + float(max_seconds))
     except RuntimeError as exc:
-        raise ToolError("E_RUN_FAILED", str(exc), "it validated but failed while running: fix what the message names and run again") from exc
+        raise run_failed(exc, "it validated but failed while running: fix what the message names and run again") from exc
     if first is None:
         raise ToolError("E_RUN_FAILED", f"no replication finished within {max_seconds:g} s",
                         "raise max_seconds or shorten the model's run length")

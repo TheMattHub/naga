@@ -30,10 +30,17 @@ from nagasim.core.block_registry import BLOCK_REGISTRY, PLUGIN_BLOCK_TYPES
 from nagasim.core.expressions import ExpressionError, compile_expression
 from nagasim.core.quantities import SECTION_FIELDS, fill_units, time_expressions
 from nagasim.core.timeunits import convert, units_of
+# The model display settings in `view` (D1504, D1506) live with the schema's shape check, which
+# says a bad one as W_VIEW_SETTING to every validator (final review M1); re-exported here.
+from nagasim.core.schema.shape import (DRAW_GUARD, DRAW_GUARD_MAX, LAYER_KINDS, QUEUE_DISPLAYS,
+                                       VIEW_SETTINGS, applied_draw_guard, checked_draw_guard,
+                                       checked_layers, view_setting_faults, view_settings)
 
 log = logging.getLogger(__name__)
 
-__all__ = ["ModelDocument", "EditLocked", "BlockData", "LinkData", "DefinitionView", "follow_names"]
+__all__ = ["ModelDocument", "EditLocked", "BlockData", "LinkData", "DefinitionView", "follow_names",
+           "QUEUE_DISPLAYS", "DRAW_GUARD", "VIEW_SETTINGS", "LAYER_KINDS", "view_settings",
+           "checked_draw_guard", "checked_layers", "applied_draw_guard", "block_layer"]
 
 _MAX_UNDO_DEPTH = 100
 # Every simulation default `schema.migrate` sets, so a new model saves what a
@@ -88,7 +95,7 @@ _PARTS = (
     _Part("dashboard", lambda: {"widgets": []}, omit=lambda value: not any(value.values()),
           blank=True),
     # U3d (D155): the editor's view state, set on save only (no undo step, no
-    # dirty mark).
+    # dirty mark); its display settings (`VIEW_SETTINGS`) are edits, `set_view_settings`.
     _Part("view", dict, omit=lambda value: not value, blank=True),
 )
 
@@ -138,12 +145,21 @@ class BlockData:
     # Keys of the block this build does not know (D1220), kept verbatim through load and
     # save and warned about (W_UNKNOWN_KEY); None when there are none.
     extra: dict | None = None
+    # The block's user layer in the 3D view (D1513), "" for none. Display only. Kept as written,
+    # so a non-text value from a file survives a save and stays a W_VIEW_SETTING warning;
+    # readers take it through `block_layer`.
+    layer: object = ""
+
+
+def block_layer(block: BlockData) -> str:
+    """The user layer *block* is on (D1513), or "" when it has none or a non-text one."""
+    return block.layer if isinstance(block.layer, str) else ""
 
 
 # The block keys a BlockData holds; any other is kept in `extra`.
 _BLOCK_KEYS = frozenset({"name", "type", "description", "position", "layout_position",
                          "layout_rotation", "asset_3d", "label_offset", "counter_offsets",
-                         "queue_row", "params"})
+                         "queue_row", "layer", "params"})
 _LINK_KEYS = frozenset({"source", "target", "delay", "source_port", "target_port", *AREA_KEYS})
 
 
@@ -456,6 +472,8 @@ class ModelDocument:
                     if b.counter_offsets else {}),
                  # Same rule for a turned queue row (D1089).
                  **({"queue_row": copy.deepcopy(b.queue_row)} if b.queue_row else {}),
+                 # Same rule for a user layer (D1513).
+                 **({"layer": copy.deepcopy(b.layer)} if b.layer not in ("", None) else {}),
                  "params": _saved_params(b),
                  **copy.deepcopy(b.extra or {})}
                 for b in self._level(scope).blocks.values()]
@@ -537,6 +555,7 @@ class ModelDocument:
                                   for k, v in b["counter_offsets"].items()} or None
                                  if b.get("counter_offsets") else None),
                 queue_row=copy.deepcopy(b["queue_row"]) if b.get("queue_row") else None,
+                layer=copy.deepcopy(b["layer"]) if b.get("layer") is not None else "",
                 extra={k: copy.deepcopy(v) for k, v in b.items() if k not in _BLOCK_KEYS} or None,
             )
         for link in section.get("links", []):
@@ -788,7 +807,7 @@ class ModelDocument:
         the label of the LAST step undone, or None if nothing moved. Nothing moves
         while a transaction is open (#753): its edits are not a step yet, so an undo
         would pop the step before them and the commit would then bury it."""
-        label = None
+        label, before = None, (self.to_layout() if self._undo_stack else None)
         for _ in range(max(steps, 0) if self._tx_depth == 0 else 0):
             if not self._undo_stack:
                 break
@@ -798,14 +817,14 @@ class ModelDocument:
             self._reset_from_layout(self._undo_stack.pop())
         if label is not None:
             self.dirty = True
-            self._notify("reset")
+            self._notify_restored(before)
         return label
 
     def redo(self, steps: int = 1) -> str | None:
         """Redo up to *steps* steps (fewer if the stack is shallower). Returns
         the label of the LAST step redone, or None if nothing moved (always while a
         transaction is open, as `undo`)."""
-        label = None
+        label, before = None, (self.to_layout() if self._redo_stack else None)
         for _ in range(max(steps, 0) if self._tx_depth == 0 else 0):
             if not self._redo_stack:
                 break
@@ -815,8 +834,28 @@ class ModelDocument:
             self._reset_from_layout(self._redo_stack.pop())
         if label is not None:
             self.dirty = True
-            self._notify("reset")
+            self._notify_restored(before)
         return label
+
+    def _notify_restored(self, before: dict) -> None:
+        """After an undo or redo: when only `view` or top-level blocks' `layer` keys differ from
+        *before*, send the narrow change the edit sent ("view", "blocks"/"layer"), so the canvas
+        keeps a loaded run (K2 final review I1, D1518); any other difference sends "reset"."""
+        after = self.to_layout()
+
+        def bare(layout: dict) -> dict:
+            return {**{k: v for k, v in layout.items() if k != "view"},
+                    "blocks": [{k: v for k, v in b.items() if k != "layer"} for b in layout["blocks"]]}
+
+        if bare(before) != bare(after):
+            self._notify("reset")
+            return
+        if before.get("view") != after.get("view"):
+            self._notify("view")
+        names = [b["name"] for b, a in zip(before["blocks"], after["blocks"])
+                 if b.get("layer") != a.get("layer")]
+        if names:
+            self._notify("blocks", action="layer", names=names, scope="")
 
     def undo_labels(self) -> list[str]:
         """Every undo step's label, newest (the next `undo()`) first -- what
@@ -1095,9 +1134,10 @@ class ModelDocument:
     def set_queue_rows(self, rows: dict, *, scope: str = "") -> None:
         """Set placed assets' own queue rows (D1089), one undo step: *rows* is
         `{block: {"anchor": [x, y], "direction": degrees} | None}`, either key
-        alone, plus the row's `slots`, `frees` and `label` (D1113), kept as given (#1590);
+        alone, plus the row's `slots`, `frees` and `label` (D1113), kept as given (#1590), and the
+        3D count label's `count_at` (D1507) and pad `cell` (D1517);
         None or {} goes back to the asset's own row. A value
-        `queuerow.override_problem` refuses is not stored."""
+        `queuerow.edit_problem` refuses is not stored."""
         from nagasim.core import queuerow
 
         level = self._level(scope)
@@ -1107,9 +1147,10 @@ class ModelDocument:
                 continue
             value = copy.deepcopy(value) or None
             if value is not None:
-                if queuerow.override_problem(value):
+                if queuerow.edit_problem(value):
                     continue
-                value = {k: ([float(x) for x in v] if k == "anchor" else float(v) if k == "direction" else v)
+                value = {k: ([float(x) for x in v] if k in ("anchor", "count_at", "cell")
+                             else float(v) if k == "direction" else v)
                          for k, v in value.items()}
             if level.blocks[name].queue_row != value:
                 changed[name] = value
@@ -1140,6 +1181,25 @@ class ModelDocument:
             level.blocks[name] = dataclasses.replace(level.blocks[name], asset_3d=ref)
         self.dirty = True
         self._notify("blocks", action="asset_3d", names=list(changed), scope=scope)
+
+    def set_layers(self, layers: dict, *, scope: str = "") -> None:
+        """Put blocks on a user layer of the 3D view (D1513), one undo step: *layers* is
+        {block: name, or "" / None for none}. Display only, the run ignores it. ValueError for
+        a name that is not text."""
+        level = self._level(scope)
+        bad = [name for name, layer in layers.items() if layer is not None and not isinstance(layer, str)]
+        if bad:
+            raise ValueError(f"{bad[0]}: layer must be text")
+        changed = {name: layer or "" for name, layer in layers.items()
+                   if name in level.blocks and level.blocks[name].layer != (layer or "")}
+        if not changed:
+            return
+        self._push_undo(f"Set the layer of {next(iter(changed))}" if len(changed) == 1
+                        else f"Set the layer of {len(changed)} blocks")
+        for name, layer in changed.items():
+            level.blocks[name] = dataclasses.replace(level.blocks[name], layer=layer)
+        self.dirty = True
+        self._notify("blocks", action="layer", names=list(changed), scope=scope)
 
     def set_layout_rotations(self, rotations: dict, *, scope: str = "") -> None:
         """Turn blocks on the FLOOR PLAN (PHASE4 T2, D74), one undo step for the
@@ -2201,6 +2261,30 @@ class ModelDocument:
         self.dirty = True
         self._notify("info", **kwargs)
 
+    def set_view_settings(self, queue_display: str | None = None,
+                          draw_guard: dict | None = None, layers: dict | None = None) -> None:
+        """Set the model's 3D display settings (D1504, D1506, D1516), one undo step, notification
+        kind "view". None keeps a setting; a partial *draw_guard* or *layers* keeps the rest. ValueError
+        for a value the schema refuses."""
+        updated = dict(self.view or {})
+        if queue_display is not None:
+            if queue_display not in QUEUE_DISPLAYS:
+                raise ValueError(f"queue_display must be one of {', '.join(QUEUE_DISPLAYS)}")
+            updated["queue_display"] = queue_display
+        # An empty guard is checked, then changes nothing: no undo step for it (checkpoint M6).
+        if draw_guard is not None and checked_draw_guard(draw_guard):
+            updated["draw_guard"] = {**view_settings(self.view)["draw_guard"],
+                                     **checked_draw_guard(draw_guard)}
+        # D1516: merged like the guard, so one layer is shown or hidden without restating the rest.
+        if layers is not None and checked_layers(layers):
+            updated["layers"] = {**view_settings(self.view)["layers"], **checked_layers(layers)}
+        if updated == (self.view or {}):
+            return
+        self._push_undo("Edit 3D display")
+        self.view = updated
+        self.dirty = True
+        self._notify("view")
+
     @property
     def description_text(self) -> str:
         return self.info.get("description", "")
@@ -2381,6 +2465,9 @@ class DefinitionView:
 
     def set_asset_3d(self, refs):
         self.document.set_asset_3d(refs, scope=self.name)
+
+    def set_layers(self, layers):
+        self.document.set_layers(layers, scope=self.name)
 
     def set_params(self, name, params):
         self.document.set_params(name, params, scope=self.name)

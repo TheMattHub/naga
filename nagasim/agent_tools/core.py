@@ -27,11 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-from nagasim import experiments, mdlimport, netguard, nextoptions, sdimport
+from nagasim import experiments, logcapture, mdlimport, netguard, nextoptions, sdimport
 from nagasim.core import schema as schema_mod, suggest
+from nagasim.core.errors import ModelRunError
 from nagasim.core.loglevels import NotRecordedError
 from nagasim.core.agents import PYTHON_CONSENT, PythonRefused
-from nagasim.core.document import ModelDocument
+from nagasim.core.document import ModelDocument, view_settings
 from nagasim.core.itemlogic import ItemCodeUntrusted
 from nagasim.settings import itemtrust
 from nagasim.settings.userpaths import user_data_dir
@@ -61,6 +62,15 @@ class ToolError(Exception):
         if self.did_you_mean:
             error["did_you_mean"] = self.did_you_mean
         return {"error": error}
+
+
+def run_failed(exc: BaseException, hint: str) -> ToolError:
+    """A model error found only while running, as a refusal: E_QUEUE_LIMIT with its own hint
+    when the queue limit stopped the run (D1532), so the agent knows what to fix; else
+    E_RUN_FAILED with *hint*."""
+    if getattr(exc, "code", None) == "E_QUEUE_LIMIT":
+        return ToolError("E_QUEUE_LIMIT", str(exc), getattr(exc, "hint", None))
+    return ToolError("E_RUN_FAILED", str(exc), hint)
 
 
 # The tools the running session offers (#1773): an MCP profile (`naga mcp --tools`, which also
@@ -516,16 +526,28 @@ def argument_error(tool_name: str, kwargs: dict) -> ToolError | None:
     return None
 
 
-def tool(read_only: bool = False, returns: dict | None = None, reads_frames: tuple = ()):
+def tool(read_only: bool = False, returns: dict | None = None, reads_frames: tuple = (),
+         logged: bool = False):
     """Register a function as a tool: wrap it so it never raises, derive its
     input schema from the signature, keep the docstring as the description and
     *returns* ({key: type}, the keys a successful answer may carry) as its output schema.
-    *reads_frames* names the level-gated results frames it reads (D1395)."""
+    *reads_frames* names the level-gated results frames it reads (D1395). A *logged* tool's
+    answer, a refusal included, carries what the call logged as `log` (D1520)."""
 
     def decorate(fn):
         schema = _input_schema(fn)
 
         def safe(**kwargs):
+            # *fn* passed, not closed over by `answer` alone: the tool's own function stays in
+            # this wrapper's closure, where tests find its source.
+            if not logged:
+                return answer(fn, **kwargs)
+            with logcapture.capture() as cap:
+                reply = answer(fn, **kwargs)
+            cap.attach(reply)
+            return reply
+
+        def answer(fn, /, **kwargs):
             try:
                 _parse_json_arguments(schema, kwargs)
                 _require_arguments(schema, kwargs)
@@ -548,6 +570,10 @@ def tool(read_only: bool = False, returns: dict | None = None, reads_frames: tup
                 return ToolError("E_INVALID_MODEL", "; ".join(exc.problems),
                                  "fix the scenario's overrides: " + override_hint(exc)
                                  if scenario else invalid_model_hint(exc.structured)).as_dict()
+            except ModelRunError as exc:        # D1532: a run stopped by the queue limit
+                if getattr(exc, "code", None) != "E_QUEUE_LIMIT":
+                    raise
+                return run_failed(exc, None).as_dict()
             except NotRecordedError as exc:     # D1395: before KeyError, whose subclass it is
                 return not_recorded_error(exc).as_dict()
             except (ValueError, KeyError, TypeError, OSError) as exc:
@@ -826,7 +852,7 @@ _document_args("open_model",
                name="Workspace name to load it under; defaults to the file stem.")
 
 
-@tool(returns={
+@tool(logged=True, returns={
     "ok": bool, "model": str, "path": str, "blocks": float, "errors": int, "warnings": int,
     "problems": list})
 def open_model(path: str, name: str | None = None) -> dict:
@@ -853,7 +879,7 @@ _document_args("import_sd_model",
                name="Workspace name to load it under; defaults to the file stem.")
 
 
-@tool(returns={
+@tool(logged=True, returns={
     "ok": bool, "model": str, "path": str, "import_problems": list, "errors": int, "warnings": int,
     "problems": list})
 def import_sd_model(path: str, name: str | None = None) -> dict:
@@ -910,7 +936,7 @@ _document_args("import_event_log",
                           "DELAY fitted to its waits (a modelled wait, not a queue).")
 
 
-@tool(returns={
+@tool(logged=True, returns={
     "ok": bool, "model": str, "columns": dict, "routing": dict, "activities": list,
     "resources": list, "activities_total": int, "resources_total": int, "assumptions": list,
     "dropped": dict, "check": dict, "next_steps": dict, "path_checks": dict, "observed": dict,
@@ -1019,7 +1045,7 @@ def save_model(model: str, path: str | None = None, short: bool = False) -> dict
 _INFO_MAX = 2000
 
 _document_args("set_model_info",
-               model="Workspace name of the model to edit.",
+               model="Workspace model name.",
                title="Title.", category="Gallery category.", description="What the model is.",
                author="Author.", notes="Free notes.")
 
@@ -1043,6 +1069,26 @@ def set_model_info(model: str, title: str | None = None, category: str | None = 
     doc, before = _open(model)
     doc.set_info(**given)
     return _edit_result(doc, before)
+
+
+_document_args("set_view", model="Workspace model name.",
+               queue_display="compact (per-form layer limits) or tall (no limit).",
+               draw_guard='on, limit, limit_2d: pause 3D over limit, skip 2D '
+                          'over limit_2d; off/looser waits for the user to Allow in the app.',
+               layers='{kind or block layer: bool}, merged; missing shows.')
+
+
+@tool(returns={**EDIT, "view": dict})
+def set_view(model: str, queue_display: str | None = None, draw_guard: dict | None = None,
+             layers: dict | None = None) -> dict:
+    """Set the model's 2D and 3D display, one undo step; an omitted argument keeps its value."""
+    # D1504 (queue display), D1506 (draw guard), D1508 (this tool), D1516 (layers).
+    doc, before = _open(model)
+    try:
+        doc.set_view_settings(queue_display, draw_guard, layers)
+    except ValueError as exc:
+        raise ToolError("E_VIEW", str(exc), 'e.g. queue_display="tall", draw_guard={"limit": 50000}')
+    return _edit_result(doc, before, {"view": view_settings(doc.view)})
 
 
 @tool(read_only=True, returns={"open": list, "files": list, "root": str})
@@ -1133,7 +1179,7 @@ def get_model_json(model: str) -> dict:
 
 
 # ============================================================ history
-_document_args("undo", model="Workspace name of the model.")
+_document_args("undo", model="Workspace model name.")
 
 
 @tool(returns={**EDIT, "can_undo": bool, "can_redo": bool, "label": str})
@@ -1163,7 +1209,7 @@ def _not_in_turn(doc) -> None:
                         "back an edit now, make the opposite edit")
 
 
-_document_args("redo", model="Workspace name of the model.")
+_document_args("redo", model="Workspace model name.")
 
 
 @tool(returns={**EDIT, "can_undo": bool, "can_redo": bool, "label": str})

@@ -401,6 +401,40 @@
           "type": "boolean",
           "description": "Whether the 3D view was on."
         },
+        "queue_display": {
+          "enum": [
+            "compact",
+            "tall"
+          ],
+          "description": "How the 3D view stacks waiting items: compact (per-form limits, the default) or tall (layers without limit)."
+        },
+        "draw_guard": {
+          "type": "object",
+          "properties": {
+            "on": {
+              "type": "boolean"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000000000
+            },
+            "limit_2d": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000000000
+            }
+          },
+          "additionalProperties": false,
+          "description": "The 3D view pauses playback before drawing more than limit items (default 20000); the 2D canvas skips a frame's new moves past limit_2d tokens (default 50000). On by default."
+        },
+        "layers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Which 3D layers show: a kind (equipment, tiles, names, pads, items, floor, building, network) or a block's user layer, to true or false; missing is shown."
+        },
         "canvases": {
           "type": "object",
           "propertyNames": {
@@ -2491,9 +2525,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -2613,9 +2686,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -3007,9 +3119,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -3148,9 +3299,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -3446,9 +3636,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -4375,9 +4604,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -4897,9 +5165,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -5247,9 +5554,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -5469,9 +5815,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -5671,9 +6056,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -5887,9 +6311,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -6012,9 +6475,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -6206,9 +6708,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -6342,9 +6883,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -6523,9 +7103,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -7127,9 +7746,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -7712,9 +8370,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -7878,9 +8575,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -8110,9 +8846,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -8366,9 +9141,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -8767,9 +9581,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -8918,9 +9771,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -9248,9 +10140,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -9464,9 +10395,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -9614,9 +10584,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -9764,9 +10773,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -9886,9 +10934,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -10008,9 +11095,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -10181,9 +11307,48 @@
                 "label": {
                   "type": "string",
                   "description": "The counter's name, e.g. 'Exit'."
+                },
+                "count_at": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -1000,
+                      "maximum": 1000
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D count label's offset, [dx, dz, h] in metres from its place on the floor: along the block's edge, outward, and a height (above 0 raises it)."
+                },
+                "cell": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "The 3D pad cell, [w, d, h] in metres, over the block's own."
                 }
               },
               "description": "A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame)."
+            },
+            "layer": {
+              "type": "string",
+              "description": "The block's user layer, which the 3D view shows or hides as one (view.layers). Display only."
             },
             "locals": {
               "type": "object",
@@ -16815,6 +17980,22 @@
           "type": "boolean",
           "default": false,
           "description": "Stop the run on a conveyor check: an open port, overlapping or unsnapped pieces, a part handed to nothing or routed against its rule become errors with the same code. Off: they are warnings."
+        },
+        "queue_limit": {
+          "type": "object",
+          "description": "Stop a run when one queue holds more than length entities: it saves run time on a model whose queue grows without bound. Absent or on false: no limit; a bad value warns, reads as off.",
+          "properties": {
+            "on": {
+              "type": "boolean",
+              "default": false
+            },
+            "length": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 100000
+            }
+          },
+          "additionalProperties": false
         },
         "entity_waits": {
           "type": "boolean",

@@ -31,6 +31,8 @@ from nagasim.core.problems import Problem, problem
 
 __all__ = ["KEY", "FREES", "slots_of", "held_series", "overflow_instants", "SlotCounter",
            "overflow_count", "DIRECTIONS", "ANCHOR_RANGE", "ROW_SPACING_M", "ROW_SHOWN", "override_problem",
+           "count_at_problem", "edit_problem", "count_at_of", "COUNT_AT", "COUNT_AT_MAX_M",
+           "CELL", "cell_problem", "cell_of",
            "parse_override", "direction_vector", "resolve", "default_anchor", "problems"]
 
 KEY = "queue_row"
@@ -45,6 +47,16 @@ _MIN_OVERLAP_M = 0.05           # a row grazing a neighbour's edge is not a cros
 FREES = ("leave", "move_end")   # when a slot frees (D1113)
 _GEOMETRY = {"anchor", "direction"}
 _SLOTS = {"slots", "frees", "label"}
+# D1507: where the 3D view's count label stands, [along the edge, outward, height] in metres from
+# its default place; display only, like the row's geometry. Each part lies within COUNT_AT_MAX_M
+# (final review M3), the height at 0 or more. Editor-only: a bad one is a warning and is read as
+# no offset, never a refused row (final review M2, N2's rule), so the slots still count.
+COUNT_AT = "count_at"
+COUNT_AT_MAX_M = 1000.0
+# D1517: the 3D pad cell [w, d, h] in metres over the block's own, each above 0 and at most
+# COUNT_AT_MAX_M; editor-only like count_at, so a bad one warns and the run's cell is used.
+CELL = "cell"
+_VIEW_ONLY = (COUNT_AT, CELL)
 
 
 def _number(value) -> bool:
@@ -55,10 +67,10 @@ def override_problem(value) -> str | None:
     """Why an instance's `queue_row` is refused, or None when it is fine."""
     if not isinstance(value, dict) or not value:
         return "must be an object with \"anchor\" and/or \"direction\" (or \"slots\")"
-    unknown = sorted(set(value) - _GEOMETRY - _SLOTS)
+    unknown = sorted(set(value) - _GEOMETRY - _SLOTS - set(_VIEW_ONLY))
     if unknown:
         return (f"has unknown key '{unknown[0]}' (it takes \"anchor\", \"direction\", \"slots\", "
-                "\"frees\" and \"label\")")
+                "\"frees\", \"label\", \"count_at\" and \"cell\")")
     if "slots" in value and not (isinstance(value["slots"], int) and not isinstance(value["slots"], bool)
                                  and value["slots"] >= 1):
         return "slots must be a whole number, 1 or more"
@@ -82,6 +94,41 @@ def override_problem(value) -> str | None:
     return None
 
 
+def count_at_problem(value) -> str | None:
+    """Why an instance's `queue_row` `count_at` is not used (W_VIEW_SETTING, final review M2),
+    or None when it is fine or absent. `override_problem` leaves it out, so a bad one never
+    refuses the row; an edit (`set_queue_rows`, `update_block`) refuses both."""
+    if not isinstance(value, dict) or COUNT_AT not in value:
+        return None
+    at = value[COUNT_AT]
+    if not (isinstance(at, list) and len(at) == 3 and all(_number(v) for v in at)):
+        return "count_at must be [dx, dz, h], three numbers in metres"
+    if not all(abs(v) <= COUNT_AT_MAX_M for v in at):
+        return f"count_at parts must lie within {COUNT_AT_MAX_M:g} m"
+    if at[2] < 0:
+        return "count_at height must be 0 or more"
+    return None
+
+
+def cell_problem(value) -> str | None:
+    """Why an instance's `queue_row` `cell` is not used (W_VIEW_SETTING, D1517), or None when it
+    is fine or absent; as `count_at_problem`, it never refuses the row."""
+    if not isinstance(value, dict) or CELL not in value:
+        return None
+    cell = value[CELL]
+    if not (isinstance(cell, list) and len(cell) == 3 and all(_number(v) for v in cell)):
+        return "cell must be [w, d, h], three numbers in metres"
+    if not all(0 < v <= COUNT_AT_MAX_M for v in cell):
+        return f"cell parts must be above 0 and at most {COUNT_AT_MAX_M:g} m"
+    return None
+
+
+def edit_problem(value) -> str | None:
+    """Why an edit refuses *value* as an instance's `queue_row`: `override_problem`, then
+    `count_at_problem` and `cell_problem`; None when it is fine."""
+    return override_problem(value) or count_at_problem(value) or cell_problem(value)
+
+
 def parse_override(value) -> dict:
     """An instance's `queue_row` as `{"anchor": (x, y), "direction": degrees}` (either key may be
     missing), or {} when it is absent or malformed -- a refused override draws the asset's own row,
@@ -94,6 +141,26 @@ def parse_override(value) -> dict:
     if "direction" in value:
         out["direction"] = float(value["direction"])
     return out
+
+
+def count_at_of(value) -> tuple[float, float, float] | None:
+    """`(dx, dz, h)` of an instance's `queue_row` count label offset (D1507), or None when it
+    gives none or is malformed."""
+    if (not isinstance(value, dict) or COUNT_AT not in value or override_problem(value)
+            or count_at_problem(value)):
+        return None
+    dx, dz, h = (float(v) for v in value[COUNT_AT])
+    return dx, dz, h
+
+
+def cell_of(value) -> tuple[float, float, float] | None:
+    """`(w, d, h)` of an instance's `queue_row` pad cell (D1517), or None when it gives none or
+    is malformed; a bad count_at beside it does not drop it."""
+    if (not isinstance(value, dict) or CELL not in value or override_problem(value)
+            or cell_problem(value)):
+        return None
+    w, d, h = (float(v) for v in value[CELL])
+    return w, d, h
 
 
 def slots_of(value) -> dict | None:
@@ -312,6 +379,19 @@ def problems(layout: dict) -> list[Problem]:
                                    hint="{\"anchor\": [0, 0.5], \"direction\": 90}, or remove it "
                                         "to use the asset's own row",
                                    fields={"case": "row", "reason": reason}))
+                continue
+            if (reason := count_at_problem(block[KEY])):
+                out.append(problem("W_VIEW_SETTING", f"{block.get('name')}: queue_row {reason}; the "
+                                   "3D view uses no offset", f"/blocks/{i}/{KEY}/{COUNT_AT}",
+                                   block=block.get("name"), hint="[0, 0.5, 0], or remove count_at",
+                                   fields={"case": "count_at", "block": block.get("name"),
+                                           "reason": reason}))
+            if (reason := cell_problem(block[KEY])):
+                out.append(problem("W_VIEW_SETTING", f"{block.get('name')}: queue_row {reason}; the "
+                                   "3D view uses the block's own cell", f"/blocks/{i}/{KEY}/{CELL}",
+                                   block=block.get("name"), hint="[1, 1, 1], or remove cell",
+                                   fields={"case": "cell", "block": block.get("name"),
+                                           "reason": reason}))
     definitions = layout.get("submodels") if isinstance(layout.get("submodels"), dict) else {}
     nodes = {n.get("name"): n for n in ((layout.get("network") or {}).get("nodes") or ())
              if isinstance(n, dict)}

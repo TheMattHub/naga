@@ -546,10 +546,17 @@ PROBLEM_CODES: dict[str, str] = {
                   "underscores on each side of one slash. It only picks the 3D view's mesh.",
     # D1089: drawing only; neither changes a run.
     "E_QUEUE_ROW": "A block's queue_row is not {\"anchor\": [x, y], \"direction\": degrees}, "
-                   "with x and y in -1..2 over the picture and 0 <= direction < 360.",
+                   "with x and y in -1..2 over the picture and 0 <= direction < 360, plus "
+                   "slots, frees, label, count_at and cell (a bad count_at or cell is "
+                   "W_VIEW_SETTING).",
     "W_QUEUE_ROW_CROSSING": "A placed asset's drawn queue row (up to its queue capacity, at most "
                             "ten places 0.8 m apart) runs through another placed asset on the "
                             "floor plan; turn the row (queue_row) so the picture reads right.",
+    # Checkpoint I3 (plan K1): drawing only, the run never reads `view`.
+    "W_VIEW_SETTING": "A display setting (the view section's queue_display, layers, or "
+                      "draw_guard's on, limit or limit_2d; a block's layer, or its queue_row "
+                      "count_at or cell) is not a value the editor accepts; the view uses that "
+                      "setting's default until it is set again.",
     "W_OPENING_OFF_WALL":"A building opening cuts no wall: it names a room, wall line or edge "
                           "that does not exist, is wider than its wall edge, or its two points "
                           "lie on no wall line (D1041).",
@@ -743,6 +750,11 @@ PROBLEM_CODES: dict[str, str] = {
     "E_RUN_BLOCK": "A block stopped the run: a value it computed or drew could not be used (an "
                    "attribute no block assigned, a negative scale), or no branch took an entity. "
                    "Raised as ModelRunError with the block's name; fix that block's parameters.",
+    "E_QUEUE_LIMIT": "A queue held more entities than simulation.queue_limit allows, so the run "
+                     "stopped there (D1531); the message names the block, its length, the time "
+                     "and the limit. Raised as ModelRunError; no KPIs for that run.",
+    "W_QUEUE_LIMIT_SETTING": "simulation.queue_limit is not {\"on\": true or false, \"length\": "
+                             "a whole number above 0}; the run reads the limit as off.",
     "E_WARMUP_PAST_END": "The warm-up is as long as the run or longer, so nothing after it is "
                          "observed and every result is zero.",
     "E_LOG_LEVEL": "simulation.log_level names no run log level or profile (D1395).",

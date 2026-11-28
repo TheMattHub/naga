@@ -260,6 +260,13 @@ def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None =
                            and "step" not in own and "peek" not in own) else None
     sampler = getattr(ctx, "sampler", None)     # getattr: a stub context has none
     next_tick = inf if sampler is None else sampler.next_tick
+    # D1531: the queue limit's gauges are read every CHECK_EVERY events, only when it is on.
+    gauged = getattr(ctx, "queue_limit", None) is not None
+    if gauged:
+        from nagasim.core import queuelimit
+        check_queues, every = queuelimit.check, queuelimit.CHECK_EVERY
+        # On ctx, not here: a session steps in chunks that would each restart the count.
+        countdown = getattr(ctx, "queue_countdown", 0) or every
     if pacer is not None:
         pacer.begin(env.now)
     while True:
@@ -312,6 +319,11 @@ def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None =
                 exc = type(event._value)(*event._value.args)
                 exc.__cause__ = event._value
                 raise exc
+        if gauged:
+            countdown -= 1
+            if not countdown:
+                countdown = every
+                check_queues(ctx, env.now)
         # "Not advancing" includes creeping: a loop that moves time by a rounding
         # error per event (1e-13) never sits AT one timestamp, yet never gets
         # anywhere either (DEVLOG #106). Real models do not schedule events a
@@ -328,6 +340,8 @@ def _step_until(env, run_len: float = 0, should_stop=None, pacer: Pacer | None =
                     f"simulation time is not advancing: more than {STALL_EVENT_LIMIT} events at "
                     f"t={env.now:g}. Look for arrivals with a zero interarrival time, or a loop "
                     f"of blocks that takes no time.")
+    if gauged:
+        ctx.queue_countdown = countdown
     reached_limit = (env.peek() != math.inf) and not interrupted   # events still pending past the limit
     if pacer is not None and reached_limit:
         # The run's last stretch is model time too. Stopping here cuts only the

@@ -37,6 +37,7 @@ A scenario can override a block parameter with the path `blocks.<name>.params.<p
 | `label_offset` | point |  |  |  | Where the block's NAME label was dragged to , in scene units from its default anchor, measured in the UNROTATED frame. Absent means the default position. Editor-only. |
 | `counter_offsets` | object |  |  |  | Where the block's counters were dragged to, keyed `out`, `exit:<branch>` or `entry:<port>`, in scene units from each counter's default place. Absent means every counter is home. Editor-only. |
 | `queue_row` | object |  |  |  | A placed asset's own queue row: where its waiting entities line up past its seats, over the picture's queue_anchor and queue_direction, so a row can be turned away from a neighbour. Absent means the asset's own row. It never changes a run; with slots the run counts the arrivals that find them full (the slot_summary frame). |
+| `layer` | string |  |  |  | The block's user layer, which the 3D view shows or hides as one (view.layers). Display only. |
 | `locals` | object |  |  |  | Submodel parameter bindings, written by flattening; not authored by hand. |
 | `instance_place` | list of number |  |  |  | Written when a model is flattened, never by hand: [x, y, rotation] of the placed asset instance the block came from, on the floor plan; one written by hand is ignored. |
 | `params` | object |  |  |  | The block type's parameters, by name (see the [block reference](../blocks/index.md)). |

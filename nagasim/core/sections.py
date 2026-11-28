@@ -260,7 +260,8 @@ SECTIONS: tuple[Section, ...] = (
                              "timeseries sampler.",
             tab="Dashboard"),
     Section("view", doc="Editor view state: the canvas tab in front, layout/3D, "
-                        "zoom and centre per tab; written on save, ignored by the engine."),
+                        "zoom and centre per tab, written on save; and the 3D display "
+                        "settings (queue display, draw guard), set as edits. Ignored by the engine."),
 )
 
 # The family of each heading (C13, Matteo 2026-10-16): Flow, Data, Logistics,

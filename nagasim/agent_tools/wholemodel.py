@@ -161,8 +161,8 @@ def _overview() -> str:
         "links: [{source*, target*}] in order: a DECIDE's links are its branches (branch i takes "
         "probs[i] or conditions[i]; one more link than probs/conditions is the else). A "
         "SEIZE/PROCESS with balk_if/renege_after sends the entities that leave by its second link.",
-        "simulation: {" + _fields(full, simulation, False) + "}. time_limit is the run length in "
-        "time_unit; durations and rates without their own unit are in it.",
+        "simulation: {" + _fields(full, simulation, False) + "}. time_limit is the run length; "
+        "durations and rates without a unit are in time_unit.",
         *(_section_line(full, s, False) for s in _CORE_SECTIONS),
         # The study's tank task: a TNOW test on a one-minute grid switched late every hour.
         "A flow rate that switches on a timetable (a pump on a timer) is exact read with "

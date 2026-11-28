@@ -54,4 +54,4 @@ One page per top-level key of the model file, from the published JSON Schema (`n
 | [`assertions`](assertions.md) | a list of entries | Model assertions: a KPI, a comparison operator/value and a replication/confidence budget, checked by `naga check`. |
 | [`path_checks`](path_checks.md) | a list of entries | Entity-path checks: rules on the blocks each entity visits (order, never, at most N times, always), checked by `naga check` on one traced replication. |
 | [`dashboard`](dashboard.md) | an object | Dashboard widgets: kpi/gauge/line/bar over the model's own expressions, sampled at the same instants as the timeseries sampler. |
-| [`view`](view.md) | an object | Editor view state: the canvas tab in front, layout/3D, zoom and centre per tab; written on save, ignored by the engine. |
+| [`view`](view.md) | an object | Editor view state: the canvas tab in front, layout/3D, zoom and centre per tab, written on save; and the 3D display settings (queue display, draw guard), set as edits. |

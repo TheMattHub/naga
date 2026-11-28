@@ -120,6 +120,8 @@ def _dispatch(entry, argv: list, prog: str, name: str) -> int:
                                  + (f"    hint: {p.hint}\n" if p.hint else ""))
         elif getattr(exc, "code", None) == "E_RUN_BLOCK":     # named by its block (#1766)
             sys.stderr.write(f"{prog} {name}: {exc.code} {exc}\n")
+        elif getattr(exc, "code", None) == "E_QUEUE_LIMIT":   # the queue limit (D1532)
+            sys.stderr.write(f"{prog} {name}: {exc.code} {exc}\n    hint: {exc.hint}\n")
         else:
             sys.stderr.write(f"{prog} {name}: {exc}{_bundled_hint(exc)}\n")
         return 2

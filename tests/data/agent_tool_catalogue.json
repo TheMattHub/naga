@@ -563,7 +563,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -628,12 +628,19 @@
     "read_only": false
   },
   {
-    "description": "Change an existing block: merge parameters, rename it, move it, or\nrelabel it -- all as one undo entry.\n\n`params` MERGES rather than replaces, so you can set one value without\nrestating the rest. Renaming rewires every link automatically. A conveyor's look\nis set with `look`, never in `params`; `get_ports` reads it back. Batch a large\nbuild through `apply_edits`.",
+    "description": "Change a block as one undo entry: merge params, rename, move, relabel,\nor set its look, queue row or layer.\n\n`params` MERGES, so set one value without restating the rest. A conveyor's\nlook goes in `look`, never `params`; `get_ports` reads it. Batch a large\nbuild through `apply_edits`.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "description": {
           "description": "New canvas label.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "layer": {
+          "description": "3D user layer; \"\" clears.",
           "type": [
             "string",
             "null"
@@ -647,22 +654,22 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
-          "description": "Current name of the block to change.",
+          "description": "The block's current name.",
           "type": "string"
         },
         "new_name": {
-          "description": "Rename the block to this; every link follows the rename.",
+          "description": "New name; every link follows.",
           "type": [
             "string",
             "null"
           ]
         },
         "params": {
-          "description": "Parameters to merge into the block's existing params.",
+          "description": "Parameters to merge in.",
           "type": [
             "object",
             "null"
@@ -678,8 +685,15 @@
             "null"
           ]
         },
+        "queue_row": {
+          "description": "Keys merged into its queue_row, null drops one; count_at [dx, dz, h] m moves the 3D count label, cell [w, d, h] m sizes the pad.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "reset": {
-          "description": "Look fields of this piece only to put back in line: each takes the nearest value upstream not set by hand, else downstream, else the default.",
+          "description": "Look fields of this piece to put back in line: each takes the nearest value upstream not set by hand, else downstream, else the default.",
           "items": {
             "type": "string"
           },
@@ -744,7 +758,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "names": {
@@ -807,7 +821,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "source": {
@@ -882,7 +896,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "source": {
@@ -930,7 +944,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "order": {
@@ -984,7 +998,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "resources": {
@@ -1071,7 +1085,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "section": {
@@ -1117,7 +1131,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "record": {
@@ -1175,7 +1189,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "section": {
@@ -1232,7 +1246,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "start": {
@@ -1315,7 +1329,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -1372,7 +1386,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to inspect.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -1441,7 +1455,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -1500,7 +1514,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to inspect.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -1541,7 +1555,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -1597,7 +1611,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -1657,7 +1671,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "source": {
@@ -1720,7 +1734,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "source": {
@@ -1771,7 +1785,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to inspect.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "source": {
@@ -1825,7 +1839,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "path": {
@@ -1883,7 +1897,7 @@
           "type": "array"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -1920,37 +1934,44 @@
     "read_only": false
   },
   {
-    "description": "Set the model's default run settings; only the arguments you pass change.\n\nALWAYS set a run length for a model that cannot drain on its own -- one with\nan endless CREATE (max_arrivals 0), a failure, or a repeating capacity\nschedule. Without it a run raises rather than hanging.",
+    "description": "Set the model's default run settings; only the arguments you pass change.\n\nALWAYS set a run length for a model that cannot drain (an endless CREATE, a\nfailure, a repeating schedule); without one a run raises.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
         "currency": {
-          "description": "Cost label only; never enters the arithmetic.",
+          "description": "Cost label only.",
           "type": [
             "string",
             "null"
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
+        "queue_limit": {
+          "description": "Stop a run when a queue passes this length; 0: off.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "replications": {
-          "description": "How many independent replications a run does by default.",
+          "description": "Default replications per run.",
           "type": [
             "integer",
             "null"
           ]
         },
         "run_length": {
-          "description": "Run length in base time units; 0/null means \"until the model drains\". With a calendar you can set an end DATE instead, with set_calendar.",
+          "description": "Run length in base time units; 0/null: until the model drains. With a calendar, set_calendar can set an end DATE instead.",
           "type": [
             "number",
             "null"
           ]
         },
         "strict_checks": {
-          "description": "true: conveyor floor checks and run guards are errors, not warnings.",
+          "description": "true: conveyor checks and run guards are errors, not warnings.",
           "type": [
             "boolean",
             "null"
@@ -1964,7 +1985,7 @@
           ]
         },
         "warmup": {
-          "description": "Time at which statistics are reset.",
+          "description": "Statistics reset time.",
           "type": [
             "number",
             "null"
@@ -2020,7 +2041,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "time_unit": {
@@ -2078,7 +2099,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "signals": {
@@ -2194,7 +2215,7 @@
     "read_only": false
   },
   {
-    "description": "Validate a model file (is it valid?) and return every problem with a stable code, a\nJSON-pointer path, and a hint saying how to fix it.\n\nCall this after each batch of edits and ALWAYS before running. Errors stop a\nrun; warnings (code prefix W_) do not, but usually point at a modelling\nmistake. `requires_run_length` tells you whether the model can drain on its\nown -- if it is true and the run length is 0, a run will be refused.",
+    "description": "Validate a model file (is it valid?) and return every problem with a stable code, a\nJSON-pointer path, and a hint saying how to fix it.\n\nCall this after each batch of edits and ALWAYS before running. Errors stop a\nrun; warnings (code prefix W_) do not, but usually point at a modelling\nmistake. `requires_run_length` tells you whether the model can drain on its\nown -- if it is true and the run length is 0, a run will be refused. \"log\": what\nvalidating logged.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2237,7 +2258,7 @@
     "read_only": true
   },
   {
-    "description": "Run (simulate) a model over its replications and return a COMPACT KPI digest -- never\nthe raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications; `run_to_precision`\nfinds how many. One replication gives no interval at all (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, exactly as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it; a binding it\ncould not resolve is counted in \"bindings\" ({\"problems\", \"first\"}). Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nThe full frames stay in the workspace: page them out with `get_kpi_table`; kpi `log_level` is\nfaster.\n\n\"laws\" are the operational-law checks and guardrails (utilisation, offered load, Little, flow\nconservation, censoring, initial bias) -- warnings, never failures; a partial one names why\nits numbers cannot be read at face value. Only when the model has them: \"entities\" (per\nentity type, when there are several: Avg Time, Total Completed), \"levels\" (Average, Final,\nTime Empty %, Time Full %), \"queues\" (per block: Balked, Reneged) and \"agents\" (per\npopulation/state: Avg Count), in the same {mean, ci_half_width} form. \"problems\" is present\nonly when the run raised warnings while running (a part handed to nothing, a part leaving by\nan exit its rule would not choose, a hold still open at the end): code, message, hint, block.",
+    "description": "Run (simulate) a model over its replications and return a COMPACT KPI digest -- never\nthe raw frames.\n\nValidate first: a model with errors will not run. Every KPI comes back as a\nmean with the half-width of its 95% confidence interval over replications;\na half-width near the mean means you need more replications; `run_to_precision`\nfinds how many. One replication gives no interval (null).\n\n`bind_data=true` resolves the model's `series:` (time-series input) and\n`orders` data bindings at RUN TIME, as the UI/CLI's `--bind` does,\nwithin this workspace's own network permission and file confinement --\nthere is no permission argument here, only whether to use it; a binding it\ncould not resolve is counted in \"bindings\" ({\"problems\", \"first\"}). Use\n`resolve_data_bindings` first to preview what a binding would read.\n\nPage the full frames, kept in the workspace, with `get_kpi_table`; kpi `log_level` is\nfaster.\n\n\"laws\" are the operational-law checks and guardrails (utilisation, offered load, Little, flow\nconservation, censoring, initial bias) -- warnings, never failures; a partial one names why\nits numbers cannot be read at face value. Only when the model has them: \"entities\" (per\nentity type, when there are several: Avg Time, Total Completed), \"levels\" (Average, Final,\nTime Empty %, Time Full %), \"queues\" (per block: Balked, Reneged) and \"agents\" (per\npopulation/state: Avg Count), in the same {mean, ci_half_width} form. \"problems\" (only when\nthe run raised some: a part handed to nothing, an exit its rule would not choose, a hold open\nat the end): code, message, hint, block. \"log\" lists what the run logged, repeats counted.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2270,7 +2291,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to run.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "replications": {
@@ -2440,7 +2461,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -2501,7 +2522,7 @@
           "type": "array"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -2545,7 +2566,7 @@
     "read_only": false
   },
   {
-    "description": "Run the model's scenarios (the options) and compare them against the baseline with\nconfidence intervals and a significance verdict: which option is better, and whether the\ndifference is significant.\n\nThis is the consultancy answer: for each KPI and scenario you get the\nscenario's own mean with its CI, the DIFFERENCE against the baseline with\nits own CI, and whether that difference interval excludes zero\n(\"significant\"). A non-significant difference means \"not distinguishable at\nthis replication count\", not \"no difference\".\n\n\"laws\" are each scenario's law checks, {scenario: {\"passed\", \"partial\"}}, as run_model gives\nthem for one run: a partial law makes it not valid, no result to compare; censoring or\ninitial bias alone may bias it low, so a difference is not verified.",
+    "description": "Run the model's scenarios (the options) and compare them against the baseline with\nconfidence intervals and a significance verdict: which option is better, and whether the\ndifference is significant.\n\nThis is the consultancy answer: for each KPI and scenario you get the\nscenario's own mean with its CI, the DIFFERENCE against the baseline with\nits own CI, and whether that difference interval excludes zero\n(\"significant\"). A non-significant difference means \"not distinguishable at\nthis replication count\", not \"no difference\".\n\n\"laws\" are each scenario's law checks, {scenario: {\"passed\", \"partial\"}}, as run_model gives\nthem for one run: a partial law makes it not valid, no result to compare; censoring or\ninitial bias alone may bias it low, so a difference is not verified. \"problems\" (per\nscenario) and \"log\" as in run_model.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -2572,7 +2593,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to run.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "replications": {
@@ -2634,6 +2655,9 @@
         },
         "model": {
           "type": "string"
+        },
+        "problems": {
+          "type": "object"
         },
         "scenarios": {
           "type": "array"
@@ -2716,7 +2740,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to run.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "relative": {
@@ -2795,7 +2819,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to run.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "run_length": {
@@ -2908,7 +2932,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "replications": {
@@ -3025,7 +3049,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "objectives": {
@@ -3188,7 +3212,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "resources": {
@@ -3572,7 +3596,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "overrides": {
@@ -3733,7 +3757,7 @@
           "type": "number"
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "policy": {
@@ -3853,7 +3877,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "replications": {
@@ -3947,7 +3971,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -3994,7 +4018,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -4230,7 +4254,7 @@
       "additionalProperties": false,
       "properties": {
         "model": {
-          "description": "Workspace name of the model to run.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "run_length": {
@@ -4665,7 +4689,7 @@
       "additionalProperties": false,
       "properties": {
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -4848,7 +4872,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "target": {
@@ -4920,7 +4944,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "text": {
@@ -5010,7 +5034,7 @@
           "type": "integer"
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5100,7 +5124,7 @@
           "type": "string"
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5144,7 +5168,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "version": {
@@ -5225,7 +5249,7 @@
           "type": "string"
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "version": {
@@ -5279,7 +5303,7 @@
       "additionalProperties": false,
       "properties": {
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5314,7 +5338,7 @@
       "additionalProperties": false,
       "properties": {
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5364,7 +5388,7 @@
       "additionalProperties": false,
       "properties": {
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5390,7 +5414,7 @@
       "additionalProperties": false,
       "properties": {
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "version": {
@@ -5437,7 +5461,7 @@
           "type": "string"
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5502,7 +5526,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "version": {
@@ -5567,7 +5591,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5615,7 +5639,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         },
         "version": {
@@ -5664,7 +5688,7 @@
           ]
         },
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5699,7 +5723,7 @@
       "additionalProperties": false,
       "properties": {
         "study": {
-          "description": "Study folder relative to the workspace root (the id study_start returned).",
+          "description": "Study id from study_start (a folder in the workspace).",
           "type": "string"
         }
       },
@@ -5815,7 +5839,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -5885,7 +5909,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "overrides": {
@@ -5974,7 +5998,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "overrides": {
@@ -6322,7 +6346,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -6440,7 +6464,7 @@
           "type": "number"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -6538,7 +6562,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "name": {
@@ -6614,7 +6638,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model.",
+          "description": "Workspace model name.",
           "type": "string"
         }
       },
@@ -6697,7 +6721,7 @@
           "type": "string"
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "rotation": {
@@ -6781,7 +6805,7 @@
           ]
         },
         "model": {
-          "description": "Workspace name of the model to edit.",
+          "description": "Workspace model name.",
           "type": "string"
         },
         "notes": {
@@ -6818,6 +6842,68 @@
         },
         "ok": {
           "type": "boolean"
+        },
+        "warnings": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "read_only": false
+  },
+  {
+    "description": "Set the model's 2D and 3D display, one undo step; an omitted argument keeps its value.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "draw_guard": {
+          "description": "on, limit, limit_2d: pause 3D over limit, skip 2D over limit_2d; off/looser waits for the user to Allow in the app.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "layers": {
+          "description": "{kind or block layer: bool}, merged; missing shows.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Workspace model name.",
+          "type": "string"
+        },
+        "queue_display": {
+          "description": "compact (per-form layer limits) or tall (no limit).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "name": "set_view",
+    "output_schema": {
+      "properties": {
+        "errors": {
+          "type": "integer"
+        },
+        "fixed": {
+          "type": "array"
+        },
+        "introduced": {
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "view": {
+          "type": "object"
         },
         "warnings": {
           "type": "integer"

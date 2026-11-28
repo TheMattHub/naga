@@ -3,7 +3,7 @@
 
 # Agent tools
 
-The 105 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
+The 106 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under the same names. "Reads" marks a tool that changes nothing. Each tool's full description and argument schema is what the server sends an agent; see [Use with an agent](../mcp.md).
 
 ## core
 
@@ -15,6 +15,7 @@ The 105 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under t
 | `import_event_log` |  | Draft a model from an event log (a CSV or .xlsx of timestamps per case): what happened to each case, activity by activity. |
 | `save_model` |  | Write a model in the workspace to disk as JSON. |
 | `set_model_info` |  | Write the model's info text, one undo step. |
+| `set_view` |  | Set the model's 2D and 3D display, one undo step; an omitted argument keeps its value. |
 | `list_models` | yes | List the models currently open in the workspace, and the model files available under the workspace root. |
 | `get_model_summary` | yes | A compact picture of a model: its blocks with their key parameters, its links in branch order, its resources, and how many problems it has. |
 | `get_model_json` | yes | The complete model layout as the JSON that would be saved to disk. |
@@ -26,7 +27,7 @@ The 105 tools of `nagasim.agent_tools.TOOLS`, which `naga mcp` publishes under t
 | Tool | Reads | What it does |
 |---|---|---|
 | `add_block` |  | Add one block to a model and optionally set its parameters in the same step (one undo entry). |
-| `update_block` |  | Change an existing block: merge parameters, rename it, move it, or relabel it -- all as one undo entry. |
+| `update_block` |  | Change a block as one undo entry: merge params, rename, move, relabel, or set its look, queue row or layer. |
 | `remove_blocks` |  | Delete blocks and every link touching them, as one undo entry. |
 | `connect` |  | Link two blocks so entities flow from *source* to *target*, optionally with a transfer delay. |
 | `disconnect` |  | Remove one link. |
